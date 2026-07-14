@@ -6,7 +6,7 @@
     border: 1px solid var(--white-alpha-10);
     border-radius: var(--radius-md);
     color: var(--fog-alpha-80);
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     transition: border-color 0.2s ease;
 
     &:focus {

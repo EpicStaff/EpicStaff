@@ -30,7 +30,7 @@
     }
 
     &__header-label {
-        font-size: 14px;
+        font-size: var(--font-size-md);
         color: var(--color-text-primary);
     }
 
@@ -41,7 +41,7 @@
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        font-size: 1.25rem;
+        font-size: var(--font-size-2xl);
         transition: border-color 0.2s ease;
 
         &:focus {
@@ -122,7 +122,7 @@
     }
 
     &__section-title {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--color-text-primary);
     }
 
@@ -148,7 +148,7 @@
     }
 
     &__empty-text {
-        font-size: 16px;
+        font-size: var(--font-size-lg);
         color: var(--white-alpha-80);
         margin-bottom: 20px;
     }

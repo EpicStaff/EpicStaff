@@ -12,14 +12,14 @@
 
     &__title {
         margin-bottom: 1rem;
-        font-size: 1.5rem;
+        font-size: var(--font-size-3xl);
         font-weight: bold;
         color: var(--color-text-primary);
         text-align: center;
     }
 
     &__description {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         line-height: 130%;
         color: var(--fog-alpha-80);
         text-align: center;
@@ -51,7 +51,7 @@
     }
 
     &__config-title {
-        font-size: 1.125rem;
+        font-size: var(--font-size-xl);
         color: var(--color-text-primary);
     }
 
@@ -64,7 +64,7 @@
         width: 75px;
         flex-shrink: 0;
         text-align: right;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         line-height: 130%;
         color: var(--color-text-primary);
     }

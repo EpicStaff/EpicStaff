@@ -12,13 +12,13 @@
 
     &__title {
         margin: 0;
-        font-size: 20px;
+        font-size: var(--font-size-2xl);
         color: var(--color-text-primary);
     }
 
     &__subtitle {
         margin: 0;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         color: var(--color-text-secondary, #9aa0a6);
     }
 
@@ -29,7 +29,7 @@
     }
 
     &__section-title {
-        font-size: 18px;
+        font-size: var(--font-size-xl);
         color: var(--color-text-secondary, #9aa0a6);
     }
 

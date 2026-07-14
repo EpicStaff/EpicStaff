@@ -20,14 +20,14 @@
 
     &__title {
         margin: 0;
-        font-size: 20px;
+        font-size: var(--font-size-2xl);
         font-weight: 500;
         color: var(--color-text-primary);
     }
 
     &__subtitle {
         margin: 0;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         color: var(--fog-alpha-60);
     }
 
@@ -47,7 +47,7 @@
     &__search-icon {
         position: absolute;
         left: 12px;
-        font-size: 16px;
+        font-size: var(--font-size-lg);
         color: var(--fog-alpha-50);
         pointer-events: none;
     }
@@ -60,7 +60,7 @@
         border: 1px solid var(--white-alpha-12);
         background: transparent;
         color: var(--color-text-primary);
-        font-size: 14px;
+        font-size: var(--font-size-md);
         transition: border-color 0.2s ease;
 
         &::placeholder {
@@ -82,7 +82,7 @@
     &__filter-chevron {
         position: absolute;
         right: 10px;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         color: var(--fog-alpha-50);
         pointer-events: none;
     }
@@ -97,13 +97,13 @@
         border: none;
         background: var(--accent-color);
         color: var(--white);
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 500;
         cursor: pointer;
         transition: background 0.2s ease;
 
         i {
-            font-size: 16px;
+            font-size: var(--font-size-lg);
         }
 
         &:hover {
@@ -135,7 +135,7 @@
     }
 
     &__provider-name {
-        font-size: 16px;
+        font-size: var(--font-size-lg);
         font-weight: 500;
         color: var(--color-text-primary);
     }

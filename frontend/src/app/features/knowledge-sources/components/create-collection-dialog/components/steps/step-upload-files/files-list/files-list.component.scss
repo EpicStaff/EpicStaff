@@ -12,7 +12,7 @@
         margin-bottom: 1rem;
         width: 100%;
         padding-right: 1.875rem;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: 300;
         min-width: 0;
 
@@ -33,7 +33,7 @@
         justify-content: space-between;
         column-gap: 1rem;
         cursor: pointer;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
 
         &--selected {
             background-color: var(--color-line);
@@ -62,11 +62,11 @@
         padding: 0.25rem 0.5rem;
 
         &--medium {
-            font-size: 0.875rem;
+            font-size: var(--font-size-md);
         }
 
         &--small {
-            font-size: 0.625rem;
+            font-size: var(--font-size-2xs);
         }
     }
 

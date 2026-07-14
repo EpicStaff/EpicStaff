@@ -39,7 +39,7 @@
     background: transparent;
     outline: none;
     resize: none;
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     color: var(--color-text-primary);
 
     &:disabled {

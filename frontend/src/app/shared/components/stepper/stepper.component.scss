@@ -57,7 +57,7 @@
         color: var(--fog-alpha-80);
         background-color: var(--color-background-body);
         line-height: 130%;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: bold;
         z-index: 2;
         transition: 0.25s;
@@ -65,7 +65,7 @@
 
     &__label {
         margin-top: 6px;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         line-height: 130%;
         color: var(--fog-alpha-80);
         transition: 0.25s;

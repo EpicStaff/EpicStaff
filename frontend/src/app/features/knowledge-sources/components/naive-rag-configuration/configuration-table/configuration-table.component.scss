@@ -44,9 +44,9 @@
         display: grid;
         grid-template-columns: 1rem // checkbox
             1fr // file name
-            145px // chunk strategy
-            110px // chunk size
-            110px // overlap
+            140px // chunk strategy
+            105px // chunk size
+            105px // overlap
             90px; // tune chunks
         gap: 0.5rem;
         padding: 0.5rem 0.625rem;
@@ -55,7 +55,7 @@
 
     &__row-error {
         display: block;
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         margin: 0 0.625rem 0.5rem;
         border-radius: var(--radius-md);
         border-left: 3px solid var(--color-status-failed);
@@ -66,7 +66,7 @@
 
     &__header {
         font-weight: bold;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         width: calc(645px - 1.25rem);
         margin: 0 0 0.5rem 3.125rem;
         padding: 0;
@@ -75,7 +75,7 @@
     }
 
     &__bulk-row {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         padding: 0 2.5rem 0.5rem 3.125rem;
         color: var(--fog-alpha-80);
     }
@@ -90,7 +90,7 @@
 
         &--unavailable {
             justify-content: center;
-            font-size: 0.75rem;
+            font-size: var(--font-size-xs);
             color: var(--fog-alpha-80);
         }
     }
@@ -100,7 +100,7 @@
         display: flex;
         align-items: center;
         column-gap: 0.5rem;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: var(--fog-alpha-80);
         cursor: pointer;
     }

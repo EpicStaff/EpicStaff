@@ -21,7 +21,7 @@
 }
 
 .selected-icon {
-    font-size: 1.25rem;
+    font-size: var(--font-size-2xl);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -38,7 +38,7 @@
 }
 
 .selected-icon i {
-    font-size: 1.25rem;
+    font-size: var(--font-size-2xl);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -65,7 +65,7 @@
 }
 
 .icon-placeholder i {
-    font-size: 1.125rem;
+    font-size: var(--font-size-xl);
     color: var(--gray-400);
     display: flex;
     align-items: center;
@@ -106,7 +106,7 @@
     cursor: pointer;
 
     span {
-        font-size: 1.25rem;
+        font-size: var(--font-size-2xl);
     }
 
     ::ng-deep app-icon {
@@ -130,7 +130,7 @@
 }
 
 .icon-item i {
-    font-size: 1.25rem;
+    font-size: var(--font-size-2xl);
     color: var(--gray-400);
     display: flex;
     align-items: center;
@@ -162,7 +162,7 @@
     padding: 6px 12px;
     border-radius: var(--radius-sm);
     cursor: pointer;
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     color: var(--gray-300);
 }
 

@@ -14,7 +14,7 @@
 }
 
 .perm-count {
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     color: var(--color-text-primary);
     white-space: nowrap;
 
@@ -47,7 +47,7 @@
     min-width: max-content;
     align-items: center;
     padding: 0 8px;
-    font-size: 14px;
+    font-size: var(--font-size-md);
     color: var(--color-text-primary);
     height: 60px;
     flex-shrink: 0;
@@ -84,7 +84,7 @@
         cursor: pointer;
         user-select: none;
         transition: background-color 0.15s ease;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
 
         &:hover {
             background: var(--transparent-white-8);
@@ -156,12 +156,12 @@
         justify-content: center;
 
         .resource-name {
-            font-size: 14px;
+            font-size: var(--font-size-md);
             color: var(--color-text-primary);
         }
 
         .resource-desc {
-            font-size: 10px;
+            font-size: var(--font-size-2xs);
             color: var(--color-text-secondary);
         }
     }
@@ -176,7 +176,7 @@
 }
 
 .empty-cell {
-    font-size: 14px;
+    font-size: var(--font-size-md);
     color: var(--color-text-secondary);
     opacity: 0.5;
 }
@@ -189,7 +189,7 @@
     gap: 8px;
     padding: 8px 16px 8px 12px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: var(--font-size-md);
     color: var(--color-text-primary);
     background-color: var(--color-input-background);
     border: 1px solid var(--color-input-border);
@@ -198,7 +198,7 @@
 
     &.small {
         height: 28px;
-        font-size: 10px;
+        font-size: var(--font-size-2xs);
         border-radius: var(--radius-sm);
     }
 

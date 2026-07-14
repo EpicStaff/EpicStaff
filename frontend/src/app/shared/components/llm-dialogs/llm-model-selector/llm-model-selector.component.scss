@@ -16,7 +16,7 @@
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         cursor: pointer;
         transition: border-color 0.2s ease;
         text-align: left;
@@ -103,7 +103,7 @@
         background: var(--color-line, var(--graphite-750));
         border: 1px solid var(--fog-alpha-16);
         border-radius: var(--radius-sm);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-primary, var(--color-text-primary));
         outline: none;
         transition: border-color 0.2s ease;
@@ -150,7 +150,7 @@
 
         p {
             color: var(--fog-alpha-60);
-            font-size: 0.875rem;
+            font-size: var(--font-size-md);
             margin: 0;
         }
     }
@@ -181,14 +181,14 @@
     }
 
     &__empty-title {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: 500;
         color: var(--color-text-primary, var(--color-text-primary));
         margin: 0.5rem 0 0;
     }
 
     &__empty-text {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--fog-alpha-60);
         margin: 0;
     }
@@ -213,7 +213,7 @@
 
     &__provider-name {
         font-family: var(--font-family-base);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: #acacac;
     }
 
@@ -230,7 +230,7 @@
 
         p {
             margin: 0;
-            font-size: 0.75rem;
+            font-size: var(--font-size-xs);
             color: var(--fog-alpha-40);
         }
     }
@@ -282,7 +282,7 @@
 
     &__model-name {
         font-family: var(--font-family-base);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-primary, var(--color-text-primary));
         white-space: nowrap;
         overflow: hidden;
@@ -296,7 +296,7 @@
         padding: 0.25rem 0;
         background: none;
         border: none;
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--color-input-text-placeholder);
         cursor: pointer;
         transition: color 0.15s ease;

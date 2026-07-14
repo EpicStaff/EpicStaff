@@ -75,7 +75,7 @@
 }
 
 .section-label {
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     color: #d9d9d999;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -88,7 +88,7 @@
 
     label {
         display: block;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         line-height: 130%;
         color: var(--color-text-primary);
         margin: 0;
@@ -123,7 +123,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.85rem;
+    font-size: var(--font-size-md);
     color: var(--gray-300);
     cursor: pointer;
 
@@ -147,7 +147,7 @@
     border-radius: var(--radius-lg);
     padding: 0.5rem 0.75rem;
     font-family: var(--font-family-mono);
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
     resize: vertical;
     outline: none;
     transition: border-color 0.2s ease;
@@ -163,7 +163,7 @@
 }
 
 .schema-error {
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     color: var(--red-400);
 }
 
@@ -244,7 +244,7 @@
     background: none;
     border: none;
     color: var(--color-text-secondary, #d9d9d999);
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
     padding: 0.6rem 1.2rem;
     cursor: pointer;
     border-bottom: 2px solid transparent;

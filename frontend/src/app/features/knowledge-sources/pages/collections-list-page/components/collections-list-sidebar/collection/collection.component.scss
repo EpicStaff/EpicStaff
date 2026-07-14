@@ -20,7 +20,7 @@
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
-        font-size: 1.125rem;
+        font-size: var(--font-size-xl);
         color: var(--color-text-primary);
     }
 
@@ -31,13 +31,13 @@
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
-        font-size: 1rem;
+        font-size: var(--font-size-lg);
         color: var(--fog-alpha-80);
     }
 
     &__status {
         margin-top: 0.75rem;
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         display: flex;
         align-items: center;
         column-gap: 0.5rem;

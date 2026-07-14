@@ -46,13 +46,13 @@
         display: block;
         padding: 0.5rem 0 0.5rem 2.875rem;
         border-bottom: 1px solid var(--color-divider-subtle);
-        font-size: 1rem;
+        font-size: var(--font-size-lg);
         color: var(--color-text-primary);
     }
 
     &__header {
         font-weight: bold;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         width: calc(880px - 1.25rem);
         margin: 0 0 0.5rem 3.125rem;
         padding: 0;
@@ -74,7 +74,7 @@
     }
 
     &__col-description {
-        font-size: 0.625rem;
+        font-size: var(--font-size-2xs);
         color: var(--fog-alpha-80);
     }
 
@@ -83,7 +83,7 @@
     }
 
     &__item-text {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;

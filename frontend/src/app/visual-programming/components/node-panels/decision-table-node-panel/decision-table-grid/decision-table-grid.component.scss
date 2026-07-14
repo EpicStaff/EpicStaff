@@ -21,7 +21,7 @@
     h3 {
         margin: 0;
         color: #ffffffb3;
-        font-size: 1rem;
+        font-size: var(--font-size-lg);
         font-weight: 400;
         display: flex;
         align-items: center;
@@ -36,7 +36,7 @@
             border-radius: 50%;
             color: var(--accent-color);
             background: var(--purple-alpha-10);
-            font-size: 0.75rem;
+            font-size: var(--font-size-xs);
             cursor: help;
             transition:
                 background 0.2s ease,
@@ -61,7 +61,7 @@
 
         .ti-trash {
             color: var(--red-500);
-            font-size: 1.1rem;
+            font-size: var(--font-size-xl);
             transition: all 0.2s ease;
             cursor: pointer;
         }

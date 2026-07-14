@@ -45,14 +45,14 @@
         &--default {
             height: 40px;
             padding: 0.5rem 2rem 0.5rem 1rem;
-            font-size: 0.875rem;
+            font-size: var(--font-size-md);
             line-height: 130%;
         }
 
         &--small {
             height: 28px;
             font-weight: 200;
-            font-size: 0.625rem;
+            font-size: var(--font-size-2xs);
             padding: 0.625rem 1.5rem 0.625rem 0.5rem;
         }
 
@@ -129,7 +129,7 @@
     }
 
     &__item-icon {
-        font-size: 1rem;
+        font-size: var(--font-size-lg);
         flex-shrink: 0;
         line-height: 1;
     }
@@ -151,7 +151,7 @@
 
         &--default {
             padding: 0.5rem 0.75rem;
-            font-size: 0.875rem;
+            font-size: var(--font-size-md);
             font-weight: 400;
             line-height: 130%;
             border-bottom: 1px solid var(--color-divider-subtle);
@@ -163,7 +163,7 @@
 
         &--small {
             font-weight: 400;
-            font-size: 0.625rem;
+            font-size: var(--font-size-2xs);
             padding: 0.625rem 0.5rem;
             border-bottom: 1px solid var(--color-divider-subtle);
 

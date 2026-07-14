@@ -26,7 +26,7 @@
 }
 
 .stat-value {
-    font-size: 1.625rem;
+    font-size: var(--font-size-4xl);
     font-weight: 600;
     color: var(--color-text-primary);
     line-height: 1.1;
@@ -36,7 +36,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
 }
 
 .stat-delta {

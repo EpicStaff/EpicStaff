@@ -23,7 +23,7 @@
 
         .label {
             white-space: nowrap;
-            font-size: 0.875rem;
+            font-size: var(--font-size-md);
             color: var(--color-text-secondary);
 
             .count {
@@ -44,7 +44,7 @@ app-select.row-unselected {
     gap: 10px;
 
     .org-name {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: 500;
         color: var(--color-text-primary);
     }

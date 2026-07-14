@@ -5,7 +5,7 @@
 
     &__label {
         text-align: center;
-        font-size: 1.125rem;
+        font-size: var(--font-size-xl);
         padding: 2.5rem 0;
     }
 
@@ -24,7 +24,7 @@
 
     &__hint {
         text-align: center;
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--color-text-secondary);
     }
 
@@ -50,7 +50,7 @@
     .file-uploader {
         &__label {
             margin-top: 16px;
-            font-size: 14px;
+            font-size: var(--font-size-md);
             padding: 16px 0;
         }
 

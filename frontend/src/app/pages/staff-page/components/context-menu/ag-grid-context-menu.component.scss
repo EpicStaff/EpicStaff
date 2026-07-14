@@ -22,7 +22,7 @@
                 background 0.15s ease,
                 color 0.2s ease;
             color: #e1e4e9;
-            font-size: 14px;
+            font-size: var(--font-size-md);
             border-radius: var(--radius-sm);
 
             &.divider {

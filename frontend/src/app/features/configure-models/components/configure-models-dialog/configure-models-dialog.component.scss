@@ -24,14 +24,14 @@
     }
 
     &__title-icon {
-        font-size: 20px;
+        font-size: var(--font-size-2xl);
         line-height: 1;
         color: var(--color-text-primary);
     }
 
     &__title {
         letter-spacing: 0.2px;
-        font-size: 20px;
+        font-size: var(--font-size-2xl);
         font-weight: 500;
         line-height: 1;
         color: var(--color-text-primary);
@@ -58,7 +58,7 @@
         background: transparent;
         border: none;
         color: var(--accent-color);
-        font-size: 20px;
+        font-size: var(--font-size-2xl);
         font-weight: 500;
         line-height: 1;
         padding: 0 8px;
@@ -93,14 +93,14 @@
         margin-right: 10px;
         color: var(--color-text-secondary, var(--color-text-primary));
         user-select: none;
-        font-size: 20px;
+        font-size: var(--font-size-2xl);
         font-weight: 500;
         line-height: 1;
         pointer-events: none;
     }
 
     &__tab-icon {
-        font-size: 20px;
+        font-size: var(--font-size-2xl);
         line-height: 1;
         color: inherit;
     }

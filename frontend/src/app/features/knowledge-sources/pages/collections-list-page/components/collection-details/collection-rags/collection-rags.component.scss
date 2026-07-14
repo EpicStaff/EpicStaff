@@ -13,12 +13,12 @@
     }
 
     &__name {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: var(--color-text-primary);
     }
 
     &__model {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: var(--fog-alpha-80);
     }
 

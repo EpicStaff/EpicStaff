@@ -19,7 +19,7 @@
 
     .agent-role {
         flex: 1;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         color: var(--white-alpha-90);
         white-space: nowrap;
         overflow: hidden;

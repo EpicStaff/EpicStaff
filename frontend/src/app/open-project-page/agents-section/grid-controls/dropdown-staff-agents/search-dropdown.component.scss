@@ -56,7 +56,7 @@
 
 .loading-text {
     color: var(--gray-300);
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
 }
 
 @keyframes spin {
@@ -84,7 +84,7 @@
 
 .empty-state p {
     color: var(--gray-300);
-    font-size: 1rem;
+    font-size: var(--font-size-lg);
 }
 
 // Responsive adjustments based on host size

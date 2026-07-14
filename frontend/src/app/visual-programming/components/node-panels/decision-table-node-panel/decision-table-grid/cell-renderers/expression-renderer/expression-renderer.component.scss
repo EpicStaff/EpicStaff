@@ -6,7 +6,7 @@
 
 .expression-renderer {
     font-family: var(--font-family-mono);
-    font-size: 14px;
+    font-size: var(--font-size-md);
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;

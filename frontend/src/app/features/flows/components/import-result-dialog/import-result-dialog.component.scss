@@ -33,12 +33,12 @@
                     gap: 0.3rem;
 
                     .viewing-count {
-                        font-size: 0.8rem;
+                        font-size: var(--font-size-sm);
                         font-weight: 600;
                     }
 
                     .viewing-label {
-                        font-size: 0.75rem;
+                        font-size: var(--font-size-xs);
                         color: var(--color-text-secondary);
                     }
 
@@ -65,7 +65,7 @@
             display: flex;
             align-items: center;
             gap: 0.4rem;
-            font-size: 0.8rem;
+            font-size: var(--font-size-sm);
             font-weight: 500;
 
             &.viewing-all-created {
@@ -120,7 +120,7 @@
         .dialog-title {
             flex: 1;
             margin: 0;
-            font-size: 1.5rem;
+            font-size: var(--font-size-3xl);
             font-weight: 500;
             color: var(--color-text-primary);
         }
@@ -195,7 +195,7 @@
 
             .summary-title {
                 margin: 0;
-                font-size: 1.12rem;
+                font-size: var(--font-size-xl);
                 font-weight: 500;
                 color: var(--color-text-primary);
                 letter-spacing: 0.5px;
@@ -217,12 +217,12 @@
                     gap: 0.3rem;
 
                     .viewing-count {
-                        font-size: 0.8rem;
+                        font-size: var(--font-size-sm);
                         font-weight: 600;
                     }
 
                     .viewing-label {
-                        font-size: 0.75rem;
+                        font-size: var(--font-size-xs);
                         color: var(--color-text-secondary);
                     }
 
@@ -339,7 +339,7 @@
             }
 
             .summary-label {
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 font-weight: 500;
                 color: var(--color-text-secondary);
                 display: flex;
@@ -349,7 +349,7 @@
             }
 
             .summary-count {
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 font-weight: 600;
                 color: var(--accent-color);
                 margin-left: auto;
@@ -381,7 +381,7 @@
 
         .entity-type-title {
             margin: 0;
-            font-size: 1.12rem;
+            font-size: var(--font-size-xl);
             font-weight: 500;
             color: var(--color-text-primary);
             display: flex;
@@ -413,7 +413,7 @@
             }
 
             .entity-count {
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 font-weight: 400;
                 color: var(--color-text-secondary);
                 margin-left: auto;
@@ -434,7 +434,7 @@
 
             .entity-subgroup-title {
                 margin: 0;
-                font-size: 1.12rem;
+                font-size: var(--font-size-xl);
                 font-weight: 500;
                 color: var(--color-text-primary);
                 display: flex;
@@ -444,7 +444,7 @@
                 letter-spacing: 0.4px;
 
                 .subgroup-count {
-                    font-size: 0.8rem;
+                    font-size: var(--font-size-sm);
                     font-weight: 500;
                     color: var(--accent-color);
                     background-color: var(--color-input-background, var(--black-alpha-5));
@@ -498,7 +498,7 @@
 
             .item-name {
                 flex: 1;
-                font-size: 0.8rem;
+                font-size: var(--font-size-sm);
                 font-weight: 500;
                 color: var(--color-text-primary);
                 word-break: break-word;
@@ -510,7 +510,7 @@
                 align-items: center;
                 padding: 0.25rem 0.35rem;
                 border-radius: var(--radius-sm);
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 font-weight: 400;
                 letter-spacing: 0.3px;
                 white-space: nowrap;
@@ -577,14 +577,14 @@
                 padding: 0.6rem 1rem 0.6rem 2.5rem;
 
                 .detail-key {
-                    font-size: 0.75rem;
+                    font-size: var(--font-size-xs);
                     font-weight: 500;
                     color: var(--color-text-secondary);
                     white-space: nowrap;
                 }
 
                 .detail-value {
-                    font-size: 0.75rem;
+                    font-size: var(--font-size-xs);
                     color: var(--color-text-primary);
                     word-break: break-word;
                 }

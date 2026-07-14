@@ -34,7 +34,7 @@
         border: none;
         outline: none;
         background: transparent;
-        font-size: 13px;
+        font-size: var(--font-size-sm);
         color: var(--color-text-primary, var(--white));
 
         &::placeholder {
@@ -167,7 +167,7 @@
     gap: 8px;
     padding: 6px 14px 4px;
     font-family: var(--font-family-base);
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     font-weight: 400;
     color: var(--color-text-secondary, var(--gray-500));
     text-transform: uppercase;
@@ -176,7 +176,7 @@
     pointer-events: none;
 
     i {
-        font-size: 13px;
+        font-size: var(--font-size-sm);
     }
 
     &:hover {
@@ -203,7 +203,7 @@
     border: 1px solid var(--accent-color, var(--blue-400));
     border-radius: var(--radius-md);
     color: var(--accent-color, var(--blue-400));
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     padding: 4px 12px;
     cursor: pointer;
     transition: background 0.15s;

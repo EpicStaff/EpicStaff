@@ -12,7 +12,7 @@
     &__empty-text {
         margin: 0;
         font-family: var(--font-family-base);
-        font-size: 18px;
+        font-size: var(--font-size-xl);
         font-weight: 500;
         line-height: 1;
         text-align: center;
@@ -56,7 +56,7 @@
     }
 
     &__breadcrumb {
-        font-size: 0.85rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-secondary);
         white-space: nowrap;
 
@@ -78,7 +78,7 @@
     }
 
     &__breadcrumb-sep {
-        font-size: 0.85rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-secondary);
         opacity: 0.5;
         padding: 0 0.15rem;
@@ -136,7 +136,7 @@
         cursor: pointer;
         color: var(--color-text-primary);
         font-weight: 400;
-        font-size: 10px;
+        font-size: var(--font-size-2xs);
         line-height: 1;
         text-align: left;
 
@@ -162,7 +162,7 @@
         }
 
         ::ng-deep .btn .btn-content {
-            font-size: 0.85rem;
+            font-size: var(--font-size-md);
             line-height: 1;
         }
     }
@@ -203,7 +203,7 @@
         align-items: center;
         gap: 0.25rem;
         padding: 0.2rem 0.5rem;
-        font-size: 0.7rem;
+        font-size: var(--font-size-xs);
         color: var(--color-text-primary);
         background: #d9d9de14;
         border-radius: var(--radius-sm);
@@ -261,7 +261,7 @@
         align-items: center;
         height: 100%;
         color: var(--color-text-secondary);
-        font-size: 0.9rem;
+        font-size: var(--font-size-md);
     }
 
     &__error {
@@ -280,7 +280,7 @@
 
     &__text {
         margin: 0;
-        font-size: 0.85rem;
+        font-size: var(--font-size-md);
         line-height: 1.6;
         white-space: pre-wrap;
         word-wrap: break-word;
@@ -290,7 +290,7 @@
 
     &__json {
         margin: 0;
-        font-size: 0.8rem;
+        font-size: var(--font-size-sm);
         line-height: 1.5;
         white-space: pre-wrap;
         word-wrap: break-word;
@@ -321,7 +321,7 @@
     }
 
     &__csv-label {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--color-text-secondary);
         flex-shrink: 0;
     }
@@ -337,7 +337,7 @@
         border: 1px solid var(--color-divider-regular);
         border-radius: var(--radius-sm);
         cursor: pointer;
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--color-text-secondary);
 
         &--active {
@@ -372,7 +372,7 @@
         border: none;
         border-bottom: 2px solid transparent;
         cursor: pointer;
-        font-size: 0.8rem;
+        font-size: var(--font-size-sm);
         color: var(--color-text-secondary);
         margin-bottom: -1px;
 
@@ -393,7 +393,7 @@
 
     &__table {
         border-collapse: collapse;
-        font-size: 0.8rem;
+        font-size: var(--font-size-sm);
         white-space: nowrap;
         width: 100%;
     }
@@ -425,7 +425,7 @@
     }
 
     &__docx {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         line-height: 1.7;
         color: var(--color-text-primary);
 
@@ -448,7 +448,7 @@
             border-collapse: collapse;
             width: 100%;
             margin-bottom: 1em;
-            font-size: 0.8rem;
+            font-size: var(--font-size-sm);
         }
 
         td,
@@ -488,13 +488,13 @@
 
     &__unsupported-name {
         margin: 0;
-        font-size: 1rem;
+        font-size: var(--font-size-lg);
         font-weight: 500;
         color: var(--color-text-primary);
     }
 
     &__unsupported-size {
         margin: 0;
-        font-size: 0.85rem;
+        font-size: var(--font-size-md);
     }
 }

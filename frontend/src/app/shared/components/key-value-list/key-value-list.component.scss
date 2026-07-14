@@ -22,7 +22,7 @@
         border: 1px solid var(--color-input-border);
         border-radius: var(--radius-lg);
         color: var(--color-text-primary);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         transition: border-color 0.2s ease;
         outline: none;
         min-width: 0;
@@ -56,7 +56,7 @@
             background-color 0.2s ease;
 
         i {
-            font-size: 1rem;
+            font-size: var(--font-size-lg);
         }
 
         &--add,
@@ -124,7 +124,7 @@
     }
 
     &__card-name {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: 500;
         color: var(--accent-color, var(--accent-color));
         white-space: nowrap;
@@ -133,7 +133,7 @@
     }
 
     &__card-value {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-sm);
         color: var(--color-text-secondary, var(--white-alpha-60));
         white-space: nowrap;
         overflow: hidden;
@@ -157,7 +157,7 @@
             background-color 0.15s ease;
 
         i {
-            font-size: 1rem;
+            font-size: var(--font-size-lg);
         }
 
         &:hover:not(:disabled) {

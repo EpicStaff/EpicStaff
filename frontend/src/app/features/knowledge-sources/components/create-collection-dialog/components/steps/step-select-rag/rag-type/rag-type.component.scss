@@ -21,7 +21,7 @@
 
     &__level {
         text-align: center;
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--color-text-primary);
     }
 
@@ -31,12 +31,12 @@
     }
 
     &__name {
-        font-size: 1.125rem;
+        font-size: var(--font-size-xl);
         color: var(--accent-color);
     }
 
     &__description {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         line-height: 130%;
         color: var(--color-text-primary);
         padding-bottom: 1.25rem;
@@ -44,7 +44,7 @@
     }
 
     &__tip {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--fog-alpha-80);
     }
 }

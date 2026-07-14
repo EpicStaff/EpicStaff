@@ -32,7 +32,7 @@ $inactive-tab-bg: var(--graphite-780);
                 justify-content: center;
                 padding: 0 20px;
                 min-width: 120px;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 user-select: none;
                 cursor: pointer;
                 background-color: transparent;
@@ -118,7 +118,7 @@ $inactive-tab-bg: var(--graphite-780);
         align-items: center;
         padding: 12px 28px;
         cursor: pointer;
-        font-size: 1rem;
+        font-size: var(--font-size-lg);
         user-select: none;
         transition: background-color 0.2s;
         border-radius: var(--radius-md);
@@ -147,7 +147,7 @@ $inactive-tab-bg: var(--graphite-780);
 
         .item-count {
             margin-left: 8px;
-            font-size: 1rem;
+            font-size: var(--font-size-lg);
             color: $accent-color;
             display: inline-flex;
             align-items: center;
@@ -189,5 +189,5 @@ $inactive-tab-bg: var(--graphite-780);
 }
 
 .play-icon {
-    font-size: 12px;
+    font-size: var(--font-size-xs);
 }

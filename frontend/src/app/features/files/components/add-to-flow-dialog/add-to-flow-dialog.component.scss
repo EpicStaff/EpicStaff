@@ -16,7 +16,7 @@
     }
 
     &__title {
-        font-size: 1.25rem;
+        font-size: var(--font-size-2xl);
         font-weight: 500;
         color: var(--color-text-primary);
         margin: 0;
@@ -54,7 +54,7 @@
     }
 
     &__label {
-        font-size: 0.8rem;
+        font-size: var(--font-size-sm);
         font-weight: 500;
         color: var(--color-text-primary);
     }
@@ -83,7 +83,7 @@
     }
 
     &__selector-text {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--fog-alpha-60);
         white-space: nowrap;
         overflow: hidden;
@@ -142,7 +142,7 @@
         background: transparent;
         border: none;
         outline: none;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-primary);
 
         &::placeholder {
@@ -163,7 +163,7 @@
         align-items: center;
         justify-content: center;
         height: 80px;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--fog-alpha-60);
     }
 
@@ -208,7 +208,7 @@
     }
 
     &__item-name {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-primary);
         flex: 1;
         white-space: nowrap;
@@ -233,7 +233,7 @@
         height: 40px;
         padding: 0 1.75rem;
         border-radius: var(--radius-lg);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: 400;
         cursor: pointer;
         transition: background-color 0.15s ease;

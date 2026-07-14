@@ -26,14 +26,14 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.45rem 0.85rem;
-    font-size: 0.82rem;
+    font-size: var(--font-size-sm);
     color: var(--white-alpha-85);
     cursor: pointer;
     transition: background 0.1s ease;
     white-space: nowrap;
 
     i {
-        font-size: 0.9rem;
+        font-size: var(--font-size-md);
         color: var(--white-alpha-50);
         flex-shrink: 0;
     }

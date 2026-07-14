@@ -2,7 +2,7 @@
     background: none;
     border: none;
     color: var(--color-text-secondary);
-    font-size: 1rem;
+    font-size: var(--font-size-lg);
     padding: 1rem 1.5rem 0.7rem 1.5rem;
     cursor: pointer;
     border-bottom: 2px solid transparent;
@@ -19,7 +19,7 @@
 
     &.sm {
         padding: 0.5rem;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
     }
 
     &:hover {

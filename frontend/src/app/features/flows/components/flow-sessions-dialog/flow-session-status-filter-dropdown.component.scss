@@ -10,14 +10,14 @@
     background: transparent;
     border: none;
     color: var(--gray-300);
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     font-weight: 500;
     cursor: pointer;
     padding: 0;
     white-space: nowrap;
 
     i {
-        font-size: 1rem;
+        font-size: var(--font-size-lg);
         color: var(--gray-400);
     }
 

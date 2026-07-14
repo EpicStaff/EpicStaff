@@ -35,7 +35,7 @@
         align-self: flex-start;
         justify-content: flex-end;
         height: 40px;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         gap: 0.5rem;
 
         .icon {

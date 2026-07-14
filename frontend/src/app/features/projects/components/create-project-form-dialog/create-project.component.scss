@@ -16,7 +16,7 @@
 
     &__title {
         margin: 0;
-        font-size: 1.25rem;
+        font-size: var(--font-size-2xl);
         font-weight: 400;
         color: var(--color-text-primary);
     }
@@ -64,7 +64,7 @@
     }
 
     &__coming-soon-title {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--color-text-secondary, var(--gray-500));
         font-style: italic;
         margin-left: 0.5rem;
@@ -93,7 +93,7 @@
     }
 
     &__setting-label {
-        font-size: 0.9rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-primary);
         display: flex;
         align-items: center;
@@ -103,7 +103,7 @@
     }
 
     &__help-icon {
-        font-size: 1rem;
+        font-size: var(--font-size-lg);
         width: 1rem;
         height: 1rem;
         color: var(--accent-color);
@@ -116,7 +116,7 @@
     }
 
     &__setting-value {
-        font-size: 0.9rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-secondary, var(--gray-600));
         font-weight: 500;
     }

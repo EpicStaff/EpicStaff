@@ -5,7 +5,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         margin-bottom: 0.5rem;
         color: var(--gray-400);
     }
@@ -55,7 +55,7 @@
         position: relative;
 
         span {
-            font-size: 0.75rem;
+            font-size: var(--font-size-xs);
             color: var(--gray-500, var(--gray-400));
 
             &:first-child,
@@ -73,7 +73,7 @@
                 background-color: var(--purple-alpha-10);
                 padding: 2px 6px;
                 border-radius: var(--radius-sm);
-                font-size: 0.8rem;
+                font-size: var(--font-size-sm);
             }
         }
     }

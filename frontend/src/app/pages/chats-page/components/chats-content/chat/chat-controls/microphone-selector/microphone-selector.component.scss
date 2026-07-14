@@ -35,14 +35,14 @@
         }
 
         .spinner {
-            font-size: 16px;
+            font-size: var(--font-size-lg);
             display: flex;
             align-items: center;
             color: var(--gray-400);
         }
 
         .device-label {
-            font-size: 14px;
+            font-size: var(--font-size-md);
             min-width: 0;
             flex: 1 1 auto;
             white-space: nowrap;
@@ -53,7 +53,7 @@
         .chevron {
             display: flex;
             align-items: center;
-            font-size: 14px;
+            font-size: var(--font-size-md);
             transition: transform 0.2s ease;
             margin-left: auto;
             color: var(--gray-400);

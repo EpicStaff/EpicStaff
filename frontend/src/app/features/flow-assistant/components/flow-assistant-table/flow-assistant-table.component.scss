@@ -8,7 +8,7 @@
 .ef-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.8125rem;
+    font-size: var(--font-size-sm);
     color: var(--color-text-primary);
 
     thead {
@@ -68,6 +68,6 @@
 
 .sort-indicator {
     margin-left: 0.25rem;
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     color: var(--accent-color);
 }

@@ -56,7 +56,7 @@
 }
 
 .tool-name {
-    font-size: 14px;
+    font-size: var(--font-size-md);
     font-weight: 600;
     color: var(--color-text-primary);
     margin-bottom: 0.2rem;
@@ -66,14 +66,14 @@
 }
 
 .tool-type {
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     font-style: italic;
     color: var(--color-text-secondary);
 }
 
 .tool-description {
     color: var(--color-text-secondary);
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     line-height: 1.5;
     width: 100%;
     display: flex;
@@ -125,7 +125,7 @@
         border: none;
         border-radius: var(--radius-md);
         padding: 0.35rem 1.1rem;
-        font-size: 0.95rem;
+        font-size: var(--font-size-lg);
         font-weight: 500;
         cursor: pointer;
         transition: background 0.18s ease;

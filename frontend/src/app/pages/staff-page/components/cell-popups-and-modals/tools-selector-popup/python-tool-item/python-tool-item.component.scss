@@ -34,7 +34,7 @@ $border-color: var(--white-alpha-10);
     }
 
     .tool-icon {
-        font-size: 14px;
+        font-size: var(--font-size-md);
         display: flex;
         justify-content: center;
         align-items: center;
@@ -46,7 +46,7 @@ $border-color: var(--white-alpha-10);
 
     .tool-name {
         flex: 1;
-        font-size: 13px;
+        font-size: var(--font-size-sm);
         font-weight: 500;
         color: $text-primary;
         white-space: nowrap;
@@ -78,7 +78,7 @@ $border-color: var(--white-alpha-10);
             &::after {
                 content: '✓';
                 color: white;
-                font-size: 10px;
+                font-size: var(--font-size-2xs);
             }
         }
 

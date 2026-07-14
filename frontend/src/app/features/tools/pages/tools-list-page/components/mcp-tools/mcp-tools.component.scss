@@ -23,13 +23,13 @@
 
 .tool-name {
     font-weight: 600;
-    font-size: 1.1rem;
+    font-size: var(--font-size-xl);
     margin-bottom: 0.5rem;
 }
 
 .tool-description {
     color: var(--color-text-secondary, var(--gray-400));
-    font-size: 0.98rem;
+    font-size: var(--font-size-lg);
 }
 
 .empty-message {
@@ -37,7 +37,7 @@
     text-align: center;
     padding: 2rem;
     color: var(--color-text-secondary);
-    font-size: 1.1rem;
+    font-size: var(--font-size-xl);
     background: var(--color-sidenav-background);
     border-radius: var(--radius-lg);
     margin-top: 1rem;
@@ -45,6 +45,6 @@
 
 .error {
     color: var(--red-550);
-    font-size: 1.1rem;
+    font-size: var(--font-size-xl);
     margin-top: 2rem;
 }

@@ -63,7 +63,7 @@ $transition-default: all 0.2s ease;
             border-radius: var(--radius-md);
             background-color: $bg-input;
             color: $text-primary;
-            font-size: 13px;
+            font-size: var(--font-size-sm);
             border: 1px solid $border-color;
             transition: $transition-default;
             outline: none;
@@ -87,7 +87,7 @@ $transition-default: all 0.2s ease;
             color: $text-secondary;
             border-radius: var(--radius-md);
             cursor: pointer;
-            font-size: 13px;
+            font-size: var(--font-size-sm);
             font-weight: 500;
             transition: $transition-default;
             border: none;
@@ -131,7 +131,7 @@ $transition-default: all 0.2s ease;
                 }
 
                 p {
-                    font-size: 13px;
+                    font-size: var(--font-size-sm);
                     text-align: center;
                 }
             }
@@ -189,7 +189,7 @@ $transition-default: all 0.2s ease;
                 .item-text {
                     display: flex;
                     flex-direction: column;
-                    font-size: 13px;
+                    font-size: var(--font-size-sm);
                     font-weight: 500;
                     color: $text-primary;
                     line-height: 1.2;
@@ -203,7 +203,7 @@ $transition-default: all 0.2s ease;
                     .agent-role {
                         margin-top: 3px;
                         color: $text-secondary;
-                        font-size: 12px;
+                        font-size: var(--font-size-xs);
                         font-weight: normal;
                     }
                 }
@@ -220,7 +220,7 @@ $transition-default: all 0.2s ease;
                 color: $text-secondary;
                 border-radius: var(--radius-sm);
                 cursor: pointer;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 transition: $transition-default;
                 border: none;
                 margin-left: 8px;

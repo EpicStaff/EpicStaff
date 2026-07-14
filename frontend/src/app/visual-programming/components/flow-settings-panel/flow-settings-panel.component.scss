@@ -30,7 +30,7 @@
 }
 
 .title {
-    font-size: 16px;
+    font-size: var(--font-size-lg);
     font-weight: 600;
     color: var(--white-alpha-90);
     margin: 0;
@@ -76,7 +76,7 @@
 }
 
 .section-label {
-    font-size: 14px;
+    font-size: var(--font-size-md);
     color: var(--white-alpha-70);
     font-weight: 400;
 }

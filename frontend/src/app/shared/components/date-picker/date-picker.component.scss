@@ -54,7 +54,7 @@
         border: none;
         outline: none;
         color: var(--color-text-primary);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         line-height: 130%;
         padding: 0;
         cursor: pointer;
@@ -103,7 +103,7 @@
     }
 
     &__month-year {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: 500;
         color: var(--color-text-primary);
     }
@@ -164,7 +164,7 @@
         aspect-ratio: 1;
         max-width: 30px;
         border-radius: 50%;
-        font-size: 0.8125rem;
+        font-size: var(--font-size-sm);
         font-weight: 300;
         cursor: pointer;
         transition:
@@ -199,7 +199,7 @@
 
     &__error {
         color: var(--red-500);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         margin-top: 4px;
         line-height: 1.4;
     }

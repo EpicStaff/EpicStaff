@@ -53,7 +53,7 @@
                 width: 100%;
 
                 .flow-name {
-                    font-size: 18px;
+                    font-size: var(--font-size-xl);
                     font-weight: 500;
                     color: var(--color-text-primary);
                     overflow: hidden;
@@ -64,7 +64,7 @@
                 }
 
                 .flow-id {
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     font-weight: 500;
                     color: var(--fog-alpha-40);
                     white-space: nowrap;
@@ -73,7 +73,7 @@
             }
 
             .flow-description {
-                font-size: 12px;
+                font-size: var(--font-size-xs);
                 color: var(--fog-alpha-60);
                 white-space: nowrap;
                 overflow: hidden;
@@ -132,7 +132,7 @@
                 height: 28px;
                 padding: 4px 8px;
                 border-radius: var(--radius-sm);
-                font-size: 12px;
+                font-size: var(--font-size-xs);
                 font-weight: 400;
                 white-space: nowrap;
                 background: var(--fog-alpha-8);
@@ -141,7 +141,7 @@
         }
 
         .flow-date {
-            font-size: 12px;
+            font-size: var(--font-size-xs);
             white-space: nowrap;
             flex-shrink: 0;
             text-align: right;
@@ -199,7 +199,7 @@
                         overflow: hidden;
 
                         .subflow-name {
-                            font-size: 16px;
+                            font-size: var(--font-size-lg);
                             font-weight: 500;
                             color: var(--color-text-primary);
                             overflow: hidden;
@@ -208,7 +208,7 @@
                         }
 
                         .flow-id {
-                            font-size: 13px;
+                            font-size: var(--font-size-sm);
                             font-weight: 400;
                             color: var(--fog-alpha-40);
                             flex-shrink: 0;
@@ -217,7 +217,7 @@
                     }
 
                     .subflow-description {
-                        font-size: 12px;
+                        font-size: var(--font-size-xs);
                         color: var(--fog-alpha-60);
                         white-space: nowrap;
                         overflow: hidden;
@@ -251,7 +251,7 @@
                         height: 24px;
                         padding: 2px 8px;
                         border-radius: var(--radius-sm);
-                        font-size: 11px;
+                        font-size: var(--font-size-xs);
                         font-weight: 400;
                         white-space: nowrap;
                         background: var(--fog-alpha-8);
@@ -260,7 +260,7 @@
                 }
 
                 .flow-date {
-                    font-size: 11px;
+                    font-size: var(--font-size-xs);
                     white-space: nowrap;
                     flex-shrink: 0;
                     text-align: right;

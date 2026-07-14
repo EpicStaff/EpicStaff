@@ -23,7 +23,7 @@
 }
 
 .settings-title {
-    font-size: 0.8125rem;
+    font-size: var(--font-size-sm);
     font-weight: 500;
     color: var(--color-text-secondary);
     text-transform: uppercase;
@@ -64,7 +64,7 @@
 }
 
 .form-label {
-    font-size: 0.8125rem;
+    font-size: var(--font-size-sm);
     font-weight: 500;
     color: var(--color-text-primary);
 }
@@ -77,7 +77,7 @@
     background-color: var(--ep-color-surface);
     color: var(--ep-color-text);
     font-family: var(--ep-font-family);
-    font-size: 14px;
+    font-size: var(--font-size-md);
     cursor: pointer;
     transition: border-color 0.15s ease;
 
@@ -93,7 +93,7 @@
 
 .form-loading,
 .form-empty-state {
-    font-size: 0.8125rem;
+    font-size: var(--font-size-sm);
     color: var(--color-text-secondary);
     padding: 0.5rem 0;
 }
@@ -112,7 +112,7 @@
     height: 28px;
     padding: 6px 12px;
     border-radius: var(--ep-button-radius);
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     font-weight: 600;
     cursor: pointer;
     transition:

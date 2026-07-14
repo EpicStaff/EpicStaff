@@ -3,7 +3,7 @@
 @include shared.tab-base;
 
 .role-name {
-    font-size: 14px;
+    font-size: var(--font-size-md);
     font-weight: 500;
     color: var(--color-text-primary);
     white-space: nowrap;
@@ -12,7 +12,7 @@
 }
 
 .description-text {
-    font-size: 14px;
+    font-size: var(--font-size-md);
     color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;

@@ -11,7 +11,7 @@
 
         h2 {
             color: var(--gray-100);
-            font-size: 18px;
+            font-size: var(--font-size-xl);
             font-weight: 500;
             margin: 0;
         }
@@ -31,7 +31,7 @@
                 padding: 6px 12px;
                 border-radius: var(--radius-sm);
                 cursor: pointer;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 transition: all 0.2s ease;
 
                 &:hover {

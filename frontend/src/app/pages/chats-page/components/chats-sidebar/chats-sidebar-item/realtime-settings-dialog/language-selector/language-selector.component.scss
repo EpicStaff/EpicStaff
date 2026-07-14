@@ -5,7 +5,7 @@
     label {
         display: block;
         margin-bottom: 8px;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         color: var(--white-alpha-70);
     }
 
@@ -19,7 +19,7 @@
         border: 1px solid var(--white-alpha-10);
         border-radius: var(--radius-md);
         color: var(--gray-100);
-        font-size: 14px;
+        font-size: var(--font-size-md);
         cursor: pointer;
         transition: all 0.2s ease;
 
@@ -60,7 +60,7 @@
         .dropdown-item {
             padding: 10px 12px;
             color: var(--gray-100);
-            font-size: 14px;
+            font-size: var(--font-size-md);
             cursor: pointer;
             transition: background-color 0.2s ease;
 

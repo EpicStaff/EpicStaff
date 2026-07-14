@@ -23,7 +23,7 @@
     min-width: 0;
 
     .sidebar-title {
-        font-size: 0.85rem;
+        font-size: var(--font-size-md);
         font-weight: 500;
         color: var(--color-text-secondary);
         letter-spacing: 0.05em;
@@ -63,7 +63,7 @@
     padding: 0.45rem 0.75rem 0.45rem 1rem;
     cursor: pointer;
     color: var(--color-text-primary);
-    font-size: 14px;
+    font-size: var(--font-size-md);
     position: relative;
     min-width: max-content;
 
@@ -129,7 +129,7 @@
     }
 
     .section-label {
-        font-size: 14px;
+        font-size: var(--font-size-md);
         color: var(--color-text-primary);
         letter-spacing: 0.08em;
     }
@@ -176,7 +176,7 @@
         border-radius: var(--radius-sm);
         color: var(--color-text-primary);
         padding: 0.25rem 0.5rem;
-        font-size: 0.85rem;
+        font-size: var(--font-size-md);
         outline: none;
 
         &:focus {
@@ -279,7 +279,7 @@
     border-radius: var(--radius-sm);
     color: var(--color-text-primary);
     padding: 0.15rem 0.4rem;
-    font-size: 0.9rem;
+    font-size: var(--font-size-md);
     outline: none;
 }
 
@@ -366,7 +366,7 @@
     border-left: 3px solid var(--color-error);
     border-radius: var(--radius-sm);
     color: var(--color-error);
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
     line-height: 1.4;
 }
 

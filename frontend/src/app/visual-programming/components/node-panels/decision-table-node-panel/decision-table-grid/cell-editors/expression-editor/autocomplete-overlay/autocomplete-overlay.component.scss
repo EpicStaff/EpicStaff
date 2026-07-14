@@ -35,7 +35,7 @@
     padding: 8px 10px;
     background-color: #1e1e20;
     border-bottom: 1px solid var(--color-divider-subtle, var(--graphite-640));
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     color: var(--gray-500);
     overflow-x: auto;
     white-space: nowrap;
@@ -60,7 +60,7 @@
         margin-right: 4px;
 
         i {
-            font-size: 14px;
+            font-size: var(--font-size-md);
         }
 
         &:hover {
@@ -95,7 +95,7 @@
     overflow-y: auto;
     color: var(--color-text-primary);
     font-family: var(--font-family-mono);
-    font-size: 13px;
+    font-size: var(--font-size-sm);
 
     li {
         padding: 8px 10px;
@@ -122,7 +122,7 @@
             color: #9ca3af;
             font-style: normal;
             font-family: inherit;
-            font-size: 12px;
+            font-size: var(--font-size-xs);
             justify-content: flex-start;
             cursor: default;
             padding: 12px 14px;
@@ -130,7 +130,7 @@
             line-height: 1.4;
 
             i {
-                font-size: 16px;
+                font-size: var(--font-size-lg);
                 color: var(--accent-color);
                 flex-shrink: 0;
                 margin-top: 1px;
@@ -163,7 +163,7 @@
         }
 
         .item-type {
-            font-size: 10px;
+            font-size: var(--font-size-2xs);
             color: var(--gray-600);
             flex-shrink: 0;
         }
@@ -182,7 +182,7 @@
             flex-shrink: 0;
 
             i {
-                font-size: 16px;
+                font-size: var(--font-size-lg);
             }
 
             &:hover {

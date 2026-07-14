@@ -23,7 +23,7 @@
     &__items {
         display: flex;
         width: 100%;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         //line-height: 130%;
         font-weight: 200;
         white-space: pre-wrap;

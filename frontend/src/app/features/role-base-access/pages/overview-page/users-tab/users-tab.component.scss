@@ -3,7 +3,7 @@
 @include shared.tab-base;
 
 .user-email {
-    font-size: 10px;
+    font-size: var(--font-size-2xs);
     color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;
@@ -13,7 +13,7 @@
 .role-chip {
     padding: 2px 8px;
     border-radius: var(--radius-sm);
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     color: var(--color-text-primary);
     background: var(--transparent-white-8);
     white-space: nowrap;

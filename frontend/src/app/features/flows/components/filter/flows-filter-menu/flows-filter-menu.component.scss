@@ -21,7 +21,7 @@
     border: none;
     border-radius: var(--radius-md);
     color: var(--color-text-primary);
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     text-align: left;
     cursor: pointer;
     transition: background 0.1s ease;

@@ -18,7 +18,7 @@
 
     &__title {
         font-family: var(--font-family-base);
-        font-size: 20px;
+        font-size: var(--font-size-2xl);
         font-weight: 500;
         line-height: 1;
         letter-spacing: 0;
@@ -89,7 +89,7 @@
         border-top: 1px solid var(--color-flow-card-bg);
         font-family: var(--font-family-base);
         font-style: normal;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 400;
         line-height: 130%;
         letter-spacing: 0;
@@ -137,7 +137,7 @@
         border: none;
         cursor: pointer;
         font-family: inherit;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 500;
         color: var(--accent-color);
         text-decoration: underline;
@@ -161,7 +161,7 @@
             0 8px 24px var(--black-alpha-20);
         color: var(--color-text-primary);
         font-family: var(--font-family-base);
-        font-size: 14px;
+        font-size: var(--font-size-md);
         line-height: 130%;
         overflow: hidden;
     }
@@ -184,7 +184,7 @@
 
     &__formats-title {
         margin: 0;
-        font-size: 20px;
+        font-size: var(--font-size-2xl);
         font-weight: 500;
         color: var(--color-text-primary);
     }
@@ -216,7 +216,7 @@
     }
 
     &__formats-section-title {
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 700;
         color: var(--gray-400);
         text-transform: uppercase;
@@ -231,7 +231,7 @@
 
         dt {
             margin: 0;
-            font-size: 14px;
+            font-size: var(--font-size-md);
             font-weight: 500;
             color: var(--color-text-secondary);
             text-align: right;
@@ -239,7 +239,7 @@
 
         dd {
             margin: 0;
-            font-size: 14px;
+            font-size: var(--font-size-md);
             font-weight: 400;
             color: var(--accent-color);
         }
@@ -255,7 +255,7 @@
         list-style: disc;
         margin: 0;
         padding-left: 20px;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 400;
         color: var(--color-text-secondary);
 
@@ -311,7 +311,7 @@
         color: var(--color-error);
         font-family: var(--font-family-base);
         font-style: normal;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 400;
         line-height: 130%;
         white-space: nowrap;
@@ -327,7 +327,7 @@
         padding: 6.5px 10px;
         border: 1px solid var(--accent-color);
         border-radius: var(--radius-md);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         font-weight: 400;
         color: var(--accent-color);
         cursor: pointer;
@@ -364,7 +364,7 @@
     }
 
     &__label {
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 400;
         color: var(--color-text-primary);
     }
@@ -413,7 +413,7 @@
     }
 
     &__selector-text {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-secondary);
         white-space: nowrap;
         overflow: hidden;
@@ -474,7 +474,7 @@
         background: transparent;
         border: none;
         outline: none;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-primary);
 
         &::placeholder {
@@ -496,7 +496,7 @@
         align-items: center;
         justify-content: center;
         height: 60px;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-secondary);
     }
 
@@ -554,13 +554,13 @@
     }
 
     &__node-name {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-primary);
         white-space: nowrap;
     }
 
     &__node-spinner {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--color-text-secondary);
         flex-shrink: 0;
     }
@@ -572,7 +572,7 @@
         border-radius: var(--radius-md);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
 
         &::placeholder {
             color: var(--color-text-secondary);
@@ -618,7 +618,7 @@
         flex-shrink: 0;
         width: 24px;
         height: 24px;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         font-weight: 400;
         color: var(--color-text-secondary);
     }
@@ -638,7 +638,7 @@
     }
 
     &__file-name {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: var(--color-text-primary);
         white-space: nowrap;
         overflow: hidden;
@@ -653,7 +653,7 @@
         align-items: center;
         padding: 4px 8px;
         border-radius: var(--radius-sm);
-        font-size: 10px;
+        font-size: var(--font-size-2xs);
         font-weight: 400;
         line-height: 1;
 
@@ -670,7 +670,7 @@
 
     &__file-size {
         flex-shrink: 0;
-        font-size: 10px;
+        font-size: var(--font-size-2xs);
         color: var(--color-text-secondary);
     }
 

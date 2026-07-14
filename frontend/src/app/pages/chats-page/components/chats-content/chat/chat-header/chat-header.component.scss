@@ -8,7 +8,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem 3rem;
-    font-size: 16px;
+    font-size: var(--font-size-lg);
     border-bottom: 1px solid var(--color-divider-subtle);
     /* Removed background color as requested */
 
@@ -20,12 +20,12 @@
         h3 {
             color: var(--white-alpha-90);
             margin: 0;
-            font-size: 16px;
+            font-size: var(--font-size-lg);
             font-weight: 600;
         }
 
         .model-info {
-            font-size: 12px;
+            font-size: var(--font-size-xs);
             color: var(--white-alpha-60);
             margin-top: 2px;
         }
@@ -49,7 +49,7 @@
                 background: none;
                 border: none;
                 color: var(--gray-400);
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 font-weight: 500;
                 cursor: pointer;
                 transition: all 0.2s ease;
@@ -94,7 +94,7 @@
                     padding-left: 32px;
                     outline: none;
                     appearance: none;
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     min-width: 120px;
                     cursor: pointer;
                     transition: border-color 0.2s ease;

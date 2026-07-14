@@ -25,7 +25,7 @@
 }
 
 .section__label {
-    font-size: 14px;
+    font-size: var(--font-size-md);
     font-weight: 400;
     line-height: 130%;
     color: var(--accent-color);

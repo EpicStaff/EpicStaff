@@ -20,7 +20,7 @@
 }
 
 .inputs-title {
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     font-weight: 600;
     letter-spacing: 0.5px;
     color: var(--gray-400);
@@ -28,14 +28,14 @@
 
 .inputs-list {
     width: 100%;
-    font-size: 12px;
+    font-size: var(--font-size-xs);
 }
 
 .input-item {
     display: flex;
     gap: 0.5em;
     align-items: center;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -86,7 +86,7 @@
 }
 
 .output-title {
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     font-weight: 600;
     letter-spacing: 0.5px;
     color: var(--gray-400);
@@ -94,7 +94,7 @@
 }
 
 .output-label {
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     font-weight: 600;
     color: var(--color-text-primary);
     overflow: hidden;

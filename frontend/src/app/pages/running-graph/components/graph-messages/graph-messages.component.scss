@@ -30,7 +30,7 @@
             gap: 0.5rem;
             padding: 0.75rem 1rem;
             border-radius: var(--radius-lg);
-            font-size: 0.875rem;
+            font-size: var(--font-size-md);
             font-weight: 500;
             transition: all 0.3s ease;
 
@@ -279,7 +279,7 @@
             width: 100%;
             margin-bottom: 0.75rem;
             color: var(--gray-300);
-            font-size: 0.9rem;
+            font-size: var(--font-size-md);
             animation: crumbsDownSlideIn 0.3s ease-out both;
         }
 
@@ -307,7 +307,7 @@
             height: 40px;
             border-radius: var(--radius-lg);
             border: none;
-            font-size: 23px;
+            font-size: var(--font-size-3xl);
             background-color: var(--color-nodes-background);
             color: #d9d9de99;
             display: inline-flex;
@@ -338,7 +338,7 @@
             transition: width 0.25s ease;
             font-weight: 400;
             font-style: normal;
-            font-size: 12px;
+            font-size: var(--font-size-xs);
             line-height: 1;
             letter-spacing: 0;
         }
@@ -365,7 +365,7 @@
         }
 
         .search-icon {
-            font-size: 19px;
+            font-size: var(--font-size-2xl);
         }
 
         .breadcrumbs-search-input {
@@ -373,7 +373,7 @@
             border: none;
             outline: none;
             color: var(--gray-100);
-            font-size: 0.85rem;
+            font-size: var(--font-size-md);
             min-width: 140px;
             opacity: 0;
             transform: translateX(-4px);
@@ -447,11 +447,11 @@
             display: inline-flex;
             align-items: center;
             gap: 0.25rem;
-            font-size: 0.9rem;
+            font-size: var(--font-size-md);
         }
 
         .icon-container {
-            font-size: 23px;
+            font-size: var(--font-size-3xl);
             color: #ffffff99;
         }
 
@@ -486,7 +486,7 @@
         border: 1px solid var(--white-alpha-10);
         background-color: var(--graphite-700);
         color: var(--color-text-secondary);
-        font-size: 16px;
+        font-size: var(--font-size-lg);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -524,7 +524,7 @@
             border-radius: 9px;
             background-color: var(--accent-color);
             color: var(--white);
-            font-size: 11px;
+            font-size: var(--font-size-xs);
             font-weight: 600;
             line-height: 18px;
             text-align: center;

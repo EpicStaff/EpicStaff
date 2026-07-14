@@ -38,7 +38,7 @@
                 }
                 .subtitle-inline {
                     margin-left: 0.7rem;
-                    font-size: 1.1rem;
+                    font-size: var(--font-size-xl);
                     font-weight: 400;
                     color: var(--color-text-secondary);
                 }
@@ -99,7 +99,7 @@
             border: 1px solid var(--color-input-border);
             background-color: var(--color-input-background);
             color: var(--color-text-primary);
-            font-size: 12px;
+            font-size: var(--font-size-xs);
             transition: border-color 0.2s ease;
 
             &:focus {

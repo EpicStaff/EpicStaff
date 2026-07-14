@@ -18,7 +18,7 @@
         margin-bottom: 0.75rem;
 
         .title {
-            font-size: 1rem;
+            font-size: var(--font-size-lg);
             font-weight: 500;
             margin: 0;
         }
@@ -44,7 +44,7 @@
         border: none;
         border-radius: var(--radius-md);
         color: var(--color-text-secondary);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         cursor: pointer;
         transition:
             background 0.15s,
@@ -65,7 +65,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     color: var(--color-text-secondary);
     margin-bottom: 0.5rem;
 
@@ -86,7 +86,7 @@
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-md);
     color: var(--color-text-primary);
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     margin-bottom: 0.75rem;
     box-sizing: border-box;
 
@@ -125,7 +125,7 @@
     }
 
     .empty {
-        font-size: 0.85rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-secondary);
         text-align: center;
         padding: 1rem 0;
@@ -142,7 +142,7 @@
     border: 1px solid var(--fog-alpha-16);
     border-radius: var(--radius-md);
     cursor: pointer;
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     transition: border-color 0.15s;
     box-sizing: border-box;
     width: max-content;

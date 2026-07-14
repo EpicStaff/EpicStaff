@@ -40,7 +40,7 @@ app-flow-header {
     color: var(--red-400);
     border: 1px solid #7f1d1d;
     border-radius: var(--radius-lg);
-    font-size: 0.85rem;
+    font-size: var(--font-size-md);
     font-weight: 500;
     cursor: pointer;
     transition:

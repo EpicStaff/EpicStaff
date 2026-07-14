@@ -75,7 +75,7 @@
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     font-weight: 500;
     line-height: 130%;
     color: var(--color-input-text-placeholder);
@@ -112,14 +112,14 @@
     display: flex;
     align-items: center;
     gap: 0.2rem;
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     font-weight: 500;
     line-height: 130%;
     color: var(--fog-alpha-60);
 }
 
 .help-icon {
-    font-size: 18px;
+    font-size: var(--font-size-xl);
     width: 18px;
     height: 18px;
     color: var(--accent-color);
@@ -147,7 +147,7 @@
 }
 
 .row-error {
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     color: var(--red-500);
     line-height: 1.4;
     margin-top: 4px;
@@ -171,7 +171,7 @@
 }
 
 .toggle-hint {
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     color: var(--color-input-text-placeholder);
     line-height: 1.4;
     margin-top: 0.25rem;
@@ -186,14 +186,14 @@
 }
 
 .next-run-label {
-    font-size: 0.8125rem;
+    font-size: var(--font-size-sm);
     font-weight: 400;
     color: var(--fog-alpha-60);
     line-height: 130%;
 }
 
 .next-run-value {
-    font-size: 0.8125rem;
+    font-size: var(--font-size-sm);
     color: var(--color-text-primary);
     line-height: 130%;
 }

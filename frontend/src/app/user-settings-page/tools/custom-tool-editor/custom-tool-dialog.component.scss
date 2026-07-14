@@ -24,7 +24,7 @@
 
         .title {
             margin: 0;
-            font-size: 1.125rem;
+            font-size: var(--font-size-xl);
             font-weight: 600;
             max-width: calc(100% - 40px);
             overflow: hidden;
@@ -81,7 +81,7 @@
 
                     h3 {
                         margin: 0;
-                        font-size: 0.875rem;
+                        font-size: var(--font-size-md);
                         color: var(--gray-400);
                         font-weight: 500;
 
@@ -101,7 +101,7 @@
                             border: 1px solid var(--white-alpha-10);
                             border-radius: var(--radius-md);
                             color: var(--white);
-                            font-size: 0.875rem;
+                            font-size: var(--font-size-md);
                             outline: none;
                             transition: border-color 0.2s ease;
 
@@ -120,7 +120,7 @@
                         }
 
                         .error-message {
-                            font-size: 0.75rem;
+                            font-size: var(--font-size-xs);
                             color: var(--red-500);
                             margin-top: 0.25rem;
                             display: block;
@@ -185,7 +185,7 @@
 
                     h3 {
                         margin: 0;
-                        font-size: 0.875rem;
+                        font-size: var(--font-size-md);
                         color: var(--gray-400);
                         font-weight: 500;
                     }

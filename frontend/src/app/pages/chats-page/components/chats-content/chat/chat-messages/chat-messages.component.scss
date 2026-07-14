@@ -41,7 +41,7 @@
         text-align: center;
 
         p {
-            font-size: 1rem;
+            font-size: var(--font-size-lg);
             margin-top: 0.5rem;
         }
     }
@@ -81,7 +81,7 @@
     }
 
     .message-role {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--gray-400);
         margin-bottom: 0.25rem;
     }
@@ -150,7 +150,7 @@
             font-weight: 400;
 
             i {
-                font-size: 10px;
+                font-size: var(--font-size-2xs);
                 transition: transform 0.2s ease;
 
                 &.expanded {
@@ -185,7 +185,7 @@
     }
 
     .timestamp {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--gray-500);
         margin-top: 0.25rem;
     }

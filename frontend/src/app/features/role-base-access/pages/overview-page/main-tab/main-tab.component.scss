@@ -15,7 +15,7 @@
 }
 
 .section-title {
-    font-size: 20px;
+    font-size: var(--font-size-2xl);
     font-weight: 700;
     color: var(--color-text-primary);
     margin: 0 0 1rem;
@@ -57,7 +57,7 @@
     justify-content: space-evenly;
     cursor: pointer;
     transition: background 0.3s;
-    font-size: 18px;
+    font-size: var(--font-size-xl);
     font-weight: 500;
 
     .plus {

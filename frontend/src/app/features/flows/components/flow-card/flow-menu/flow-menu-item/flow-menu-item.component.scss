@@ -2,7 +2,7 @@
     display: flex;
     align-items: center;
     padding: 8px 12px;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     color: var(--color-text-primary);
     border-radius: var(--radius-md);
     cursor: pointer;

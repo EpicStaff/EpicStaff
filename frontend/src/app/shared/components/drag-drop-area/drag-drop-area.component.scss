@@ -26,14 +26,14 @@
     }
 
     &__title {
-        font-size: 1.5rem;
+        font-size: var(--font-size-3xl);
         font-weight: bold;
         color: var(--accent-color);
         margin-bottom: 1rem;
     }
 
     &__label {
-        font-size: 1.125rem;
+        font-size: var(--font-size-xl);
         margin-bottom: 2.5rem;
         color: var(--color-text-primary);
     }
@@ -53,11 +53,11 @@
 
     &__types {
         margin-top: 2.5rem;
-        font-size: 1.125rem;
+        font-size: var(--font-size-xl);
     }
 
     &__types-list {
-        font-size: 1.125rem;
+        font-size: var(--font-size-xl);
         color: var(--accent-color);
     }
 }

@@ -30,14 +30,14 @@
 }
 
 .dialog-title {
-    font-size: 1.125rem;
+    font-size: var(--font-size-xl);
     font-weight: 500;
     margin: 0;
     color: var(--color-text-primary);
 }
 
 .dialog-message {
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     color: var(--color-text-secondary);
     margin: 0;
     padding: 20px 24px;
@@ -71,7 +71,7 @@
 .button {
     padding: 8px 12px;
     border-radius: var(--radius-md);
-    font-size: 14px;
+    font-size: var(--font-size-md);
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;

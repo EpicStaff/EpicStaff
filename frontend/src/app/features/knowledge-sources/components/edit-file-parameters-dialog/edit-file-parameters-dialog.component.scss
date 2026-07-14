@@ -17,7 +17,7 @@
     }
 
     &__header-title {
-        font-size: 1.25rem;
+        font-size: var(--font-size-2xl);
     }
 
     &__actions {
@@ -31,7 +31,7 @@
         justify-content: space-between;
         align-items: center;
         column-gap: 1rem;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         line-height: 130%;
         margin-right: 1.875rem;
     }

@@ -15,7 +15,7 @@
 
 .recent-section {
     .section-title-no-tabs {
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 700;
         color: var(--color-text-primary);
         margin: 0 0 0.5rem;
@@ -26,9 +26,9 @@
     .empty-message-no-tabs {
         margin-top: 13px;
         font-weight: 400;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         color: var(--fog-alpha-60);
-        font-size: 14px;
+        font-size: var(--font-size-md);
         text-align: left;
     }
 }
@@ -70,7 +70,7 @@
     }
 
     .recent-flow-name {
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 500;
         color: var(--color-text-primary);
         white-space: nowrap;
@@ -82,7 +82,7 @@
     text-align: center;
     padding: 2rem;
     color: var(--color-text-secondary);
-    font-size: 1.1rem;
+    font-size: var(--font-size-xl);
     background: var(--color-flow-card-bg);
     border-radius: var(--radius-xl);
     margin-top: 1rem;
@@ -90,7 +90,7 @@
 
 .loading,
 .error {
-    font-size: 1.1rem;
+    font-size: var(--font-size-xl);
     color: #b0b8c1;
     margin-top: 2rem;
 }

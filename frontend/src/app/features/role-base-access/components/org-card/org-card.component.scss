@@ -18,7 +18,7 @@
         gap: 8px;
 
         .name {
-            font-size: 0.875rem;
+            font-size: var(--font-size-md);
             font-weight: 500;
             color: var(--color-text-primary);
         }
@@ -36,7 +36,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 24px;
-    font-size: 14px;
+    font-size: var(--font-size-md);
 
     .org-users {
         color: var(--accent-color);

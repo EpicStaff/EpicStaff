@@ -6,7 +6,7 @@
 }
 
 .empty {
-    font-size: 14px;
+    font-size: var(--font-size-md);
     color: var(--color-text-secondary);
 }
 
@@ -19,7 +19,7 @@
 }
 
 .chip-name {
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     color: var(--color-text-primary);
     white-space: nowrap;
     overflow: hidden;
@@ -36,7 +36,7 @@
 }
 
 .trigger-name {
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     color: var(--color-text-primary);
     white-space: nowrap;
     overflow: hidden;
@@ -67,7 +67,7 @@
 }
 
 .members-count {
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     color: var(--color-text-secondary);
 }
 
@@ -88,7 +88,7 @@
     flex-direction: column;
     gap: 2px;
     min-width: 0;
-    font-size: 12px;
+    font-size: var(--font-size-xs);
 }
 
 .member-name {

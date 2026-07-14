@@ -24,7 +24,7 @@
         align-items: center;
         justify-content: center;
         font-family: var(--font-family-mono);
-        font-size: 11px;
+        font-size: var(--font-size-xs);
         transition: background 0.2s;
         min-width: 24px;
         color: var(--color-text-primary);

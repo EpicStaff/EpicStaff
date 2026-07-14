@@ -24,7 +24,7 @@
 
         .title {
             margin: 0;
-            font-size: 18px;
+            font-size: var(--font-size-xl);
             font-weight: 600;
             max-width: calc(100% - 40px);
             overflow: hidden;
@@ -75,7 +75,7 @@
 
             h3 {
                 margin: 0;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 color: var(--white-alpha-70);
                 font-weight: 400;
 
@@ -95,7 +95,7 @@
                     border: 1px solid var(--white-alpha-10);
                     border-radius: var(--radius-md);
                     color: white;
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     transition: border-color 0.2s ease;
 
                     &::placeholder {
@@ -115,7 +115,7 @@
 
                 .error-message {
                     position: absolute;
-                    font-size: 12px;
+                    font-size: var(--font-size-xs);
                     color: var(--red-500);
                     margin-top: 4px;
                     right: 0;
@@ -134,7 +134,7 @@
         .btn {
             padding: 8px 16px;
             border-radius: var(--radius-md);
-            font-size: 14px;
+            font-size: var(--font-size-md);
             font-weight: 500;
             cursor: pointer;
             transition: background-color 0.2s ease;
@@ -189,7 +189,7 @@
     gap: 0.5rem;
 
     .slider-value {
-        font-size: 0.9rem;
+        font-size: var(--font-size-md);
         color: var(--gray-100);
         font-weight: 500;
         margin-left: auto;
@@ -271,7 +271,7 @@
         margin-top: 0.5rem;
 
         span {
-            font-size: 0.8rem;
+            font-size: var(--font-size-sm);
             color: var(--gray-400);
         }
     }

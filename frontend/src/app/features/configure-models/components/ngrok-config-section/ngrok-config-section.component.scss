@@ -20,14 +20,14 @@
 
     .title {
         margin: 0;
-        font-size: 20px;
+        font-size: var(--font-size-2xl);
         font-weight: 500;
         color: var(--color-text-primary);
     }
 
     .subtitle {
         margin: 0;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         color: var(--fog-alpha-60);
     }
 

@@ -59,7 +59,7 @@
 }
 
 .code-editor-section {
-    font-size: 14px;
+    font-size: var(--font-size-md);
     color: var(--white-alpha-70);
     display: flex;
     flex-direction: column;
@@ -74,13 +74,13 @@
     &__info {
         display: flex;
         align-items: center;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: var(--fog-alpha-80);
         opacity: 0.7;
     }
 
     &__info-icon {
-        font-size: 14px;
+        font-size: var(--font-size-md);
         width: 14px;
         height: 14px;
         display: inline-flex;
@@ -108,13 +108,13 @@
 
         label {
             display: block;
-            font-size: 14px;
+            font-size: var(--font-size-md);
             color: var(--white-alpha-70);
             margin: 0;
         }
 
         .help-icon {
-            font-size: 18px;
+            font-size: var(--font-size-xl);
             width: 18px;
             height: 18px;
             color: var(--accent-color);
@@ -136,7 +136,7 @@
         border: 1px solid var(--white-alpha-10);
         border-radius: var(--radius-xl);
         color: white;
-        font-size: 0.74rem;
+        font-size: var(--font-size-xs);
         display: flex;
         flex-direction: column;
         row-gap: 0.5rem;
@@ -160,7 +160,7 @@
         }
     }
     &__error-message {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: #d9d9de60;
     }
 }
@@ -174,7 +174,7 @@
 .output-fields {
     &__label {
         color: var(--white-alpha-70);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
 
         display: flex;
         align-items: center;
@@ -195,7 +195,7 @@
         border: 1px solid var(--white-alpha-10);
         border-radius: var(--radius-lg);
         color: white;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         display: flex;
         flex-direction: column;
         row-gap: 1rem;
@@ -211,7 +211,7 @@
         display: flex;
         flex-direction: column;
         flex-grow: 1;
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--white-alpha-70);
         row-gap: 0.25rem;
         border: 1px solid var(--white-alpha-10);

@@ -7,7 +7,7 @@
     row-gap: 0.5rem;
     &__item {
         display: block;
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         border-radius: var(--radius-md);
         border-left: 3px solid var(--color-status-failed);
         background-color: var(--red-600-alpha-6);

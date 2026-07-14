@@ -29,7 +29,7 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-size: 11px;
+        font-size: var(--font-size-xs);
         font-weight: 500;
         color: var(--fog-alpha-50);
     }
@@ -57,7 +57,7 @@
             border-color 0.2s ease;
 
         i {
-            font-size: 14px;
+            font-size: var(--font-size-md);
             line-height: 1;
         }
 
@@ -89,7 +89,7 @@
     }
 
     &__tag {
-        font-size: 11px;
+        font-size: var(--font-size-xs);
         font-weight: 500;
         color: var(--fog-alpha-50);
     }
@@ -106,16 +106,16 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: var(--fog-alpha-50);
 
         i {
-            font-size: 14px;
+            font-size: var(--font-size-md);
         }
     }
 
     &__usage {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: var(--fog-alpha-50);
 
         &--active {

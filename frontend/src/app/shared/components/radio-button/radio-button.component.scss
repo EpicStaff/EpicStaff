@@ -13,7 +13,7 @@
         .item {
             height: 40px;
             padding: 0.5rem 1rem;
-            font-size: 0.875rem;
+            font-size: var(--font-size-md);
         }
     }
 
@@ -21,7 +21,7 @@
         .item {
             height: 28px;
             padding: 0.625rem 0.5rem;
-            font-size: 0.625rem;
+            font-size: var(--font-size-2xs);
         }
     }
 
@@ -88,7 +88,7 @@
         border: none;
         background: transparent;
         color: var(--color-input-text-placeholder);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: 500;
         line-height: 1;
         cursor: pointer;

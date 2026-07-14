@@ -75,7 +75,7 @@ $transition-default: all 0.2s ease;
             border-radius: var(--radius-md);
             background-color: $bg-input;
             color: $text-primary;
-            font-size: 13px;
+            font-size: var(--font-size-sm);
             border: 1px solid $border-color;
             transition: $transition-default;
             outline: none;
@@ -99,13 +99,13 @@ $transition-default: all 0.2s ease;
             color: $text-secondary;
             border-radius: var(--radius-md);
             cursor: pointer;
-            font-size: 13px;
+            font-size: var(--font-size-sm);
             font-weight: 500;
             transition: $transition-default;
             border: none;
 
             i {
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 width: 14px;
                 height: 14px;
                 margin-bottom: 2px;
@@ -136,7 +136,7 @@ $transition-default: all 0.2s ease;
             background: transparent;
             border: none;
             color: $text-secondary;
-            font-size: 13px;
+            font-size: var(--font-size-sm);
             padding: 8px 16px;
             cursor: pointer;
             position: relative;
@@ -225,7 +225,7 @@ $transition-default: all 0.2s ease;
 
     p {
         margin-bottom: 1rem;
-        font-size: 13px;
+        font-size: var(--font-size-sm);
     }
 
     .create-tool-btn {
@@ -247,7 +247,7 @@ $transition-default: all 0.2s ease;
         }
 
         .plus-icon {
-            font-size: 16px;
+            font-size: var(--font-size-lg);
         }
     }
 }

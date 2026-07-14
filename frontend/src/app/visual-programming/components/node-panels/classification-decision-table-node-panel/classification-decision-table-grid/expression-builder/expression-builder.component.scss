@@ -89,7 +89,7 @@ $radius: 8px;
     justify-content: center;
     padding: 2px 8px;
     border-radius: var(--radius-sm);
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     font-weight: 500;
     line-height: 1.6;
     cursor: pointer;
@@ -181,7 +181,7 @@ $radius: 8px;
     align-items: center;
     gap: 6px;
     font-family: var(--font-family-mono);
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     line-height: 1.5;
     color: #6a9955;
     user-select: none;
@@ -200,7 +200,7 @@ $radius: 8px;
     border: none;
     cursor: pointer;
     color: #6a9955;
-    font-size: 14px;
+    font-size: var(--font-size-md);
     line-height: 1;
     padding: 0 2px;
     opacity: 0.6;
@@ -223,7 +223,7 @@ $radius: 8px;
     color: $text;
     caret-color: $accent-light;
     font-family: var(--font-family-mono);
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     line-height: 1.5;
     box-sizing: border-box;
 
@@ -256,7 +256,7 @@ $radius: 8px;
 .eb-mention-item {
     padding: 4px 12px;
     font-family: var(--font-family-mono);
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     line-height: 1.4;
     color: $text;
     cursor: pointer;
@@ -300,7 +300,7 @@ $radius: 8px;
 
 .eb-search-icon {
     color: var(--fog-alpha-60);
-    font-size: 14px;
+    font-size: var(--font-size-md);
     flex-shrink: 0;
 }
 
@@ -310,7 +310,7 @@ $radius: 8px;
     border: none;
     outline: none;
     color: var(--color-text-primary);
-    font-size: 13px;
+    font-size: var(--font-size-sm);
 
     &::placeholder {
         color: var(--fog-alpha-60);
@@ -330,7 +330,7 @@ $radius: 8px;
 .eb-var-row {
     flex-shrink: 0;
     padding: 6px 8px;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     color: var(--color-text-primary);
     cursor: pointer;
     background: transparent;
@@ -357,7 +357,7 @@ $radius: 8px;
 }
 
 .eb-templates-label {
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     color: $text-muted;
     margin-right: 2px;
     white-space: nowrap;
@@ -366,7 +366,7 @@ $radius: 8px;
 // ── Template buttons ──────────────────────────────────────────────────────────
 .eb-template-btn {
     padding: 4px 12px;
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     font-weight: 500;
     color: var(--gray-300);
     background: var(--graphite-800);

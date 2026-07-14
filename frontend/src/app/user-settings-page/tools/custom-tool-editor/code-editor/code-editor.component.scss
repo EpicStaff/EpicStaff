@@ -17,7 +17,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 1rem;
-    font-size: 14px;
+    font-size: var(--font-size-md);
     font-weight: 500;
     line-height: 1;
     border-bottom: 1px solid #2b2b2b;
@@ -51,7 +51,7 @@
             margin-top: 2px;
             display: block;
             color: #ff5555;
-            font-size: 0.9rem;
+            font-size: var(--font-size-md);
             font-weight: 300;
             margin-left: 0.2rem;
             line-height: 1;
@@ -105,7 +105,7 @@
         span {
             margin-top: 8px;
             color: var(--gray-200);
-            font-size: 1rem;
+            font-size: var(--font-size-lg);
         }
     }
 }

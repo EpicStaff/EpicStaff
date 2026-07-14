@@ -14,7 +14,7 @@
     border: 1px solid var(--accent-color);
     background: transparent;
     color: var(--accent-color);
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     line-height: 1;
     cursor: pointer;
     white-space: nowrap;
@@ -34,7 +34,7 @@
     }
 
     &__label {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         line-height: 1;
         min-width: 0;
         max-width: 100%;

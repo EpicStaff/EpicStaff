@@ -26,13 +26,13 @@
 
     i {
         color: var(--accent-color);
-        font-size: 1.1rem;
+        font-size: var(--font-size-xl);
     }
 }
 
 .title {
     margin: 0;
-    font-size: 1.05rem;
+    font-size: var(--font-size-lg);
     font-weight: 600;
 }
 
@@ -57,7 +57,7 @@
     }
 
     i {
-        font-size: 1rem;
+        font-size: var(--font-size-lg);
     }
 }
 
@@ -72,7 +72,7 @@
 
 .lead {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: var(--font-size-md);
     color: var(--white-alpha-65);
     line-height: 1.4;
 }
@@ -94,14 +94,14 @@
 }
 
 .meta-label {
-    font-size: 0.7rem;
+    font-size: var(--font-size-xs);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--white-alpha-45);
 }
 
 .meta-value {
-    font-size: 0.9rem;
+    font-size: var(--font-size-md);
     color: var(--white);
     word-break: break-word;
 
@@ -118,14 +118,14 @@
 }
 
 .section-title {
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
     font-weight: 600;
     color: var(--white-alpha-75);
 }
 
 .empty {
     margin: 0;
-    font-size: 0.82rem;
+    font-size: var(--font-size-sm);
     color: var(--white-alpha-45);
     padding: 0.75rem;
     border: 1px dashed var(--white-alpha-12);
@@ -143,7 +143,7 @@
 .groups-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.82rem;
+    font-size: var(--font-size-sm);
 
     thead th {
         position: sticky;
@@ -180,7 +180,7 @@
     border: none;
     border-radius: var(--radius-lg);
     padding: 0.55rem 1.1rem;
-    font-size: 0.85rem;
+    font-size: var(--font-size-md);
     font-weight: 500;
     cursor: pointer;
     transition:

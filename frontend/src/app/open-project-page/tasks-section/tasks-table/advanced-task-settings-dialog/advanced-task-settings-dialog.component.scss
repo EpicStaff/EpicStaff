@@ -28,7 +28,7 @@
 
         .dialog-title {
             color: var(--white-alpha-90);
-            font-size: 18px;
+            font-size: var(--font-size-xl);
             font-weight: 600;
             margin: 0;
             padding: 0;
@@ -74,7 +74,7 @@
             }
 
             .section-title {
-                font-size: 16px;
+                font-size: var(--font-size-lg);
                 color: var(--white-alpha-80);
                 display: flex;
                 align-items: center;
@@ -117,7 +117,7 @@
 
             .task-order {
                 min-width: 30px;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 padding: 4px;
                 margin-right: 12px;
                 color: var(--white-alpha-70);
@@ -140,7 +140,7 @@
 
                 .task-id {
                     color: var(--white-alpha-50);
-                    font-size: 12px;
+                    font-size: var(--font-size-xs);
                     margin-right: 12px;
                 }
 
@@ -205,7 +205,7 @@
     button {
         padding: 8px 16px;
         border-radius: var(--radius-md);
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 500;
         cursor: pointer;
         transition: background-color 0.2s ease;
@@ -252,7 +252,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 14px;
+            font-size: var(--font-size-md);
             color: var(--white-alpha-80);
             font-weight: 500;
         }
@@ -291,7 +291,7 @@
     margin-top: 12px;
     padding: 8px 16px;
     border-radius: var(--radius-md);
-    font-size: 13px;
+    font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;

@@ -26,7 +26,7 @@
         }
 
         i {
-            font-size: 14px; /* Make the icon smaller */
+            font-size: var(--font-size-md); /* Make the icon smaller */
             color: var(--gray-500); /* Soft color */
             margin-right: 6px;
         }
@@ -36,14 +36,14 @@
             background: transparent;
             border: none;
             color: var(--gray-100);
-            font-size: 13px; /* Slightly smaller text */
+            font-size: var(--font-size-sm); /* Slightly smaller text */
             outline: none;
             padding: 2px;
             line-height: 1; /* Align text properly */
 
             &::placeholder {
                 color: var(--gray-600);
-                font-size: 13px;
+                font-size: var(--font-size-sm);
             }
         }
     }
@@ -58,7 +58,7 @@
             background: transparent;
             border: none;
             color: var(--gray-400);
-            font-size: 14px;
+            font-size: var(--font-size-md);
             padding: 8px;
             cursor: pointer;
             border-bottom: 2px solid transparent;
@@ -81,7 +81,7 @@
 
     .menu-content {
         overflow-y: auto;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         padding-bottom: 16px;
         height: auto;
         max-height: 420px;

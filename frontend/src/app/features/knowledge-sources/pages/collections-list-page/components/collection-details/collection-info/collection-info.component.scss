@@ -17,7 +17,7 @@
     }
 
     &__meta-title {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: bold;
         line-height: 130%;
         color: var(--color-text-primary);
@@ -31,7 +31,7 @@
     }
 
     &__meta-item {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
     }
 
     &__meta-label {
@@ -54,7 +54,7 @@
     }
 
     &__issues-title {
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: bold;
         line-height: 130%;
         color: var(--color-text-primary);
@@ -68,7 +68,7 @@
 
     &__issue {
         padding: 0.5rem 1rem;
-        font-size: 0.625rem;
+        font-size: var(--font-size-2xs);
         color: var(--color-text-primary);
         display: flex;
         flex-direction: column;

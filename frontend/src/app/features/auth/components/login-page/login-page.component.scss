@@ -22,7 +22,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            font-size: 0.875rem;
+            font-size: var(--font-size-md);
 
             .remember-label {
                 color: var(--color-text-muted);

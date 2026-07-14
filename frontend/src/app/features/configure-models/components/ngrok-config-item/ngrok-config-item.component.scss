@@ -26,12 +26,12 @@
     &__name {
         font-weight: 500;
         color: var(--color-text-primary);
-        font-size: 0.9rem;
+        font-size: var(--font-size-md);
     }
 
     &__config {
         color: var(--color-text-secondary);
-        font-size: 0.8rem;
+        font-size: var(--font-size-sm);
         margin-top: 0.15rem;
         display: flex;
     }

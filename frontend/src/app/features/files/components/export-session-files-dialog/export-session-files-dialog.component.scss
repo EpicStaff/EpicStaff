@@ -18,7 +18,7 @@
 
     &__title {
         font-family: var(--font-family-base);
-        font-size: 20px;
+        font-size: var(--font-size-2xl);
         font-weight: 500;
         line-height: 1;
         letter-spacing: 0;
@@ -85,7 +85,7 @@
         gap: 8px;
         flex-shrink: 0;
         font-family: var(--font-family-base);
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 400;
     }
 
@@ -132,7 +132,7 @@
         background: transparent;
         border: none;
         outline: none;
-        font-size: 0.8125rem;
+        font-size: var(--font-size-sm);
         color: var(--color-text-primary);
         min-width: 0;
 
@@ -166,7 +166,7 @@
         align-items: center;
         justify-content: center;
         height: 120px;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-secondary);
     }
 
@@ -249,7 +249,7 @@
     &__item-name {
         flex: 1 1 auto;
         min-width: 0;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         color: var(--color-text-primary);
         white-space: nowrap;
     }
@@ -258,7 +258,7 @@
         flex-shrink: 0;
         margin-left: auto;
         padding-left: 1rem;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         font-weight: 400;
         color: var(--fog-alpha-16);
         white-space: nowrap;

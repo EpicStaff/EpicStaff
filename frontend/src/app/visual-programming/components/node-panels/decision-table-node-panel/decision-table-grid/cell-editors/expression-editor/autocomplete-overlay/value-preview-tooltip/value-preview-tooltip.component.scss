@@ -9,7 +9,7 @@
     max-height: 600px;
     overflow: hidden; // Changed to hidden to let internal scrollbars work
     font-family: var(--font-family-mono);
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     z-index: 1100;
     display: flex;
     flex-direction: column;
@@ -22,7 +22,7 @@
 
         .type {
             color: var(--gray-500);
-            font-size: 10px;
+            font-size: var(--font-size-2xs);
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }

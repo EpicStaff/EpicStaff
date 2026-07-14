@@ -164,7 +164,7 @@
                 }
 
                 i {
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                 }
 
                 &.plus-icon {
@@ -363,7 +363,7 @@
     justify-content: center;
     gap: 0.5rem;
     padding: 0.4rem 1rem;
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     font-weight: 400;
     border-radius: var(--radius-sm);
     border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
@@ -384,7 +384,7 @@
     }
 
     i {
-        font-size: 16px;
+        font-size: var(--font-size-lg);
     }
 }
 @keyframes rotateBorder {
@@ -416,7 +416,7 @@
 
 .show-inputs-btn {
     padding: 0.5rem 1.25rem;
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     border-radius: var(--radius-sm);
     border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
     background: var(--color-surface-card, var(--graphite-825));
@@ -493,7 +493,7 @@
 
 .settings-icon-btn {
     color: var(--fog-alpha-70);
-    font-size: 20px;
+    font-size: var(--font-size-2xl);
 
     &:hover {
         color: var(--fog-200);

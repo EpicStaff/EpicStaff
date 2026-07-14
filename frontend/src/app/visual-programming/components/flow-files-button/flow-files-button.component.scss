@@ -7,7 +7,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 1.25rem;
-    font-size: 12px;
+    font-size: var(--font-size-xs);
     border-radius: var(--radius-sm);
     border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
     background: var(--color-surface-card, var(--graphite-825));
@@ -50,7 +50,7 @@
 
     &__count {
         line-height: 1;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         font-weight: 400;
     }
 }

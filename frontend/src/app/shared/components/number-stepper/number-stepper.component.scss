@@ -114,17 +114,17 @@
 
         // Size variants for input
         &--sm {
-            font-size: 0.75rem;
+            font-size: var(--font-size-xs);
             padding: 0 0.5rem;
         }
 
         &--md {
-            font-size: 0.875rem;
+            font-size: var(--font-size-md);
             padding: 0 0.75rem;
         }
 
         &--lg {
-            font-size: 0.875rem;
+            font-size: var(--font-size-md);
             font-weight: 400;
             padding: 0 0.75rem;
         }
@@ -132,7 +132,7 @@
 
     &__error {
         margin-top: 0.25rem;
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--red-500);
         font-family: var(--font-family-base);
     }

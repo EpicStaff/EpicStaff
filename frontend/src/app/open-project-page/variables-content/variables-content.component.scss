@@ -115,7 +115,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                 }
 
                 .variable-name {
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     color: $text-color;
                     background: var(--gray-750);
                     padding: 6px 12px;
@@ -131,11 +131,11 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     font-weight: bold;
                     color: var(--accent-color, var(--accent-color));
                     flex-shrink: 0;
-                    font-size: 16px;
+                    font-size: var(--font-size-lg);
                 }
 
                 .variable-value {
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     color: $muted-text-color;
                     background: var(--gray-800);
                     padding: 6px 12px;
@@ -163,7 +163,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     border-radius: var(--radius-md);
                     padding: 6px 12px;
                     color: $text-color;
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     transition: all 0.25s ease;
 
                     &.name-input {
@@ -192,7 +192,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                 .chain-separator {
                     color: var(--accent-color, var(--accent-color));
                     font-weight: bold;
-                    font-size: 16px;
+                    font-size: var(--font-size-lg);
                 }
             }
 
@@ -216,7 +216,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     transition: all 0.25s ease;
 
                     i {
-                        font-size: 16px;
+                        font-size: var(--font-size-lg);
                         width: 16px;
                         height: 16px;
                     }
@@ -285,7 +285,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     padding: 6px 12px;
                     color: $text-color;
                     transition: all 0.25s ease;
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     font-family: var(--font-family-mono);
 
                     &.name-input {
@@ -324,7 +324,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     font-weight: bold;
                     color: var(--accent-color, var(--accent-color));
                     flex-shrink: 0;
-                    font-size: 16px;
+                    font-size: var(--font-size-lg);
                 }
             }
 
@@ -332,7 +332,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                 display: inline-flex;
                 align-items: center;
                 gap: 8px;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 font-weight: 500;
                 padding: 6px 12px;
                 background-color: rgba($accent-color, 0.1);
@@ -357,7 +357,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                 }
 
                 i {
-                    font-size: 16px;
+                    font-size: var(--font-size-lg);
                     width: 16px;
                     height: 16px;
                 }

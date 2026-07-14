@@ -51,7 +51,7 @@ $transition-default: all 0.2s ease;
 ::ng-deep .ag-grid-staff .tag {
     display: inline-flex;
     align-items: center;
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
     padding: 4px 10px;
     line-height: 1.2;
     border-radius: var(--radius-md);
@@ -110,7 +110,7 @@ $transition-default: all 0.2s ease;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            font-size: 13px;
+            font-size: var(--font-size-sm);
             font-weight: 500;
             color: var(--gray-100); // Light text color
         }
@@ -125,7 +125,7 @@ $transition-default: all 0.2s ease;
     color: $text-secondary;
     font-style: italic;
     padding: 4px 8px;
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
 }
 //checkbox cells
 ::ng-deep .ag-grid-staff .ag-checkbox-cell {
@@ -146,14 +146,14 @@ $transition-default: all 0.2s ease;
     //     height: auto !important;
     //   }
     font-weight: 500;
-    font-size: 14px;
+    font-size: var(--font-size-md);
     padding: 5px 10px;
     padding-left: 0;
 }
 
 //large input
 ::ng-deep .ag-large-text-input .ag-input-field-input.ag-text-area-input {
-    font-size: 14px !important; // Set minimum font size
+    font-size: var(--font-size-md) !important; // Set minimum font size
     line-height: 1.6;
     padding: 10px;
     color: #dedede;
@@ -168,7 +168,7 @@ $transition-default: all 0.2s ease;
     cursor: pointer;
 
     .action-icon {
-        font-size: 1.2rem;
+        font-size: var(--font-size-2xl);
         color: #b1b1b1;
         transition:
             color 0.2s,
@@ -226,7 +226,7 @@ $transition-default: all 0.2s ease;
 
             .item-text {
                 line-height: 1.3;
-                font-size: 13px;
+                font-size: var(--font-size-sm);
                 font-weight: 500;
                 white-space: nowrap;
                 overflow: hidden;
@@ -253,7 +253,7 @@ $transition-default: all 0.2s ease;
         color: var(--gray-400);
         font-style: italic;
         padding: 4px 8px;
-        font-size: 0.8rem;
+        font-size: var(--font-size-sm);
     }
 }
 

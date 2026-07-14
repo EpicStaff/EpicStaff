@@ -31,7 +31,7 @@
             max-width: calc(100% - 145px);
 
             .role-title {
-                font-size: 16px;
+                font-size: var(--font-size-lg);
                 font-weight: 600;
                 color: var(--gray-100);
                 margin: 0;
@@ -161,7 +161,7 @@
             }
 
             .section-title {
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 font-weight: 600;
                 letter-spacing: 0.05em;
                 text-transform: uppercase;
@@ -172,7 +172,7 @@
             }
 
             .section-subtitle {
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 color: var(--gray-400);
                 font-style: italic;
                 margin: 0;
@@ -183,7 +183,7 @@
                 min-height: 24px;
 
                 .section-content {
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     line-height: 1.5;
                     color: var(--gray-200);
                     margin: 0;
@@ -250,7 +250,7 @@
                 }
 
                 .subsection-title {
-                    font-size: 12px;
+                    font-size: var(--font-size-xs);
                     font-weight: 600;
                     color: var(--gray-400);
                     margin: 0 0 8px 0;
@@ -269,7 +269,7 @@
                     }
 
                     .tool-count {
-                        font-size: 10px;
+                        font-size: var(--font-size-2xs);
                         color: var(--gray-500);
                         font-weight: 400;
                         text-transform: none;
@@ -283,7 +283,7 @@
             border: none;
             color: var(--accent-color);
             cursor: pointer;
-            font-size: 12px;
+            font-size: var(--font-size-xs);
             padding: 2px 0;
             margin-top: 4px;
             display: block;
@@ -297,19 +297,19 @@
             &.tools-toggle,
             &.tags-toggle {
                 margin-top: 8px;
-                font-size: 13px;
+                font-size: var(--font-size-sm);
             }
         }
 
         .model-name {
-            font-size: 14px;
+            font-size: var(--font-size-md);
             font-weight: 500;
             color: var(--gray-100);
             margin: 0;
         }
 
         .model-custom-name {
-            font-size: 12px;
+            font-size: var(--font-size-xs);
             color: var(--gray-400);
             margin: 4px 0 0;
         }
@@ -330,13 +330,13 @@
                 .model-name {
                     font-weight: 500;
                     color: var(--gray-100);
-                    font-size: 0.9rem;
+                    font-size: var(--font-size-md);
                     margin: 0;
                 }
 
                 .model-custom-name {
                     color: var(--gray-400);
-                    font-size: 0.8rem;
+                    font-size: var(--font-size-sm);
                     margin-top: 0.15rem;
                     overflow: hidden;
                     text-overflow: ellipsis;
@@ -365,12 +365,12 @@
 
                 .python-icon {
                     color: var(--blue-400);
-                    font-size: 16px;
+                    font-size: var(--font-size-lg);
                     flex-shrink: 0;
                 }
 
                 .tool-name {
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     color: var(--gray-200);
                     flex: 1;
                     overflow: hidden;

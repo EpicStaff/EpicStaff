@@ -29,7 +29,7 @@
     overflow: hidden;
     position: relative;
     font-family: var(--ep-font-family);
-    font-size: 14px;
+    font-size: var(--font-size-md);
 }
 
 :host.mode-floating .panel {
@@ -194,7 +194,7 @@
 }
 
 .panel-title {
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     font-weight: 500;
     color: var(--color-text-primary);
     overflow: hidden;
@@ -287,7 +287,7 @@
             color: var(--ep-chat-text-question);
             border-radius: var(--ep-radius-sm);
             padding: 12px;
-            font-size: 14px;
+            font-size: var(--font-size-md);
             line-height: 20px;
             max-width: calc(100% - 30px);
             margin-left: 30px;
@@ -306,7 +306,7 @@
             border-radius: 0 var(--ep-radius-sm) var(--ep-radius-sm) var(--ep-radius-sm);
             padding: 12px;
             max-width: 100%;
-            font-size: 14px;
+            font-size: var(--font-size-md);
             line-height: 20px;
             color: var(--color-text-primary);
         }
@@ -422,7 +422,7 @@
     }
 
     &__text {
-        font-size: 0.8125rem;
+        font-size: var(--font-size-sm);
         color: var(--color-text-secondary);
     }
 }
@@ -443,7 +443,7 @@
     border: 1px solid var(--ep-color-border-subtle);
     border-radius: var(--ep-radius-md);
     overflow: hidden;
-    font-size: 0.8125rem;
+    font-size: var(--font-size-sm);
 
     &__summary {
         display: flex;
@@ -485,7 +485,7 @@
     border-radius: var(--radius-3xl);
     color: var(--ep-color-text-muted);
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     line-height: 1.4;
     padding: 0.2rem 0.6rem;
     transition:
@@ -529,7 +529,7 @@
         background: transparent;
         color: var(--ep-color-text);
         font-family: var(--ep-font-family);
-        font-size: 14px;
+        font-size: var(--font-size-md);
         line-height: 20px;
         min-height: 20px;
         max-height: 50vh;
@@ -589,7 +589,7 @@
 .message-interrupted {
     margin-left: 0.5rem;
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     font-style: italic;
 }
 
@@ -610,7 +610,7 @@
         background: transparent;
         border: none;
         color: var(--color-text-primary);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         text-align: left;
         cursor: pointer;
 

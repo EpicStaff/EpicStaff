@@ -39,13 +39,13 @@ header {
         min-width: 0;
 
         i {
-            font-size: 1.25rem;
+            font-size: var(--font-size-2xl);
             margin-right: 0.5rem;
             flex-shrink: 0;
         }
 
         .title {
-            font-size: 1.125rem;
+            font-size: var(--font-size-xl);
             font-weight: 400;
             white-space: nowrap;
             overflow: hidden;
@@ -88,7 +88,7 @@ header {
             padding: 0 0.75rem;
             height: 32px;
             border-radius: var(--radius-md);
-            font-size: 14px;
+            font-size: var(--font-size-md);
             font-weight: 400;
             cursor: pointer;
             transition:
@@ -137,7 +137,7 @@ header {
             gap: 0.5rem;
 
             .esc-label {
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 color: var(--gray-600);
                 font-weight: 500;
                 padding: 0.15rem 0.3rem;

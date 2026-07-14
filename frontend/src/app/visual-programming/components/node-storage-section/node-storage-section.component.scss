@@ -11,7 +11,7 @@
 }
 
 .section-label {
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     color: #d9d9d999;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -30,7 +30,7 @@
 }
 
 .field-label {
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     color: #d9d9d999;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -42,7 +42,7 @@
     border: 1px solid var(--color-divider-subtle, var(--white-alpha-10));
     border-radius: var(--radius-lg);
     padding: 0.45rem 0.75rem;
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     cursor: pointer;
     outline: none;
     appearance: auto;
@@ -66,7 +66,7 @@
 
 .input-map-key {
     font-family: var(--font-family-mono);
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
     color: var(--gray-300);
     background: var(--white-alpha-5);
     border: 1px solid var(--color-divider-subtle, var(--white-alpha-10));
@@ -82,7 +82,7 @@
 
 .code-preview-text {
     font-family: var(--font-family-mono);
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     color: var(--gray-300);
     background: var(--white-alpha-5);
     border: 1px solid var(--color-divider-subtle, var(--white-alpha-10));
@@ -99,7 +99,7 @@
     border: none;
     border-radius: var(--radius-lg);
     padding: 0.45rem 0.9rem;
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
     cursor: pointer;
     transition: opacity 0.15s;
     align-self: flex-start;

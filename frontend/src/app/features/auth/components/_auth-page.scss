@@ -39,7 +39,7 @@
     }
 
     .subtitle {
-        font-size: 1.125rem;
+        font-size: var(--font-size-xl);
         color: var(--color-text-muted);
     }
 }
@@ -56,7 +56,7 @@
 }
 
 @mixin auth-prompt {
-    font-size: 1.125rem;
+    font-size: var(--font-size-xl);
     color: var(--color-text-muted);
 
     span {
@@ -72,7 +72,7 @@
 
 @mixin auth-server-error {
     color: var(--color-status-failed);
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     text-align: center;
     padding: 0.5rem 0.75rem;
     background: var(--red-600-alpha-6);
@@ -82,7 +82,7 @@
 @mixin auth-back-link {
     color: var(--accent-color);
     cursor: pointer;
-    font-size: 1rem;
+    font-size: var(--font-size-lg);
     display: flex;
     align-items: center;
     gap: 6px;

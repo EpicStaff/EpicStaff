@@ -25,14 +25,14 @@
 }
 
 .dialog-title {
-    font-size: 1.125rem;
+    font-size: var(--font-size-xl);
     font-weight: 500;
     margin: 0;
     color: var(--white);
 }
 
 .dialog-message {
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     color: var(--color-text-secondary);
     margin: 0;
     line-height: 1.5;
@@ -60,7 +60,7 @@
 
 .caution-title {
     color: var(--color-error);
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     font-weight: 500;
 }
 
@@ -78,7 +78,7 @@
 }
 
 .caution-message {
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     color: var(--color-text-subtle);
     margin: 0;
     line-height: 1.5;
@@ -101,7 +101,7 @@
     padding: 0 24px;
     border-radius: var(--radius-lg);
     font-family: var(--font-family-base);
-    font-size: 14px;
+    font-size: var(--font-size-md);
     font-weight: 500;
     line-height: 1;
     cursor: pointer;

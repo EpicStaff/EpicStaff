@@ -10,7 +10,7 @@
 }
 
 .org-name {
-    font-size: 14px;
+    font-size: var(--font-size-md);
     color: var(--color-text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -18,7 +18,7 @@
 }
 
 .user-role {
-    font-size: 10px;
+    font-size: var(--font-size-2xs);
     color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;

@@ -39,7 +39,7 @@
         border: 1px solid var(--color-input-border);
         background-color: var(--color-input-background);
         color: var(--color-text-primary);
-        font-size: 0.9rem;
+        font-size: var(--font-size-md);
         transition: border-color 0.2s ease;
 
         &:focus {

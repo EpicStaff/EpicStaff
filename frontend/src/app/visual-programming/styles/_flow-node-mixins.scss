@@ -20,7 +20,7 @@
 
     .port-label {
         position: absolute;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: #a3a3a3;
         background: #1818187e;
         white-space: nowrap;
@@ -225,7 +225,7 @@
     }
 
     i {
-        font-size: 18px;
+        font-size: var(--font-size-xl);
         width: 18px;
         height: 18px;
         color: #dbdbdb;

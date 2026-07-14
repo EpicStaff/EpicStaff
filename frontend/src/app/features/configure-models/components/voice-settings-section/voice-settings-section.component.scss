@@ -11,13 +11,13 @@
 
         .title {
             margin: 0;
-            font-size: 20px;
+            font-size: var(--font-size-2xl);
             color: var(--color-text-primary);
         }
 
         .subtitle {
             margin: 0;
-            font-size: 14px;
+            font-size: var(--font-size-md);
             color: var(--color-text-secondary);
         }
     }
@@ -61,11 +61,11 @@
                     justify-content: flex-end;
                     align-items: center;
                     gap: 12px;
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     color: var(--color-text-secondary);
 
                     i {
-                        font-size: 14px;
+                        font-size: var(--font-size-md);
                         color: var(--color-text-secondary);
                     }
 
@@ -94,13 +94,13 @@
             }
 
             .section-title {
-                font-size: 16px;
+                font-size: var(--font-size-lg);
                 font-weight: 600;
                 color: var(--color-text-primary);
             }
 
             .hint {
-                font-size: 0.8rem;
+                font-size: var(--font-size-sm);
                 color: var(--color-text-secondary);
                 margin: 0;
             }
@@ -130,13 +130,13 @@
                 display: flex;
                 align-items: center;
                 gap: 8px;
-                font-size: 16px;
+                font-size: var(--font-size-lg);
                 color: var(--accent-color);
             }
 
             .card-text {
                 margin: 12px 0 0;
-                font-size: 13px;
+                font-size: var(--font-size-sm);
                 color: var(--color-text-secondary);
                 line-height: 1.6;
             }
@@ -147,7 +147,7 @@
                 display: flex;
                 flex-direction: column;
                 gap: 12px;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 color: var(--color-text-secondary);
                 line-height: 1.6;
                 list-style: decimal;

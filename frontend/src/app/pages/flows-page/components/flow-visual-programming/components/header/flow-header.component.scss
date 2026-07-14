@@ -18,7 +18,7 @@
         overflow: hidden;
 
         .title {
-            font-size: 24px;
+            font-size: var(--font-size-3xl);
             font-weight: 400;
             letter-spacing: -0.02em;
             line-height: 1.2;
@@ -61,7 +61,7 @@
         .slash {
             color: var(--gray-500);
             margin: 0 0.5rem;
-            font-size: 24px;
+            font-size: var(--font-size-3xl);
             font-weight: 400;
             letter-spacing: -0.02em;
             line-height: 1.2;
@@ -78,7 +78,7 @@
         }
 
         .graph-name {
-            font-size: 24px;
+            font-size: var(--font-size-3xl);
             font-weight: 400;
             letter-spacing: -0.02em;
             line-height: 1.2;
@@ -107,7 +107,7 @@
             padding: 0 0.75rem;
             height: 36px;
             border-radius: var(--radius-md);
-            font-size: 14px;
+            font-size: var(--font-size-md);
             font-weight: 400;
             cursor: pointer;
             transition: all 0.2s ease-in-out;
@@ -225,7 +225,7 @@
                 border: none;
                 border-right: 1px solid var(--accent-color);
                 border-radius: 0;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 cursor: pointer;
 
                 &:hover:not(:disabled) {
@@ -304,17 +304,17 @@
     gap: 6px;
     margin-left: 8px;
     color: var(--accent-color);
-    font-size: 14px;
+    font-size: var(--font-size-md);
     white-space: nowrap;
 
     i {
-        font-size: 10px;
+        font-size: var(--font-size-2xs);
         margin-right: 6px;
         color: var(--accent-color);
     }
 
     .unsaved-text {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         font-weight: 500;
         color: var(--accent-color);
     }

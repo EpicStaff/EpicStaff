@@ -52,7 +52,7 @@ $hover-color: var(--gray-800);
     max-width: 1200px;
 
     .section-title {
-        font-size: 16px;
+        font-size: var(--font-size-lg);
         font-weight: 500;
         color: $text-color;
         margin-bottom: 1.2rem;

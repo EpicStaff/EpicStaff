@@ -39,7 +39,7 @@
 
                 .subtitle-inline {
                     margin-left: 0.7rem;
-                    font-size: 1.1rem;
+                    font-size: var(--font-size-xl);
                     font-weight: 400;
                     color: var(--color-text-secondary);
                     display: inline-block;
@@ -86,7 +86,7 @@
         border: 1px solid var(--color-input-border);
         border-radius: var(--radius-lg);
         color: var(--color-text-primary);
-        font-size: 0.9rem;
+        font-size: var(--font-size-md);
         cursor: pointer;
         transition: border-color 0.15s ease;
 
@@ -202,14 +202,14 @@
                     }
 
                     .breadcrumb-sep {
-                        font-size: 14px;
+                        font-size: var(--font-size-md);
                         font-weight: 500;
                         color: var(--color-text-secondary);
                         opacity: 0.3;
                     }
 
                     .breadcrumb-label {
-                        font-size: 14px;
+                        font-size: var(--font-size-md);
                         font-weight: 400;
                         color: var(--color-text-primary);
                         overflow: hidden;
@@ -253,7 +253,7 @@
             border: 1px solid var(--color-input-border);
             background-color: var(--color-input-background);
             color: var(--color-text-primary);
-            font-size: 0.9rem;
+            font-size: var(--font-size-md);
             transition: border-color 0.2s ease;
 
             &:focus {
@@ -321,7 +321,7 @@
     &__main {
         gap: 0.5rem;
         padding: 0 1rem;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: 500;
     }
 
@@ -364,7 +364,7 @@
         border: none;
         color: var(--accent-color);
         cursor: pointer;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         font-weight: 500;
         transition:
             background-color 0.15s ease,

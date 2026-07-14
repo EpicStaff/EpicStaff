@@ -29,7 +29,7 @@
     }
 
     &__header-title {
-        font-size: 14px;
+        font-size: var(--font-size-md);
         color: var(--accent-color);
     }
 
@@ -104,7 +104,7 @@
         padding: 0 8px;
         text-align: left;
         font-family: var(--font-family-base);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         font-weight: 400;
         line-height: 130%;
         color: var(--fog-alpha-80);
@@ -175,7 +175,7 @@
         flex-shrink: 0;
 
         i {
-            font-size: 1rem;
+            font-size: var(--font-size-lg);
         }
 
         &:hover {
@@ -255,7 +255,7 @@
         justify-content: center;
 
         i {
-            font-size: 1rem;
+            font-size: var(--font-size-lg);
         }
 
         &:hover {
@@ -272,7 +272,7 @@
         background: transparent;
         border: none;
         font-family: var(--font-family-base);
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         font-weight: 400;
         line-height: 130%;
         color: var(--fog-alpha-80);
@@ -351,7 +351,7 @@
             background-color 0.15s ease;
 
         i {
-            font-size: 1rem;
+            font-size: var(--font-size-lg);
         }
 
         &:hover {
@@ -385,7 +385,7 @@
     }
 
     &__msg {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: var(--color-status-failed);
         line-height: 1.4;
     }

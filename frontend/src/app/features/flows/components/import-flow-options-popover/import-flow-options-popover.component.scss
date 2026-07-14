@@ -14,7 +14,7 @@
 .popover__header {
     padding: 0.75rem 1rem;
     color: var(--color-text-primary);
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     font-weight: 600;
     border-bottom: 1px solid var(--color-divider-subtle);
 }
@@ -40,11 +40,11 @@
 .popover__row--nested {
     padding-left: 2.25rem;
     background: var(--color-background-body);
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     animation: slideDownFadeIn 0.2s ease-out;
 
     .popover__label {
-        font-size: 0.8rem;
+        font-size: var(--font-size-sm);
         font-weight: 400;
         color: var(--color-text-secondary);
     }
@@ -69,7 +69,7 @@
     align-items: center;
     gap: 0.4rem;
     color: var(--color-text-primary);
-    font-size: 0.8125rem;
+    font-size: var(--font-size-sm);
     font-weight: 500;
 }
 
@@ -118,7 +118,7 @@
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     cursor: pointer;
     transition:
         color 0.2s ease,
@@ -155,7 +155,7 @@
     background: transparent;
     border: none;
     color: var(--color-text-secondary);
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     cursor: pointer;
     padding: 0.25rem 0.4rem;
     border-radius: var(--radius-sm);

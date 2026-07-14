@@ -69,7 +69,7 @@
             justify-content: center;
 
             i {
-                font-size: 22px;
+                font-size: var(--font-size-2xl);
             }
         }
 
@@ -108,7 +108,7 @@
 
         .group-name {
             color: var(--white);
-            font-size: 13px;
+            font-size: var(--font-size-sm);
             font-weight: 500;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -117,7 +117,7 @@
 
             .group-status {
                 margin-left: 6px;
-                font-size: 11px;
+                font-size: var(--font-size-xs);
                 font-weight: 400;
                 color: var(--white-alpha-55);
             }
@@ -169,7 +169,7 @@
         padding: 1rem;
         text-align: center;
         color: var(--gray-500);
-        font-size: 13px;
+        font-size: var(--font-size-sm);
     }
 }
 

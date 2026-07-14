@@ -23,7 +23,7 @@
     border-bottom: 1px solid var(--color-divider-subtle);
 
     .title {
-        font-size: 1rem;
+        font-size: var(--font-size-lg);
         font-weight: 500;
         margin: 0;
     }
@@ -60,7 +60,7 @@
         background: transparent;
         border: none;
         color: var(--color-text-secondary);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         padding: 0.4rem 0.25rem;
         cursor: pointer;
         border-bottom: 2px solid transparent;
@@ -93,7 +93,7 @@
 }
 
 .condition-heading {
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     color: var(--color-text-primary);
     display: flex;
     align-items: center;
@@ -119,7 +119,7 @@
         border: 1px solid var(--color-input-border);
         border-radius: var(--radius-md);
         color: var(--color-text-primary);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         cursor: pointer;
         text-align: left;
 
@@ -163,7 +163,7 @@
         border: none;
         border-radius: var(--radius-sm);
         color: var(--color-text-primary);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
         text-align: left;
         cursor: pointer;
 
@@ -183,7 +183,7 @@
     border: 1px solid var(--color-input-border);
     border-radius: var(--radius-md);
     color: var(--color-text-primary);
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     width: 100%;
     box-sizing: border-box;
 
@@ -214,7 +214,7 @@
         background: transparent;
         border: none;
         color: var(--color-text-secondary);
-        font-size: 0.8rem;
+        font-size: var(--font-size-sm);
         font-weight: 500;
         cursor: pointer;
         transition:

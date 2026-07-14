@@ -10,7 +10,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     font-weight: 600;
     color: var(--white);
     border: 2px solid var(--graphite-875);
@@ -24,7 +24,7 @@
 
     &--overflow {
         background-color: var(--gray-600);
-        font-size: 10px;
+        font-size: var(--font-size-2xs);
     }
 
     &__img {

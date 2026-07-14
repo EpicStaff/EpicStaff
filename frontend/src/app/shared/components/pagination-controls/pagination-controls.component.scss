@@ -18,7 +18,7 @@
     color: var(--color-text-primary);
     border: none;
     padding: 0.4rem 0.75rem;
-    font-size: 0.9rem;
+    font-size: var(--font-size-md);
     border-radius: var(--radius-sm);
     cursor: pointer;
     transition:

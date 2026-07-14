@@ -18,7 +18,7 @@
 
     &__title {
         margin: 0;
-        font-size: 1.25rem;
+        font-size: var(--font-size-2xl);
         font-weight: 400;
         color: var(--color-text-primary);
     }
@@ -44,10 +44,10 @@
         border: 1px solid var(--red-alpha-30);
         border-radius: var(--radius-lg);
         color: var(--red-500);
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
 
         mat-icon {
-            font-size: 1.25rem;
+            font-size: var(--font-size-2xl);
             width: 1.25rem;
             height: 1.25rem;
         }

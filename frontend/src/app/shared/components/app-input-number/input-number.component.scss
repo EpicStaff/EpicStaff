@@ -38,7 +38,7 @@ input[type='number'] {
         background: var(--color-line);
         color: var(--color-text-primary);
         cursor: pointer;
-        font-size: 1.75rem;
+        font-size: var(--font-size-4xl);
         line-height: 100%;
 
         &:disabled {
@@ -82,12 +82,12 @@ input[type='number'] {
     &--mod-default {
         height: 40px;
         padding: 0 2.5rem;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
     }
 
     &--mod-small {
         height: 28px;
         padding: 0.625rem 0.5rem;
-        font-size: 0.625rem;
+        font-size: var(--font-size-2xs);
     }
 }

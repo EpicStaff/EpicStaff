@@ -17,7 +17,7 @@
         background-color: var(--color-input-background);
         color: var(--accent-color);
         position: relative;
-        font-size: 0.875rem;
+        font-size: var(--font-size-md);
     }
 
     &__add-btn {

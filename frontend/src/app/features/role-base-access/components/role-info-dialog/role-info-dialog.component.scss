@@ -16,7 +16,7 @@
         border-bottom: 1px solid var(--color-divider-subtle);
 
         .title {
-            font-size: 1.25rem;
+            font-size: var(--font-size-2xl);
         }
 
         .close-btn {
@@ -42,7 +42,7 @@
         .role-avatar {
             width: 80px;
             height: 80px;
-            font-size: 28px;
+            font-size: var(--font-size-4xl);
             font-weight: 500;
             border-radius: 50%;
         }
@@ -53,13 +53,13 @@
         }
 
         .role-name {
-            font-size: 24px;
+            font-size: var(--font-size-3xl);
             font-weight: 500;
             color: var(--color-text-primary);
         }
 
         .role-desc {
-            font-size: 14px;
+            font-size: var(--font-size-md);
             color: var(--color-text-secondary);
         }
     }

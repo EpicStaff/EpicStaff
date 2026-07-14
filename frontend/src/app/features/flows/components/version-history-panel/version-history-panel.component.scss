@@ -22,7 +22,7 @@
 
     h2 {
         margin: 0;
-        font-size: 1rem;
+        font-size: var(--font-size-lg);
         font-weight: 600;
         color: var(--white);
     }
@@ -49,13 +49,13 @@
 
     h2 {
         margin: 0 0 0.5rem;
-        font-size: 0.95rem;
+        font-size: var(--font-size-lg);
         font-weight: 500;
     }
 
     h3 {
         margin: 0;
-        font-size: 0.8rem;
+        font-size: var(--font-size-sm);
         font-weight: 400;
         color: var(--gray-600);
     }
@@ -99,7 +99,7 @@
     border-radius: var(--radius-sm);
     outline: none;
     color: var(--white);
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     font-weight: 500;
     padding: 2px 6px;
     font-family: inherit;
@@ -108,7 +108,7 @@
 }
 
 .version-edit-textarea {
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
     font-weight: 400;
     color: var(--gray-400);
     resize: none;
@@ -118,7 +118,7 @@
 }
 
 .version-name {
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     font-weight: 500;
     color: var(--white);
     white-space: nowrap;
@@ -127,7 +127,7 @@
 }
 
 .version-description {
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
     color: var(--gray-400);
     white-space: nowrap;
     overflow: hidden;
@@ -135,7 +135,7 @@
 }
 
 .version-date {
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     color: #777;
 }
 
@@ -170,7 +170,7 @@
     color: var(--white);
     border: none;
     border-radius: var(--radius-md);
-    font-size: 0.875rem;
+    font-size: var(--font-size-md);
     font-weight: 500;
     cursor: pointer;
     transition: background 0.2s;
@@ -192,7 +192,7 @@
     background: none;
     border: none;
     text-align: left;
-    font-size: 0.85rem;
+    font-size: var(--font-size-md);
     color: var(--gray-300);
     cursor: pointer;
 

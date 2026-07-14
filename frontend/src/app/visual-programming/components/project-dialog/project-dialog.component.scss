@@ -30,7 +30,7 @@
     }
 
     .title {
-        font-size: 1.125rem;
+        font-size: var(--font-size-xl);
         font-weight: 600;
         white-space: nowrap;
         overflow: hidden;
@@ -50,7 +50,7 @@
     gap: 0.5rem;
 
     .esc-label {
-        font-size: 0.75rem;
+        font-size: var(--font-size-xs);
         color: var(--gray-600);
         font-weight: 500;
         padding: 0.15rem 0.3rem;
@@ -60,7 +60,7 @@
     }
 
     i {
-        font-size: 1.25rem;
+        font-size: var(--font-size-2xl);
         cursor: pointer;
         transition: color 0.2s ease;
 

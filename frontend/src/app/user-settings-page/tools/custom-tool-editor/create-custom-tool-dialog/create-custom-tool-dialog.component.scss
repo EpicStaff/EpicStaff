@@ -26,7 +26,7 @@
 
         .title {
             margin: 0;
-            font-size: 20px;
+            font-size: var(--font-size-2xl);
             line-height: 100%;
             font-weight: 500;
             color: var(--white);
@@ -133,7 +133,7 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         line-height: 130%;
         font-weight: 700;
         color: var(--white);
@@ -199,7 +199,7 @@
 
             h3 {
                 margin: 0;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 line-height: 18px;
                 font-weight: 500;
                 color: var(--fog-200);
@@ -216,7 +216,7 @@
 
     .error-message {
         margin: 0;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: #ff5c5c;
     }
 
@@ -236,7 +236,7 @@
     }
 
     .parameters-issue-label {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         font-weight: 500;
         color: var(--red-400);
         background: var(--red-alpha-10);
@@ -273,7 +273,7 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        font-size: 14px;
+        font-size: var(--font-size-md);
         line-height: 18px;
         font-weight: 500;
         color: var(--fog-200);
@@ -313,13 +313,13 @@
         min-width: 0;
         gap: 8px;
         color: var(--white);
-        font-size: 14px;
+        font-size: var(--font-size-md);
         line-height: 18px;
         font-weight: 600;
 
         small {
             color: #9b9ba6;
-            font-size: 13px;
+            font-size: var(--font-size-sm);
             font-weight: 400;
             margin-left: 4px;
         }

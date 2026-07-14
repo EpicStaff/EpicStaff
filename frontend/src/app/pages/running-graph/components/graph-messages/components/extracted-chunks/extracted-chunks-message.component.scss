@@ -22,7 +22,7 @@
 
 .play-arrow i {
     color: #5c7cfa;
-    font-size: 1.1rem;
+    font-size: var(--font-size-xl);
     transition: transform 0.3s ease;
 }
 
@@ -39,21 +39,21 @@
 }
 
 .icon-container i {
-    font-size: 1.1rem;
+    font-size: var(--font-size-xl);
     color: var(--gray-900);
 }
 
 .title h3 {
     margin: 0;
     color: var(--gray-50);
-    font-size: 1rem;
+    font-size: var(--font-size-lg);
     font-weight: 600;
 }
 
 .subtitle {
     margin: 0;
     color: var(--gray-300);
-    font-size: 0.85rem;
+    font-size: var(--font-size-md);
 }
 
 .query {
@@ -74,7 +74,7 @@
     color: #bec8ff;
     padding: 0.15rem 0.65rem;
     border-radius: var(--radius-full);
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
 }
 
 .content {
@@ -102,12 +102,12 @@
 
 .label {
     display: block;
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     color: var(--gray-400);
 }
 
 .value {
-    font-size: 0.95rem;
+    font-size: var(--font-size-lg);
     color: var(--gray-50);
     font-weight: 600;
 }
@@ -149,7 +149,7 @@
 
 .chunk-source {
     color: var(--gray-200);
-    font-size: 0.85rem;
+    font-size: var(--font-size-md);
     flex: 1;
     white-space: nowrap;
     overflow: hidden;
@@ -157,7 +157,7 @@
 }
 
 .similarity {
-    font-size: 0.8rem;
+    font-size: var(--font-size-sm);
     color: var(--gray-300);
 }
 

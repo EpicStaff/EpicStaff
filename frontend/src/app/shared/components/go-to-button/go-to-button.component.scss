@@ -21,7 +21,7 @@
 
     &__text {
         line-height: 1;
-        font-size: 14px;
+        font-size: var(--font-size-md);
     }
 
     &:hover {

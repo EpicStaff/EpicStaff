@@ -23,7 +23,7 @@
     }
 
     .name {
-        font-size: 14px;
+        font-size: var(--font-size-md);
         color: var(--color-text-primary);
         overflow: hidden;
         text-overflow: ellipsis;
@@ -33,7 +33,7 @@
     }
 
     .size {
-        font-size: 12px;
+        font-size: var(--font-size-xs);
         color: var(--color-text-secondary);
         white-space: nowrap;
         flex-shrink: 0;
