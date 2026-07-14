@@ -12,7 +12,8 @@ This document describes the partial import/export system — how it works, how i
 2. [Key Components](#key-components)
 3. [How It Works](#how-it-works)
 4. [Differences from Full Import/Export](#differences-from-full-importexport)
-5. [API Endpoints](#api-endpoints)
+5. [Organization Scoping & Permissions](#organization-scoping--permissions)
+6. [API Endpoints](#api-endpoints)
 
 ---
 
@@ -53,9 +54,10 @@ The output is a plain dict whose top-level keys are `EntityType` string values (
 ### Partial Import
 
 1. **Collect nodes** — all node entity types present in the export data are gathered into a flat list. Each node dict is tagged with a `"node_type"` key so `GraphStrategy._create_nodes()` can dispatch to the correct strategy.
-2. **Import non-node dependencies** — entity types that are not nodes and not `GRAPH` are processed in `DEPENDENCY_ORDER`. For each entity, `find_existing()` is called first:
-   - If a match is found it is reused (`was_created=False`) and the old ID is mapped to the existing entity's ID.
-   - If no match is found, `import_entity()` creates a new instance (`was_created=True`).
+2. **Import non-node dependencies** — entity types that are not nodes and not `GRAPH` are processed in `DEPENDENCY_ORDER`. For each entity, `find_existing()` is called first (scoped to the active organization):
+   - If a match is found in the active org it is reused (`was_created=False`) and the old ID is mapped to the existing entity's ID.
+   - If no match is found, `import_entity()` creates a new instance (`was_created=True`) stamped with the active organization.
+   - Before each genuinely-new create, CREATE permission is required on the dependency's resource type (see [Organization Scoping & Permissions](#organization-scoping--permissions)).
 3. **Recreate graph children** — `GraphStrategy.recreate_graph_children()` is called with the target graph, the collected node list, and the edge lists. Internally it:
    - Creates all nodes, replacing each `node_name` suffix with the next available counter for the target graph to avoid name collisions.
    - Creates edges with node IDs remapped via the local `IDMapper`.
@@ -77,6 +79,36 @@ The entire operation runs inside a single `transaction.atomic()` block — a fai
 | `ImportSettings` (preserve_uuids, replace_existing, import_labels) | Supported | Not applicable |
 | Version conversion | Applied on import | Not applied (no `version` field in output) |
 | Labels | Exported and optionally imported | Not exported |
+
+---
+
+## Organization Scoping & Permissions
+
+Partial import/export are actions on the `Graph` viewset and run under the same RBAC layers as every other org-scoped endpoint.
+
+**Active organization.** The active org is resolved from the `X-Organization-Id` header (`OrgContextService`). The target graph is fetched through the org-scoped queryset, so a graph in another org returns 404. Imported **dependencies** (Crew, Agent, LLM/embedding/realtime configs, tools) are created stamped with the active org; `find_existing()` reuse is scoped to the active org, so a dependency id in the file that matches another org's row is not reused — a fresh row is created in the active org. Nodes carry no org column of their own; they attach to the target graph and inherit its org.
+
+**View-level verb gate (`HasOrgPermission`).**
+
+| Action | Required permission |
+|---|---|
+| `partial-export` | `FLOWS` · `EXPORT` |
+| `partial-import` | `FLOWS` · `UPDATE` (it mutates an existing graph) |
+
+**Per-dependency create enforcement.** Passing the view gate is not sufficient to create the dependencies an import pulls in. For every genuinely-new dependency (a `find_existing` miss), the caller must have `CREATE` on that dependency's resource type, mapped via `ENTITY_RESOURCE_MAP`:
+
+| Dependency | Resource type |
+|---|---|
+| Crew | `PROJECTS` |
+| Agent | `AGENTS` |
+| LLM / embedding / realtime configs & models | `LLM_CONFIGS` |
+| Python code tool, MCP tool | `TOOLS` |
+
+Missing permissions are collected across the whole file and raised once as a single `403 PermissionDenied` (`"Missing CREATE permission on: <resources>. No changes were made."`). Reused (already-existing) dependencies need no create permission. Superadmins bypass both the verb gate and the per-dependency checks.
+
+**Atomicity.** The whole import runs in one `transaction.atomic()` block; a permission denial (or any error) rolls back every insert, so a rejected import leaves no partial data.
+
+This mirrors the enforcement applied to full graph/agent/crew import.
 
 ---
 
@@ -110,7 +142,7 @@ Imports nodes from a partial-export file into graph `{id}`.
 
 **Request body**: multipart/form-data upload of the JSON file produced by `partial-export`.
 
-**Response**: a summary of all entities created or reused during the import, built from the returned `IDMapper`.
+**Response**: `200` with a summary of all entities created or reused during the import, built from the returned `IDMapper`. Returns `403` if the caller lacks `FLOWS.UPDATE` on the graph, or lacks `CREATE` on any resource type an imported dependency would create (see [Organization Scoping & Permissions](#organization-scoping--permissions)); nothing is written in that case.
 
 ---
 

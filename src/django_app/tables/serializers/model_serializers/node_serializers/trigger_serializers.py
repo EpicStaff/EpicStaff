@@ -20,6 +20,7 @@ from tables.serializers.base_serializer import (
     ContentHashWritableMixin,
 )
 from tables.serializers.utils.mixins import NestedPythonCodeMixin, WebhookCreationMixin
+from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
 from tables.serializers.base_serializers import (
     WebhookTriggerNestedSerializer,
 )
@@ -34,6 +35,7 @@ class WebhookTriggerNodeSerializer(
     python_code = PythonCodeSerializer()
 
     webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = WebhookTriggerNode
@@ -112,6 +114,7 @@ class TelegramTriggerNodeSerializer(
     telegram_bot_api_key = SecretCharField()
     webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
     fields = TelegramTriggerNodeFieldSerializer(many=True)
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = TelegramTriggerNode
@@ -225,7 +228,7 @@ class ScheduleTriggerNodeSerializer(serializers.Serializer):
     """
 
     id = serializers.IntegerField(read_only=True)
-    graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all())
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     node_name = serializers.CharField(max_length=255)
     is_active = serializers.BooleanField(required=False)
     metadata = serializers.JSONField(required=False)

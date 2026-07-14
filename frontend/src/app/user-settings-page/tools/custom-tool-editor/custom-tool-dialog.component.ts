@@ -29,6 +29,8 @@ import {
     HelpTooltipComponent,
     JsonEditorComponent,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import {
     ArgsSchema,
@@ -62,6 +64,7 @@ interface DialogData {
         ButtonComponent,
         HelpTooltipComponent,
         JsonEditorComponent,
+        HasPermissionDirective,
         DynamicTableComponent,
         ToggleSwitchComponent,
     ],
@@ -382,4 +385,7 @@ export class CustomToolDialogComponent implements OnInit, AfterViewInit {
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

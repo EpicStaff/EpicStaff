@@ -26,6 +26,7 @@
     <div class="default-llms-card__controls">
         <div class="default-llms-card__select-wrapper">
             <app-select
+                [disabled]="!permissionService.can(ResourceCode.LlmConfigs, ActionCode.Update)"
                 [placeholder]="card().selectLabel"
                 [items]="selectItems()"
                 [selectedValue]="selectedConfigId()"
@@ -33,6 +34,7 @@
             />
         </div>
         <button
+            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
             class="default-llms-card__add"
             type="button"
             aria-label="Add"

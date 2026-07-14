@@ -15,8 +15,8 @@ def get_storage_manager() -> "StorageManager":  # noqa: F821
 
     The manager handles all org-path composition itself, so the backend is
     initialized with an empty organization_prefix. Singleton is safe because
-    the manager holds no per-request state — user_name and org_id are always
-    passed as arguments.
+    the manager holds no per-request state — org_id is always passed as an
+    argument.
     """
     global _storage_manager
     if _storage_manager is None:
