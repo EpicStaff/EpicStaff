@@ -86,7 +86,7 @@ def test_create_version_with_nonexistent_graph_returns_400(auth_client):
 
 @pytest.mark.django_db
 def test_list_versions_filters_by_graph_id(auth_client, graph, make_graph_version):
-    other_graph = Graph.objects.create(name="other")
+    other_graph = Graph.objects.create(name="other", org=graph.org)
 
     make_graph_version(name="v-main")
     make_graph_version(name="v-other", graph_obj=other_graph)

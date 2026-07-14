@@ -25,6 +25,7 @@
                     Collection Name
                 </label>
                 <input
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                     [formControl]="collectionName"
                     type="text"
                     id="collection-name"
@@ -34,6 +35,7 @@
                 <app-validation-errors [control]="collectionName" />
             </div>
             <app-svg-icon
+                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
                 icon="trash"
                 class="details__action details__action--large"
                 size="1.5rem"
@@ -47,6 +49,7 @@
             <app-drag-drop-area
                 (filesDropped)="onFilesDropped($event)"
                 [allowedTypes]="FILE_TYPES"
+                [permissionResource]="ResourceCode.KnowledgeSources"
                 class="details__main-wrapper"
             >
                 <div class="details__main-content">
@@ -94,6 +97,7 @@
                                     />
 
                                     <label
+                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                                         matTooltip="Add file"
                                         matTooltipPosition="above"
                                         (click)="fileInput.click()"

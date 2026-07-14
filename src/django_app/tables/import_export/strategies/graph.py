@@ -2,11 +2,10 @@ import re
 import uuid
 from copy import deepcopy
 
-from tables.models import Graph, Crew, Organization, GraphOrganization
+from tables.models import Graph, Crew, GraphOrganization
 from tables.models.label_models import Label
 from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.serializers.model_serializers import CrewSerializer
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.strategies.nodes.node_maps import (
@@ -83,13 +82,16 @@ class GraphStrategy(EntityImportExportStrategy):
         preserve_uuids = kwargs.get("preserve_uuids", False)
         replace_existing = kwargs.get("replace_existing", False)
         import_labels = kwargs.get("import_labels", True)
+        org_id = kwargs.get("org_id")
         import_data = data.copy()
         import_data["metadata"] = self.update_metadata(
             import_data["metadata"], id_mapper
         )
 
         if "name" in import_data:
-            existing_names = Graph.objects.values_list("name", flat=True)
+            existing_names = Graph.objects.filter(org_id=org_id).values_list(
+                "name", flat=True
+            )
             import_data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
@@ -108,12 +110,12 @@ class GraphStrategy(EntityImportExportStrategy):
         conditional_edges_data = import_data.pop("conditional_edge_list", [])
         labels_data = import_data.pop("labels", [])
 
+        import_data["org"] = org_id
         serializer = self.serializer_class(data=import_data)
         serializer.is_valid(raise_exception=True)
         graph = serializer.save()
 
-        organization = Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
-        GraphOrganization.objects.get_or_create(graph=graph, organization=organization)
+        GraphOrganization.objects.get_or_create(graph=graph, organization_id=org_id)
 
         self.recreate_graph_children(
             graph,

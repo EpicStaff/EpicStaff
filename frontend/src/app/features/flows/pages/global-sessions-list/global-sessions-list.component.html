@@ -18,6 +18,7 @@
             <div class="filter-controls">
                 <div class="right-actions">
                     <button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
                         class="delete-btn"
                         [class.invisible]="selectedIds().size === 0"
                         (click)="onBulkDelete()"
@@ -25,6 +26,7 @@
                         Delete Selected ({{ selectedIds().size }})
                     </button>
                     <app-action-dropdown-button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                         [label]="'Export (' + (selectedIds().size === 0 ? totalCount() : selectedIds().size) + ')'"
                         [items]="exportItems"
                         [disabled]="isDeleting() || isExporting() || (selectedIds().size === 0 && totalCount() === 0)"

@@ -17,7 +17,6 @@ class RunSessionSerializer(serializers.Serializer):
     files = serializers.DictField(
         child=serializers.CharField(), required=False, allow_null=True, default=dict
     )
-    username = serializers.CharField(required=False)
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
@@ -37,10 +36,6 @@ class AnswerToLLMSerializer(serializers.Serializer):
     execution_order = serializers.IntegerField(required=True)
     name = serializers.CharField()
     answer = serializers.CharField()
-
-
-class EnvironmentConfigSerializer(serializers.Serializer):
-    data = serializers.DictField(required=True)
 
 
 class InitRealtimeSerializer(serializers.Serializer):

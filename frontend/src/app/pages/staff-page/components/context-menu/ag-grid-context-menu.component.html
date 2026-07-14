@@ -7,14 +7,20 @@
     }"
 >
     <ul>
-        <li (click)="onAddEmptyAgentAbove()">
+        <li
+            *appHasPermission="[permissionResource, ActionCode.Create]"
+            (click)="onAddEmptyAgentAbove()"
+        >
             <app-svg-icon
                 icon="row-insert-top"
                 size="1rem"
             />
             <span>Add Empty Row Above</span>
         </li>
-        <li (click)="onAddEmptyAgentBelow()">
+        <li
+            *appHasPermission="[permissionResource, ActionCode.Create]"
+            (click)="onAddEmptyAgentBelow()"
+        >
             <app-svg-icon
                 icon="row-insert-bottom"
                 size="1rem"
@@ -36,6 +42,7 @@
         </li> -->
         <li class="divider"></li>
         <li
+            *appHasPermission="[permissionResource, ActionCode.Delete]"
             (click)="onDelete()"
             class="delete-option"
         >

@@ -210,11 +210,24 @@ Inverse of deactivate. No guards — always succeeds for an existing org.
 
 | Behavior | Note |
 |---|---|
-| Default org name | The org named `DEFAULT_ORGANIZATION_NAME` is **not** treated specially. It can be renamed, deactivated (subject to last-active guard), and reactivated like any other org. The env var only controls bootstrap. |
+| Default org name | The default org is identified by the internal `is_default` flag, **not** by its name. `DEFAULT_ORGANIZATION_NAME` only seeds the org's *initial* name at bootstrap. Renaming is fully safe: the flag (and every resource FK) is unaffected. The default org is still otherwise unprivileged for management ops (rename / deactivate / reactivate), subject only to the last-active-org guard. |
 | Inactive orgs in the org switcher | `/api/profile/` filters inactive-org memberships out of `memberships[]` server-side. The user never sees deactivated orgs in their own profile. Admin endpoints still show every membership unchanged. |
+| Superadmin org switcher | A superadmin's `/api/profile/` returns every **active** organization in `memberships[]` (each with the `Superadmin` role), so the switcher can reach any org. This list is computed on read from the `Organization` table — the extra entries are **not** `OrganizationUser` rows and do **not** affect `member_count`, which counts stored memberships only. |
 | Renaming behavior | Surrounding whitespace is trimmed. Empty / whitespace-only is rejected. Case-insensitive uniqueness — `"Acme"` and `"acme"` collide. |
 | 401 vs 403 | 401 = no/expired token (re-login). 403 = valid JWT but `is_superadmin: false` (redirect away from admin panel). |
 | `admins[]` in list | Only the list endpoint includes `admins[]`. Items are users with role `Org Admin` for that org, ordered by `joined_at, id`. If an org has zero Org Admins, the field falls back to a single-item list containing the **oldest active superadmin** in the system. The same superadmin may appear under multiple orgs. If no active superadmin exists, the array is `[]`. |
+
+---
+
+## First-setup → name your organization (FE flow)
+
+`POST /api/auth/first-setup/` creates the org with the configured default name
+and returns it in the 201 body as `organization.id`. To let the new superadmin
+choose a name, the FE calls `PATCH /api/admin/organizations/{organization.id}/`
+with `{"name": "..."}`, authenticated with the `access` token from the same
+response. If the first-setup response was lost (reload), the id is recoverable
+from `GET /api/profile/` → `memberships[]`. No dedicated endpoint exists or is
+needed.
 
 ---
 

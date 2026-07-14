@@ -88,22 +88,21 @@
         }
     }
 
-    &__tab-icon {
-        font-size: 20px;
-        line-height: 1;
-        color: inherit;
-    }
-
-    &__tabs-separator {
-        padding: 0 6px;
+    &__tab + &__tab::before {
+        content: '/';
+        margin-right: 10px;
         color: var(--color-text-secondary, var(--color-text-primary));
         user-select: none;
         font-size: 20px;
         font-weight: 500;
         line-height: 1;
-        height: 100%;
-        display: inline-flex;
-        align-items: center;
+        pointer-events: none;
+    }
+
+    &__tab-icon {
+        font-size: 20px;
+        line-height: 1;
+        color: inherit;
     }
 
     &__content {

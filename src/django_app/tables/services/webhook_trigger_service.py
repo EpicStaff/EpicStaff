@@ -52,6 +52,7 @@ class WebhookTriggerService(metaclass=SingletonMeta):
 
         webhook_trigger_node_list = WebhookTriggerNode.objects.filter(**filters)
 
+        # TODO: rbac refactor
         for webhook_trigger_node in webhook_trigger_node_list:
             graph_organization = GraphOrganization.objects.filter(
                 graph=webhook_trigger_node.graph

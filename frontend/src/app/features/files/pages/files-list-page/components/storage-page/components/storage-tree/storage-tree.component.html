@@ -18,6 +18,7 @@
     <div class="storage-tree__toolbar">
         <span class="storage-tree__toolbar-label">Folders</span>
         <button
+            *appHasPermission="[ResourceCode.Files, [ActionCode.Create, ActionCode.Update]]"
             class="storage-tree__toolbar-btn"
             aria-label="Add folder"
             matTooltip="Create folder"
@@ -128,6 +129,7 @@
                     [class.storage-tree__hover-actions--visible]="hoveredItem() === node"
                 >
                     <button
+                        *appHasPermission="[ResourceCode.Files, [ActionCode.Create, ActionCode.Update]]"
                         class="storage-tree__hover-btn storage-tree__hover-btn--plus"
                         aria-label="Add folder"
                         matTooltip="Create folder"
@@ -225,6 +227,7 @@
         [style.top.px]="moreMenuPosition().y"
     >
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
             class="storage-tree__context-menu-item"
             [class.storage-tree__context-menu-item--disabled]="selectedPaths().size === 0"
             [disabled]="selectedPaths().size === 0"
@@ -233,6 +236,7 @@
             Download Selected
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
             class="storage-tree__context-menu-item"
             (click)="onMoreMenuAction('download-all')"
         >
@@ -240,6 +244,7 @@
         </button>
         <div class="storage-tree__context-menu-divider"></div>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
             class="storage-tree__context-menu-item"
             [class.storage-tree__context-menu-item--disabled]="selectedPaths().size === 0"
             [disabled]="selectedPaths().size === 0"
@@ -262,30 +267,35 @@
         [style.top.px]="contextMenuPosition().y"
     >
         <button
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('add-to-flow')"
         >
             Add to flow
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('download')"
         >
             Download
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('copy')"
         >
             Copy to...
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('duplicate-here')"
         >
             Duplicate here
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('rename')"
         >
@@ -299,6 +309,7 @@
         </button>
         <div class="storage-tree__context-menu-divider"></div>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('delete')"
         >

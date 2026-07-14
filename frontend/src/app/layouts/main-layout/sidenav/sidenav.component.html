@@ -32,70 +32,74 @@
 
     <ul class="sidenav-nav main-nav">
         @for (item of topNavItems; track item.id) {
-            <li
-                class="sidenav-nav-item"
-                (mouseenter)="item.showTooltip = true"
-                (mouseleave)="item.showTooltip = false"
-            >
-                <div class="tooltip-wrapper">
-                    <a
-                        class="sidenav-nav-link"
-                        [routerLink]="item.routeLink || null"
-                        routerLinkActive="active"
-                        [routerLinkActiveOptions]="{ exact: false }"
-                        (click)="item.action ? handleItemClick(item, $event) : null"
-                        [attr.href]="item.routeLink || (item.action ? '#' : null)"
-                    >
-                        <div class="sidenav-link-icon">
-                            @if (item.icon) {
-                                <app-svg-icon
-                                    [icon]="item.icon"
-                                    size="1.4rem"
-                                />
-                            }
-                        </div>
-                    </a>
-                    <app-tooltip
-                        [text]="item.label"
-                        [visible]="item.showTooltip"
-                    ></app-tooltip>
-                </div>
-            </li>
+            @if (item.isPermitted) {
+                <li
+                    class="sidenav-nav-item"
+                    (mouseenter)="item.showTooltip = true"
+                    (mouseleave)="item.showTooltip = false"
+                >
+                    <div class="tooltip-wrapper">
+                        <a
+                            class="sidenav-nav-link"
+                            [routerLink]="item.routeLink || null"
+                            routerLinkActive="active"
+                            [routerLinkActiveOptions]="{ exact: false }"
+                            (click)="item.action ? handleItemClick(item, $event) : null"
+                            [attr.href]="item.routeLink || (item.action ? '#' : null)"
+                        >
+                            <div class="sidenav-link-icon">
+                                @if (item.icon) {
+                                    <app-svg-icon
+                                        [icon]="item.icon"
+                                        size="1.4rem"
+                                    />
+                                }
+                            </div>
+                        </a>
+                        <app-tooltip
+                            [text]="item.label"
+                            [visible]="item.showTooltip"
+                        ></app-tooltip>
+                    </div>
+                </li>
+            }
         }
     </ul>
 
     <ul class="sidenav-nav bottom-nav">
         @for (item of bottomNavItems; track item.id) {
-            <li
-                class="sidenav-nav-item"
-                (mouseenter)="item.showTooltip = true"
-                (mouseleave)="item.showTooltip = false"
-            >
-                <div class="tooltip-wrapper">
-                    <a
-                        class="sidenav-nav-link"
-                        [routerLink]="item.routeLink || null"
-                        routerLinkActive="active"
-                        [routerLinkActiveOptions]="{ exact: false }"
-                        (click)="handleItemClick(item, $event)"
-                        [attr.href]="item.routeLink || (item.action ? '#' : null)"
-                    >
-                        <div class="sidenav-link-icon">
-                            @if (item.icon) {
-                                <app-svg-icon
-                                    [icon]="item.icon"
-                                    size="1.4rem"
-                                />
-                            }
-                        </div>
-                    </a>
-                    <app-tooltip
-                        [text]="item.label"
-                        [visible]="item.showTooltip"
-                        [class]="item.customClass || ''"
-                    ></app-tooltip>
-                </div>
-            </li>
+            @if (item.isPermitted) {
+                <li
+                    class="sidenav-nav-item"
+                    (mouseenter)="item.showTooltip = true"
+                    (mouseleave)="item.showTooltip = false"
+                >
+                    <div class="tooltip-wrapper">
+                        <a
+                            class="sidenav-nav-link"
+                            [routerLink]="item.routeLink || null"
+                            routerLinkActive="active"
+                            [routerLinkActiveOptions]="{ exact: false }"
+                            (click)="handleItemClick(item, $event)"
+                            [attr.href]="item.routeLink || (item.action ? '#' : null)"
+                        >
+                            <div class="sidenav-link-icon">
+                                @if (item.icon) {
+                                    <app-svg-icon
+                                        [icon]="item.icon"
+                                        size="1.4rem"
+                                    />
+                                }
+                            </div>
+                        </a>
+                        <app-tooltip
+                            [text]="item.label"
+                            [visible]="item.showTooltip"
+                            [class]="item.customClass || ''"
+                        ></app-tooltip>
+                    </div>
+                </li>
+            }
         }
 
         @if (user(); as user) {

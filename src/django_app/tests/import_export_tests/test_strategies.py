@@ -67,7 +67,7 @@ class TestAgentStrategy:
         assert len(deps[EntityType.PYTHON_CODE_TOOL]) >= 1
         assert EntityType.REALTIME_CONFIG in deps
 
-    def test_create_entity(self, rich_seeded_db, export_service):
+    def test_create_entity(self, rich_seeded_db, export_service, default_org):
         agent = rich_seeded_db["agents"][0]
         export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
 
@@ -76,7 +76,7 @@ class TestAgentStrategy:
         agent_data = deepcopy(export_data[EntityType.AGENT][0])
 
         agent_count_before = Agent.objects.count()
-        new_agent = strategy.create_entity(agent_data, mapper)
+        new_agent = strategy.create_entity(agent_data, mapper, org_id=default_org.id)
 
         assert Agent.objects.count() == agent_count_before + 1
         assert new_agent.role == agent.role
@@ -137,7 +137,7 @@ class TestCrewStrategy:
         assert EntityType.LLM_CONFIG in deps
         assert EntityType.EMBEDDING_CONFIG in deps
 
-    def test_create_entity(self, rich_seeded_db, export_service):
+    def test_create_entity(self, rich_seeded_db, export_service, default_org):
         crew = rich_seeded_db["crews"][0]
         export_data = export_service.export_entities(EntityType.CREW, [crew.id])
 
@@ -146,13 +146,13 @@ class TestCrewStrategy:
         crew_data = deepcopy(export_data[EntityType.CREW][0])
 
         crew_count_before = Crew.objects.count()
-        new_crew = strategy.create_entity(crew_data, mapper)
+        new_crew = strategy.create_entity(crew_data, mapper, org_id=default_org.id)
 
         assert Crew.objects.count() == crew_count_before + 1
         assert new_crew.agents.count() == 2
         assert new_crew.task_set.count() == 2
 
-    def test_name_uniqueness(self, rich_seeded_db, export_service):
+    def test_name_uniqueness(self, rich_seeded_db, export_service, default_org):
         crew = rich_seeded_db["crews"][0]
         export_data = export_service.export_entities(EntityType.CREW, [crew.id])
 
@@ -160,7 +160,7 @@ class TestCrewStrategy:
         strategy = _get_strategy(EntityType.CREW)
         crew_data = deepcopy(export_data[EntityType.CREW][0])
 
-        new_crew = strategy.create_entity(crew_data, mapper)
+        new_crew = strategy.create_entity(crew_data, mapper, org_id=default_org.id)
         assert new_crew.name == "crew1 (2)"
 
 
@@ -198,7 +198,7 @@ class TestGraphStrategy:
         graph_data = deepcopy(export_data[EntityType.GRAPH][0])
 
         graph_count_before = Graph.objects.count()
-        new_graph = strategy.create_entity(graph_data, mapper)
+        new_graph = strategy.create_entity(graph_data, mapper, org_id=default_org.id)
 
         assert Graph.objects.count() == graph_count_before + 1
         assert new_graph.name == "graph1 (2)"
@@ -270,7 +270,7 @@ class TestLLMConfigStrategy:
         assert data["custom_name"] == "MyGPT-4o"
         assert data["temperature"] == 0.5
 
-    def test_create_entity(self, rich_seeded_db, export_service):
+    def test_create_entity(self, rich_seeded_db, export_service, default_org):
         agent = rich_seeded_db["agents"][0]
         export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
 
@@ -281,7 +281,7 @@ class TestLLMConfigStrategy:
         mapper = _build_identity_mapper(export_data)
 
         config_count_before = LLMConfig.objects.count()
-        new_config = strategy.create_entity(config_data, mapper)
+        new_config = strategy.create_entity(config_data, mapper, org_id=default_org.id)
 
         assert LLMConfig.objects.count() == config_count_before + 1
         assert new_config.custom_name == "MyGPT-4o (2)"

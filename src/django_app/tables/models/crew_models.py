@@ -2,6 +2,7 @@ from typing import Any
 from django.db import models
 from django.db.models import CheckConstraint
 from tables.models import DefaultBaseModel, AbstractDefaultFillableModel, Process
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 from django.core.exceptions import ValidationError
 
 
@@ -67,7 +68,7 @@ class DefaultAgentConfig(DefaultBaseModel):
         return "Default Agent Config"
 
 
-class Agent(AbstractDefaultFillableModel):
+class Agent(OrgScopedModel, AbstractDefaultFillableModel):
     tags = models.ManyToManyField(to="AgentTag", blank=True, default=[])
     role = models.TextField()
     goal = models.TextField()
@@ -204,7 +205,7 @@ class AgentMcpTools(models.Model):
         unique_together = ("agent_id", "mcptool_id")
 
 
-class Crew(AbstractDefaultFillableModel):
+class Crew(OrgScopedModel, AbstractDefaultFillableModel):
     metadata = models.JSONField(default=dict)
     tags = models.ManyToManyField(to="CrewTag", blank=True, default=[])
     description = models.TextField(null=True, blank=True)

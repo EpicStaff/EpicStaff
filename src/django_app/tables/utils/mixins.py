@@ -235,6 +235,12 @@ class SSEMixin(View, ABC):
             _active_sse_count -= 1
             _log_sse_state("CLOSE", view_name)
 
+    async def authorize(self, request, *args, **kwargs):
+        """Optional post-ticket authorization hook. Runs after the SSE ticket
+        resolves to `self.user`. Return an HttpResponse to deny (short-circuit
+        the stream), or None to proceed. Default: allow."""
+        return None
+
     async def get(self, request, *args, **kwargs):
         ticket = request.GET.get("ticket", "")
         user = await sync_to_async(sse_ticket_service.consume)(ticket)
@@ -248,6 +254,10 @@ class SSEMixin(View, ABC):
                 status=401,
             )
         self.user = user
+
+        auth_response = await self.authorize(request, *args, **kwargs)
+        if auth_response is not None:
+            return auth_response
 
         test_mode = bool(request.GET.get("test", ""))
         logger.debug(f"Started SSE {'with' if test_mode else 'without'} test mode")

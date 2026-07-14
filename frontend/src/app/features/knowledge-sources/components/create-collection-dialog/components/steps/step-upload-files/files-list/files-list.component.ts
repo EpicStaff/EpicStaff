@@ -18,6 +18,7 @@ import {
     ListComponent,
     ListRowComponent,
 } from '@shared/components';
+import { ResourceCode } from '@shared/models';
 
 import { FileSizePipe } from '../../../../../../../../shared/pipes/file-size.pipe';
 import { DisplayedListDocument } from '../../../../../../models/document.model';
@@ -75,4 +76,6 @@ export class FilesListComponent {
                 });
             });
     }
+
+    protected readonly ResourceCode = ResourceCode;
 }

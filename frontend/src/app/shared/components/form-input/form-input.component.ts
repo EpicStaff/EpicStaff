@@ -51,7 +51,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     [class.has-toggle]="hasToggle"
                     [class.masked]="isMasked"
                     [class.error]="errorMessage"
-                    [disabled]="disabled"
+                    [disabled]="isDisabled"
                     [style.--active-color]="activeColor"
                 />
                 @if (hasToggle) {
@@ -207,6 +207,7 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
 
     private _value: string = '';
     private _disabled: boolean = false;
+    private _controlDisabled: boolean = false;
 
     onChange: (value: string) => void = () => {};
     onTouched: () => void = () => {};
@@ -227,6 +228,10 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
 
     set disabled(val: boolean) {
         this._disabled = val;
+    }
+
+    get isDisabled(): boolean {
+        return this._disabled || this._controlDisabled;
     }
 
     get isSecret(): boolean {
@@ -278,7 +283,7 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     }
 
     setDisabledState(isDisabled: boolean): void {
-        this._disabled = isDisabled;
+        this._controlDisabled = isDisabled;
     }
 
     ngAfterViewInit(): void {

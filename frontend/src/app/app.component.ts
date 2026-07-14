@@ -1,5 +1,7 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { NavigationStart, Router, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 
 import { CustomThemeService } from './features/theme-customization/services/custom-theme.service';
 import { ToastComponent } from './services/notifications/notification/toast.component';
@@ -18,4 +20,12 @@ import { ToastComponent } from './services/notifications/notification/toast.comp
 })
 export class AppComponent {
     private readonly customThemeService = inject(CustomThemeService);
+    constructor(
+        private router: Router,
+        private cdkDialog: Dialog
+    ) {
+        this.router.events.pipe(filter((e) => e instanceof NavigationStart)).subscribe(() => {
+            this.cdkDialog.closeAll();
+        });
+    }
 }
