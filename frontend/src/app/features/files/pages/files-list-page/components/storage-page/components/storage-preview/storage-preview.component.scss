@@ -205,7 +205,7 @@
         padding: var(--space-3xs) var(--space-sm);
         font-size: var(--font-size-xs);
         color: var(--color-text-primary);
-        background: #d9d9de14;
+        background: var(--fog-alpha-8);
         border-radius: var(--radius-sm);
         z-index: 1;
     }

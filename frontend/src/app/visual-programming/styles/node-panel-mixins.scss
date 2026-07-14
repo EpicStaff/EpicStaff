@@ -73,7 +73,7 @@
     min-width: 80px;
 
     &:hover:enabled {
-        background-color: #c82333;
+        background-color: var(--red-500);
         transform: translateY(-1px);
     }
 

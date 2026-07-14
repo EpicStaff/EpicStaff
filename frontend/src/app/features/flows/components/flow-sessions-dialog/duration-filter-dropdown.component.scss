@@ -162,7 +162,7 @@
     cursor: pointer;
 
     &:hover {
-        border-color: #e0575b;
-        color: #e0575b;
+        border-color: var(--red-600);
+        color: var(--red-600);
     }
 }

@@ -167,14 +167,14 @@
     padding: var(--space-2xs) var(--space-sm);
     border: 1px solid var(--color-line);
     border-radius: var(--radius-sm);
-    background: #202022;
+    background: var(--graphite-875);
     color: var(--color-text-primary, var(--white));
     cursor: pointer;
     font-size: var(--font-size-sm);
     transition: border-color 0.2s ease;
 
     &:hover {
-        background-color: #262629;
+        background-color: var(--graphite-800);
     }
 
     &__label {
@@ -294,7 +294,7 @@
     }
 
     &:active {
-        background: #7d7aff;
+        background: var(--accent-color-hover);
     }
 }
 
@@ -323,7 +323,7 @@
         height: 24px;
         border-radius: var(--radius-sm);
         background-color: var(--accent-color);
-        color: white;
+        color: var(--white);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-regular);
         vertical-align: middle;

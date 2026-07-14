@@ -1,5 +1,5 @@
 @mixin auth-page {
-    background: #1a1b1c;
+    background: var(--graphite-950);
     min-height: 100vh;
     display: flex;
     flex-direction: column;

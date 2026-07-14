@@ -39,7 +39,7 @@
         bottom: calc(100% + 6px);
         left: 50%;
         transform: translateX(-50%);
-        background: #1e1e22;
+        background: var(--graphite-875);
         color: var(--color-text-primary);
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-regular);

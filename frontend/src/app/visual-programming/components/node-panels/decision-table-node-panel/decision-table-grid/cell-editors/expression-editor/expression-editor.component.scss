@@ -1,5 +1,5 @@
 .expression-editor-container {
-    background-color: #1e1e20;
+    background-color: var(--graphite-875);
     border: 1px solid var(--accent-color);
     border-radius: var(--radius-sm);
     box-shadow:
@@ -30,7 +30,7 @@
         right: 0;
         bottom: 0;
         z-index: 0;
-        background-color: #1e1e20;
+        background-color: var(--graphite-875);
         color: var(--color-text-primary);
         padding: var(--space-sm);
         font-family: var(--font-family-mono);

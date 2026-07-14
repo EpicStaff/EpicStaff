@@ -385,7 +385,7 @@ $radius: 8px;
     }
 
     &:hover:not(:disabled) {
-        background: #33333a;
+        background: var(--graphite-640);
         border-color: var(--white-alpha-20);
     }
 

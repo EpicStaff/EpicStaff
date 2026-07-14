@@ -422,7 +422,7 @@
         transition: background 0.2s ease;
 
         &:hover {
-            background: #7a6fff;
+            background: var(--accent-color);
         }
 
         i {
@@ -512,7 +512,7 @@
             opacity 0.2s ease;
 
         &:hover:not(:disabled) {
-            background: #7a6fff;
+            background: var(--accent-color);
         }
 
         &:disabled {

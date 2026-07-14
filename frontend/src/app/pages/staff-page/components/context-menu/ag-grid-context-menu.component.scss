@@ -1,6 +1,6 @@
 .custom-menu {
     position: fixed;
-    background: #1e1e1f;
+    background: var(--graphite-875);
     border: 1px solid #333741;
     border-radius: var(--radius-lg);
     box-shadow: 0 4px 12px var(--black-alpha-15);
@@ -27,7 +27,7 @@
 
             &.divider {
                 height: 1px;
-                background-color: #333741;
+                background-color: var(--graphite-650);
                 margin: var(--space-sm) 0;
                 padding: 0;
                 cursor: default;
@@ -35,7 +35,7 @@
             }
 
             &:not(.divider):hover {
-                background: #292a2f;
+                background: var(--graphite-800);
                 color: var(--white);
 
                 i.icon {

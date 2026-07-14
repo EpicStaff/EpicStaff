@@ -15,7 +15,7 @@
 
     .hero {
         margin-top: var(--space-4xl);
-        margin-bottom: 50px;
+        margin-bottom: var(--space-5xl);
         text-align: center;
 
         .title {
@@ -78,7 +78,7 @@
 
             &:hover {
                 border-color: var(--accent-color);
-                background: #25262a;
+                background: var(--graphite-800);
             }
 
             .icon {

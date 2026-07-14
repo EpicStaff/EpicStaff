@@ -16,7 +16,7 @@
     box-sizing: border-box;
 
     &:hover {
-        background: #313438;
+        background: var(--graphite-640);
     }
 
     &.selected {
@@ -177,7 +177,7 @@
             transition: background 0.15s ease;
 
             &:hover {
-                background: #313438;
+                background: var(--graphite-640);
             }
 
             .subflow-main {

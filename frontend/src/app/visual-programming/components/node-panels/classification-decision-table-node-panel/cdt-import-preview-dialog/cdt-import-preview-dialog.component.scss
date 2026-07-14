@@ -148,7 +148,7 @@
     thead th {
         position: sticky;
         top: 0;
-        background: #2a2a30;
+        background: var(--graphite-780);
         text-align: left;
         padding: var(--space-sm) var(--space-md);
         font-weight: var(--font-weight-medium);
@@ -201,7 +201,7 @@
         color: var(--white);
 
         &:hover {
-            background: #7a6fff;
+            background: var(--accent-color);
         }
     }
 }

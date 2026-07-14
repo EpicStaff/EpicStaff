@@ -76,7 +76,7 @@ app-flow-header {
 
     &:hover::after,
     &.dragging::after {
-        background-color: #675fff;
+        background-color: var(--accent-color);
     }
 
     &.collapsed {

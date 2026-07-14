@@ -260,7 +260,7 @@
                 fill: #9f6a00;
             }
             &.LLM-Node:not(.f-selected) {
-                fill: #e0575b;
+                fill: var(--red-600);
             }
             &.Project-Node:not(.f-selected) {
                 fill: var(--blue-500);
