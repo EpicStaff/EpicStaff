@@ -176,6 +176,7 @@ class PersistentVariablesService:
             return
         actual = self._actual(variables)
         persistent = variables.get(DOMAIN_PERSISTENT_KEY, {}) or {}
+        # TODO refactor to use user_variable for persistent variables
         paths = (persistent.get(DOMAIN_ORGANIZATION_KEY) or []) + (
             persistent.get(DOMAIN_USER_KEY) or []
         )
@@ -193,6 +194,7 @@ class PersistentVariablesService:
         No user-level variables flow through it in org-only scope; the row
         exists so `Session.graph_user` is a correct FK.
         """
+        # TODO refactor to use user_variable for persistent variables
         if user is None or getattr(user, "is_superadmin", False):
             return None
         membership = OrganizationUser.objects.filter(

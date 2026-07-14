@@ -129,6 +129,7 @@ class GraphOrganizationSerializer(serializers.ModelSerializer):
 
 
 class GraphOrganizationUserSerializer(serializers.ModelSerializer):
+    # TODO refactor to use user_variable for persistent variables
     class Meta:
         model = GraphOrganizationUser
         fields = ["id", "graph", "organization_user", "persistent_variables"]

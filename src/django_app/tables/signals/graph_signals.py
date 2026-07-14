@@ -70,7 +70,7 @@ def _sync_nested_dict(original, current, path=""):
     return updated, removed_paths, added_paths
 
 
-# TODO: rbac refactor
+# TODO refactor to use user_variable for persistent variables
 @receiver(post_save, sender=GraphOrganization)
 def update_organization_objects(sender, instance, created, **kwargs):
     """
@@ -97,7 +97,6 @@ def update_organization_objects(sender, instance, created, **kwargs):
         )
 
 
-# TODO: rbac refactor
 @receiver(post_delete, sender=GraphOrganization)
 def delete_related_graph_organization_users(sender, instance, **kwargs):
     """

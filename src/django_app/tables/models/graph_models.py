@@ -482,6 +482,7 @@ class BasePersistentEntity(models.Model):
 class GraphOrganization(BasePersistentEntity):
     # Org is derived from graph.org (a flow has exactly one owning org), so this
     # row is a 1:1 extension of Graph holding org-level persistent variables.
+    # TODO refactor to use user_variable for persistent variables
     user_variables = models.JSONField(
         default=dict,
         help_text="Seed template of variables copied into each user's GraphOrganizationUser row",
@@ -499,6 +500,7 @@ class GraphOrganization(BasePersistentEntity):
 class GraphOrganizationUser(BasePersistentEntity):
     # FK points at RBAC OrganizationUser (User x Org membership), so per-user
     # persistent state is scoped per-org as well
+    # TODO refactor to use user_variable for persistent variables
     organization_user = models.ForeignKey(
         "OrganizationUser",
         on_delete=models.CASCADE,

@@ -1694,6 +1694,7 @@ class GraphOrganizationViewSet(
     serializer_class = GraphOrganizationSerializer
 
 
+# TODO refactor to use user_variable for persistent variables
 class GraphOrganizationUserViewSet(
     OrgScopedChildViewSetMixin, viewsets.ReadOnlyModelViewSet
 ):
