@@ -1051,8 +1051,12 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private mergeMessages(incoming: GraphMessage[]): void {
+        // Dedup must be per raw message (getDedupKey), not per identity/context key
+        // (getMessageKey) — many stream events (task_start/tool_call/tool_result/task_finish)
+        // share the same coarse node_stream identity key, so using it here would collapse
+        // all but the first event of a node.
         const toAdd = incoming.filter((m) => {
-            const key = this.getMessageKey(m);
+            const key = this.getDedupKey(m);
             if (this.seenKeys.has(key)) return false;
             this.seenKeys.add(key);
             return true;
@@ -1062,8 +1066,9 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private insertSubgraphMessages(subgraphExecutionId: string, incoming: GraphMessage[]): void {
+        // See comment in mergeMessages: use the per-raw-message dedup key here too.
         const toAdd = incoming.filter((m) => {
-            const key = this.getMessageKey(m);
+            const key = this.getDedupKey(m);
             if (this.seenKeys.has(key)) return false;
             this.seenKeys.add(key);
             return true;
@@ -1499,6 +1504,13 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         if (type === MessageType.TASK_NODE_STREAM || type === MessageType.AGENT_NODE_STREAM) {
             return `node_stream_${type}_${message.name}`;
         }
+        return message.uuid ?? `${message.id}-${message.execution_order}-${message.created_at}`;
+    }
+
+    // Per-raw-message unique key used only for seenKeys dedup (see mergeMessages /
+    // insertSubgraphMessages). Unlike getMessageKey, this never collapses distinct raw
+    // messages onto a shared coarse key — every individual event must be kept.
+    private getDedupKey(message: GraphMessage): string {
         return message.uuid ?? `${message.id}-${message.execution_order}-${message.created_at}`;
     }
 

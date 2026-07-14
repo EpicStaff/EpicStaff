@@ -233,9 +233,11 @@ export interface CodeAgentStreamMessageData {
     message_type: MessageType.CODE_AGENT_STREAM;
 }
 
-// TaskNode / AgentNode stream events (tool_call / tool_result) — same envelope shape,
-// only message_type differs. AgentNode events MAY additionally carry `data.task` to
-// indicate which sub-task the tool activity belongs to (absent for single-task agents).
+// TaskNode / AgentNode stream events (task_start / tool_call / tool_result / task_finish) —
+// same envelope shape, only message_type differs. AgentNode events MAY additionally carry
+// `data.task` to indicate which sub-task the activity belongs to (absent for single-task
+// agents). task_start/task_finish events carry `data.task`, and task_finish additionally
+// carries the task's output text in `data.message`.
 export interface NodeStreamTaskRef {
     name: string;
     order: number;
@@ -260,12 +262,26 @@ export interface NodeStreamToolResultData {
     task?: NodeStreamTaskRef;
 }
 
+export interface NodeStreamTaskStartData {
+    task: NodeStreamTaskRef;
+}
+
+export interface NodeStreamTaskFinishData {
+    task: NodeStreamTaskRef;
+    message: string;
+    iterations?: number;
+    stop_reason?: string;
+    token_usage?: Record<string, number>;
+    tool_invocations?: number;
+    truncated?: boolean;
+}
+
 interface NodeStreamMessageDataBase {
-    event: 'tool_call' | 'tool_result';
+    event: 'task_start' | 'tool_call' | 'tool_result' | 'task_finish';
     step_id: number;
     is_final: boolean;
     sse_visible?: boolean;
-    data: NodeStreamToolCallData | NodeStreamToolResultData;
+    data: NodeStreamToolCallData | NodeStreamToolResultData | NodeStreamTaskStartData | NodeStreamTaskFinishData;
 }
 
 export interface TaskNodeStreamMessageData extends NodeStreamMessageDataBase {

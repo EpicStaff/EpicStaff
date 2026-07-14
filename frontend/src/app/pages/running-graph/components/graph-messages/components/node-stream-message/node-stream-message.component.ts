@@ -6,7 +6,7 @@ import {
     AgentNodeStreamMessageData,
     GraphMessage,
     MessageType,
-    NodeStreamTaskRef,
+    NodeStreamTaskFinishData,
     NodeStreamToolCallData,
     NodeStreamToolResultData,
     TaskNodeStreamMessageData,
@@ -15,19 +15,22 @@ import {
 type NodeStreamMessageData = TaskNodeStreamMessageData | AgentNodeStreamMessageData;
 type NodeStreamType = MessageType.TASK_NODE_STREAM | MessageType.AGENT_NODE_STREAM;
 
-interface NodeStreamStep {
+interface NodeStreamToolStep {
     key: string;
-    stepId: number;
-    toolCall: NodeStreamToolCallData | null;
-    toolResult: NodeStreamToolResultData | null;
-    task: NodeStreamTaskRef | null;
+    call: NodeStreamToolCallData | null;
+    result: NodeStreamToolResultData | null;
 }
 
 interface NodeStreamTaskGroup {
     key: string;
     taskName: string | null;
     order: number;
-    steps: NodeStreamStep[];
+    toolSteps: NodeStreamToolStep[];
+    message: string | null;
+    stopReason: string | null;
+    iterations: number | null;
+    toolInvocations: number | null;
+    tokenUsage: Record<string, number> | null;
 }
 
 // Icon/color per node type, matching the conventions already used by the sibling
@@ -73,9 +76,13 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                     @if (!isDone()) {
                         <span class="status-badge">working...</span>
                     }
-                    @if (totalStepCount() > 0) {
+                    @if (hasContent()) {
                         <span class="step-count">
-                            {{ totalStepCount() }} step{{ totalStepCount() !== 1 ? 's' : '' }}
+                            @if (namedTaskCount() > 0) {
+                                {{ namedTaskCount() }} task{{ namedTaskCount() !== 1 ? 's' : '' }}
+                            } @else {
+                                {{ stepCount() }} step{{ stepCount() !== 1 ? 's' : '' }}
+                            }
                         </span>
                     }
                 </div>
@@ -86,7 +93,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                 class="collapsible-content"
                 [@expandCollapse]="isExpanded() ? 'expanded' : 'collapsed'"
             >
-                @if (totalStepCount() > 0) {
+                @if (hasContent()) {
                     <div class="task-groups">
                         @for (group of taskGroups(); track group.key) {
                             <div class="task-group">
@@ -100,7 +107,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                                     </div>
                                 }
                                 <div class="steps-container">
-                                    @for (step of group.steps; track step.key) {
+                                    @for (step of group.toolSteps; track step.key) {
                                         <div class="step-item">
                                             <div
                                                 class="step-header"
@@ -128,7 +135,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                                                 [@expandCollapse]="isStepExpanded(step) ? 'expanded' : 'collapsed'"
                                             >
                                                 <div class="step-content">
-                                                    @if (step.toolCall; as call) {
+                                                    @if (step.call; as call) {
                                                         <div class="tool-call-item">
                                                             <div class="tool-call-label">Arguments</div>
                                                             <div class="tool-call-input">
@@ -140,7 +147,7 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                                                         </div>
                                                     }
 
-                                                    @if (step.toolResult; as result) {
+                                                    @if (step.result; as result) {
                                                         <div
                                                             class="tool-result-item"
                                                             [class.is-error]="result.is_error"
@@ -161,6 +168,28 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
                                         </div>
                                     }
                                 </div>
+
+                                @if (group.message; as taskMessage) {
+                                    <div class="task-output">
+                                        <div class="tool-call-label">Output</div>
+                                        <div class="task-output-text">{{ taskMessage }}</div>
+                                    </div>
+                                }
+
+                                @if (group.tokenUsage; as tokenUsage) {
+                                    <div class="token-usage">
+                                        Tokens:
+                                        @if (tokenUsage['total_tokens'] !== undefined) {
+                                            {{ tokenUsage['total_tokens'] }} total
+                                        }
+                                        @if (tokenUsage['prompt_tokens'] !== undefined) {
+                                            · {{ tokenUsage['prompt_tokens'] }} prompt
+                                        }
+                                        @if (tokenUsage['completion_tokens'] !== undefined) {
+                                            · {{ tokenUsage['completion_tokens'] }} completion
+                                        }
+                                    </div>
+                                }
                             </div>
                         }
                     </div>
@@ -374,6 +403,28 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
             font-style: italic;
             margin-top: 4px;
         }
+
+        .task-output {
+            background-color: var(--gray-800);
+            border: 1px solid var(--gray-750);
+            border-radius: 6px;
+            padding: 0.6rem 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        .task-output-text {
+            color: var(--gray-300);
+            font-size: 0.85rem;
+            margin-top: 3px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .token-usage {
+            color: var(--gray-500);
+            font-size: 0.75rem;
+            margin-top: 0.4rem;
+        }
     `,
 })
 export class NodeStreamMessageComponent {
@@ -395,86 +446,84 @@ export class NodeStreamMessageComponent {
     // message has already arrived — drives the "working..." badge and spinning icon state.
     readonly isDone = computed(() => this.isFinal() || this.nodeCompleted());
 
-    // Group all stream events for this node+type by step_id, pairing tool_call/tool_result
-    // that share a step_id (mirrors the step_id consolidation done by app-code-agent-stream-message).
-    readonly steps = computed<NodeStreamStep[]>(() => {
+    // Task-centric grouping: every task (task_start/task_finish) creates/keeps a group even
+    // when it never makes a tool call, so tool-less tasks still render with their output
+    // message. tool_call/tool_result events are paired by `tool_call_id === call.id`, NOT by
+    // shared step_id (they don't share one). Agents/tasks without `data.task` (TaskNode,
+    // single-task agents) collapse into one flat, header-less `__default__` group — same
+    // behavior as before.
+    readonly taskGroups = computed<NodeStreamTaskGroup[]>(() => {
         const message = this.message();
         const nodeName = message.name;
         const type = message.message_data.message_type;
 
-        const stepMap = new Map<number, NodeStreamStep>();
-        const order: number[] = [];
+        const groups = new Map<string, NodeStreamTaskGroup>();
+        const groupOrder: string[] = [];
 
         for (const msg of this.allMessages()) {
             const data = msg.message_data;
             if (!data || data.message_type !== type || msg.name !== nodeName) continue;
 
             const streamData = data as NodeStreamMessageData;
-            const stepId = streamData.step_id;
-            let step = stepMap.get(stepId);
-            if (!step) {
-                step = {
-                    key: `step_${stepId}`,
-                    stepId,
-                    toolCall: null,
-                    toolResult: null,
-                    task: null,
-                };
-                stepMap.set(stepId, step);
-                order.push(stepId);
-            }
+            const task = streamData.data.task;
+            const key = task ? `task_${task.order}_${task.name}` : '__default__';
 
-            if (streamData.event === 'tool_call') {
-                step.toolCall = streamData.data as NodeStreamToolCallData;
-            } else if (streamData.event === 'tool_result') {
-                step.toolResult = streamData.data as NodeStreamToolResultData;
-            }
-            if (!step.task && streamData.data.task) {
-                step.task = streamData.data.task;
-            }
-        }
-
-        return order.map((id) => stepMap.get(id)!);
-    });
-
-    // AgentNode steps carry an optional `data.task` — group under sub-task headers ordered
-    // by task.order when present, otherwise fall back to a single flat, header-less list.
-    readonly taskGroups = computed<NodeStreamTaskGroup[]>(() => {
-        const steps = this.steps();
-        const hasTaskInfo = steps.some((step) => !!step.task);
-        if (!hasTaskInfo) {
-            return [{ key: '__flat__', taskName: null, order: 0, steps }];
-        }
-
-        const groups = new Map<string, NodeStreamTaskGroup>();
-        for (const step of steps) {
-            const key = step.task ? `task_${step.task.order}_${step.task.name}` : '__untasked__';
             let group = groups.get(key);
             if (!group) {
                 group = {
                     key,
-                    taskName: step.task ? step.task.name : null,
-                    order: step.task ? step.task.order : Number.MAX_SAFE_INTEGER,
-                    steps: [],
+                    taskName: task ? task.name : null,
+                    order: task ? task.order : 0,
+                    toolSteps: [],
+                    message: null,
+                    stopReason: null,
+                    iterations: null,
+                    toolInvocations: null,
+                    tokenUsage: null,
                 };
                 groups.set(key, group);
+                groupOrder.push(key);
             }
-            group.steps.push(step);
+
+            if (streamData.event === 'tool_call') {
+                const call = streamData.data as NodeStreamToolCallData;
+                group.toolSteps.push({ key: `call_${call.id}`, call, result: null });
+            } else if (streamData.event === 'tool_result') {
+                const result = streamData.data as NodeStreamToolResultData;
+                const step = group.toolSteps.find((s) => s.call?.id === result.tool_call_id);
+                if (step) {
+                    step.result = result;
+                } else {
+                    group.toolSteps.push({ key: `result_${result.tool_call_id}`, call: null, result });
+                }
+            } else if (streamData.event === 'task_finish') {
+                const finish = streamData.data as NodeStreamTaskFinishData;
+                group.message = finish.message;
+                group.stopReason = finish.stop_reason ?? null;
+                group.iterations = finish.iterations ?? null;
+                group.toolInvocations = finish.tool_invocations ?? null;
+                group.tokenUsage = finish.token_usage ?? null;
+            }
+            // event === 'task_start': the group lookup/creation above already ensures the
+            // task shows up even when it never makes a tool call.
         }
-        return [...groups.values()].sort((a, b) => a.order - b.order);
+
+        return groupOrder.map((key) => groups.get(key)!).sort((a, b) => a.order - b.order);
     });
 
-    readonly totalStepCount = computed(() => this.steps().length);
+    readonly hasContent = computed(() => this.taskGroups().length > 0);
+    readonly stepCount = computed(() => this.taskGroups().reduce((sum, group) => sum + group.toolSteps.length, 0));
+    readonly namedTaskCount = computed(() => this.taskGroups().filter((group) => group.taskName !== null).length);
 
     toggleMessage(): void {
         this.isExpanded.update((value) => !value);
     }
 
-    isStepExpanded(step: NodeStreamStep): boolean {
+    isStepExpanded(step: NodeStreamToolStep): boolean {
         return this.expandedStepKeys().has(step.key);
     }
 
-    toggleStep(step: NodeStreamStep): void {
+    toggleStep(step: NodeStreamToolStep): void {
         this.expandedStepKeys.update((current) => {
             const next = new Set(current);
             if (next.has(step.key)) {
@@ -486,12 +535,12 @@ export class NodeStreamMessageComponent {
         });
     }
 
-    isStepError(step: NodeStreamStep): boolean {
-        return step.toolResult?.is_error === true;
+    isStepError(step: NodeStreamToolStep): boolean {
+        return step.result?.is_error === true;
     }
 
-    getStepSummary(step: NodeStreamStep): string {
-        return step.toolCall?.name ?? step.toolResult?.name ?? `Step ${step.stepId}`;
+    getStepSummary(step: NodeStreamToolStep): string {
+        return step.call?.name ?? step.result?.name ?? 'Tool step';
     }
 
     truncate(str: string, max: number): string {
