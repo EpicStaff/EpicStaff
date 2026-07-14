@@ -20,7 +20,7 @@
     }
 
     h1 {
-        font-size: 2rem;
+        font-size: var(--font-size-5xl);
         border-bottom: 1px solid var(--gray-700);
         padding-bottom: 0.3em;
     }

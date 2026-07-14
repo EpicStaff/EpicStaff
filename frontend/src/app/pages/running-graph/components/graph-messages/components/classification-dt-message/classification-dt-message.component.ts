@@ -221,7 +221,7 @@ import {
 
             .play-arrow i {
                 color: #a78bfa;
-                font-size: 1.1rem;
+                font-size: var(--font-size-xl);
                 transition: transform 0.3s ease;
             }
 
@@ -247,7 +247,7 @@ import {
 
             .icon-container i {
                 color: var(--gray-900);
-                font-size: 1.25rem;
+                font-size: var(--font-size-2xl);
             }
 
             .icon-container.matched {
@@ -275,13 +275,13 @@ import {
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
+                font-size: var(--font-size-xl);
                 font-weight: 600;
                 margin: 0;
             }
 
             .badge {
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 padding: 2px 10px;
                 border-radius: 12px;
                 font-weight: 500;
@@ -322,7 +322,7 @@ import {
 
             .detail-label {
                 color: var(--gray-400);
-                font-size: 0.85rem;
+                font-size: var(--font-size-md);
                 font-weight: 500;
                 min-width: 120px;
                 flex-shrink: 0;
@@ -330,7 +330,7 @@ import {
 
             .detail-value {
                 color: var(--gray-200);
-                font-size: 0.9rem;
+                font-size: var(--font-size-md);
             }
 
             .detail-value.code {
@@ -363,7 +363,7 @@ import {
             .section-heading i {
                 margin-right: 8px;
                 color: #f59e0b;
-                font-size: 1.1rem;
+                font-size: var(--font-size-xl);
                 margin-left: -3px;
                 transition: transform 0.3s ease;
             }
@@ -377,7 +377,7 @@ import {
                 white-space: pre-wrap;
                 word-break: break-word;
                 font-family: 'JetBrains Mono', 'Fira Code', monospace;
-                font-size: 0.85rem;
+                font-size: var(--font-size-md);
                 margin: 0 0 0 23px;
                 max-height: 300px;
                 overflow-y: auto;

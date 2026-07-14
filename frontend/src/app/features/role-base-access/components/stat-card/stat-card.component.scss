@@ -19,7 +19,7 @@
 }
 
 .stat-label {
-    font-size: 0.6875rem;
+    font-size: var(--font-size-xs);
     color: var(--color-text-secondary);
     letter-spacing: 0.04em;
     font-weight: 500;

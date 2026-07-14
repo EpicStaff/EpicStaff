@@ -74,7 +74,7 @@
         }
 
         .title {
-            font-size: 15px;
+            font-size: var(--font-size-md);
             font-weight: 600;
             color: var(--white);
             overflow: hidden;

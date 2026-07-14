@@ -243,7 +243,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
+                font-size: var(--font-size-xl);
                 font-weight: 600;
                 margin: 0;
             }
@@ -338,7 +338,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 background-color: transparent;
                 border: none;
                 color: #ffcf3f;
-                font-size: 0.85rem;
+                font-size: var(--font-size-md);
                 cursor: pointer;
                 padding: 0.5rem;
                 text-align: center;

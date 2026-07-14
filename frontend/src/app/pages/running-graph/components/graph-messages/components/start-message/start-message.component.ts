@@ -123,7 +123,7 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
+                font-size: var(--font-size-xl);
                 font-weight: 600;
                 margin: 0;
             }

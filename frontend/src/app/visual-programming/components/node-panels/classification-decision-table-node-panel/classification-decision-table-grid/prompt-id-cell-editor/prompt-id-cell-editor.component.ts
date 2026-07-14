@@ -141,7 +141,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 border: 1px solid rgba(217, 217, 222, 0.16);
                 border-radius: 4px;
                 padding: 0 16px;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 font-family: Inter, sans-serif;
                 line-height: 1.3;
                 outline: none;
@@ -161,7 +161,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 border: none;
                 border-radius: 8px;
                 color: #fff;
-                font-size: 18px;
+                font-size: var(--font-size-xl);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -204,7 +204,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 overflow: hidden;
             }
             .pe-item-name {
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 font-family: Inter, sans-serif;
                 line-height: 1.3;
                 color: var(--color-text-primary);
@@ -213,7 +213,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 text-overflow: ellipsis;
             }
             .pe-item-var {
-                font-size: 10px;
+                font-size: var(--font-size-2xs);
                 font-family: Inter, sans-serif;
                 line-height: 1.3;
                 color: rgba(217, 217, 222, 0.6);
@@ -229,7 +229,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 margin-left: 8px;
             }
             .pe-item-llm {
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 font-family: Inter, sans-serif;
                 line-height: 1.3;
                 color: rgba(217, 217, 222, 0.6);
@@ -252,7 +252,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 cursor: pointer;
                 padding: 0;
                 color: var(--accent-color);
-                font-size: 16px;
+                font-size: var(--font-size-lg);
             }
             .pe-item:hover .pe-item-open-btn {
                 display: flex;
@@ -270,13 +270,13 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 text-align: center;
             }
             .pe-empty-title {
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 font-family: Inter, sans-serif;
                 line-height: 1.3;
                 color: var(--color-text-primary);
             }
             .pe-empty-hint {
-                font-size: 12px;
+                font-size: var(--font-size-xs);
                 font-family: Inter, sans-serif;
                 line-height: 1.3;
                 color: rgba(217, 217, 222, 0.6);
@@ -294,7 +294,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 border: 1px solid var(--accent-color);
                 border-radius: 6px;
                 color: var(--accent-color);
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 font-family: Inter, sans-serif;
                 font-weight: 400;
                 line-height: 1;

@@ -52,7 +52,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 }
 
                 &.class-icon {
-                    font-size: 18px;
+                    font-size: var(--font-size-xl);
                     line-height: 1;
                 }
             }

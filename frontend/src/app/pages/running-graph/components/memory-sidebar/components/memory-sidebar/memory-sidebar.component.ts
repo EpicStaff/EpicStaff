@@ -140,7 +140,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                 padding-bottom: 6px;
                 h2 {
                     margin: 0;
-                    font-size: 18px;
+                    font-size: var(--font-size-xl);
                     font-weight: 500;
                     color: var(--white);
                 }
@@ -182,7 +182,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                     border: none;
                     border-radius: 16px;
                     padding: 6px 12px;
-                    font-size: 13px;
+                    font-size: var(--font-size-sm);
                     color: var(--gray-300);
                     cursor: pointer;
 

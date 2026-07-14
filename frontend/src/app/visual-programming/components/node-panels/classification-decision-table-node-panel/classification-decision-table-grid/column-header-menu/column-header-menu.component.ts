@@ -110,7 +110,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
             }
 
             .chm-label {
-                font-size: 0.85rem;
+                font-size: var(--font-size-md);
                 color: rgba(255, 255, 255, 0.9);
                 font-weight: 500;
                 flex: 1;
@@ -130,7 +130,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 0.75rem !important;
+                font-size: var(--font-size-xs) !important;
                 color: #a89fff !important;
                 transition:
                     background 0.15s ease,
@@ -146,7 +146,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
 
             .chm-icon-delete {
                 cursor: pointer;
-                font-size: 0.8rem !important;
+                font-size: var(--font-size-sm) !important;
                 color: rgba(255, 255, 255, 0.4) !important;
                 flex-shrink: 0;
                 transition: color 0.15s ease;
@@ -181,7 +181,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
             }
 
             .chm-chevron i {
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 line-height: 1;
             }
         `,

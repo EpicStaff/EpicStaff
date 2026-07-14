@@ -117,7 +117,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                 border-radius: 0 0 8px 8px;
                 background: var(--color-card-background, #1e1e1e);
                 font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
-                font-size: 0.8rem;
+                font-size: var(--font-size-sm);
             }
 
             .terminal-resize-handle {
@@ -141,7 +141,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                 padding: 0.25rem 0.75rem;
                 border-bottom: 1px solid rgba(255, 255, 255, 0.05);
                 color: #8b949e;
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 user-select: none;
             }
 

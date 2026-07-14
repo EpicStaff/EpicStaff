@@ -88,7 +88,7 @@ $hover-color: var(--gray-800);
             background: transparent;
             border: none;
             color: $text-color;
-            font-size: 15px;
+            font-size: var(--font-size-md);
             font-weight: 400;
             line-height: 1.6;
             padding: 12px 16px;

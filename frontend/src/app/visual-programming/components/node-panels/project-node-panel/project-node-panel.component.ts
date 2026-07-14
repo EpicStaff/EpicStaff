@@ -125,7 +125,7 @@ interface InputMapPair {
             }
 
             .section-label {
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 color: #d9d9d999;
                 text-transform: uppercase;
                 letter-spacing: 0.05em;
@@ -147,7 +147,7 @@ interface InputMapPair {
                 display: flex;
                 align-items: center;
                 gap: 0.5rem;
-                font-size: 0.85rem;
+                font-size: var(--font-size-md);
                 color: #d4d4d4;
                 cursor: pointer;
 

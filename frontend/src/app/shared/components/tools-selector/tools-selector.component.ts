@@ -243,12 +243,12 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
 
                     .no-tools-selected {
                         color: rgba(255, 255, 255, 0.3);
-                        font-size: 1rem;
+                        font-size: var(--font-size-lg);
                     }
 
                     .tools-summary {
                         color: var(--color-text-primary);
-                        font-size: 1rem;
+                        font-size: var(--font-size-lg);
                     }
 
                     .tools-selector-icon {
@@ -294,7 +294,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                         align-items: center;
 
                         span {
-                            font-size: 1.125rem;
+                            font-size: var(--font-size-xl);
                             font-weight: 400;
                         }
                     }
@@ -314,7 +314,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                             border-radius: 6px;
                             padding: 0.625rem 0.75rem;
                             color: #fff;
-                            font-size: 0.875rem;
+                            font-size: var(--font-size-md);
                             outline: none;
                             transition: border-color 0.2s ease;
 
@@ -337,7 +337,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                             background: transparent;
                             border: none;
                             padding: 0.5rem 1rem;
-                            font-size: 0.875rem;
+                            font-size: var(--font-size-md);
                             color: var(--color-text-secondary);
                             cursor: pointer;
                             transition: all 0.2s ease;
@@ -406,7 +406,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                         .loading-text {
                             margin-top: 1rem;
                             color: var(--color-text-secondary);
-                            font-size: 0.875rem;
+                            font-size: var(--font-size-md);
                         }
                     }
 
@@ -414,7 +414,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                         padding: 2rem 0;
                         text-align: center;
                         color: var(--color-text-secondary);
-                        font-size: 0.875rem;
+                        font-size: var(--font-size-md);
                     }
 
                     .tools-list {
@@ -448,14 +448,14 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                                 overflow: hidden;
 
                                 .tool-name {
-                                    font-size: 0.875rem;
+                                    font-size: var(--font-size-md);
                                     font-weight: 500;
                                     color: var(--color-text-primary);
                                     margin-bottom: 0.25rem;
                                 }
 
                                 .tool-description {
-                                    font-size: 0.75rem;
+                                    font-size: var(--font-size-xs);
                                     color: var(--color-text-secondary);
                                     white-space: nowrap;
                                     overflow: hidden;
@@ -482,7 +482,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                     button {
                         padding: 0.5rem 1rem;
                         border-radius: 6px;
-                        font-size: 0.875rem;
+                        font-size: var(--font-size-md);
                         font-weight: 500;
                         cursor: pointer;
                         transition: all 0.2s ease;

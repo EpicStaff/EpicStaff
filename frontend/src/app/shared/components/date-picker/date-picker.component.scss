@@ -41,7 +41,7 @@
     }
 
     &__icon {
-        font-size: 15px;
+        font-size: var(--font-size-md);
         color: var(--color-input-text-placeholder);
         flex-shrink: 0;
         pointer-events: none;
@@ -143,7 +143,7 @@
 
     &__weekday {
         text-align: center;
-        font-size: 0.6875rem;
+        font-size: var(--font-size-xs);
         font-weight: 500;
         color: var(--color-input-text-placeholder);
         padding: 2px 0 6px;

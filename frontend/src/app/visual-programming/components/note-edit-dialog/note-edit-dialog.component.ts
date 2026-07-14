@@ -98,7 +98,7 @@ import { GraphNoteModel } from '../../core/models/node.model';
             }
 
             .title {
-                font-size: 1.125rem;
+                font-size: var(--font-size-xl);
                 font-weight: 600;
                 margin: 0;
             }
@@ -116,7 +116,7 @@ import { GraphNoteModel } from '../../core/models/node.model';
             }
 
             .esc-label {
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 color: #666;
                 font-weight: 500;
                 padding: 0.15rem 0.3rem;
@@ -126,7 +126,7 @@ import { GraphNoteModel } from '../../core/models/node.model';
             }
 
             .header-actions app-svg-icon {
-                font-size: 1.25rem;
+                font-size: var(--font-size-2xl);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 opacity: 0.8;
@@ -158,7 +158,7 @@ import { GraphNoteModel } from '../../core/models/node.model';
                 border-radius: 6px;
                 padding: 0.625rem 0.75rem;
                 color: #fff;
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 outline: none;
                 transition: border-color 0.2s ease;
                 font-family: inherit;

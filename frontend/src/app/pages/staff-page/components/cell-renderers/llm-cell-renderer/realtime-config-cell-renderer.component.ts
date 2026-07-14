@@ -92,7 +92,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
 
         .item-text {
             line-height: 1.3;
-            font-size: 13px;
+            font-size: var(--font-size-sm);
             font-weight: 500;
             white-space: nowrap;
             overflow: hidden;
@@ -117,7 +117,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
             color: #aaa;
             font-style: italic;
             padding: 4px 8px;
-            font-size: 0.8rem;
+            font-size: var(--font-size-sm);
         }
     `,
 })

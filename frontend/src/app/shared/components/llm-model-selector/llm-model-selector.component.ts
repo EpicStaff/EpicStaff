@@ -219,19 +219,19 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
             }
 
             .model-name {
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 color: var(--color-text-primary);
             }
 
             .custom-name {
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 color: var(--color-text-secondary);
                 opacity: 0.8;
             }
 
             .placeholder-text {
                 color: rgba(255, 255, 255, 0.3);
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
             }
 
             .dropdown-icon {
@@ -281,7 +281,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 border-radius: 4px;
                 padding: 6px 10px;
                 color: var(--color-text-primary);
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 outline: none;
             }
 
@@ -298,7 +298,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 border: none;
                 border-radius: 6px;
                 padding: 0.4rem 0.85rem;
-                font-size: 0.82rem;
+                font-size: var(--font-size-sm);
                 font-weight: 500;
                 cursor: pointer;
                 white-space: nowrap;
@@ -317,7 +317,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 gap: 14px;
                 padding: 8px 12px;
                 cursor: pointer;
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 color: var(--color-text-secondary);
                 border-bottom: 1px solid var(--color-divider-subtle);
                 transition: background-color 0.15s ease;
@@ -328,7 +328,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 }
 
                 i {
-                    font-size: 16px;
+                    font-size: var(--font-size-lg);
                 }
             }
 
@@ -336,7 +336,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 padding: 12px;
                 text-align: center;
                 color: var(--color-text-secondary);
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 font-style: italic;
             }
         `,

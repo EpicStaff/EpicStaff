@@ -68,12 +68,12 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
             }
 
             .model-name {
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 color: var(--color-text-primary);
             }
 
             .custom-name {
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 color: var(--color-text-secondary);
                 opacity: 0.8;
             }

@@ -79,14 +79,14 @@ import { AddProjectCardComponent } from './add-project-card/add-project-card.com
                 text-align: center;
                 padding: 2rem;
                 color: var(--color-text-secondary);
-                font-size: 1.1rem;
+                font-size: var(--font-size-xl);
                 background: var(--color-sidenav-background);
                 border-radius: 8px;
                 margin-top: 1rem;
             }
             .loading,
             .error {
-                font-size: 1.1rem;
+                font-size: var(--font-size-xl);
                 color: #b0b8c1;
                 margin-top: 2rem;
             }

@@ -63,7 +63,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
                 label {
                     display: block;
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     color: rgba(255, 255, 255, 0.7);
                     margin: 0;
                 }
@@ -75,7 +75,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 6px;
                     color: white;
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     transition: border-color 0.2s ease;
 
                     &:focus {
@@ -90,7 +90,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
                 .error-message {
                     color: #ef4444;
-                    font-size: 12px;
+                    font-size: var(--font-size-xs);
                     margin-top: 4px;
                     line-height: 1.4;
                 }

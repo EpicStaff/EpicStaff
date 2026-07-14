@@ -202,7 +202,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         .header-text {
             flex: 1;
             color: var(--gray-100);
-            font-size: 1.1rem;
+            font-size: var(--font-size-xl);
             font-weight: 600;
             white-space: nowrap;
             overflow: hidden;
@@ -271,7 +271,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
 
         .thought-quote {
             color: #8e5cd9;
-            font-size: 1.5rem;
+            font-size: var(--font-size-3xl);
             font-weight: bold;
             vertical-align: sub;
             line-height: 0;
@@ -304,7 +304,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         }
 
         .formatted-content {
-            font-size: 0.85rem;
+            font-size: var(--font-size-md);
             white-space: pre-wrap;
             word-break: break-word;
             color: var(--gray-200);
@@ -334,7 +334,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
             white-space: pre-wrap;
             word-break: break-word;
             color: var(--gray-200);
-            font-size: 0.85rem;
+            font-size: var(--font-size-md);
             max-height: 400px;
             overflow-y: auto;
         }

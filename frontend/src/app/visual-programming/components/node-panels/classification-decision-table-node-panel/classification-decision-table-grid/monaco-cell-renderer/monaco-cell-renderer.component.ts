@@ -95,7 +95,7 @@ function ensureMonacoLoaded(): Promise<void> {
                 padding: 0 8px;
                 cursor: text;
                 font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-                font-size: 12px;
+                font-size: var(--font-size-xs);
                 line-height: 1.4;
                 color: #d4d4d4;
             }

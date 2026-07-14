@@ -44,7 +44,7 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
                 white-space: pre-wrap;
                 word-break: break-word;
                 font-family: 'Roboto', sans-serif;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 color: black;
             }
         `,

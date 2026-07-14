@@ -31,7 +31,7 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
                 border-radius: 12px;
                 padding: 1.5rem;
                 color: var(--color-text-primary);
-                font-size: 1rem;
+                font-size: var(--font-size-lg);
                 display: flex;
                 flex-direction: column;
                 height: 165px;
@@ -73,7 +73,7 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
             }
 
             .title {
-                font-size: 16px;
+                font-size: var(--font-size-lg);
                 font-weight: 500;
                 color: #8b8e98;
                 transition: color 0.2s ease;

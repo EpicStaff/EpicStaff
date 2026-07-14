@@ -248,7 +248,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             }
 
             .input-map-header label {
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 font-weight: 400;
                 color: var(--color-text-primary);
                 margin: 0;
@@ -262,7 +262,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             }
 
             .test-mode-header span {
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 color: var(--color-text-secondary, #999);
             }
 
@@ -315,7 +315,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 6px;
                 color: #fff;
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 outline: none;
                 transition: border-color 0.2s ease;
 
@@ -329,7 +329,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             }
 
             .delete-icon {
-                font-size: 1rem;
+                font-size: var(--font-size-lg);
                 cursor: pointer;
                 color: #ccc;
                 padding: 0.2rem;
@@ -359,7 +359,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 color: var(--color-text-primary);
                 transition: background-color 0.2s;
                 cursor: pointer;
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
 
                 &:hover {
                     background: var(--color-action-btn-background-hover);
@@ -370,7 +370,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 }
 
                 i {
-                    font-size: 16px;
+                    font-size: var(--font-size-lg);
                 }
             }
 
@@ -386,7 +386,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 padding: 8px 12px;
                 border: 1px solid var(--color-divider-subtle);
                 border-radius: 4px;
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 font-weight: 500;
                 cursor: pointer;
                 transition: all 0.2s ease;
@@ -427,7 +427,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 border-left: 1px solid rgba(255, 207, 0, 1);
                 border-radius: 10px;
                 padding: 10px 12px;
-                font-size: 13px;
+                font-size: var(--font-size-sm);
                 color: inherit;
                 margin-top: 8px;
             }
@@ -445,7 +445,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 background: transparent;
                 cursor: pointer;
                 color: rgba(255, 255, 255, 0.35);
-                font-size: 1rem;
+                font-size: var(--font-size-lg);
                 transition: all 0.2s ease;
 
                 &:hover {
@@ -473,7 +473,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     align-items: center;
                     overflow: hidden;
                     min-height: 0;
-                    font-size: 0.75rem;
+                    font-size: var(--font-size-xs);
                     border-radius: 5px;
                     border-left: 3px solid #efd616;
                     background-color: rgba(239, 214, 22, 0.08);

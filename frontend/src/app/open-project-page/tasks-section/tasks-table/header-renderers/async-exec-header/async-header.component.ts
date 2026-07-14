@@ -54,7 +54,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                 color: #d9d9de;
                 padding: 6px 10px;
                 border-radius: 4px;
-                font-size: 12px;
+                font-size: var(--font-size-xs);
                 white-space: nowrap;
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
                 border: 1px solid #404040;

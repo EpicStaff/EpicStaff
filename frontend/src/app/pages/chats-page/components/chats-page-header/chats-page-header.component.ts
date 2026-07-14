@@ -48,7 +48,7 @@ import { FormsModule } from '@angular/forms';
                 align-items: center;
             }
             .title {
-                font-size: 24px;
+                font-size: var(--font-size-3xl);
                 font-weight: 400;
                 letter-spacing: -0.02em;
                 line-height: 1.2;
@@ -73,11 +73,11 @@ import { FormsModule } from '@angular/forms';
                 color: var(--white);
                 border-radius: 6px;
                 cursor: pointer;
-                font-size: 14px;
+                font-size: var(--font-size-md);
             }
             .error-message {
                 color: red;
-                font-size: 12px;
+                font-size: var(--font-size-xs);
             }
             .input-with-toggle {
                 position: relative;
@@ -92,7 +92,7 @@ import { FormsModule } from '@angular/forms';
                 color: var(--white);
                 width: 240px;
                 height: 38px;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 transition: all 0.2s ease;
             }
             .input-with-toggle input:focus {
@@ -119,7 +119,7 @@ import { FormsModule } from '@angular/forms';
                 color: var(--white);
             }
             .ti {
-                font-size: 18px;
+                font-size: var(--font-size-xl);
             }
             .model-switcher {
                 position: relative;
@@ -141,7 +141,7 @@ import { FormsModule } from '@angular/forms';
                 border: none;
                 color: var(--gray-300);
                 padding: 6px 12px;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 border-radius: 4px;
                 cursor: pointer;
                 transition: all 0.2s ease;

@@ -119,7 +119,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     .flows-prefix,
                     .flow-name,
                     .slash {
-                        font-size: 24px;
+                        font-size: var(--font-size-3xl);
                         font-weight: 400;
                         letter-spacing: -0.02em;
                         line-height: 1;
@@ -238,14 +238,14 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     }
 
                     mat-icon {
-                        font-size: 18px;
+                        font-size: var(--font-size-xl);
                         width: 18px;
                         height: 18px;
                         margin-top: 2px;
                     }
 
                     span {
-                        font-size: 14px;
+                        font-size: var(--font-size-md);
                         font-weight: 400;
                     }
                 }

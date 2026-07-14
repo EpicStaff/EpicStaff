@@ -103,7 +103,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 justify-content: center;
                 cursor: pointer;
                 color: #a89fff;
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 padding: 0;
                 flex-shrink: 0;
                 transition: background 0.15s ease;
@@ -119,7 +119,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 background: none;
                 border: none;
                 padding: 0 2px;
-                font-size: 0.85rem;
+                font-size: var(--font-size-md);
                 flex-shrink: 0;
                 display: flex;
                 align-items: center;
@@ -130,7 +130,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             }
             .params-label {
                 flex: 1;
-                font-size: 0.85rem;
+                font-size: var(--font-size-md);
                 color: rgba(255, 255, 255, 0.9);
                 font-weight: 500;
                 white-space: nowrap;
@@ -149,7 +149,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             }
             .params-dropdown-item {
                 padding: 8px 14px;
-                font-size: 13px;
+                font-size: var(--font-size-sm);
                 color: rgba(255, 255, 255, 0.85);
                 cursor: pointer;
                 white-space: nowrap;

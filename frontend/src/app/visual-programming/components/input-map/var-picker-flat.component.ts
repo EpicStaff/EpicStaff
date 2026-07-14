@@ -71,7 +71,7 @@ export interface PickerItem {
                     border: 1px solid var(--color-input-border);
                     border-radius: 4px;
                     color: var(--color-text-primary);
-                    font-size: 0.8rem;
+                    font-size: var(--font-size-sm);
                     outline: none;
                     transition: border-color 0.15s;
 
@@ -94,7 +94,7 @@ export interface PickerItem {
                 padding: 12px;
                 text-align: center;
                 color: var(--color-text-secondary);
-                font-size: 0.8rem;
+                font-size: var(--font-size-sm);
             }
 
             .vpf-item {
@@ -118,7 +118,7 @@ export interface PickerItem {
 
             .vpf-tag {
                 flex-shrink: 0;
-                font-size: 0.68rem;
+                font-size: var(--font-size-2xs);
                 font-weight: 600;
                 padding: 1px 5px;
                 border-radius: 3px;
@@ -131,7 +131,7 @@ export interface PickerItem {
             .vpf-label {
                 flex: 1;
                 min-width: 0;
-                font-size: 0.8rem;
+                font-size: var(--font-size-sm);
                 font-family: monospace;
                 color: var(--color-text-primary);
                 overflow: hidden;

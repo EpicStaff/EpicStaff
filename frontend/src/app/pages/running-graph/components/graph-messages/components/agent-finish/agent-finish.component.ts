@@ -146,7 +146,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
+                font-size: var(--font-size-xl);
                 font-weight: 600;
                 margin: 0;
             }
@@ -206,7 +206,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
 
             .thought-quote {
                 color: #8e5cd9;
-                font-size: 1.5rem;
+                font-size: var(--font-size-3xl);
                 font-weight: bold;
                 vertical-align: sub;
                 line-height: 0;

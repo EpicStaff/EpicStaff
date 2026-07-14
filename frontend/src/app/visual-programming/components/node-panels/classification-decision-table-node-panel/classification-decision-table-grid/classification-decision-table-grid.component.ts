@@ -1341,7 +1341,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             },
             field: 'actions',
             cellRenderer: () => {
-                return `<i class="ti ti-x" style="color: rgba(255,255,255,0.5); font-size: 1rem; cursor: pointer;"></i>`;
+                return `<i class="ti ti-x" style="color: rgba(255,255,255,0.5); font-size: var(--font-size-lg); cursor: pointer;"></i>`;
             },
             width: 60,
             minWidth: 60,

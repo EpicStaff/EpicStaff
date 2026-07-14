@@ -142,7 +142,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 }
 
                 i {
-                    font-size: 18px;
+                    font-size: var(--font-size-xl);
                     color: var(--gray-300);
                 }
 
@@ -171,7 +171,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 border-radius: 6px;
                 padding: 0 32px 0 12px;
                 color: var(--gray-200, #e3e3e3);
-                font-size: 13px;
+                font-size: var(--font-size-sm);
                 outline: none;
 
                 &:focus {
@@ -205,7 +205,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 }
 
                 i {
-                    font-size: 10px;
+                    font-size: var(--font-size-2xs);
                 }
             }
 
@@ -229,7 +229,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 h3 {
                     margin: 0;
                     color: var(--gray-200, #e3e3e3);
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     font-weight: 500;
                 }
             }
@@ -246,7 +246,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                     text-align: center;
                     padding: 0;
                     margin: 0;
-                    font-size: 13px;
+                    font-size: var(--font-size-sm);
                     display: flex;
                     align-items: center;
                     justify-content: center;

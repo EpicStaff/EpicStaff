@@ -37,7 +37,7 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
                 display: inline-flex;
                 align-items: center;
                 gap: 8px;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 font-weight: 400;
                 padding: 0.4rem 1.2rem;
                 height: 36px;

@@ -36,7 +36,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 align-items: center;
                 padding: 0.25rem 0.75rem;
                 border-radius: 12px;
-                font-size: 0.8rem;
+                font-size: var(--font-size-sm);
                 font-weight: 500;
                 gap: 6px;
                 flex-shrink: 0;

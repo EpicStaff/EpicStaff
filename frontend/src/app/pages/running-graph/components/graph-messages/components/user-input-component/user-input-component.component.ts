@@ -75,7 +75,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 
             .feedback-message {
                 color: var(--gray-200);
-                font-size: 1rem;
+                font-size: var(--font-size-lg);
             }
 
             .options-row {
@@ -105,7 +105,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 border-radius: 6px;
                 padding: 0.75rem;
                 font-family: inherit;
-                font-size: 1rem;
+                font-size: var(--font-size-lg);
                 width: 100%;
                 min-height: 100px;
                 resize: vertical;
@@ -161,7 +161,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 border: 1px solid var(--gray-700);
                 border-radius: 6px;
                 padding: 0.5rem 0.875rem;
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 display: flex;

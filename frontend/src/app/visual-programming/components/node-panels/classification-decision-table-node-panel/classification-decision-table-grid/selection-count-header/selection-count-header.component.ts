@@ -23,7 +23,7 @@ import { IHeaderParams } from 'ag-grid-community';
             .sel-count {
                 color: var(--accent-color);
                 font-weight: 500;
-                font-size: 13px;
+                font-size: var(--font-size-sm);
             }
         `,
     ],

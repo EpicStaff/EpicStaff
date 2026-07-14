@@ -153,7 +153,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
 
                 h3 {
                     color: var(--gray-100);
-                    font-size: 1.1rem;
+                    font-size: var(--font-size-xl);
                     font-weight: 600;
                     margin: 0;
                     white-space: nowrap;

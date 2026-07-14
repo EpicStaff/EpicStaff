@@ -157,7 +157,7 @@ import {
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
+                font-size: var(--font-size-xl);
                 font-weight: 600;
                 margin: 0;
             }
@@ -253,7 +253,7 @@ import {
                 font-weight: 600;
                 padding: 0.25rem 0.5rem;
                 border-radius: 4px;
-                font-size: 0.85rem;
+                font-size: var(--font-size-md);
             }
 
             .item-name {
@@ -264,7 +264,7 @@ import {
 
             .item-type {
                 color: #00bfa5;
-                font-size: 0.85rem;
+                font-size: var(--font-size-md);
                 background-color: rgba(0, 191, 165, 0.15);
                 padding: 0.25rem 0.5rem;
                 border-radius: 4px;
@@ -284,7 +284,7 @@ import {
 
             .detail-label {
                 color: var(--gray-300);
-                font-size: 0.9rem;
+                font-size: var(--font-size-md);
                 font-weight: 500;
             }
 

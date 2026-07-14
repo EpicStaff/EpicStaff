@@ -37,7 +37,7 @@
 }
 
 .user-role {
-    font-size: 0.6875rem;
+    font-size: var(--font-size-xs);
     color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;

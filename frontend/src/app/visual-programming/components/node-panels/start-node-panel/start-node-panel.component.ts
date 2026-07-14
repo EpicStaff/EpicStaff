@@ -70,7 +70,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 
             .helper-text {
                 color: #6b7280;
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 line-height: 1.4;
             }
 

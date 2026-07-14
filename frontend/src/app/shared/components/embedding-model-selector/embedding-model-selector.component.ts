@@ -174,19 +174,19 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
             }
 
             .model-name {
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 color: var(--color-text-primary);
             }
 
             .custom-name {
-                font-size: 0.75rem;
+                font-size: var(--font-size-xs);
                 color: var(--color-text-secondary);
                 opacity: 0.8;
             }
 
             .placeholder-text {
                 color: rgba(255, 255, 255, 0.3);
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
             }
 
             .dropdown-icon {
@@ -234,7 +234,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                 border-radius: 4px;
                 padding: 6px 10px;
                 color: var(--color-text-primary);
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 outline: none;
             }
 
@@ -252,7 +252,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                 padding: 12px;
                 text-align: center;
                 color: var(--color-text-secondary);
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 font-style: italic;
             }
         `,

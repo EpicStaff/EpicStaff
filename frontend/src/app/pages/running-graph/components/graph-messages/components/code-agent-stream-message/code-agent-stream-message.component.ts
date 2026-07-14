@@ -199,18 +199,18 @@ interface ThinkingStep {
 
         .node-name {
             color: var(--gray-100);
-            font-size: 1.1rem;
+            font-size: var(--font-size-xl);
             font-weight: 600;
         }
 
         .step-count {
             color: var(--gray-400);
-            font-size: 0.85rem;
+            font-size: var(--font-size-md);
         }
 
         .status-badge {
             color: #fbbf24;
-            font-size: 0.8rem;
+            font-size: var(--font-size-sm);
             font-weight: 500;
         }
 
@@ -289,13 +289,13 @@ interface ThinkingStep {
 
         .step-label {
             color: var(--gray-300);
-            font-size: 0.85rem;
+            font-size: var(--font-size-md);
             font-weight: 500;
         }
 
         .step-tools {
             color: var(--gray-500);
-            font-size: 0.8rem;
+            font-size: var(--font-size-sm);
             display: flex;
             align-items: center;
             gap: 4px;
@@ -322,7 +322,7 @@ interface ThinkingStep {
         .tool-call-name {
             color: #2dd4bf;
             font-weight: 600;
-            font-size: 0.85rem;
+            font-size: var(--font-size-md);
             display: flex;
             align-items: center;
             gap: 6px;
@@ -330,7 +330,7 @@ interface ThinkingStep {
 
         .tool-call-input {
             color: var(--gray-400);
-            font-size: 0.78rem;
+            font-size: var(--font-size-xs);
             margin-top: 3px;
             white-space: pre-wrap;
             word-break: break-word;
@@ -340,7 +340,7 @@ interface ThinkingStep {
 
         .tool-call-output {
             color: var(--gray-500);
-            font-size: 0.75rem;
+            font-size: var(--font-size-xs);
             margin-top: 4px;
             padding-top: 4px;
             border-top: 1px solid var(--gray-750);
@@ -352,7 +352,7 @@ interface ThinkingStep {
 
         .thinking-text {
             color: var(--gray-400);
-            font-size: 0.82rem;
+            font-size: var(--font-size-sm);
             font-style: italic;
             white-space: pre-wrap;
             word-break: break-word;

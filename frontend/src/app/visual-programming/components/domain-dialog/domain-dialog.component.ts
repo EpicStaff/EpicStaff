@@ -128,7 +128,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
             }
 
             .dialog-title {
-                font-size: 1.2rem;
+                font-size: var(--font-size-2xl);
                 font-weight: 400;
                 color: var(--color-text-primary, #fff);
                 margin: 0;
@@ -163,7 +163,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 
             .helper-text {
                 color: #6b7280;
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 line-height: 1.4;
                 margin-bottom: 0.75rem;
             }
@@ -177,7 +177,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 background: rgba(101, 98, 245, 0.08);
                 border: 1px solid rgba(101, 98, 245, 0.2);
                 border-radius: 6px;
-                font-size: 0.8rem;
+                font-size: var(--font-size-sm);
                 line-height: 1.45;
                 color: #b0b0c0;
 
@@ -212,7 +212,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 background: rgba(239, 68, 68, 0.1);
                 border: 1px solid rgba(239, 68, 68, 0.3);
                 border-radius: 6px;
-                font-size: 0.8rem;
+                font-size: var(--font-size-sm);
             }
 
             .path-error {

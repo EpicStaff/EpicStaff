@@ -41,7 +41,7 @@
     }
 
     &__icon {
-        font-size: 15px;
+        font-size: var(--font-size-md);
         color: var(--color-input-text-placeholder);
         flex-shrink: 0;
         pointer-events: none;

@@ -28,7 +28,7 @@
 .table-header-cell {
     display: flex;
     align-items: center;
-    font-size: 0.6875rem;
+    font-size: var(--font-size-xs);
     font-weight: 600;
     color: var(--color-text-secondary);
     text-transform: uppercase;
@@ -45,7 +45,7 @@
 }
 
 .col-label {
-    font-size: 0.6875rem;
+    font-size: var(--font-size-xs);
     font-weight: 600;
     color: var(--color-text-secondary);
     text-transform: uppercase;

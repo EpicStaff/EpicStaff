@@ -43,7 +43,7 @@ import { ICellRendererParams } from 'ag-grid-community';
             }
             .row-index {
                 color: white;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 line-height: 1;
                 cursor: pointer; /* Allow click on the index */
             }

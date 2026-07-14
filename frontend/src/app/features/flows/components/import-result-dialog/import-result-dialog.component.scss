@@ -79,7 +79,7 @@
             &.viewing-mixed {
                 color: var(--color-text-secondary);
                 font-weight: 400;
-                font-size: 0.78rem;
+                font-size: var(--font-size-xs);
                 padding-left: 0.5rem;
                 gap: 0.5rem;
             }

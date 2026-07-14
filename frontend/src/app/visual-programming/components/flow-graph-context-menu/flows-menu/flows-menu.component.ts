@@ -42,7 +42,7 @@ import { CreateNodeRequest } from '../../../core/models/node-creation.types';
                 color: #fff;
             }
             li i {
-                font-size: 18px;
+                font-size: var(--font-size-xl);
                 color: #00bfa5;
             }
 

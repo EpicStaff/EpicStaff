@@ -189,7 +189,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1.1rem;
+                font-size: var(--font-size-xl);
                 font-weight: 600;
                 margin: 0;
                 white-space: nowrap;
@@ -303,7 +303,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             background-color: transparent;
             border: none;
             color: #30a46c;
-            font-size: 0.85rem;
+            font-size: var(--font-size-md);
             cursor: pointer;
             padding: 0.5rem;
             text-align: center;

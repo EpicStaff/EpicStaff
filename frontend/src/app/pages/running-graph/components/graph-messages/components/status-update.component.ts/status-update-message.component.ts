@@ -79,7 +79,7 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
                         border-radius: 6px;
                         padding: 0.75rem;
                         font-family: 'Courier New', monospace;
-                        font-size: 0.8rem;
+                        font-size: var(--font-size-sm);
                         overflow-x: auto;
                         color: var(--gray-200);
                     }

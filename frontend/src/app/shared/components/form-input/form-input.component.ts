@@ -94,7 +94,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
                 label {
                     display: block;
-                    font-size: 0.875rem;
+                    font-size: var(--font-size-md);
                     line-height: 130%;
                     color: var(--color-text-primary);
                     margin: 0;
@@ -117,7 +117,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     border-radius: 6px;
                     color: var(--color-text-primary);
-                    font-size: 14px;
+                    font-size: var(--font-size-md);
                     transition: border-color 0.2s ease;
 
                     &::placeholder {
@@ -159,13 +159,13 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     }
 
                     i {
-                        font-size: 16px;
+                        font-size: var(--font-size-lg);
                     }
                 }
 
                 .error-message {
                     color: #ef4444;
-                    font-size: 12px;
+                    font-size: var(--font-size-xs);
                     margin-top: 4px;
                     line-height: 1.4;
                 }

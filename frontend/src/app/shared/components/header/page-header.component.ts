@@ -80,7 +80,7 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
                     position: relative;
 
                     .title {
-                        font-size: 24px;
+                        font-size: var(--font-size-3xl);
                         font-weight: 400;
 
                         line-height: 1;
@@ -90,7 +90,7 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
                     }
 
                     .projects-page-project-count-badge {
-                        font-size: 17px;
+                        font-size: var(--font-size-xl);
                         font-weight: 500;
 
                         line-height: 1;

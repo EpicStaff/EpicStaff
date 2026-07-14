@@ -74,7 +74,7 @@ interface NodeStatus {
         }
 
         .section-title {
-            font-size: 18px;
+            font-size: var(--font-size-xl);
             font-weight: 500;
             margin-bottom: 1rem;
             color: var(--white);
@@ -110,7 +110,7 @@ interface NodeStatus {
         }
 
         .node-name {
-            font-size: 1rem;
+            font-size: var(--font-size-lg);
             font-weight: 500;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -118,7 +118,7 @@ interface NodeStatus {
         }
 
         .status-badge {
-            font-size: 0.8rem;
+            font-size: var(--font-size-sm);
             margin-top: 0rem;
             font-weight: 500;
             padding: 0.25rem 0.75rem;
@@ -128,7 +128,7 @@ interface NodeStatus {
             gap: 6px;
 
             app-svg-icon {
-                font-size: 14px;
+                font-size: var(--font-size-md);
             }
         }
 

@@ -114,7 +114,7 @@ interface InputMapPair {
                 display: flex;
                 align-items: center;
                 gap: 0.5rem;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 color: rgba(255, 255, 255, 0.7);
                 font-weight: 500;
                 margin-bottom: 0.5rem;

@@ -99,7 +99,7 @@ interface FlowRenameData {
                 margin-top: 0;
                 margin-bottom: 1.5rem;
                 color: var(--color-text-primary);
-                font-size: 1.25rem;
+                font-size: var(--font-size-2xl);
                 font-weight: 600;
             }
 
@@ -115,7 +115,7 @@ interface FlowRenameData {
                 display: block;
                 margin-bottom: 0.5rem;
                 color: var(--color-text-secondary);
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
             }
 
             .form-control {
@@ -125,7 +125,7 @@ interface FlowRenameData {
                 border: 1px solid var(--color-input-border);
                 border-radius: 6px;
                 color: var(--color-text-primary);
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 transition: border-color 0.2s;
                 resize: vertical;
                 box-sizing: border-box;
@@ -145,7 +145,7 @@ interface FlowRenameData {
             .error-message-block {
                 padding: 0.5rem 0.75rem;
                 color: var(--color-error);
-                font-size: 12px;
+                font-size: var(--font-size-xs);
                 margin-top: 4px;
             }
         `,

@@ -54,7 +54,7 @@ import { NodeType } from '../../../core/enums/node-type';
                 color: #fff;
             }
             li i {
-                font-size: 18px;
+                font-size: var(--font-size-xl);
                 color: #e0575b;
             }
 
@@ -65,7 +65,7 @@ import { NodeType } from '../../../core/enums/node-type';
                 text-overflow: ellipsis;
             }
             .plus-icon {
-                font-size: 18px;
+                font-size: var(--font-size-xl);
                 color: #bbb;
                 opacity: 0;
                 transition:

@@ -52,7 +52,7 @@ import { FormsModule } from '@angular/forms';
 
             .dialog-title {
                 margin-top: 0;
-                font-size: 18px;
+                font-size: var(--font-size-xl);
                 font-weight: 500;
                 margin-bottom: 16px;
             }
@@ -68,7 +68,7 @@ import { FormsModule } from '@angular/forms';
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 6px;
                 color: #ffffff;
-                font-size: 16px;
+                font-size: var(--font-size-lg);
                 outline: none;
                 transition: all 0.2s ease;
             }
@@ -87,7 +87,7 @@ import { FormsModule } from '@angular/forms';
             button {
                 padding: 8px 16px;
                 border-radius: 6px;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 font-weight: 500;
                 cursor: pointer;
                 transition: all 0.2s ease;

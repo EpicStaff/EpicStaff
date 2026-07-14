@@ -52,7 +52,7 @@ import { IHeaderParams } from 'ag-grid-community';
                 margin-right: 10px; /* Space between icon and title */
             }
             .title {
-                font-size: 16px;
+                font-size: var(--font-size-lg);
                 font-weight: 500;
             }
         `,

@@ -89,7 +89,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     'Segoe UI',
                     Roboto,
                     sans-serif;
-                font-size: 14px;
+                font-size: var(--font-size-md);
                 transition: all 0.2s ease;
                 .header {
                     display: flex;
@@ -101,14 +101,14 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
 
                     h3 {
                         margin: 0;
-                        font-size: 18px;
+                        font-size: var(--font-size-xl);
                         font-weight: 600;
                         color: #f0f0f0;
                         letter-spacing: 0.3px;
                     }
 
                     .clear-all {
-                        font-size: 13px;
+                        font-size: var(--font-size-sm);
                         color: #5e9ced;
                         cursor: pointer;
                         user-select: none;
@@ -167,7 +167,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                         }
 
                         .tag-text {
-                            font-size: 13px;
+                            font-size: var(--font-size-sm);
                             margin-right: 8px;
                             color: #e6e6e6;
                             font-weight: 500;
@@ -181,7 +181,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                             border: none;
                             color: #999;
                             cursor: pointer;
-                            font-size: 18px;
+                            font-size: var(--font-size-xl);
                             width: 20px;
                             height: 20px;
                             border-radius: 50%;
@@ -214,7 +214,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                             background: transparent;
                             color: #f0f0f0;
                             width: 100px;
-                            font-size: 13px;
+                            font-size: var(--font-size-sm);
                             font-family: inherit;
                             outline: none;
                             padding: 0;
@@ -244,7 +244,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                             }
 
                             i {
-                                font-size: 16px;
+                                font-size: var(--font-size-lg);
                                 height: 16px;
                                 width: 16px;
                             }
@@ -256,7 +256,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     display: block;
                     margin-left: auto;
                     padding: 6px 12px; // Reduced padding for smaller button
-                    font-size: 12px; // Reduced font size
+                    font-size: var(--font-size-xs); // Reduced font size
                     font-weight: 500;
                     background: #5e9ced;
                     color: #fff;

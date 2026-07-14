@@ -43,7 +43,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 
                     p {
                         color: var(--gray-400);
-                        font-size: 0.95rem;
+                        font-size: var(--font-size-lg);
                         font-weight: 500;
                         margin: 0;
                     }

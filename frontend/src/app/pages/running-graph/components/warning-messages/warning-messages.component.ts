@@ -74,14 +74,14 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 
                 i {
                     color: #f56a00;
-                    font-size: 1.1rem;
+                    font-size: var(--font-size-xl);
                     transition: transform 0.3s ease;
                 }
             }
 
             .warning-count {
                 color: var(--gray-400);
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 font-weight: 500;
             }
 
@@ -101,13 +101,13 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 
                 i {
                     color: var(--gray-900);
-                    font-size: 1.1rem;
+                    font-size: var(--font-size-xl);
                 }
             }
 
             h3 {
                 color: var(--gray-100);
-                font-size: 1rem;
+                font-size: var(--font-size-lg);
                 font-weight: 600;
                 margin: 0;
             }
@@ -129,13 +129,13 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
             .warning-bullet {
                 color: #f56a00;
                 font-weight: 600;
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 flex-shrink: 0;
             }
 
             .warning-text {
                 color: var(--gray-300);
-                font-size: 0.875rem;
+                font-size: var(--font-size-md);
                 line-height: 1.5;
                 margin: 0;
             }
