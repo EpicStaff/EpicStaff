@@ -54,7 +54,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
         background-color: var(--color-background-body);
         line-height: 130%;
         font-size: 0.875rem;
@@ -67,7 +67,7 @@
         margin-top: 6px;
         font-size: 0.875rem;
         line-height: 130%;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
         transition: 0.25s;
         max-width: 100%;
         white-space: nowrap;
@@ -77,8 +77,8 @@
 
     &__step--active {
         .stepper__circle {
-            border-color: var(--color-ks-status-completed);
-            color: var(--color-ks-status-completed);
+            border-color: var(--accent-color);
+            color: var(--accent-color);
         }
 
         .stepper__label {
@@ -86,23 +86,23 @@
         }
 
         &::before {
-            background: var(--color-ks-status-completed);
+            background: var(--accent-color);
         }
     }
 
     &__step--completed {
         .stepper__circle {
-            background: var(--color-ks-status-completed);
-            border-color: var(--color-ks-status-completed);
+            background: var(--accent-color);
+            border-color: var(--accent-color);
             color: var(--color-background-body);
         }
 
         &::before {
-            background: var(--color-ks-status-completed);
+            background: var(--accent-color);
         }
 
         &::after {
-            background: var(--color-ks-status-completed);
+            background: var(--accent-color);
         }
     }
 }

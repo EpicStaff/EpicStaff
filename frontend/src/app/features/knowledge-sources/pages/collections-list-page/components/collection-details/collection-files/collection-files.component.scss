@@ -28,8 +28,8 @@
 
     &__file-error {
         border-radius: var(--radius-md);
-        background-color: var(--color-ks-transparent-red);
-        color: var(--color-ks-status-failed);
+        background-color: var(--red-600-alpha-6);
+        color: var(--color-status-failed);
         padding: 0.25rem 0.5rem;
         font-size: 0.625rem;
     }
@@ -41,13 +41,13 @@
     }
 
     &__size {
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     &__error {
         border-radius: var(--radius-md);
-        background-color: var(--color-ks-transparent-red);
-        color: var(--color-ks-status-failed);
+        background-color: var(--red-600-alpha-6);
+        color: var(--color-status-failed);
         padding: 0.25rem 0.5rem;
 
         &--medium {
@@ -67,7 +67,7 @@
     }
 
     &__file-action {
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     &__close-action {
@@ -75,7 +75,7 @@
         cursor: pointer;
         &:hover {
             transition: 0.3s;
-            background-color: var(--color-ks-hover-row);
+            background-color: var(--color-row-hover);
         }
     }
 }

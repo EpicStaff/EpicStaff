@@ -58,8 +58,8 @@
 .btn-outline-primary {
     font-weight: 400;
     background: transparent;
-    color: var(--color-ks-button-activated);
-    border: 1px solid var(--color-ks-button-activated);
+    color: var(--accent-color);
+    border: 1px solid var(--accent-color);
 
     &:hover {
         border-color: var(--accent-color-hover);
@@ -70,7 +70,7 @@
 .btn-outline-secondary {
     background: transparent;
     color: var(--color-text-primary);
-    border: 1px solid var(--color-ks-transparent-text-80);
+    border: 1px solid var(--fog-alpha-80);
 
     &:hover {
         border-color: var(--accent-color-hover);

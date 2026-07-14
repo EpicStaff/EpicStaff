@@ -353,38 +353,28 @@
     --color-nodes-flow-link-hover-bg: var(--teal-alpha-8);
 
     // ------------------------------------------------------------------
-    // SEMANTIC — knowledge sources
+    // SEMANTIC — extended surfaces & text
     // ------------------------------------------------------------------
-    --color-ks-primary: #0a0a0a;
-    --color-ks-secondary: #666666;
-    --color-ks-tetriary: #cccccc;
-    --color-ks-quarternary: #f5f5f5;
-    --color-ks-white: var(--white);
+    --color-surface-contrast: #0a0a0a; // near-black surface used for contrast against light content
+    --color-text-muted: #666666;
+    --color-card-background: #1e1e1e;
+    --color-line: var(--graphite-700);
+    --color-row-hover: var(--graphite-650);
 
-    --color-ks-card-background: #1e1e1e;
-    --color-ks-card-tag-background: var(--graphite-700);
-    --color-ks-background: var(--graphite-900);
-    --color-ks-button-activated: var(--purple-500);
-    --color-ks-line: var(--graphite-700);
-    --color-ks-hover-row: var(--graphite-650);
+    // ------------------------------------------------------------------
+    // SEMANTIC — scrims (translucent overlays)
+    // ------------------------------------------------------------------
+    --color-scrim-strong: rgba(21, 21, 21, 0.72);
+    --color-scrim-medium: rgba(21, 21, 21, 0.6);
+    --color-scrim-subtle: rgba(21, 21, 21, 0.28);
 
-    --color-ks-transparent-black-72: rgba(21, 21, 21, 0.72);
-    --color-ks-transparent-black-60: rgba(21, 21, 21, 0.6);
-    --color-ks-transparent-black-28: rgba(21, 21, 21, 0.28);
-    --color-ks-transparent-text-80: var(--fog-alpha-80);
-    --color-ks-transparent-text-60: var(--fog-alpha-60);
-    --color-ks-transparent-text-20: var(--fog-alpha-20);
-    --color-ks-transparent-blue: var(--sky-alpha-6);
-    --color-ks-transparent-purple: rgba(104, 95, 255, 0.06);
-    --color-ks-transparent-yellow: var(--yellow-alpha-6);
-    --color-ks-transparent-red: rgba(220, 91, 96, 0.06);
-
-    --color-ks-status-blue: var(--sky-500);
-    --color-ks-status-completed: var(--purple-500);
-    --color-ks-status-new: var(--green-500);
-    --color-ks-status-warning: var(--yellow-500);
-    --color-ks-status-processing: var(--orange-500);
-    --color-ks-status-failed: var(--red-600);
+    // ------------------------------------------------------------------
+    // SEMANTIC — status indicators (info/warning/processing/failed)
+    // ------------------------------------------------------------------
+    --color-status-info: var(--sky-500);
+    --color-status-warning: var(--yellow-500);
+    --color-status-processing: var(--orange-500);
+    --color-status-failed: var(--red-600);
 
     // ------------------------------------------------------------------
     // SEMANTIC — misc
@@ -439,7 +429,7 @@
     --color-scrollbar-thumb-hover: rgba(71, 85, 105, 0.3);
     --color-scrollbar-track: transparent;
     --color-drag-drop-active: rgba(15, 15, 15, 0.12);
-    --color-ks-card-background: #ffffff;
-    --color-ks-primary: #f5f5f5;
+    --color-card-background: #ffffff;
+    --color-surface-contrast: #f5f5f5;
     --color-storage-icon: rgba(51, 65, 85, 1);
 }

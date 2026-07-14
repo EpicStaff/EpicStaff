@@ -115,7 +115,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                 border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
                 border-top: none;
                 border-radius: 0 0 8px 8px;
-                background: var(--color-ks-card-background, #1e1e1e);
+                background: var(--color-card-background, #1e1e1e);
                 font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
                 font-size: 0.8rem;
             }

@@ -7,7 +7,7 @@
     display: flex;
     gap: 0;
     align-items: stretch;
-    background-color: var(--color-ks-card-background);
+    background-color: var(--color-card-background);
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     border-bottom: 1px solid var(--color-divider-subtle);
 
@@ -42,7 +42,7 @@
         right: 12px;
         top: 50%;
         transform: translateY(-50%) rotate(180deg);
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
         pointer-events: none;
         transition: transform 0.2s;
 
@@ -58,7 +58,7 @@
         width: 150px;
         max-height: 200px;
         overflow-y: auto;
-        background: var(--color-ks-background);
+        background: var(--color-background-body);
         border: 1px solid var(--color-divider-subtle);
         border-radius: var(--radius-sm);
         z-index: 1000;
@@ -77,7 +77,7 @@
         }
 
         &:hover {
-            background: var(--color-ks-hover-row);
+            background: var(--color-row-hover);
         }
 
         &--active {
@@ -114,7 +114,7 @@
         outline: none;
 
         &::placeholder {
-            color: var(--color-ks-transparent-text-60);
+            color: var(--color-text-secondary);
         }
     }
 
@@ -155,7 +155,7 @@
         padding: 0;
 
         &:hover:not(:disabled) {
-            background: var(--color-ks-hover-row);
+            background: var(--color-row-hover);
         }
 
         &--disabled {

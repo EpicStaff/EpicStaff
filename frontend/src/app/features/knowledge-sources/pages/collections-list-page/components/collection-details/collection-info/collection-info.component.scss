@@ -35,7 +35,7 @@
     }
 
     &__meta-label {
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     &__meta-value {
@@ -75,7 +75,7 @@
         row-gap: 0.5rem;
 
         border-radius: var(--radius-xl);
-        background-color: var(--color-ks-line);
+        background-color: var(--color-line);
     }
 
     &__issue-header {
@@ -92,7 +92,7 @@
     &__issue-type {
         padding: 0.25rem 0.5rem;
         border-radius: var(--radius-sm);
-        color: var(--color-ks-status-warning);
-        background-color: var(--color-ks-transparent-yellow);
+        color: var(--color-status-warning);
+        background-color: var(--yellow-alpha-6);
     }
 }

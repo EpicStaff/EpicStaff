@@ -9,9 +9,9 @@
         display: block;
         font-size: 0.75rem;
         border-radius: var(--radius-md);
-        border-left: 3px solid var(--color-ks-status-failed);
-        background-color: var(--color-ks-transparent-red);
-        color: var(--color-ks-status-failed);
+        border-left: 3px solid var(--color-status-failed);
+        background-color: var(--red-600-alpha-6);
+        color: var(--color-status-failed);
         padding: 0.25rem 0.5rem;
     }
 }

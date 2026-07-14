@@ -21,7 +21,7 @@
     &__description {
         font-size: 0.875rem;
         line-height: 130%;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
         text-align: center;
     }
 
@@ -45,7 +45,7 @@
         padding: 1.5rem 1rem 1.5rem 1.5rem;
         border-radius: var(--radius-xl);
         row-gap: 1.5rem;
-        background-color: var(--color-ks-line);
+        background-color: var(--color-line);
         display: flex;
         flex-direction: column;
     }

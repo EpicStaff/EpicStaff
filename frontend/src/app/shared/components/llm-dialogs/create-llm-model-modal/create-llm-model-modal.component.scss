@@ -4,7 +4,7 @@
     width: 100%;
     max-height: 85vh;
     background: var(--color-background-body, var(--color-background-body));
-    border: 1px solid var(--color-ks-line, var(--graphite-750));
+    border: 1px solid var(--color-line, var(--graphite-750));
     border-radius: var(--radius-xl);
     box-shadow:
         0px 6px 10px 0px var(--black-alpha-15),
@@ -15,7 +15,7 @@
         align-items: center;
         justify-content: space-between;
         padding: 1rem 1.25rem;
-        border-bottom: 1px solid var(--color-ks-line, var(--graphite-750));
+        border-bottom: 1px solid var(--color-line, var(--graphite-750));
     }
 
     &__title {
@@ -63,7 +63,7 @@
         height: 2.25rem;
         border: 1px solid var(--fog-alpha-16);
         border-radius: var(--radius-sm);
-        background: var(--color-ks-line, var(--graphite-750));
+        background: var(--color-line, var(--graphite-750));
         color: var(--color-text-primary, var(--color-text-primary));
         padding: 0 0.75rem;
         font-size: 0.875rem;
@@ -80,6 +80,6 @@
         justify-content: flex-end;
         gap: 0.5rem;
         padding: 0.875rem 1.25rem;
-        border-top: 1px solid var(--color-ks-line, var(--graphite-750));
+        border-top: 1px solid var(--color-line, var(--graphite-750));
     }
 }

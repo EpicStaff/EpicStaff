@@ -173,7 +173,7 @@
         color: var(--color-text-primary);
 
         &:hover:not(&--selected):not(&--empty):not(&--past) {
-            background: var(--color-ks-transparent-black-72);
+            background: var(--color-scrim-strong);
         }
 
         &--today:not(&--selected) {

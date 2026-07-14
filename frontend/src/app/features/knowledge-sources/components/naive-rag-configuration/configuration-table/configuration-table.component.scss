@@ -36,7 +36,7 @@
         }
 
         &--selected {
-            background-color: var(--color-ks-line);
+            background-color: var(--color-line);
         }
     }
 
@@ -58,9 +58,9 @@
         font-size: 0.75rem;
         margin: 0 0.625rem 0.5rem;
         border-radius: var(--radius-md);
-        border-left: 3px solid var(--color-ks-status-failed);
-        background-color: var(--color-ks-transparent-red);
-        color: var(--color-ks-status-failed);
+        border-left: 3px solid var(--color-status-failed);
+        background-color: var(--red-600-alpha-6);
+        color: var(--color-status-failed);
         padding: 0.25rem 0.5rem;
     }
 
@@ -77,7 +77,7 @@
     &__bulk-row {
         font-size: 0.75rem;
         padding: 0 2.5rem 0.5rem 3.125rem;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     &__col {
@@ -91,7 +91,7 @@
         &--unavailable {
             justify-content: center;
             font-size: 0.75rem;
-            color: var(--color-ks-transparent-text-80);
+            color: var(--fog-alpha-80);
         }
     }
 
@@ -101,7 +101,7 @@
         align-items: center;
         column-gap: 0.5rem;
         font-size: 12px;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
         cursor: pointer;
     }
 

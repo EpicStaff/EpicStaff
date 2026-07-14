@@ -607,7 +607,7 @@
         padding: 0 8px;
 
         &:nth-child(even) {
-            background-color: var(--color-ks-transparent-black-28);
+            background-color: var(--color-scrim-subtle);
         }
     }
 
@@ -658,7 +658,7 @@
         line-height: 1;
 
         &--unpack {
-            color: var(--color-ks-status-new);
+            color: var(--success-color);
             background-color: var(--transparent-green-8);
         }
 

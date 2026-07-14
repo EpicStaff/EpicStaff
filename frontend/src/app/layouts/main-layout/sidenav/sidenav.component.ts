@@ -79,7 +79,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             accent: 'var(--accent-color)',
             accentContrast: 'var(--color-text-primary)',
             accentSoft: 'var(--color-ghost-btn-hover)',
-            danger: 'var(--color-ks-status-failed)',
+            danger: 'var(--color-status-failed)',
             dangerSoft: 'var(--agent-node-accent-color)',
             disabledBg: 'var(--gray-600)',
             scrollbar: 'var(--color-scrollbar-thumb)',
@@ -211,6 +211,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             routeLink: 'appearance',
             icon: 'photo',
             label: 'Appearance',
+            isPermitted: true,
             showTooltip: false,
         });
         this.bottomNavItems.push({

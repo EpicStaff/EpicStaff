@@ -3,7 +3,7 @@
     display: flex;
     flex-grow: 1;
     overflow: hidden;
-    background-color: var(--color-ks-card-background);
+    background-color: var(--color-card-background);
     border-radius: 0 0 var(--radius-xl) var(--radius-xl);
     padding: 0.5rem 0;
     position: relative;
@@ -58,12 +58,12 @@
         border-radius: var(--radius-md);
 
         &--even {
-            color: var(--color-ks-status-blue);
+            color: var(--color-status-info);
             background-color: rgb(32, 40, 43);
         }
 
         &--odd {
-            color: var(--color-ks-status-completed);
+            color: var(--accent-color);
             background-color: rgb(34, 34, 43);
         }
 
@@ -117,11 +117,11 @@
         }
 
         &--even {
-            color: var(--color-ks-status-blue);
+            color: var(--color-status-info);
         }
 
         &--odd {
-            color: var(--color-ks-status-completed);
+            color: var(--accent-color);
         }
 
         &--overlap {

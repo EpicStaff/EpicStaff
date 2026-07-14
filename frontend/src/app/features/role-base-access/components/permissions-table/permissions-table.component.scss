@@ -52,7 +52,7 @@
     height: 60px;
     flex-shrink: 0;
     border-bottom: 4px solid var(--color-divider-subtle);
-    background: var(--color-ks-background);
+    background: var(--color-background-body);
 
     .action-col {
         height: 100%;
@@ -79,7 +79,7 @@
         gap: 8px;
         padding: 4px 8px;
         min-width: max-content;
-        background: var(--color-ks-background);
+        background: var(--color-background-body);
         border-bottom: 2px solid var(--color-divider-subtle);
         cursor: pointer;
         user-select: none;
@@ -143,7 +143,7 @@
     height: 40px;
     border-bottom: 1px solid var(--color-divider-subtle);
     transition: background-color 0.12s ease;
-    background: var(--color-ks-transparent-black-28);
+    background: var(--color-scrim-subtle);
 
     &:last-child {
         border-bottom: none;

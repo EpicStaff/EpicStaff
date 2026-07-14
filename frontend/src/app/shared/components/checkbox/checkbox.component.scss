@@ -7,7 +7,7 @@ input[type='checkbox'] {
     -webkit-appearance: none;
     width: 1rem;
     height: 1rem;
-    border: 1px solid var(--color-ks-transparent-text-20);
+    border: 1px solid var(--fog-alpha-20);
     border-radius: var(--radius-sm);
     background: transparent;
     cursor: pointer;
@@ -56,11 +56,11 @@ input.secondary:indeterminate {
 }
 
 input.secondary:checked::after {
-    border-color: var(--color-ks-primary);
+    border-color: var(--color-surface-contrast);
 }
 
 input.secondary:indeterminate::after {
-    background: var(--color-ks-primary);
+    background: var(--color-surface-contrast);
     border-radius: 1px;
 }
 

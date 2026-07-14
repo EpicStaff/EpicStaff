@@ -73,7 +73,7 @@
         justify-content: space-between;
         padding: 1.25rem 2.5rem 1rem 2.5rem;
         font-size: 0.75rem;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     &__input {
@@ -101,7 +101,7 @@
         align-items: center;
         font-size: 12px;
         padding: 0.5rem 2.5rem 0 1.875rem;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
         opacity: 0.7;
     }
 
@@ -121,7 +121,7 @@
     &__active-fields-count {
         font-size: 0.875rem;
         line-height: 130%;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     &__json-wrapper {

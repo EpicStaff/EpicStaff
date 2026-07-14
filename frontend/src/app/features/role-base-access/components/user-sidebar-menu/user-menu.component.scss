@@ -123,12 +123,12 @@
     }
 
     &.danger {
-        color: var(--color-ks-status-failed);
+        color: var(--color-status-failed);
         padding: 10px 16px;
 
         .nav-icon {
             width: 24px;
-            color: var(--color-ks-status-failed);
+            color: var(--color-status-failed);
         }
     }
 }

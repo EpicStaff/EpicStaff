@@ -19,13 +19,13 @@
 
     &__model {
         font-size: 12px;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     &__nav {
         cursor: pointer;
         margin-left: auto;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 
     &__nav--action {
@@ -33,7 +33,7 @@
         cursor: pointer;
         &:hover {
             transition: 0.3s;
-            background-color: var(--color-ks-hover-row);
+            background-color: var(--color-row-hover);
         }
     }
 }

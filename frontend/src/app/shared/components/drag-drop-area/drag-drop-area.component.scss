@@ -17,7 +17,7 @@
         position: absolute;
         inset: 0;
         z-index: 10;
-        background: var(--color-ks-transparent-black-60);
+        background: var(--color-scrim-medium);
 
         display: flex;
         flex-direction: column;
@@ -28,7 +28,7 @@
     &__title {
         font-size: 1.5rem;
         font-weight: bold;
-        color: var(--color-ks-button-activated);
+        color: var(--accent-color);
         margin-bottom: 1rem;
     }
 
@@ -48,7 +48,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--color-ks-button-activated);
+        color: var(--accent-color);
     }
 
     &__types {
@@ -58,6 +58,6 @@
 
     &__types-list {
         font-size: 1.125rem;
-        color: var(--color-ks-button-activated);
+        color: var(--accent-color);
     }
 }

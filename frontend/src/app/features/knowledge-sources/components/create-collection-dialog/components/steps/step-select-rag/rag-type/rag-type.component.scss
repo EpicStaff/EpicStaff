@@ -5,13 +5,13 @@
 .rag {
     padding: 1.5rem 1rem 1.5rem 1.5rem;
     border-radius: var(--radius-xl);
-    background-color: var(--color-ks-line);
+    background-color: var(--color-line);
     display: flex;
     flex-direction: column;
     row-gap: 1.25rem;
 
     &--selected {
-        border: 1px solid var(--color-ks-button-activated);
+        border: 1px solid var(--accent-color);
     }
 
     &__header {
@@ -32,7 +32,7 @@
 
     &__name {
         font-size: 1.125rem;
-        color: var(--color-ks-button-activated);
+        color: var(--accent-color);
     }
 
     &__description {
@@ -45,6 +45,6 @@
 
     &__tip {
         font-size: 0.75rem;
-        color: var(--color-ks-transparent-text-80);
+        color: var(--fog-alpha-80);
     }
 }

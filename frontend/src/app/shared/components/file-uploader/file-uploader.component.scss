@@ -38,7 +38,7 @@
         border: 2px dashed var(--color-input-border);
         background-color: var(--color-divider-subtle);
         cursor: pointer;
-        color: var(--color-ks-button-activated);
+        color: var(--accent-color);
 
         &:hover {
             background-color: var(--color-drag-drop-active);

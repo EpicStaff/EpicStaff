@@ -272,7 +272,7 @@
         }
 
         &.has-error {
-            border-color: var(--color-ks-status-failed) !important;
+            border-color: var(--color-status-failed) !important;
         }
     }
 
@@ -321,7 +321,7 @@
     background: var(--red-600-alpha-12);
     border: 1px solid var(--red-600-alpha-30);
     border-radius: var(--radius-sm);
-    color: var(--color-ks-status-failed);
+    color: var(--color-status-failed);
     font-size: 0.8rem;
     line-height: 1.4;
 }

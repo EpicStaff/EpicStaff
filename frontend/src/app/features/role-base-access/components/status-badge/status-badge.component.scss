@@ -9,12 +9,12 @@
 
     &.online {
         background: var(--transparent-green-8);
-        color: var(--color-ks-status-new);
+        color: var(--success-color);
     }
 
     &.invited {
         background: var(--transparent-orange-8);
-        color: var(--color-ks-status-processing);
+        color: var(--color-status-processing);
     }
 
     &.offline {
@@ -24,7 +24,7 @@
 
     &.active {
         background: var(--transparent-green-8);
-        color: var(--color-ks-status-new);
+        color: var(--success-color);
     }
 
     &.deactivated {

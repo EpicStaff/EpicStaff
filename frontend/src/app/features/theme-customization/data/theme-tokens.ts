@@ -82,6 +82,21 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
                 samples: [{ kind: 'card', label: 'Card', prop: 'background' }],
             },
             {
+                name: '--color-surface-contrast',
+                label: 'Contrast surface',
+                samples: [{ kind: 'surface', label: 'Aa', prop: 'background' }],
+            },
+            {
+                name: '--color-card-background',
+                label: 'Card background',
+                samples: [{ kind: 'card', label: 'Card', prop: 'background' }],
+            },
+            {
+                name: '--color-row-hover',
+                label: 'Row hover',
+                samples: [{ kind: 'surface', label: 'Hover me', prop: 'background', hover: true }],
+            },
+            {
                 name: '--color-drag-drop-active',
                 label: 'Drag & drop active',
                 description: 'Background highlight when dragging files over a drop zone.',
@@ -207,6 +222,11 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
                 label: 'Disabled text',
                 samples: [{ kind: 'text', label: 'Aa Disabled', prop: 'color' }],
             },
+            {
+                name: '--color-text-muted',
+                label: 'Muted text',
+                samples: [{ kind: 'text', label: 'Aa Muted text', prop: 'color' }],
+            },
         ],
     },
     {
@@ -275,6 +295,11 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
             {
                 name: '--color-divider-strong',
                 label: 'Divider strong',
+                samples: [{ kind: 'divider' }],
+            },
+            {
+                name: '--color-line',
+                label: 'Line',
                 samples: [{ kind: 'divider' }],
             },
         ],
@@ -360,6 +385,58 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
                 label: 'Orange wash 8%',
                 samples: [{ kind: 'badge', label: 'Warning wash', prop: 'background' }],
             },
+            {
+                name: '--color-status-info',
+                label: 'Status info',
+                samples: [
+                    { kind: 'dot', prop: 'background' },
+                    { kind: 'text', label: 'In review', prop: 'color' },
+                ],
+            },
+            {
+                name: '--color-status-warning',
+                label: 'Status warning',
+                samples: [
+                    { kind: 'dot', prop: 'background' },
+                    { kind: 'text', label: 'Warning', prop: 'color' },
+                ],
+            },
+            {
+                name: '--color-status-processing',
+                label: 'Status processing',
+                samples: [
+                    { kind: 'dot', prop: 'background' },
+                    { kind: 'text', label: 'Processing', prop: 'color' },
+                ],
+            },
+            {
+                name: '--color-status-failed',
+                label: 'Status failed',
+                samples: [
+                    { kind: 'dot', prop: 'background' },
+                    { kind: 'text', label: 'Failed', prop: 'color' },
+                ],
+            },
+        ],
+    },
+    {
+        title: 'Overlays',
+        tokens: [
+            {
+                name: '--color-scrim-strong',
+                label: 'Scrim strong',
+                samples: [{ kind: 'backdrop' }],
+            },
+            {
+                name: '--color-scrim-medium',
+                label: 'Scrim medium',
+                samples: [{ kind: 'backdrop' }],
+            },
+            {
+                name: '--color-scrim-subtle',
+                label: 'Scrim subtle',
+                samples: [{ kind: 'backdrop' }],
+            },
         ],
     },
     {
@@ -429,164 +506,6 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
                 name: '--color-nodes-flow-link-hover-bg',
                 label: 'Flow link hover background',
                 samples: [{ kind: 'link', label: 'Hover me', prop: 'background', hover: true }],
-            },
-        ],
-    },
-    {
-        title: 'Knowledge sources',
-        tokens: [
-            {
-                name: '--color-ks-primary',
-                label: 'Primary',
-                samples: [{ kind: 'surface', label: 'Aa', prop: 'background' }],
-            },
-            {
-                name: '--color-ks-secondary',
-                label: 'Secondary',
-                samples: [{ kind: 'text', label: 'Aa Secondary', prop: 'color' }],
-            },
-            {
-                name: '--color-ks-tetriary',
-                label: 'Tertiary',
-                samples: [{ kind: 'text', label: 'Aa Tertiary', prop: 'color' }],
-            },
-            {
-                name: '--color-ks-quarternary',
-                label: 'Quaternary',
-                samples: [{ kind: 'surface', label: 'Aa', prop: 'background' }],
-            },
-            {
-                name: '--color-ks-white',
-                label: 'White',
-                samples: [{ kind: 'surface', label: 'Aa', prop: 'background' }],
-            },
-            {
-                name: '--color-ks-card-background',
-                label: 'Card background',
-                samples: [{ kind: 'card', label: 'Card', prop: 'background' }],
-            },
-            {
-                name: '--color-ks-card-tag-background',
-                label: 'Card tag background',
-                samples: [{ kind: 'badge', label: 'Tag', prop: 'background' }],
-            },
-            {
-                name: '--color-ks-background',
-                label: 'Background',
-                samples: [{ kind: 'surface', label: 'Aa Page', prop: 'background' }],
-            },
-            {
-                name: '--color-ks-button-activated',
-                label: 'Button activated',
-                samples: [{ kind: 'button', label: 'Active', prop: 'background' }],
-            },
-            {
-                name: '--color-ks-line',
-                label: 'Line',
-                samples: [{ kind: 'divider' }],
-            },
-            {
-                name: '--color-ks-hover-row',
-                label: 'Row hover',
-                samples: [{ kind: 'surface', label: 'Hover me', prop: 'background', hover: true }],
-            },
-            {
-                name: '--color-ks-transparent-black-72',
-                label: 'Black wash 72%',
-                samples: [{ kind: 'backdrop' }],
-            },
-            {
-                name: '--color-ks-transparent-black-60',
-                label: 'Black wash 60%',
-                samples: [{ kind: 'backdrop' }],
-            },
-            {
-                name: '--color-ks-transparent-black-28',
-                label: 'Black wash 28%',
-                samples: [{ kind: 'backdrop' }],
-            },
-            {
-                name: '--color-ks-transparent-text-80',
-                label: 'Text wash 80%',
-                samples: [{ kind: 'text', label: 'Aa Sample text', prop: 'color' }],
-            },
-            {
-                name: '--color-ks-transparent-text-60',
-                label: 'Text wash 60%',
-                samples: [{ kind: 'text', label: 'Aa Sample text', prop: 'color' }],
-            },
-            {
-                name: '--color-ks-transparent-text-20',
-                label: 'Text wash 20%',
-                samples: [{ kind: 'text', label: 'Aa Sample text', prop: 'color' }],
-            },
-            {
-                name: '--color-ks-transparent-blue',
-                label: 'Blue wash',
-                samples: [{ kind: 'badge', label: 'Wash', prop: 'background' }],
-            },
-            {
-                name: '--color-ks-transparent-purple',
-                label: 'Purple wash',
-                samples: [{ kind: 'badge', label: 'Wash', prop: 'background' }],
-            },
-            {
-                name: '--color-ks-transparent-yellow',
-                label: 'Yellow wash',
-                samples: [{ kind: 'badge', label: 'Wash', prop: 'background' }],
-            },
-            {
-                name: '--color-ks-transparent-red',
-                label: 'Red wash',
-                samples: [{ kind: 'badge', label: 'Wash', prop: 'background' }],
-            },
-            {
-                name: '--color-ks-status-blue',
-                label: 'Status blue',
-                samples: [
-                    { kind: 'dot', prop: 'background' },
-                    { kind: 'text', label: 'In review', prop: 'color' },
-                ],
-            },
-            {
-                name: '--color-ks-status-completed',
-                label: 'Status completed',
-                samples: [
-                    { kind: 'dot', prop: 'background' },
-                    { kind: 'text', label: 'Completed', prop: 'color' },
-                ],
-            },
-            {
-                name: '--color-ks-status-new',
-                label: 'Status new',
-                samples: [
-                    { kind: 'dot', prop: 'background' },
-                    { kind: 'text', label: 'New', prop: 'color' },
-                ],
-            },
-            {
-                name: '--color-ks-status-warning',
-                label: 'Status warning',
-                samples: [
-                    { kind: 'dot', prop: 'background' },
-                    { kind: 'text', label: 'Warning', prop: 'color' },
-                ],
-            },
-            {
-                name: '--color-ks-status-processing',
-                label: 'Status processing',
-                samples: [
-                    { kind: 'dot', prop: 'background' },
-                    { kind: 'text', label: 'Processing', prop: 'color' },
-                ],
-            },
-            {
-                name: '--color-ks-status-failed',
-                label: 'Status failed',
-                samples: [
-                    { kind: 'dot', prop: 'background' },
-                    { kind: 'text', label: 'Failed', prop: 'color' },
-                ],
             },
         ],
     },
