@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 
+from django.db import transaction
 from loguru import logger
 from rest_framework import serializers
 
@@ -121,21 +122,25 @@ class PersistentVariablesService:
             org_paths = self._org_paths(start_node.variables if start_node else {})
             if not org_paths:
                 return
-            graph_org, _ = GraphOrganization.objects.get_or_create(graph=graph)
-            stored = graph_org.persistent_variables or {}
-            changed = False
-            for path in org_paths:
-                value = self.get_by_path(final_variables, path)
-                if value is _MISSING:
-                    continue
-                existing = self.get_by_path(stored, path)
-                if existing is _MISSING or existing != value:
-                    self._set_by_path(stored, path, value)
-                    changed = True
-            if changed:
-                graph_org.persistent_variables = stored
-                graph_org.save(update_fields=["persistent_variables"])
-        except Exception as e:  # noqa: BLE001 — session termination must not fail here
+            with transaction.atomic():
+                GraphOrganization.objects.get_or_create(graph=graph)
+                graph_org = GraphOrganization.objects.select_for_update().get(
+                    graph=graph
+                )
+                stored = graph_org.persistent_variables or {}
+                changed = False
+                for path in org_paths:
+                    value = self.get_by_path(final_variables, path)
+                    if value is _MISSING:
+                        continue
+                    existing = self.get_by_path(stored, path)
+                    if existing is _MISSING or existing != value:
+                        self._set_by_path(stored, path, value)
+                        changed = True
+                if changed:
+                    graph_org.persistent_variables = stored
+                    graph_org.save(update_fields=["persistent_variables"])
+        except Exception as e:
             logger.error(f"Error persisting session results for graph {graph.id}: {e}")
 
     def sync_from_start_node(self, graph, old_variables, new_variables) -> None:
