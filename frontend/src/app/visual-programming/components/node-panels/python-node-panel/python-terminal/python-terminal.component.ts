@@ -112,11 +112,11 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
             .python-terminal {
                 position: relative;
                 width: 100%;
-                border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
+                border: 1px solid var(--color-divider-subtle);
                 border-top: none;
-                border-radius: 0 0 8px 8px;
-                background: var(--color-card-background, #1e1e1e);
-                font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+                border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+                background: var(--color-card-background);
+                font-family: var(--font-family-mono);
                 font-size: var(--font-size-sm);
             }
 
@@ -130,7 +130,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                 z-index: 5;
 
                 &:hover {
-                    background: rgba(104, 95, 255, 0.3);
+                    background: var(--purple-alpha-30);
                 }
             }
 
@@ -139,8 +139,8 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                 align-items: center;
                 justify-content: space-between;
                 padding: var(--space-2xs) var(--space-md);
-                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-                color: #8b949e;
+                border-bottom: 1px solid var(--white-alpha-5);
+                color: var(--gray-500);
                 font-size: var(--font-size-xs);
                 user-select: none;
             }
@@ -159,30 +159,30 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                 display: inline-block;
 
                 &.status-processing {
-                    background: #ffc14d;
-                    box-shadow: 0 0 0 0 rgba(255, 193, 77, 0.6);
+                    background: var(--yellow-500);
+                    box-shadow: 0 0 0 0 var(--amber-alpha-60);
                     animation: terminal-status-pulse 1.4s infinite ease-in-out;
                 }
                 &.status-done {
-                    background: #3fb950;
+                    background: var(--green-500);
                 }
                 &.status-error {
-                    background: #f85149;
+                    background: var(--red-500);
                 }
             }
 
             @keyframes terminal-status-pulse {
                 0% {
                     opacity: 1;
-                    box-shadow: 0 0 0 0 rgba(255, 193, 77, 0.55);
+                    box-shadow: 0 0 0 0 var(--amber-alpha-60);
                 }
                 70% {
                     opacity: 0.7;
-                    box-shadow: 0 0 0 6px rgba(255, 193, 77, 0);
+                    box-shadow: 0 0 0 6px transparent;
                 }
                 100% {
                     opacity: 1;
-                    box-shadow: 0 0 0 0 rgba(255, 193, 77, 0);
+                    box-shadow: 0 0 0 0 transparent;
                 }
             }
 
@@ -198,14 +198,14 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                 justify-content: center;
                 background: transparent;
                 border: none;
-                color: #8b949e;
+                color: var(--gray-500);
                 cursor: pointer;
                 padding: var(--space-3xs);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
 
                 &:hover {
-                    color: #d4d4d4;
-                    background: rgba(255, 255, 255, 0.1);
+                    color: var(--gray-300);
+                    background: var(--white-alpha-10);
                 }
             }
 
@@ -223,32 +223,32 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
             }
 
             .timestamp {
-                color: #6e7681;
+                color: var(--gray-500);
                 margin-right: var(--space-sm);
             }
 
             .log-info .message {
-                color: #8b949e;
+                color: var(--gray-500);
             }
 
             .log-polling .message {
-                color: #8b949e;
+                color: var(--gray-500);
             }
 
             .log-stdout .message {
-                color: #e3b341;
+                color: var(--amber-500);
             }
 
             .log-stderr .message {
-                color: #f85149;
+                color: var(--red-500);
             }
 
             .log-result .message {
-                color: #3fb950;
+                color: var(--green-500);
             }
 
             .log-error .message {
-                color: #f85149;
+                color: var(--red-500);
             }
         `,
     ],

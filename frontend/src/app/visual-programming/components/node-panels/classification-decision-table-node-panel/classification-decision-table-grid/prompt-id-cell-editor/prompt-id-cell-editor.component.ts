@@ -115,12 +115,12 @@ interface PromptIdEditorParams extends ICellEditorParams {
             }
             .prompt-editor-popup {
                 width: 380px;
-                background: #212325;
-                border: 1px solid #2b2d30;
-                border-radius: 10px;
+                background: var(--graphite-900);
+                border: 1px solid var(--graphite-750);
+                border-radius: var(--radius-xl);
                 box-shadow:
-                    0px 2px 3px 0px rgba(0, 0, 0, 0.3),
-                    0px 6px 10px 4px rgba(0, 0, 0, 0.15);
+                    0px 2px 3px 0px var(--black-alpha-30),
+                    0px 6px 10px 4px var(--black-alpha-15);
                 padding: var(--space-xl);
                 display: flex;
                 flex-direction: column;
@@ -136,22 +136,22 @@ interface PromptIdEditorParams extends ICellEditorParams {
             .pe-search-input {
                 flex: 1;
                 height: 40px;
-                background: #2b2d30;
+                background: var(--graphite-750);
                 color: var(--color-text-primary);
-                border: 1px solid rgba(217, 217, 222, 0.16);
-                border-radius: 4px;
+                border: 1px solid var(--fog-alpha-16);
+                border-radius: var(--radius-sm);
                 padding: 0 var(--space-lg);
                 font-size: var(--font-size-md);
-                font-family: Inter, sans-serif;
+                font-family: var(--font-family-base);
                 line-height: 1.3;
                 outline: none;
                 box-sizing: border-box;
             }
             .pe-search-input::placeholder {
-                color: rgba(217, 217, 222, 0.6);
+                color: var(--color-text-secondary);
             }
             .pe-search-input:focus {
-                border-color: rgba(104, 95, 255, 0.5);
+                border-color: var(--purple-alpha-50);
             }
             .pe-add-btn {
                 width: 40px;
@@ -159,8 +159,8 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 flex-shrink: 0;
                 background: var(--accent-color);
                 border: none;
-                border-radius: 8px;
-                color: #fff;
+                border-radius: var(--radius-lg);
+                color: var(--white);
                 font-size: var(--font-size-xl);
                 display: flex;
                 align-items: center;
@@ -182,9 +182,9 @@ interface PromptIdEditorParams extends ICellEditorParams {
             }
             .pe-item {
                 height: 40px;
-                background: #2b2d30;
-                border: 1px solid rgba(217, 217, 222, 0.16);
-                border-radius: 4px;
+                background: var(--graphite-750);
+                border: 1px solid var(--fog-alpha-16);
+                border-radius: var(--radius-sm);
                 padding: 0 var(--space-sm) 0 var(--space-lg);
                 display: flex;
                 align-items: center;
@@ -193,8 +193,8 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 flex-shrink: 0;
             }
             .pe-item-selected {
-                border-color: rgba(104, 95, 255, 0.6);
-                background: rgba(104, 95, 255, 0.12);
+                border-color: var(--purple-alpha-60);
+                background: var(--purple-alpha-12);
             }
             .pe-item-left {
                 display: flex;
@@ -205,7 +205,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
             }
             .pe-item-name {
                 font-size: var(--font-size-md);
-                font-family: Inter, sans-serif;
+                font-family: var(--font-family-base);
                 line-height: 1.3;
                 color: var(--color-text-primary);
                 white-space: nowrap;
@@ -214,9 +214,9 @@ interface PromptIdEditorParams extends ICellEditorParams {
             }
             .pe-item-var {
                 font-size: var(--font-size-2xs);
-                font-family: Inter, sans-serif;
+                font-family: var(--font-family-base);
                 line-height: 1.3;
-                color: rgba(217, 217, 222, 0.6);
+                color: var(--color-text-secondary);
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -230,9 +230,9 @@ interface PromptIdEditorParams extends ICellEditorParams {
             }
             .pe-item-llm {
                 font-size: var(--font-size-md);
-                font-family: Inter, sans-serif;
+                font-family: var(--font-family-base);
                 line-height: 1.3;
-                color: rgba(217, 217, 222, 0.6);
+                color: var(--color-text-secondary);
                 white-space: nowrap;
                 max-width: 180px;
                 overflow: hidden;
@@ -247,7 +247,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 flex-shrink: 0;
                 background: transparent;
                 border: 1px solid var(--accent-color);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 box-shadow: none;
                 cursor: pointer;
                 padding: 0;
@@ -258,7 +258,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 display: flex;
             }
             .pe-item-open-btn:hover {
-                background: rgba(104, 95, 255, 0.08);
+                background: var(--purple-alpha-8);
             }
             /* Empty state */
             .pe-empty {
@@ -271,15 +271,15 @@ interface PromptIdEditorParams extends ICellEditorParams {
             }
             .pe-empty-title {
                 font-size: var(--font-size-md);
-                font-family: Inter, sans-serif;
+                font-family: var(--font-family-base);
                 line-height: 1.3;
                 color: var(--color-text-primary);
             }
             .pe-empty-hint {
                 font-size: var(--font-size-xs);
-                font-family: Inter, sans-serif;
+                font-family: var(--font-family-base);
                 line-height: 1.3;
-                color: rgba(217, 217, 222, 0.6);
+                color: var(--color-text-secondary);
                 max-width: 300px;
             }
             /* Clear */
@@ -292,10 +292,10 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 height: 32px;
                 background: transparent;
                 border: 1px solid var(--accent-color);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 color: var(--accent-color);
                 font-size: var(--font-size-md);
-                font-family: Inter, sans-serif;
+                font-family: var(--font-family-base);
                 font-weight: var(--font-weight-regular);
                 line-height: 1;
                 cursor: pointer;
@@ -304,7 +304,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 box-sizing: border-box;
             }
             .pe-clear:hover {
-                background: rgba(104, 95, 255, 0.08);
+                background: var(--purple-alpha-8);
             }
         `,
     ],
