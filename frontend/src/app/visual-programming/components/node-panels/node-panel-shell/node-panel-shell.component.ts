@@ -151,18 +151,18 @@ export class NodePanelShellComponent {
     });
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
-    private isAutosaving = false;
+    private lastAutosaveSeq = 0;
 
     constructor(private sidePanelService: SidePanelService) {
         effect(() => {
-            const trigger = this.sidePanelService.autosaveTrigger();
-            if (trigger && this.panelInstance && !this.isAutosaving) {
-                this.isAutosaving = true;
+            // autosaveTrigger is a monotonic counter: react to each increment
+            // (a field blur, toggle, etc.) exactly once and commit + broadcast
+            // the panel state via performAutosave.
+            const seq = this.sidePanelService.autosaveTrigger();
+            if (seq === this.lastAutosaveSeq) return;
+            this.lastAutosaveSeq = seq;
+            if (this.panelInstance && !this.isUpdatingNode) {
                 this.performAutosave();
-                setTimeout(() => {
-                    this.sidePanelService.clearAutosaveTrigger();
-                    this.isAutosaving = false;
-                }, 100);
             }
         });
 
@@ -182,8 +182,7 @@ export class NodePanelShellComponent {
                     this.previousNodeId &&
                     this.previousNodeId !== node.id &&
                     this.panelInstance &&
-                    !this.isUpdatingNode &&
-                    !this.isAutosaving
+                    !this.isUpdatingNode
                 ) {
                     this.isUpdatingNode = true;
                     this.performAutosave();
@@ -213,7 +212,6 @@ export class NodePanelShellComponent {
                 this.panelInstanceSig.set(null);
                 this.previousNodeId = null;
                 this.isUpdatingNode = false;
-                this.isAutosaving = false;
             }
         });
 

@@ -10,7 +10,7 @@ import { FlowService } from './flow.service';
 })
 export class SidePanelService {
     private readonly selectedNodeIdSignal = signal<string | null>(null);
-    private readonly autosaveTriggerSignal = signal<boolean>(false);
+    private readonly autosaveTriggerSignal = signal<number>(0);
     private readonly fullSaveRequestSignal = signal<{ seq: number; before: FlowModel | null }>({
         seq: 0,
         before: null,
@@ -43,7 +43,7 @@ export class SidePanelService {
         return this.flowService.nodes().find((node) => node.id === selectedId) || null;
     });
 
-    public readonly autosaveTrigger: Signal<boolean> = this.autosaveTriggerSignal.asReadonly();
+    public readonly autosaveTrigger: Signal<number> = this.autosaveTriggerSignal.asReadonly();
     public readonly fullSaveRequest: Signal<{ seq: number; before: FlowModel | null }> =
         this.fullSaveRequestSignal.asReadonly();
 
@@ -90,11 +90,7 @@ export class SidePanelService {
     }
 
     public triggerAutosave(): void {
-        this.autosaveTriggerSignal.set(!this.autosaveTriggerSignal());
-    }
-
-    public clearAutosaveTrigger(): void {
-        this.autosaveTriggerSignal.set(false);
+        this.autosaveTriggerSignal.update((v) => v + 1);
     }
 
     public requestSaveNode(node: NodeModel): void {

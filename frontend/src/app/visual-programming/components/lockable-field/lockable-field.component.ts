@@ -13,6 +13,7 @@ import { GraphCollaborationWsService } from 'src/app/features/flows/services/gra
 import { ProfileService } from 'src/app/services/auth/profile.service';
 
 import { getAvatarColor } from '../../core/helpers/avatar-colors';
+import { SidePanelService } from '../../services/side-panel.service';
 
 @Component({
     selector: 'app-lockable-field',
@@ -93,6 +94,7 @@ export class LockableFieldComponent implements OnDestroy {
 
     private readonly wsService = inject(GraphCollaborationWsService);
     private readonly profileService = inject(ProfileService);
+    private readonly sidePanelService = inject(SidePanelService);
     private readonly el = inject(ElementRef<HTMLElement>);
 
     protected readonly fieldLock = computed(
@@ -134,8 +136,7 @@ export class LockableFieldComponent implements OnDestroy {
     onFocusOut(event: FocusEvent): void {
         const relatedTarget = event.relatedTarget as Node | null;
         if (relatedTarget && (event.currentTarget as HTMLElement).contains(relatedTarget)) return;
-        // Defer so window.blur fires first — after that document.hasFocus() is accurate.
-        // If the whole browser window lost focus (Alt+Tab), keep the lock alive.
+        this.sidePanelService.triggerAutosave();
         setTimeout(() => {
             if (!document.hasFocus()) return;
             if (this.isLockedByMe()) {
