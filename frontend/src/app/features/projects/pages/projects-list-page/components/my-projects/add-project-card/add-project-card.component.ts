@@ -28,7 +28,7 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
         `
             .add-project-card {
                 background: transparent;
-                border-radius: 12px;
+                border-radius: var(--radius-2xl);
                 padding: var(--space-2xl);
                 color: var(--color-text-primary);
                 font-size: var(--font-size-lg);
@@ -37,15 +37,15 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
                 height: 165px;
                 transition: all 0.2s ease;
                 position: relative;
-                border: 1px dashed #3a3e48;
+                border: 1px dashed var(--graphite-650);
                 cursor: pointer;
             }
 
             .add-project-card:hover {
                 border-color: var(--accent-color);
                 box-shadow:
-                    0 12px 20px rgba(0, 0, 0, 0.18),
-                    0 3px 6px rgba(0, 0, 0, 0.1);
+                    0 12px 20px var(--black-alpha-18),
+                    0 3px 6px var(--black-alpha-10);
             }
 
             .content {
@@ -80,7 +80,7 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
             }
 
             .add-project-card:hover .title {
-                color: #ffffff;
+                color: var(--white);
             }
         `,
     ],

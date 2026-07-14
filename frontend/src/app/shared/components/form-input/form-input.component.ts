@@ -114,8 +114,8 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                         display: none;
                     }
                     background-color: var(--color-input-background);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 6px;
+                    border: 1px solid var(--white-alpha-10);
+                    border-radius: var(--radius-md);
                     color: var(--color-text-primary);
                     font-size: var(--font-size-md);
                     transition: border-color 0.2s ease;
@@ -134,7 +134,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
                     &:focus {
                         outline: none;
-                        border-color: var(--active-color, #685fff);
+                        border-color: var(--active-color, var(--accent-color));
                     }
 
                     &.error {
@@ -149,13 +149,13 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     border: none;
                     padding: 0;
                     cursor: pointer;
-                    color: rgba(255, 255, 255, 0.5);
+                    color: var(--white-alpha-50);
                     display: flex;
                     align-items: center;
                     transition: color 0.2s ease;
 
                     &:hover {
-                        color: rgba(255, 255, 255, 0.9);
+                        color: var(--white-alpha-90);
                     }
 
                     i {

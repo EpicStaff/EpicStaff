@@ -114,10 +114,10 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
         .finish-container {
             position: relative;
             background-color: var(--color-nodes-background);
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             padding: var(--message-padding, var(--space-xl));
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            border-left: 4px solid #5672cd;
+            box-shadow: 0 4px 12px var(--black-alpha-15);
+            border-left: 4px solid var(--blue-500);
 
             .finish-header {
                 display: flex;
@@ -131,7 +131,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                     align-items: center;
 
                     app-svg-icon {
-                        color: #5672cd;
+                        color: var(--blue-500);
                     }
                 }
 
@@ -139,7 +139,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                     width: 36px;
                     height: 36px;
                     border-radius: 50%;
-                    background-color: #5672cd;
+                    background-color: var(--blue-500);
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -162,7 +162,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                     max-width: 100%;
 
                     .project-name {
-                        color: #5672cd;
+                        color: var(--blue-500);
                         font-weight: var(--font-weight-regular);
                         margin-right: var(--space-xs);
                     }
@@ -190,7 +190,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
 
                 app-svg-icon {
                     margin-right: var(--space-sm);
-                    color: #5672cd;
+                    color: var(--blue-500);
                     margin-left: -3px;
                 }
             }
@@ -210,7 +210,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                 position: relative;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-xl);
                 margin-left: var(--space-2xl);
                 max-height: 400px;

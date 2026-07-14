@@ -62,13 +62,13 @@ import { takeUntil } from 'rxjs/operators';
                 width: 24px;
             }
             .tooltip {
-                background-color: #2a2a2a;
-                color: #d9d9de;
+                background-color: var(--graphite-780);
+                color: var(--fog-200);
                 padding: var(--space-xs) var(--space-md);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 font-size: var(--font-size-xs);
                 white-space: nowrap;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+                box-shadow: 0 2px 8px var(--black-alpha-30);
                 border: 1px solid #404040;
             }
         `,

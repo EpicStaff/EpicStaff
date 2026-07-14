@@ -97,16 +97,16 @@ function ensureMonacoLoaded(): Promise<void> {
                 font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
                 font-size: var(--font-size-xs);
                 line-height: 1.4;
-                color: #d4d4d4;
+                color: var(--gray-300);
             }
             .plain-text {
-                color: #d4d4d4;
+                color: var(--gray-300);
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
             }
             .placeholder {
-                color: rgba(255, 255, 255, 0.2);
+                color: var(--white-alpha-20);
             }
             .colorized-code {
                 white-space: nowrap;

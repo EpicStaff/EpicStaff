@@ -412,7 +412,7 @@
 
         .breadcrumbs-scroll::-webkit-scrollbar-thumb {
             background-color: var(--white-alpha-35);
-            border-radius: 90px;
+            border-radius: var(--radius-full);
         }
 
         .breadcrumbs-scroll::-webkit-scrollbar-track {
@@ -521,7 +521,7 @@
             min-width: 18px;
             height: 18px;
             padding: 0 var(--space-xs);
-            border-radius: 9px;
+            border-radius: var(--radius-xl);
             background-color: var(--accent-color);
             color: var(--white);
             font-size: var(--font-size-xs);

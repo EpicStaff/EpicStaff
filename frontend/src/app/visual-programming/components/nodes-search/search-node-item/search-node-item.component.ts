@@ -63,7 +63,7 @@ import {
                 cursor: pointer;
                 transition: all 0.2s ease;
                 background-color: var(--gray-850, #121212);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 border: 1px solid transparent;
                 text-align: left;
                 position: relative;
@@ -87,7 +87,7 @@ import {
                     width: 32px;
                     height: 32px;
                     background-color: color-mix(in srgb, var(--node-color) 15%, transparent);
-                    border-radius: 6px;
+                    border-radius: var(--radius-md);
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -141,10 +141,10 @@ import {
                     align-items: center;
                     justify-content: center;
                     color: var(--accent-color, #685fff);
-                    background-color: rgba(104, 95, 255, 0.1);
+                    background-color: var(--purple-alpha-10);
                     width: 28px;
                     height: 28px;
-                    border-radius: 4px;
+                    border-radius: var(--radius-sm);
 
                     i {
                         font-size: var(--font-size-lg);

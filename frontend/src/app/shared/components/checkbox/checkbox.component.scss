@@ -46,7 +46,7 @@ input[type='checkbox']:indeterminate::after {
     width: 8px;
     height: 1px;
     background: var(--color-text-primary);
-    border-radius: 1px;
+    border-radius: var(--radius-xs);
 }
 
 input.secondary:checked,
@@ -61,7 +61,7 @@ input.secondary:checked::after {
 
 input.secondary:indeterminate::after {
     background: var(--color-surface-contrast);
-    border-radius: 1px;
+    border-radius: var(--radius-xs);
 }
 
 input:disabled {

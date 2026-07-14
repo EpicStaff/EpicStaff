@@ -134,7 +134,7 @@
             content: '';
             position: absolute;
             background-color: var(--color-text-secondary);
-            border-radius: 1px;
+            border-radius: var(--radius-xs);
         }
 
         &::before {

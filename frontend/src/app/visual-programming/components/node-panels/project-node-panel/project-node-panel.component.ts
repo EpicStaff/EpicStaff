@@ -115,8 +115,8 @@ interface InputMapPair {
                 margin-top: var(--space-lg);
                 padding: var(--space-lg);
                 border: 1px solid #e0e0e0;
-                border-radius: 4px;
-                background-color: #f9f9f9;
+                border-radius: var(--radius-sm);
+                background-color: var(--gray-50);
             }
 
             .status-section h4 {
@@ -126,7 +126,7 @@ interface InputMapPair {
 
             .section-label {
                 font-size: var(--font-size-xs);
-                color: #d9d9d999;
+                color: var(--fog-alpha-60);
                 text-transform: uppercase;
                 letter-spacing: 0.05em;
             }
@@ -148,7 +148,7 @@ interface InputMapPair {
                 align-items: center;
                 gap: var(--space-sm);
                 font-size: var(--font-size-md);
-                color: #d4d4d4;
+                color: var(--gray-300);
                 cursor: pointer;
 
                 input[type='checkbox'] {

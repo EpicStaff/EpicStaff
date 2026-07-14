@@ -160,9 +160,9 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         .agent-flow-container {
             position: relative;
             background-color: var(--color-nodes-background);
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             padding: var(--message-padding, var(--space-xl));
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 12px var(--black-alpha-15);
             border-left: 4px solid #8e5cd9;
         }
 
@@ -257,7 +257,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         .thought-bubble {
             background-color: var(--gray-800);
             border: 1px solid var(--gray-750);
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             padding: var(--space-lg);
             position: relative;
             color: var(--gray-200);
@@ -290,7 +290,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         .tool-input-container {
             background-color: var(--gray-800);
             border: 1px solid var(--gray-750);
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             padding: var(--space-lg);
             overflow: auto;
             max-height: 400px;
@@ -320,9 +320,9 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         .result-content {
             background-color: var(--gray-850);
             border: 1px solid var(--gray-750);
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             padding: var(--space-lg);
-            color: #e3e3e3;
+            color: var(--gray-200);
             word-break: break-word;
             overflow-y: auto;
             max-height: 400px;

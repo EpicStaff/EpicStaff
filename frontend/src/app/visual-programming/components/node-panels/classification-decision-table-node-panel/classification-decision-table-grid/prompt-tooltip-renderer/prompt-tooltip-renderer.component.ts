@@ -80,7 +80,7 @@ interface PromptTooltipParams extends ICellRendererParams {
             .chip-id {
                 color: var(--color-text-primary);
                 font-size: var(--font-size-md);
-                font-family: Inter, sans-serif;
+                font-family: var(--font-family-base);
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -95,7 +95,7 @@ interface PromptTooltipParams extends ICellRendererParams {
                 flex-shrink: 0;
                 background: transparent;
                 border: 1px solid var(--accent-color);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 box-shadow: none;
                 cursor: pointer;
                 padding: 0;
@@ -103,7 +103,7 @@ interface PromptTooltipParams extends ICellRendererParams {
                 font-size: var(--font-size-lg);
             }
             .open-in-library-btn:hover {
-                background: rgba(104, 95, 255, 0.08);
+                background: var(--purple-alpha-8);
             }
             .prompt-id-cell:hover .open-in-library-btn {
                 display: flex;
@@ -112,7 +112,7 @@ interface PromptTooltipParams extends ICellRendererParams {
                 display: flex;
                 align-items: center;
                 gap: var(--space-2xs);
-                color: rgba(255, 255, 255, 0.35);
+                color: var(--white-alpha-35);
                 font-size: var(--font-size-sm);
             }
             .select-placeholder .ti {
@@ -127,7 +127,7 @@ interface PromptTooltipParams extends ICellRendererParams {
                 background: rgba(255, 59, 48, 0.15);
                 color: var(--error-color, #ff3b30);
                 border: 1px solid rgba(255, 59, 48, 0.35);
-                border-radius: 10px;
+                border-radius: var(--radius-xl);
                 font-size: var(--font-size-xs);
                 font-weight: var(--font-weight-medium);
                 white-space: nowrap;

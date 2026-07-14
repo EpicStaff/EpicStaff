@@ -475,9 +475,9 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         headerBackgroundColor: '#27272b',
         headerTextColor: '#ffffff',
         oddRowBackgroundColor: '#252526',
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        rowHoverColor: 'rgba(104, 95, 255, 0.1)',
-        columnBorder: { style: 'solid', width: 1, color: 'rgba(255, 255, 255, 0.07)' },
+        borderColor: 'var(--white-alpha-10)',
+        rowHoverColor: 'var(--purple-alpha-10)',
+        columnBorder: { style: 'solid', width: 1, color: 'var(--white-alpha-7)' },
         fontSize: 14,
     });
 

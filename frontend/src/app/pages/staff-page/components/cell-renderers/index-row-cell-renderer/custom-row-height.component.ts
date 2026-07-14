@@ -55,7 +55,7 @@ import { ICellRendererParams } from 'ag-grid-community';
                 background: rgba(200, 200, 200, 0.3);
                 cursor: row-resize;
                 transition: opacity 0.2s;
-                border-radius: 2px;
+                border-radius: var(--radius-xs);
                 opacity: 0;
                 touch-action: none;
             }

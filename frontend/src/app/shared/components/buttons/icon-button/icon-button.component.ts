@@ -33,16 +33,16 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
                 border: none;
                 background: transparent;
                 cursor: pointer;
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 transition: background-color 0.2s ease;
                 padding: 0;
 
                 &:hover:not(:disabled) {
-                    background-color: rgba(255, 255, 255, 0.1);
+                    background-color: var(--white-alpha-10);
                 }
 
                 &:active:not(:disabled) {
-                    background-color: rgba(255, 255, 255, 0.15);
+                    background-color: var(--white-alpha-15);
                 }
 
                 &:disabled {

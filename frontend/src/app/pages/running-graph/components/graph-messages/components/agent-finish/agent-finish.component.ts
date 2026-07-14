@@ -104,9 +104,9 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
 
             .agent-flow-container {
                 background-color: var(--color-nodes-background);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--message-padding, var(--space-xl));
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                box-shadow: 0 4px 12px var(--black-alpha-15);
                 border-left: 4px solid #8e5cd9;
             }
 
@@ -196,7 +196,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             .thought-bubble {
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-lg);
                 position: relative;
                 color: var(--gray-200);
@@ -220,8 +220,8 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
 
             .result-content {
                 background-color: var(--gray-850);
-                border-radius: 18px;
-                border-top-left-radius: 4px;
+                border-radius: var(--radius-3xl);
+                border-top-left-radius: var(--radius-sm);
                 padding: var(--space-lg);
                 color: white;
                 word-break: break-word;

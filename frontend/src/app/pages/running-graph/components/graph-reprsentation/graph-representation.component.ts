@@ -55,7 +55,7 @@ interface NodeStatus {
             overflow-y: auto;
 
             background-color: rgba(255, 255, 255, 0.03);
-            border-radius: 12px;
+            border-radius: var(--radius-2xl);
         }
 
         .flow-content {
@@ -92,7 +92,7 @@ interface NodeStatus {
         li {
             padding: var(--space-md) var(--space-lg);
             margin-bottom: var(--space-lg);
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             background: var(--gray-850);
             border: 1px solid var(--gray-800);
             transition:
@@ -122,7 +122,7 @@ interface NodeStatus {
             margin-top: 0rem;
             font-weight: var(--font-weight-medium);
             padding: var(--space-2xs) var(--space-md);
-            border-radius: 12px;
+            border-radius: var(--radius-2xl);
             display: inline-flex;
             align-items: center;
             gap: var(--space-xs);
@@ -140,7 +140,7 @@ interface NodeStatus {
 
         .status-in_progress {
             background-color: rgba(41, 121, 255, 0.15);
-            color: #5e9eff;
+            color: var(--blue-400);
             animation: pulse 1.5s infinite ease-in-out;
         }
 
@@ -178,13 +178,13 @@ interface NodeStatus {
             width: 100%;
             padding: var(--space-3xl);
             background: var(--gray-850);
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             margin-top: var(--space-lg);
         }
 
         /* Item active state */
         .item-active {
-            border-left: 3px solid #5e9eff !important;
+            border-left: 3px solid var(--blue-400) !important;
         }
     `,
     changeDetection: ChangeDetectionStrategy.OnPush,

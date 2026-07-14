@@ -77,11 +77,11 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
             .tags-popup {
                 width: 350px;
                 padding: var(--space-lg);
-                background: #1a1a1a;
+                background: var(--gray-850);
                 border: 1px solid #333;
                 color: #f0f0f0;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-                border-radius: 12px;
+                box-shadow: 0 8px 24px var(--black-alpha-60);
+                border-radius: var(--radius-2xl);
                 font-family:
                     system-ui,
                     -apple-system,
@@ -97,7 +97,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     align-items: center;
                     margin-bottom: var(--space-lg);
                     padding-bottom: var(--space-md);
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                    border-bottom: 1px solid var(--white-alpha-8);
 
                     h3 {
                         margin: 0;
@@ -114,7 +114,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                         user-select: none;
                         transition: all 0.2s ease;
                         padding: var(--space-2xs) var(--space-sm);
-                        border-radius: 4px;
+                        border-radius: var(--radius-sm);
 
                         &:hover {
                             background: rgba(94, 156, 237, 0.1);
@@ -130,7 +130,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     max-height: 200px;
                     margin-bottom: var(--space-lg);
                     padding-bottom: var(--space-2xs);
-                    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+                    border-bottom: 1px solid var(--white-alpha-6);
                     scrollbar-width: thin;
                     scrollbar-color: #444 #222;
 
@@ -145,15 +145,15 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                         display: flex;
                         align-items: center;
                         height: 30px;
-                        border-radius: 6px;
+                        border-radius: var(--radius-md);
                         transition: all 0.15s ease;
                     }
 
                     .tag-item {
-                        background: #2a2a2a;
+                        background: var(--graphite-780);
                         padding: 0 var(--space-xs) 0 var(--space-md);
-                        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-                        border: 1px solid #3a3a3a;
+                        box-shadow: 0 1px 3px var(--black-alpha-10);
+                        border: 1px solid var(--graphite-600);
 
                         &:hover {
                             background: #333;
@@ -191,20 +191,20 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
 
                             &:hover {
                                 background: rgba(255, 107, 107, 0.15);
-                                color: #ff6b6b;
+                                color: var(--red-400);
                             }
                         }
                     }
 
                     .tag-input-item {
                         background: #252525;
-                        border: 1px solid #3a3a3a;
+                        border: 1px solid var(--graphite-600);
                         padding: 0 var(--space-xs) 0 var(--space-md);
                         min-width: 120px;
                         transition: all 0.2s ease;
 
                         &:focus-within {
-                            background: #2d2d2d;
+                            background: var(--graphite-720);
                             border-color: #5e9ced;
                             box-shadow: 0 0 0 2px rgba(94, 156, 237, 0.25);
                         }
@@ -259,23 +259,23 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     font-size: var(--font-size-xs); // Reduced font size
                     font-weight: var(--font-weight-medium);
                     background: #5e9ced;
-                    color: #fff;
+                    color: var(--white);
                     border: none;
-                    border-radius: 6px;
+                    border-radius: var(--radius-md);
                     cursor: pointer;
                     transition: all 0.2s ease;
-                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                    box-shadow: 0 2px 4px var(--black-alpha-20);
 
                     &:hover {
                         background: #4a8ae0;
                         transform: translateY(-1px);
-                        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+                        box-shadow: 0 4px 8px var(--black-alpha-25);
                     }
 
                     &:active {
                         transform: translateY(0);
                         background: #3a7ad0;
-                        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+                        box-shadow: 0 1px 2px var(--black-alpha-20);
                     }
                 }
             }

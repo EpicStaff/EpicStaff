@@ -57,7 +57,7 @@
         transition: color 0.2s ease;
 
         &:hover {
-            color: color.adjust(#5672cd, $lightness: 15%);
+            color: color-mix(in srgb, var(--blue-500) 70%, white);
             text-decoration: underline;
         }
     }

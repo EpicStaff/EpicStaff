@@ -133,10 +133,10 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             .subgraph-start-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-xl);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                border-left: 4px solid #00bfa5;
+                box-shadow: 0 4px 12px var(--black-alpha-15);
+                border-left: 4px solid var(--teal-500);
             }
 
             .subgraph-start-header {
@@ -152,7 +152,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 align-items: center;
 
                 app-svg-icon {
-                    color: #00bfa5;
+                    color: var(--teal-500);
                 }
             }
 
@@ -160,7 +160,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 width: 36px;
                 height: 36px;
                 border-radius: 50%;
-                background-color: #00bfa5;
+                background-color: var(--teal-500);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -180,7 +180,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             }
 
             .node-name {
-                color: #00bfa5;
+                color: var(--teal-500);
                 font-weight: var(--font-weight-regular);
             }
 
@@ -215,7 +215,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
 
             .section-heading app-svg-icon {
                 margin-right: var(--space-sm);
-                color: #00bfa5;
+                color: var(--teal-500);
                 margin-left: -3px;
             }
 
@@ -230,7 +230,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 position: relative;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-lg);
                 overflow: auto;
                 max-height: 400px;
@@ -251,7 +251,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             .state-history-item {
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-lg);
             }
 
@@ -265,11 +265,11 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             }
 
             .item-index {
-                background-color: #00bfa5;
+                background-color: var(--teal-500);
                 color: var(--gray-900);
                 font-weight: var(--font-weight-semibold);
                 padding: var(--space-2xs) var(--space-sm);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 font-size: var(--font-size-md);
             }
 
@@ -280,11 +280,11 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             }
 
             .item-type {
-                color: #00bfa5;
+                color: var(--teal-500);
                 font-size: var(--font-size-md);
                 background-color: rgba(0, 191, 165, 0.15);
                 padding: var(--space-2xs) var(--space-sm);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
             }
 
             .state-history-item-details {
@@ -308,7 +308,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             .detail-content {
                 background-color: var(--gray-850);
                 border: 1px solid var(--gray-750);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: var(--space-md);
                 overflow: auto;
                 max-height: 300px;
@@ -319,7 +319,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 background-color: rgb(0, 191, 165);
                 color: rgb(255, 255, 255);
                 border: 2px solid rgba(0, 191, 165, 0.4);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: var(--space-sm) var(--space-md);
                 font-weight: var(--font-weight-medium);
                 display: inline-flex;

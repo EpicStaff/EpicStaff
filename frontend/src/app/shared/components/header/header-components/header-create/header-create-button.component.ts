@@ -45,17 +45,17 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
                 background-color: var(--accent-color);
                 color: var(--white);
                 border: none;
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 cursor: pointer;
                 transition: all 0.2s ease;
 
                 &:hover {
                     background-color: #7a73ff;
-                    box-shadow: 0 4px 12px rgba(104, 95, 255, 0.3);
+                    box-shadow: 0 4px 12px var(--purple-alpha-30);
                 }
 
                 &:active {
-                    box-shadow: 0 2px 4px rgba(104, 95, 255, 0.2);
+                    box-shadow: 0 2px 4px var(--purple-alpha-20);
                 }
 
                 svg {

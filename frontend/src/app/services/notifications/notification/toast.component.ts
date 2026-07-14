@@ -105,19 +105,19 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
             .toast-item {
                 width: 100%;
                 padding: var(--space-md) var(--space-lg);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 gap: var(--space-md);
-                background-color: #1e1e1e;
+                background-color: var(--graphite-875);
                 color: #e0e0e0;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+                box-shadow: 0 4px 12px var(--black-alpha-40);
                 cursor: pointer;
                 transition:
                     transform 0.2s ease,
                     background-color 0.2s ease;
-                border: 1px solid #2a2a2a;
+                border: 1px solid var(--graphite-780);
 
                 .toast-content {
                     display: flex;
@@ -133,7 +133,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
 
                 &:hover {
                     transform: translateY(-2px);
-                    background-color: #2a2a2a;
+                    background-color: var(--graphite-780);
                 }
 
                 &.success {

@@ -134,7 +134,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                 justify-content: space-between;
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: var(--space-md) var(--space-md);
                 cursor: pointer;
                 transition: border-color 0.2s ease;
@@ -146,7 +146,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
             }
 
             .selected-model.placeholder {
-                color: rgba(255, 255, 255, 0.3);
+                color: var(--white-alpha-30);
             }
 
             .model-info {
@@ -185,7 +185,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
             }
 
             .placeholder-text {
-                color: rgba(255, 255, 255, 0.3);
+                color: var(--white-alpha-30);
                 font-size: var(--font-size-md);
             }
 
@@ -202,8 +202,8 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                 width: 100%;
                 background-color: var(--color-modals-background);
                 border: 1px solid var(--color-divider-subtle);
-                border-radius: 6px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                border-radius: var(--radius-md);
+                box-shadow: 0 4px 12px var(--black-alpha-15);
                 z-index: 1000;
                 max-height: 300px;
                 display: flex;
@@ -231,7 +231,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                 width: 100%;
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 padding: var(--space-xs) var(--space-md);
                 color: var(--color-text-primary);
                 font-size: var(--font-size-md);

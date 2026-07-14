@@ -53,9 +53,9 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
         `
             .warning-container {
                 background-color: var(--color-nodes-background);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-lg) var(--space-xl);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                box-shadow: 0 4px 12px var(--black-alpha-15);
                 border-left: 4px solid #f56a00;
                 margin-bottom: var(--space-lg);
             }

@@ -115,7 +115,7 @@ interface InputMapPair {
                 align-items: center;
                 gap: var(--space-sm);
                 font-size: var(--font-size-md);
-                color: rgba(255, 255, 255, 0.7);
+                color: var(--white-alpha-70);
                 font-weight: var(--font-weight-medium);
                 margin-bottom: var(--space-sm);
             }

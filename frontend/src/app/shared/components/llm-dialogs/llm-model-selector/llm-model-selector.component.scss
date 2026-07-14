@@ -136,7 +136,7 @@
 
         &::-webkit-scrollbar-thumb {
             background: var(--color-scrollbar-thumb, var(--fog-alpha-16));
-            border-radius: 0.1875rem;
+            border-radius: var(--radius-sm);
         }
     }
 

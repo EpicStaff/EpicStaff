@@ -42,7 +42,7 @@ import { NodeType } from '../../../core/enums/node-type';
                 align-items: center;
                 justify-content: space-between;
                 padding: var(--space-md) var(--space-lg);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 cursor: pointer;
                 transition: background 0.2s ease;
                 position: relative;
@@ -50,8 +50,8 @@ import { NodeType } from '../../../core/enums/node-type';
                 overflow: hidden;
             }
             li:hover {
-                background: #2a2a2a;
-                color: #fff;
+                background: var(--graphite-780);
+                color: var(--white);
             }
             li i {
                 font-size: var(--font-size-xl);
@@ -74,7 +74,7 @@ import { NodeType } from '../../../core/enums/node-type';
             }
             li:hover .plus-icon {
                 opacity: 1;
-                color: #fff;
+                color: var(--white);
             }
         `,
     ],

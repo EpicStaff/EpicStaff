@@ -54,7 +54,7 @@ export interface IconHeaderParams extends IHeaderParams {
             }
             .icon-header-label {
                 font-size: var(--font-size-md);
-                color: rgba(255, 255, 255, 0.9);
+                color: var(--white-alpha-90);
                 font-weight: var(--font-weight-medium);
                 flex: 1;
                 overflow: hidden;
@@ -63,14 +63,14 @@ export interface IconHeaderParams extends IHeaderParams {
             }
             .icon-header i {
                 font-size: var(--font-size-md);
-                color: rgba(255, 255, 255, 0.7);
+                color: var(--white-alpha-70);
                 flex-shrink: 0;
             }
             /* NOTE: kept in sync with .chm-icon-clickable in column-header-menu.component.ts */
             .icon-header-clickable {
                 cursor: pointer;
-                background: rgba(104, 95, 255, 0.25);
-                border: 1px solid rgba(104, 95, 255, 0.5);
+                background: var(--purple-alpha-25);
+                border: 1px solid var(--purple-alpha-50);
                 border-radius: 50%;
                 width: 20px;
                 height: 20px;
@@ -85,14 +85,14 @@ export interface IconHeaderParams extends IHeaderParams {
                 flex-shrink: 0;
             }
             .icon-header-clickable:hover {
-                background: rgba(104, 95, 255, 0.5) !important;
-                color: #fff !important;
+                background: var(--purple-alpha-50) !important;
+                color: var(--white) !important;
                 border-color: var(--accent-color);
             }
             .icon-header-delete {
                 cursor: pointer;
                 font-size: var(--font-size-sm) !important;
-                color: rgba(255, 255, 255, 0.4) !important;
+                color: var(--white-alpha-40) !important;
                 flex-shrink: 0;
                 transition: color 0.15s ease;
                 padding: var(--space-3xs);

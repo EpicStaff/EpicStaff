@@ -35,7 +35,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 display: inline-flex;
                 align-items: center;
                 padding: var(--space-2xs) var(--space-md);
-                border-radius: 12px;
+                border-radius: var(--radius-2xl);
                 font-size: var(--font-size-sm);
                 font-weight: var(--font-weight-medium);
                 gap: var(--space-xs);
@@ -52,7 +52,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 
             .status-running {
                 background-color: rgba(41, 121, 255, 0.15);
-                color: #5e9eff;
+                color: var(--blue-400);
                 animation: pulse 1.5s infinite ease-in-out;
             }
 

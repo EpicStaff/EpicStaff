@@ -123,7 +123,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             },
         },
         foundation: {
-            shadowMd: 'rgba(0, 0, 0, 0.6)',
+            shadowMd: 'var(--black-alpha-60)',
         },
     };
 

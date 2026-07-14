@@ -28,7 +28,7 @@ import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
                 height: var(--resize-handle-size);
                 background-color: var(--db-background, #181818);
                 border: 1px solid var(--db-primary-1, #3451b2);
-                border-radius: 1px;
+                border-radius: var(--radius-xs);
 
                 &.f-resize-handle-right-bottom {
                     right: var(--resize-handle-offset);

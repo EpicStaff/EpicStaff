@@ -100,20 +100,20 @@
         &--first::before {
             height: calc(100% + 0.5rem);
             transform: translate(-1rem, -0.5rem);
-            border-top-left-radius: 10px;
+            border-top-left-radius: var(--radius-xl);
         }
 
         &--last::before {
             height: calc(100% + 0.5rem);
             transform: translate(-1rem, 0);
-            border-bottom-left-radius: 10px;
+            border-bottom-left-radius: var(--radius-xl);
         }
 
         &--single::before {
             height: calc(100% + 1rem);
             transform: translate(-1rem, -0.5rem);
-            border-top-left-radius: 10px;
-            border-bottom-left-radius: 10px;
+            border-top-left-radius: var(--radius-xl);
+            border-bottom-left-radius: var(--radius-xl);
         }
 
         &--even {

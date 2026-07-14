@@ -93,9 +93,9 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 justify-content: space-between;
             }
             .add-btn {
-                background: #27272b;
-                border: 1px solid rgba(104, 95, 255, 0.5);
-                border-radius: 4px;
+                background: var(--graphite-800);
+                border: 1px solid var(--purple-alpha-50);
+                border-radius: var(--radius-sm);
                 width: 16px;
                 height: 16px;
                 display: flex;
@@ -109,13 +109,13 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 transition: background 0.15s ease;
             }
             .add-btn:hover {
-                background: rgba(104, 95, 255, 0.5);
-                color: #fff;
+                background: var(--purple-alpha-50);
+                color: var(--white);
                 border-color: var(--accent-color);
             }
             .chevron-btn {
                 cursor: pointer;
-                color: rgba(255, 255, 255, 0.5);
+                color: var(--white-alpha-50);
                 background: none;
                 border: none;
                 padding: 0 var(--space-3xs);
@@ -126,12 +126,12 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 transition: color 0.15s ease;
             }
             .chevron-btn:hover {
-                color: rgba(255, 255, 255, 0.9);
+                color: var(--white-alpha-90);
             }
             .params-label {
                 flex: 1;
                 font-size: var(--font-size-md);
-                color: rgba(255, 255, 255, 0.9);
+                color: var(--white-alpha-90);
                 font-weight: var(--font-weight-medium);
                 white-space: nowrap;
                 overflow: hidden;
@@ -141,21 +141,21 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             }
             .params-dropdown {
                 background: #2a2a2e;
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 6px;
+                border: 1px solid var(--white-alpha-15);
+                border-radius: var(--radius-md);
                 min-width: 100px;
                 overflow: hidden;
-                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+                box-shadow: 0 4px 16px var(--black-alpha-40);
             }
             .params-dropdown-item {
                 padding: var(--space-sm) var(--space-lg);
                 font-size: var(--font-size-sm);
-                color: rgba(255, 255, 255, 0.85);
+                color: var(--white-alpha-85);
                 cursor: pointer;
                 white-space: nowrap;
             }
             .params-dropdown-item:hover {
-                background: rgba(104, 95, 255, 0.2);
+                background: var(--purple-alpha-20);
             }
         `,
     ],

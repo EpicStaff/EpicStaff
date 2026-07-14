@@ -76,7 +76,7 @@
         pointer-events: none;
         -webkit-appearance: none;
         appearance: none;
-        border-radius: 0.125rem;
+        border-radius: var(--radius-xs);
         outline: none;
         cursor: pointer;
 

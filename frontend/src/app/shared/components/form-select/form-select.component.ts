@@ -64,7 +64,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                 label {
                     display: block;
                     font-size: var(--font-size-md);
-                    color: rgba(255, 255, 255, 0.7);
+                    color: var(--white-alpha-70);
                     margin: 0;
                 }
 
@@ -72,15 +72,15 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     width: 100%;
                     padding: var(--space-sm) var(--space-md);
                     background-color: var(--color-input-background);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 6px;
+                    border: 1px solid var(--white-alpha-10);
+                    border-radius: var(--radius-md);
                     color: white;
                     font-size: var(--font-size-md);
                     transition: border-color 0.2s ease;
 
                     &:focus {
                         outline: none;
-                        border-color: var(--active-color, #685fff);
+                        border-color: var(--active-color, var(--accent-color));
                     }
 
                     &.error {

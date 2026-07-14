@@ -81,9 +81,9 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
             .llm-flow-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-xl);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                box-shadow: 0 4px 12px var(--black-alpha-15);
                 border-left: 4px solid #36cfc9; /* Teal accent */
             }
 
@@ -168,7 +168,7 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
                 position: relative;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-lg);
                 color: var(--gray-200);
                 white-space: pre-wrap;

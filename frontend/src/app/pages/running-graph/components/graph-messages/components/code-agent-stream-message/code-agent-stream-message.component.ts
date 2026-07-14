@@ -151,9 +151,9 @@ interface ThinkingStep {
 
         .code-agent-container {
             background-color: var(--color-nodes-background);
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             padding: var(--message-padding, var(--space-xl));
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 12px var(--black-alpha-15);
             border-left: 4px solid #2dd4bf;
         }
 
@@ -266,7 +266,7 @@ interface ThinkingStep {
         }
 
         .step-item {
-            border-radius: 6px;
+            border-radius: var(--radius-md);
         }
 
         .step-header {
@@ -276,7 +276,7 @@ interface ThinkingStep {
             cursor: pointer;
             user-select: none;
             padding: var(--space-xs) var(--space-sm);
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
 
             &:hover {
                 background-color: var(--gray-800);
@@ -315,7 +315,7 @@ interface ThinkingStep {
         .tool-call-item {
             background-color: var(--gray-800);
             border: 1px solid var(--gray-750);
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             padding: var(--space-sm) var(--space-md);
         }
 
@@ -368,13 +368,13 @@ interface ThinkingStep {
                 code {
                     background-color: var(--gray-800);
                     padding: 0.15em 0.4em;
-                    border-radius: 3px;
+                    border-radius: var(--radius-sm);
                     font-size: 0.85em;
                 }
                 pre {
                     background-color: var(--gray-850);
                     border: 1px solid var(--gray-750);
-                    border-radius: 6px;
+                    border-radius: var(--radius-md);
                     padding: var(--space-md);
                     overflow-x: auto;
                 }

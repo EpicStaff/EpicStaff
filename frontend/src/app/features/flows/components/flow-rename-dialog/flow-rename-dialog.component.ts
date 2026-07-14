@@ -89,7 +89,7 @@ interface FlowRenameData {
         `
             .dialog-container {
                 background: var(--color-sidenav-background);
-                border-radius: 12px;
+                border-radius: var(--radius-2xl);
                 padding: var(--space-2xl);
                 width: 500px;
                 max-width: 100%;
@@ -123,7 +123,7 @@ interface FlowRenameData {
                 padding: var(--space-md);
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 color: var(--color-text-primary);
                 font-size: var(--font-size-md);
                 transition: border-color 0.2s;

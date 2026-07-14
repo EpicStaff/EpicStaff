@@ -105,7 +105,7 @@ import {
             .memory-item {
                 background: var(--gray-800);
                 border: 1px solid var(--gray-700);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-lg);
                 margin-bottom: var(--space-md);
             }
@@ -130,7 +130,7 @@ import {
                 color: var(--gray-300);
                 background: var(--gray-750);
                 padding: var(--space-2xs) var(--space-sm);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
             }
 
             .memory-date {
@@ -167,7 +167,7 @@ import {
                 width: 100%;
                 background-color: var(--gray-750);
                 border: none;
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 padding: var(--space-sm) var(--space-md);
                 color: var(--gray-300);
                 font-size: var(--font-size-sm);
@@ -195,7 +195,7 @@ import {
 
             .memory-details {
                 background-color: var(--gray-750);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 padding: var(--space-md);
                 padding-bottom: var(--space-2xs);
                 margin-top: var(--space-sm);

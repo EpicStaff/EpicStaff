@@ -242,7 +242,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                             transform: translateY(-50%);
                             z-index: 10;
                             border-width: 1px 1px 1px 0px;
-                            border-radius: 0 8px 8px 0;
+                            border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
                         }
                     }
                 }
@@ -299,21 +299,21 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                     justify-content: center;
                     border-width: 1px 0px 1px 1px;
                     border-style: solid;
-                    border-color: #2c2c2e;
+                    border-color: var(--graphite-700);
                     background: transparent;
                     cursor: pointer;
-                    border-radius: 8px 0 0 8px;
+                    border-radius: var(--radius-lg) 0 0 var(--radius-lg);
                     transition: all 0.2s ease;
                     padding: 0;
-                    color: #d9d9d999;
+                    color: var(--fog-alpha-60);
 
                     &:hover:not(:disabled) {
-                        color: #d9d9d9;
-                        background: #2c2c2e;
+                        color: var(--fog-200);
+                        background: var(--graphite-700);
                     }
 
                     &:active:not(:disabled) {
-                        color: #d9d9d9;
+                        color: var(--fog-200);
                     }
 
                     &:disabled {
@@ -337,8 +337,8 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
             }
 
             .code-editor-section {
-                border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
-                border-radius: 0 8px 8px 0;
+                border: 1px solid var(--color-divider-subtle, var(--white-alpha-10));
+                border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
 
                 &.no-bottom-radius {
                     border-bottom-left-radius: 0;
@@ -384,7 +384,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
 
             .section-label {
                 font-size: var(--font-size-xs);
-                color: #d9d9d999;
+                color: var(--fog-alpha-60);
                 text-transform: uppercase;
                 letter-spacing: 0.05em;
             }
@@ -406,7 +406,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                 align-items: center;
                 gap: var(--space-sm);
                 font-size: var(--font-size-md);
-                color: #d4d4d4;
+                color: var(--gray-300);
                 cursor: pointer;
 
                 input[type='checkbox'] {

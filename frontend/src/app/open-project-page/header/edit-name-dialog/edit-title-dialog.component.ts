@@ -44,10 +44,10 @@ import { FormsModule } from '@angular/forms';
         `
             .dialog-container {
                 padding: var(--space-2xl);
-                background-color: #1e1e1e;
-                border-radius: 12px;
+                background-color: var(--graphite-875);
+                border-radius: var(--radius-2xl);
                 color: #ebebeb;
-                box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+                box-shadow: 0 8px 20px var(--black-alpha-40);
             }
 
             .dialog-title {
@@ -64,18 +64,18 @@ import { FormsModule } from '@angular/forms';
             .title-input {
                 width: 100%;
                 padding: var(--space-md) var(--space-md);
-                background-color: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 6px;
-                color: #ffffff;
+                background-color: var(--white-alpha-10);
+                border: 1px solid var(--white-alpha-20);
+                border-radius: var(--radius-md);
+                color: var(--white);
                 font-size: var(--font-size-lg);
                 outline: none;
                 transition: all 0.2s ease;
             }
 
             .title-input:focus {
-                border-color: rgba(104, 95, 255, 0.8);
-                background-color: rgba(104, 95, 255, 0.1);
+                border-color: var(--purple-alpha-80);
+                background-color: var(--purple-alpha-10);
             }
 
             .dialog-actions {
@@ -86,7 +86,7 @@ import { FormsModule } from '@angular/forms';
 
             button {
                 padding: var(--space-sm) var(--space-lg);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);
                 cursor: pointer;
@@ -100,18 +100,18 @@ import { FormsModule } from '@angular/forms';
 
             .cancel-button {
                 background: transparent;
-                border: 1px solid rgba(255, 255, 255, 0.2);
+                border: 1px solid var(--white-alpha-20);
                 color: #ebebeb;
             }
 
             .cancel-button:hover:not(:disabled) {
-                background: rgba(255, 255, 255, 0.1);
+                background: var(--white-alpha-10);
             }
 
             .save-button {
-                background: linear-gradient(135deg, #685fff, #896fff);
+                background: linear-gradient(135deg, var(--accent-color), #896fff);
                 border: none;
-                color: #ffffff;
+                color: var(--white);
             }
 
             .save-button:hover:not(:disabled) {

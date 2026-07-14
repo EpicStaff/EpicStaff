@@ -128,7 +128,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     }
 
                     .flows-prefix {
-                        color: rgba(255, 255, 255, 0.6);
+                        color: var(--white-alpha-60);
                         cursor: pointer;
                         transition: all 0.2s ease;
                         display: flex;
@@ -149,7 +149,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                         }
 
                         &:hover {
-                            color: rgba(255, 255, 255, 0.9);
+                            color: var(--white-alpha-90);
                         }
                     }
 
@@ -205,7 +205,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     color: var(--gray-400) !important;
                     background: transparent !important;
                     border: none !important;
-                    border-radius: 6px !important;
+                    border-radius: var(--radius-md) !important;
                     padding: var(--space-sm) var(--space-md) !important;
                     min-width: 0 !important;
                     max-width: 100%;
@@ -224,7 +224,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
 
                     &:hover {
                         color: var(--white) !important;
-                        background: rgba(255, 255, 255, 0.05) !important;
+                        background: var(--white-alpha-5) !important;
                     }
 
                     &:disabled {

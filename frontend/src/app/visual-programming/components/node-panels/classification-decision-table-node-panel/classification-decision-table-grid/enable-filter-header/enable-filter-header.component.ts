@@ -87,7 +87,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 height: 100%;
             }
             .enable-label {
-                color: rgba(255, 255, 255, 0.9);
+                color: var(--white-alpha-90);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);
             }
@@ -97,7 +97,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 padding: 0;
                 border: none;
                 background: transparent;
-                color: rgba(255, 255, 255, 0.6);
+                color: var(--white-alpha-60);
                 cursor: pointer;
                 display: inline-flex;
                 align-items: center;
@@ -108,25 +108,25 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 color: var(--accent-color);
             }
             .ef-dropdown {
-                background: #212325;
-                border: 1px solid #2b2d30;
-                border-radius: 8px;
+                background: var(--graphite-900);
+                border: 1px solid var(--graphite-750);
+                border-radius: var(--radius-lg);
                 padding: var(--space-2xs);
                 box-shadow:
-                    0 6px 10px 4px rgba(0, 0, 0, 0.15),
-                    0 2px 3px rgba(0, 0, 0, 0.3);
+                    0 6px 10px 4px var(--black-alpha-15),
+                    0 2px 3px var(--black-alpha-30);
                 min-width: 160px;
             }
             .ef-item {
                 padding: var(--space-sm) var(--space-md);
                 font-size: var(--font-size-sm);
                 color: var(--color-text-primary);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 cursor: pointer;
                 user-select: none;
             }
             .ef-item:hover {
-                background: rgba(255, 255, 255, 0.04);
+                background: var(--white-alpha-4);
             }
             .ef-item.selected {
                 color: var(--accent-color);

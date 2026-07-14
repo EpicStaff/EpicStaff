@@ -64,7 +64,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
             .label-container label {
                 display: block;
                 font-size: var(--font-size-md);
-                color: rgba(255, 255, 255, 0.7);
+                color: var(--white-alpha-70);
                 margin: 0;
             }
 

@@ -303,7 +303,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 min-width: 0;
             }
             .equals-sign {
-                color: #fff;
+                color: var(--white);
                 font-weight: var(--font-weight-medium);
                 margin: 0 -2px;
             }
@@ -312,9 +312,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 width: 100%;
                 padding: var(--space-sm) var(--space-md);
                 background-color: var(--color-input-background);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 6px;
-                color: #fff;
+                border: 1px solid var(--white-alpha-10);
+                border-radius: var(--radius-md);
+                color: var(--white);
                 font-size: var(--font-size-md);
                 outline: none;
                 transition: border-color 0.2s ease;
@@ -324,7 +324,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 }
 
                 &::placeholder {
-                    color: rgba(255, 255, 255, 0.3);
+                    color: var(--white-alpha-30);
                 }
             }
 
@@ -333,7 +333,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 cursor: pointer;
                 color: #ccc;
                 padding: var(--space-3xs);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 transition: all 0.2s ease;
                 flex-shrink: 0;
                 width: 24px;
@@ -355,7 +355,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 padding: var(--space-xs) var(--space-md);
                 background: var(--color-action-btn-background);
                 border: 1px solid var(--color-divider-subtle);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 color: var(--color-text-primary);
                 transition: background-color 0.2s;
                 cursor: pointer;
@@ -385,7 +385,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 flex: 1;
                 padding: var(--space-sm) var(--space-md);
                 border: 1px solid var(--color-divider-subtle);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);
                 cursor: pointer;
@@ -408,9 +408,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             }
 
             .btn-primary {
-                background: #685fff;
+                background: var(--accent-color);
                 color: white;
-                border-color: #685fff;
+                border-color: var(--accent-color);
 
                 &:hover:not(:disabled) {
                     background: #5a4ade;
@@ -425,7 +425,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
             .warning-banner {
                 border-left: 1px solid rgba(255, 207, 0, 1);
-                border-radius: 10px;
+                border-radius: var(--radius-xl);
                 padding: var(--space-md) var(--space-md);
                 font-size: var(--font-size-sm);
                 color: inherit;
@@ -440,17 +440,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 align-items: center;
                 justify-content: center;
                 padding: 0;
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 border: none;
                 background: transparent;
                 cursor: pointer;
-                color: rgba(255, 255, 255, 0.35);
+                color: var(--white-alpha-35);
                 font-size: var(--font-size-lg);
                 transition: all 0.2s ease;
 
                 &:hover {
-                    color: var(--active-color, #685fff);
-                    background-color: rgba(104, 95, 255, 0.12);
+                    color: var(--active-color, var(--accent-color));
+                    background-color: var(--purple-alpha-12);
                 }
             }
 
@@ -474,7 +474,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     overflow: hidden;
                     min-height: 0;
                     font-size: var(--font-size-xs);
-                    border-radius: 5px;
+                    border-radius: var(--radius-md);
                     border-left: 3px solid #efd616;
                     background-color: rgba(239, 214, 22, 0.08);
                     color: #efd616;
@@ -491,7 +491,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     background: var(--color-nodes-sidepanel-bg);
                     border: none;
                     padding: var(--space-2xs);
-                    border-radius: 4px;
+                    border-radius: var(--radius-sm);
                     margin: 0 var(--space-2xs);
                 }
             }

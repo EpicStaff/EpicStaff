@@ -50,8 +50,8 @@ export interface PickerItem {
             .vpf-container {
                 background: var(--color-nodes-sidepanel-bg);
                 border: 1px solid var(--color-divider-regular);
-                border-radius: 6px;
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+                border-radius: var(--radius-md);
+                box-shadow: 0 8px 24px var(--black-alpha-40);
                 width: 280px;
                 max-height: 280px;
                 display: flex;
@@ -69,7 +69,7 @@ export interface PickerItem {
                     padding: var(--space-xs) var(--space-md);
                     background: var(--color-input-background);
                     border: 1px solid var(--color-input-border);
-                    border-radius: 4px;
+                    border-radius: var(--radius-sm);
                     color: var(--color-text-primary);
                     font-size: var(--font-size-sm);
                     outline: none;
@@ -106,7 +106,7 @@ export interface PickerItem {
                 padding: var(--space-xs) var(--space-sm);
                 background: transparent;
                 border: none;
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 cursor: pointer;
                 transition: background 0.15s;
                 min-width: 0;
@@ -121,8 +121,8 @@ export interface PickerItem {
                 font-size: var(--font-size-2xs);
                 font-weight: var(--font-weight-semibold);
                 padding: var(--space-3xs) var(--space-xs);
-                border-radius: 3px;
-                background: rgba(104, 95, 255, 0.25);
+                border-radius: var(--radius-sm);
+                background: var(--purple-alpha-25);
                 color: rgba(170, 160, 255, 0.9);
                 letter-spacing: 0.02em;
                 text-transform: lowercase;

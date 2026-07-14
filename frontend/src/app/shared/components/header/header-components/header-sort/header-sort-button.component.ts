@@ -45,11 +45,11 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Output } from '@angul
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    background-color: rgba(255, 255, 255, 0.04);
+                    background-color: var(--white-alpha-4);
                     padding: var(--space-xs);
                     width: 36px;
                     height: 36px;
-                    border-radius: 6px;
+                    border-radius: var(--radius-md);
                     color: #6b7280;
                     cursor: pointer;
                     transition: all 0.2s ease;
@@ -62,7 +62,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Output } from '@angul
 
                     &:focus {
                         outline: none;
-                        background-color: rgba(255, 255, 255, 0.06);
+                        background-color: var(--white-alpha-6);
                     }
 
                     svg {

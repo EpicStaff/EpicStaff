@@ -109,7 +109,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background-color: rgba(0, 0, 0, 0.5);
+                background-color: var(--black-alpha-50);
                 z-index: 100;
             }
 
@@ -180,7 +180,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                 .filter-chip {
                     background-color: var(--gray-800);
                     border: none;
-                    border-radius: 16px;
+                    border-radius: var(--radius-3xl);
                     padding: var(--space-xs) var(--space-md);
                     font-size: var(--font-size-sm);
                     color: var(--gray-300);

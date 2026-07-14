@@ -161,7 +161,7 @@ interface InputMapPair {
                 cursor: pointer;
                 transition: all 0.2s ease;
                 padding: 0;
-                color: #d9d9d999;
+                color: var(--fog-alpha-60);
                 z-index: 10;
 
                 svg {
@@ -169,12 +169,12 @@ interface InputMapPair {
                 }
 
                 &:hover:not(:disabled) {
-                    color: #d9d9d9;
-                    background: #2c2c2e;
+                    color: var(--fog-200);
+                    background: var(--graphite-700);
                 }
 
                 &:active:not(:disabled) {
-                    color: #d9d9d9;
+                    color: var(--fog-200);
                 }
 
                 &:disabled {
@@ -185,9 +185,9 @@ interface InputMapPair {
                 &:not(.toggle-fields-button--inside) {
                     align-self: center;
                     border-width: 1px 1px 0px 1px;
-                    border-radius: 8px 8px 0 0;
+                    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
                     border-style: solid;
-                    border-color: #2c2c2e;
+                    border-color: var(--graphite-700);
                 }
 
                 &.toggle-fields-button--inside {
@@ -196,16 +196,16 @@ interface InputMapPair {
                     left: 50%;
                     transform: translateX(-50%);
                     border-width: 0 1px 1px 1px;
-                    border-radius: 0 0 8px 8px;
+                    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
                     border-style: solid;
-                    border-color: #2c2c2e;
+                    border-color: var(--graphite-700);
                 }
             }
 
             .code-editor-section {
                 height: 300px;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
+                border: 1px solid var(--white-alpha-10);
+                border-radius: var(--radius-lg);
                 overflow: hidden;
                 flex-shrink: 0;
                 display: flex;

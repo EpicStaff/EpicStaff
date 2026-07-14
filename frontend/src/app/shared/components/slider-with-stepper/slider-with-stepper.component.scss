@@ -85,7 +85,7 @@
             var(--fog-alpha-20) var(--slider-percentage, 0%),
             var(--fog-alpha-20) 100%
         );
-        border-radius: 0.125rem;
+        border-radius: var(--radius-xs);
         outline: none;
         cursor: pointer;
 

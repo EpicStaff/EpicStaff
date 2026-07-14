@@ -39,7 +39,7 @@
         .toggle-container {
             display: flex;
             background-color: var(--gray-800);
-            border-radius: 20px;
+            border-radius: var(--radius-3xl);
             padding: var(--space-2xs);
             overflow: hidden;
             box-shadow: 0 2px 4px var(--black-alpha-20);

@@ -111,7 +111,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
 
             .chm-label {
                 font-size: var(--font-size-md);
-                color: rgba(255, 255, 255, 0.9);
+                color: var(--white-alpha-90);
                 font-weight: var(--font-weight-medium);
                 flex: 1;
                 overflow: hidden;
@@ -122,8 +122,8 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
             /* NOTE: kept in sync with .icon-header-clickable in icon-header.component.ts */
             .chm-icon-clickable {
                 cursor: pointer;
-                background: rgba(104, 95, 255, 0.25);
-                border: 1px solid rgba(104, 95, 255, 0.5);
+                background: var(--purple-alpha-25);
+                border: 1px solid var(--purple-alpha-50);
                 border-radius: 50%;
                 width: 20px;
                 height: 20px;
@@ -139,15 +139,15 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
             }
 
             .chm-icon-clickable:hover {
-                background: rgba(104, 95, 255, 0.5) !important;
-                color: #fff !important;
+                background: var(--purple-alpha-50) !important;
+                color: var(--white) !important;
                 border-color: var(--accent-color);
             }
 
             .chm-icon-delete {
                 cursor: pointer;
                 font-size: var(--font-size-sm) !important;
-                color: rgba(255, 255, 255, 0.4) !important;
+                color: var(--white-alpha-40) !important;
                 flex-shrink: 0;
                 transition: color 0.15s ease;
                 padding: var(--space-3xs);
@@ -167,8 +167,8 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 border: none;
                 background: transparent;
                 cursor: pointer;
-                color: rgba(255, 255, 255, 0.5);
-                border-radius: 3px;
+                color: var(--white-alpha-50);
+                border-radius: var(--radius-sm);
                 flex-shrink: 0;
                 transition:
                     background 0.15s ease,
@@ -176,8 +176,8 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
             }
 
             .chm-chevron:hover {
-                background: rgba(255, 255, 255, 0.1);
-                color: rgba(255, 255, 255, 0.9);
+                background: var(--white-alpha-10);
+                color: var(--white-alpha-90);
             }
 
             .chm-chevron i {

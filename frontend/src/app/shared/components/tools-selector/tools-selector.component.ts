@@ -229,7 +229,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 .tools-display {
                     background-color: var(--color-input-background);
                     border: 1px solid var(--color-input-border);
-                    border-radius: 6px;
+                    border-radius: var(--radius-md);
                     padding: var(--space-md) var(--space-md);
                     display: flex;
                     justify-content: space-between;
@@ -242,7 +242,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                     }
 
                     .no-tools-selected {
-                        color: rgba(255, 255, 255, 0.3);
+                        color: var(--white-alpha-30);
                         font-size: var(--font-size-lg);
                     }
 
@@ -266,7 +266,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 left: 0;
                 right: 0;
                 bottom: 0;
-                background-color: rgba(0, 0, 0, 0.5);
+                background-color: var(--black-alpha-50);
                 z-index: 1000;
                 display: flex;
                 align-items: center;
@@ -277,8 +277,8 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                 width: 550px;
                 max-height: 80vh;
                 background-color: var(--color-modals-background);
-                border-radius: 12px;
-                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+                border-radius: var(--radius-2xl);
+                box-shadow: 0 8px 16px var(--black-alpha-20);
                 display: flex;
                 flex-direction: column;
                 overflow: hidden;
@@ -311,9 +311,9 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                             width: 100%;
                             background-color: var(--color-input-background);
                             border: 1px solid var(--color-input-border);
-                            border-radius: 6px;
+                            border-radius: var(--radius-md);
                             padding: var(--space-md) var(--space-md);
-                            color: #fff;
+                            color: var(--white);
                             font-size: var(--font-size-md);
                             outline: none;
                             transition: border-color 0.2s ease;
@@ -323,7 +323,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                             }
 
                             &::placeholder {
-                                color: rgba(255, 255, 255, 0.3);
+                                color: var(--white-alpha-30);
                             }
                         }
                     }
@@ -342,11 +342,11 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                             cursor: pointer;
                             transition: all 0.2s ease;
                             position: relative;
-                            border-radius: 4px;
+                            border-radius: var(--radius-sm);
 
                             &:hover {
                                 color: var(--color-text-primary);
-                                background-color: rgba(255, 255, 255, 0.05);
+                                background-color: var(--white-alpha-5);
                             }
 
                             &.active {
@@ -427,7 +427,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                             justify-content: space-between;
                             align-items: center;
                             padding: var(--space-md) var(--space-lg);
-                            border-radius: 6px;
+                            border-radius: var(--radius-md);
                             background: var(--color-input-background);
                             transition: all 0.2s ease;
                             cursor: pointer;
@@ -435,12 +435,12 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
 
                             &:hover {
                                 border-color: var(--accent-color);
-                                background: rgba(104, 95, 255, 0.08);
+                                background: var(--purple-alpha-8);
                             }
 
                             &.selected {
                                 border-color: var(--accent-color);
-                                background: rgba(104, 95, 255, 0.12);
+                                background: var(--purple-alpha-12);
                             }
 
                             .tool-info {
@@ -481,7 +481,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
 
                     button {
                         padding: var(--space-sm) var(--space-lg);
-                        border-radius: 6px;
+                        border-radius: var(--radius-md);
                         font-size: var(--font-size-md);
                         font-weight: var(--font-weight-medium);
                         cursor: pointer;

@@ -14,7 +14,7 @@
         flex-direction: column;
         align-items: center;
         padding: 0 var(--space-4xl) var(--space-4xl);
-        border-radius: 15px;
+        border-radius: var(--radius-3xl);
         border: 1px dashed var(--color-input-border);
 
         &--active {

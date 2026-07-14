@@ -149,9 +149,9 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
     styles: `
         .agent-flow-container {
             background-color: var(--color-nodes-background);
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             padding: var(--space-xl);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 12px var(--black-alpha-15);
             border-left: 4px solid #30a46c;
         }
 
@@ -244,7 +244,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
         .details-content {
             background-color: var(--gray-800);
             border: 1px solid var(--gray-750);
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             padding: var(--space-lg);
             color: var(--gray-200);
             margin-left: 23px;
@@ -265,7 +265,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             .agentData-content {
                 padding: var(--space-sm);
                 background-color: var(--gray-850);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
             }
 
             .expected-output-section,
@@ -278,7 +278,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             position: relative;
             background-color: var(--gray-800);
             border: 1px solid var(--gray-750);
-            border-radius: 8px;
+            border-radius: var(--radius-lg);
             padding: var(--space-lg);
             color: var(--gray-200);
             margin-left: 23px;

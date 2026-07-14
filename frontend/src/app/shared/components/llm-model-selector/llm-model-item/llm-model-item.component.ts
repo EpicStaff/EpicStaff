@@ -42,15 +42,15 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
                 margin-bottom: var(--space-2xs);
                 cursor: pointer;
                 transition: background-color 0.2s ease;
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
             }
 
             .model-item:hover {
-                background-color: rgba(104, 95, 255, 0.08);
+                background-color: var(--purple-alpha-8);
             }
 
             .model-item.selected {
-                background-color: rgba(104, 95, 255, 0.12);
+                background-color: var(--purple-alpha-12);
             }
 
             .provider-icon {

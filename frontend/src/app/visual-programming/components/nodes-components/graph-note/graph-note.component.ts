@@ -28,8 +28,8 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
             .note-container {
                 width: 100%;
                 height: 100%;
-                border-radius: 4px;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                border-radius: var(--radius-sm);
+                box-shadow: 0 2px 4px var(--black-alpha-10);
                 display: flex;
 
                 position: relative;

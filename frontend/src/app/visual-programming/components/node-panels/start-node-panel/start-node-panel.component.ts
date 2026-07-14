@@ -77,8 +77,8 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
             .json-editor-section {
                 height: 100%;
                 min-height: 400px;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
+                border: 1px solid var(--white-alpha-10);
+                border-radius: var(--radius-lg);
                 overflow: hidden;
             }
 

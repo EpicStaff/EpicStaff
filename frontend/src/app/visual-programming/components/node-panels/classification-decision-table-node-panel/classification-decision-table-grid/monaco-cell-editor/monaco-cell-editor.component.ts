@@ -38,10 +38,10 @@ interface MonacoNamespace {
             .monaco-cell-editor {
                 width: 500px;
                 height: 200px;
-                border: 1px solid rgba(104, 95, 255, 0.5);
-                border-radius: 6px;
+                border: 1px solid var(--purple-alpha-50);
+                border-radius: var(--radius-md);
                 overflow: hidden;
-                background: #1e1e1e;
+                background: var(--graphite-875);
             }
             .cell-monaco-editor {
                 width: 100%;

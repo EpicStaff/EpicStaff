@@ -110,8 +110,8 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 flex-direction: column;
                 height: 100%;
                 min-height: 0;
-                background: var(--color-surface-card, #232323);
-                border-radius: 8px;
+                background: var(--color-surface-card, var(--graphite-825));
+                border-radius: var(--radius-lg);
                 overflow: hidden;
             }
 
@@ -140,7 +140,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 color: var(--color-text-secondary, #aaa);
                 cursor: pointer;
                 padding: var(--space-sm);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 transition: all 0.2s ease;
                 display: flex;
                 align-items: center;
@@ -176,21 +176,21 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 margin-bottom: var(--space-lg);
                 background: rgba(101, 98, 245, 0.08);
                 border: 1px solid rgba(101, 98, 245, 0.2);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 font-size: var(--font-size-sm);
                 line-height: 1.45;
                 color: #b0b0c0;
 
                 app-svg-icon {
-                    color: #685fff;
+                    color: var(--accent-color);
                     flex-shrink: 0;
                     margin-top: var(--space-3xs);
                 }
 
                 kbd {
-                    background: rgba(255, 255, 255, 0.1);
+                    background: var(--white-alpha-10);
                     border: 1px solid rgba(255, 255, 255, 0.18);
-                    border-radius: 3px;
+                    border-radius: var(--radius-sm);
                     padding: 0.1em 0.4em;
                     font-size: 0.85em;
                     font-family: inherit;
@@ -199,7 +199,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 
                 code {
                     background: rgba(101, 98, 245, 0.18);
-                    border-radius: 3px;
+                    border-radius: var(--radius-sm);
                     padding: 0.1em 0.35em;
                     font-size: 0.9em;
                     color: #a5a5ff;
@@ -211,7 +211,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 margin-bottom: var(--space-lg);
                 background: rgba(239, 68, 68, 0.1);
                 border: 1px solid rgba(239, 68, 68, 0.3);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 font-size: var(--font-size-sm);
             }
 
@@ -236,8 +236,8 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
             .json-editor-section {
                 flex: 1;
                 min-height: 400px;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
+                border: 1px solid var(--white-alpha-10);
+                border-radius: var(--radius-lg);
                 overflow: hidden;
             }
 

@@ -192,9 +192,9 @@ import {
         `
             .dt-flow-container {
                 background-color: var(--color-nodes-background);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-xl);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                box-shadow: 0 4px 12px var(--black-alpha-15);
                 border-left: 4px solid #a78bfa;
             }
 
@@ -283,7 +283,7 @@ import {
             .badge {
                 font-size: var(--font-size-xs);
                 padding: var(--space-3xs) var(--space-md);
-                border-radius: 12px;
+                border-radius: var(--radius-2xl);
                 font-weight: var(--font-weight-medium);
             }
 
@@ -337,7 +337,7 @@ import {
                 font-family: 'JetBrains Mono', 'Fira Code', monospace;
                 background-color: var(--gray-800);
                 padding: var(--space-3xs) var(--space-sm);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 border: 1px solid var(--gray-750);
             }
 
@@ -371,7 +371,7 @@ import {
             .code-block {
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-lg);
                 color: var(--gray-200);
                 white-space: pre-wrap;

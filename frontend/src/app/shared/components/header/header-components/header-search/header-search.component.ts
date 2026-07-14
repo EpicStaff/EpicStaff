@@ -55,8 +55,8 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
                 width: 240px;
                 height: 36px;
                 transition: all 0.2s ease;
-                background-color: rgba(255, 255, 255, 0.04);
-                border-radius: 6px;
+                background-color: var(--white-alpha-4);
+                border-radius: var(--radius-md);
 
                 &.projects-page-search-has-content {
                     svg {
@@ -65,7 +65,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
                 }
 
                 &:focus-within {
-                    background-color: rgba(255, 255, 255, 0.06);
+                    background-color: var(--white-alpha-6);
 
                     svg {
                         color: var(--accent-color);

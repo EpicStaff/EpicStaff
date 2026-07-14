@@ -12,7 +12,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
                 flex-shrink: 0;
                 width: 24px;
                 height: 24px;
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 background: var(--transparent-white-8);
                 color: var(--color-text-secondary);
                 font-size: var(--font-size-xs);

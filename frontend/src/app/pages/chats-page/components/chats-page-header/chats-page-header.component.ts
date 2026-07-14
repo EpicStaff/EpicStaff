@@ -71,7 +71,7 @@ import { FormsModule } from '@angular/forms';
                 border: none;
                 background-color: var(--accent-color);
                 color: var(--white);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 cursor: pointer;
                 font-size: var(--font-size-md);
             }
@@ -86,9 +86,9 @@ import { FormsModule } from '@angular/forms';
             }
             .input-with-toggle input {
                 padding: var(--space-sm) var(--space-4xl) var(--space-sm) var(--space-md);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 border: 1px solid var(--gray-600);
-                background-color: rgba(255, 255, 255, 0.05);
+                background-color: var(--white-alpha-5);
                 color: var(--white);
                 width: 240px;
                 height: 38px;
@@ -124,8 +124,8 @@ import { FormsModule } from '@angular/forms';
             .model-switcher {
                 position: relative;
                 display: flex;
-                background-color: rgba(255, 255, 255, 0.05);
-                border-radius: 6px;
+                background-color: var(--white-alpha-5);
+                border-radius: var(--radius-md);
                 padding: var(--space-2xs);
                 border: 1px solid var(--gray-600);
                 overflow: hidden;
@@ -142,7 +142,7 @@ import { FormsModule } from '@angular/forms';
                 color: var(--gray-300);
                 padding: var(--space-xs) var(--space-md);
                 font-size: var(--font-size-md);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 z-index: 2;
@@ -163,7 +163,7 @@ import { FormsModule } from '@angular/forms';
                 width: calc(50% - 3px);
                 height: calc(100% - 6px);
                 background-color: var(--accent-color);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 z-index: 1;
                 transform: translateX(0);
             }

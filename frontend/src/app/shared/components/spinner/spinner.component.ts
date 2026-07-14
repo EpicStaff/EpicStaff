@@ -39,7 +39,7 @@ import { Component, Input } from '@angular/core';
                 align-items: center;
                 justify-content: center;
                 z-index: 10;
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 padding: var(--space-xl);
             }
 

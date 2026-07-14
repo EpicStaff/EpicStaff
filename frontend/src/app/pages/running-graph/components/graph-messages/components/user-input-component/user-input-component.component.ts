@@ -64,9 +64,9 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 
             .wait-for-user-container {
                 background-color: #151515;
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: var(--space-xl);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                box-shadow: 0 4px 12px var(--black-alpha-15);
                 border-left: 4px solid #ffa726;
                 display: flex;
                 flex-direction: column;
@@ -102,7 +102,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 background-color: var(--gray-800);
                 color: var(--gray-200);
                 border: 1px solid var(--gray-750);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: var(--space-md);
                 font-family: inherit;
                 font-size: var(--font-size-lg);
@@ -126,7 +126,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 background-color: #ffa726;
                 color: var(--gray-900);
                 border: none;
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 width: auto;
                 min-width: 80px;
                 height: 38px;
@@ -159,7 +159,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 background-color: var(--gray-800);
                 color: var(--gray-200);
                 border: 1px solid var(--gray-700);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: var(--space-sm) var(--space-lg);
                 font-size: var(--font-size-md);
                 cursor: pointer;
@@ -185,7 +185,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
             .spinner {
                 width: 20px;
                 height: 20px;
-                border: 2px solid rgba(0, 0, 0, 0.3);
+                border: 2px solid var(--black-alpha-30);
                 border-radius: 50%;
                 border-top-color: var(--gray-900);
                 animation: spin 0.8s linear infinite;

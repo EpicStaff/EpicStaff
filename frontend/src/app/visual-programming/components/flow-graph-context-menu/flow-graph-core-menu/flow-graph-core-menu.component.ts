@@ -45,7 +45,7 @@ interface FlowGraphBlock {
                 align-items: center;
                 justify-content: space-between;
                 padding: var(--space-md) var(--space-lg);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 gap: var(--space-lg);
                 cursor: pointer;
                 transition: background 0.2s ease;
@@ -60,11 +60,11 @@ interface FlowGraphBlock {
             }
 
             .node-label {
-                color: #fff;
+                color: var(--white);
             }
 
             li:hover {
-                background: #2a2a2a;
+                background: var(--graphite-780);
             }
 
             .plus-icon {

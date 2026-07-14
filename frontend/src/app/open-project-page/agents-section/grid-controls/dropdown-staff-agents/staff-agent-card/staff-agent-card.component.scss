@@ -22,8 +22,8 @@
         border-bottom: 1px solid var(--gray-750);
         height: 60px;
         transition: border-color 0.3s ease;
-        border-top-left-radius: 8px;
-        border-top-right-radius: 8px;
+        border-top-left-radius: var(--radius-lg);
+        border-top-right-radius: var(--radius-lg);
 
         .header-left {
             display: flex;

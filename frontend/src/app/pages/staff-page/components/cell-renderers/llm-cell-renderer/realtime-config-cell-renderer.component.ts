@@ -58,8 +58,8 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
         .config-item {
             display: flex;
             align-items: center;
-            background-color: #2a2a2a;
-            border-radius: 4px;
+            background-color: var(--graphite-780);
+            border-radius: var(--radius-sm);
             padding: var(--space-sm);
             border: 1px solid #404040;
             transition:
@@ -69,7 +69,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
         }
 
         .config-item:hover {
-            background-color: #3a3a3a;
+            background-color: var(--graphite-600);
         }
 
         .provider-icon {
@@ -77,7 +77,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
             width: 20px;
             height: 20px;
             margin-right: var(--space-sm);
-            border-radius: 4px;
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;

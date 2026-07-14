@@ -38,7 +38,7 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
             .status-update-message {
                 padding: var(--space-lg);
                 border: 1px solid var(--gray-750);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 background-color: var(--gray-900);
 
                 .status-info {
@@ -76,7 +76,7 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
 
                     .status-data-content {
                         background-color: var(--gray-800);
-                        border-radius: 6px;
+                        border-radius: var(--radius-md);
                         padding: var(--space-md);
                         font-family: 'Courier New', monospace;
                         font-size: var(--font-size-sm);

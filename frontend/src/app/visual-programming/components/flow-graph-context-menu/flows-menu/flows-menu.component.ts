@@ -30,7 +30,7 @@ import { CreateNodeRequest } from '../../../core/models/node-creation.types';
                 display: flex;
                 align-items: center;
                 padding: var(--space-md) var(--space-lg);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 cursor: pointer;
                 transition: background 0.2s ease;
                 gap: var(--space-lg);
@@ -38,12 +38,12 @@ import { CreateNodeRequest } from '../../../core/models/node-creation.types';
                 min-width: 0;
             }
             li:hover {
-                background: #2a2a2a;
-                color: #fff;
+                background: var(--graphite-780);
+                color: var(--white);
             }
             li i {
                 font-size: var(--font-size-xl);
-                color: #00bfa5;
+                color: var(--teal-500);
             }
 
             .flow-name {

@@ -6,7 +6,7 @@
     box-shadow: 0 4px 8px var(--black-alpha-30);
     z-index: 1000;
 
-    border-radius: 15px;
+    border-radius: var(--radius-3xl);
     color: hsl(0, 0%, 94%);
     height: auto;
 

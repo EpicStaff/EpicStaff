@@ -27,12 +27,12 @@ import { GraphMessage, MessageType, UserMessageData } from '../../../../models/g
             .message-bubble {
                 position: relative;
                 background-color: #ffa726;
-                border-radius: 18px 18px 0 18px;
+                border-radius: var(--radius-3xl) var(--radius-3xl) 0 var(--radius-3xl);
                 padding: var(--space-md) var(--space-lg);
                 color: var(--gray-900);
                 max-width: 85%;
                 word-break: break-word;
-                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+                box-shadow: 0 1px 2px var(--black-alpha-15);
 
                 --copy-btn-color: rgba(0, 0, 0, 0.4);
                 --copy-btn-hover-bg: rgba(0, 0, 0, 0.08);

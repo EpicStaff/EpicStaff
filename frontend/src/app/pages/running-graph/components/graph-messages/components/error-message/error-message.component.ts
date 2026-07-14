@@ -104,10 +104,10 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
             .error-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--message-padding, var(--space-xl));
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                border-left: 4px solid #ff6b6b;
+                box-shadow: 0 4px 12px var(--black-alpha-15);
+                border-left: 4px solid var(--red-400);
             }
 
             .error-header {
@@ -123,7 +123,7 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
                 align-items: center;
 
                 app-svg-icon {
-                    color: #ff6b6b;
+                    color: var(--red-400);
                 }
             }
 
@@ -131,7 +131,7 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
                 width: 36px;
                 height: 36px;
                 border-radius: 50%;
-                background-color: #ff6b6b;
+                background-color: var(--red-400);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -180,7 +180,7 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
 
                 app-svg-icon {
                     margin-right: var(--space-sm);
-                    color: #ff6b6b;
+                    color: var(--red-400);
                     margin-left: -3px;
                 }
             }
@@ -193,7 +193,7 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
                 position: relative;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-lg);
                 color: var(--gray-200);
                 white-space: pre-wrap;
@@ -215,7 +215,7 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
             .toggle-button {
                 background-color: transparent;
                 border: none;
-                color: #ff6b6b;
+                color: var(--red-400);
                 font-size: var(--font-size-md);
                 cursor: pointer;
                 padding: var(--space-sm);

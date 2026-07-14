@@ -67,15 +67,15 @@ import { GraphNoteModel } from '../../core/models/node.model';
     styles: [
         `
             .wrapper {
-                background-color: var(--color-modals-background, #1e1e1e);
-                border-radius: 12px;
+                background-color: var(--color-modals-background, var(--graphite-875));
+                border-radius: var(--radius-2xl);
                 color: var(--color-text-primary, #fff);
                 width: 500px;
                 max-width: 90vw;
                 max-height: 85vh;
                 display: flex;
                 flex-direction: column;
-                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+                box-shadow: 0 4px 20px var(--black-alpha-30);
             }
 
             .dialog-header {
@@ -121,8 +121,8 @@ import { GraphNoteModel } from '../../core/models/node.model';
                 font-weight: var(--font-weight-medium);
                 padding: 0.15rem var(--space-2xs);
                 border: 1px solid #444;
-                border-radius: 4px;
-                background: #2a2a2a;
+                border-radius: var(--radius-sm);
+                background: var(--graphite-780);
             }
 
             .header-actions app-svg-icon {
@@ -153,11 +153,11 @@ import { GraphNoteModel } from '../../core/models/node.model';
             .note-textarea {
                 width: 100%;
                 height: 250px;
-                background-color: var(--color-input-background, #2a2a2a);
+                background-color: var(--color-input-background, var(--graphite-780));
                 border: 1px solid var(--color-input-border, #444);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: var(--space-md) var(--space-md);
-                color: #fff;
+                color: var(--white);
                 font-size: var(--font-size-md);
                 outline: none;
                 transition: border-color 0.2s ease;

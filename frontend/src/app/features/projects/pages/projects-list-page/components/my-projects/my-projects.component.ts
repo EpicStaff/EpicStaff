@@ -81,7 +81,7 @@ import { AddProjectCardComponent } from './add-project-card/add-project-card.com
                 color: var(--color-text-secondary);
                 font-size: var(--font-size-xl);
                 background: var(--color-sidenav-background);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 margin-top: var(--space-lg);
             }
             .loading,

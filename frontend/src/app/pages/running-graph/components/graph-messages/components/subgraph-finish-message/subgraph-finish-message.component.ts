@@ -116,10 +116,10 @@ import {
             .subgraph-finish-container {
                 position: relative;
                 background-color: var(--color-nodes-background);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-xl);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                border-left: 4px solid #00bfa5;
+                box-shadow: 0 4px 12px var(--black-alpha-15);
+                border-left: 4px solid var(--teal-500);
             }
 
             .subgraph-finish-header {
@@ -135,7 +135,7 @@ import {
                 align-items: center;
 
                 app-svg-icon {
-                    color: #00bfa5;
+                    color: var(--teal-500);
                 }
             }
 
@@ -143,7 +143,7 @@ import {
                 width: 36px;
                 height: 36px;
                 border-radius: 50%;
-                background-color: #00bfa5;
+                background-color: var(--teal-500);
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -163,7 +163,7 @@ import {
             }
 
             .node-name {
-                color: #00bfa5;
+                color: var(--teal-500);
                 font-weight: var(--font-weight-regular);
             }
 
@@ -197,7 +197,7 @@ import {
 
                 app-svg-icon {
                     margin-right: var(--space-sm);
-                    color: #00bfa5;
+                    color: var(--teal-500);
                     margin-left: -3px;
                 }
             }
@@ -213,7 +213,7 @@ import {
                 position: relative;
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-lg);
                 overflow: auto;
                 max-height: 400px;
@@ -234,7 +234,7 @@ import {
             .state-history-item {
                 background-color: var(--gray-800);
                 border: 1px solid var(--gray-750);
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 padding: var(--space-lg);
             }
 
@@ -248,11 +248,11 @@ import {
             }
 
             .item-index {
-                background-color: #00bfa5;
+                background-color: var(--teal-500);
                 color: var(--gray-900);
                 font-weight: var(--font-weight-semibold);
                 padding: var(--space-2xs) var(--space-sm);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 font-size: var(--font-size-md);
             }
 
@@ -263,11 +263,11 @@ import {
             }
 
             .item-type {
-                color: #00bfa5;
+                color: var(--teal-500);
                 font-size: var(--font-size-md);
                 background-color: rgba(0, 191, 165, 0.15);
                 padding: var(--space-2xs) var(--space-sm);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
             }
 
             .state-history-item-details {
@@ -291,7 +291,7 @@ import {
             .detail-content {
                 background-color: var(--gray-850);
                 border: 1px solid var(--gray-750);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: var(--space-md);
                 overflow: auto;
                 max-height: 300px;

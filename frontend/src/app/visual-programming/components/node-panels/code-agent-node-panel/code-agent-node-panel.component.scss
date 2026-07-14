@@ -243,7 +243,7 @@
 .editor-tab {
     background: none;
     border: none;
-    color: var(--color-text-secondary, #d9d9d999);
+    color: var(--color-text-secondary, var(--fog-alpha-60));
     font-size: var(--font-size-sm);
     padding: var(--space-sm) 1.2rem;
     cursor: pointer;

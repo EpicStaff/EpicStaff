@@ -155,7 +155,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 justify-content: space-between;
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: var(--space-md) var(--space-md);
                 cursor: pointer;
                 transition: border-color 0.2s ease;
@@ -191,7 +191,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
             }
 
             .selected-model.placeholder {
-                color: rgba(255, 255, 255, 0.3);
+                color: var(--white-alpha-30);
             }
 
             .model-info {
@@ -230,7 +230,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
             }
 
             .placeholder-text {
-                color: rgba(255, 255, 255, 0.3);
+                color: var(--white-alpha-30);
                 font-size: var(--font-size-md);
             }
 
@@ -247,8 +247,8 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 width: 100%;
                 background-color: var(--color-modals-background);
                 border: 1px solid var(--color-divider-subtle);
-                border-radius: 6px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                border-radius: var(--radius-md);
+                box-shadow: 0 4px 12px var(--black-alpha-15);
                 z-index: 1000;
                 max-height: 300px;
                 display: flex;
@@ -278,7 +278,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 width: 100%;
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
                 padding: var(--space-xs) var(--space-md);
                 color: var(--color-text-primary);
                 font-size: var(--font-size-md);
@@ -293,10 +293,10 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 display: inline-flex;
                 align-items: center;
                 gap: var(--space-xs);
-                background: #685fff;
-                color: #ffffff;
+                background: var(--accent-color);
+                color: var(--white);
                 border: none;
-                border-radius: 6px;
+                border-radius: var(--radius-md);
                 padding: var(--space-xs) 0.85rem;
                 font-size: var(--font-size-sm);
                 font-weight: var(--font-weight-medium);
@@ -323,7 +323,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 transition: background-color 0.15s ease;
 
                 &:hover {
-                    background-color: rgba(255, 255, 255, 0.05);
+                    background-color: var(--white-alpha-5);
                     color: var(--color-text-primary);
                 }
 

@@ -85,7 +85,7 @@ import { ICellRendererParams, IRowNode } from 'ag-grid-community';
                 width: 16px;
                 height: 16px;
                 border: 1px solid rgba(217, 217, 222, 0.5);
-                border-radius: 3px;
+                border-radius: var(--radius-sm);
                 background: transparent;
                 transition:
                     background 0.15s ease,

@@ -29,7 +29,7 @@ import { WavRecorderService } from '../../../../../services/wav-recorder.service
             .visualizer {
                 display: flex;
                 align-items: center;
-                border-radius: 8px;
+                border-radius: var(--radius-lg);
                 width: 100%;
             }
 
@@ -44,7 +44,7 @@ import { WavRecorderService } from '../../../../../services/wav-recorder.service
                     width: 100%;
                     height: 40px;
                     background-color: var(--gray-800);
-                    border-radius: 8px;
+                    border-radius: var(--radius-lg);
                     display: block;
                     border: 1px solid var(--gray-750);
                 }
@@ -87,8 +87,8 @@ export class VoiceVisualizerComponent implements OnInit, OnDestroy {
 
                 // Fill background with a gradient
                 const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
-                gradient.addColorStop(0, 'rgba(104, 95, 255, 0.1)');
-                gradient.addColorStop(1, 'rgba(104, 95, 255, 0.05)');
+                gradient.addColorStop(0, 'var(--purple-alpha-10)');
+                gradient.addColorStop(1, 'var(--purple-alpha-5)');
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -100,8 +100,8 @@ export class VoiceVisualizerComponent implements OnInit, OnDestroy {
 
                     // Calculate a position-based color for the bars
                     const barGradient = ctx.createLinearGradient(0, canvas.height, 0, canvas.height - barHeight);
-                    barGradient.addColorStop(0, 'rgba(104, 95, 255, 0.8)');
-                    barGradient.addColorStop(1, 'rgba(104, 95, 255, 0.4)');
+                    barGradient.addColorStop(0, 'var(--purple-alpha-80)');
+                    barGradient.addColorStop(1, 'var(--purple-alpha-40)');
 
                     ctx.fillStyle = barGradient;
 
