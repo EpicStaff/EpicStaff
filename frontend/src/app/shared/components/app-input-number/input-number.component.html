@@ -18,7 +18,7 @@
             type="button"
             class="input__step input__step--minus"
             (mousedown)="onStep(-1); $event.preventDefault()"
-            [disabled]="!canStepDown()"
+            [disabled]="!canStepDown() || isDisabled()"
         >
             −
         </button>
@@ -41,7 +41,7 @@
             type="button"
             class="input__step input__step--plus"
             (mousedown)="onStep(1); $event.preventDefault()"
-            [disabled]="!canStepUp()"
+            [disabled]="!canStepUp() || isDisabled()"
         >
             +
         </button>
