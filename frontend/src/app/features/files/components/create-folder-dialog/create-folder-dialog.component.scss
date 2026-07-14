@@ -19,7 +19,7 @@
     &__title {
         font-family: var(--font-family-base);
         font-size: var(--font-size-2xl);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         line-height: 1;
         letter-spacing: 0;
         color: var(--color-text-primary);
@@ -29,7 +29,7 @@
     &__header-actions {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
     }
 
     &__icon-btn {
@@ -83,14 +83,14 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 1rem;
+        gap: var(--space-lg);
         height: 80px;
         padding: 0 1.5rem;
         border-top: 1px solid var(--color-flow-card-bg);
         font-family: var(--font-family-base);
         font-style: normal;
         font-size: var(--font-size-md);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         line-height: 130%;
         letter-spacing: 0;
     }
@@ -98,7 +98,7 @@
     &__footer-left {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         flex-shrink: 0;
     }
 
@@ -131,14 +131,14 @@
     &__footer-view-all {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-2xs);
         padding: 0;
         background: transparent;
         border: none;
         cursor: pointer;
         font-family: inherit;
         font-size: var(--font-size-md);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--accent-color);
         text-decoration: underline;
         text-underline-offset: 2px;
@@ -185,7 +185,7 @@
     &__formats-title {
         margin: 0;
         font-size: var(--font-size-2xl);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--color-text-primary);
     }
 
@@ -211,13 +211,13 @@
     &__formats-section {
         display: flex;
         flex-direction: column;
-        gap: 24px;
+        gap: var(--space-2xl);
         padding: 24px;
     }
 
     &__formats-section-title {
         font-size: var(--font-size-md);
-        font-weight: 700;
+        font-weight: var(--font-weight-bold);
         color: var(--gray-400);
         text-transform: uppercase;
     }
@@ -225,14 +225,14 @@
     &__formats-grid {
         display: grid;
         grid-template-columns: 120px 1fr;
-        column-gap: 16px;
-        row-gap: 16px;
+        column-gap: var(--space-lg);
+        row-gap: var(--space-lg);
         margin: 0;
 
         dt {
             margin: 0;
             font-size: var(--font-size-md);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             color: var(--color-text-secondary);
             text-align: right;
         }
@@ -240,7 +240,7 @@
         dd {
             margin: 0;
             font-size: var(--font-size-md);
-            font-weight: 400;
+            font-weight: var(--font-weight-regular);
             color: var(--accent-color);
         }
     }
@@ -256,19 +256,19 @@
         margin: 0;
         padding-left: 20px;
         font-size: var(--font-size-md);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         color: var(--color-text-secondary);
 
         strong {
             color: var(--color-text-primary);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
         }
     }
 
     &__settings {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: var(--space-lg);
         padding: 1.5rem 2.5rem;
         border-bottom: 1px solid var(--color-flow-card-bg);
         flex-shrink: 0;
@@ -277,7 +277,7 @@
     &__field--files {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         padding: 1.25rem 1.5rem;
         flex: 1;
         min-height: 0;
@@ -289,7 +289,7 @@
         flex-direction: column;
         flex: 1;
         min-height: 0;
-        gap: 0.5rem;
+        gap: var(--space-sm);
     }
 
     &__file-list-header {
@@ -297,7 +297,7 @@
         align-items: center;
         justify-content: space-between;
         flex-shrink: 0;
-        gap: 0.75rem;
+        gap: var(--space-md);
         height: 40px;
         position: relative;
     }
@@ -312,7 +312,7 @@
         font-family: var(--font-family-base);
         font-style: normal;
         font-size: var(--font-size-md);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         line-height: 130%;
         white-space: nowrap;
         position: absolute;
@@ -328,7 +328,7 @@
         border: 1px solid var(--accent-color);
         border-radius: var(--radius-md);
         font-size: var(--font-size-xs);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         color: var(--accent-color);
         cursor: pointer;
         transition: background-color 0.15s ease;
@@ -341,13 +341,13 @@
     &__field {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         position: relative;
 
         &--inline {
             flex-direction: row;
             align-items: center;
-            gap: 1rem;
+            gap: var(--space-lg);
 
             .create-folder-dialog__label,
             .create-folder-dialog__label-group {
@@ -365,14 +365,14 @@
 
     &__label {
         font-size: var(--font-size-md);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         color: var(--color-text-primary);
     }
 
     &__label-group {
         display: inline-flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-md);
     }
 
     &__tooltip-icon {
@@ -387,7 +387,7 @@
 
     &__count {
         color: var(--accent-color);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
     }
 
     // Destination folder dropdown
@@ -457,7 +457,7 @@
     &__search {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         padding: 0 0.75rem;
         height: 40px;
         border-bottom: 1px solid var(--color-divider-subtle);
@@ -503,7 +503,7 @@
     &__node {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         height: 36px;
         padding-right: 1rem;
         border-radius: var(--radius-sm);
@@ -602,7 +602,7 @@
     &__file-item {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         height: 32px;
         padding: 0 8px;
 
@@ -619,7 +619,7 @@
         width: 24px;
         height: 24px;
         font-size: var(--font-size-xs);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         color: var(--color-text-secondary);
     }
 
@@ -631,7 +631,7 @@
     &__file-info {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         flex: 1;
         min-width: 0;
         overflow: hidden;
@@ -654,7 +654,7 @@
         padding: 4px 8px;
         border-radius: var(--radius-sm);
         font-size: var(--font-size-2xs);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         line-height: 1;
 
         &--unpack {

@@ -37,7 +37,7 @@
             120px // type
             200px // assigned name
             1fr; // description
-        gap: 1.25rem;
+        gap: var(--space-xl);
         padding: 0.5rem 0.625rem;
         align-items: flex-start;
     }
@@ -51,7 +51,7 @@
     }
 
     &__header {
-        font-weight: bold;
+        font-weight: var(--font-weight-bold);
         font-size: var(--font-size-md);
         width: calc(880px - 1.25rem);
         margin: 0 0 0.5rem 3.125rem;

@@ -6,12 +6,12 @@
 .toggle-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
     background: transparent;
     border: none;
     color: var(--color-text-primary);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     padding: 0;
     white-space: nowrap;
@@ -45,7 +45,7 @@
 
 .op-row {
     display: flex;
-    gap: 4px;
+    gap: var(--space-2xs);
 }
 
 .op-btn {
@@ -74,7 +74,7 @@
 
 .unit-row {
     display: flex;
-    gap: 4px;
+    gap: var(--space-2xs);
 }
 
 .unit-btn {
@@ -104,7 +104,7 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
 }
 
 .dur-input {
@@ -134,7 +134,7 @@
 
 .action-row {
     display: flex;
-    gap: 6px;
+    gap: var(--space-xs);
     justify-content: flex-end;
 }
 

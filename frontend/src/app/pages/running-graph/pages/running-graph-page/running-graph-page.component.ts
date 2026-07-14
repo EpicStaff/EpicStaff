@@ -53,7 +53,7 @@ import { GraphMessage } from '../../models/graph-session-message.model';
                     flex: 1;
                     display: flex;
                     overflow: hidden;
-                    gap: 1rem;
+                    gap: var(--space-lg);
                     padding: 1rem 0rem;
                     padding-top: 0;
                 }

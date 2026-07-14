@@ -154,7 +154,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
                 h3 {
                     color: var(--gray-100);
                     font-size: var(--font-size-xl);
-                    font-weight: 600;
+                    font-weight: var(--font-weight-semibold);
                     margin: 0;
                     white-space: nowrap;
                     overflow: hidden;
@@ -163,7 +163,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
 
                     .project-name {
                         color: #5672cd;
-                        font-weight: 400;
+                        font-weight: var(--font-weight-regular);
                         margin-right: 5px;
                     }
                 }
@@ -172,7 +172,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
             .finish-content {
                 display: flex;
                 flex-direction: column;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 padding-left: 5.5rem;
                 margin-top: 1.25rem;
                 overflow: hidden;
@@ -180,7 +180,7 @@ import { FinishMessageData, GraphMessage } from '../../../../models/graph-sessio
 
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
                 margin-bottom: 1rem;
                 cursor: pointer;

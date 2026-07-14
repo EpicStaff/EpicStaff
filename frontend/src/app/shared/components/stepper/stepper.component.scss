@@ -58,7 +58,7 @@
         background-color: var(--color-background-body);
         line-height: 130%;
         font-size: var(--font-size-md);
-        font-weight: bold;
+        font-weight: var(--font-weight-bold);
         z-index: 2;
         transition: 0.25s;
     }

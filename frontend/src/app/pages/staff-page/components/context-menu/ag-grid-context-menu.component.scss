@@ -15,7 +15,7 @@
         li {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--space-sm);
             padding: 8px 15px;
             cursor: pointer;
             transition:

@@ -26,14 +26,14 @@
 
             .title {
                 font-size: var(--font-size-4xl);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 color: var(--color-text-primary);
             }
 
             .subtitle-inline {
                 margin-left: 0.7rem;
                 font-size: var(--font-size-xl);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 color: var(--color-text-secondary);
             }
         }
@@ -42,7 +42,7 @@
             display: flex;
             align-items: center;
             margin-left: auto;
-            gap: 0.75rem;
+            gap: var(--space-md);
         }
     }
 
@@ -62,7 +62,7 @@
         .tabs-right {
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: var(--space-lg);
         }
     }
 }

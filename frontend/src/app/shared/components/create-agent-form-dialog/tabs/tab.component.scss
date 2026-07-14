@@ -14,13 +14,13 @@
         color: var(--color-text-primary);
         margin-top: 0;
         margin-bottom: 1rem;
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
     }
 }
 
 .form-group-container {
     display: flex;
-    gap: 1rem;
+    gap: var(--space-lg);
 }
 
 .form-group {

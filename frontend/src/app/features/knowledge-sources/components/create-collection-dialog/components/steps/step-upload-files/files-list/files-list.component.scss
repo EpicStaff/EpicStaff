@@ -13,7 +13,7 @@
         width: 100%;
         padding-right: 1.875rem;
         font-size: var(--font-size-md);
-        font-weight: 300;
+        font-weight: var(--font-weight-light);
         min-width: 0;
 
         &--count {
@@ -31,7 +31,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        column-gap: 1rem;
+        column-gap: var(--space-lg);
         cursor: pointer;
         font-size: var(--font-size-xs);
 
@@ -42,7 +42,7 @@
 
     &__name-column {
         display: flex;
-        column-gap: 0.5rem;
+        column-gap: var(--space-sm);
         min-width: 0;
         flex: 1;
         align-items: center;
@@ -72,7 +72,7 @@
 
     &__size-column {
         display: flex;
-        column-gap: 1rem;
+        column-gap: var(--space-lg);
         flex-shrink: 0;
     }
 

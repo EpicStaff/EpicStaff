@@ -15,7 +15,7 @@
     padding: 0.75rem 1rem;
     color: var(--color-text-primary);
     font-size: var(--font-size-md);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 
@@ -29,7 +29,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
+    gap: var(--space-lg);
     padding: 0.625rem 1rem;
 }
 
@@ -45,7 +45,7 @@
 
     .popover__label {
         font-size: var(--font-size-sm);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         color: var(--color-text-secondary);
     }
 }
@@ -67,10 +67,10 @@
 .popover__label {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-xs);
     color: var(--color-text-primary);
     font-size: var(--font-size-sm);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
 }
 
 .help-icon {

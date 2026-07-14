@@ -9,14 +9,14 @@
 .stats-row {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr 1fr;
-    gap: 1rem;
+    gap: var(--space-lg);
     margin-bottom: 1.5rem;
     flex-shrink: 0;
 }
 
 .section-title {
     font-size: var(--font-size-2xl);
-    font-weight: 700;
+    font-weight: var(--font-weight-bold);
     color: var(--color-text-primary);
     margin: 0 0 1rem;
 }
@@ -42,7 +42,7 @@
 .orgs-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
+    gap: var(--space-lg);
     overflow: auto;
 }
 
@@ -58,7 +58,7 @@
     cursor: pointer;
     transition: background 0.3s;
     font-size: var(--font-size-xl);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
 
     .plus {
         color: var(--accent-color);

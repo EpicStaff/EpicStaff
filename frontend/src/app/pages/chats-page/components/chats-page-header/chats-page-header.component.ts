@@ -49,7 +49,7 @@ import { FormsModule } from '@angular/forms';
             }
             .title {
                 font-size: var(--font-size-3xl);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 letter-spacing: -0.02em;
                 line-height: 1.2;
                 color: var(--white);
@@ -59,12 +59,12 @@ import { FormsModule } from '@angular/forms';
             .header-actions {
                 display: flex;
                 align-items: center;
-                gap: 24px;
+                gap: var(--space-2xl);
             }
             .api-key-container {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
             }
             .save-button {
                 padding: 8px 12px;
@@ -151,7 +151,7 @@ import { FormsModule } from '@angular/forms';
             }
             .model-button.active {
                 color: white;
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
             }
             .model-button:not(.active):hover {
                 color: var(--white);

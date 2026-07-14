@@ -102,7 +102,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     h3 {
                         margin: 0;
                         font-size: var(--font-size-xl);
-                        font-weight: 600;
+                        font-weight: var(--font-weight-semibold);
                         color: #f0f0f0;
                         letter-spacing: 0.3px;
                     }
@@ -137,7 +137,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     .tags-container {
                         display: flex;
                         flex-wrap: wrap;
-                        gap: 8px;
+                        gap: var(--space-sm);
                     }
 
                     .tag-item,
@@ -170,7 +170,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                             font-size: var(--font-size-sm);
                             margin-right: 8px;
                             color: #e6e6e6;
-                            font-weight: 500;
+                            font-weight: var(--font-weight-medium);
                         }
 
                         .remove-btn {
@@ -257,7 +257,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     margin-left: auto;
                     padding: 6px 12px; // Reduced padding for smaller button
                     font-size: var(--font-size-xs); // Reduced font size
-                    font-weight: 500;
+                    font-weight: var(--font-weight-medium);
                     background: #5e9ced;
                     color: #fff;
                     border: none;

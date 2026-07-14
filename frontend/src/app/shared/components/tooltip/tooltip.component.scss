@@ -1,17 +1,17 @@
 .tooltip-label-container {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     margin-bottom: 8px;
 }
 
 .tooltip-label {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: var(--space-2xs);
     font-size: var(--font-size-md);
     line-height: 130%;
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     color: var(--color-text-primary);
     margin: 0;
 }

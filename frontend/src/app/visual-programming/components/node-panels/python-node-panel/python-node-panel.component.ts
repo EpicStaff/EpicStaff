@@ -220,7 +220,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
 
                 &.expanded {
                     display: flex;
-                    gap: 1rem;
+                    gap: var(--space-lg);
                     height: 100%;
                     width: 100%;
 
@@ -250,7 +250,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                 &.collapsed {
                     display: flex;
                     flex-direction: column;
-                    gap: 1rem;
+                    gap: var(--space-lg);
                     overflow: visible;
 
                     .form-fields {
@@ -272,7 +272,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
             .form-fields {
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: var(--space-lg);
                 flex: 0 0 400px;
                 max-width: 400px;
                 height: 100%;
@@ -392,19 +392,19 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
             .stream-config-section {
                 display: flex;
                 flex-direction: column;
-                gap: 0.5rem;
+                gap: var(--space-sm);
             }
 
             .checkbox-list {
                 display: flex;
                 flex-direction: column;
-                gap: 0.35rem;
+                gap: var(--space-xs);
             }
 
             .checkbox-item {
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 font-size: var(--font-size-md);
                 color: #d4d4d4;
                 cursor: pointer;

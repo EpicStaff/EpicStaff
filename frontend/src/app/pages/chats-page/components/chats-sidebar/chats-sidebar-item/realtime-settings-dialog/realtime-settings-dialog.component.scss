@@ -25,7 +25,7 @@
         .title {
             margin: 0;
             font-size: var(--font-size-xl);
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
             max-width: calc(100% - 40px);
             overflow: hidden;
             text-overflow: ellipsis;
@@ -62,14 +62,14 @@
             padding: 1.5rem;
             display: flex;
             flex-direction: column;
-            gap: 1.5rem;
+            gap: var(--space-2xl);
         }
 
         .form-section {
             .section-header {
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 margin-bottom: 8px;
             }
 
@@ -77,7 +77,7 @@
                 margin: 0;
                 font-size: var(--font-size-md);
                 color: var(--white-alpha-70);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
 
                 .required {
                     color: var(--color-required-asterisk, var(--accent-color));
@@ -129,13 +129,13 @@
         padding: 1rem 1.5rem;
         display: flex;
         justify-content: flex-end;
-        gap: 12px;
+        gap: var(--space-md);
 
         .btn {
             padding: 8px 16px;
             border-radius: var(--radius-md);
             font-size: var(--font-size-md);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             cursor: pointer;
             transition: background-color 0.2s ease;
             border: none;
@@ -186,12 +186,12 @@
 .section-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-sm);
 
     .slider-value {
         font-size: var(--font-size-md);
         color: var(--gray-100);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         margin-left: auto;
     }
 }

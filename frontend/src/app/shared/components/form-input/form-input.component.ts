@@ -84,7 +84,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                 .label-container {
                     display: flex;
                     align-items: center;
-                    gap: 0.5rem;
+                    gap: var(--space-sm);
                     margin-bottom: 8px;
 
                     .required {

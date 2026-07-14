@@ -48,7 +48,7 @@
             105px // chunk size
             105px // overlap
             90px; // tune chunks
-        gap: 0.5rem;
+        gap: var(--space-sm);
         padding: 0.5rem 0.625rem;
         align-items: center;
     }
@@ -65,7 +65,7 @@
     }
 
     &__header {
-        font-weight: bold;
+        font-weight: var(--font-weight-bold);
         font-size: var(--font-size-md);
         width: calc(645px - 1.25rem);
         margin: 0 0 0.5rem 3.125rem;
@@ -99,7 +99,7 @@
         min-width: 0;
         display: flex;
         align-items: center;
-        column-gap: 0.5rem;
+        column-gap: var(--space-sm);
         font-size: var(--font-size-xs);
         color: var(--fog-alpha-80);
         cursor: pointer;

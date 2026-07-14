@@ -23,7 +23,7 @@
     h2 {
         margin: 0;
         font-size: var(--font-size-lg);
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
         color: var(--white);
     }
 }
@@ -34,7 +34,7 @@
     padding: 1rem 1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-md);
 }
 
 .empty-state {
@@ -50,13 +50,13 @@
     h2 {
         margin: 0 0 0.5rem;
         font-size: var(--font-size-lg);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
     }
 
     h3 {
         margin: 0;
         font-size: var(--font-size-sm);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         color: var(--gray-600);
     }
 }
@@ -66,7 +66,7 @@
     align-items: flex-start;
     justify-content: space-between;
     padding: 0.875rem 1rem;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     background-color: var(--white-alpha-4);
     border-radius: var(--radius-lg);
     box-shadow: 0 2px 8px var(--black-alpha-30);
@@ -86,7 +86,7 @@
 .version-info {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-2xs);
     min-width: 0;
     overflow: visible;
 }
@@ -100,7 +100,7 @@
     outline: none;
     color: var(--white);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     padding: 2px 6px;
     font-family: inherit;
     caret-color: var(--white);
@@ -109,7 +109,7 @@
 
 .version-edit-textarea {
     font-size: var(--font-size-sm);
-    font-weight: 400;
+    font-weight: var(--font-weight-regular);
     color: var(--gray-400);
     resize: none;
     line-height: 1.4;
@@ -119,7 +119,7 @@
 
 .version-name {
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     color: var(--white);
     white-space: nowrap;
     overflow: hidden;
@@ -171,7 +171,7 @@
     border: none;
     border-radius: var(--radius-md);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition: background 0.2s;
 

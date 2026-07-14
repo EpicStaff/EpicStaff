@@ -4,7 +4,7 @@ $tooltip-text: var(--gray-200);
 .tooltip-container {
     background-color: $tooltip-bg;
     color: $tooltip-text;
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     font-size: var(--font-size-md); // 14px
     padding: 0.5rem 0.75rem;
     border-radius: var(--radius-lg);

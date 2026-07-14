@@ -28,7 +28,7 @@
             margin: 0;
             font-size: var(--font-size-2xl);
             line-height: 100%;
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             color: var(--white);
             letter-spacing: 0;
         }
@@ -36,7 +36,7 @@
         .dialog-header-right {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: var(--space-md);
         }
 
         .header-icon-btn {
@@ -102,7 +102,7 @@
         min-width: 360px;
         display: flex;
         flex-direction: column;
-        gap: 24px;
+        gap: var(--space-2xl);
         padding: 24px 40px;
         overflow-y: auto;
     }
@@ -132,10 +132,10 @@
     .editor-pane-title {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         font-size: var(--font-size-md);
         line-height: 130%;
-        font-weight: 700;
+        font-weight: var(--font-weight-bold);
         color: var(--white);
 
         .python-icon {
@@ -146,7 +146,7 @@
     .editor-pane-actions {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-2xs);
         flex-shrink: 0;
 
         button {
@@ -188,20 +188,20 @@
     .form-section {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: var(--space-sm);
         flex-shrink: 0;
 
         .section-header {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--space-sm);
             min-height: 20px;
 
             h3 {
                 margin: 0;
                 font-size: var(--font-size-md);
                 line-height: 18px;
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 color: var(--fog-200);
                 display: inline-flex;
                 align-items: center;
@@ -221,7 +221,7 @@
     }
 
     .parameters-section {
-        gap: 8px;
+        gap: var(--space-sm);
     }
 
     .parameters-header {
@@ -231,13 +231,13 @@
     .section-header-label {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         min-width: 0;
     }
 
     .parameters-issue-label {
         font-size: var(--font-size-xs);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--red-400);
         background: var(--red-alpha-10);
         border: 1px solid var(--red-alpha-40);
@@ -272,10 +272,10 @@
     .parameters-mode-switch {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-md);
         font-size: var(--font-size-md);
         line-height: 18px;
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--fog-200);
 
         app-toggle-switch {
@@ -297,7 +297,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
+        gap: var(--space-lg);
         height: 58px;
         padding: 20px 16px;
         border-bottom: 1px solid transparent;
@@ -311,16 +311,16 @@
         display: flex;
         align-items: center;
         min-width: 0;
-        gap: 8px;
+        gap: var(--space-sm);
         color: var(--white);
         font-size: var(--font-size-md);
         line-height: 18px;
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
 
         small {
             color: #9b9ba6;
             font-size: var(--font-size-sm);
-            font-weight: 400;
+            font-weight: var(--font-weight-regular);
             margin-left: 4px;
         }
 
@@ -332,7 +332,7 @@
     .editor-card-actions {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-2xs);
         flex-shrink: 0;
 
         button {

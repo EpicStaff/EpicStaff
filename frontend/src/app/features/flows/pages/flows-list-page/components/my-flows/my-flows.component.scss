@@ -9,14 +9,14 @@
 .grid {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-lg);
     width: 100%;
 }
 
 .recent-section {
     .section-title-no-tabs {
         font-size: var(--font-size-md);
-        font-weight: 700;
+        font-weight: var(--font-weight-bold);
         color: var(--color-text-primary);
         margin: 0 0 0.5rem;
         text-transform: uppercase;
@@ -25,7 +25,7 @@
 
     .empty-message-no-tabs {
         margin-top: 13px;
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         font-size: var(--font-size-md);
         color: var(--fog-alpha-60);
         font-size: var(--font-size-md);
@@ -35,7 +35,7 @@
 
 .recent-flows-list {
     display: flex;
-    gap: 8px;
+    gap: var(--space-sm);
     overflow: hidden;
     padding: 4px 16px 16px;
     margin: -4px -16px -16px;
@@ -71,7 +71,7 @@
 
     .recent-flow-name {
         font-size: var(--font-size-md);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--color-text-primary);
         white-space: nowrap;
         text-decoration: none;

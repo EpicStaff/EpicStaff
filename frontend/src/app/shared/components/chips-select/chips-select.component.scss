@@ -9,7 +9,7 @@
     padding: 0.5rem;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem;
+    gap: var(--space-2xs);
 
     input {
         flex: 1 1 auto;
@@ -24,7 +24,7 @@
     &__items {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.25rem;
+        gap: var(--space-2xs);
     }
 
     &__item {
@@ -35,7 +35,7 @@
         padding: 0.25rem 0.5rem;
         display: flex;
         align-items: center;
-        column-gap: 0.5rem;
+        column-gap: var(--space-sm);
     }
 
     &__item-remove {

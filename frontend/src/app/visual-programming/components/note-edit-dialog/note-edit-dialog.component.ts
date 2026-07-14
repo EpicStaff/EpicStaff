@@ -90,7 +90,7 @@ import { GraphNoteModel } from '../../core/models/node.model';
                 display: flex;
                 align-items: center;
                 min-width: 0;
-                gap: 0.75rem;
+                gap: var(--space-md);
             }
 
             .icon-and-title app-svg-icon {
@@ -99,26 +99,26 @@ import { GraphNoteModel } from '../../core/models/node.model';
 
             .title {
                 font-size: var(--font-size-xl);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 margin: 0;
             }
 
             .header-actions {
                 display: flex;
                 align-items: center;
-                gap: 1rem;
+                gap: var(--space-lg);
             }
 
             .close-action {
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
             }
 
             .esc-label {
                 font-size: var(--font-size-xs);
                 color: #666;
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 padding: 0.15rem 0.3rem;
                 border: 1px solid #444;
                 border-radius: 4px;

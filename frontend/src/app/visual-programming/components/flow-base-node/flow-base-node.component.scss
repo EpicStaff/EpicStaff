@@ -35,7 +35,7 @@
         position: absolute;
         right: 0;
         top: -45px;
-        gap: 8px;
+        gap: var(--space-sm);
         z-index: 11;
         padding: 8px;
         border-radius: var(--radius-lg);
@@ -136,7 +136,7 @@
         .header {
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: var(--space-lg);
 
             .icon-wrapper {
                 display: flex;
@@ -152,9 +152,9 @@
             .title {
                 display: flex;
                 align-items: center;
-                gap: 6px;
+                gap: var(--space-xs);
                 font-size: var(--font-size-lg);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 letter-spacing: 0.5px;
                 color: inherit;
                 overflow: hidden;

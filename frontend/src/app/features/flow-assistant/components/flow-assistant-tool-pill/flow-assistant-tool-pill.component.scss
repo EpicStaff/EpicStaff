@@ -19,7 +19,7 @@
 .tool-pill__header {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
     padding: 8px 12px;
     background-color: var(--ep-color-surface-alt);
     border: none;
@@ -53,7 +53,7 @@
     padding: 0.4rem 0.6rem;
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
+    gap: var(--space-3xs);
 
     & + & {
         border-top: 1px solid var(--ep-color-border-subtle);
@@ -63,7 +63,7 @@
 .tool-pill__item-label {
     color: var(--ep-color-text-muted);
     font-size: var(--font-size-xs);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
 }
 
 .tool-pill__item-args {

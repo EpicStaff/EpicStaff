@@ -18,7 +18,7 @@
 
     &__files-searchbar {
         display: flex;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         padding: 1.25rem 2.5rem 1rem 2.5rem;
     }
 

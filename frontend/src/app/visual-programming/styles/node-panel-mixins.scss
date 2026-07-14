@@ -3,7 +3,7 @@
     border-top: 1px solid var(--color-divider-subtle, var(--graphite-640));
     display: flex;
     justify-content: space-between;
-    gap: 1rem;
+    gap: var(--space-lg);
     flex-shrink: 0;
     background-color: var(--color-nodes-sidepanel-bg, var(--gray-850));
     margin-top: auto;
@@ -14,7 +14,7 @@
     border: none;
     border-radius: var(--radius-md);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition: all 0.2s ease;
     background-color: var(--accent-color, var(--accent-color));
@@ -65,7 +65,7 @@
     border: none;
     border-radius: var(--radius-md);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition: all 0.2s ease;
     background-color: var(--red-500);
@@ -126,14 +126,14 @@
     padding: 1rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-lg);
     min-height: 0;
     overflow: visible;
 }
 
 @mixin section-header {
     font-size: var(--font-size-lg);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     color: var(--white);
     margin: 0 0 1rem 0;
     padding-bottom: 0.5rem;
@@ -143,7 +143,7 @@
 @mixin form-container {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: var(--space-2xl);
 }
 
 .panel-footer {

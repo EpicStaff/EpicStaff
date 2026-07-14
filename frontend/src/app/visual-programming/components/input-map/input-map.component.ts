@@ -237,19 +237,19 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             .input-map-container {
                 display: flex;
                 flex-direction: column;
-                gap: 12px;
+                gap: var(--space-md);
                 width: 100%;
             }
 
             .input-map-header {
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
             }
 
             .input-map-header label {
                 font-size: var(--font-size-md);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 color: var(--color-text-primary);
                 margin: 0;
             }
@@ -257,7 +257,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             .test-mode-header {
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 margin-left: auto;
             }
 
@@ -282,7 +282,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             .input-map-list {
                 display: flex;
                 flex-direction: column;
-                gap: 0.75rem;
+                gap: var(--space-md);
                 width: 100%;
                 min-width: 0;
             }
@@ -293,7 +293,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
             .input-map-fields {
                 display: flex;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 align-items: center;
                 width: 100%;
             }
@@ -304,7 +304,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             }
             .equals-sign {
                 color: #fff;
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 margin: 0 -2px;
             }
 
@@ -351,7 +351,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             .add-pair-btn {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
                 padding: 6px 12px;
                 background: var(--color-action-btn-background);
                 border: 1px solid var(--color-divider-subtle);
@@ -376,7 +376,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
             .test-mode-actions {
                 display: flex;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 width: 100%;
             }
 
@@ -387,7 +387,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 border: 1px solid var(--color-divider-subtle);
                 border-radius: 4px;
                 font-size: var(--font-size-md);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 text-align: center;

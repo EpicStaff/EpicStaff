@@ -131,7 +131,7 @@ interface InputMapPair {
                 min-height: 0;
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: var(--space-lg);
             }
 
             .btn-primary {

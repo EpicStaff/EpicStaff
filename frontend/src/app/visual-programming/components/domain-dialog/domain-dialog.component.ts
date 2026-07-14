@@ -129,7 +129,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
 
             .dialog-title {
                 font-size: var(--font-size-2xl);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 color: var(--color-text-primary, #fff);
                 margin: 0;
             }
@@ -171,7 +171,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
             .autocomplete-hint {
                 display: flex;
                 align-items: flex-start;
-                gap: 0.6rem;
+                gap: var(--space-sm);
                 padding: 0.6rem 0.85rem;
                 margin-bottom: 1rem;
                 background: rgba(101, 98, 245, 0.08);
@@ -218,7 +218,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
             .path-error {
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 color: #f87171;
                 line-height: 1.4;
 
@@ -248,7 +248,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
             .dialog-actions {
                 display: flex;
                 justify-content: flex-end;
-                gap: 0.75rem;
+                gap: var(--space-md);
                 padding: 1rem 1.5rem;
                 border-top: 1px solid var(--color-divider-subtle, #444);
             }

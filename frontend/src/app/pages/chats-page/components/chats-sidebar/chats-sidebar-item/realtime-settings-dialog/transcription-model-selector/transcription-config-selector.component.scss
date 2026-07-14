@@ -33,7 +33,7 @@
         }
 
         .selected-config {
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -86,7 +86,7 @@
             .item-actions {
                 display: inline-flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
                 margin-left: 8px;
                 flex-shrink: 0;
             }
@@ -118,7 +118,7 @@
             &.selected {
                 background-color: #1e72e6;
                 color: white;
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
             }
 
             &.loading {
@@ -130,7 +130,7 @@
             &.create-new {
                 border-top: 1px solid var(--white-alpha-10);
                 color: var(--accent-color);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 display: flex;
                 align-items: center;
 
@@ -138,7 +138,7 @@
                     margin-right: 8px;
 
                     font-size: var(--font-size-lg);
-                    font-weight: bold;
+                    font-weight: var(--font-weight-bold);
                 }
 
                 &:hover {

@@ -4,7 +4,7 @@
 
 .role-name {
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     color: var(--color-text-primary);
     white-space: nowrap;
     overflow: hidden;

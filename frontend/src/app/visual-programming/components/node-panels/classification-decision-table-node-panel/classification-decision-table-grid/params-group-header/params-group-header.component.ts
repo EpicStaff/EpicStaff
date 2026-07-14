@@ -83,7 +83,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                gap: 6px;
+                gap: var(--space-xs);
                 width: 100%;
                 height: 100%;
                 padding: 0 4px;
@@ -132,7 +132,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 flex: 1;
                 font-size: var(--font-size-md);
                 color: rgba(255, 255, 255, 0.9);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;

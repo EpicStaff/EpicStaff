@@ -124,13 +124,13 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 padding: 20px;
                 display: flex;
                 flex-direction: column;
-                gap: 16px;
+                gap: var(--space-lg);
                 overflow: clip;
             }
             /* Search row */
             .pe-search-row {
                 display: flex;
-                gap: 8px;
+                gap: var(--space-sm);
                 align-items: flex-start;
             }
             .pe-search-input {
@@ -176,7 +176,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
             .pe-list {
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: var(--space-sm);
                 max-height: 280px;
                 overflow-y: auto;
             }
@@ -224,7 +224,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
             .pe-item-right {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
                 flex-shrink: 0;
                 margin-left: 8px;
             }
@@ -265,7 +265,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
                 padding: 24px 0;
                 text-align: center;
             }
@@ -296,7 +296,7 @@ interface PromptIdEditorParams extends ICellEditorParams {
                 color: var(--accent-color);
                 font-size: var(--font-size-md);
                 font-family: Inter, sans-serif;
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 line-height: 1;
                 cursor: pointer;
                 box-shadow: none;

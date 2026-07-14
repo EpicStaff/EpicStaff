@@ -31,7 +31,7 @@
 @mixin shortcutsOneColumnLayout() {
     .shortcuts__grid {
         grid-template-columns: 1fr;
-        row-gap: 16px;
+        row-gap: var(--space-lg);
         column-gap: 0;
     }
 }
@@ -111,7 +111,7 @@
 
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: var(--space-2xl);
 
     transition:
         padding 200ms ease,
@@ -127,7 +127,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 16px;
+    gap: var(--space-lg);
 }
 
 .shortcuts__header-left {
@@ -144,7 +144,7 @@
 }
 
 .shortcuts__header-title {
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     font-size: var(--font-size-xl);
     line-height: 1;
     color: var(--color-text-primary);
@@ -158,7 +158,7 @@
 .shortcuts__header-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-md);
     justify-self: end;
 }
 
@@ -230,8 +230,8 @@
 .shortcuts__grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    column-gap: 40px;
-    row-gap: 30px;
+    column-gap: var(--space-4xl);
+    row-gap: var(--space-3xl);
     transition:
         column-gap 200ms ease,
         row-gap 200ms ease;
@@ -241,12 +241,12 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-md);
     min-width: 0;
 }
 
 .shortcuts__card-title {
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     font-size: var(--font-size-md);
     line-height: 1.3;
     color: var(--color-text-primary);
@@ -276,7 +276,7 @@
 }
 
 .shortcuts__label {
-    font-weight: 400;
+    font-weight: var(--font-weight-regular);
     font-size: var(--font-size-xs);
     line-height: 1.3;
     color: var(--fog-alpha-80);
@@ -297,7 +297,7 @@
     padding: 4px 8px;
     border-radius: var(--radius-xs);
     border: 1px solid var(--graphite-700);
-    font-weight: 400;
+    font-weight: var(--font-weight-regular);
     font-size: var(--font-size-xs);
     line-height: 1.3;
     color: var(--color-text-primary);

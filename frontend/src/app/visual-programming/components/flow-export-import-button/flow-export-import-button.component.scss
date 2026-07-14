@@ -36,7 +36,7 @@
 
     &__count {
         font-size: var(--font-size-xs);
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
         color: var(--accent-color);
         line-height: 1;
         flex-shrink: 0;

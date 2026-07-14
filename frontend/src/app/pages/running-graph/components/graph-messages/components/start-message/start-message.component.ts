@@ -124,13 +124,13 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
             h3 {
                 color: var(--gray-100);
                 font-size: var(--font-size-xl);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 margin: 0;
             }
 
             .node-name {
                 color: #d29922;
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
             }
 
             /* Collapsible content container */
@@ -146,14 +146,14 @@ import { GraphMessage } from '../../../../models/graph-session-message.model';
             .start-content {
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: var(--space-lg);
                 padding-left: 5.5rem;
                 margin-top: 1.25rem;
             }
 
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;

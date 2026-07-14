@@ -31,7 +31,7 @@
 
 .dialog-title {
     font-size: var(--font-size-xl);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     margin: 0;
     color: var(--color-text-primary);
 }
@@ -48,7 +48,7 @@
 
     ::ng-deep strong {
         color: var(--color-text-primary);
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
         word-wrap: break-word;
         overflow-wrap: break-word;
         max-width: 100%;
@@ -59,20 +59,20 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     padding: 16px 24px;
 }
 
 .dialog-actions .right-buttons {
     display: flex;
-    gap: 8px;
+    gap: var(--space-sm);
 }
 
 .button {
     padding: 8px 12px;
     border-radius: var(--radius-md);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition: all 0.2s ease;
     border: none;

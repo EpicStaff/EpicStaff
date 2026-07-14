@@ -50,7 +50,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
         display: flex;
         flex-wrap: wrap;
         align-items: flex-start;
-        gap: 1rem;
+        gap: var(--space-lg);
         width: 100%;
 
         // Common styles for cards
@@ -123,12 +123,12 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     min-width: 60px;
                     max-width: 120px;
                     flex-shrink: 0;
-                    font-weight: 500;
+                    font-weight: var(--font-weight-medium);
                 }
 
                 .chain-separator {
                     margin: 0 12px;
-                    font-weight: bold;
+                    font-weight: var(--font-weight-bold);
                     color: var(--accent-color, var(--accent-color));
                     flex-shrink: 0;
                     font-size: var(--font-size-lg);
@@ -154,7 +154,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                 display: flex;
                 align-items: center;
                 width: 100%;
-                gap: 12px;
+                gap: var(--space-md);
                 flex-wrap: wrap;
 
                 .variable-input {
@@ -191,7 +191,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
 
                 .chain-separator {
                     color: var(--accent-color, var(--accent-color));
-                    font-weight: bold;
+                    font-weight: var(--font-weight-bold);
                     font-size: var(--font-size-lg);
                 }
             }
@@ -199,7 +199,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
             .variable-actions {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
                 margin-left: 12px;
                 flex-shrink: 0;
 
@@ -274,7 +274,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
             .variable-item {
                 display: flex;
                 align-items: center;
-                gap: 12px;
+                gap: var(--space-md);
                 flex: 1;
                 min-width: 0;
 
@@ -321,7 +321,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                 }
 
                 .chain-separator {
-                    font-weight: bold;
+                    font-weight: var(--font-weight-bold);
                     color: var(--accent-color, var(--accent-color));
                     flex-shrink: 0;
                     font-size: var(--font-size-lg);
@@ -331,9 +331,9 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
             .add-variable-button {
                 display: inline-flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
                 font-size: var(--font-size-md);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 padding: 6px 12px;
                 background-color: rgba($accent-color, 0.1);
                 color: var(--gray-200);

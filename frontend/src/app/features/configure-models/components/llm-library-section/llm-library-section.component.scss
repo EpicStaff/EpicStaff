@@ -1,27 +1,27 @@
 .llm-library {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: var(--space-2xl);
     color: var(--color-text-primary);
 
     &__header {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 24px;
+        gap: var(--space-2xl);
         flex-wrap: wrap;
     }
 
     &__header-left {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: var(--space-xs);
     }
 
     &__title {
         margin: 0;
         font-size: var(--font-size-2xl);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--color-text-primary);
     }
 
@@ -34,7 +34,7 @@
     &__header-right {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-md);
         flex-shrink: 0;
     }
 
@@ -90,7 +90,7 @@
     &__add-btn {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-xs);
         height: 38px;
         padding: 0 18px;
         border-radius: var(--radius-lg);
@@ -98,7 +98,7 @@
         background: var(--accent-color);
         color: var(--white);
         font-size: var(--font-size-md);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         cursor: pointer;
         transition: background 0.2s ease;
 
@@ -117,14 +117,14 @@
 
     &__section-title {
         margin-bottom: 1rem;
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--fog-alpha-50);
     }
 
     &__provider-group {
         display: flex;
         flex-direction: column;
-        gap: 14px;
+        gap: var(--space-lg);
         margin-bottom: 1rem;
     }
 
@@ -136,14 +136,14 @@
 
     &__provider-name {
         font-size: var(--font-size-lg);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--color-text-primary);
     }
 
     &__grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 16px;
+        gap: var(--space-lg);
     }
 }
 

@@ -24,7 +24,7 @@
 .chm-menu-item {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     padding: 0.45rem 0.85rem;
     font-size: var(--font-size-sm);
     color: var(--white-alpha-85);

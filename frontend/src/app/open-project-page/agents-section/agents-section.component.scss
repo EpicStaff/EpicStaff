@@ -13,7 +13,7 @@
 .grid-container {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 1rem;
+    gap: var(--space-lg);
     width: 100%;
     position: relative;
     margin-bottom: 1rem;

@@ -167,7 +167,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                 display: flex;
                 flex-direction: row;
                 align-items: center;
-                gap: 6px;
+                gap: var(--space-xs);
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;

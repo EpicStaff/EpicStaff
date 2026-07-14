@@ -4,7 +4,7 @@
 
 .validation-errors {
     margin: 0.5rem 0;
-    row-gap: 0.5rem;
+    row-gap: var(--space-sm);
     &__item {
         display: block;
         font-size: var(--font-size-xs);

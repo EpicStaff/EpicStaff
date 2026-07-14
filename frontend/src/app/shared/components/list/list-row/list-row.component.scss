@@ -2,6 +2,6 @@
     display: grid;
     grid-auto-flow: column;
     align-items: center;
-    column-gap: 0.25rem;
+    column-gap: var(--space-2xs);
     padding: 0.5rem 0.625rem;
 }

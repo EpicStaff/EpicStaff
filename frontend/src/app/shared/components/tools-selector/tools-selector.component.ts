@@ -295,7 +295,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
 
                         span {
                             font-size: var(--font-size-xl);
-                            font-weight: 400;
+                            font-weight: var(--font-weight-regular);
                         }
                     }
                 }
@@ -331,7 +331,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                     .tools-tabs {
                         display: flex;
                         justify-content: start;
-                        gap: 1rem;
+                        gap: var(--space-lg);
 
                         button {
                             background: transparent;
@@ -351,7 +351,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
 
                             &.active {
                                 color: var(--accent-color);
-                                font-weight: 500;
+                                font-weight: var(--font-weight-medium);
 
                                 &::after {
                                     content: '';
@@ -382,7 +382,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
 
                         .spinner {
                             display: flex;
-                            gap: 0.5rem;
+                            gap: var(--space-sm);
 
                             .bounce1,
                             .bounce2,
@@ -420,7 +420,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                     .tools-list {
                         display: flex;
                         flex-direction: column;
-                        gap: 0.75rem;
+                        gap: var(--space-md);
 
                         .tool-item {
                             display: flex;
@@ -449,7 +449,7 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
 
                                 .tool-name {
                                     font-size: var(--font-size-md);
-                                    font-weight: 500;
+                                    font-weight: var(--font-weight-medium);
                                     color: var(--color-text-primary);
                                     margin-bottom: 0.25rem;
                                 }
@@ -477,13 +477,13 @@ import { IconButtonComponent } from '../buttons/icon-button/icon-button.componen
                     border-top: 1px solid var(--color-divider-subtle);
                     display: flex;
                     justify-content: flex-end;
-                    gap: 0.75rem;
+                    gap: var(--space-md);
 
                     button {
                         padding: 0.5rem 1rem;
                         border-radius: 6px;
                         font-size: var(--font-size-md);
-                        font-weight: 500;
+                        font-weight: var(--font-weight-medium);
                         cursor: pointer;
                         transition: all 0.2s ease;
 

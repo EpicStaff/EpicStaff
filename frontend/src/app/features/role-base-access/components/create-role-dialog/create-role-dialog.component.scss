@@ -21,7 +21,7 @@
 
         .actions {
             display: flex;
-            gap: 1rem;
+            gap: var(--space-lg);
         }
     }
 
@@ -34,7 +34,7 @@
         .control {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: var(--space-lg);
             padding-top: 16px;
 
             &:first-child {

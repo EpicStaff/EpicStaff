@@ -7,7 +7,7 @@
 
     .action-buttons {
         display: flex;
-        gap: 8px;
+        gap: var(--space-sm);
 
         .action-button {
             width: 38px;

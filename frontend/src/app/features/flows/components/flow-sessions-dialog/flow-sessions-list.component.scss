@@ -18,7 +18,7 @@
         align-items: center;
         justify-content: space-between;
         padding-bottom: 2rem;
-        gap: 16px;
+        gap: var(--space-lg);
         flex-shrink: 0;
 
         h2 {
@@ -26,7 +26,7 @@
             min-width: 0;
             margin: 0;
             font-size: 1.5em;
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -50,7 +50,7 @@
             .action-buttons {
                 margin-left: auto;
                 display: flex;
-                gap: 8px;
+                gap: var(--space-sm);
                 align-items: center;
             }
         }
@@ -69,7 +69,7 @@
             display: flex;
             align-items: center;
             justify-content: flex-start;
-            gap: 16px;
+            gap: var(--space-lg);
         }
     }
 }
@@ -77,7 +77,7 @@
 .page-size-selector {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     font-size: var(--font-size-sm);
     color: var(--color-text-secondary);
     white-space: nowrap;
@@ -86,7 +86,7 @@
 .error-cause-filter {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     cursor: pointer;
     font-size: var(--font-size-sm);
     color: var(--color-text-primary, var(--white));
@@ -142,7 +142,7 @@
     padding: 6px 14px;
     border-radius: var(--radius-md);
     font-size: 0.95em;
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition:
         background 0.18s,

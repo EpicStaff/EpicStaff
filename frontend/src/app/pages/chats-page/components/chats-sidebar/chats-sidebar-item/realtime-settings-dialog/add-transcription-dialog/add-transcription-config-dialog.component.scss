@@ -14,7 +14,7 @@
         .dialog-title {
             margin: 0;
             font-size: var(--font-size-xl);
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
         }
 
         .close-button {
@@ -107,13 +107,13 @@
     .dialog-footer {
         display: flex;
         justify-content: flex-end;
-        gap: 12px;
+        gap: var(--space-md);
 
         .button {
             padding: 8px 16px;
             border-radius: var(--radius-md);
             font-size: var(--font-size-md);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             cursor: pointer;
             transition: background-color 0.2s ease;
             border: none;

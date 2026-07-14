@@ -13,7 +13,7 @@
     }
 
     &__header-label {
-        font-weight: bold;
+        font-weight: var(--font-weight-bold);
         color: var(--color-text-primary);
         font-size: var(--font-size-2xl);
         min-width: 0;
@@ -23,14 +23,14 @@
     }
 
     &__header-count {
-        font-weight: normal;
+        font-weight: var(--font-weight-regular);
         color: var(--color-text-muted);
     }
 
     &__actions {
         margin-top: 1.5rem;
         display: flex;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         min-width: 0;
     }
 
@@ -50,7 +50,7 @@
         flex-direction: column;
         align-items: center;
         overflow: auto;
-        row-gap: 1rem;
+        row-gap: var(--space-lg);
         margin-top: 1rem;
     }
 

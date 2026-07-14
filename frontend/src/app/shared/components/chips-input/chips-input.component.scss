@@ -4,7 +4,7 @@
 
     .input {
         display: flex;
-        column-gap: 0.5rem;
+        column-gap: var(--space-sm);
 
         .input-icon {
             height: 40px;
@@ -30,7 +30,7 @@
     .separator-toggle {
         display: flex;
         align-items: center;
-        column-gap: 0.5rem;
+        column-gap: var(--space-sm);
         margin-top: 0.5rem;
         cursor: pointer;
         font-size: var(--font-size-xs);
@@ -41,12 +41,12 @@
         display: flex;
         flex-wrap: wrap;
         margin-top: 0.5rem;
-        gap: 0.5rem;
+        gap: var(--space-sm);
 
         .chip {
             display: flex;
             align-items: center;
-            column-gap: 0.5rem;
+            column-gap: var(--space-sm);
             padding: 0.25rem 0.75rem;
             height: 40px;
             border-radius: var(--radius-md);

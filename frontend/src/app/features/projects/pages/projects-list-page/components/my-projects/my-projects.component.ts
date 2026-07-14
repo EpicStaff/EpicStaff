@@ -70,7 +70,7 @@ import { AddProjectCardComponent } from './add-project-card/add-project-card.com
             .grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fill, minmax(clamp(10vw, 100%, 335px), 1fr));
-                gap: 1.5rem;
+                gap: var(--space-2xl);
                 width: 100%;
                 align-items: start;
             }

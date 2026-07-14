@@ -63,7 +63,7 @@ $transition-default: all 0.2s ease;
     box-shadow: 0 1px 2px var(--black-alpha-10);
     transition: all 0.15s ease;
     cursor: pointer;
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     max-width: 150px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -84,7 +84,7 @@ $transition-default: all 0.2s ease;
     display: flex;
     flex-direction: column;
 
-    gap: 4px;
+    gap: var(--space-2xs);
     margin: 5px 0;
     padding: 5px;
     color: var(--gray-100); // Light text for visibility
@@ -113,7 +113,7 @@ $transition-default: all 0.2s ease;
             overflow: hidden;
             text-overflow: ellipsis;
             font-size: var(--font-size-sm);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             color: var(--gray-100); // Light text color
         }
     }
@@ -147,7 +147,7 @@ $transition-default: all 0.2s ease;
     //   :where(.ag-cell-value) {
     //     height: auto !important;
     //   }
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     font-size: var(--font-size-md);
 }
 
@@ -223,7 +223,7 @@ $transition-default: all 0.2s ease;
         .item-text {
             line-height: 1.3;
             font-size: var(--font-size-sm);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;

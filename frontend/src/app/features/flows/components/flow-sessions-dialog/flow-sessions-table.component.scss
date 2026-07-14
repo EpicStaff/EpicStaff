@@ -3,7 +3,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--space-md);
     flex-shrink: 0;
     min-height: 40px;
 
@@ -17,7 +17,7 @@
     .bulk-actions-section {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-md);
 
         .delete-btn {
             min-width: auto;
@@ -145,7 +145,7 @@ table {
     th {
         background-color: var(--color-sidenav-background);
         color: var(--color-text-primary);
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
 
         &.sortable {
             cursor: pointer;
@@ -184,7 +184,7 @@ table {
     .actions-container {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         flex-shrink: 0;
         flex-wrap: nowrap;
         justify-content: flex-end;
@@ -208,7 +208,7 @@ table {
     margin-right: 8px;
     border-radius: var(--radius-md);
     font-size: 0.95em;
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition:
         background 0.18s,
@@ -236,7 +236,7 @@ table {
     margin-right: 8px;
     border-radius: var(--radius-md);
     font-size: 0.95em;
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition:
         background 0.18s,
@@ -272,7 +272,7 @@ table {
     margin-right: 8px;
     border-radius: var(--radius-md);
     font-size: 0.95em;
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition:
         background 0.18s,

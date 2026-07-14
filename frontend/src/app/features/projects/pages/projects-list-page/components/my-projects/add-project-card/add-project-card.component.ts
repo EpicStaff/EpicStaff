@@ -74,7 +74,7 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
 
             .title {
                 font-size: var(--font-size-lg);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 color: #8b8e98;
                 transition: color 0.2s ease;
             }

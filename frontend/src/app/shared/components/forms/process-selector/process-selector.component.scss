@@ -4,7 +4,7 @@
     background-color: var(--color-nodes-input-bg);
     border-radius: var(--radius-lg);
     padding: 0;
-    gap: 0.25rem;
+    gap: var(--space-2xs);
     border: 1px solid var(--color-divider-subtle);
 }
 
@@ -16,7 +16,7 @@
     padding: 0.5rem 0.4rem;
     border-radius: var(--radius-md);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     color: var(--color-text-primary);
     transition: all 0.2s ease;

@@ -4,14 +4,14 @@
         flex-direction: column;
         flex: 1;
         min-height: 0;
-        gap: 1rem;
+        gap: var(--space-lg);
         overflow: hidden;
     }
 
     .toolbar {
         display: flex;
         align-items: center;
-        gap: 1rem;
+        gap: var(--space-lg);
         flex-shrink: 0;
     }
 
@@ -26,7 +26,7 @@
     .toolbar-actions {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
     }
 
     .settings-btn {
@@ -52,7 +52,7 @@
     .user-cell {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         min-width: 0;
     }
 
@@ -74,7 +74,7 @@
     // Overflow items row (roles, orgs, admins badges)
     .badges-cell {
         display: flex;
-        gap: 4px;
+        gap: var(--space-2xs);
         align-items: center;
         flex-wrap: nowrap;
         flex: 1;
@@ -123,7 +123,7 @@
     .actions-cell {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-2xs);
         justify-content: flex-end;
     }
 

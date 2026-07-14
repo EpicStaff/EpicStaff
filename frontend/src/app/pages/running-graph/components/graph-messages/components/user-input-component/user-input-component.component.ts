@@ -70,7 +70,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 border-left: 4px solid #ffa726;
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: var(--space-lg);
             }
 
             .feedback-message {
@@ -88,7 +88,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
             .quick-options {
                 display: flex;
                 align-items: center;
-                gap: 0.75rem;
+                gap: var(--space-md);
                 flex-wrap: wrap;
             }
 
@@ -134,7 +134,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 flex-shrink: 0;
@@ -167,7 +167,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 height: 38px;
 
                 &:hover {

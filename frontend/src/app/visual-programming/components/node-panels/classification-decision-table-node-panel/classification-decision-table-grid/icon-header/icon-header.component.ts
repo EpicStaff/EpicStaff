@@ -49,13 +49,13 @@ export interface IconHeaderParams extends IHeaderParams {
                 width: 100%;
                 height: 100%;
                 cursor: default;
-                gap: 4px;
+                gap: var(--space-2xs);
                 padding: 0 4px;
             }
             .icon-header-label {
                 font-size: var(--font-size-md);
                 color: rgba(255, 255, 255, 0.9);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 flex: 1;
                 overflow: hidden;
                 text-overflow: ellipsis;

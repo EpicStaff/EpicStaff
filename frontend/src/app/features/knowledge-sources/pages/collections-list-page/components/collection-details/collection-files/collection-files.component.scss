@@ -9,13 +9,13 @@
         align-items: center;
         justify-content: space-between;
         font-size: var(--font-size-xs);
-        column-gap: 1rem;
+        column-gap: var(--space-lg);
     }
 
     &__name-column {
         display: flex;
         align-items: center;
-        column-gap: 0.5rem;
+        column-gap: var(--space-sm);
         min-width: 0;
         flex: 1;
     }
@@ -36,7 +36,7 @@
 
     &__size-column {
         display: flex;
-        column-gap: 1rem;
+        column-gap: var(--space-lg);
         flex-shrink: 0;
     }
 
@@ -63,7 +63,7 @@
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        column-gap: 0.5rem;
+        column-gap: var(--space-sm);
     }
 
     &__file-action {

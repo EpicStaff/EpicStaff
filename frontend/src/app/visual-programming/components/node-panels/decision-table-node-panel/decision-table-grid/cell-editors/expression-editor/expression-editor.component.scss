@@ -64,7 +64,7 @@
 
         ::ng-deep .keyword {
             color: #c586c0;
-            font-weight: bold;
+            font-weight: var(--font-weight-bold);
             text-transform: uppercase;
         }
     }

@@ -27,13 +27,13 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    row-gap: 1rem;
+    row-gap: var(--space-lg);
 }
 
 .form-container--expanded {
     .form-layout {
         flex-wrap: wrap;
-        gap: 1rem;
+        gap: var(--space-lg);
     }
     .form-data {
         overflow: auto;
@@ -49,13 +49,13 @@
 .form-data {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-lg);
 }
 
 .form-fields {
     display: flex;
     flex-direction: column;
-    row-gap: 1rem;
+    row-gap: var(--space-lg);
 }
 
 .code-editor-section {
@@ -99,12 +99,12 @@
 .webhook-section {
     display: flex;
     flex-direction: column;
-    row-gap: 0.75rem;
+    row-gap: var(--space-md);
 
     &__label-container {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
 
         label {
             display: block;
@@ -139,13 +139,13 @@
         font-size: var(--font-size-xs);
         display: flex;
         flex-direction: column;
-        row-gap: 0.5rem;
+        row-gap: var(--space-sm);
     }
 
     &__main {
         display: flex;
         align-items: center;
-        column-gap: 0.5rem;
+        column-gap: var(--space-sm);
     }
 
     &__icon {
@@ -161,14 +161,14 @@
     }
     &__error-message {
         font-size: var(--font-size-xs);
-        color: #d9d9de60;
+        color: var(--fog-alpha-40);
     }
 }
 
 .output-fields-section {
     display: flex;
     flex-direction: column;
-    row-gap: 0.5rem;
+    row-gap: var(--space-sm);
 }
 
 .output-fields {
@@ -185,7 +185,7 @@
         padding: 0.2rem 0.5rem;
         border-radius: var(--radius-sm);
         background-color: #44464a4d;
-        color: #d9d9de60;
+        color: var(--fog-alpha-40);
     }
 
     &__container {
@@ -198,13 +198,13 @@
         font-size: var(--font-size-md);
         display: flex;
         flex-direction: column;
-        row-gap: 1rem;
+        row-gap: var(--space-lg);
     }
 
     &__items {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: var(--space-sm);
     }
 
     &__item {
@@ -213,7 +213,7 @@
         flex-grow: 1;
         font-size: var(--font-size-xs);
         color: var(--white-alpha-70);
-        row-gap: 0.25rem;
+        row-gap: var(--space-2xs);
         border: 1px solid var(--white-alpha-10);
         background-color: #44464a4d;
         border-radius: var(--radius-sm);
@@ -221,7 +221,7 @@
     }
 
     &__item-tip {
-        color: #d9d9de60;
+        color: var(--fog-alpha-40);
     }
 }
 

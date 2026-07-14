@@ -57,7 +57,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
             .label-container {
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 margin-bottom: 0.25rem;
             }
 
@@ -76,7 +76,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
             .output-map-container {
                 display: flex;
                 flex-direction: column;
-                gap: 0.5rem;
+                gap: var(--space-sm);
             }
         `,
     ],

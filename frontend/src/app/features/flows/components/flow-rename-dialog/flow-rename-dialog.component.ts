@@ -100,7 +100,7 @@ interface FlowRenameData {
                 margin-bottom: 1.5rem;
                 color: var(--color-text-primary);
                 font-size: var(--font-size-2xl);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
             }
 
             .dialog-content {
@@ -139,7 +139,7 @@ interface FlowRenameData {
             .dialog-actions {
                 display: flex;
                 justify-content: flex-end;
-                gap: 0.75rem;
+                gap: var(--space-md);
             }
 
             .error-message-block {

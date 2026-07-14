@@ -19,7 +19,7 @@
     &__title {
         font-family: var(--font-family-base);
         font-size: var(--font-size-2xl);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         line-height: 1;
         letter-spacing: 0;
         color: var(--color-text-primary);
@@ -29,7 +29,7 @@
     &__header-actions {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
     }
 
     &__icon-btn {
@@ -73,7 +73,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 1rem;
+        gap: var(--space-lg);
         padding: 1rem 2.5rem 0.5rem;
         margin-top: 1rem;
         flex-shrink: 0;
@@ -82,11 +82,11 @@
     &__selected-info {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         flex-shrink: 0;
         font-family: var(--font-family-base);
         font-size: var(--font-size-md);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
     }
 
     &__selected-label {
@@ -95,20 +95,20 @@
 
     &__selected-count {
         color: var(--accent-color);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
     }
 
     &__toolbar-right {
         display: inline-flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-md);
         flex-shrink: 0;
     }
 
     &__search {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         height: 28px;
         width: 280px;
         padding: 0 0.75rem;
@@ -173,7 +173,7 @@
     &__item {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         height: 28px;
         padding-right: 1rem;
         cursor: pointer;
@@ -259,7 +259,7 @@
         margin-left: auto;
         padding-left: 1rem;
         font-size: var(--font-size-md);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         color: var(--fog-alpha-16);
         white-space: nowrap;
     }

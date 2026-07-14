@@ -37,8 +37,8 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 padding: 0.25rem 0.75rem;
                 border-radius: 12px;
                 font-size: var(--font-size-sm);
-                font-weight: 500;
-                gap: 6px;
+                font-weight: var(--font-weight-medium);
+                gap: var(--space-xs);
                 flex-shrink: 0;
 
                 &.status-badge--icon-only {

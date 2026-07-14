@@ -46,7 +46,7 @@ interface FlowGraphBlock {
                 justify-content: space-between;
                 padding: 12px 16px;
                 border-radius: 8px;
-                gap: 14px;
+                gap: var(--space-lg);
                 cursor: pointer;
                 transition: background 0.2s ease;
                 position: relative;

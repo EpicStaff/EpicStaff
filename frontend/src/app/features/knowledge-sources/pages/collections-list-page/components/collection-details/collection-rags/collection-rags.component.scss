@@ -1,13 +1,13 @@
 .rags {
     display: flex;
     flex-direction: column;
-    row-gap: 0.5rem;
+    row-gap: var(--space-sm);
 
     &__item {
         padding: 0.5rem;
         display: flex;
         align-items: center;
-        column-gap: 0.5rem;
+        column-gap: var(--space-sm);
         border-radius: var(--radius-lg);
         border: 1px solid var(--color-divider-subtle);
     }

@@ -66,7 +66,7 @@ $transition-default: all 0.2s ease;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
+        gap: var(--space-lg);
         margin-bottom: 8px;
 
         input {
@@ -93,14 +93,14 @@ $transition-default: all 0.2s ease;
         .filter-button {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--space-sm);
             padding: 8px 12px;
             background-color: $bg-input;
             color: $text-secondary;
             border-radius: var(--radius-md);
             cursor: pointer;
             font-size: var(--font-size-sm);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             transition: $transition-default;
             border: none;
 
@@ -141,7 +141,7 @@ $transition-default: all 0.2s ease;
             cursor: pointer;
             position: relative;
             transition: color 0.2s;
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             border-bottom: 2px solid transparent;
             border-radius: var(--radius-sm) var(--radius-sm) 0 0;
             margin-bottom: -1px;
@@ -178,7 +178,7 @@ $transition-default: all 0.2s ease;
 
 .dots {
     display: flex;
-    gap: 6px;
+    gap: var(--space-xs);
 }
 
 .dot {
@@ -233,10 +233,10 @@ $transition-default: all 0.2s ease;
         color: white;
         padding: 8px 16px;
         border-radius: var(--radius-md);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         transition: $transition-default;
         border: none;
         cursor: pointer;
@@ -267,5 +267,5 @@ $transition-default: all 0.2s ease;
     justify-content: flex-end;
     padding: 12px;
     border-top: 1px solid $border-color;
-    gap: 8px;
+    gap: var(--space-sm);
 }

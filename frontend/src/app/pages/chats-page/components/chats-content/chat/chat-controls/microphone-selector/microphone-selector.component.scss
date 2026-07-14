@@ -23,7 +23,7 @@
         min-width: 0;
         padding: 0.6rem 1rem;
         transition: all 0.2s ease;
-        gap: 8px;
+        gap: var(--space-sm);
 
         &:hover:not(.disabled) {
             border-color: var(--accent-color, var(--accent-color));
@@ -124,7 +124,7 @@
 
         &.selected {
             color: var(--white);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
 
             i {
                 opacity: 1;

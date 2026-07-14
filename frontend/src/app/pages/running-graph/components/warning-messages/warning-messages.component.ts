@@ -63,7 +63,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
             .warning-header {
                 display: flex;
                 align-items: center;
-                gap: 12px;
+                gap: var(--space-md);
                 cursor: pointer;
                 user-select: none;
             }
@@ -82,7 +82,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
             .warning-count {
                 color: var(--gray-400);
                 font-size: var(--font-size-md);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
             }
 
             .collapsible-content {
@@ -108,27 +108,27 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
             h3 {
                 color: var(--gray-100);
                 font-size: var(--font-size-lg);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 margin: 0;
             }
 
             .warning-content {
                 display: flex;
                 flex-direction: column;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 padding-left: 56px;
                 margin-top: 0.75rem;
             }
 
             .warning-item {
                 display: flex;
-                gap: 8px;
+                gap: var(--space-sm);
                 align-items: flex-start;
             }
 
             .warning-bullet {
                 color: #f56a00;
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 font-size: var(--font-size-md);
                 flex-shrink: 0;
             }

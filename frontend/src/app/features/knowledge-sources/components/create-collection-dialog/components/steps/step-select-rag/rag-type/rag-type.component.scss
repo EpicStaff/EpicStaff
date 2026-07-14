@@ -8,7 +8,7 @@
     background-color: var(--color-line);
     display: flex;
     flex-direction: column;
-    row-gap: 1.25rem;
+    row-gap: var(--space-xl);
 
     &--selected {
         border: 1px solid var(--accent-color);

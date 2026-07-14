@@ -141,7 +141,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                 h2 {
                     margin: 0;
                     font-size: var(--font-size-xl);
-                    font-weight: 500;
+                    font-weight: var(--font-weight-medium);
                     color: var(--white);
                 }
 
@@ -174,7 +174,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                 .filter-chips {
                     display: flex;
                     flex-wrap: wrap;
-                    gap: 8px;
+                    gap: var(--space-sm);
                 }
 
                 .filter-chip {

@@ -8,12 +8,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     padding: 0 0.75rem;
     height: 40px;
     border-radius: var(--radius-md);
     font-size: var(--font-size-md);
-    font-weight: 400;
+    font-weight: var(--font-weight-regular);
     cursor: pointer;
     transition: all 0.2s ease-in-out;
     min-width: 0;

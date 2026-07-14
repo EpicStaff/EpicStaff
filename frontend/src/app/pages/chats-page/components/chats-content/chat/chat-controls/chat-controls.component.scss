@@ -81,7 +81,7 @@
     .controls-container {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         justify-content: center;
         width: 100%;
         min-width: 0;
@@ -97,13 +97,13 @@
         align-items: center;
         justify-content: center;
         flex: 0 10 auto;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         background-color: var(--accent-color, var(--accent-color));
         color: var(--white);
         border: none;
         border-radius: var(--radius-lg);
         padding: 0.6rem 1.2rem;
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         font-size: var(--font-size-md);
         cursor: pointer;
         transition: all 0.2s ease;
@@ -149,7 +149,7 @@
         background-color: var(--gray-800);
         border-radius: var(--radius-lg);
         padding: 4px;
-        gap: 4px;
+        gap: var(--space-2xs);
         height: 41px;
         border: 1px solid var(--gray-750);
 
@@ -226,7 +226,7 @@
 
         .controls-container {
             &.active-recording {
-                gap: 0.5rem;
+                gap: var(--space-sm);
             }
         }
     }

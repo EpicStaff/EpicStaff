@@ -19,7 +19,7 @@
     &__header-left {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-md);
         min-height: 24px;
     }
 
@@ -32,7 +32,7 @@
     &__title {
         letter-spacing: 0.2px;
         font-size: var(--font-size-2xl);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         line-height: 1;
         color: var(--color-text-primary);
     }
@@ -59,7 +59,7 @@
         border: none;
         color: var(--accent-color);
         font-size: var(--font-size-2xl);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         line-height: 1;
         padding: 0 8px;
         cursor: pointer;
@@ -94,7 +94,7 @@
         color: var(--color-text-secondary, var(--color-text-primary));
         user-select: none;
         font-size: var(--font-size-2xl);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         line-height: 1;
         pointer-events: none;
     }

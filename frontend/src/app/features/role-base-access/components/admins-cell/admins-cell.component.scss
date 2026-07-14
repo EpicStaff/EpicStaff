@@ -13,7 +13,7 @@
 .admin-chips {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
     min-width: 0;
     flex-wrap: nowrap;
 }
@@ -29,7 +29,7 @@
 .admins-trigger {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
     cursor: pointer;
     min-width: 0;
     user-select: none;
@@ -86,7 +86,7 @@
 .member-info {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-3xs);
     min-width: 0;
     font-size: var(--font-size-xs);
 }

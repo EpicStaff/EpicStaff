@@ -81,7 +81,7 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
 
                     .title {
                         font-size: var(--font-size-3xl);
-                        font-weight: 400;
+                        font-weight: var(--font-weight-regular);
 
                         line-height: 1;
                         color: var(--white);
@@ -91,7 +91,7 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
 
                     .projects-page-project-count-badge {
                         font-size: var(--font-size-xl);
-                        font-weight: 500;
+                        font-weight: var(--font-weight-medium);
 
                         line-height: 1;
                         color: var(--accent-color);
@@ -103,7 +103,7 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
                 .header-actions {
                     display: flex;
                     align-items: center;
-                    gap: 12px;
+                    gap: var(--space-md);
                 }
             }
         `,

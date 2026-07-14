@@ -11,7 +11,7 @@
         display: flex;
         justify-content: space-between;
         min-width: 0;
-        gap: 0.5rem;
+        gap: var(--space-sm);
     }
 
     &__name {
@@ -40,7 +40,7 @@
         font-size: var(--font-size-xs);
         display: flex;
         align-items: center;
-        column-gap: 0.5rem;
+        column-gap: var(--space-sm);
         min-width: 0;
         &--completed {
             color: var(--accent-color);

@@ -61,7 +61,7 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
                 display: flex;
                 flex-direction: row;
                 align-items: center;
-                gap: 6px;
+                gap: var(--space-xs);
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;

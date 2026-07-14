@@ -39,20 +39,20 @@
 
     &.expanded {
         display: flex;
-        gap: 1rem;
+        gap: var(--space-lg);
     }
 
     &.collapsed {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: var(--space-lg);
     }
 }
 
 .form-fields {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-lg);
 
     .expanded & {
         flex: 0 0 400px;
@@ -63,7 +63,7 @@
 .repeat-fields {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-lg);
 }
 
 .section {
@@ -74,9 +74,9 @@
 .section-header {
     display: flex;
     align-items: center;
-    gap: 0.375rem;
+    gap: var(--space-xs);
     font-size: var(--font-size-xs);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     line-height: 130%;
     color: var(--color-input-text-placeholder);
     text-transform: uppercase;
@@ -91,14 +91,14 @@
 .date-time-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 0.5rem;
+    gap: var(--space-sm);
     align-items: start;
 }
 
 .field-col {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-2xs);
 
     &.has-row-error {
         ::ng-deep .time-picker__trigger,
@@ -111,9 +111,9 @@
 .field-label {
     display: flex;
     align-items: center;
-    gap: 0.2rem;
+    gap: var(--space-3xs);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     line-height: 130%;
     color: var(--fog-alpha-60);
 }
@@ -135,14 +135,14 @@
 .repeat-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 0.5rem;
+    gap: var(--space-sm);
     align-items: start;
 }
 
 .half-row {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-2xs);
     width: 50%;
 }
 
@@ -156,7 +156,7 @@
 .field-col-full {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-2xs);
     margin-top: 0.75rem;
 }
 
@@ -181,13 +181,13 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 0.375rem;
+    gap: var(--space-xs);
     margin-top: 0.25rem;
 }
 
 .next-run-label {
     font-size: var(--font-size-sm);
-    font-weight: 400;
+    font-weight: var(--font-weight-regular);
     color: var(--fog-alpha-60);
     line-height: 130%;
 }

@@ -11,7 +11,7 @@
         padding: 0 1.875rem 1rem 0;
         width: 100%;
         font-size: var(--font-size-md);
-        font-weight: 300;
+        font-weight: var(--font-weight-light);
 
         .count {
             color: var(--accent-color);
@@ -32,13 +32,13 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        column-gap: 1rem;
+        column-gap: var(--space-lg);
         font-size: var(--font-size-xs);
     }
 
     .name-column {
         display: flex;
-        column-gap: 0.5rem;
+        column-gap: var(--space-sm);
         min-width: 0;
         flex: 1;
         align-items: center;
@@ -54,7 +54,7 @@
     .size-column {
         display: flex;
         align-items: center;
-        column-gap: 1rem;
+        column-gap: var(--space-lg);
         flex-shrink: 0;
 
         .size {

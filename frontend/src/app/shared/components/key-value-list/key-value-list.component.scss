@@ -6,12 +6,12 @@
 .kv-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-md);
 
     &__input-row {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
     }
 
     &__input {
@@ -119,13 +119,13 @@
     &__card-content {
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: var(--space-3xs);
         overflow: hidden;
     }
 
     &__card-name {
         font-size: var(--font-size-md);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--accent-color, var(--accent-color));
         white-space: nowrap;
         overflow: hidden;

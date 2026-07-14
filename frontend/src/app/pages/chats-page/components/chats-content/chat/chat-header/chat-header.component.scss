@@ -14,14 +14,14 @@
 
     .agent-info {
         display: flex;
-        gap: 1rem;
+        gap: var(--space-lg);
         align-items: center;
 
         h3 {
             color: var(--white-alpha-90);
             margin: 0;
             font-size: var(--font-size-lg);
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
         }
 
         .model-info {
@@ -34,7 +34,7 @@
     .communication-controls {
         display: flex;
         align-items: center;
-        gap: 1rem;
+        gap: var(--space-lg);
 
         .toggle-container {
             display: flex;
@@ -50,7 +50,7 @@
                 border: none;
                 color: var(--gray-400);
                 font-size: var(--font-size-md);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 border-radius: var(--radius-3xl);

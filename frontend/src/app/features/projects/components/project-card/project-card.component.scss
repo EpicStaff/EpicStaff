@@ -29,7 +29,7 @@
         display: flex;
         flex-direction: row;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-md);
         margin-bottom: 10px;
 
         &__icon {
@@ -83,7 +83,7 @@
         &__title {
             margin: 0 0 2px;
             font-size: var(--font-size-md);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             line-height: 1.2;
             color: var(--color-text-primary);
             white-space: nowrap;
@@ -106,7 +106,7 @@
         align-items: center;
         font-size: var(--font-size-xs);
         color: var(--color-text-secondary);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         min-width: 0;
         overflow: hidden;
         white-space: nowrap;
@@ -119,7 +119,7 @@
         &__sep {
             margin: 0 6px;
             opacity: 0.6;
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             font-size: var(--font-size-2xs);
             user-select: none;
         }
@@ -129,7 +129,7 @@
         padding-left: 52px;
         color: var(--color-text-secondary);
         font-size: var(--font-size-xs);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         line-height: 1.4;
         overflow: hidden;
         display: -webkit-box;

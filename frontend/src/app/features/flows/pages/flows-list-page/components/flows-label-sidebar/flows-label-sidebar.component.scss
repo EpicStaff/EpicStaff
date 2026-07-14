@@ -24,7 +24,7 @@
 
     .sidebar-title {
         font-size: var(--font-size-md);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--color-text-secondary);
         letter-spacing: 0.05em;
         min-width: 0;
@@ -59,7 +59,7 @@
 .tree-item {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-xs);
     padding: 0.45rem 0.75rem 0.45rem 1rem;
     cursor: pointer;
     color: var(--color-text-primary);
@@ -81,7 +81,7 @@
         visibility: hidden;
         margin-left: auto;
         display: flex;
-        gap: 0.6rem;
+        gap: var(--space-sm);
         align-items: center;
         flex-shrink: 0;
     }
@@ -103,8 +103,8 @@
 
 .all-flows-item {
     margin-top: 0.75rem;
-    font-weight: 500;
-    gap: 0.6rem;
+    font-weight: var(--font-weight-medium);
+    gap: var(--space-sm);
 
     span {
         padding-top: 4px;
@@ -120,7 +120,7 @@
     .section-label-header {
         display: flex;
         align-items: center;
-        gap: 0.6rem;
+        gap: var(--space-sm);
 
         app-svg-icon {
             color: var(--color-text-primary);
@@ -157,7 +157,7 @@
 .add-label-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     padding: 0.3rem 0.5rem;
     margin: 0.1rem 0.5rem;
     min-width: max-content;

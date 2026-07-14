@@ -25,7 +25,7 @@
         width: 100%;
         font-size: var(--font-size-md);
         //line-height: 130%;
-        font-weight: 200;
+        font-weight: var(--font-weight-light);
         white-space: pre-wrap;
         overflow: auto;
     }
@@ -160,7 +160,7 @@
 
 .chunk__loader {
     display: inline-flex;
-    gap: 6px;
+    gap: var(--space-xs);
     align-items: center;
 }
 

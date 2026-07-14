@@ -82,14 +82,14 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 4px;
+                gap: var(--space-2xs);
                 width: 100%;
                 height: 100%;
             }
             .enable-label {
                 color: rgba(255, 255, 255, 0.9);
                 font-size: var(--font-size-md);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
             }
             .enable-filter-btn {
                 width: 18px;

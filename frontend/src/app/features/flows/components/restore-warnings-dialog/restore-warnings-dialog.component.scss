@@ -16,7 +16,7 @@
     .dialog-title-row {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-md);
     }
 
     .warning-icon {
@@ -26,7 +26,7 @@
     .dialog-title {
         margin: 0;
         font-size: var(--font-size-xl);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         color: var(--color-text-primary);
     }
 
@@ -65,7 +65,7 @@
     padding: 0.75rem 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     max-height: 300px;
     overflow-y: auto;
 }
@@ -73,7 +73,7 @@
 .warning-item {
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
+    gap: var(--space-md);
     padding: 0.75rem 1rem;
     background: var(--color-input-background);
     border-left: 3px solid var(--color-warning, var(--amber-500));
@@ -113,6 +113,6 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-md);
     padding: 1rem 1.5rem;
 }

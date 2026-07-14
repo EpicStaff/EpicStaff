@@ -14,7 +14,7 @@
     background: var(--color-input-background);
     color: var(--color-text-primary);
     font-size: var(--font-size-xs);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition:
         background 0.15s ease,
@@ -30,7 +30,7 @@
         background: var(--active-color, var(--accent-color, var(--accent-color)));
         border-color: var(--active-color, var(--accent-color, var(--accent-color)));
         color: var(--white);
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
     }
 
     &[data-tooltip]:hover::after {
@@ -42,7 +42,7 @@
         background: #1e1e22;
         color: var(--color-text-primary);
         font-size: var(--font-size-xs);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         white-space: nowrap;
         padding: 3px 8px;
         border-radius: var(--radius-md);

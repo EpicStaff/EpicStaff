@@ -7,7 +7,7 @@
 .actions-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     margin-top: 0.5rem;
 }
 
@@ -19,7 +19,7 @@
     padding: 6px 12px;
     border-radius: var(--ep-button-radius);
     font-size: var(--font-size-xs);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     background-color: var(--ep-color-accent);
     color: var(--ep-color-accent-contrast);
     border: 1px solid transparent;
@@ -34,7 +34,7 @@
 .action-link {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     height: 28px;
     padding: 4px 10px;
     border-radius: var(--ep-button-radius);

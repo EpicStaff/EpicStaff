@@ -229,6 +229,21 @@
     --radius-full: 999px;
 
     // ------------------------------------------------------------------
+    // PRIMITIVES — spacing (gap, padding, margin)
+    // ------------------------------------------------------------------
+    --space-3xs: 2px;
+    --space-2xs: 4px;
+    --space-xs: 6px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 16px;
+    --space-xl: 20px;
+    --space-2xl: 24px;
+    --space-3xl: 32px;
+    --space-4xl: 40px;
+    --space-5xl: 48px;
+
+    // ------------------------------------------------------------------
     // PRIMITIVES — typography
     // ------------------------------------------------------------------
     --font-family-base: 'Inter', 'Roboto', 'Helvetica Neue', sans-serif;

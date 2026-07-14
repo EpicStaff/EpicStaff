@@ -16,7 +16,7 @@
     &__label-group {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-md);
     }
 
     &__controls {
@@ -60,7 +60,7 @@
         min-width: 2.5rem;
         text-align: center;
         font-family: var(--font-family-base);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         font-size: var(--font-size-2xs);
         color: var(--white);
     }

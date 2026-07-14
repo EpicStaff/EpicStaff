@@ -38,7 +38,7 @@ import { Component } from '@angular/core';
                 padding: 0 1rem;
                 color: var(--gray-500);
                 font-size: var(--font-size-md);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 text-transform: uppercase;
                 letter-spacing: 0.05em;
             }

@@ -53,7 +53,7 @@ import { IHeaderParams } from 'ag-grid-community';
             }
             .title {
                 font-size: var(--font-size-lg);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
             }
         `,
     ],

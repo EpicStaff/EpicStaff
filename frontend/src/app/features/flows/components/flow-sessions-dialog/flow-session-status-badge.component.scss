@@ -1,11 +1,11 @@
 .status-badge {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-2xs);
     padding: 4px 8px;
     border-radius: var(--radius-md);
     font-size: 0.85em;
-    font-weight: 400;
+    font-weight: var(--font-weight-regular);
     color: var(--white);
     white-space: nowrap;
     letter-spacing: 0.01em;

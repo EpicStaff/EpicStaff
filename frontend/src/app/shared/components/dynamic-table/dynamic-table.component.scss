@@ -21,7 +21,7 @@
     &__header-left {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
     }
 
     &__header-icon {
@@ -105,7 +105,7 @@
         text-align: left;
         font-family: var(--font-family-base);
         font-size: var(--font-size-xs);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         line-height: 130%;
         color: var(--fog-alpha-80);
         border-bottom: 1px solid var(--color-divider-subtle);
@@ -153,7 +153,7 @@
         display: flex;
         align-items: center;
         overflow: hidden;
-        gap: 4px;
+        gap: var(--space-2xs);
     }
 
     &__th-header {
@@ -273,7 +273,7 @@
         border: none;
         font-family: var(--font-family-base);
         font-size: var(--font-size-xs);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         line-height: 130%;
         color: var(--fog-alpha-80);
         outline: none;
@@ -308,7 +308,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 2px;
+        gap: var(--space-3xs);
     }
 
     &__navigate-btn {
@@ -367,7 +367,7 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--space-sm);
     background-color: var(--color-flow-card-bg);
     padding: 8px 8px 8px 16px;
     margin-top: 8px;
@@ -381,7 +381,7 @@
         list-style: none;
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: var(--space-3xs);
     }
 
     &__msg {

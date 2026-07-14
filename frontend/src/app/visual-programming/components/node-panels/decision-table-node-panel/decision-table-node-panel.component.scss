@@ -25,7 +25,7 @@
     @include mixins.form-container;
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: var(--space-2xl);
     height: 100%;
     overflow: hidden;
 }
@@ -33,7 +33,7 @@
 .form-header {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr auto;
-    gap: 1.5rem;
+    gap: var(--space-2xl);
     flex-shrink: 0;
     padding: 1.5rem 1.5rem 0 1.5rem;
     align-items: start;
@@ -43,17 +43,17 @@
 .convert-toggle-field {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: var(--space-xs);
     min-width: 140px;
 }
 
 .convert-toggle-label {
     font-size: var(--font-size-xs);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     color: var(--white-alpha-55);
     display: flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: var(--space-2xs);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     white-space: nowrap;

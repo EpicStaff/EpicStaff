@@ -41,7 +41,7 @@
     &__theme-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-        gap: 16px;
+        gap: var(--space-lg);
     }
 
     &__hint {
@@ -62,7 +62,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-md);
     padding: 16px;
     border: 1px solid var(--color-components-card-border);
     border-radius: var(--radius-2xl);
@@ -85,7 +85,7 @@
         align-items: center;
         justify-content: center;
         flex-direction: row;
-        gap: 8px;
+        gap: var(--space-sm);
         border-style: dashed;
         color: var(--color-text-secondary);
 
@@ -96,7 +96,7 @@
 
     &__preview {
         display: flex;
-        gap: 4px;
+        gap: var(--space-2xs);
         height: 28px;
     }
 
@@ -152,7 +152,7 @@
     &__toolbar {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-md);
         margin-bottom: 24px;
     }
 
@@ -238,7 +238,7 @@
 .token-row {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: var(--space-lg);
     padding: 10px 16px;
 
     & + & {
@@ -248,7 +248,7 @@
     &__info {
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: var(--space-3xs);
         flex: 0 0 240px;
         min-width: 0;
     }
@@ -278,7 +278,7 @@
     &__actions {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         flex-shrink: 0;
     }
 

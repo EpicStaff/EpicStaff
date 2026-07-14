@@ -6,12 +6,12 @@
 .dropdown-toggle {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-xs);
     background: transparent;
     border: none;
     color: var(--gray-300);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     padding: 0;
     white-space: nowrap;
@@ -37,13 +37,13 @@
 .selected-icons {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-weight: 500;
+    gap: var(--space-sm);
+    font-weight: var(--font-weight-medium);
 }
 .icon-multi {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: var(--space-3xs);
     margin-left: 6px;
 }
 .dropdown-arrow-wrapper {
@@ -100,7 +100,7 @@
     color: var(--accent-color, var(--blue-400));
     font-size: 0.95em;
     margin-left: auto;
-    font-weight: bold;
+    font-weight: var(--font-weight-bold);
     line-height: 1;
     padding: 0;
     margin-top: 0;

@@ -212,7 +212,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 display: flex;
                 flex-direction: row;
                 align-items: center;
-                gap: 6px;
+                gap: var(--space-xs);
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
@@ -269,7 +269,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
 
             .search-container {
                 display: flex;
-                gap: 8px;
+                gap: var(--space-sm);
                 padding: 6px 8px;
                 border-bottom: 1px solid var(--color-divider-subtle);
             }
@@ -292,14 +292,14 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
             .search-container button {
                 display: inline-flex;
                 align-items: center;
-                gap: 0.4rem;
+                gap: var(--space-xs);
                 background: #685fff;
                 color: #ffffff;
                 border: none;
                 border-radius: 6px;
                 padding: 0.4rem 0.85rem;
                 font-size: var(--font-size-sm);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 cursor: pointer;
                 white-space: nowrap;
                 transition: background 0.2s ease;
@@ -314,7 +314,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
             .deselect-option {
                 display: flex;
                 align-items: center;
-                gap: 14px;
+                gap: var(--space-lg);
                 padding: 8px 12px;
                 cursor: pointer;
                 font-size: var(--font-size-md);

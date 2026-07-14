@@ -42,7 +42,7 @@ $inactive-tab-bg: var(--graphite-780);
                 &.active {
                     background-color: transparent;
                     color: $text-color;
-                    font-weight: 400;
+                    font-weight: var(--font-weight-regular);
 
                     &::after {
                         content: '';
@@ -140,7 +140,7 @@ $inactive-tab-bg: var(--graphite-780);
         }
 
         .section-title {
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             display: flex;
             align-items: center;
         }

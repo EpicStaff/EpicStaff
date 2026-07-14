@@ -27,7 +27,7 @@
 
     &__title {
         font-size: var(--font-size-3xl);
-        font-weight: bold;
+        font-weight: var(--font-weight-bold);
         color: var(--accent-color);
         margin-bottom: 1rem;
     }

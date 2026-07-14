@@ -1,7 +1,7 @@
 .storage-section {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-md);
 }
 
 .storage-header {
@@ -12,7 +12,7 @@
 
 .section-label {
     font-size: var(--font-size-xs);
-    color: #d9d9d999;
+    color: var(--fog-alpha-60);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
@@ -20,18 +20,18 @@
 .storage-fields {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-md);
 }
 
 .select-field {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: var(--space-xs);
 }
 
 .field-label {
     font-size: var(--font-size-xs);
-    color: #d9d9d999;
+    color: var(--fog-alpha-60);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
@@ -61,7 +61,7 @@
 .input-map-preview {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: var(--space-xs);
 }
 
 .input-map-key {
@@ -77,7 +77,7 @@
 .code-preview {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: var(--space-xs);
 }
 
 .code-preview-text {

@@ -11,7 +11,7 @@
 .panel-header {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-2xs);
     padding: 8px 16px;
     border-bottom: 1px solid var(--color-divider-subtle);
     flex-shrink: 0;
@@ -29,7 +29,7 @@
     .text {
         min-width: 0;
         margin: 0;
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         font-size: var(--font-size-md);
         line-height: 1.2;
         letter-spacing: -0.03em;
@@ -159,7 +159,7 @@
 .session-dropdown-trigger {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
     width: 100%;
     min-width: 0;
     max-width: 200px;
@@ -253,7 +253,7 @@
         font-size: var(--font-size-sm);
         text-align: left;
         transition: background-color 0.15s ease;
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
 
         &:hover {
             background: var(--color-line);
@@ -308,7 +308,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
+        gap: var(--space-xs);
         height: 100%;
         color: var(--color-text-secondary, var(--white-alpha-40));
         font-size: var(--font-size-sm);
@@ -318,14 +318,14 @@
     &__run-badge {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-2xs);
         padding: 0 8px;
         height: 24px;
         border-radius: var(--radius-sm);
         background-color: var(--accent-color);
         color: white;
         font-size: var(--font-size-xs);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         vertical-align: middle;
         cursor: default;
 

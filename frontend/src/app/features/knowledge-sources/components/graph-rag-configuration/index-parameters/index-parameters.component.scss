@@ -7,7 +7,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    gap: 1rem;
+    gap: var(--space-lg);
     padding: 1.25rem 2.5rem 1.25rem 1.875rem;
 
     .json-wrapper {
@@ -24,8 +24,8 @@
 .form {
     display: grid;
     grid-template-columns: 170px auto;
-    row-gap: 1rem;
-    column-gap: 1.875rem;
+    row-gap: var(--space-lg);
+    column-gap: var(--space-3xl);
     align-items: center;
     overflow: auto;
 
@@ -36,7 +36,7 @@
         justify-content: flex-end;
         height: 40px;
         font-size: var(--font-size-md);
-        gap: 0.5rem;
+        gap: var(--space-sm);
 
         .icon {
             color: var(--accent-color);

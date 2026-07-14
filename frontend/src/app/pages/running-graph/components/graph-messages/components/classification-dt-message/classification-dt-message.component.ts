@@ -269,14 +269,14 @@ import {
             .header-text {
                 display: flex;
                 align-items: center;
-                gap: 12px;
+                gap: var(--space-md);
                 flex-wrap: wrap;
             }
 
             h3 {
                 color: var(--gray-100);
                 font-size: var(--font-size-xl);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 margin: 0;
             }
 
@@ -284,7 +284,7 @@ import {
                 font-size: var(--font-size-xs);
                 padding: 2px 10px;
                 border-radius: 12px;
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
             }
 
             .badge.matched {
@@ -316,14 +316,14 @@ import {
             .detail-row {
                 display: flex;
                 align-items: baseline;
-                gap: 12px;
+                gap: var(--space-md);
                 margin-bottom: 0.5rem;
             }
 
             .detail-label {
                 color: var(--gray-400);
                 font-size: var(--font-size-md);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 min-width: 120px;
                 flex-shrink: 0;
             }
@@ -351,7 +351,7 @@ import {
             }
 
             .section-heading {
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;

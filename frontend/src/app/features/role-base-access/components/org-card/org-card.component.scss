@@ -15,11 +15,11 @@
     .name-row {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
 
         .name {
             font-size: var(--font-size-md);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             color: var(--color-text-primary);
         }
     }
@@ -27,7 +27,7 @@
     .open-btn {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
     }
 }
 
@@ -45,12 +45,12 @@
     .org-metrics {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: var(--space-lg);
 
         .metric {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
+            gap: var(--space-2xs);
             color: var(--color-text-secondary);
         }
     }

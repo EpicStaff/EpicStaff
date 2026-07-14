@@ -99,7 +99,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             :host {
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: var(--space-lg);
             }
 
             .agent-flow-container {
@@ -147,20 +147,20 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             h3 {
                 color: var(--gray-100);
                 font-size: var(--font-size-xl);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 margin: 0;
             }
 
             .agent-name {
                 color: #8e5cd9;
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 margin-right: 5px;
             }
 
             .agent-content {
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: var(--space-lg);
                 padding-left: 5.5rem;
                 margin-top: 1.25rem;
                 overflow: hidden;
@@ -178,7 +178,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
 
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -207,7 +207,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             .thought-quote {
                 color: #8e5cd9;
                 font-size: var(--font-size-3xl);
-                font-weight: bold;
+                font-weight: var(--font-weight-bold);
                 vertical-align: sub;
                 line-height: 0;
             }

@@ -19,13 +19,13 @@
         }
 
         &.status {
-            gap: 1.5rem;
+            gap: var(--space-2xl);
             align-items: center;
             justify-content: center;
 
             .status-text {
                 font-size: var(--font-size-2xl);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 color: var(--color-text-primary);
                 margin: 0;
             }

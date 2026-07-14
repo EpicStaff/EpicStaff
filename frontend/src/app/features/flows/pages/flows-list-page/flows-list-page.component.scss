@@ -33,14 +33,14 @@
 
                 .title {
                     font-size: var(--font-size-4xl);
-                    font-weight: 400;
+                    font-weight: var(--font-weight-regular);
                     color: var(--color-text-primary);
                 }
 
                 .subtitle-inline {
                     margin-left: 0.7rem;
                     font-size: var(--font-size-xl);
-                    font-weight: 400;
+                    font-weight: var(--font-weight-regular);
                     color: var(--color-text-secondary);
                     display: inline-block;
                     white-space: normal;
@@ -51,7 +51,7 @@
                 display: flex;
                 align-items: center;
                 margin-left: auto;
-                gap: 0.75rem;
+                gap: var(--space-md);
             }
         }
     }
@@ -71,7 +71,7 @@
         .tabs-right {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: var(--space-md);
             min-width: 0;
         }
     }
@@ -79,7 +79,7 @@
     .filter-trigger {
         display: inline-flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         height: 2.2rem;
         padding: 0 0.85rem;
         background: var(--color-input-background);
@@ -144,7 +144,7 @@
             .breadcrumb-bar {
                 display: flex;
                 align-items: center;
-                gap: 16px;
+                gap: var(--space-lg);
                 height: 40px;
                 padding: 0 40px;
                 border-bottom: 1px solid var(--color-divider-subtle);
@@ -182,7 +182,7 @@
                 .breadcrumb-path {
                     display: flex;
                     align-items: center;
-                    gap: 8px;
+                    gap: var(--space-sm);
                     min-width: 0;
                     overflow: hidden;
 
@@ -203,14 +203,14 @@
 
                     .breadcrumb-sep {
                         font-size: var(--font-size-md);
-                        font-weight: 500;
+                        font-weight: var(--font-weight-medium);
                         color: var(--color-text-secondary);
                         opacity: 0.3;
                     }
 
                     .breadcrumb-label {
                         font-size: var(--font-size-md);
-                        font-weight: 400;
+                        font-weight: var(--font-weight-regular);
                         color: var(--color-text-primary);
                         overflow: hidden;
                         white-space: nowrap;
@@ -319,10 +319,10 @@
     }
 
     &__main {
-        gap: 0.5rem;
+        gap: var(--space-sm);
         padding: 0 1rem;
         font-size: var(--font-size-md);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
     }
 
     &__cog {
@@ -358,14 +358,14 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         padding: 0 1rem;
         background: transparent;
         border: none;
         color: var(--accent-color);
         cursor: pointer;
         font-size: var(--font-size-md);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         transition:
             background-color 0.15s ease,
             color 0.15s ease;

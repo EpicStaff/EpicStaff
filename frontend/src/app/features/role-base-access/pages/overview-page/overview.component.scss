@@ -27,14 +27,14 @@
             .title {
                 margin: 0;
                 font-size: var(--font-size-4xl);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 color: var(--color-text-primary);
             }
 
             .subtitle-inline {
                 margin-left: 0.7rem;
                 font-size: var(--font-size-xl);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 color: var(--color-text-secondary);
             }
         }
@@ -51,7 +51,7 @@
 .overview-tab {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     padding: 8px;
     font-size: var(--font-size-md);
     color: var(--accent-color);

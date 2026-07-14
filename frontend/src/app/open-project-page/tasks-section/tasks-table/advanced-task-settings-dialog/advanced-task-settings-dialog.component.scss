@@ -29,7 +29,7 @@
         .dialog-title {
             color: var(--white-alpha-90);
             font-size: var(--font-size-xl);
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
             margin: 0;
             padding: 0;
             text-overflow: ellipsis;
@@ -78,7 +78,7 @@
                 color: var(--white-alpha-80);
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
                 margin-bottom: 16px;
             }
 
@@ -125,7 +125,7 @@
             }
 
             .task-name {
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 flex-grow: 1;
                 white-space: nowrap;
                 overflow: hidden;
@@ -197,7 +197,7 @@
 .actions {
     display: flex;
     justify-content: flex-end;
-    gap: 12px;
+    gap: var(--space-md);
     padding: 16px 24px;
     background-color: var(--color-backdrop);
     border-top: 1px solid var(--white-alpha-10);
@@ -206,7 +206,7 @@
         padding: 8px 16px;
         border-radius: var(--radius-md);
         font-size: var(--font-size-md);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         cursor: pointer;
         transition: background-color 0.2s ease;
         border: none;
@@ -251,10 +251,10 @@
         .setting-label {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--space-sm);
             font-size: var(--font-size-md);
             color: var(--white-alpha-80);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
         }
 
         mat-slide-toggle {
@@ -292,7 +292,7 @@
     padding: 8px 16px;
     border-radius: var(--radius-md);
     font-size: var(--font-size-sm);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition: all 0.2s ease;
     border: 1px solid var(--white-alpha-20);

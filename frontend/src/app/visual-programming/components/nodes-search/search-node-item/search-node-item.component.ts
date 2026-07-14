@@ -112,7 +112,7 @@ import {
                     .node-name {
                         color: var(--white, #fff);
                         font-size: var(--font-size-sm);
-                        font-weight: 500;
+                        font-weight: var(--font-weight-medium);
                         overflow: hidden;
                         text-overflow: ellipsis;
                         white-space: nowrap;

@@ -158,13 +158,13 @@ import {
             h3 {
                 color: var(--gray-100);
                 font-size: var(--font-size-xl);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 margin: 0;
             }
 
             .node-name {
                 color: #00bfa5;
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
             }
 
             /* Collapsible content container */
@@ -180,14 +180,14 @@ import {
             .subgraph-finish-content {
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: var(--space-lg);
                 padding-left: 5.5rem;
                 margin-top: 1.25rem;
             }
 
             /* Section styling */
             .section-heading {
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;
@@ -228,7 +228,7 @@ import {
                 margin-left: 23px;
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: var(--space-lg);
             }
 
             .state-history-item {
@@ -241,7 +241,7 @@ import {
             .state-history-item-header {
                 display: flex;
                 align-items: center;
-                gap: 0.75rem;
+                gap: var(--space-md);
                 margin-bottom: 0.75rem;
                 padding-bottom: 0.75rem;
                 border-bottom: 1px solid var(--gray-750);
@@ -250,7 +250,7 @@ import {
             .item-index {
                 background-color: #00bfa5;
                 color: var(--gray-900);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 padding: 0.25rem 0.5rem;
                 border-radius: 4px;
                 font-size: var(--font-size-md);
@@ -258,7 +258,7 @@ import {
 
             .item-name {
                 color: var(--gray-100);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 flex: 1;
             }
 
@@ -273,19 +273,19 @@ import {
             .state-history-item-details {
                 display: flex;
                 flex-direction: column;
-                gap: 0.75rem;
+                gap: var(--space-md);
             }
 
             .detail-section {
                 display: flex;
                 flex-direction: column;
-                gap: 0.5rem;
+                gap: var(--space-sm);
             }
 
             .detail-label {
                 color: var(--gray-300);
                 font-size: var(--font-size-md);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
             }
 
             .detail-content {

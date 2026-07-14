@@ -54,13 +54,13 @@
 .ptp-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     padding-bottom: 6px;
     border-bottom: 1px solid var(--white-alpha-8);
 }
 
 .ptp-title {
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     font-size: var(--font-size-sm);
     color: var(--gray-200);
     font-family: var(--font-family-mono);
@@ -78,12 +78,12 @@
 .ptp-field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-2xs);
 }
 
 .ptp-label {
     font-size: var(--font-size-xs);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     color: var(--white-alpha-50);
     text-transform: uppercase;
     letter-spacing: 0.5px;

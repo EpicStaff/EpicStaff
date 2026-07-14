@@ -13,7 +13,7 @@
     .title-section {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         flex: 0 1 auto;
         min-width: 0;
         max-width: 100%;
@@ -22,7 +22,7 @@
 
         .title {
             font-size: var(--font-size-3xl);
-            font-weight: 400;
+            font-weight: var(--font-weight-regular);
             line-height: 1;
             margin: 0;
             display: flex;
@@ -38,7 +38,7 @@
                 transition: all 0.2s ease;
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 position: relative;
                 flex-shrink: 0;
 
@@ -62,7 +62,7 @@
 
             .project-name {
                 display: flex;
-                gap: 0.25rem;
+                gap: var(--space-2xs);
                 align-items: flex-start;
                 color: var(--color-text-primary, var(--color-text-primary));
                 max-width: 500px;
@@ -98,7 +98,7 @@
     .action-buttons {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         min-width: 0;
         max-width: 100%;
 

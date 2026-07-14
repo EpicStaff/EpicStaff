@@ -24,7 +24,7 @@
 
     .title {
         font-size: var(--font-size-lg);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         margin: 0;
     }
 
@@ -48,7 +48,7 @@
 .scope-tabs {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     margin: 0 -1.5rem 1.25rem;
     padding: 0.5rem 1.5rem 0;
     border-bottom: 1px solid var(--color-divider-subtle);
@@ -56,7 +56,7 @@
     .scope-tab {
         display: flex;
         align-items: center;
-        gap: 0.4rem;
+        gap: var(--space-xs);
         background: transparent;
         border: none;
         color: var(--color-text-secondary);
@@ -88,7 +88,7 @@
 .conditions {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-md);
     margin-bottom: 1.25rem;
 }
 
@@ -97,13 +97,13 @@
     color: var(--color-text-primary);
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-xs);
 }
 
 .condition-row {
     display: grid;
     grid-template-columns: 12rem 1fr;
-    gap: 0.75rem;
+    gap: var(--space-md);
 }
 
 .operator-select {
@@ -215,7 +215,7 @@
         border: none;
         color: var(--color-text-secondary);
         font-size: var(--font-size-sm);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         cursor: pointer;
         transition:
             background 0.15s,
@@ -232,7 +232,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     margin: auto -1.5rem -1.25rem;
     padding: 0.75rem 1.5rem;
     border-top: 1px solid var(--color-divider-subtle);
@@ -240,6 +240,6 @@
     .footer-right {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
     }
 }

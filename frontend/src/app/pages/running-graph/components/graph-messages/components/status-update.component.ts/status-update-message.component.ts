@@ -43,7 +43,7 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
 
                 .status-info {
                     display: flex;
-                    gap: 1rem;
+                    gap: var(--space-lg);
                     flex-wrap: wrap;
                     margin-bottom: 0.75rem;
                     .project-name {
@@ -51,7 +51,7 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
                     }
                     .status-value {
                         color: var(--gray-100);
-                        font-weight: 500;
+                        font-weight: var(--font-weight-medium);
                     }
                 }
 
@@ -59,7 +59,7 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
                     .status-data-label {
                         display: flex;
                         align-items: center;
-                        font-weight: 500;
+                        font-weight: var(--font-weight-medium);
                         margin-bottom: 0.25rem;
                         color: var(--gray-400);
                         app-svg-icon {

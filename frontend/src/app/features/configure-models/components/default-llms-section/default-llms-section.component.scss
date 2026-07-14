@@ -1,13 +1,13 @@
 .default-llms {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-lg);
     color: var(--color-text-primary);
 
     &__header {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: var(--space-sm);
     }
 
     &__title {
@@ -25,7 +25,7 @@
     &__section {
         display: flex;
         flex-direction: column;
-        gap: 14px;
+        gap: var(--space-lg);
     }
 
     &__section-title {
@@ -36,7 +36,7 @@
     &__grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 1rem;
+        gap: var(--space-lg);
     }
 }
 

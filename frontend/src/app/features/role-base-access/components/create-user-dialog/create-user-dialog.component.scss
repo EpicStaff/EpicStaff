@@ -21,7 +21,7 @@
 
         .actions {
             display: flex;
-            column-gap: 1rem;
+            column-gap: var(--space-lg);
         }
     }
 

@@ -10,7 +10,7 @@
     display: flex;
     flex-grow: 1;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--space-xs);
     background: transparent;
     transition: border-color 0.2s ease;
 
@@ -22,7 +22,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 0.25rem;
+        gap: var(--space-2xs);
     }
 
     &__model {
@@ -30,14 +30,14 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         font-size: var(--font-size-xs);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--fog-alpha-50);
     }
 
     &__actions {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-2xs);
     }
 
     &__action {
@@ -77,7 +77,7 @@
 
     &__name {
         font-size: var(--font-size-md);
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
         color: var(--color-text-primary);
         word-break: break-word;
     }
@@ -85,12 +85,12 @@
     &__tags {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: var(--space-xs);
     }
 
     &__tag {
         font-size: var(--font-size-xs);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--fog-alpha-50);
     }
 
@@ -105,7 +105,7 @@
     &__temp {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-2xs);
         font-size: var(--font-size-xs);
         color: var(--fog-alpha-50);
 
@@ -120,7 +120,7 @@
 
         &--active {
             color: var(--accent-color);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             cursor: pointer;
 
             &:hover {

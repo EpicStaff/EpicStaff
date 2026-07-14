@@ -9,7 +9,7 @@
     display: flex;
     flex-grow: 1;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-md);
     min-height: 176px;
     background: transparent;
     position: relative;
@@ -22,7 +22,7 @@
     &__top {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: var(--space-xs);
     }
 
     &__header {
@@ -47,14 +47,14 @@
 
     &__title {
         font-size: var(--font-size-lg);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--accent-color);
     }
 
     &__controls {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
     }
 
     &__select-wrapper {
@@ -100,7 +100,7 @@
     &__description {
         margin: 0;
         font-size: var(--font-size-xs);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         line-height: 1;
         color: var(--fog-alpha-60);
     }

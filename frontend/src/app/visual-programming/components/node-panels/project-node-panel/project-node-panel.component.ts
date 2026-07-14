@@ -134,19 +134,19 @@ interface InputMapPair {
             .stream-config-section {
                 display: flex;
                 flex-direction: column;
-                gap: 0.5rem;
+                gap: var(--space-sm);
             }
 
             .checkbox-list {
                 display: flex;
                 flex-direction: column;
-                gap: 0.35rem;
+                gap: var(--space-xs);
             }
 
             .checkbox-item {
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 font-size: var(--font-size-md);
                 color: #d4d4d4;
                 cursor: pointer;

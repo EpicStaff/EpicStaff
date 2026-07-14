@@ -22,7 +22,7 @@
 .header-left {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-md);
 }
 
 .header-icon {
@@ -31,7 +31,7 @@
 
 .title {
     font-size: var(--font-size-lg);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     color: var(--white-alpha-90);
     margin: 0;
 }
@@ -58,14 +58,14 @@
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: var(--space-xl);
     flex: 1;
 }
 
 .form-section {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-sm);
 
     &--toggle {
         flex-direction: row;
@@ -78,5 +78,5 @@
 .section-label {
     font-size: var(--font-size-md);
     color: var(--white-alpha-70);
-    font-weight: 400;
+    font-weight: var(--font-weight-regular);
 }

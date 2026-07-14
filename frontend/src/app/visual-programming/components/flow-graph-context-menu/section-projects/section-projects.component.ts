@@ -33,7 +33,7 @@ import { CreateNodeRequest } from '../../../core/models/node-creation.types';
                 border-radius: 8px;
                 cursor: pointer;
                 transition: background 0.2s ease;
-                gap: 16px;
+                gap: var(--space-lg);
                 overflow: hidden;
                 min-width: 0;
             }

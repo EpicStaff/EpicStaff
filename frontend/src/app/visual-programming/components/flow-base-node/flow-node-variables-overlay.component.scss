@@ -12,7 +12,7 @@
     z-index: 30;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-2xs);
     border: 1.5px solid var(--color-divider-subtle, var(--graphite-640));
     max-height: 220px;
     overflow-y: auto;
@@ -21,7 +21,7 @@
 
 .inputs-title {
     font-size: var(--font-size-xs);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     letter-spacing: 0.5px;
     color: var(--gray-400);
 }
@@ -42,7 +42,7 @@
 }
 
 .input-key {
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     color: var(--color-text-primary);
     max-width: 5rem;
     overflow: hidden;
@@ -87,7 +87,7 @@
 
 .output-title {
     font-size: var(--font-size-xs);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     letter-spacing: 0.5px;
     color: var(--gray-400);
     margin-bottom: 4px;
@@ -95,7 +95,7 @@
 
 .output-label {
     font-size: var(--font-size-sm);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     color: var(--color-text-primary);
     overflow: hidden;
     text-overflow: ellipsis;

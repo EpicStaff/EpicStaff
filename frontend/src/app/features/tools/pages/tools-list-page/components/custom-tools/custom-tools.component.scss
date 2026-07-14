@@ -9,7 +9,7 @@
 .custom-tools-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(clamp(10vw, 100%, 335px), 1fr));
-    gap: 1.5rem;
+    gap: var(--space-2xl);
     width: 100%;
     contain: layout; /* Improve performance and prevent layout shifts */
 }
@@ -22,7 +22,7 @@
 }
 
 .tool-name {
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     font-size: var(--font-size-xl);
     margin-bottom: 0.5rem;
 }

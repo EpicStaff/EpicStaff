@@ -1,27 +1,27 @@
 .ngrok-config {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: var(--space-2xl);
     color: var(--color-text-primary);
 
     .header {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 24px;
+        gap: var(--space-2xl);
         flex-wrap: wrap;
     }
 
     .header-left {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: var(--space-xs);
     }
 
     .title {
         margin: 0;
         font-size: var(--font-size-2xl);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--color-text-primary);
     }
 
@@ -34,14 +34,14 @@
     .header-right {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--space-md);
         flex-shrink: 0;
     }
 
     .config-list {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: var(--space-lg);
 
         .loading-state {
             text-align: center;

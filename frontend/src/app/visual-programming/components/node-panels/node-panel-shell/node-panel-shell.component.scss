@@ -46,7 +46,7 @@ header {
 
         .title {
             font-size: var(--font-size-xl);
-            font-weight: 400;
+            font-weight: var(--font-weight-regular);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -56,7 +56,7 @@ header {
     .header-actions {
         display: flex;
         align-items: center;
-        gap: 1rem;
+        gap: var(--space-lg);
 
         .expand-btn {
             background: none;
@@ -84,12 +84,12 @@ header {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
+            gap: var(--space-sm);
             padding: 0 0.75rem;
             height: 32px;
             border-radius: var(--radius-md);
             font-size: var(--font-size-md);
-            font-weight: 400;
+            font-weight: var(--font-weight-regular);
             cursor: pointer;
             transition:
                 padding 0.2s ease-in-out,
@@ -134,12 +134,12 @@ header {
         .close-action {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: var(--space-sm);
 
             .esc-label {
                 font-size: var(--font-size-xs);
                 color: var(--gray-600);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 padding: 0.15rem 0.3rem;
                 border: 1px solid var(--gray-700);
                 border-radius: var(--radius-sm);

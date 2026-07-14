@@ -54,7 +54,7 @@ $transition-default: all 0.2s ease;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
+        gap: var(--space-lg);
         padding: 16px;
 
         input {
@@ -81,14 +81,14 @@ $transition-default: all 0.2s ease;
         .filter-button {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--space-sm);
             padding: 8px 12px;
             background-color: $bg-input;
             color: $text-secondary;
             border-radius: var(--radius-md);
             cursor: pointer;
             font-size: var(--font-size-sm);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             transition: $transition-default;
             border: none;
 
@@ -190,7 +190,7 @@ $transition-default: all 0.2s ease;
                     display: flex;
                     flex-direction: column;
                     font-size: var(--font-size-sm);
-                    font-weight: 500;
+                    font-weight: var(--font-weight-medium);
                     color: $text-primary;
                     line-height: 1.2;
 
@@ -204,7 +204,7 @@ $transition-default: all 0.2s ease;
                         margin-top: 3px;
                         color: $text-secondary;
                         font-size: var(--font-size-xs);
-                        font-weight: normal;
+                        font-weight: var(--font-weight-regular);
                     }
                 }
             }

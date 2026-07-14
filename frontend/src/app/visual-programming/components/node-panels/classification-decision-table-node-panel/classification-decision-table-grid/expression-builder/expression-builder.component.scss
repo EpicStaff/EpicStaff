@@ -74,7 +74,7 @@ $radius: 8px;
 .eb-toolbar {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: var(--space-2xs);
     padding: 8px 10px;
     border-bottom: 1px solid $divider;
     flex-shrink: 0;
@@ -90,7 +90,7 @@ $radius: 8px;
     padding: 2px 8px;
     border-radius: var(--radius-sm);
     font-size: var(--font-size-xs);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     line-height: 1.6;
     cursor: pointer;
     border: 1px solid var(--graphite-750);
@@ -109,7 +109,7 @@ $radius: 8px;
     // Primary — purple accent text (@ token)
     &--primary {
         color: $accent;
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
 
         &:hover {
             background: var(--purple-alpha-12);
@@ -167,7 +167,7 @@ $radius: 8px;
     display: flex;
     flex-direction: column;
     padding: 6px 12px 0;
-    gap: 2px;
+    gap: var(--space-3xs);
     flex-shrink: 0;
     // Cap the accumulated template/tip lines so they scroll instead of growing the
     // editor popover unbounded (bug #10).
@@ -179,7 +179,7 @@ $radius: 8px;
     display: flex;
     flex-shrink: 0;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
     font-family: var(--font-family-mono);
     font-size: var(--font-size-sm);
     line-height: 1.5;
@@ -290,7 +290,7 @@ $radius: 8px;
 .eb-search-wrap {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
     margin: 8px;
     padding: 6px 8px;
     border: 1px solid var(--graphite-750);
@@ -324,7 +324,7 @@ $radius: 8px;
     padding: 0 8px 8px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-2xs);
 }
 
 .eb-var-row {
@@ -351,7 +351,7 @@ $radius: 8px;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--space-xs);
     padding: 8px 10px;
     border-top: 1px solid $divider;
 }
@@ -367,7 +367,7 @@ $radius: 8px;
 .eb-template-btn {
     padding: 4px 12px;
     font-size: var(--font-size-sm);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     color: var(--gray-300);
     background: var(--graphite-800);
     border: 1px solid var(--white-alpha-12);

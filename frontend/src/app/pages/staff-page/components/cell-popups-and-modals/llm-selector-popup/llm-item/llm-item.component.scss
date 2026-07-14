@@ -19,7 +19,7 @@ $border-color: var(--white-alpha-10);
     cursor: pointer;
     transition: all 0.2s ease;
     border: 1px solid #404040;
-    gap: 12px;
+    gap: var(--space-md);
 
     &:focus {
         outline: none;
@@ -48,7 +48,7 @@ $border-color: var(--white-alpha-10);
     .llm-name {
         flex: 1;
         font-size: var(--font-size-sm);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: $text-primary;
         white-space: nowrap;
         overflow: hidden;

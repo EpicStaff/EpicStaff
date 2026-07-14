@@ -3,7 +3,7 @@
     justify-content: flex-end;
     align-items: center;
     padding: 1.25rem 1.5rem;
-    gap: 1rem;
+    gap: var(--space-lg);
     border-top: 1px solid var(--gray-800);
     height: 75px;
 
@@ -13,7 +13,7 @@
         background-color: var(--gray-850);
         padding: 0.625rem 1.25rem;
         border-radius: var(--radius-lg);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         font-size: var(--font-size-md);
         cursor: pointer;
         transition: all 0.2s ease;
@@ -26,11 +26,11 @@
 
     .submit {
         display: flex;
-        gap: 8px;
+        gap: var(--space-sm);
         align-items: center;
         background-color: var(--accent-color);
         color: white;
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         border-radius: var(--radius-lg);
         padding: 0.625rem 1.25rem;
         font-size: var(--font-size-md);

@@ -22,7 +22,7 @@
 .agent-grid {
     display: grid;
 
-    gap: 1rem;
+    gap: var(--space-lg);
     width: 100%;
     position: relative;
 }

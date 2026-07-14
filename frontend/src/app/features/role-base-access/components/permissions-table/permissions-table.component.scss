@@ -20,14 +20,14 @@
 
     .count {
         color: var(--accent-color);
-        font-weight: 600;
+        font-weight: var(--font-weight-semibold);
     }
 }
 
 .perm-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-md);
 }
 
 .perm-table {
@@ -76,7 +76,7 @@
         height: 40px;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         padding: 4px 8px;
         min-width: max-content;
         background: var(--color-background-body);
@@ -114,7 +114,7 @@
         .group-actions {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--space-sm);
             margin-left: auto;
         }
     }
@@ -186,7 +186,7 @@
     white-space: nowrap;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     padding: 8px 16px 8px 12px;
     cursor: pointer;
     font-size: var(--font-size-md);

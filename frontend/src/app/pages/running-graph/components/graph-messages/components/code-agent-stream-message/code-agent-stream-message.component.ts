@@ -194,13 +194,13 @@ interface ThinkingStep {
             flex: 1;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: var(--space-md);
         }
 
         .node-name {
             color: var(--gray-100);
             font-size: var(--font-size-xl);
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
         }
 
         .step-count {
@@ -211,7 +211,7 @@ interface ThinkingStep {
         .status-badge {
             color: #fbbf24;
             font-size: var(--font-size-sm);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
         }
 
         .code-agent-container.in-progress {
@@ -259,7 +259,7 @@ interface ThinkingStep {
         .steps-container {
             display: flex;
             flex-direction: column;
-            gap: 0.25rem;
+            gap: var(--space-2xs);
             padding: 0.75rem 0 0 5.5rem;
             border-top: 1px solid var(--gray-750);
             margin-top: 0.75rem;
@@ -272,7 +272,7 @@ interface ThinkingStep {
         .step-header {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--space-sm);
             cursor: pointer;
             user-select: none;
             padding: 0.35rem 0.5rem;
@@ -290,7 +290,7 @@ interface ThinkingStep {
         .step-label {
             color: var(--gray-300);
             font-size: var(--font-size-md);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
         }
 
         .step-tools {
@@ -298,7 +298,7 @@ interface ThinkingStep {
             font-size: var(--font-size-sm);
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: var(--space-2xs);
 
             app-svg-icon {
                 color: var(--gray-500);
@@ -308,7 +308,7 @@ interface ThinkingStep {
         .step-content {
             display: flex;
             flex-direction: column;
-            gap: 0.5rem;
+            gap: var(--space-sm);
             padding: 0.5rem 0 0.5rem 1.5rem;
         }
 
@@ -321,11 +321,11 @@ interface ThinkingStep {
 
         .tool-call-name {
             color: #2dd4bf;
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
             font-size: var(--font-size-md);
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: var(--space-xs);
         }
 
         .tool-call-input {

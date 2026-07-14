@@ -39,7 +39,7 @@
     color: var(--gray-500);
     overflow-x: auto;
     white-space: nowrap;
-    gap: 4px;
+    gap: var(--space-2xs);
 
     &::-webkit-scrollbar {
         display: none;
@@ -104,7 +104,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: var(--space-sm);
         transition: background-color 0.15s;
 
         &.active,
@@ -149,13 +149,13 @@
         .item-content {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--space-sm);
             flex: 1;
             min-width: 0;
         }
 
         .item-key {
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
             color: #a5a5ff;
             white-space: nowrap;
             overflow: hidden;

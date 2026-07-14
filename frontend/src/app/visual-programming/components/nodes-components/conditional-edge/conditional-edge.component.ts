@@ -52,7 +52,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
                 flex-direction: row;
                 justify-content: center;
                 align-items: center;
-                gap: 1rem;
+                gap: var(--space-lg);
                 font-size: var(--font-size-lg);
                 color: #fff;
 

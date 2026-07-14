@@ -12,12 +12,12 @@
     display: flex;
     flex-direction: column;
     padding: 20px 40px;
-    gap: 12px;
+    gap: var(--space-md);
 
     .engage-bar {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: var(--space-lg);
         justify-content: space-between;
         flex-shrink: 0;
 
@@ -28,7 +28,7 @@
 
             .count {
                 color: var(--accent-color);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
             }
         }
     }
@@ -45,7 +45,7 @@ app-select.row-unselected {
 
     .org-name {
         font-size: var(--font-size-md);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: var(--color-text-primary);
     }
 }

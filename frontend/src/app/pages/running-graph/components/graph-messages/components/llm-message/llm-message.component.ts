@@ -123,7 +123,7 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
             h3 {
                 color: var(--gray-100);
                 font-size: var(--font-size-xl);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 margin: 0;
             }
 
@@ -140,7 +140,7 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
             }
 
             .section-heading {
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
                 margin-bottom: 0.5rem;
                 cursor: pointer;

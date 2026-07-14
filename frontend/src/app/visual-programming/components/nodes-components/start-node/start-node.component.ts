@@ -22,9 +22,9 @@ import { StartNodeModel } from '../../../core/models/node.model';
             .start-node {
                 display: flex;
                 align-items: center;
-                gap: 1rem;
+                gap: var(--space-lg);
                 font-size: var(--font-size-lg);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 letter-spacing: 0.5px;
 
                 app-svg-icon {

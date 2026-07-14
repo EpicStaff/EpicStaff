@@ -21,7 +21,7 @@
         th {
             text-align: left;
             padding: 0.4rem 0.65rem;
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             color: var(--color-text-secondary);
             white-space: nowrap;
             user-select: none;

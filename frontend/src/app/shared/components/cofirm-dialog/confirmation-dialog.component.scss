@@ -7,7 +7,7 @@
     color: var(--white);
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--space-lg);
     font-family: var(--font-family-base);
 }
 
@@ -26,7 +26,7 @@
 
 .dialog-title {
     font-size: var(--font-size-xl);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     margin: 0;
     color: var(--white);
 }
@@ -43,7 +43,7 @@
 
 ::ng-deep .dialog-message strong {
     color: var(--color-text-primary);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     word-wrap: break-word;
     overflow-wrap: break-word;
     max-width: 100%;
@@ -55,13 +55,13 @@
     border-radius: var(--radius-sm);
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-2xs);
 }
 
 .caution-title {
     color: var(--color-error);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
 }
 
 .dialog-container.warning .caution-block {
@@ -86,13 +86,13 @@
 
 ::ng-deep .caution-message strong {
     color: var(--white);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
 }
 
 .dialog-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
+    gap: var(--space-sm);
     margin-top: 0;
 }
 
@@ -102,7 +102,7 @@
     border-radius: var(--radius-lg);
     font-family: var(--font-family-base);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
     line-height: 1;
     cursor: pointer;
     transition: all 0.2s ease;

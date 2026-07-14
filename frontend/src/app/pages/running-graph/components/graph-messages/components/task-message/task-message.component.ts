@@ -190,7 +190,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             h3 {
                 color: var(--gray-100);
                 font-size: var(--font-size-xl);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 margin: 0;
                 white-space: nowrap;
                 overflow: hidden;
@@ -199,7 +199,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
 
                 .task-name {
                     color: #30a46c;
-                    font-weight: 400;
+                    font-weight: var(--font-weight-regular);
                     margin: 0 5px;
                 }
             }
@@ -208,7 +208,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
         .agent-content {
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            gap: var(--space-lg);
             padding-left: 5.5rem;
             margin-top: 1.25rem;
             overflow: hidden;
@@ -226,7 +226,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
 
         /* Section styling */
         .section-heading {
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             color: var(--gray-300);
             margin-bottom: 0.5rem;
             cursor: pointer;
@@ -250,7 +250,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             margin-left: 23px;
 
             .subsection-heading {
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 color: #30a46c;
                 margin-bottom: 0.5rem;
                 margin-top: 1rem;

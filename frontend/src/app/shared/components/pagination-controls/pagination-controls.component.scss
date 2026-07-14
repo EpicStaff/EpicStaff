@@ -7,7 +7,7 @@
 .pagination {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     background: transparent;
     border-radius: var(--radius-md);
     user-select: none;
@@ -54,7 +54,7 @@
     list-style: none;
     margin: 0;
     padding: 0;
-    gap: 0.5rem;
+    gap: var(--space-sm);
 
     li.ellipsis .dots {
         color: var(--color-text-secondary);

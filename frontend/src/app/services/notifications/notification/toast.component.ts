@@ -109,7 +109,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                gap: 12px;
+                gap: var(--space-md);
                 background-color: #1e1e1e;
                 color: #e0e0e0;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);

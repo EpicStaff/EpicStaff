@@ -53,7 +53,7 @@ $hover-color: var(--gray-800);
 
     .section-title {
         font-size: var(--font-size-lg);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         color: $text-color;
         margin-bottom: 1.2rem;
         margin-top: 1.5rem;
@@ -89,7 +89,7 @@ $hover-color: var(--gray-800);
             border: none;
             color: $text-color;
             font-size: var(--font-size-md);
-            font-weight: 400;
+            font-weight: var(--font-weight-regular);
             line-height: 1.6;
             padding: 12px 16px;
             font-family: inherit;
@@ -105,7 +105,7 @@ $hover-color: var(--gray-800);
 
             &::placeholder {
                 color: var(--gray-500);
-                font-weight: 300;
+                font-weight: var(--font-weight-light);
             }
 
             &:hover::placeholder {

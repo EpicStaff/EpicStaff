@@ -36,9 +36,9 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
             .create-project-button {
                 display: inline-flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
                 font-size: var(--font-size-md);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 padding: 0.4rem 1.2rem;
                 height: 36px;
                 line-height: 14px;

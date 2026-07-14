@@ -50,7 +50,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
         .configs-cell-wrapper {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: var(--space-sm);
             padding: 10px 5px;
             height: 100%;
         }
@@ -93,7 +93,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
         .item-text {
             line-height: 1.3;
             font-size: var(--font-size-sm);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;

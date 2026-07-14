@@ -67,9 +67,9 @@
     .header-labels-left {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         font-size: var(--font-size-md);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
         color: var(--color-text-primary);
 
         ::ng-deep svg path {
@@ -81,14 +81,14 @@
 .add-root-btn {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: var(--space-2xs);
     background: var(--accent-color);
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--color-text-primary);
     font-size: var(--font-size-xs);
-    font-weight: 400;
+    font-weight: var(--font-weight-regular);
     height: 28px;
     padding: 0 0.5rem;
     white-space: nowrap;
@@ -104,7 +104,7 @@
 .labels-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-sm);
     max-height: 260px;
     overflow-y: auto;
     overflow-x: auto;
@@ -138,7 +138,7 @@
 .tree-row {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
+    gap: var(--space-sm);
     padding: 0 1rem 0 0.25rem;
     cursor: pointer;
     color: var(--color-text-primary);
@@ -243,7 +243,7 @@
 .add-label-row {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: var(--space-2xs);
     padding: 0.3rem 0.5rem;
     min-width: max-content;
 
@@ -332,11 +332,11 @@
     justify-content: space-between;
     padding: 0.75rem 1.25rem;
     border-top: 1px solid var(--color-input-border);
-    gap: 0.5rem;
+    gap: var(--space-sm);
 
     .footer-right {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-sm);
     }
 }

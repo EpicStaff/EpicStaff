@@ -32,14 +32,14 @@
     &__form {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: var(--space-lg);
         padding: 1.25rem;
     }
 
     &__actions {
         display: flex;
         justify-content: flex-end;
-        gap: 0.75rem;
+        gap: var(--space-md);
         margin-top: 1rem;
         padding: 1.25rem;
     }

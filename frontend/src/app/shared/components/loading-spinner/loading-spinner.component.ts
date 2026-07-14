@@ -53,7 +53,7 @@ import { Component, Input } from '@angular/core';
             .loading-message {
                 color: #b0b8c1;
                 font-size: var(--font-size-xl);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 text-align: center;
             }
             @keyframes spin {

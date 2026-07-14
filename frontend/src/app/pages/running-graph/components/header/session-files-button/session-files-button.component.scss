@@ -6,7 +6,7 @@
 .session-files-btn {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
     height: 28px;
     padding: 0 10px;
     margin: 0;

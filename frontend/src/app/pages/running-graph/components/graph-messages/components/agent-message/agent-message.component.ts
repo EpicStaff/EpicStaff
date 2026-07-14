@@ -154,7 +154,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         :host {
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            gap: var(--space-lg);
         }
 
         .agent-flow-container {
@@ -203,7 +203,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
             flex: 1;
             color: var(--gray-100);
             font-size: var(--font-size-xl);
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -211,18 +211,18 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
 
         .agent-name {
             color: #8e5cd9;
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
         }
 
         .tool-name-header {
             color: #8e5cd9;
-            font-weight: 400;
+            font-weight: var(--font-weight-regular);
         }
 
         .agent-content {
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            gap: var(--space-lg);
             padding-left: 5.5rem;
             margin-top: 1.25rem;
             overflow: hidden;
@@ -239,7 +239,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         }
 
         .section-heading {
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             color: var(--gray-300);
             margin-bottom: 0.5rem;
             cursor: pointer;
@@ -272,7 +272,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         .thought-quote {
             color: #8e5cd9;
             font-size: var(--font-size-3xl);
-            font-weight: bold;
+            font-weight: var(--font-weight-bold);
             vertical-align: sub;
             line-height: 0;
         }
@@ -282,7 +282,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         }
 
         .tool-name {
-            font-weight: 600;
+            font-weight: var(--font-weight-semibold);
             color: #8e5cd9;
             margin-bottom: 0.5rem;
         }
@@ -298,7 +298,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         }
 
         .input-label {
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             color: var(--gray-300);
             margin-bottom: 0.5rem;
         }

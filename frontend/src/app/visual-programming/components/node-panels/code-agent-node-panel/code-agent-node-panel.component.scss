@@ -31,7 +31,7 @@
 
     &.expanded {
         display: flex;
-        gap: 1rem;
+        gap: var(--space-lg);
         height: 100%;
         width: 100%;
 
@@ -59,7 +59,7 @@
     &.collapsed {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: var(--space-lg);
         overflow: visible;
     }
 }
@@ -67,7 +67,7 @@
 .form-fields {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-lg);
     flex: 0 0 400px;
     max-width: 400px;
     height: 100%;
@@ -76,7 +76,7 @@
 
 .section-label {
     font-size: var(--font-size-xs);
-    color: #d9d9d999;
+    color: var(--fog-alpha-60);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
@@ -84,7 +84,7 @@
 .llm-selector-container {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-sm);
 
     label {
         display: block;
@@ -98,31 +98,31 @@
 .timeout-section {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-sm);
 }
 
 .timeout-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
+    gap: var(--space-sm);
 }
 
 .stream-config-section {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-sm);
 }
 
 .checkbox-list {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: var(--space-xs);
 }
 
 .checkbox-item {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     font-size: var(--font-size-md);
     color: var(--gray-300);
     cursor: pointer;
@@ -137,7 +137,7 @@
 .output-schema-section {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-sm);
 }
 
 .output-schema-textarea {
@@ -193,14 +193,14 @@
         border-radius: var(--radius-lg) 0 0 var(--radius-lg);
         transition: all 0.2s ease;
         padding: 0;
-        color: #d9d9d999;
+        color: var(--fog-alpha-60);
 
         svg {
             transition: transform 0.3s ease;
         }
 
         &:hover:not(:disabled) {
-            color: #d9d9d9;
+            color: var(--fog-200);
             background: var(--graphite-700);
         }
     }

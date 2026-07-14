@@ -18,7 +18,7 @@
         justify-content: space-between;
         margin-bottom: 0.75rem;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-md);
         font-size: var(--font-size-xl);
         color: var(--color-text-primary);
     }
@@ -26,7 +26,7 @@
     &__status {
         display: flex;
         align-items: center;
-        gap: 0.25rem;
+        gap: var(--space-2xs);
         height: 28px;
         border-radius: var(--radius-md);
         padding: 0.25rem 0.5rem;
@@ -66,7 +66,7 @@
         justify-content: center;
         align-items: center;
         height: 100%;
-        row-gap: 1rem;
+        row-gap: var(--space-lg);
         font-size: var(--font-size-xl);
         color: var(--fog-alpha-80);
     }

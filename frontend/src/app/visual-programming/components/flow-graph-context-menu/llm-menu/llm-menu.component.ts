@@ -46,7 +46,7 @@ import { NodeType } from '../../../core/enums/node-type';
                 cursor: pointer;
                 transition: background 0.2s ease;
                 position: relative;
-                gap: 16px;
+                gap: var(--space-lg);
                 overflow: hidden;
             }
             li:hover {

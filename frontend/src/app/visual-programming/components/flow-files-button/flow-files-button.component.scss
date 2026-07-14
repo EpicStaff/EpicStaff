@@ -5,7 +5,7 @@
 .flow-files-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     padding: 0.5rem 1.25rem;
     font-size: var(--font-size-xs);
     border-radius: var(--radius-sm);
@@ -51,6 +51,6 @@
     &__count {
         line-height: 1;
         font-size: var(--font-size-xs);
-        font-weight: 400;
+        font-weight: var(--font-weight-regular);
     }
 }

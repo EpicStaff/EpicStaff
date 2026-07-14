@@ -97,7 +97,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                gap: 12px;
+                gap: var(--space-md);
                 height: 5rem !important;
                 width: 100%;
                 min-width: 0;
@@ -120,7 +120,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     .flow-name,
                     .slash {
                         font-size: var(--font-size-3xl);
-                        font-weight: 400;
+                        font-weight: var(--font-weight-regular);
                         letter-spacing: -0.02em;
                         line-height: 1;
                         margin: 0;
@@ -133,7 +133,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                         transition: all 0.2s ease;
                         display: flex;
                         align-items: center;
-                        gap: 0.5rem;
+                        gap: var(--space-sm);
                         position: relative;
                         flex-shrink: 0;
 
@@ -182,7 +182,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                 .actions {
                     display: flex;
                     align-items: center;
-                    gap: 16px;
+                    gap: var(--space-lg);
                     min-width: 0;
                     margin-left: auto;
                     flex: 0 1 auto;
@@ -201,7 +201,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     display: flex;
                     align-items: center;
                     justify-content: flex-start;
-                    gap: 8px;
+                    gap: var(--space-sm);
                     color: var(--gray-400) !important;
                     background: transparent !important;
                     border: none !important;
@@ -246,7 +246,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
 
                     span {
                         font-size: var(--font-size-md);
-                        font-weight: 400;
+                        font-weight: var(--font-weight-regular);
                     }
                 }
 
@@ -262,7 +262,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
             @media (max-width: 1100px) {
                 .header {
                     .actions {
-                        gap: 8px;
+                        gap: var(--space-sm);
                     }
 
                     .sessions-button,

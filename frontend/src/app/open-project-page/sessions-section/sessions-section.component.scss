@@ -12,13 +12,13 @@
         h2 {
             color: var(--gray-100);
             font-size: var(--font-size-xl);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             margin: 0;
         }
 
         .filters {
             display: flex;
-            gap: 8px;
+            gap: var(--space-sm);
             background: var(--black-alpha-80);
             padding: 4px;
             border-radius: var(--radius-md);
@@ -78,18 +78,18 @@
 
             .session-info {
                 display: flex;
-                gap: 24px;
+                gap: var(--space-2xl);
                 align-items: center;
 
                 .session-id {
                     color: var(--gray-100);
-                    font-weight: 500;
+                    font-weight: var(--font-weight-medium);
                     min-width: 100px;
                 }
 
                 .session-times {
                     display: flex;
-                    gap: 16px;
+                    gap: var(--space-lg);
                     color: var(--gray-300);
 
                     .time-label {
@@ -104,7 +104,7 @@
                 .session-status {
                     display: flex;
                     align-items: center;
-                    gap: 8px;
+                    gap: var(--space-sm);
                     color: var(--gray-300);
                     text-transform: capitalize;
 
@@ -130,12 +130,12 @@
 
             .session-actions {
                 display: flex;
-                gap: 8px;
+                gap: var(--space-sm);
 
                 button {
                     display: flex;
                     align-items: center;
-                    gap: 4px;
+                    gap: var(--space-2xs);
                     background: var(--white-alpha-5);
                     border: 1px solid var(--white-alpha-10);
                     color: var(--gray-100);

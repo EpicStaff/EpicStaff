@@ -148,7 +148,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
             .terminal-title-group {
                 display: flex;
                 align-items: center;
-                gap: 0.4rem;
+                gap: var(--space-xs);
             }
 
             .status-dot {
@@ -189,7 +189,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
             .terminal-actions {
                 display: flex;
                 align-items: center;
-                gap: 0.25rem;
+                gap: var(--space-2xs);
             }
 
             .icon-btn {

@@ -120,12 +120,12 @@ import {
             .memory-header-right {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
             }
 
             .memory-type {
                 font-size: var(--font-size-xs);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 text-transform: capitalize;
                 color: var(--gray-300);
                 background: var(--gray-750);
@@ -182,7 +182,7 @@ import {
             .toggle-left {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
             }
 
             .toggle-left app-svg-icon {
@@ -210,7 +210,7 @@ import {
 
             .details-title {
                 margin: 0 0 4px 0;
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 color: var(--gray-300);
             }
 

@@ -30,7 +30,7 @@ import { HelpTooltipComponent } from '../../../../../shared/components/help-tool
             .knowledge-header {
                 display: flex;
                 align-items: center;
-                gap: 6px;
+                gap: var(--space-xs);
             }
             .create-agent__help-icon {
                 color: var(--color-text-secondary, #666);

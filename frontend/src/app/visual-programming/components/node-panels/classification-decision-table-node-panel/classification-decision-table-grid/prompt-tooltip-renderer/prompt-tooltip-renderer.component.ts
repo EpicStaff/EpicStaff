@@ -65,14 +65,14 @@ interface PromptTooltipParams extends ICellRendererParams {
                 display: flex;
                 align-items: center;
                 padding: 0 8px;
-                gap: 6px;
+                gap: var(--space-xs);
                 cursor: default;
                 overflow: hidden;
             }
             .prompt-chip {
                 display: flex;
                 align-items: center;
-                gap: 4px;
+                gap: var(--space-2xs);
                 flex: 1;
                 min-width: 0;
                 overflow: hidden;
@@ -111,7 +111,7 @@ interface PromptTooltipParams extends ICellRendererParams {
             .select-placeholder {
                 display: flex;
                 align-items: center;
-                gap: 4px;
+                gap: var(--space-2xs);
                 color: rgba(255, 255, 255, 0.35);
                 font-size: var(--font-size-sm);
             }
@@ -122,14 +122,14 @@ interface PromptTooltipParams extends ICellRendererParams {
             .deleted-prompt-badge {
                 display: inline-flex;
                 align-items: center;
-                gap: 4px;
+                gap: var(--space-2xs);
                 padding: 2px 8px;
                 background: rgba(255, 59, 48, 0.15);
                 color: var(--error-color, #ff3b30);
                 border: 1px solid rgba(255, 59, 48, 0.35);
                 border-radius: 10px;
                 font-size: var(--font-size-xs);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 white-space: nowrap;
             }
             .deleted-prompt-badge .ti {

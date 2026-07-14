@@ -89,7 +89,7 @@
         background: transparent;
         color: var(--color-input-text-placeholder);
         font-size: var(--font-size-md);
-        font-weight: 500;
+        font-weight: var(--font-weight-medium);
         line-height: 1;
         cursor: pointer;
         transition: color 0.2s ease;

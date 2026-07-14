@@ -59,7 +59,7 @@ import { Component, Input } from '@angular/core';
             }
 
             .loading-text {
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
             }
 
             @keyframes spin {

@@ -32,7 +32,7 @@
 
             .role-title {
                 font-size: var(--font-size-lg);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 color: var(--gray-100);
                 margin: 0;
                 white-space: nowrap;
@@ -45,7 +45,7 @@
         .header-icons {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--space-sm);
 
             .icon-container {
                 display: flex;
@@ -162,7 +162,7 @@
 
             .section-title {
                 font-size: var(--font-size-md);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 letter-spacing: 0.05em;
                 text-transform: uppercase;
                 color: var(--gray-400);
@@ -251,7 +251,7 @@
 
                 .subsection-title {
                     font-size: var(--font-size-xs);
-                    font-weight: 600;
+                    font-weight: var(--font-weight-semibold);
                     color: var(--gray-400);
                     margin: 0 0 8px 0;
                     text-transform: uppercase;
@@ -262,7 +262,7 @@
                     transition: background-color 0.2s ease;
                     display: flex;
                     align-items: center;
-                    gap: 8px;
+                    gap: var(--space-sm);
 
                     &:hover {
                         background-color: var(--gray-850, var(--white-alpha-5));
@@ -271,7 +271,7 @@
                     .tool-count {
                         font-size: var(--font-size-2xs);
                         color: var(--gray-500);
-                        font-weight: 400;
+                        font-weight: var(--font-weight-regular);
                         text-transform: none;
                     }
                 }
@@ -303,7 +303,7 @@
 
         .model-name {
             font-size: var(--font-size-md);
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
             color: var(--gray-100);
             margin: 0;
         }
@@ -317,7 +317,7 @@
         .model-info-container {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: var(--space-md);
 
             .provider-icon {
                 flex-shrink: 0;
@@ -328,7 +328,7 @@
                 flex-direction: column;
 
                 .model-name {
-                    font-weight: 500;
+                    font-weight: var(--font-weight-medium);
                     color: var(--gray-100);
                     font-size: var(--font-size-md);
                     margin: 0;
@@ -353,7 +353,7 @@
             .tool-item {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
                 padding: 4px 0;
                 height: 28px;
                 position: relative;
@@ -391,7 +391,7 @@
             border-bottom-color: transparent;
             border-radius: var(--radius-2xl);
             .header-left {
-                gap: 16px;
+                gap: var(--space-lg);
                 max-width: calc(100% - 70px);
             }
         }
@@ -416,7 +416,7 @@
 
         .header {
             .header-left {
-                gap: 16px;
+                gap: var(--space-lg);
                 max-width: calc(100% - 70px);
             }
         }
@@ -429,7 +429,7 @@
 
         .header {
             .header-left {
-                gap: 16px;
+                gap: var(--space-lg);
 
                 max-width: calc(100% - 170px);
             }

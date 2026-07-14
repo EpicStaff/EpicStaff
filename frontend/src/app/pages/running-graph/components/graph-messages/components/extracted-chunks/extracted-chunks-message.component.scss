@@ -47,7 +47,7 @@
     margin: 0;
     color: var(--gray-50);
     font-size: var(--font-size-lg);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
 }
 
 .subtitle {
@@ -58,14 +58,14 @@
 
 .query {
     color: var(--gray-50);
-    font-weight: 500;
+    font-weight: var(--font-weight-medium);
 }
 
 .meta {
     margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-sm);
     color: var(--gray-200);
 }
 
@@ -90,7 +90,7 @@
 .stats {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 0.75rem;
+    gap: var(--space-md);
     margin-bottom: 1rem;
 }
 
@@ -109,13 +109,13 @@
 .value {
     font-size: var(--font-size-lg);
     color: var(--gray-50);
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
 }
 
 .chunks {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-md);
     max-height: 600px;
     overflow-y: auto;
     overflow-x: hidden;
@@ -129,7 +129,7 @@
     padding: 0.75rem;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-sm);
 
     &:hover app-copy-button {
         opacity: 1;
@@ -139,11 +139,11 @@
 .chunk-header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-md);
 }
 
 .chunk-order {
-    font-weight: 600;
+    font-weight: var(--font-weight-semibold);
     color: #5c7cfa;
 }
 

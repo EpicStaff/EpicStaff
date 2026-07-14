@@ -35,7 +35,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
                     align-items: center;
                     justify-content: center;
                     text-align: center;
-                    gap: 0.5rem;
+                    gap: var(--space-sm);
 
                     app-svg-icon {
                         color: var(--gray-400);
@@ -44,7 +44,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
                     p {
                         color: var(--gray-400);
                         font-size: var(--font-size-lg);
-                        font-weight: 500;
+                        font-weight: var(--font-weight-medium);
                         margin: 0;
                     }
                 }

@@ -24,14 +24,14 @@
             .title {
                 margin: 0;
                 font-size: var(--font-size-4xl);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 color: var(--color-text-primary);
             }
 
             .subtitle-inline {
                 margin-left: 0.7rem;
                 font-size: var(--font-size-xl);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
                 color: var(--color-text-secondary);
             }
         }
@@ -43,7 +43,7 @@
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: var(--space-xl);
         padding: 20px 60px 16px 40px;
 
         .user-section {
@@ -54,13 +54,13 @@
             .user-identity {
                 display: flex;
                 align-items: center;
-                gap: 24px;
+                gap: var(--space-2xl);
 
                 .user-avatar-lg {
                     width: 80px;
                     height: 80px;
                     font-size: var(--font-size-4xl);
-                    font-weight: 500;
+                    font-weight: var(--font-weight-medium);
                     border-radius: 50%;
                 }
 
@@ -70,7 +70,7 @@
 
                     .user-name {
                         font-size: var(--font-size-3xl);
-                        font-weight: 500;
+                        font-weight: var(--font-weight-medium);
                         color: var(--color-text-primary);
                     }
 
@@ -84,13 +84,13 @@
             .user-actions {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
             }
         }
 
         .info-cards {
             display: flex;
-            gap: 30px;
+            gap: var(--space-3xl);
         }
 
         .orgs-section {
@@ -98,7 +98,7 @@
             flex-direction: column;
             flex: 1;
             min-height: 0;
-            gap: 12px;
+            gap: var(--space-md);
 
             .section-header {
                 display: flex;
@@ -122,9 +122,9 @@
 .title {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
     margin: 0;
-    font-weight: 700;
+    font-weight: var(--font-weight-bold);
     color: var(--color-text-primary);
 
     .count,
@@ -145,7 +145,7 @@
     display: flex;
     flex-direction: column;
     flex: 1;
-    gap: 16px;
+    gap: var(--space-lg);
     padding: 30px;
     border: 1px solid var(--color-divider-subtle);
     border-radius: var(--radius-xl);
@@ -157,7 +157,7 @@
     .row {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
         font-size: var(--font-size-xs);
 
         .label {
@@ -169,7 +169,7 @@
 
             &.role {
                 color: var(--accent-color);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
             }
         }
     }
@@ -177,7 +177,7 @@
     .role-tags {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: var(--space-sm);
 
         .role-tag {
             padding: 4px 8px;
@@ -193,7 +193,7 @@
     .left {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--space-sm);
 
         .org-name {
             flex: 1;
@@ -206,7 +206,7 @@
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        gap: 8px;
+        gap: var(--space-sm);
 
         .org-role {
             font-size: var(--font-size-md);

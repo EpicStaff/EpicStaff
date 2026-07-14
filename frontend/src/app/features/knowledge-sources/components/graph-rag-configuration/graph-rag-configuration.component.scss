@@ -14,12 +14,12 @@
         .files-header {
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: var(--space-lg);
             padding: 1.25rem 1.875rem 1.25rem 2.5rem;
             border-bottom: 1px solid var(--color-divider-subtle);
 
             .header-title {
-                gap: 1rem;
+                gap: var(--space-lg);
                 align-items: center;
                 flex-shrink: 0;
                 display: flex;
@@ -34,7 +34,7 @@
         .non-txt-warning {
             display: flex;
             align-items: flex-start;
-            gap: 0.5rem;
+            gap: var(--space-sm);
             margin: 0.75rem 1.875rem 0 2.5rem;
             padding: 0.625rem 0.75rem;
             background: var(--amber-alpha-8);

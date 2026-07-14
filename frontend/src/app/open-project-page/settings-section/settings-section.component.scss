@@ -35,7 +35,7 @@ $purple-accent: var(--purple-alpha-50);
             h3 {
                 margin: 0;
                 font-size: var(--font-size-lg);
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
                 color: $accent-color;
             }
 
@@ -74,12 +74,12 @@ $purple-accent: var(--purple-alpha-50);
             position: relative;
             min-width: 650px;
             box-sizing: border-box;
-            gap: 1rem;
+            gap: var(--space-lg);
 
             .section-header {
                 display: flex;
                 align-items: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 margin-bottom: 8px;
             }
 
@@ -87,7 +87,7 @@ $purple-accent: var(--purple-alpha-50);
                 margin: 0;
                 font-size: var(--font-size-md);
                 color: var(--white-alpha-70);
-                font-weight: 400;
+                font-weight: var(--font-weight-regular);
             }
 
             &:not(:last-child)::after {
@@ -112,11 +112,11 @@ $purple-accent: var(--purple-alpha-50);
 
                 .setting-title {
                     color: $text-color;
-                    font-weight: 500;
+                    font-weight: var(--font-weight-medium);
                     font-size: var(--font-size-lg);
                     display: flex;
                     align-items: center;
-                    gap: 0.5rem;
+                    gap: var(--space-sm);
                 }
 
                 .setting-description {
@@ -198,14 +198,14 @@ $purple-accent: var(--purple-alpha-50);
                             flex-direction: row;
                             align-items: center;
                             justify-content: center;
-                            gap: 8px;
+                            gap: var(--space-sm);
                             min-width: 180px;
 
                             .coming-soon-label {
                                 font-size: var(--font-size-xs);
                                 color: var(--gray-500);
                                 font-style: italic;
-                                font-weight: 300;
+                                font-weight: var(--font-weight-light);
                             }
                         }
                     }

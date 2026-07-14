@@ -1,13 +1,13 @@
 .voice-settings {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--space-lg);
     color: var(--color-text-primary);
 
     .header {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: var(--space-xs);
 
         .title {
             margin: 0;
@@ -34,7 +34,7 @@
 
     .layout {
         display: flex;
-        gap: 24px;
+        gap: var(--space-2xl);
         align-items: start;
     }
 
@@ -42,25 +42,25 @@
         flex: 0 0 55%;
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: var(--space-lg);
 
         .form {
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            gap: var(--space-lg);
 
             .row {
                 display: grid;
                 grid-template-columns: 134px minmax(0, 1fr);
                 align-items: center;
-                gap: 12px;
+                gap: var(--space-md);
                 position: relative;
 
                 .label {
                     display: flex;
                     justify-content: flex-end;
                     align-items: center;
-                    gap: 12px;
+                    gap: var(--space-md);
                     font-size: var(--font-size-md);
                     color: var(--color-text-secondary);
 
@@ -95,7 +95,7 @@
 
             .section-title {
                 font-size: var(--font-size-lg);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 color: var(--color-text-primary);
             }
 
@@ -108,7 +108,7 @@
             .actions {
                 display: flex;
                 justify-content: flex-end;
-                gap: 12px;
+                gap: var(--space-md);
                 margin-top: 6px;
             }
         }
@@ -129,7 +129,7 @@
             .card-title {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
                 font-size: var(--font-size-lg);
                 color: var(--accent-color);
             }
@@ -146,7 +146,7 @@
                 padding-left: 20px;
                 display: flex;
                 flex-direction: column;
-                gap: 12px;
+                gap: var(--space-md);
                 font-size: var(--font-size-md);
                 color: var(--color-text-secondary);
                 line-height: 1.6;

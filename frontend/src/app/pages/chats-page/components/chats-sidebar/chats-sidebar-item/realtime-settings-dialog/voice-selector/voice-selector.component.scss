@@ -28,7 +28,7 @@
         }
 
         .selected-voice {
-            font-weight: 500;
+            font-weight: var(--font-weight-medium);
         }
 
         .selector-arrow {
@@ -70,7 +70,7 @@
             &.selected {
                 background-color: #1e72e6;
                 color: white;
-                font-weight: 500;
+                font-weight: var(--font-weight-medium);
             }
         }
     }

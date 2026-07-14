@@ -100,7 +100,7 @@ export interface PickerItem {
             .vpf-item {
                 display: flex;
                 align-items: center;
-                gap: 6px;
+                gap: var(--space-xs);
                 width: 100%;
                 text-align: left;
                 padding: 5px 8px;
@@ -119,7 +119,7 @@ export interface PickerItem {
             .vpf-tag {
                 flex-shrink: 0;
                 font-size: var(--font-size-2xs);
-                font-weight: 600;
+                font-weight: var(--font-weight-semibold);
                 padding: 1px 5px;
                 border-radius: 3px;
                 background: rgba(104, 95, 255, 0.25);

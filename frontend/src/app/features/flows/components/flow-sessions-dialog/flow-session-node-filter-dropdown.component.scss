@@ -20,7 +20,7 @@
 .search-box {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
     padding: 8px 10px;
     border-bottom: 1px solid var(--color-divider-regular, var(--graphite-640));
 
@@ -110,7 +110,7 @@
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     padding: 4px;
     justify-content: space-between;
     border: 1px solid var(--color-divider-regular, var(--graphite-640));
@@ -133,7 +133,7 @@
     .selected-label {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: var(--space-xs);
     }
 }
 
@@ -155,7 +155,7 @@
     color: var(--accent-color, var(--blue-400));
     font-size: 0.95em;
     margin-left: auto;
-    font-weight: bold;
+    font-weight: var(--font-weight-bold);
     display: flex;
     align-items: center;
     height: 18px;
@@ -164,11 +164,11 @@
 .group-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     padding: 6px 14px 4px;
     font-family: var(--font-family-base);
     font-size: var(--font-size-xs);
-    font-weight: 400;
+    font-weight: var(--font-weight-regular);
     color: var(--color-text-secondary, var(--gray-500));
     text-transform: uppercase;
     letter-spacing: 0.05em;

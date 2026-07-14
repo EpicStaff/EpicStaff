@@ -112,7 +112,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 display: flex;
                 flex-direction: row;
                 align-items: center;
-                gap: 0.5rem;
+                gap: var(--space-sm);
                 width: 100%;
             }
 
@@ -230,7 +230,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                     margin: 0;
                     color: var(--gray-200, #e3e3e3);
                     font-size: var(--font-size-md);
-                    font-weight: 500;
+                    font-weight: var(--font-weight-medium);
                 }
             }
 

@@ -92,7 +92,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
 
                     &::placeholder {
                         color: #6b7280;
-                        font-weight: 400;
+                        font-weight: var(--font-weight-regular);
                         font-size: var(--font-size-md);
                     }
                 }

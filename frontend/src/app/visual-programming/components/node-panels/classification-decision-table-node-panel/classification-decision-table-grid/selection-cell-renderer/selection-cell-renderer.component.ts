@@ -42,14 +42,14 @@ import { ICellRendererParams, IRowNode } from 'ag-grid-community';
             .selection-cell {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: var(--space-sm);
                 padding-left: 4px;
             }
             .drag-grip {
                 display: inline-grid;
                 grid-template-columns: repeat(2, 3px);
                 grid-template-rows: repeat(3, 3px);
-                gap: 2px;
+                gap: var(--space-3xs);
                 cursor: grab;
                 padding: 4px 2px;
             }
