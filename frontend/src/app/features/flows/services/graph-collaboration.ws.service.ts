@@ -62,7 +62,8 @@ type ServerMessage =
     | NodeUnlockedMessage
     | LockStateMessage
     | SaveFailedMessage
-    | PresenceStateUpdated;
+    | PresenceStateUpdated
+    | GraphFilesChangedMessage;
 
 type PresenceStateMessage = { type: 'presence_state'; editors: EditorInfo[] };
 type UserJoinedMessage = { type: 'user_joined'; editor: EditorInfo };
@@ -124,6 +125,7 @@ export type SelectionChangedMessage = { type: 'selection_changed'; node_ids: str
 export type NodeLockedMessage = { type: 'node_locked'; node_id: string; field: string; editor: EditorInfo };
 export type NodeUnlockedMessage = { type: 'node_unlocked'; node_id: string; field: string; editor: EditorInfo };
 export type LockStateMessage = { type: 'lock_state'; locks: Record<string, Record<string, EditorInfo>> };
+export type GraphFilesChangedMessage = { type: 'graph_files_changed'; graph_id: number; editor: EditorInfo | null };
 
 export type GraphSavedMessage = {
     type: 'graph_saved';
@@ -495,6 +497,7 @@ export class GraphCollaborationWsService {
     public readonly lockedNodeFields = signal<Map<string, Map<string, EditorInfo>>>(new Map());
     public readonly currentUserId = computed(() => this.profileService.currentUserSignal()?.id ?? null);
 
+    public graphFilesChanged$ = new Subject<GraphFilesChangedMessage>();
     public graphSaved$ = new Subject<GraphSavedMessage>();
     public saveFailed$ = new Subject<SaveFailedMessage>();
     public graphState$ = new Subject<GraphStateMessage>();
@@ -644,6 +647,9 @@ export class GraphCollaborationWsService {
             case 'graph_saved':
                 this.updateEditorInfo(message.saved_by);
                 this.graphSaved$.next(message);
+                break;
+            case 'graph_files_changed':
+                this.graphFilesChanged$.next(message);
                 break;
             case 'save_failed':
                 this.saveFailed$.next(message);

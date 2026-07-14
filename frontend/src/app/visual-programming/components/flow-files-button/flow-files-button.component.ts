@@ -2,6 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
+import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import {
     SelectStorageFilesDialogComponent,
@@ -23,6 +24,7 @@ export class FlowFilesButtonComponent implements OnInit {
     readonly flowId = input.required<number>();
     readonly flowName = input.required<string>();
 
+    private wsService = inject(GraphCollaborationWsService);
     private storageApiService = inject(StorageApiService);
     private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
@@ -32,6 +34,10 @@ export class FlowFilesButtonComponent implements OnInit {
 
     ngOnInit(): void {
         this.loadAttachedFiles();
+
+        this.wsService.graphFilesChanged$
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.loadAttachedFiles());
     }
 
     openDialog(): void {
