@@ -33,5 +33,5 @@ class AbstractOrchestrator[TRequest, TResponse](abc.ABC):
     async def on_cancel(self, request: TRequest):
         pass
 
-    async def on_error(self, request: TRequest, exc: Exception):
+    async def on_error(self, request: TRequest, error: Exception):
         pass

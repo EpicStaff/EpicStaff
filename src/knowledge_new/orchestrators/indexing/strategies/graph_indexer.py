@@ -62,7 +62,7 @@ class GraphIndexer(AbstractIndexer):
                 await self.uow.graph_rag_repo.update_rag(rag)
                 await self.uow.commit()
 
-    async def on_error(self, request: IndexRequest, exc: Exception):
+    async def on_error(self, request: IndexRequest, error: Exception):
         if (rag := self.state.get("rag")) is not None:
             rag = cast(Rag, rag)
             rag.mark_as_failed()

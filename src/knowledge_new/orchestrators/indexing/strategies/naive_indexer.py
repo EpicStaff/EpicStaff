@@ -101,7 +101,7 @@ class NaiveIndexer(AbstractIndexer):
             rag.mark_as_cancelled()
             await self._update_rag(rag)
 
-    async def on_error(self, request: IndexRequest, exc: Exception):
+    async def on_error(self, request: IndexRequest, error: Exception):
         # TODO: update rag errors
         if (rag := self.state.get("rag")) is not None:
             rag = cast(Rag, rag)

@@ -52,10 +52,10 @@ class NaivePrechunker(AbstractPrechunker):
                 document.status = last_status
                 await self._update_document(request.rag_id, document)
 
-    async def on_error(self, request: PrechunkRequest, exc: Exception):
+    async def on_error(self, request: PrechunkRequest, error: Exception):
         if (document := self.state.get("document")) is not None:
             document: Document
-            error_code, error_message = IndexingErrorClassifier.classify(exc)
+            error_code, error_message = IndexingErrorClassifier.classify(error)
             document.mark_failed(error_code, error_message)
             await self._update_document(request.rag_id, document)
 
