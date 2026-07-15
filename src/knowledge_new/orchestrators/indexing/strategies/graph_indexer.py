@@ -1,9 +1,9 @@
 from dataclasses import asdict
-from typing import cast
 
 import pandas
 from errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
 from graphrag.api import build_index
+from graphrag_input import TextDocument
 from loguru import logger
 from models import IndexRequest, Rag
 from orchestrators.indexing import AbstractIndexer
@@ -12,24 +12,12 @@ from orchestrators.indexing import AbstractIndexer
 class GraphIndexer(AbstractIndexer):
     async def on_execute(self, request: IndexRequest):
         async with self.uow:
-            rag = await self.uow.graph_rag_repo.get_rag(rag_id=request.rag_id)
-            if not rag:
-                raise RagNotFoundError(rag_id=request.rag_id)
-
-            config = await self.uow.graph_rag_repo.get_config(rag_id=rag.id)
-            if not config:
-                raise GraphRagConfigNotFoundError(rag_id=rag.id)
-
-            documents = await self.uow.graph_rag_repo.get_documents(
-                rag_id=rag.id, ids=request.document_ids
-            )
-            if not documents:
-                raise DocumentNotFoundError(f"No Documents found for RAG(id={rag.id}).")
+            rag = await self._get_rag_under_uow(request.rag_id)
+            config = await self._get_config(rag.id)
+            documents = await self._get_documents_under_uow(rag.id, request.document_ids)
 
         rag.mark_as_processing(request.document_ids)
-        async with self.uow:
-            await self.uow.graph_rag_repo.update_rag(rag)
-            await self.uow.commit()
+        await self._update_rag(rag)
 
         results = await build_index(
             config=config,
@@ -46,24 +34,45 @@ class GraphIndexer(AbstractIndexer):
             )
 
         rag.mark_as_completed()
-        async with self.uow:
-            await self.uow.graph_rag_repo.update_rag(rag)
-            await self.uow.commit()
+        await self._update_rag(rag)
 
         logger.info("Finished indexing in RAG(id={}, status={}).", rag.id, rag.status.value)
 
     async def on_cancel(self, request: IndexRequest):
         if (rag := self.state.get("rag")) is not None:
-            rag = cast(Rag, rag)
+            rag: Rag
             rag.mark_as_cancelled()
-            async with self.uow:
-                await self.uow.graph_rag_repo.update_rag(rag)
-                await self.uow.commit()
+            await self._update_rag(rag)
 
     async def on_error(self, request: IndexRequest, error: Exception):
         if (rag := self.state.get("rag")) is not None:
-            rag = cast(Rag, rag)
+            rag: Rag
             rag.mark_as_failed(error)
-            async with self.uow:
-                await self.uow.graph_rag_repo.update_rag(rag)
-                await self.uow.commit()
+            await self._update_rag(rag)
+
+    async def _get_rag_under_uow(self, rag_id: int) -> Rag:
+        rag = await self.uow.naive_rag_repo.get_rag(rag_id=rag_id)
+        if rag is None:
+            raise RagNotFoundError(rag_id=rag_id)
+        self.state["rag"] = rag
+        return rag
+
+    async def _get_config(self, rag_id: int):
+        config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id)
+        if not config:
+            raise GraphRagConfigNotFoundError(rag_id=rag_id)
+        return config
+
+    async def _get_documents_under_uow(
+        self, rag_id: int, ids: frozenset[int]
+    ) -> list[TextDocument]:
+        documents = await self.uow.naive_rag_repo.get_documents(rag_id=rag_id, ids=ids)
+
+        if not documents:
+            raise DocumentNotFoundError(f"No Document found for RAG(id={rag_id}).")
+        return documents
+
+    async def _update_rag(self, rag: Rag):
+        async with self.uow:
+            await self.uow.graph_rag_repo.update_rag(rag)
+            await self.uow.commit()
