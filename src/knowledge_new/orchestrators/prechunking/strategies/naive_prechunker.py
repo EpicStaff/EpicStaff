@@ -14,9 +14,12 @@ class NaivePrechunker(AbstractPrechunker):
         self.state["document"] = document
         self.state["last_status"] = document.status
 
-        if document.status == DocumentStatusEnum.CHUNKED and not document.is_required_reindex():
+        if document.status == DocumentStatusEnum.CHUNKED and not document.has_config_changed():
             logger.debug(
-                "Reusing cached chunks for document {} in rag {}", document.id, request.rag_id
+                "Skipped re-prechunking document(id={}) in RAG(id={}): "
+                "already chunked with the same config.",
+                document.id,
+                request.rag_id,
             )
             return PrechunkResponse(
                 request=request, status=document.status, chunks=document.preview_chunks
@@ -35,7 +38,7 @@ class NaivePrechunker(AbstractPrechunker):
         await self._update_document(request.rag_id, document)
 
         logger.info(
-            "Prechunked document {} in rag {} into {} chunks",
+            "Prechunked document(id={}) of rag(id={}): produced {} chunks.",
             document.id,
             request.rag_id,
             len(preview_chunks),
@@ -55,7 +58,7 @@ class NaivePrechunker(AbstractPrechunker):
     async def on_error(self, request: PrechunkRequest, error: Exception):
         if (document := self.state.get("document")) is not None:
             document: Document
-            document.mark_failed(error)
+            document.mark_as_failed(error)
             await self._update_document(request.rag_id, document)
 
     async def _get_document(self, rag_id: int, document_id: int) -> Document:

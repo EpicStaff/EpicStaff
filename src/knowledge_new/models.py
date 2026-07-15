@@ -1,10 +1,7 @@
-from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from enums import (
     ChunkStrategyEnum,
-    DocumentErrorCode,
     DocumentStatusEnum,
     EmbedderProviderEnum,
     IndexStatusEnum,
@@ -25,7 +22,6 @@ from src.shared.models.knowledge_new import (
     SearchRequest,
     SearchResponse,
 )
-from utils import utcnow
 
 __all__ = [
     "BaseSearchConfig",
@@ -51,7 +47,7 @@ __all__ = [
 class Rag(Entity):
     status: IndexStatusEnum
     indexing_document_ids: set[int]
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     def finish_document(self, document_id: int):
         self.indexing_document_ids.discard(document_id)
@@ -73,10 +69,10 @@ class Rag(Entity):
         self.status = IndexStatusEnum.CANCELLED
         self.indexing_document_ids.clear()
 
-    def mark_as_failed(self, error: Optional[Exception] = None):
+    def mark_as_failed(self, error: Exception | None = None):
         self.status = IndexStatusEnum.FAILED
         self.indexing_document_ids.clear()
-        self.error_message = f'{type(error).__name__}: {error}'
+        self.error_message = f"{type(error).__name__}: {error}"
 
 
 class ChunkingConfig(ValueObject):
@@ -100,37 +96,42 @@ class Document(Entity):
     name: str = Field(frozen=True)
     content: bytes = Field(frozen=True)
     config: ChunkingConfig = Field(frozen=True)
-    status: DocumentStatusEnum
     last_indexing_config: ChunkingConfig | None = None
+    status: DocumentStatusEnum
     preview_chunks: list[PreviewChunk] = Field(default_factory=list)
     indexed_chunks: list[IndexedChunk] = Field(default_factory=list)
     error_message: str | None = None
-    failed_at: datetime | None = None
-    completed_at: datetime | None = None
 
     @computed_field
     def extension(self) -> str:
         return Path(self.name).suffix
 
-    def is_required_reindex(self) -> bool:
+    def has_config_changed(self) -> bool:
         return self.last_indexing_config is not None and self.config != self.last_indexing_config
 
-    def mark_completed(self) -> None:
-        self.status = DocumentStatusEnum.COMPLETED
-        self.last_indexing_config = self.config.model_copy(deep=True)
-        self.completed_at = utcnow()
-        self.clear_error()
-
-    def mark_failed(self, error: Optional[Exception] = None) -> None:
-        self.status = DocumentStatusEnum.FAILED
-        self.error_message = f'{type(error).__name__}: {error}'
-        self.failed_at = utcnow()
-        self.completed_at = None
-
-    def clear_error(self) -> None:
-        self.error_code = DocumentErrorCode.NONE
+    def mark_as_processing(self):
+        self.status = DocumentStatusEnum.PROCESSING
         self.error_message = None
-        self.failed_at = None
+
+    def mark_as_chunking(self):
+        self.status = DocumentStatusEnum.CHUNKING
+
+    def mark_as_chunked(self, chunks: list[PreviewChunk]):
+        self.status = DocumentStatusEnum.CHUNKED
+        self.preview_chunks = chunks
+
+    def mark_as_indexing(self):
+        self.status = DocumentStatusEnum.INDEXING
+
+    def mark_as_completed(self, chunks: list[IndexedChunk]):
+        self.status = DocumentStatusEnum.COMPLETED
+        self.preview_chunks = []
+        self.indexed_chunks = chunks
+        self.last_indexing_config = self.config.model_copy(deep=True)
+
+    def mark_as_failed(self, error: Exception | str):
+        self.status = DocumentStatusEnum.FAILED
+        self.error_message = str(error)
 
 
 class EmbeddingConfig(ValueObject):

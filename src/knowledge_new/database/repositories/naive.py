@@ -184,8 +184,6 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 indexed_chunk_overlap=config.chunk_overlap if config else None,
                 indexed_additional_params=config.extra if config else None,
                 error_message=document.error_message,
-                failed_at=document.failed_at,
-                completed_at=document.completed_at,
             )
         )
 
@@ -229,7 +227,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
     @staticmethod
     def _to_document(config: NaiveRagDocumentConfig) -> Document:
         metadata = config.document
-        return Document(
+        document = Document(
             id=config.naive_rag_document_id,
             name=metadata.file_name,
             content=metadata.document_content.content,
@@ -240,16 +238,6 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 extra=config.additional_params or {},
             ),
             status=config.status,
-            last_indexing_config=(
-                ChunkingConfig(
-                    chunk_strategy=config.indexed_chunk_strategy,
-                    chunk_size=config.indexed_chunk_size,
-                    chunk_overlap=config.indexed_chunk_overlap,
-                    extra=config.indexed_additional_params or {},
-                )
-                if config.indexed_chunk_size is not None
-                else None
-            ),
             preview_chunks=[
                 PreviewChunk(
                     text=pc.text,
@@ -260,6 +248,14 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 for pc in sorted(config.preview_chunks, key=lambda c: c.chunk_index)
             ],
             error_message=config.error_message,
-            failed_at=config.failed_at,
-            completed_at=config.completed_at,
         )
+
+        if config.indexed_chunk_size is not None:
+            document.last_indexing_config = ChunkingConfig(
+                chunk_strategy=config.indexed_chunk_strategy,
+                chunk_size=config.indexed_chunk_size,
+                chunk_overlap=config.indexed_chunk_overlap,
+                extra=config.indexed_additional_params or {},
+            )
+
+        return document

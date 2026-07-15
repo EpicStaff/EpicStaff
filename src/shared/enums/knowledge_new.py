@@ -20,6 +20,7 @@ class GraphSearchMethodEnum(StrEnum):
 
 class DocumentStatusEnum(StrEnum):
     NEW = "new"
+    PROCESSING = "processing"
     CHUNKING = "chunking"
     CHUNKED = "chunked"
     INDEXING = "indexing"

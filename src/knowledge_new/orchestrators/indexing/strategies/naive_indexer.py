@@ -30,16 +30,24 @@ class NaiveIndexer(AbstractIndexer):
         for document in documents:
             if (
                 document.status == DocumentStatusEnum.COMPLETED
-                and not document.is_required_reindex()
+                and not document.has_config_changed()
             ):
-                logger.debug("Document {} already indexed in rag {}, skipping", document.id, rag.id)
+                logger.debug(
+                    "Skipped indexing document(id={}) in RAG(id={}): "
+                    "already indexed with the same config.",
+                    document.id,
+                    rag.id,
+                )
                 rag.finish_document(document.id)
                 await self._update_rag(rag)
                 continue
 
+            document.mark_as_processing()
+            await self._update_document(rag.id, document)
+
             try:
-                if not document.preview_chunks or document.is_required_reindex():
-                    document.status = DocumentStatusEnum.CHUNKING
+                if not document.preview_chunks or document.has_config_changed():
+                    document.mark_as_chunking()
                     await self._update_document(rag.id, document)
 
                     extractor = build_file_text_extractor(document.extension)
@@ -52,12 +60,10 @@ class NaiveIndexer(AbstractIndexer):
                             document_id=document.id,
                             rag_id=rag.id,
                         )
-                    document.preview_chunks = preview_chunks
-
-                    document.status = DocumentStatusEnum.CHUNKED
+                    document.mark_as_chunked(preview_chunks)
                     await self._update_document(rag.id, document)
 
-                document.status = DocumentStatusEnum.INDEXING
+                document.mark_as_indexing()
                 await self._update_document(rag.id, document)
                 # TODO: embed batch of chunks instead of one per time.
                 indexed_chunks = [
@@ -69,21 +75,22 @@ class NaiveIndexer(AbstractIndexer):
                 ]  # fmt: skip
                 if not indexed_chunks:
                     raise ChunksNotIndexedError(document_id=document.id, rag_id=rag.id)
-                document.indexed_chunks = indexed_chunks
 
             except RepositoryError:
                 raise
 
             except Exception as e:
-                document.mark_failed(e)
+                document.mark_as_failed(e)
                 logger.exception(
-                    "Failed to index document {} in rag {}: {}", document.id, rag.id, e
+                    "Failed indexing document(id={}) in RAG(id={}): {}",
+                    document.id,
+                    rag.id,
+                    e,
                 )
-
             else:
-                document.mark_completed()
-                logger.info(
-                    "Indexed document {} in rag {} ({} chunks)",
+                document.mark_as_completed(indexed_chunks)
+                logger.debug(
+                    "Indexed document(id={}) in RAG(id={}): produced {} chunks.",
                     document.id,
                     rag.id,
                     len(document.indexed_chunks),
