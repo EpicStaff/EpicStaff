@@ -11,6 +11,7 @@
             />
             @if (selectedConfigId()) {
                 <app-svg-icon
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
                     class="default-llms-card__close-icon"
                     size="1.25rem"
                     icon="close"
