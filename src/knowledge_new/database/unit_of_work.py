@@ -2,7 +2,8 @@ import abc
 from contextlib import AbstractAsyncContextManager
 
 from database.config import SessionLocal
-from database.repositories.base import AbstractNaiveRagRepository
+from database.repositories.base import AbstractGraphRagRepository, AbstractNaiveRagRepository
+from database.repositories.graph import GraphRagSQLAlchemyRepository
 from database.repositories.naive import NaiveRagSQLAlchemyRepository
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -28,12 +29,18 @@ class AbstractUnitOfWork(AbstractAsyncContextManager, abc.ABC):
     def naive_rag_repo(self) -> AbstractNaiveRagRepository:
         """Active `AbstractNaiveRagRepository` for this unit of work."""
 
+    @property
+    @abc.abstractmethod
+    def graph_rag_repo(self) -> AbstractGraphRagRepository:
+        """Active `AbstractGraphRagRepository` for this unit of work."""
+
 
 class SQLAlchemyUnitOfWork(AbstractUnitOfWork):
     def __init__(self, session_factory: async_sessionmaker = SessionLocal):
         self._session_factory = session_factory
         self._session = None
         self._naive_rag_repo = None
+        self._graph_rag_repo = None
 
     async def __aenter__(self):
         self._session = self._session_factory()
@@ -44,6 +51,7 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork):
         await self.session.close()
         self._session = None
         self._naive_rag_repo = None
+        self._graph_rag_repo = None
 
     async def rollback(self):
         await self.session.rollback()
@@ -58,7 +66,13 @@ class SQLAlchemyUnitOfWork(AbstractUnitOfWork):
         return self._session
 
     @property
-    def naive_rag_repo(self) -> NaiveRagSQLAlchemyRepository:
+    def naive_rag_repo(self) -> AbstractNaiveRagRepository:
         if self._naive_rag_repo is None:
             self._naive_rag_repo = NaiveRagSQLAlchemyRepository(self.session)
         return self._naive_rag_repo
+
+    @property
+    def graph_rag_repo(self) -> AbstractGraphRagRepository:
+        if self._graph_rag_repo is None:
+            self._graph_rag_repo = GraphRagSQLAlchemyRepository(self.session)
+        return self._graph_rag_repo

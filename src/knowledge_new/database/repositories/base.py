@@ -4,6 +4,8 @@ import inspect
 from collections.abc import Awaitable, Callable
 
 from errors import RepositoryError
+from graphrag.config.models.graph_rag_config import GraphRagConfig
+from graphrag_input import TextDocument
 from models import Document, EmbeddingConfig, FoundChunk, IndexedChunk, PreviewChunk, Rag
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +26,7 @@ class RepositoryErrorWrapper:
             except RepositoryError:
                 raise
             except Exception as e:
-                raise RepositoryError(function=func) from e
+                raise RepositoryError(function=func.__qualname__) from e
 
         return wrap
 
@@ -139,4 +141,39 @@ class AbstractNaiveRagRepository(RepositoryErrorWrapper, abc.ABC):
             vector: Query embedding to compare against stored chunk embeddings.
             limit: Maximum number of chunks to return.
             similarity_threshold: Maximum distance threshold for a chunk to be included.
+        """
+
+
+class AbstractGraphRagRepository(RepositoryErrorWrapper, abc.ABC):
+    @abc.abstractmethod
+    async def get_rag(self, rag_id: int) -> Rag | None:
+        """Return the `Rag` aggregate identified by `rag_id`, or `None` if not found.
+
+        Args:
+            rag_id: Primary key of the RAG collection.
+        """
+
+    @abc.abstractmethod
+    async def update_rag(self, rag: Rag):
+        """Persist `rag`'s current status and `indexing_document_ids`.
+
+        Args:
+            rag: The `Rag` aggregate.
+        """
+
+    @abc.abstractmethod
+    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[TextDocument]:
+        """Return `TextDocument` objects for the given `ids` within `rag_id`, with text extracted from raw content.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
+            ids: Primary keys of the documents to retrieve.
+        """
+
+    @abc.abstractmethod
+    async def get_config(self, rag_id: int) -> GraphRagConfig:
+        """Return a fully-populated `GraphRagConfig` assembled from the DB records for `rag_id`.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
         """
