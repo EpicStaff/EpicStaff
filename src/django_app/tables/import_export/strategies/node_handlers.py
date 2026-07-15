@@ -9,6 +9,17 @@ from tables.models import (
     DecisionTableNode,
     SubGraphNode,
     ClassificationDecisionTableNode,
+    TaskNode,
+    AgentNode,
+    AgentNodeTask,
+)
+from agents.models import (
+    InlineSurface,
+    InlineSurfacePythonTool,
+    InlineSurfaceMcpTool,
+    AgentInlineSurface,
+    AgentInlineSurfacePythonTool,
+    AgentInlineSurfaceMcpTool,
 )
 from tables.models.graph_models import (
     GraphNote,
@@ -38,6 +49,8 @@ from tables.import_export.serializers.graph import (
     ScheduleTriggerNodeImportSerializer,
     ClassificationDecisionTableNodeImportSerializer,
     ClassificationConditionGroupImportSerializer,
+    TaskNodeImportSerializer,
+    AgentNodeImportSerializer,
 )
 
 
@@ -227,6 +240,154 @@ def import_subgraph_node(
     return serializer.save()
 
 
+def _create_inline_surface(
+    surface_model,
+    owner_kwargs: dict,
+    python_tool_model,
+    mcp_tool_model,
+    tool_fk_name: str,
+    inline_surface_data: dict | None,
+    id_mapper: IDMapper,
+) -> None:
+    if not inline_surface_data:
+        return
+
+    inline_surface = surface_model.objects.create(
+        instructions=inline_surface_data.get("instructions", ""),
+        **owner_kwargs,
+    )
+
+    tools = inline_surface_data.get("tools", {})
+
+    python_rows = []
+    for entry in tools.get(EntityType.PYTHON_CODE_TOOL, []):
+        new_id = id_mapper.get_or_none(
+            EntityType.PYTHON_CODE_TOOL, entry["python_tool_id"]
+        )
+        if new_id is None:
+            continue
+
+        python_rows.append(
+            python_tool_model(
+                **{tool_fk_name: inline_surface},
+                python_tool_id=new_id,
+                mode=entry["mode"],
+            )
+        )
+
+    python_tool_model.objects.bulk_create(python_rows, ignore_conflicts=True)
+
+    mcp_rows = []
+    for entry in tools.get(EntityType.MCP_TOOL, []):
+        new_id = id_mapper.get_or_none(EntityType.MCP_TOOL, entry["mcp_tool_id"])
+        if new_id is None:
+            continue
+
+        mcp_rows.append(
+            mcp_tool_model(
+                **{tool_fk_name: inline_surface},
+                mcp_tool_id=new_id,
+                mode=entry["mode"],
+            )
+        )
+
+    mcp_tool_model.objects.bulk_create(mcp_rows, ignore_conflicts=True)
+
+
+def _assign_node_surface_list(node, surface_ids: list, id_mapper: IDMapper) -> None:
+    new_ids = []
+
+    for old_id in surface_ids:
+        new_id = id_mapper.get_or_none(EntityType.SURFACE, old_id)
+        if new_id is not None:
+            new_ids.append(new_id)
+
+    node.surface_list.set(new_ids)
+
+
+def _create_agent_node_tasks(agent_node: AgentNode, tasks_data: list) -> None:
+    old_to_new = {}
+
+    for task_data in tasks_data:
+        new_task = AgentNodeTask.objects.create(
+            agent_node=agent_node,
+            name=task_data["name"],
+            order=task_data["order"],
+            instructions=task_data.get("instructions", ""),
+            output_schema=task_data.get("output_schema", {}),
+        )
+        old_to_new[task_data.get("id")] = new_task
+
+    for task_data in tasks_data:
+        new_task = old_to_new.get(task_data.get("id"))
+        if new_task is None:
+            continue
+
+        context_tasks = [
+            old_to_new[old_context_id]
+            for old_context_id in task_data.get("context_tasks", [])
+            if old_context_id in old_to_new
+        ]
+        if context_tasks:
+            new_task.context_tasks.set(context_tasks)
+
+
+def import_task_node(graph: Graph, node_data: dict, id_mapper: IDMapper) -> TaskNode:
+    surface_ids = node_data.pop("surface_list", [])
+    inline_surface_data = node_data.pop("inline_surface", None)
+    old_agent_definition_id = node_data.pop("agent_definition", None)
+
+    node_data["agent_definition"] = id_mapper.get_or_none(
+        EntityType.AGENT_DEFINITION, old_agent_definition_id
+    )
+
+    serializer = TaskNodeImportSerializer(data={**node_data, "graph": graph.id})
+    serializer.is_valid(raise_exception=True)
+    task_node = serializer.save()
+
+    _assign_node_surface_list(task_node, surface_ids, id_mapper)
+    _create_inline_surface(
+        InlineSurface,
+        {"task_node": task_node},
+        InlineSurfacePythonTool,
+        InlineSurfaceMcpTool,
+        "inline_surface",
+        inline_surface_data,
+        id_mapper,
+    )
+
+    return task_node
+
+
+def import_agent_node(graph: Graph, node_data: dict, id_mapper: IDMapper) -> AgentNode:
+    surface_ids = node_data.pop("surface_list", [])
+    inline_surface_data = node_data.pop("inline_surface", None)
+    tasks_data = node_data.pop("tasks", [])
+    old_agent_definition_id = node_data.pop("agent_definition", None)
+
+    node_data["agent_definition"] = id_mapper.get_or_none(
+        EntityType.AGENT_DEFINITION, old_agent_definition_id
+    )
+
+    serializer = AgentNodeImportSerializer(data={**node_data, "graph": graph.id})
+    serializer.is_valid(raise_exception=True)
+    agent_node = serializer.save()
+
+    _assign_node_surface_list(agent_node, surface_ids, id_mapper)
+    _create_inline_surface(
+        AgentInlineSurface,
+        {"agent_node": agent_node},
+        AgentInlineSurfacePythonTool,
+        AgentInlineSurfaceMcpTool,
+        "agent_inline_surface",
+        inline_surface_data,
+        id_mapper,
+    )
+    _create_agent_node_tasks(agent_node, tasks_data)
+
+    return agent_node
+
+
 NODE_HANDLERS = {
     NodeType.CREW_NODE: {
         "serializer": CrewNodeImportSerializer,
@@ -292,5 +453,15 @@ NODE_HANDLERS = {
     NodeType.SCHEDULE_TRIGGER_NODE: {
         "serializer": ScheduleTriggerNodeImportSerializer,
         "relation": "schedule_trigger_node_list",
+    },
+    NodeType.AGENT_NODE: {
+        "serializer": AgentNodeImportSerializer,
+        "relation": "agent_node_list",
+        "import_hook": import_agent_node,
+    },
+    NodeType.TASK_NODE: {
+        "serializer": TaskNodeImportSerializer,
+        "relation": "task_node_list",
+        "import_hook": import_task_node,
     },
 }

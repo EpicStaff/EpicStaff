@@ -41,6 +41,8 @@ class TablesConfig(AppConfig):
             tags,
             session,
             label,
+            surface,
+            agent_definition,
         )
 
         if "runserver" in sys.argv:
@@ -80,6 +82,8 @@ class TablesConfig(AppConfig):
         entity_registry.register(python_tools.PythonCodeToolStrategy())
         entity_registry.register(mcp_tools.McpToolStrategy())
         entity_registry.register(agent.AgentStrategy())
+        entity_registry.register(surface.SurfaceStrategy())
+        entity_registry.register(agent_definition.AgentDefinitionStrategy())
         entity_registry.register(crew.CrewStrategy())
         entity_registry.register(graph.GraphStrategy())
         entity_registry.register(session.SessionStrategy())

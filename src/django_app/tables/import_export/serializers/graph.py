@@ -1,3 +1,4 @@
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 
 from tables.models import (
@@ -21,6 +22,8 @@ from tables.models import (
     SubGraphNode,
     ClassificationDecisionTableNode,
     ClassificationConditionGroup,
+    TaskNode,
+    AgentNode,
 )
 from tables.models.graph_models import (
     CodeAgentNode,
@@ -28,7 +31,22 @@ from tables.models.graph_models import (
     ScheduleTriggerNode,
     ClassificationDecisionTablePrompt,
 )
+from tables.import_export.enums import EntityType
 from tables.import_export.serializers.python_tools import PythonCodeImportSerializer
+
+
+def _serialize_inline_surface(inline_surface):
+    return {
+        "instructions": inline_surface.instructions,
+        "tools": {
+            EntityType.PYTHON_CODE_TOOL: list(
+                inline_surface.python_tools.values("python_tool_id", "mode")
+            ),
+            EntityType.MCP_TOOL: list(
+                inline_surface.mcp_tools.values("mcp_tool_id", "mode")
+            ),
+        },
+    }
 
 
 class BaseNodeImportSerializer(serializers.ModelSerializer):
@@ -228,6 +246,52 @@ class GraphNoteImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = GraphNote
         exclude = ["created_at", "updated_at"]
+
+
+class TaskNodeImportSerializer(BaseNodeImportSerializer):
+    class Meta(BaseNodeImportSerializer.Meta):
+        model = TaskNode
+        exclude = ["created_at", "updated_at", "surface_list"]
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret["surface_list"] = list(instance.surface_list.values_list("id", flat=True))
+
+        try:
+            ret["inline_surface"] = _serialize_inline_surface(instance.inline_surface)
+        except ObjectDoesNotExist:
+            ret["inline_surface"] = None
+
+        return ret
+
+
+class AgentNodeImportSerializer(BaseNodeImportSerializer):
+    class Meta(BaseNodeImportSerializer.Meta):
+        model = AgentNode
+        exclude = ["created_at", "updated_at", "surface_list"]
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret["surface_list"] = list(instance.surface_list.values_list("id", flat=True))
+
+        try:
+            ret["inline_surface"] = _serialize_inline_surface(instance.inline_surface)
+        except ObjectDoesNotExist:
+            ret["inline_surface"] = None
+
+        ret["tasks"] = [
+            {
+                "id": task.id,
+                "name": task.name,
+                "order": task.order,
+                "instructions": task.instructions,
+                "output_schema": task.output_schema,
+                "context_tasks": list(task.context_tasks.values_list("id", flat=True)),
+            }
+            for task in instance.tasks.all()
+        ]
+
+        return ret
 
 
 class EdgeImportSerializer(serializers.ModelSerializer):
