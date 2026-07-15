@@ -19,6 +19,8 @@ class EntityType(str, Enum):
     GRAPH = "Flow"
     SESSION = "Session"
     LABEL = "Label"
+    AGENT_DEFINITION = "AgentDefinition"
+    SURFACE = "Surface"
 
     AGENT_TAG = "AgentTag"
     CREW_TAG = "CrewTag"
