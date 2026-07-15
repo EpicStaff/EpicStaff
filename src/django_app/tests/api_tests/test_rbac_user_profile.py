@@ -25,7 +25,6 @@ from rest_framework_simplejwt.token_blacklist.models import (
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from tables.models.rbac_models import (
-    ApiKey,
     Organization,
     OrganizationUser,
     Role,
@@ -120,12 +119,9 @@ def tmp_media_root(settings, tmp_path):
 
 
 @pytest.fixture
-def env_api_key_credentials(db):
+def env_api_key_credentials(issue_api_key):
     """X-Api-Key header value for an env-seeded ApiKey (created_by=None)."""
-    raw = ApiKey.generate_raw_key()
-    key = ApiKey(name="env-seeded-test", created_by=None)
-    key.set_key(raw)
-    key.save()
+    raw, _ = issue_api_key(user=None)
     return raw
 
 
