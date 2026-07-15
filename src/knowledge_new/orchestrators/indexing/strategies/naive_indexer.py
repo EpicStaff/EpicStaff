@@ -75,10 +75,9 @@ class NaiveIndexer(AbstractIndexer):
                 raise
 
             except Exception as e:
-                error_code, error_message = IndexingErrorClassifier.classify(e)
-                document.mark_failed(error_code, error_message)
+                document.mark_failed(e)
                 logger.exception(
-                    "Failed to index document {} in rag {}: {}", document.id, rag.id, error_message
+                    "Failed to index document {} in rag {}: {}", document.id, rag.id, e
                 )
 
             else:

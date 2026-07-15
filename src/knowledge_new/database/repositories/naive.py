@@ -181,7 +181,6 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 indexed_chunk_size=config.chunk_size if config else None,
                 indexed_chunk_overlap=config.chunk_overlap if config else None,
                 indexed_additional_params=config.extra if config else None,
-                error_code=document.error_code,
                 error_message=document.error_message,
                 failed_at=document.failed_at,
                 completed_at=document.completed_at,
@@ -258,7 +257,6 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 )
                 for pc in sorted(config.preview_chunks, key=lambda c: c.chunk_index)
             ],
-            error_code=config.error_code,
             error_message=config.error_message,
             failed_at=config.failed_at,
             completed_at=config.completed_at,
