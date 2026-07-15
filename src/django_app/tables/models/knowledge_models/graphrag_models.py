@@ -1,6 +1,6 @@
+from django.contrib.postgres.fields import ArrayField
 from django.db import models
-from ..crew_models import Task
-
+from django.db.models import PositiveIntegerField
 
 from ..embedding_models import EmbeddingConfig
 from ..llm_models import LLMConfig
@@ -61,6 +61,12 @@ class GraphRag(models.Model):
         default=GraphRagStatus.NEW,
     )
     error_message = models.TextField(null=True, blank=True)
+
+    indexing_document_config_ids = ArrayField(
+        base_field=PositiveIntegerField(),
+        default=list,
+        blank=True,
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

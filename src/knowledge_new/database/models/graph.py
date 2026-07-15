@@ -1,5 +1,6 @@
 from database.config import BaseModel
 from sqlalchemy import (
+    ARRAY,
     JSON,
     Boolean,
     Column,
@@ -99,6 +100,7 @@ class GraphRag(BaseModel):
     graph_rag_id = Column(Integer, primary_key=True, autoincrement=True)
     rag_status = Column(String(20), default="new")
     error_message = Column(Text, nullable=True)
+    indexing_document_config_ids = Column(ARRAY(Integer), nullable=False, server_default="{}")
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     indexed_at = Column(DateTime, nullable=True)
