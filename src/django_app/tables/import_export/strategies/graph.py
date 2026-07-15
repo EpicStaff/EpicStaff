@@ -1,7 +1,17 @@
 import uuid
 from copy import deepcopy
 
-from tables.models import Graph, Crew, Organization, GraphOrganization
+from tables.models import (
+    Graph,
+    Crew,
+    Organization,
+    GraphOrganization,
+    Surface,
+    InlineSurfacePythonTool,
+    InlineSurfaceMcpTool,
+    AgentInlineSurfacePythonTool,
+    AgentInlineSurfaceMcpTool,
+)
 from tables.models.label_models import Label
 from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.serializers.model_serializers import CrewSerializer
@@ -66,6 +76,50 @@ class GraphStrategy(EntityImportExportStrategy):
             ).values_list("llm_config_id", flat=True)
         )
         deps[EntityType.LLM_CONFIG].discard(None)
+
+        deps[EntityType.AGENT_DEFINITION] = set(
+            instance.agent_node_list.values_list("agent_definition_id", flat=True)
+        ) | set(instance.task_node_list.values_list("agent_definition_id", flat=True))
+        deps[EntityType.AGENT_DEFINITION].discard(None)
+
+        deps[EntityType.SURFACE] = set(
+            Surface.objects.filter(agent_nodes__graph=instance).values_list(
+                "id", flat=True
+            )
+        ) | set(
+            Surface.objects.filter(task_nodes__graph=instance).values_list(
+                "id", flat=True
+            )
+        )
+
+        deps[EntityType.PYTHON_CODE_TOOL] = (
+            deps.get(EntityType.PYTHON_CODE_TOOL, set())
+            | set(
+                InlineSurfacePythonTool.objects.filter(
+                    inline_surface__task_node__graph=instance
+                ).values_list("python_tool_id", flat=True)
+            )
+            | set(
+                AgentInlineSurfacePythonTool.objects.filter(
+                    agent_inline_surface__agent_node__graph=instance
+                ).values_list("python_tool_id", flat=True)
+            )
+        )
+
+        deps[EntityType.MCP_TOOL] = (
+            deps.get(EntityType.MCP_TOOL, set())
+            | set(
+                InlineSurfaceMcpTool.objects.filter(
+                    inline_surface__task_node__graph=instance
+                ).values_list("mcp_tool_id", flat=True)
+            )
+            | set(
+                AgentInlineSurfaceMcpTool.objects.filter(
+                    agent_inline_surface__agent_node__graph=instance
+                ).values_list("mcp_tool_id", flat=True)
+            )
+        )
+
         return deps
 
     def export_entity(self, instance: Graph) -> dict:

@@ -45,3 +45,5 @@ class NodeType(str, Enum):
     NOTE_NODE = "GraphNote"
     CODE_AGENT_NODE = "CodeAgentNode"
     SCHEDULE_TRIGGER_NODE = "ScheduleTriggerNode"
+    AGENT_NODE = "AgentNode"
+    TASK_NODE = "TaskNode"
