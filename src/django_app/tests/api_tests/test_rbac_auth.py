@@ -1129,7 +1129,7 @@ def test_bootstrap_creates_flagged_default_org_on_empty_db():
         name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True
     ).exists()
     result = SuperadminBootstrap().provision(
-        email="a@example.com", password="StrongPass123!", api_key_name="k1"
+        email="a@example.com", password="StrongPass123!"
     )
     assert result.organization.is_default is True
     assert result.default_org_created is True
@@ -1142,7 +1142,7 @@ def test_bootstrap_reuses_flagged_org_regardless_of_name():
     # name-based resolver would create a second "Organization" row.
     flagged = Organization.objects.create(name="Renamed Co", is_default=True)
     result = SuperadminBootstrap().provision(
-        email="a@example.com", password="StrongPass123!", api_key_name="k1"
+        email="a@example.com", password="StrongPass123!"
     )
     assert result.organization.id == flagged.id
     assert result.default_org_created is False
@@ -1155,7 +1155,7 @@ def test_bootstrap_self_heals_unflagged_name_matched_org():
     # Org exists by configured name but predates the flag.
     legacy = Organization.objects.create(name="Acme", is_default=False)
     result = SuperadminBootstrap().provision(
-        email="a@example.com", password="StrongPass123!", api_key_name="k1"
+        email="a@example.com", password="StrongPass123!"
     )
     legacy.refresh_from_db()
     assert result.organization.id == legacy.id
@@ -1166,7 +1166,7 @@ def test_bootstrap_self_heals_unflagged_name_matched_org():
 @pytest.mark.django_db
 def test_reset_user_after_rename_reuses_org_no_duplicate():
     SuperadminBootstrap().provision(
-        email="first@example.com", password="StrongPass123!", api_key_name="k1"
+        email="first@example.com", password="StrongPass123!"
     )
     org = Organization.objects.get(is_default=True)
     org.name = "Renamed Co"
