@@ -2,7 +2,6 @@ from dataclasses import asdict
 from typing import cast
 
 import pandas
-from enums import IndexStatusEnum
 from errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
 from graphrag.api import build_index
 from loguru import logger
@@ -46,13 +45,12 @@ class GraphIndexer(AbstractIndexer):
                 list(errors.values()),
             )
 
-        rag.status = IndexStatusEnum.COMPLETED
-        rag.indexing_document_ids.clear()
+        rag.mark_as_completed()
         async with self.uow:
             await self.uow.graph_rag_repo.update_rag(rag)
             await self.uow.commit()
 
-        logger.success("RAG(id={}) indexed successfully.", rag.id)
+        logger.info("Finished indexing in RAG(id={}, status={}).", rag.id, rag.status.value)
 
     async def on_cancel(self, request: IndexRequest):
         if (rag := self.state.get("rag")) is not None:

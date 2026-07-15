@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from pathlib import Path
 
 from enums import (
@@ -52,27 +53,28 @@ class Rag(Entity):
     def finish_document(self, document_id: int):
         self.indexing_document_ids.discard(document_id)
 
-    def finish(self, has_completed_document: bool, has_failed_document: bool):
-        if not has_completed_document:
-            self.status = IndexStatusEnum.FAILED
-        elif has_failed_document:
-            self.status = IndexStatusEnum.WARNING
-        else:
-            self.status = IndexStatusEnum.COMPLETED
-        self.indexing_document_ids.clear()
-
-    def mark_as_processing(self, document_ids: frozenset[int]):
+    def mark_as_processing(self, document_ids: Iterable[int]):
         self.status = IndexStatusEnum.PROCESSING
         self.indexing_document_ids.update(document_ids)
+        self.error_message = None
+
+    def mark_as_completed(self):
+        self.status = IndexStatusEnum.COMPLETED
+        self.indexing_document_ids.clear()
+
+    def mark_as_failed(self, error: Exception | str):
+        self.status = IndexStatusEnum.COMPLETED
+        self.error_message = str(error)
+        self.indexing_document_ids.clear()
+
+    def mark_as_warning(self):
+        self.status = IndexStatusEnum.WARNING
+        self.indexing_document_ids.clear()
 
     def mark_as_cancelled(self):
         self.status = IndexStatusEnum.CANCELLED
         self.indexing_document_ids.clear()
-
-    def mark_as_failed(self, error: Exception | None = None):
-        self.status = IndexStatusEnum.FAILED
-        self.indexing_document_ids.clear()
-        self.error_message = f"{type(error).__name__}: {error}"
+        self.error_message = None
 
 
 class ChunkingConfig(ValueObject):

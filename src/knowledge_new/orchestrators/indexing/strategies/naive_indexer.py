@@ -99,6 +99,7 @@ class NaiveIndexer(AbstractIndexer):
             await self._finish_document(rag, document)
 
         await self._finish_rag(rag)
+        logger.info("Finished indexing in RAG(id={}, status={})", rag.id, rag.status.value)
 
     async def on_cancel(self, request: IndexRequest):
         if (rag := self.state.get("rag")) is not None:
@@ -160,12 +161,13 @@ class NaiveIndexer(AbstractIndexer):
                 rag_id=rag.id
             )
             has_failed_document = await self.uow.naive_rag_repo.has_failed_document(rag_id=rag.id)
-            rag.finish(has_completed_document, has_failed_document)
-            logger.info(
-                "Rag {} indexing finished: has_completed={}, has_failed={}",
-                rag.id,
-                has_completed_document,
-                has_failed_document,
-            )
+
+            if not has_completed_document:
+                rag.mark_as_failed("Failed to indexing all documents.")
+            elif has_failed_document:
+                rag.mark_as_warning()
+            else:
+                rag.mark_as_completed()
+
             await self.uow.naive_rag_repo.update_rag(rag=rag)
             await self.uow.commit()
