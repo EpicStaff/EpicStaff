@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from enums import (
     ChunkStrategyEnum,
@@ -8,7 +9,7 @@ from enums import (
     EmbedderProviderEnum,
     IndexStatusEnum,
 )
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import Field, computed_field
 from src.shared.models.base import Entity, ValueObject
 from src.shared.models.knowledge_new import (
     BaseSearchConfig,
@@ -101,7 +102,6 @@ class Document(Entity):
     last_indexing_config: ChunkingConfig | None = None
     preview_chunks: list[PreviewChunk] = Field(default_factory=list)
     indexed_chunks: list[IndexedChunk] = Field(default_factory=list)
-    error_code: DocumentErrorCode = DocumentErrorCode.NONE
     error_message: str | None = None
     failed_at: datetime | None = None
     completed_at: datetime | None = None
@@ -119,10 +119,9 @@ class Document(Entity):
         self.completed_at = utcnow()
         self.clear_error()
 
-    def mark_failed(self, error_code: DocumentErrorCode, error_message: str) -> None:
+    def mark_failed(self, error: Optional[Exception] = None) -> None:
         self.status = DocumentStatusEnum.FAILED
-        self.error_code = error_code
-        self.error_message = error_message
+        self.error_message = f'{type(error).__name__}: {error}'
         self.failed_at = utcnow()
         self.completed_at = None
 

@@ -15,7 +15,6 @@ from orchestrators.indexing import AbstractIndexer
 from services.chunkers import build_chunker
 from services.embedders import AbstractEmbedder, build_embedder
 from services.file_text_extractors import build_file_text_extractor
-from services.indexing_error_classifier import IndexingErrorClassifier
 
 
 class NaiveIndexer(AbstractIndexer):
