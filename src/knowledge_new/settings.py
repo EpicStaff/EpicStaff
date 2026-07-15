@@ -44,6 +44,8 @@ class MainSettings(BaseSettings):
     INDEX_REQUEST_CHANNEL: str
     CANCEL_REQUEST_CHANNEL: str
 
+    GRAPHRAG_ROOT: Path = BASE_DIR / 'graph_data'
+
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / "../.env",
         env_prefix="KNOWLEDGE_",
