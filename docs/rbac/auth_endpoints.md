@@ -20,14 +20,20 @@ Base URL in examples: `http://localhost:8000`.
 | POST | `/api/auth/logout/` | Bearer JWT | Blacklist the caller's refresh token |
 | POST | `/api/auth/sse-ticket/` | Bearer JWT | Issue a single-use SSE ticket (30-second TTL) |
 | ~~GET~~ | ~~`/api/auth/me/`~~ | — | **REMOVED in Story 6** → use `GET /api/profile/`, see [user_profile.md](user_profile.md) |
-| POST | `/api/auth/introspect/` | ApiKey | Validate a JWT, return claims |
-| GET | `/api/auth/api-key/validate/` | ApiKey | Metadata about the calling key |
+| POST | `/api/auth/introspect/` | System ApiKey | Validate a JWT, return claims |
+| GET | `/api/auth/api-key/validate/` | ApiKey (any) | Metadata about the calling key |
 | POST | `/api/auth/swagger-token/` | public (throttled) | OAuth2 password flow for Swagger |
-| POST | `/api/auth/reset-user/` | Bearer JWT or ApiKey | Destructive: wipe users+keys, recreate superadmin |
+| POST | `/api/auth/reset-user/` | Bearer JWT or ApiKey (superadmin) | Destructive: wipe users+keys, recreate superadmin — response has no `api_key` |
 | POST | `/api/auth/password-reset/request/` | public (throttled) | Start password-recovery flow — see [password_recovery.md](password_recovery.md) |
 | POST | `/api/auth/password-reset/confirm/` | public | Consume reset token + set new password |
 | ~~POST~~ | ~~`/api/auth/password-change/`~~ | — | **REMOVED in Story 6** → use two-step `/api/profile/password-change/{request,confirm}/`, see [user_profile.md](user_profile.md) § "Two-step password change" |
 | POST | `/api/auth/admin/password-reset/` | Bearer JWT (superadmin) | Superadmin resets another user's password |
+| GET, POST | `/api/profile/api-keys/` | Bearer JWT only | List / create my own API keys — see [api_keys.md](api_keys.md) |
+| DELETE | `/api/profile/api-keys/{id}/` | Bearer JWT only | Hard-delete one of my own API keys |
+| POST | `/api/profile/api-keys/{id}/revoke/` | Bearer JWT only | Revoke one of my own API keys (kept for audit) |
+| GET | `/api/api-keys/` | Bearer JWT + SECRETS:READ | List API keys of active-org members |
+| DELETE | `/api/api-keys/{id}/` | Bearer JWT + SECRETS:DELETE | Hard-delete a member's API key |
+| POST | `/api/api-keys/{id}/revoke/` | Bearer JWT + SECRETS:UPDATE | Revoke a member's API key |
 
 **Login/Swagger-token throttle:** `LOGIN_THROTTLE_RATE` env (default `5/min`), bucketed per `<ip>|<email>`. 6th attempt inside the window returns `429` with `Retry-After`.
 
@@ -39,7 +45,9 @@ Base URL in examples: `http://localhost:8000`.
 
 ## Authentication schemes
 
-Two authentication backends are composed in `JwtOrApiKeyAuthentication`:
+Two authentication backends are declared per-view (in whatever order the
+view lists them) as `authentication_classes = [JwtAuthentication,
+ApiKeyAuthentication]`:
 
 ### JWT (primary for end users)
 
@@ -53,12 +61,20 @@ Two authentication backends are composed in `JwtOrApiKeyAuthentication`:
 
 - Header (preferred): `X-Api-Key: <raw_key>`
 - Header (alt):       `Authorization: ApiKey <raw_key>`
-- The backend resolves `request.user` to the key's `created_by` owner, and
-  `request.auth` to the `ApiKey` instance.
-- If `created_by` is `NULL` (env-seeded system key), `request.user` becomes
-  `AnonymousUser`. This **fails `IsAuthenticated`** on every DRF endpoint
-  using the default permission class. Make sure every key you need to use
-  interactively has an owner (see "API keys" section below).
+- `request.auth` is always the resolved `ApiKey` instance, so downstream
+  code can check `isinstance(request.auth, ApiKey)` to detect a key caller.
+- `request.user` depends on the key's `key_type` (see
+  [api_keys.md](api_keys.md) for the full model):
+  - **USER** key → `request.user` is the key's `created_by` owner. Behaves
+    exactly like that user would with a JWT — same RBAC permissions per
+    `X-Organization-Id`.
+  - **SYSTEM** key (the singleton seeded from `DJANGO_API_KEY`) →
+    `request.user` is a synthetic `SystemServicePrincipal`
+    (`is_authenticated=True`, `is_superadmin=True`, no `email`/`pk`). It
+    passes `IsAuthenticated` and any superadmin gate, but user-context
+    endpoints such as `GET /api/profile/` and `POST
+    /api/auth/sse-ticket/` reject it with `403` because it has no user
+    identity.
 
 ### Unauthenticated 401
 
@@ -213,29 +229,29 @@ Behavior matrix:
 
 ### System API key (`DJANGO_API_KEY`)
 
-`entrypoint.sh` seeds a system-wide ApiKey from `DJANGO_API_KEY` and
-round-trips `check_key()` to prove the raw value actually authenticates
-against what's stored.
+`entrypoint.sh` runs `python manage.py seed_system_api_key` on every
+container start, which seeds/rotates the singleton `SYSTEM`-type `ApiKey`
+row from the `DJANGO_API_KEY` env var.
 
 | Env var | Required | Default | Notes |
 |---|---|---|---|
-| `DJANGO_API_KEY` | optional | unset | Raw key value. If unset, the seeding block is skipped entirely. |
-| `DJANGO_API_KEY_NAME` | optional | `system` | Display name for the created ApiKey row. |
+| `DJANGO_API_KEY` | optional | unset | Raw key value. If unset, the command logs a warning and skips seeding entirely — no system key exists, and internal services (realtime) cannot authenticate. |
 
-Behavior:
+Behavior (`SystemKeyService.seed_from_env`, invariant: at most one active
+`SYSTEM` key exists at a time):
 
-- `DJANGO_API_KEY` unset → block skipped.
-- Key with the same 8-char prefix already exists and matches → info log
-  "already seeded and valid", skip.
-- Key with the same prefix already exists but **does not** match
-  `DJANGO_API_KEY` → `exit 1`. Env and DB are out of sync; silent auth
-  failures would follow otherwise.
-- No existing key → create, then re-fetch and `check_key()` against the raw
-  value. If the round-trip fails, `exit 1`.
+- Env value hashes to an existing, non-revoked `SYSTEM` key → that row is
+  reused as-is (no-op).
+- Otherwise → any existing active `SYSTEM` key is revoked and a new
+  `SYSTEM` key is created from the env value, atomically. This is the
+  rotation path: changing `DJANGO_API_KEY` and restarting the container
+  revokes the old key and mints a new one with the new value.
 
-The seeded key has **no owner** (`created_by = NULL`). See
-[API keys — lifecycle](#api-keys) for the consequences (env-seeded keys
-resolve to `AnonymousUser` and don't pass `IsAuthenticated`).
+The system key has **no owner** (`created_by = NULL`, enforced by the
+`api_key_type_invariants` check constraint) and **never expires**. See
+[api_keys.md](api_keys.md) for how it resolves at auth time
+(`SystemServicePrincipal`) and its visibility rules (never appears in any
+API listing; not revocable/deletable over HTTP).
 
 ---
 
@@ -357,7 +373,10 @@ with an API key**, and **the token in the body is the one being inspected**.
 endpoint internally; it is exposed for future internal / edge callers and
 for quick health-checks of the login chain.
 
-- **Auth:** `IsAuthenticated` + `isinstance(request.auth, ApiKey)` check.
+- **Auth:** `IsAuthenticated` (JWT or ApiKey both authenticate), **and** the
+  resolved credential must be a **SYSTEM**-type key. A JWT caller or a
+  USER-type key both get rejected — this endpoint is for internal
+  services/gateways holding the system key, not for end users.
 - **Request body:**
   ```json
   { "token": "<jwt-access-to-check>" }
@@ -371,13 +390,16 @@ for quick health-checks of the login chain.
     "scopes":  []
   }
   ```
+  `scopes` is always `[]` — access tokens carry no scopes claim; the field
+  is kept in the response shape for forward compatibility.
 - **Response 200 — expired/invalid/tampered token:** `{ "active": false }`
   (deliberately not an HTTP error — introspection is informational).
 - **Errors:**
   - `400` — `{"active": false, "error": "token is required"}` when the
     `token` field is missing or blank.
-  - `403` — `{"detail": "API key required"}` when the caller authenticated
-    with JWT instead of an ApiKey.
+  - `403` — `{"detail": "System API key required"}` when the caller did
+    not authenticate with a SYSTEM-type key (covers both a plain JWT and a
+    USER-type API key).
 
 ### Testing it
 
@@ -390,7 +412,7 @@ curl.exe -X POST http://localhost:8000/api/auth/login/ ^
   -H "Content-Type: application/json" ^
   -d "{\"email\":\"admin@acme.com\",\"password\":\"StrongPass123!\"}"
 
-REM 2. Introspect it
+REM 2. Introspect it — <raw_api_key> must be the SYSTEM key (from DJANGO_API_KEY)
 curl.exe -X POST http://localhost:8000/api/auth/introspect/ ^
   -H "X-Api-Key: <raw_api_key>" ^
   -H "Content-Type: application/json" ^
@@ -399,6 +421,8 @@ curl.exe -X POST http://localhost:8000/api/auth/introspect/ ^
 
 Negative tests:
 - Call with `Authorization: Bearer <jwt>` instead of `X-Api-Key` → 403.
+- Call with a USER-type API key (e.g. one created via
+  `POST /api/profile/api-keys/`) → 403 `System API key required`.
 - Send a malformed token (`"token":"nope"`) → 200 with `active: false`.
 - Omit `token` → 400.
 - Wait `JWT_ACCESS_MINUTES` (default 15) and re-introspect the same token →
@@ -413,22 +437,28 @@ Negative tests:
 Self-introspection — returns metadata about the key that authenticated the
 request.
 
-- **Auth:** must authenticate with an ApiKey (JWT callers get 403).
+- **Auth:** must authenticate with an ApiKey — either USER or SYSTEM type
+  (JWT callers get 403). Unlike `/api/auth/introspect/`, this endpoint has
+  no `DenyApiKeyAuth`-style restriction; any valid key may call it.
 - **Response 200:**
   ```json
   {
     "active":        true,
-    "name":          "realtime-default",
-    "prefix":        "fnFo21Jt",
-    "scopes":        [],
-    "owner_user_id": 1    // null for env-seeded system keys
+    "name":          "system",
+    "prefix":        "es_fnFo21JtA",
+    "owner_user_id": null    // null for the SYSTEM key; a user id for a USER key
   }
   ```
+  There is no `scopes` field — permissions come from the owning user's
+  live RBAC role (or superadmin, for the system key), not a per-key scope
+  list.
 - **Errors:**
-  - `403` (`authentication_failed`) — key not found or revoked.
-  - `403` (`permission_denied`) — **your key has `created_by=NULL`**, so
-    `request.user` is `AnonymousUser` and `IsAuthenticated` blocks the
-    request. Give the key an owner (see "API keys" section).
+  - `401` (`authentication_failed`, message `"Invalid API key"`) — key hash
+    not found, or the key is revoked.
+  - `401` (`authentication_failed`, message `"API key has expired"`) — key
+    found but `expires_at` is in the past.
+  - `403` (`detail: "API key required"`) — caller authenticated with JWT
+    instead of an ApiKey.
 
 ### Calling it
 
@@ -458,16 +488,23 @@ Two entry points, same semantics, different callers.
 
 ### POST `/api/auth/reset-user/` (web, via JWT)
 
-- **Auth:** `IsAuthenticated` (bearer JWT or owner-linked ApiKey).
+- **Auth:** `IsAuthenticated` + `IsSuperadmin`. Both JWT and ApiKey
+  authentication are accepted (no `DenyApiKeyAuth` here) — the caller just
+  needs `is_superadmin=True`, which a superadmin-owned USER key or the
+  SYSTEM key both satisfy.
 - **Behavior** (atomic):
   1. Delete all `User` rows → cascades `OrganizationUser`,
-     `PasswordResetToken`; sets `ApiKey.created_by` to NULL (`SET_NULL`).
-  2. Delete all `ApiKey` rows.
-  3. Create a new Superadmin from the supplied credentials.
-  4. Create a fresh `realtime-default` ApiKey owned by the new Superadmin.
-  5. Issue JWT tokens for the new user.
-- **Organizations are not touched** — Superadmin bypasses permission checks
-  via `is_superadmin`, so no automatic membership is created.
+     `PasswordResetToken`, and every `ApiKey` owned by a deleted user
+     (`ApiKey.created_by` is `on_delete=CASCADE`).
+  2. The `SYSTEM` API key survives untouched — it has no `created_by`, so
+     the cascade never reaches it.
+  3. Provision a fresh Superadmin from the supplied credentials, with an
+     `OrganizationUser` membership (built-in Superadmin role) in the
+     default Organization — the existing default org is reused if one
+     exists, otherwise a new one is created.
+  4. Issue JWT tokens for the new user.
+- No new API key is created by this flow — personal keys come only from
+  `POST /api/profile/api-keys/` after logging in as the new superadmin.
 - **Request body:**
   ```json
   { "email": "new@acme.com", "password": "AnotherPass123!" }
@@ -476,11 +513,11 @@ Two entry points, same semantics, different callers.
   ```json
   {
     "access":  "<jwt-access>",
-    "refresh": "<jwt-refresh>",
-    "api_key": "<raw key — copy it now, it is not retrievable again>"
+    "refresh": "<jwt-refresh>"
   }
   ```
-- **Errors:** `400` on validation failures.
+- **Errors:** `400` on validation failures, `403` if the caller is not a
+  superadmin.
 
 ### `python manage.py reset_user` (CLI / docker exec)
 
@@ -503,49 +540,33 @@ docker exec django_app python manage.py reset_user `
 
 Output:
 ```
-Deleted <N> user(s) and <M> API key(s).
-Created superuser 'admin@example.com'.
-API key: <raw-key>
+Created superadmin 'admin@example.com'.
 ```
 
-Copy the raw API key from the last line — it is not recoverable.
+No API key is printed — the command deletes every user-owned key (they
+cascade with their owner) and creates none. The SYSTEM key is unaffected.
+Create a personal key afterwards via `POST /api/profile/api-keys/`.
 
 #### Caveats
 
-- Organizations survive; the new Superadmin has no auto-membership.
+- Organizations are never deleted; the new Superadmin's membership reuses
+  the existing default org if one exists.
 
 ---
 
 ## API keys
 
-### Lifecycle
+Two key classes exist — `SYSTEM` (the singleton seeded from
+`DJANGO_API_KEY`) and `USER` (self-service, created via
+`POST /api/profile/api-keys/`, owned by whoever created them). A `USER`
+key always has an owner and inherits that owner's live RBAC permissions;
+the `SYSTEM` key has no owner and resolves to a superadmin-equivalent
+`SystemServicePrincipal`. Header formats: `X-Api-Key: <raw_key>` (preferred)
+or `Authorization: ApiKey <raw_key>`.
 
-| Source | `created_by` | Auth behavior |
-|---|---|---|
-| `POST /api/auth/reset-user/` (web) | Owner = the new Superadmin | `request.user` = owner → `IsAuthenticated` passes |
-| `python manage.py reset_user` | Owner = the new Superadmin | `request.user` = owner → `IsAuthenticated` passes |
-| `entrypoint.sh` bootstrap (`DJANGO_API_KEY` env) | `NULL` | `request.user` = `AnonymousUser` → `IsAuthenticated` **fails** |
-| Legacy keys created before this story | `NULL` | As above |
-
-**If you need the env-seeded `DJANGO_API_KEY` (for internal services like
-crew, realtime, webhook) to pass `IsAuthenticated`,** either:
-
-1. Give the key an owner via DB shell (`ApiKey.objects.filter(prefix=...).update(created_by=<some user>)`)
-
-### Header formats
-
-```
-X-Api-Key: <raw_key>
-Authorization: ApiKey <raw_key>
-```
-
-Do **not** use `Authorization: Bearer <raw_key>` — that's reserved for JWT.
-
-### Revoking
-
-Mark `ApiKey.revoked_at = <timestamp>` (column on the model). The auth
-backend filters `revoked_at__isnull=True`, so revoked keys start returning
-`401 Invalid API key` immediately.
+Full model, self-service + management endpoints, TTL/cap rules, revoke vs.
+delete, org-scoped management, and error codes are documented in
+[api_keys.md](api_keys.md).
 
 ---
 
@@ -586,13 +607,13 @@ curl -s http://localhost:8000/api/graphs/ -H "Authorization: Bearer $ACCESS" | j
 | JWT claims | Access token now carries `email` and `is_superadmin` in addition to `user_id`. FE may decode the access token locally to short-circuit UI gating without hitting `/api/profile/`. |
 | 401 handling | Unchanged in shape — `{status_code: 401, code: "not_authenticated", message: ...}`. On 401 during a session, prompt re-login. |
 | 409 on setup | New status code to handle on the setup flow. |
-| `reset_user` web call | Payload is `{ email, password }` (was `{ username, password, email }`). Response still returns `access`, `refresh`, `api_key`. Consider masking/displaying the API key only once — it cannot be retrieved again. |
-| Token introspection / API key validation | Only used by internal services; the FE typically does not call these. If it does, the endpoints require `X-Api-Key` now — JWT will get 403. |
+| `reset_user` web call | Payload is `{ email, password }` (was `{ username, password, email }`). Response returns only `access` + `refresh` — **no** `api_key`. Personal API keys are created separately via `POST /api/profile/api-keys/`, see [api_keys.md](api_keys.md). |
+| Token introspection / API key validation | Only used by internal services; the FE typically does not call these. `POST /api/auth/introspect/` requires the SYSTEM API key specifically (JWT and USER keys get 403); `GET /api/auth/api-key/validate/` accepts any API key but not JWT. |
 | Admin UI (`/admin/`) | **Removed.** `django.contrib.admin` was dropped because our custom `User` has no `is_staff` field. Anything that linked to `/admin/` must be removed or redirected. |
 | Active organization | Not wired up yet. `X-Organization-Id` header + active-org resolution on `/api/profile/` is Story 7. Until then, the FE can pick an org from `memberships[]` and display it, but there's no backend filtering by header. |
 | Active org header | `X-Organization-Id` required from this story onward on active-context endpoints. See [`roles_and_permissions.md`](roles_and_permissions.md). |
 | Permissions UI | All Story-2 endpoints effectively require `IsAuthenticated`; the bitmask permission checks land in later stories (9 / 13). Until then the FE gates UI actions purely on `is_superadmin` / role name. |
-| Env-seeded API key flows | If any FE flow uses `DJANGO_API_KEY` directly (unlikely — that's internal), those calls now need an owning user OR the FE must switch to JWT. |
+| Personal API keys | New self-service surface: `GET/POST /api/profile/api-keys/`, `DELETE /api/profile/api-keys/{id}/`, `POST /api/profile/api-keys/{id}/revoke/`. JWT-only — calling these with an API key gets 403. The raw key is only ever shown once, in the create response. See [api_keys.md](api_keys.md). |
 
 ### Renamed / removed fields the FE must no longer reference
 
@@ -615,7 +636,7 @@ curl -s http://localhost:8000/api/graphs/ -H "Authorization: Bearer $ACCESS" | j
 | `/api/auth/first-setup/` POST response | `{access, refresh, api_key}` | `{user, organization, access, refresh}` |
 | ~~`/api/auth/me/`~~ | `{id, username, email}` | **Removed** — replaced by `GET /api/profile/`, see [user_profile.md](user_profile.md). |
 | `/api/auth/introspect/` response | `{active, user_id, username, scopes}` | `{active, user_id, email, scopes}` |
-| `/api/auth/api-key/validate/` response | `{active, name, prefix, scopes}` | `{active, name, prefix, scopes, owner_user_id}` |
+| `/api/auth/api-key/validate/` response | `{active, name, prefix, scopes}` | `{active, name, prefix, owner_user_id}` (no `scopes`) |
 | `/api/auth/reset-user/` request | `{username, password, email?}` | `{email, password}` |
 | `/admin/` | Django admin UI | **Removed** |
 
@@ -625,8 +646,8 @@ curl -s http://localhost:8000/api/graphs/ -H "Authorization: Bearer $ACCESS" | j
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `authentication_failed / Invalid API key` | Wrong raw key, or key revoked, or key pasted partially (`prefix` must match first 8 chars of raw). | Check `ApiKey.objects.filter(prefix=<first-8>, revoked_at__isnull=True)`. |
-| `permission_denied` with a valid API key | Key has `created_by=NULL` → `AnonymousUser` → `IsAuthenticated` fails. | Backfill owner or use a user-owned key. See "User reset" caveats. |
+| `401 authentication_failed — "Invalid API key"` | Lookup is an exact match on `key_hash` (SHA-256 of the raw key) — any typo, a truncated paste, or a revoked key all miss. Raw keys are always `es_`-prefixed. | Re-copy the full raw key from where it was issued (it's shown once, at creation). If it was revoked, issue a new one via `POST /api/profile/api-keys/`. See [api_keys.md](api_keys.md). |
+| `401 authentication_failed — "API key has expired"` | The key's `expires_at` is in the past. | Issue a new key; the expired one cannot be renewed. |
 | `409 Setup has already been completed` | At least one User exists. | Expected. If intentional reset, use `POST /api/auth/reset-user/` or `manage.py reset_user`. |
 | FE shows login form but `needs_setup` is `true` | Frontend isn't calling `GET /api/auth/first-setup/` on boot. | Wire the boot check per "Frontend changes required". |
 | `/api/auth/login/` returns 401 on what looks like valid creds | Payload uses `username` instead of `email`. | Send `{"email": ..., "password": ...}`. |

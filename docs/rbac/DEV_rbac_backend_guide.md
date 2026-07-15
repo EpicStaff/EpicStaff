@@ -19,7 +19,8 @@ must decide, for each layer, which mechanism applies:
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │ 1. AUTHENTICATION   Who is calling?                                    │
-│    JwtOrApiKeyAuthentication (global default) → request.user           │
+│    JwtAuthentication + ApiKeyAuthentication (global defaults)          │
+│    → request.user                                                      │
 ├────────────────────────────────────────────────────────────────────────┤
 │ 2. ORG CONTEXT      Which organization is the caller working in?       │
 │    OrgContextService: URL kwarg `org_id` > `X-Organization-Id` header  │
@@ -58,7 +59,7 @@ All RBAC models live in `tables/models/rbac_models/`. All business logic lives i
 | `OrganizationUser` | `rbac_organization_user` | Membership: (`user`, `org`) unique, carries exactly one `role`. Deleting the row revokes access. |
 | `Role` | `rbac_role` | `is_built_in=True, org=NULL` for the four built-ins (immutable); custom roles carry `org`. |
 | `RolePermission` | `rbac_role_permission` | One row per (role, resource_type) with an integer permission **bitmask**. |
-| `ApiKey` | — | Service-to-service auth. Stores HMAC-SHA256 hash + 8-char prefix; `created_by` owner (NULL for env-seeded system keys → resolves to `AnonymousUser`, which fails `IsAuthenticated`). `scopes` JSON exists but is **not enforced** anywhere yet. |
+| `ApiKey` | — | Service-to-service auth. Stores a plain SHA-256 hash + 12-char `es_` prefix; `key_type` is `system` or `user`. System keys (no owner) resolve to `SystemServicePrincipal` (superadmin-equivalent); user keys resolve to their owning user. No scopes field — see [api_keys.md](api_keys.md) for detail. |
 | `PasswordResetToken` | `rbac_password_reset_token` | Single-use UUID token, TTL `PASSWORD_RESET_TOKEN_TTL` (default 900 s). |
 | `OrgScopedModel` | abstract | Adds `org` FK (+ index) and `created_by` FK to any resource model. `org` is declared nullable in Python; NOT NULL is enforced per-table at the DB layer after backfill. |
 
@@ -104,8 +105,13 @@ Global defaults (`django_app/settings.py`):
 
 ```python
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": ["tables.services.rbac.authentication.JwtOrApiKeyAuthentication"],
-    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "tables.services.rbac.authentication.JwtAuthentication",
+        "tables.services.rbac.authentication.ApiKeyAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
 }
 ```
 
@@ -113,12 +119,18 @@ REST_FRAMEWORK = {
 opening an endpoint requires an explicit `permission_classes = [AllowAny]` (currently only
 first-setup, login, refresh, password-reset request/confirm, swagger-token).
 
-`JwtOrApiKeyAuthentication` (`tables/services/rbac/authentication.py`):
-- `Authorization: Bearer <jwt>` → simplejwt (HS256, access 15 min, refresh 7 d, rotation +
-  blacklist on). Custom claims: `email`, `is_superadmin`.
-- `X-Api-Key: <key>` or `Authorization: ApiKey <key>` → `request.user` = the key's
-  `created_by` owner, `request.auth` = the `ApiKey` row. API keys therefore inherit the
-  owning user's full RBAC permissions.
+Two authentication classes (`tables/services/rbac/authentication.py`), both global defaults:
+- `JwtAuthentication` — `Authorization: Bearer <jwt>` → simplejwt (HS256, access 15 min,
+  refresh 7 d, rotation + blacklist on). Custom claims: `email`, `is_superadmin`.
+- `ApiKeyAuthentication` — `X-Api-Key: <key>` or `Authorization: ApiKey <key>` → delegates to
+  `ApiKeyAuthenticator`, which resolves the raw key to an `ApiKey` row, then hands it to
+  `PrincipalResolver` (`tables/services/rbac/api_key/principals.py`): a `system`-type key
+  resolves to `SystemServicePrincipal` (superadmin-equivalent, no `email`/`pk`); a
+  `user`-type key resolves to its owner. `request.user` is that principal, `request.auth`
+  is the `ApiKey` row. A user key inherits the owner's live RBAC permissions per the
+  `X-Organization-Id` header the caller sends — identical to that owner authenticating with
+  a JWT. Key management endpoints (`/api/profile/api-keys/`, `/api/api-keys/`) are JWT-only
+  (`DenyApiKeyAuth`) — see [api_keys.md](api_keys.md).
 
 Connections that cannot carry headers (SSE, WebSocket) use single-use Redis tickets
 (`TicketService`, `tables/services/rbac/ticket_service.py`): `POST /api/auth/sse-ticket/`
@@ -293,7 +305,7 @@ Serializer rules for org-scoped models:
 | Header | Meaning |
 |---|---|
 | `Authorization: Bearer <jwt>` | End-user auth |
-| `X-Api-Key` / `Authorization: ApiKey <key>` | Service auth (inherits owner's permissions) |
+| `X-Api-Key` / `Authorization: ApiKey <key>` | Service auth: a user key inherits its owner's permissions; the system key acts as a superadmin service principal |
 | `X-Organization-Id: <int>` | Active org for active-context endpoints. CORS-allowlisted in settings. |
 
 ### 7.2 Permissions for the FE
