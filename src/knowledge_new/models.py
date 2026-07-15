@@ -51,6 +51,7 @@ __all__ = [
 class Rag(Entity):
     status: IndexStatusEnum
     indexing_document_ids: set[int]
+    error_message: Optional[str] = None
 
     def finish_document(self, document_id: int):
         self.indexing_document_ids.discard(document_id)
@@ -72,9 +73,10 @@ class Rag(Entity):
         self.status = IndexStatusEnum.CANCELLED
         self.indexing_document_ids.clear()
 
-    def mark_as_failed(self):
+    def mark_as_failed(self, error: Optional[Exception] = None):
         self.status = IndexStatusEnum.FAILED
         self.indexing_document_ids.clear()
+        self.error_message = f'{type(error).__name__}: {error}'
 
 
 class ChunkingConfig(ValueObject):

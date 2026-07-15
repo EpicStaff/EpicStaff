@@ -34,6 +34,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
                 id=data.graph_rag_id,
                 status=data.rag_status,
                 indexing_document_ids=data.indexing_document_config_ids,
+                error_message=data.error_message,
             )
         return None
 
@@ -42,7 +43,9 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
             update(GraphRag)
             .where(GraphRag.graph_rag_id == rag.id)
             .values(
-                rag_status=rag.status, indexing_document_config_ids=list(rag.indexing_document_ids)
+                rag_status=rag.status,
+                indexing_document_config_ids=list(rag.indexing_document_ids),
+                error_message=rag.error_message,
             )
         )
 

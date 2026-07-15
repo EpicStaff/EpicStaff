@@ -100,10 +100,9 @@ class NaiveIndexer(AbstractIndexer):
             await self._update_rag(rag)
 
     async def on_error(self, request: IndexRequest, error: Exception):
-        # TODO: update rag errors
         if (rag := self.state.get("rag")) is not None:
             rag = cast(Rag, rag)
-            rag.mark_as_failed()
+            rag.mark_as_failed(error)
             await self._update_rag(rag)
 
     async def _get_rag_under_uow(self, rag_id: int) -> Rag:
