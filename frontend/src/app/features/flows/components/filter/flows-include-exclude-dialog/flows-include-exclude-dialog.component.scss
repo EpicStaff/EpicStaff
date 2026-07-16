@@ -119,7 +119,7 @@
         height: 6px;
     }
     &::-webkit-scrollbar-thumb {
-        background: var(--color-text-secondary);
+        background: var(--color-scrollbar-thumb);
         border-radius: var(--radius-sm);
         opacity: 0.5;
     }

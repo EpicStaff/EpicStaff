@@ -237,7 +237,7 @@
         letter-spacing: 0;
         text-align: right;
         vertical-align: middle;
-        color: var(--color-divider-subtle);
+        color: var(--color-text-tertiary);
         margin-left: 0;
         flex-shrink: 0;
     }
@@ -400,6 +400,6 @@
     &__context-menu-divider {
         height: 1px;
         margin: var(--space-2xs) 0;
-        background-color: var(--color-divider-subtle);
+        background-color: var(--color-text-tertiary);
     }
 }

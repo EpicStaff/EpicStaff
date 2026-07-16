@@ -1,7 +1,7 @@
 .files-dialog {
     display: flex;
     flex-direction: column;
-    background-color: var(--color-background-body);
+    background-color: var(--gray-900);
     border-radius: var(--radius-2xl);
     width: calc(100vw - 36px);
     height: calc(100vh - 40px);
@@ -157,7 +157,7 @@
         min-height: 0;
         overflow-y: auto;
         overflow-x: auto;
-        border: 1px solid var(--color-flow-card-bg);
+        border: 1px solid var(--color-divider-regular);
         border-radius: var(--radius-xl);
     }
 
@@ -237,7 +237,7 @@
         &--indeterminate {
             background-color: var(--fog-200);
             border-color: var(--fog-200);
-            color: var(--color-background-body);
+            color: var(--gray-900);
         }
     }
 

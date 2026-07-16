@@ -37,7 +37,7 @@
 
     &.active {
         background: var(--accent-color);
-        color: var(--color-sidenav-background);
+        color: var(--white);
         pointer-events: none;
 
         &:hover {

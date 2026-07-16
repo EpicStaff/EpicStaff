@@ -55,7 +55,7 @@
         align-items: center;
         justify-content: center;
         color: var(--fog-alpha-80);
-        background-color: var(--color-background-body);
+        background-color: var(--white);
         line-height: 130%;
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-bold);
@@ -94,7 +94,7 @@
         .stepper__circle {
             background: var(--accent-color);
             border-color: var(--accent-color);
-            color: var(--color-background-body);
+            color: var(--white);
         }
 
         &::before {
