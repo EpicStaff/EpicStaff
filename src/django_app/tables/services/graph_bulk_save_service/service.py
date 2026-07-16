@@ -80,8 +80,12 @@ class GraphBulkSaveService:
             incoming = validated_input.get(config.list_key, [])
             if not incoming:
                 continue
+            # Exclude ids pending deletion so Pass 1 validation sees the state Pass 2 will produce.
+            pending_delete_ids = set(deleted_data.get(config.delete_key) or [])
             db_map = {
-                obj.id: obj for obj in config.model_class.objects.filter(graph=graph)
+                obj.id: obj
+                for obj in config.model_class.objects.filter(graph=graph)
+                if obj.id not in pending_delete_ids
             }
             result = self._validate_node_list(
                 graph, incoming, config, db_map, payload_temp_ids
