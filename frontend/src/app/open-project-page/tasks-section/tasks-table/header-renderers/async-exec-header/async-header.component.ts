@@ -51,7 +51,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
             }
             .tooltip {
                 background-color: var(--graphite-780);
-                color: var(--fog-200);
+                color: var(--color-text-primary);
                 padding: var(--space-xs) var(--space-md);
                 border-radius: var(--radius-sm);
                 font-size: var(--font-size-xs);

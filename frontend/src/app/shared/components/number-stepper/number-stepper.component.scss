@@ -104,7 +104,7 @@
         -moz-appearance: textfield;
 
         &::placeholder {
-            color: var(--fog-alpha-40);
+            color: var(--color-text-tertiary);
         }
 
         &:disabled {

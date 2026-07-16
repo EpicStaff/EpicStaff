@@ -72,11 +72,6 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
                 samples: [{ kind: 'card', label: 'Card', prop: 'background' }],
             },
             {
-                name: '--color-surface-contrast',
-                label: 'Contrast surface',
-                samples: [{ kind: 'surface', label: 'Aa', prop: 'background' }],
-            },
-            {
                 name: '--color-card-background',
                 label: 'Card background',
                 samples: [{ kind: 'card', label: 'Card', prop: 'background' }],

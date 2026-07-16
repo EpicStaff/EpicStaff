@@ -6,7 +6,7 @@
 
     &__empty-icon {
         flex-shrink: 0;
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
     }
 
     &__empty-text {
@@ -16,7 +16,7 @@
         font-weight: var(--font-weight-medium);
         line-height: 1;
         text-align: center;
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
     }
 
     &__header {

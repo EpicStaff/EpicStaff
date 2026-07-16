@@ -66,7 +66,7 @@
 
     &__section-title {
         margin-bottom: var(--space-2xl);
-        color: var(--fog-alpha-70);
+        color: var(--color-text-subtle);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-bold);
         line-height: 1.3;
@@ -87,7 +87,7 @@
     }
 
     &__label {
-        color: var(--fog-alpha-70);
+        color: var(--color-text-subtle);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-medium);
         line-height: 1.3;
@@ -116,7 +116,7 @@
     }
 
     &__path-value {
-        color: var(--fog-alpha-70);
+        color: var(--color-text-subtle);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-regular);
         line-height: 18px;
@@ -184,7 +184,7 @@
     }
 
     &__empty {
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
         font-size: var(--font-size-md);
         font-weight: var(--font-weight-regular);
         line-height: 1.3;

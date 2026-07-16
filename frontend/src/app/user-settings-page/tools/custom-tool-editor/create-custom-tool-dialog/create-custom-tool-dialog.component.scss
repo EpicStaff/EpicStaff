@@ -159,7 +159,7 @@
             background: transparent;
             border: 1px solid transparent;
             border-radius: var(--radius-md);
-            color: var(--fog-200);
+            color: var(--color-text-primary);
             cursor: pointer;
             transition:
                 background-color 0.2s ease,
@@ -202,7 +202,7 @@
                 font-size: var(--font-size-md);
                 line-height: 18px;
                 font-weight: var(--font-weight-medium);
-                color: var(--fog-200);
+                color: var(--color-text-primary);
                 display: inline-flex;
                 align-items: center;
 
@@ -276,7 +276,7 @@
         font-size: var(--font-size-md);
         line-height: 18px;
         font-weight: var(--font-weight-medium);
-        color: var(--fog-200);
+        color: var(--color-text-primary);
 
         app-toggle-switch {
             display: inline-flex;
@@ -345,7 +345,7 @@
             border: 1px solid transparent;
             border-radius: var(--radius-md);
             background: transparent;
-            color: var(--fog-200);
+            color: var(--color-text-primary);
             cursor: pointer;
             transition:
                 background-color 0.2s ease,

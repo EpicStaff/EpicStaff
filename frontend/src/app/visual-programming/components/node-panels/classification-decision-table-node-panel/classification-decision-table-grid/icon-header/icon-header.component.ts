@@ -63,7 +63,7 @@ export interface IconHeaderParams extends IHeaderParams {
             }
             .icon-header i {
                 font-size: var(--font-size-md);
-                color: var(--white-alpha-70);
+                color: var(--color-text-subtle);
                 flex-shrink: 0;
             }
             /* NOTE: kept in sync with .chm-icon-clickable in column-header-menu.component.ts */

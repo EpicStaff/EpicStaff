@@ -78,13 +78,13 @@
 
         &:hover,
         &--open {
-            border-color: var(--fog-alpha-40);
+            border-color: var(--color-text-tertiary);
         }
     }
 
     &__selector-text {
         font-size: var(--font-size-md);
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -95,7 +95,7 @@
     }
 
     &__selector-chevron {
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
         flex-shrink: 0;
         transition: transform 0.15s ease;
 
@@ -133,7 +133,7 @@
     }
 
     &__search-icon {
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
         flex-shrink: 0;
     }
 
@@ -146,7 +146,7 @@
         color: var(--color-text-primary);
 
         &::placeholder {
-            color: var(--fog-alpha-60);
+            color: var(--color-text-secondary);
         }
     }
 
@@ -164,7 +164,7 @@
         justify-content: center;
         height: 80px;
         font-size: var(--font-size-md);
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
     }
 
     &__item {

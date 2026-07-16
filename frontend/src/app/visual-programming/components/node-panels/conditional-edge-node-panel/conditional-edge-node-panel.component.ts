@@ -161,7 +161,7 @@ interface InputMapPair {
                 cursor: pointer;
                 transition: all 0.2s ease;
                 padding: 0;
-                color: var(--fog-alpha-60);
+                color: var(--color-text-secondary);
                 z-index: 10;
 
                 svg {
@@ -169,12 +169,12 @@ interface InputMapPair {
                 }
 
                 &:hover:not(:disabled) {
-                    color: var(--fog-200);
+                    color: var(--color-text-primary);
                     background: var(--graphite-700);
                 }
 
                 &:active:not(:disabled) {
-                    color: var(--fog-200);
+                    color: var(--color-text-primary);
                 }
 
                 &:disabled {

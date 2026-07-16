@@ -60,7 +60,7 @@
 
 .code-editor-section {
     font-size: var(--font-size-md);
-    color: var(--white-alpha-70);
+    color: var(--color-text-subtle);
     display: flex;
     flex-direction: column;
     height: 300px;
@@ -75,7 +75,7 @@
         display: flex;
         align-items: center;
         font-size: var(--font-size-xs);
-        color: var(--fog-alpha-80);
+        color: var(--color-text-primary);
         opacity: 0.7;
     }
 
@@ -109,7 +109,7 @@
         label {
             display: block;
             font-size: var(--font-size-md);
-            color: var(--white-alpha-70);
+            color: var(--color-text-subtle);
             margin: 0;
         }
 
@@ -161,7 +161,7 @@
     }
     &__error-message {
         font-size: var(--font-size-xs);
-        color: var(--fog-alpha-40);
+        color: var(--color-text-tertiary);
     }
 }
 
@@ -173,7 +173,7 @@
 
 .output-fields {
     &__label {
-        color: var(--white-alpha-70);
+        color: var(--color-text-subtle);
         font-size: var(--font-size-md);
 
         display: flex;
@@ -185,7 +185,7 @@
         padding: var(--space-3xs) var(--space-sm);
         border-radius: var(--radius-sm);
         background-color: #44464a4d;
-        color: var(--fog-alpha-40);
+        color: var(--color-text-tertiary);
     }
 
     &__container {
@@ -212,7 +212,7 @@
         flex-direction: column;
         flex-grow: 1;
         font-size: var(--font-size-xs);
-        color: var(--white-alpha-70);
+        color: var(--color-text-subtle);
         row-gap: var(--space-2xs);
         border: 1px solid var(--white-alpha-10);
         background-color: #44464a4d;
@@ -221,7 +221,7 @@
     }
 
     &__item-tip {
-        color: var(--fog-alpha-40);
+        color: var(--color-text-tertiary);
     }
 }
 

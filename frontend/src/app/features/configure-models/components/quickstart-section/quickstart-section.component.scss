@@ -19,7 +19,7 @@
     &__subtitle {
         margin: 0;
         font-size: var(--font-size-md);
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
     }
 
     &__layout {
@@ -55,11 +55,11 @@
         align-items: center;
         gap: var(--space-md);
         font-size: var(--font-size-md);
-        color: var(--fog-alpha-80);
+        color: var(--color-text-primary);
 
         i {
             font-size: var(--font-size-md);
-            color: var(--fog-alpha-50);
+            color: var(--color-text-tertiary);
         }
     }
 
@@ -134,7 +134,7 @@
         flex-direction: column;
         gap: var(--space-md);
         font-size: var(--font-size-md);
-        color: var(--fog-alpha-80);
+        color: var(--color-text-primary);
         line-height: 1.6;
         list-style: decimal;
 
@@ -142,7 +142,7 @@
             padding-left: var(--space-2xs);
 
             &::marker {
-                color: var(--fog-alpha-80);
+                color: var(--color-text-primary);
             }
         }
     }
@@ -164,7 +164,7 @@
     &__card-text {
         margin: var(--space-md) 0 0;
         font-size: var(--font-size-sm);
-        color: var(--fog-alpha-70);
+        color: var(--color-text-subtle);
         line-height: 1.6;
     }
 

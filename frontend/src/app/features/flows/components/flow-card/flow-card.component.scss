@@ -66,7 +66,7 @@
                 .flow-id {
                     font-size: var(--font-size-md);
                     font-weight: var(--font-weight-medium);
-                    color: var(--fog-alpha-40);
+                    color: var(--color-text-tertiary);
                     white-space: nowrap;
                     flex-shrink: 0;
                 }
@@ -74,7 +74,7 @@
 
             .flow-description {
                 font-size: var(--font-size-xs);
-                color: var(--fog-alpha-60);
+                color: var(--color-text-secondary);
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -82,7 +82,7 @@
                 height: 16px;
 
                 &.placeholder {
-                    color: var(--fog-alpha-30);
+                    color: var(--color-text-tertiary);
                 }
             }
         }
@@ -136,7 +136,7 @@
                 font-weight: var(--font-weight-regular);
                 white-space: nowrap;
                 background: var(--fog-alpha-8);
-                color: var(--fog-alpha-60);
+                color: var(--color-text-secondary);
             }
         }
 
@@ -149,12 +149,12 @@
             overflow: hidden;
 
             .date-part {
-                color: var(--fog-alpha-85);
+                color: var(--color-text-primary);
                 font-weight: var(--font-weight-regular);
             }
 
             .time-part {
-                color: var(--fog-alpha-40);
+                color: var(--color-text-tertiary);
                 font-weight: var(--font-weight-regular);
             }
         }
@@ -210,7 +210,7 @@
                         .flow-id {
                             font-size: var(--font-size-sm);
                             font-weight: var(--font-weight-regular);
-                            color: var(--fog-alpha-40);
+                            color: var(--color-text-tertiary);
                             flex-shrink: 0;
                             white-space: nowrap;
                         }
@@ -218,13 +218,13 @@
 
                     .subflow-description {
                         font-size: var(--font-size-xs);
-                        color: var(--fog-alpha-60);
+                        color: var(--color-text-secondary);
                         white-space: nowrap;
                         overflow: hidden;
                         text-overflow: ellipsis;
 
                         &.placeholder {
-                            color: var(--fog-alpha-30);
+                            color: var(--color-text-tertiary);
                         }
                     }
                 }
@@ -255,7 +255,7 @@
                         font-weight: var(--font-weight-regular);
                         white-space: nowrap;
                         background: var(--fog-alpha-8);
-                        color: var(--fog-alpha-60);
+                        color: var(--color-text-secondary);
                     }
                 }
 
@@ -268,11 +268,11 @@
                     overflow: hidden;
 
                     .date-part {
-                        color: var(--fog-alpha-80);
+                        color: var(--color-text-primary);
                     }
 
                     .time-part {
-                        color: var(--fog-alpha-40);
+                        color: var(--color-text-tertiary);
                     }
                 }
             }

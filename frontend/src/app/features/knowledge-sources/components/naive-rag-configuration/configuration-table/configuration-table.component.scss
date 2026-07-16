@@ -77,7 +77,7 @@
     &__bulk-row {
         font-size: var(--font-size-xs);
         padding: 0 var(--space-4xl) var(--space-sm) 3.125rem;
-        color: var(--fog-alpha-80);
+        color: var(--color-text-primary);
     }
 
     &__col {
@@ -91,7 +91,7 @@
         &--unavailable {
             justify-content: center;
             font-size: var(--font-size-xs);
-            color: var(--fog-alpha-80);
+            color: var(--color-text-primary);
         }
     }
 
@@ -101,7 +101,7 @@
         align-items: center;
         column-gap: var(--space-sm);
         font-size: var(--font-size-xs);
-        color: var(--fog-alpha-80);
+        color: var(--color-text-primary);
         cursor: pointer;
     }
 

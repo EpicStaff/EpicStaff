@@ -328,15 +328,15 @@
         background: transparent;
         border: none;
         cursor: pointer;
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
         border-radius: var(--radius-sm);
 
         &--plus {
-            color: var(--fog-alpha-60);
+            color: var(--color-text-secondary);
         }
 
         &:hover {
-            color: var(--fog-200);
+            color: var(--color-text-primary);
             background-color: var(--fog-alpha-8);
         }
     }

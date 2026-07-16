@@ -106,19 +106,19 @@
         border-radius: var(--radius-lg) 0 0 var(--radius-lg);
         transition: all 0.2s ease;
         padding: 0;
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
 
         svg {
             transition: transform 0.3s ease;
         }
 
         &:hover:not(:disabled) {
-            color: var(--fog-200);
+            color: var(--color-text-primary);
             background: var(--graphite-700);
         }
 
         &:active:not(:disabled) {
-            color: var(--fog-200);
+            color: var(--color-text-primary);
         }
 
         &:disabled {

@@ -305,15 +305,15 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                     border-radius: var(--radius-lg) 0 0 var(--radius-lg);
                     transition: all 0.2s ease;
                     padding: 0;
-                    color: var(--fog-alpha-60);
+                    color: var(--color-text-secondary);
 
                     &:hover:not(:disabled) {
-                        color: var(--fog-200);
+                        color: var(--color-text-primary);
                         background: var(--graphite-700);
                     }
 
                     &:active:not(:disabled) {
-                        color: var(--fog-200);
+                        color: var(--color-text-primary);
                     }
 
                     &:disabled {
@@ -384,7 +384,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
 
             .section-label {
                 font-size: var(--font-size-xs);
-                color: var(--fog-alpha-60);
+                color: var(--color-text-secondary);
                 text-transform: uppercase;
                 letter-spacing: 0.05em;
             }

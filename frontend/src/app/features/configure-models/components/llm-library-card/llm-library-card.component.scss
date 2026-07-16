@@ -31,7 +31,7 @@
         white-space: nowrap;
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-medium);
-        color: var(--fog-alpha-50);
+        color: var(--color-text-tertiary);
     }
 
     &__actions {
@@ -91,7 +91,7 @@
     &__tag {
         font-size: var(--font-size-xs);
         font-weight: var(--font-weight-medium);
-        color: var(--fog-alpha-50);
+        color: var(--color-text-tertiary);
     }
 
     &__bottom {
@@ -107,7 +107,7 @@
         align-items: center;
         gap: var(--space-2xs);
         font-size: var(--font-size-xs);
-        color: var(--fog-alpha-50);
+        color: var(--color-text-tertiary);
 
         i {
             font-size: var(--font-size-md);
@@ -116,7 +116,7 @@
 
     &__usage {
         font-size: var(--font-size-xs);
-        color: var(--fog-alpha-50);
+        color: var(--color-text-tertiary);
 
         &--active {
             color: var(--accent-color);

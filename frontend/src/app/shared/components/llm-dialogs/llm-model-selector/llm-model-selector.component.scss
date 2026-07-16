@@ -109,7 +109,7 @@
         transition: border-color 0.2s ease;
 
         &::placeholder {
-            color: var(--fog-alpha-60);
+            color: var(--color-text-secondary);
         }
 
         &:focus {
@@ -149,7 +149,7 @@
         gap: var(--space-lg);
 
         p {
-            color: var(--fog-alpha-60);
+            color: var(--color-text-secondary);
             font-size: var(--font-size-md);
             margin: 0;
         }
@@ -177,7 +177,7 @@
         justify-content: center;
         padding: var(--space-5xl) var(--space-3xl);
         gap: var(--space-sm);
-        color: var(--fog-alpha-40);
+        color: var(--color-text-tertiary);
     }
 
     &__empty-title {
@@ -189,7 +189,7 @@
 
     &__empty-text {
         font-size: var(--font-size-md);
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
         margin: 0;
     }
 
@@ -231,7 +231,7 @@
         p {
             margin: 0;
             font-size: var(--font-size-xs);
-            color: var(--fog-alpha-40);
+            color: var(--color-text-tertiary);
         }
     }
 

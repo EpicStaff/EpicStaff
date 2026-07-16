@@ -28,7 +28,7 @@
     &__subtitle {
         margin: 0;
         font-size: var(--font-size-md);
-        color: var(--fog-alpha-60);
+        color: var(--color-text-secondary);
     }
 
     &__header-right {
@@ -48,7 +48,7 @@
         position: absolute;
         left: 12px;
         font-size: var(--font-size-lg);
-        color: var(--fog-alpha-50);
+        color: var(--color-text-tertiary);
         pointer-events: none;
     }
 
@@ -64,7 +64,7 @@
         transition: border-color 0.2s ease;
 
         &::placeholder {
-            color: var(--fog-alpha-50);
+            color: var(--color-text-tertiary);
         }
 
         &:focus {
@@ -83,7 +83,7 @@
         position: absolute;
         right: 10px;
         font-size: var(--font-size-md);
-        color: var(--fog-alpha-50);
+        color: var(--color-text-tertiary);
         pointer-events: none;
     }
 
@@ -118,7 +118,7 @@
     &__section-title {
         margin-bottom: var(--space-lg);
         font-weight: var(--font-weight-medium);
-        color: var(--fog-alpha-50);
+        color: var(--color-text-tertiary);
     }
 
     &__provider-group {

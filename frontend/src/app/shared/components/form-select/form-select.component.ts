@@ -64,7 +64,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                 label {
                     display: block;
                     font-size: var(--font-size-md);
-                    color: var(--white-alpha-70);
+                    color: var(--color-text-subtle);
                     margin: 0;
                 }
 

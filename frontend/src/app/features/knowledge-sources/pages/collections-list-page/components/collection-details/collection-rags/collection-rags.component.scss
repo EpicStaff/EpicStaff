@@ -19,13 +19,13 @@
 
     &__model {
         font-size: var(--font-size-xs);
-        color: var(--fog-alpha-80);
+        color: var(--color-text-primary);
     }
 
     &__nav {
         cursor: pointer;
         margin-left: auto;
-        color: var(--fog-alpha-80);
+        color: var(--color-text-primary);
     }
 
     &__nav--action {

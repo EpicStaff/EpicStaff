@@ -56,11 +56,11 @@ input.secondary:indeterminate {
 }
 
 input.secondary:checked::after {
-    border-color: var(--color-surface-contrast);
+    border-color: var(--color-background-body);
 }
 
 input.secondary:indeterminate::after {
-    background: var(--color-surface-contrast);
+    background: var(--color-background-body);
     border-radius: var(--radius-xs);
 }
 

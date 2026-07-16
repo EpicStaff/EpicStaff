@@ -492,10 +492,10 @@
 }
 
 .settings-icon-btn {
-    color: var(--fog-alpha-70);
+    color: var(--color-text-subtle);
     font-size: var(--font-size-2xl);
 
     &:hover {
-        color: var(--fog-200);
+        color: var(--color-text-primary);
     }
 }

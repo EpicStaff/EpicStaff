@@ -301,7 +301,7 @@
 
         .section-label {
             margin: 0;
-            color: var(--white-alpha-70);
+            color: var(--color-text-subtle);
             font-size: var(--font-size-md);
             font-weight: var(--font-weight-medium);
         }
@@ -354,7 +354,7 @@
 
 .scope-info {
     font-size: var(--font-size-md);
-    color: var(--white-alpha-70);
+    color: var(--color-text-subtle);
     background: var(--purple-alpha-10);
     padding: var(--space-md) var(--space-lg);
     border-radius: var(--radius-md);
@@ -755,7 +755,7 @@
         background-color: var(--purple-alpha-10);
         border-radius: var(--radius-md);
         font-size: var(--font-size-sm);
-        color: var(--white-alpha-70);
+        color: var(--color-text-subtle);
         border-left: 3px solid var(--accent-color);
         flex-shrink: 0;
     }
