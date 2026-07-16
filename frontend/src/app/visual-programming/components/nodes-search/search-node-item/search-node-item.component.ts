@@ -62,7 +62,7 @@ import {
                 width: 100%;
                 cursor: pointer;
                 transition: all 0.2s ease;
-                background-color: var(--gray-850, #121212);
+                background-color: var(--color-input-background);
                 border-radius: var(--radius-md);
                 border: 1px solid transparent;
                 text-align: left;
@@ -70,8 +70,8 @@ import {
                 overflow: hidden;
 
                 &:hover {
-                    background-color: var(--gray-800, #1a1a1a);
-                    border-color: var(--gray-700, #333);
+                    background-color: var(--color-input-background-hover);
+                    border-color: var(--color-input-border);
 
                     .node-icon {
                         filter: brightness(1.2);
@@ -110,7 +110,7 @@ import {
                     min-width: 0;
 
                     .node-name {
-                        color: var(--white, #fff);
+                        color: var(--color-text-primary);
                         font-size: var(--font-size-sm);
                         font-weight: var(--font-weight-medium);
                         overflow: hidden;
@@ -124,7 +124,7 @@ import {
                         gap: 0;
 
                         .node-description {
-                            color: var(--gray-400, #b4b4b4);
+                            color: var(--color-text-secondary);
                             font-size: var(--font-size-xs);
                             line-height: 1.3;
                             overflow: hidden;

@@ -389,6 +389,21 @@
     --graphite-640: #e2e8f0;
     --graphite-600: #e2e8f0;
 
+    // Gray ramp inverts (dark greys become light surfaces, light greys become dark text)
+    --gray-50: #0f172a;
+    --gray-100: #1e293b;
+    --gray-200: #334155;
+    --gray-300: #475569;
+    --gray-400: #64748b;
+    --gray-500: #94a3b8;
+    --gray-600: #cbd5e1;
+    --gray-700: #e2e8f0;
+    --gray-750: #e2e8f0;
+    --gray-800: #ffffff;
+    --gray-850: #f8fafc;
+    --gray-900: #f1f5f9;
+    --gray-950: #e2e8f0;
+
     // Text primitives flip to dark slate
     --fog-100: #0f172a;
     --fog-200: #1e293b;

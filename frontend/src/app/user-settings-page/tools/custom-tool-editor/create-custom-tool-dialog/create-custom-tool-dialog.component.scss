@@ -2,7 +2,7 @@
     background-color: var(--color-modals-background);
     border: 1px solid var(--color-divider-subtle);
     border-radius: var(--radius-2xl);
-    color: var(--white);
+    color: var(--color-text-primary);
     width: 95vw;
     height: 95vh;
     box-shadow: 0 8px 24px var(--black-alpha-60);
@@ -112,7 +112,7 @@
         min-width: 0;
         display: flex;
         flex-direction: column;
-        background-color: var(--gray-850);
+        background-color: var(--color-background-body);
         border-left: 1px solid var(--color-divider-subtle);
         overflow: hidden;
     }
@@ -139,7 +139,7 @@
         color: var(--color-text-primary);
 
         .python-icon {
-            color: #ffdd57;
+            color: var(--yellow-500);
         }
     }
 
@@ -217,7 +217,7 @@
     .error-message {
         margin: 0;
         font-size: var(--font-size-xs);
-        color: #ff5c5c;
+        color: var(--color-status-error);
     }
 
     .parameters-section {
@@ -265,7 +265,7 @@
 
         &:hover {
             background: var(--accent-color);
-            color: var(--white);
+            color: var(--color-text-primary);
         }
     }
 
@@ -318,14 +318,14 @@
         font-weight: var(--font-weight-semibold);
 
         small {
-            color: #9b9ba6;
+            color: var(--color-text-secondary);
             font-size: var(--font-size-sm);
             font-weight: var(--font-weight-regular);
             margin-left: var(--space-2xs);
         }
 
         .python-icon {
-            color: #ffdd57;
+            color: var(--yellow-500);
         }
     }
 
@@ -374,7 +374,7 @@
         height: 320px;
         display: flex;
         flex-direction: column;
-        background-color: #171719;
+        background-color: var(--color-background-body);
         flex-shrink: 0;
 
         > app-code-editor,

@@ -1,16 +1,16 @@
 @use 'sass:color';
 
-$bg-dark: var(--graphite-1000);
-$bg-card: var(--graphite-875);
+$bg-dark: var(--color-background-body);
+$bg-card: var(--color-modals-background);
 $bg-input: #2d2d2d; // literal: consumed by color.adjust()
-$bg-item: var(--graphite-780);
-$bg-item-hover: var(--graphite-640);
+$bg-item: var(--color-input-background);
+$bg-item-hover: var(--color-input-background-hover);
 $accent-blue: #685fff; // unified brand accent (kept literal for rgba())
 $accent-hover: #574fd6;
-$text-primary: var(--gray-50);
-$text-secondary: var(--gray-500);
-$text-tertiary: var(--gray-600);
-$border-color: var(--white-alpha-10);
+$text-primary: var(--color-text-primary);
+$text-secondary: var(--color-text-secondary);
+$text-tertiary: var(--color-text-tertiary);
+$border-color: var(--color-divider-regular);
 $tooltip-bg: var(--black-alpha-85);
 $shadow-color: var(--black-alpha-50);
 $status-green: #2aba6b; // unified status green (kept literal for rgba())

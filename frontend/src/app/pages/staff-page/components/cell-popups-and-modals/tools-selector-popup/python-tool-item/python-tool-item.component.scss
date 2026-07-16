@@ -1,10 +1,10 @@
 // Variables
-$bg-item: var(--graphite-780);
-$bg-item-hover: var(--graphite-640);
+$bg-item: var(--color-input-background);
+$bg-item-hover: var(--color-input-background-hover);
 $accent-blue: #685fff; // unified brand accent (kept literal for rgba())
-$text-primary: var(--gray-50);
-$text-secondary: var(--gray-500);
-$border-color: var(--white-alpha-10);
+$text-primary: var(--color-text-primary);
+$text-secondary: var(--color-text-secondary);
+$border-color: var(--color-divider-regular);
 
 .python-tool-item {
     display: flex;
@@ -61,7 +61,7 @@ $border-color: var(--white-alpha-10);
         -webkit-appearance: none;
         width: 16px;
         height: 16px;
-        background-color: var(--white-alpha-10);
+        background-color: var(--color-input-background-hover);
         border: 1px solid $border-color;
         border-radius: var(--radius-sm);
         cursor: pointer;

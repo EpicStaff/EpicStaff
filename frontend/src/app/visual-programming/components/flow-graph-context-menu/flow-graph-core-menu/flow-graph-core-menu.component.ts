@@ -50,6 +50,7 @@ interface FlowGraphBlock {
                 cursor: pointer;
                 transition: background 0.2s ease;
                 position: relative;
+                color: var(--color-text-primary);
             }
 
             .node-icon {
@@ -64,12 +65,12 @@ interface FlowGraphBlock {
             }
 
             li:hover {
-                background: var(--graphite-780);
+                background: var(--white-alpha-6);
             }
 
             .plus-icon {
                 margin-left: auto;
-                color: #bbb;
+                color: var(--color-text-tertiary);
                 opacity: 0;
                 transition:
                     opacity 0.2s ease,

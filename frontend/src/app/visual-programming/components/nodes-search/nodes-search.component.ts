@@ -121,8 +121,8 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 height: 36px;
                 min-width: 36px;
                 padding: var(--space-sm);
-                background-color: var(--gray-800);
-                border: 1px solid var(--gray-750);
+                background-color: var(--color-input-background);
+                border: 1px solid var(--color-input-border);
                 border-radius: var(--radius-lg);
                 display: flex;
                 align-items: center;
@@ -134,7 +134,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 color: var(--color-text-secondary);
 
                 &:hover {
-                    background-color: var(--gray-750);
+                    background-color: var(--color-input-background-hover);
                 }
 
                 &:active {
@@ -151,7 +151,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                     color: var(--white);
 
                     i {
-                        color: var(--color-text-primary);
+                        color: var(--white);
                     }
                 }
             }
@@ -166,20 +166,20 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
             .search-input {
                 width: 100%;
                 height: 38px;
-                background-color: var(--gray-850, #1a1a1a);
-                border: 1px solid var(--gray-750, #2f2f2f);
+                background-color: var(--color-input-background);
+                border: 1px solid var(--color-input-border);
                 border-radius: var(--radius-md);
                 padding: 0 var(--space-3xl) 0 var(--space-md);
-                color: var(--gray-200, #e3e3e3);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-sm);
                 outline: none;
 
                 &:focus {
-                    border-color: var(--accent-color, #685fff);
+                    border-color: var(--accent-color);
                 }
 
                 &::placeholder {
-                    color: var(--gray-500, #9b9b9b);
+                    color: var(--color-input-text-placeholder);
                 }
             }
 
@@ -197,11 +197,11 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 border: none;
                 padding: 0;
                 cursor: pointer;
-                color: var(--gray-400, #b4b4b4);
+                color: var(--color-text-secondary);
                 transition: color 0.15s ease;
 
                 &:hover {
-                    color: var(--white, #fff);
+                    color: var(--color-text-primary);
                 }
 
                 i {
@@ -212,8 +212,8 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
             .search-results {
                 margin-top: var(--space-sm);
                 width: 100%;
-                background-color: var(--vscode-panel-background, #151515);
-                border: 1px solid var(--vscode-panel-border, #3e3e3eff);
+                background-color: var(--color-modals-background);
+                border: 1px solid var(--color-divider-regular);
                 border-radius: var(--radius-md);
                 box-shadow: 0 4px 12px var(--black-alpha-15);
                 overflow: hidden;
@@ -224,11 +224,11 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
 
             .panel-title {
                 padding: var(--space-md) var(--space-lg);
-                border-bottom: 1px solid var(--gray-750, #2f2f2f);
+                border-bottom: 1px solid var(--color-divider-regular);
 
                 h3 {
                     margin: 0;
-                    color: var(--gray-200, #e3e3e3);
+                    color: var(--color-text-primary);
                     font-size: var(--font-size-md);
                     font-weight: var(--font-weight-medium);
                 }
@@ -242,7 +242,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 margin: 0;
 
                 .no-results {
-                    color: var(--gray-500, #9b9b9b);
+                    color: var(--color-text-tertiary);
                     text-align: center;
                     padding: 0;
                     margin: 0;
@@ -251,7 +251,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                     align-items: center;
                     justify-content: center;
                     height: 32px;
-                    background-color: var(--gray-850, #1a1a1a);
+                    background-color: var(--color-input-background);
                     border-radius: var(--radius-sm);
                 }
 

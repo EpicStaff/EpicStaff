@@ -20,7 +20,7 @@
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
     line-height: 1;
-    border-bottom: 1px solid #2b2b2b;
+    border-bottom: 1px solid var(--color-divider-regular);
     border-top-left-radius: var(--radius-sm);
     border-top-right-radius: var(--radius-sm);
 
@@ -38,7 +38,7 @@
 
             .python-icon {
                 margin-right: var(--space-sm);
-                color: #ffdd57;
+                color: var(--yellow-500);
             }
         }
 
@@ -50,7 +50,7 @@
         .error-message {
             margin-top: var(--space-3xs);
             display: block;
-            color: #ff5555;
+            color: var(--color-status-error);
             font-size: var(--font-size-md);
             font-weight: var(--font-weight-light);
             margin-left: var(--space-3xs);
@@ -76,7 +76,7 @@
 
 .editor-container {
     position: relative;
-    background-color: var(--gray-850);
+    background-color: var(--color-background-body);
     flex: 1;
     min-height: 0;
     display: flex;
@@ -119,7 +119,7 @@
 
 .spinner {
     border: 4px solid var(--fog-alpha-30);
-    border-top: 4px solid var(--gray-200);
+    border-top: 4px solid var(--accent-color);
     border-radius: 50%;
     width: 30px;
     height: 30px;
