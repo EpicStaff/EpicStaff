@@ -359,7 +359,6 @@
     --color-text-muted: #666666;
     --color-card-background: #1e1e1e;
     --color-line: var(--graphite-700);
-    --color-row-hover: var(--graphite-650);
 
     // ------------------------------------------------------------------
     // SEMANTIC — status indicators (info/warning/processing/failed)
@@ -368,11 +367,6 @@
     --color-status-warning: var(--yellow-500);
     --color-status-processing: var(--orange-500);
     --color-status-failed: var(--red-600);
-
-    // ------------------------------------------------------------------
-    // SEMANTIC — misc
-    // ------------------------------------------------------------------
-    --color-storage-icon: rgba(230, 230, 230, 1);
 }
 
 // ============================================================================
@@ -424,5 +418,4 @@
     --color-drag-drop-active: rgba(15, 15, 15, 0.12);
     --color-card-background: #ffffff;
     --color-surface-contrast: #f5f5f5;
-    --color-storage-icon: rgba(51, 65, 85, 1);
 }

@@ -32,7 +32,7 @@ import { InlineSvgDirective } from '../../../core/directives/inline-svg.directiv
                 cursor: pointer;
                 &:hover {
                     transition: 0.3s;
-                    background-color: var(--color-row-hover);
+                    background-color: var(--color-input-background);
                 }
             }
         `,

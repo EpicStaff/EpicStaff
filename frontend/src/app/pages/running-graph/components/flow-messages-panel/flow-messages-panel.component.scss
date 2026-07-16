@@ -43,7 +43,7 @@
         height: 28px;
         min-width: 28px;
         min-height: 28px;
-        border: 1px solid var(--color-row-hover);
+        border: 1px solid var(--color-input-border);
         transition:
             border-color 0.2s ease,
             background-color 0.2s ease,
@@ -69,7 +69,7 @@
 
         &:disabled,
         &[disabled] {
-            color: var(--color-row-hover);
+            color: var(--color-text-disabled);
             background-color: transparent;
             cursor: not-allowed;
             opacity: 0.5;
@@ -203,7 +203,7 @@
     right: 0;
     min-width: 200px;
     background: var(--color-background-body, var(--color-background-body));
-    border: 1px solid var(--color-row-hover);
+    border: 1px solid var(--color-input-border);
     border-radius: var(--radius-md);
     box-shadow: 0 8px 24px var(--black-alpha-40);
     z-index: 100;
@@ -217,7 +217,7 @@
     &__input {
         width: 100%;
         padding: var(--space-xs) var(--space-sm);
-        border: 1px solid var(--color-row-hover);
+        border: 1px solid var(--color-input-border);
         border-radius: var(--radius-sm);
         background: transparent;
         color: var(--color-text-primary, var(--white));

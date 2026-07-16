@@ -82,11 +82,6 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
                 samples: [{ kind: 'card', label: 'Card', prop: 'background' }],
             },
             {
-                name: '--color-row-hover',
-                label: 'Row hover',
-                samples: [{ kind: 'surface', label: 'Hover me', prop: 'background', hover: true }],
-            },
-            {
                 name: '--color-drag-drop-active',
                 label: 'Drag & drop active',
                 description: 'Background highlight when dragging files over a drop zone.',
@@ -408,16 +403,6 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
                     { kind: 'dot', prop: 'background' },
                     { kind: 'badge', label: 'Max', prop: 'background' },
                 ],
-            },
-        ],
-    },
-    {
-        title: 'Misc',
-        tokens: [
-            {
-                name: '--color-storage-icon',
-                label: 'Storage icon',
-                description: 'Color of file and folder icons in the storage browser.',
             },
         ],
     },
