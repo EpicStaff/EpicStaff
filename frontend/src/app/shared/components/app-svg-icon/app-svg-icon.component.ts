@@ -19,7 +19,6 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
                 align-items: center;
                 justify-content: center;
                 flex-shrink: 0;
-                color: var(--icon-color, var(--color-icon));
             }
             svg {
                 display: block;

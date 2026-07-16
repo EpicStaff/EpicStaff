@@ -14,6 +14,18 @@
 @use './styles/_prompt-tooltip';
 @use './styles/_action-dropdown-overlay';
 
+// Default color for standalone SVG icons. Interactive containers (buttons,
+// links, app-button) restore inherited color so icons follow their parent's
+// color scheme instead of the global icon token.
+app-svg-icon {
+    color: var(--color-icon);
+}
+button app-svg-icon,
+a app-svg-icon,
+app-button app-svg-icon {
+    color: inherit;
+}
+
 .waypoint-tooltip {
     display: none;
     position: fixed;
