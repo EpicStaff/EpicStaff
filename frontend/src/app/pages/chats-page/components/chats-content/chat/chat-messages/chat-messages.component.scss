@@ -37,7 +37,7 @@
         align-items: center;
         justify-content: center;
         height: 100%;
-        color: var(--gray-400);
+        color: var(--color-text-secondary);
         text-align: center;
 
         p {
@@ -82,7 +82,7 @@
 
     .message-role {
         font-size: var(--font-size-md);
-        color: var(--gray-400);
+        color: var(--color-text-secondary);
         margin-bottom: var(--space-2xs);
     }
 
@@ -186,7 +186,7 @@
 
     .timestamp {
         font-size: var(--font-size-xs);
-        color: var(--gray-500);
+        color: var(--color-text-tertiary);
         margin-top: var(--space-2xs);
     }
 }

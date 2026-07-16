@@ -77,7 +77,7 @@ interface NodeStatus {
             font-size: var(--font-size-xl);
             font-weight: var(--font-weight-medium);
             margin-bottom: var(--space-lg);
-            color: var(--white);
+            color: var(--color-text-primary);
             letter-spacing: -0.02em;
         }
 
@@ -172,7 +172,7 @@ interface NodeStatus {
         }
 
         .placeholder {
-            color: var(--gray-500);
+            color: var(--color-text-tertiary);
             font-style: italic;
             text-align: center;
             width: 100%;

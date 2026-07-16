@@ -54,7 +54,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
                 align-items: center;
                 gap: var(--space-lg);
                 font-size: var(--font-size-lg);
-                color: var(--white);
+                color: var(--color-text-primary);
 
                 app-svg-icon {
                     transform: rotate(90deg);

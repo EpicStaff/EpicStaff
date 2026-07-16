@@ -13,7 +13,7 @@
     border: 1px solid var(--color-divider-subtle);
     display: flex;
     flex-direction: column;
-    color: var(--white);
+    color: var(--color-text-primary);
     overflow: visible;
     transition: width 0.3s ease;
     z-index: 10;
@@ -61,7 +61,7 @@ header {
         .expand-btn {
             background: none;
             border: none;
-            color: var(--gray-300);
+            color: var(--color-text-secondary);
             cursor: pointer;
             padding: var(--space-2xs);
             border-radius: var(--radius-sm);
@@ -138,7 +138,7 @@ header {
 
             .esc-label {
                 font-size: var(--font-size-xs);
-                color: var(--gray-600);
+                color: var(--color-text-disabled);
                 font-weight: var(--font-weight-medium);
                 padding: 0.15rem var(--space-2xs);
                 border: 1px solid var(--gray-700);
@@ -149,7 +149,7 @@ header {
             .close-btn {
                 background: none;
                 border: none;
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 cursor: pointer;
                 padding: var(--space-2xs);
                 border-radius: var(--radius-sm);
@@ -159,7 +159,7 @@ header {
                 justify-content: center;
 
                 &:hover {
-                    color: var(--white);
+                    color: var(--color-text-primary);
                     background-color: var(--white-alpha-10);
                 }
             }

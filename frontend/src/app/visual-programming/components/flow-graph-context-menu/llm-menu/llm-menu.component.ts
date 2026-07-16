@@ -51,7 +51,7 @@ import { NodeType } from '../../../core/enums/node-type';
             }
             li:hover {
                 background: var(--graphite-780);
-                color: var(--white);
+                color: var(--color-text-primary);
             }
             li i {
                 font-size: var(--font-size-xl);
@@ -74,7 +74,7 @@ import { NodeType } from '../../../core/enums/node-type';
             }
             li:hover .plus-icon {
                 opacity: 1;
-                color: var(--white);
+                color: var(--color-text-primary);
             }
         `,
     ],

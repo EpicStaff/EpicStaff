@@ -12,7 +12,7 @@
     justify-content: center;
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-semibold);
-    color: var(--white);
+    color: var(--color-text-primary);
     border: 2px solid var(--graphite-875);
     cursor: default;
     flex-shrink: 0;
@@ -23,7 +23,7 @@
     }
 
     &--overflow {
-        background-color: var(--gray-600);
+        background-color: var(--color-text-disabled);
         font-size: var(--font-size-2xs);
     }
 

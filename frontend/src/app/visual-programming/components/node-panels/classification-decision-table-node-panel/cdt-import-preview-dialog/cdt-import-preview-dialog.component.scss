@@ -44,7 +44,7 @@
     height: 30px;
     border: none;
     background: transparent;
-    color: var(--white-alpha-60);
+    color: var(--color-text-secondary);
     border-radius: var(--radius-md);
     cursor: pointer;
     transition:
@@ -53,7 +53,7 @@
 
     &:hover {
         background: var(--white-alpha-8);
-        color: var(--white);
+        color: var(--color-text-primary);
     }
 
     i {
@@ -102,7 +102,7 @@
 
 .meta-value {
     font-size: var(--font-size-md);
-    color: var(--white);
+    color: var(--color-text-primary);
     word-break: break-word;
 
     &--count {
@@ -159,7 +159,7 @@
     tbody td {
         padding: var(--space-sm) var(--space-md);
         border-bottom: 1px solid var(--white-alpha-5);
-        color: var(--white-alpha-85);
+        color: var(--color-text-primary);
         word-break: break-word;
     }
 
@@ -189,7 +189,7 @@
 
     &--ghost {
         background: var(--white-alpha-8);
-        color: var(--white-alpha-85);
+        color: var(--color-text-primary);
 
         &:hover {
             background: var(--white-alpha-15);

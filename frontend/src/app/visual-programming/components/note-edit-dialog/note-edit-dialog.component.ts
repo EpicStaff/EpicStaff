@@ -157,7 +157,7 @@ import { GraphNoteModel } from '../../core/models/node.model';
                 border: 1px solid var(--color-input-border, #444);
                 border-radius: var(--radius-md);
                 padding: var(--space-md) var(--space-md);
-                color: var(--white);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-md);
                 outline: none;
                 transition: border-color 0.2s ease;

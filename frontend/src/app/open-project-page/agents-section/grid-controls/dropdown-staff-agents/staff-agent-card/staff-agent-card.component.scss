@@ -9,7 +9,7 @@
     width: 100%;
 
     &:hover {
-        border-color: var(--gray-600);
+        border-color: var(--color-text-disabled);
         box-shadow: 0 4px 12px var(--black-alpha-15);
     }
 
@@ -33,7 +33,7 @@
             .role-title {
                 font-size: var(--font-size-lg);
                 font-weight: var(--font-weight-semibold);
-                color: var(--gray-100);
+                color: var(--color-text-primary);
                 margin: 0;
                 white-space: nowrap;
                 overflow: hidden;
@@ -60,7 +60,7 @@
 
                 &.active {
                     .feature-icon {
-                        color: var(--gray-200);
+                        color: var(--color-text-primary);
                     }
                     .memory-icon,
                     .delegation-icon {
@@ -69,7 +69,7 @@
                 }
 
                 .feature-icon {
-                    color: var(--gray-500);
+                    color: var(--color-text-tertiary);
                     transition: color 0.2s ease;
                 }
 
@@ -85,7 +85,7 @@
                     background-color: var(--gray-750);
 
                     .menu-icon {
-                        color: var(--gray-300);
+                        color: var(--color-text-secondary);
                         opacity: 1;
                     }
                 }
@@ -165,7 +165,7 @@
                 font-weight: var(--font-weight-semibold);
                 letter-spacing: 0.05em;
                 text-transform: uppercase;
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
                 margin: 0;
                 margin-bottom: var(--space-2xs); /* Reduced from 8px to 4px to make spacing smaller */
                 height: 20px;
@@ -173,7 +173,7 @@
 
             .section-subtitle {
                 font-size: var(--font-size-md);
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
                 font-style: italic;
                 margin: 0;
             }
@@ -185,7 +185,7 @@
                 .section-content {
                     font-size: var(--font-size-md);
                     line-height: 1.5;
-                    color: var(--gray-200);
+                    color: var(--color-text-primary);
                     margin: 0;
                     word-break: break-word;
 
@@ -218,7 +218,7 @@
 
                 .icon {
                     transition: transform 0.3s ease;
-                    color: var(--gray-400);
+                    color: var(--color-text-secondary);
 
                     &.expanded {
                         transform: rotate(180deg);
@@ -252,7 +252,7 @@
                 .subsection-title {
                     font-size: var(--font-size-xs);
                     font-weight: var(--font-weight-semibold);
-                    color: var(--gray-400);
+                    color: var(--color-text-secondary);
                     margin: 0 0 var(--space-sm) 0;
                     text-transform: uppercase;
                     /* Added hover styles for subsection title */
@@ -270,7 +270,7 @@
 
                     .tool-count {
                         font-size: var(--font-size-2xs);
-                        color: var(--gray-500);
+                        color: var(--color-text-tertiary);
                         font-weight: var(--font-weight-regular);
                         text-transform: none;
                     }
@@ -304,13 +304,13 @@
         .model-name {
             font-size: var(--font-size-md);
             font-weight: var(--font-weight-medium);
-            color: var(--gray-100);
+            color: var(--color-text-primary);
             margin: 0;
         }
 
         .model-custom-name {
             font-size: var(--font-size-xs);
-            color: var(--gray-400);
+            color: var(--color-text-secondary);
             margin: var(--space-2xs) 0 0;
         }
 
@@ -329,13 +329,13 @@
 
                 .model-name {
                     font-weight: var(--font-weight-medium);
-                    color: var(--gray-100);
+                    color: var(--color-text-primary);
                     font-size: var(--font-size-md);
                     margin: 0;
                 }
 
                 .model-custom-name {
-                    color: var(--gray-400);
+                    color: var(--color-text-secondary);
                     font-size: var(--font-size-sm);
                     margin-top: 0.15rem;
                     overflow: hidden;
@@ -359,7 +359,7 @@
                 position: relative;
 
                 app-svg-icon {
-                    color: var(--gray-400);
+                    color: var(--color-text-secondary);
                     flex-shrink: 0;
                 }
 
@@ -371,7 +371,7 @@
 
                 .tool-name {
                     font-size: var(--font-size-md);
-                    color: var(--gray-200);
+                    color: var(--color-text-primary);
                     flex: 1;
                     overflow: hidden;
                     text-overflow: ellipsis;

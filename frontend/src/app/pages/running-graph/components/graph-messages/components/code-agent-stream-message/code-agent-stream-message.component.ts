@@ -198,13 +198,13 @@ interface ThinkingStep {
         }
 
         .node-name {
-            color: var(--gray-100);
+            color: var(--color-text-primary);
             font-size: var(--font-size-xl);
             font-weight: var(--font-weight-semibold);
         }
 
         .step-count {
-            color: var(--gray-400);
+            color: var(--color-text-secondary);
             font-size: var(--font-size-md);
         }
 
@@ -238,7 +238,7 @@ interface ThinkingStep {
         .final-result {
             position: relative;
             padding: var(--space-lg) var(--space-lg) 0 5.5rem;
-            color: var(--gray-200);
+            color: var(--color-text-primary);
             max-height: 400px;
             overflow-y: auto;
 
@@ -288,20 +288,20 @@ interface ThinkingStep {
         }
 
         .step-label {
-            color: var(--gray-300);
+            color: var(--color-text-secondary);
             font-size: var(--font-size-md);
             font-weight: var(--font-weight-medium);
         }
 
         .step-tools {
-            color: var(--gray-500);
+            color: var(--color-text-tertiary);
             font-size: var(--font-size-sm);
             display: flex;
             align-items: center;
             gap: var(--space-2xs);
 
             app-svg-icon {
-                color: var(--gray-500);
+                color: var(--color-text-tertiary);
             }
         }
 
@@ -329,7 +329,7 @@ interface ThinkingStep {
         }
 
         .tool-call-input {
-            color: var(--gray-400);
+            color: var(--color-text-secondary);
             font-size: var(--font-size-xs);
             margin-top: var(--space-2xs);
             white-space: pre-wrap;
@@ -339,7 +339,7 @@ interface ThinkingStep {
         }
 
         .tool-call-output {
-            color: var(--gray-500);
+            color: var(--color-text-tertiary);
             font-size: var(--font-size-xs);
             margin-top: var(--space-2xs);
             padding-top: var(--space-2xs);
@@ -351,7 +351,7 @@ interface ThinkingStep {
         }
 
         .thinking-text {
-            color: var(--gray-400);
+            color: var(--color-text-secondary);
             font-size: var(--font-size-sm);
             font-style: italic;
             white-space: pre-wrap;

@@ -55,7 +55,7 @@
 }
 
 .loading-text {
-    color: var(--gray-300);
+    color: var(--color-text-secondary);
     font-size: var(--font-size-md);
 }
 
@@ -78,12 +78,12 @@
 }
 
 .empty-state app-svg-icon {
-    color: var(--gray-400);
+    color: var(--color-text-secondary);
     margin-bottom: var(--space-lg);
 }
 
 .empty-state p {
-    color: var(--gray-300);
+    color: var(--color-text-secondary);
     font-size: var(--font-size-lg);
 }
 

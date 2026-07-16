@@ -22,12 +22,12 @@
         max-height: 40px; /* Reduce height */
         margin-bottom: var(--space-sm);
         &:focus-within {
-            border-color: var(--gray-600); /* Softer focus effect */
+            border-color: var(--color-text-disabled); /* Softer focus effect */
         }
 
         i {
             font-size: var(--font-size-md); /* Make the icon smaller */
-            color: var(--gray-500); /* Soft color */
+            color: var(--color-text-tertiary); /* Soft color */
             margin-right: var(--space-xs);
         }
 
@@ -35,14 +35,14 @@
             flex: 1;
             background: transparent;
             border: none;
-            color: var(--gray-100);
+            color: var(--color-text-primary);
             font-size: var(--font-size-sm); /* Slightly smaller text */
             outline: none;
             padding: var(--space-3xs);
             line-height: 1; /* Align text properly */
 
             &::placeholder {
-                color: var(--gray-600);
+                color: var(--color-text-disabled);
                 font-size: var(--font-size-sm);
             }
         }
@@ -57,7 +57,7 @@
         button {
             background: transparent;
             border: none;
-            color: var(--gray-400);
+            color: var(--color-text-secondary);
             font-size: var(--font-size-md);
             padding: var(--space-sm);
             cursor: pointer;
@@ -69,11 +69,11 @@
             text-align: center;
 
             &:hover {
-                color: var(--white);
+                color: var(--color-text-primary);
             }
 
             &.active {
-                color: var(--white);
+                color: var(--color-text-primary);
                 border-bottom: 2px solid var(--white);
             }
         }

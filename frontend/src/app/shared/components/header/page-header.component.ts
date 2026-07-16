@@ -84,7 +84,7 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
                         font-weight: var(--font-weight-regular);
 
                         line-height: 1;
-                        color: var(--white);
+                        color: var(--color-text-primary);
                         padding: 0;
                         margin: 0;
                     }

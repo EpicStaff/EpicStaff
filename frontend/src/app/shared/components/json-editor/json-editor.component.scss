@@ -45,7 +45,7 @@
             justify-content: center;
 
             .editor-title {
-                color: var(--gray-200);
+                color: var(--color-text-primary);
                 font-weight: var(--font-weight-medium);
                 margin-right: var(--space-lg);
                 display: flex;
@@ -83,7 +83,7 @@
             background: transparent;
             border: none;
             cursor: pointer;
-            color: var(--gray-200);
+            color: var(--color-text-primary);
             padding: var(--space-2xs);
             transition: color 0.2s;
 
@@ -119,7 +119,7 @@
 
             span {
                 margin-top: var(--space-sm);
-                color: var(--gray-200);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-lg);
             }
         }
@@ -148,7 +148,7 @@
         .little-handle {
             width: 10px;
             height: 2px;
-            background-color: var(--gray-200);
+            background-color: var(--color-text-primary);
         }
 
         &:hover {

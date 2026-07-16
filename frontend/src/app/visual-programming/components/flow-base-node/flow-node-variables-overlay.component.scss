@@ -23,7 +23,7 @@
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-semibold);
     letter-spacing: 0.5px;
-    color: var(--gray-400);
+    color: var(--color-text-secondary);
 }
 
 .inputs-list {
@@ -52,7 +52,7 @@
 }
 
 .equals-sign {
-    color: var(--white);
+    color: var(--color-text-primary);
     margin: 0 var(--space-3xs);
 }
 
@@ -89,7 +89,7 @@
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-semibold);
     letter-spacing: 0.5px;
-    color: var(--gray-400);
+    color: var(--color-text-secondary);
     margin-bottom: var(--space-2xs);
 }
 

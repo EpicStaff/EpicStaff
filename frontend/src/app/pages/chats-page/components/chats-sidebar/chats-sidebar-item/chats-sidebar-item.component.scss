@@ -20,7 +20,7 @@
     .agent-role {
         flex: 1;
         font-size: var(--font-size-md);
-        color: var(--white-alpha-90);
+        color: var(--color-text-primary);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -45,7 +45,7 @@
 
         &:hover {
             background-color: var(--white-alpha-10);
-            color: var(--white-alpha-80);
+            color: var(--color-text-primary);
         }
     }
 

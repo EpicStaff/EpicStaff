@@ -96,7 +96,7 @@
         padding: 0;
 
         &--active {
-            color: var(--white);
+            color: var(--color-text-primary);
         }
 
         &:not(&--active):hover {

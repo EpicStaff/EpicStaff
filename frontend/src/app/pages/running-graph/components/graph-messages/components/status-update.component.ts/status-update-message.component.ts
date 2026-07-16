@@ -47,10 +47,10 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
                     flex-wrap: wrap;
                     margin-bottom: var(--space-md);
                     .project-name {
-                        color: var(--gray-500);
+                        color: var(--color-text-tertiary);
                     }
                     .status-value {
-                        color: var(--gray-100);
+                        color: var(--color-text-primary);
                         font-weight: var(--font-weight-medium);
                     }
                 }
@@ -61,7 +61,7 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
                         align-items: center;
                         font-weight: var(--font-weight-medium);
                         margin-bottom: var(--space-2xs);
-                        color: var(--gray-400);
+                        color: var(--color-text-secondary);
                         app-svg-icon {
                             margin-right: var(--space-sm);
                         }
@@ -81,7 +81,7 @@ import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models
                         font-family: 'Courier New', monospace;
                         font-size: var(--font-size-sm);
                         overflow-x: auto;
-                        color: var(--gray-200);
+                        color: var(--color-text-primary);
                     }
                 }
             }

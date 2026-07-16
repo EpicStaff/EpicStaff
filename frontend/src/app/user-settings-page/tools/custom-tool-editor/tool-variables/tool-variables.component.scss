@@ -10,7 +10,7 @@
         h3 {
             margin: 0;
             font-size: var(--font-size-md);
-            color: var(--gray-400);
+            color: var(--color-text-secondary);
             font-weight: var(--font-weight-medium);
         }
 
@@ -50,7 +50,7 @@
                 background-color: var(--color-backdrop);
                 border: 1px solid var(--white-alpha-10);
                 border-radius: var(--radius-md);
-                color: var(--white);
+                color: var(--color-text-primary);
                 padding: var(--space-sm) var(--space-md);
                 font-size: var(--font-size-md);
 
@@ -89,7 +89,7 @@
 
                 .checkbox-label {
                     font-size: var(--font-size-xs);
-                    color: var(--gray-400);
+                    color: var(--color-text-secondary);
                 }
             }
 

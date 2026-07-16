@@ -5,7 +5,7 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    color: var(--white);
+    color: var(--color-text-primary);
     border: 1px solid var(--color-divider-subtle, var(--graphite-640));
     overflow: hidden;
 }
@@ -51,7 +51,7 @@
 
     .esc-label {
         font-size: var(--font-size-xs);
-        color: var(--gray-600);
+        color: var(--color-text-disabled);
         font-weight: var(--font-weight-medium);
         padding: 0.15rem var(--space-2xs);
         border: 1px solid var(--gray-700);

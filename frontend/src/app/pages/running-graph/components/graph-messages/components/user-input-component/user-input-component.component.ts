@@ -74,7 +74,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
             }
 
             .feedback-message {
-                color: var(--gray-200);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-lg);
             }
 
@@ -100,7 +100,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 
             textarea {
                 background-color: var(--gray-800);
-                color: var(--gray-200);
+                color: var(--color-text-primary);
                 border: 1px solid var(--gray-750);
                 border-radius: var(--radius-md);
                 padding: var(--space-md);
@@ -157,7 +157,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 
             .done-btn {
                 background-color: var(--gray-800);
-                color: var(--gray-200);
+                color: var(--color-text-primary);
                 border: 1px solid var(--gray-700);
                 border-radius: var(--radius-md);
                 padding: var(--space-sm) var(--space-lg);
@@ -172,7 +172,7 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 
                 &:hover {
                     background-color: var(--gray-750);
-                    border-color: var(--gray-600);
+                    border-color: var(--color-text-disabled);
                 }
 
                 &:disabled {

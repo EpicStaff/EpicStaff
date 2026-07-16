@@ -87,7 +87,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 height: 100%;
             }
             .enable-label {
-                color: var(--white-alpha-90);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);
             }
@@ -97,7 +97,7 @@ interface EnableFilterHeaderParams extends IHeaderParams {
                 padding: 0;
                 border: none;
                 background: transparent;
-                color: var(--white-alpha-60);
+                color: var(--color-text-secondary);
                 cursor: pointer;
                 display: inline-flex;
                 align-items: center;

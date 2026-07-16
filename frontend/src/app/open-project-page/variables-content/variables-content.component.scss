@@ -80,7 +80,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
             }
 
             &:hover {
-                border-color: var(--gray-600);
+                border-color: var(--color-text-disabled);
                 box-shadow: 0 4px 12px var(--black-alpha-20);
             }
 
@@ -145,7 +145,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
 
                     &.no-value {
                         font-style: italic;
-                        color: var(--gray-600);
+                        color: var(--color-text-disabled);
                     }
                 }
             }
@@ -209,7 +209,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     justify-content: center;
                     background: transparent;
                     border: none;
-                    color: var(--gray-500);
+                    color: var(--color-text-tertiary);
                     cursor: pointer;
                     padding: var(--space-xs);
                     border-radius: var(--radius-md);
@@ -222,7 +222,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     }
 
                     &:hover {
-                        color: var(--gray-300);
+                        color: var(--color-text-secondary);
                         background: var(--gray-750);
                     }
 
@@ -232,7 +232,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     }
 
                     &.save-button {
-                        color: var(--gray-300);
+                        color: var(--color-text-secondary);
 
                         &:hover {
                             color: $success-color;
@@ -261,7 +261,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
             transition: all 0.25s ease;
 
             &:hover {
-                border-color: var(--gray-600);
+                border-color: var(--color-text-disabled);
 
                 box-shadow: 0 4px 12px var(--black-alpha-20);
             }
@@ -300,11 +300,11 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                     }
 
                     &::placeholder {
-                        color: var(--gray-500);
+                        color: var(--color-text-tertiary);
                     }
 
                     &:hover {
-                        border-color: var(--gray-600);
+                        border-color: var(--color-text-disabled);
                     }
 
                     &:focus {
@@ -336,7 +336,7 @@ $success-color: #2aba6b; // unified success green (kept literal for rgba())
                 font-weight: var(--font-weight-medium);
                 padding: var(--space-xs) var(--space-md);
                 background-color: rgba($accent-color, 0.1);
-                color: var(--gray-200);
+                color: var(--color-text-primary);
                 border: 1px solid var(--gray-700);
                 border-radius: var(--radius-md);
                 cursor: pointer;

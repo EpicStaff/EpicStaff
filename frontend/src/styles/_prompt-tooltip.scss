@@ -62,7 +62,7 @@
 .ptp-title {
     font-weight: var(--font-weight-semibold);
     font-size: var(--font-size-sm);
-    color: var(--gray-200);
+    color: var(--color-text-primary);
     font-family: var(--font-family-mono);
 }
 
@@ -92,7 +92,7 @@
 .ptp-textarea {
     width: 100%;
     background: var(--gray-900);
-    color: var(--gray-300);
+    color: var(--color-text-secondary);
     border: 1px solid var(--white-alpha-10);
     border-radius: var(--radius-md);
     padding: var(--space-sm) var(--space-md);

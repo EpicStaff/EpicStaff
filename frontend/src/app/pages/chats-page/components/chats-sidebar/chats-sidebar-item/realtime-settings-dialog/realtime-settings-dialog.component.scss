@@ -1,7 +1,7 @@
 .container {
     background-color: var(--graphite-875);
     border-radius: var(--radius-2xl);
-    color: var(--white-alpha-90);
+    color: var(--color-text-primary);
     min-width: 400px;
     width: 500px;
     max-width: 500px;
@@ -35,7 +35,7 @@
         .close-btn {
             background: none;
             border: none;
-            color: var(--white-alpha-60);
+            color: var(--color-text-secondary);
             cursor: pointer;
             padding: var(--space-sm);
             display: flex;
@@ -46,7 +46,7 @@
 
             &:hover {
                 background-color: var(--white-alpha-10);
-                color: var(--white-alpha-90);
+                color: var(--color-text-primary);
             }
         }
     }
@@ -142,7 +142,7 @@
 
             &.close {
                 background-color: var(--white-alpha-10);
-                color: var(--white-alpha-90);
+                color: var(--color-text-primary);
 
                 &:hover {
                     background-color: var(--white-alpha-15);
@@ -190,7 +190,7 @@
 
     .slider-value {
         font-size: var(--font-size-md);
-        color: var(--gray-100);
+        color: var(--color-text-primary);
         font-weight: var(--font-weight-medium);
         margin-left: auto;
     }
@@ -272,7 +272,7 @@
 
         span {
             font-size: var(--font-size-sm);
-            color: var(--gray-400);
+            color: var(--color-text-secondary);
         }
     }
 }

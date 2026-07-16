@@ -8,7 +8,7 @@
     height: 75px;
 
     .close {
-        color: var(--gray-300);
+        color: var(--color-text-secondary);
         border: 1px solid var(--gray-700);
         background-color: var(--gray-850);
         padding: var(--space-md) var(--space-xl);
@@ -21,7 +21,7 @@
 
     .close:hover {
         background-color: var(--gray-800);
-        color: var(--gray-100);
+        color: var(--color-text-primary);
     }
 
     .submit {

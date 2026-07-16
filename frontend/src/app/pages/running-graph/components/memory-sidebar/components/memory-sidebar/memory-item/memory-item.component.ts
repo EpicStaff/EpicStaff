@@ -127,7 +127,7 @@ import {
                 font-size: var(--font-size-xs);
                 font-weight: var(--font-weight-semibold);
                 text-transform: capitalize;
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 background: var(--gray-750);
                 padding: var(--space-2xs) var(--space-sm);
                 border-radius: var(--radius-sm);
@@ -135,7 +135,7 @@ import {
 
             .memory-date {
                 font-size: var(--font-size-xs);
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
             }
 
             .delete-button {
@@ -144,20 +144,20 @@ import {
                 justify-content: center;
                 background: transparent;
                 border: none;
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
                 cursor: pointer;
                 padding: 0;
             }
 
             .delete-button:hover {
-                color: var(--white);
+                color: var(--color-text-primary);
             }
 
             .memory-content {
                 margin-bottom: var(--space-md);
                 font-size: var(--font-size-md);
                 line-height: 1.5;
-                color: var(--white);
+                color: var(--color-text-primary);
             }
 
             .details-toggle {
@@ -169,7 +169,7 @@ import {
                 border: none;
                 border-radius: var(--radius-sm);
                 padding: var(--space-sm) var(--space-md);
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 font-size: var(--font-size-sm);
                 cursor: pointer;
                 margin-top: var(--space-md);
@@ -211,13 +211,13 @@ import {
             .details-title {
                 margin: 0 0 var(--space-2xs) 0;
                 font-weight: var(--font-weight-medium);
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
             }
 
             .details-content {
                 margin: 0;
                 white-space: pre-line;
-                color: var(--gray-200);
+                color: var(--color-text-primary);
             }
 
             .suggestions {
@@ -227,7 +227,7 @@ import {
             .suggestions-list {
                 margin: var(--space-2xs) 0 0 0;
                 padding-left: var(--space-xl);
-                color: var(--gray-200);
+                color: var(--color-text-primary);
             }
 
             .suggestions-list li {

@@ -52,7 +52,7 @@ import { FormsModule } from '@angular/forms';
                 font-weight: var(--font-weight-regular);
                 letter-spacing: -0.02em;
                 line-height: 1.2;
-                color: var(--white);
+                color: var(--color-text-primary);
                 padding: 0;
                 margin: 0;
             }
@@ -89,7 +89,7 @@ import { FormsModule } from '@angular/forms';
                 border-radius: var(--radius-md);
                 border: 1px solid var(--gray-600);
                 background-color: var(--white-alpha-5);
-                color: var(--white);
+                color: var(--color-text-primary);
                 width: 240px;
                 height: 38px;
                 font-size: var(--font-size-md);
@@ -101,7 +101,7 @@ import { FormsModule } from '@angular/forms';
                 box-shadow: 0 0 0 1px rgba(var(--accent-color-rgb), 0.2);
             }
             .input-with-toggle input::placeholder {
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
             }
             .toggle-visibility {
                 position: absolute;
@@ -109,14 +109,14 @@ import { FormsModule } from '@angular/forms';
                 background: none;
                 border: none;
                 cursor: pointer;
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 transition: color 0.2s ease;
             }
             .toggle-visibility:hover {
-                color: var(--white);
+                color: var(--color-text-primary);
             }
             .ti {
                 font-size: var(--font-size-xl);
@@ -139,7 +139,7 @@ import { FormsModule } from '@angular/forms';
             .model-button {
                 background: none;
                 border: none;
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 padding: var(--space-xs) var(--space-md);
                 font-size: var(--font-size-md);
                 border-radius: var(--radius-sm);
@@ -154,7 +154,7 @@ import { FormsModule } from '@angular/forms';
                 font-weight: var(--font-weight-medium);
             }
             .model-button:not(.active):hover {
-                color: var(--white);
+                color: var(--color-text-primary);
             }
             .slider-indicator {
                 position: absolute;

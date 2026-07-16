@@ -142,20 +142,20 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                     margin: 0;
                     font-size: var(--font-size-xl);
                     font-weight: var(--font-weight-medium);
-                    color: var(--white);
+                    color: var(--color-text-primary);
                 }
 
                 .close-button {
                     background: none;
                     border: none;
-                    color: var(--gray-400);
+                    color: var(--color-text-secondary);
                     cursor: pointer;
                     display: flex;
                     align-items: center;
                     justify-content: center;
 
                     &:hover {
-                        color: var(--white);
+                        color: var(--color-text-primary);
                     }
                 }
             }
@@ -183,7 +183,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                     border-radius: var(--radius-3xl);
                     padding: var(--space-xs) var(--space-md);
                     font-size: var(--font-size-sm);
-                    color: var(--gray-300);
+                    color: var(--color-text-secondary);
                     cursor: pointer;
 
                     &:hover {
@@ -206,7 +206,7 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                     justify-content: center;
                     align-items: center;
                     padding: var(--space-4xl) 0;
-                    color: var(--gray-400);
+                    color: var(--color-text-secondary);
                 }
             }
         `,

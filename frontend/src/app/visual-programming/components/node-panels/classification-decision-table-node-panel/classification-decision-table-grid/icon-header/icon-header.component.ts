@@ -54,7 +54,7 @@ export interface IconHeaderParams extends IHeaderParams {
             }
             .icon-header-label {
                 font-size: var(--font-size-md);
-                color: var(--white-alpha-90);
+                color: var(--color-text-primary);
                 font-weight: var(--font-weight-medium);
                 flex: 1;
                 overflow: hidden;

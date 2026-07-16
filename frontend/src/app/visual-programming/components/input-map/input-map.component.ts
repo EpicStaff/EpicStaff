@@ -303,7 +303,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 min-width: 0;
             }
             .equals-sign {
-                color: var(--white);
+                color: var(--color-text-primary);
                 font-weight: var(--font-weight-medium);
                 margin: 0 -2px;
             }
@@ -314,7 +314,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 background-color: var(--color-input-background);
                 border: 1px solid var(--white-alpha-10);
                 border-radius: var(--radius-md);
-                color: var(--white);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-md);
                 outline: none;
                 transition: border-color 0.2s ease;

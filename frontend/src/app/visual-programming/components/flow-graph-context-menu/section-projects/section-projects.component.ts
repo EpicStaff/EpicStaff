@@ -39,7 +39,7 @@ import { CreateNodeRequest } from '../../../core/models/node-creation.types';
             }
             li:hover {
                 background: var(--graphite-780);
-                color: var(--white);
+                color: var(--color-text-primary);
             }
             li i {
                 font-size: var(--font-size-xl);

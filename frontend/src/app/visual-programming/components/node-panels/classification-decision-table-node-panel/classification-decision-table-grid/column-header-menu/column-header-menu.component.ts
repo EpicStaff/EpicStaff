@@ -111,7 +111,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
 
             .chm-label {
                 font-size: var(--font-size-md);
-                color: var(--white-alpha-90);
+                color: var(--color-text-primary);
                 font-weight: var(--font-weight-medium);
                 flex: 1;
                 overflow: hidden;
@@ -177,7 +177,7 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
 
             .chm-chevron:hover {
                 background: var(--white-alpha-10);
-                color: var(--white-alpha-90);
+                color: var(--color-text-primary);
             }
 
             .chm-chevron i {

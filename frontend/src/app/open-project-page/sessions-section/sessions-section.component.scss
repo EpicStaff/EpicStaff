@@ -10,7 +10,7 @@
         margin-bottom: var(--space-2xl);
 
         h2 {
-            color: var(--gray-100);
+            color: var(--color-text-primary);
             font-size: var(--font-size-xl);
             font-weight: var(--font-weight-medium);
             margin: 0;
@@ -27,7 +27,7 @@
             button {
                 background: transparent;
                 border: none;
-                color: var(--gray-500);
+                color: var(--color-text-tertiary);
                 padding: var(--space-xs) var(--space-md);
                 border-radius: var(--radius-sm);
                 cursor: pointer;
@@ -40,7 +40,7 @@
 
                 &.active {
                     background: var(--mauve-alpha-20);
-                    color: var(--gray-100);
+                    color: var(--color-text-primary);
                 }
             }
         }
@@ -82,7 +82,7 @@
                 align-items: center;
 
                 .session-id {
-                    color: var(--gray-100);
+                    color: var(--color-text-primary);
                     font-weight: var(--font-weight-medium);
                     min-width: 100px;
                 }
@@ -90,14 +90,14 @@
                 .session-times {
                     display: flex;
                     gap: var(--space-lg);
-                    color: var(--gray-300);
+                    color: var(--color-text-secondary);
 
                     .time-label {
-                        color: var(--gray-500);
+                        color: var(--color-text-tertiary);
                     }
 
                     .time-value {
-                        color: var(--gray-100);
+                        color: var(--color-text-primary);
                     }
                 }
 
@@ -105,7 +105,7 @@
                     display: flex;
                     align-items: center;
                     gap: var(--space-sm);
-                    color: var(--gray-300);
+                    color: var(--color-text-secondary);
                     text-transform: capitalize;
 
                     .status-indicator {
@@ -138,7 +138,7 @@
                     gap: var(--space-2xs);
                     background: var(--white-alpha-5);
                     border: 1px solid var(--white-alpha-10);
-                    color: var(--gray-100);
+                    color: var(--color-text-primary);
                     padding: var(--space-xs) var(--space-md);
                     border-radius: var(--radius-sm);
                     cursor: pointer;

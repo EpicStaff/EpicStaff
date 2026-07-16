@@ -201,7 +201,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
 
         .header-text {
             flex: 1;
-            color: var(--gray-100);
+            color: var(--color-text-primary);
             font-size: var(--font-size-xl);
             font-weight: var(--font-weight-semibold);
             white-space: nowrap;
@@ -240,7 +240,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
 
         .section-heading {
             font-weight: var(--font-weight-medium);
-            color: var(--gray-300);
+            color: var(--color-text-secondary);
             margin-bottom: var(--space-sm);
             cursor: pointer;
             user-select: none;
@@ -260,7 +260,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
             border-radius: var(--radius-lg);
             padding: var(--space-lg);
             position: relative;
-            color: var(--gray-200);
+            color: var(--color-text-primary);
             font-style: italic;
             margin-left: 23px;
 
@@ -299,7 +299,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
 
         .input-label {
             font-weight: var(--font-weight-medium);
-            color: var(--gray-300);
+            color: var(--color-text-secondary);
             margin-bottom: var(--space-sm);
         }
 
@@ -307,7 +307,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
             font-size: var(--font-size-md);
             white-space: pre-wrap;
             word-break: break-word;
-            color: var(--gray-200);
+            color: var(--color-text-primary);
             max-height: 400px;
             overflow-y: auto;
         }
@@ -322,7 +322,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
             border: 1px solid var(--gray-750);
             border-radius: var(--radius-lg);
             padding: var(--space-lg);
-            color: var(--gray-200);
+            color: var(--color-text-primary);
             word-break: break-word;
             overflow-y: auto;
             max-height: 400px;
@@ -333,7 +333,7 @@ import { AgentMessageData, GraphMessage } from '../../../../models/graph-session
         .code-content {
             white-space: pre-wrap;
             word-break: break-word;
-            color: var(--gray-200);
+            color: var(--color-text-primary);
             font-size: var(--font-size-md);
             max-height: 400px;
             overflow-y: auto;

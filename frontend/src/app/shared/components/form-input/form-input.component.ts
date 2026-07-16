@@ -155,7 +155,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     transition: color 0.2s ease;
 
                     &:hover {
-                        color: var(--white-alpha-90);
+                        color: var(--color-text-primary);
                     }
 
                     i {

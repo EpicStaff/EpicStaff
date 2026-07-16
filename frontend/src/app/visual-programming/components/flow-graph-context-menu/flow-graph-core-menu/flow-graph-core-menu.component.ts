@@ -60,7 +60,7 @@ interface FlowGraphBlock {
             }
 
             .node-label {
-                color: var(--white);
+                color: var(--color-text-primary);
             }
 
             li:hover {

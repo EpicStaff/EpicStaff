@@ -188,7 +188,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             }
 
             h3 {
-                color: var(--gray-100);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-xl);
                 font-weight: var(--font-weight-semibold);
                 margin: 0;
@@ -227,7 +227,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
         /* Section styling */
         .section-heading {
             font-weight: var(--font-weight-medium);
-            color: var(--gray-300);
+            color: var(--color-text-secondary);
             margin-bottom: var(--space-sm);
             cursor: pointer;
             user-select: none;
@@ -246,7 +246,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             border: 1px solid var(--gray-750);
             border-radius: var(--radius-lg);
             padding: var(--space-lg);
-            color: var(--gray-200);
+            color: var(--color-text-primary);
             margin-left: 23px;
 
             .subsection-heading {
@@ -280,7 +280,7 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
             border: 1px solid var(--gray-750);
             border-radius: var(--radius-lg);
             padding: var(--space-lg);
-            color: var(--gray-200);
+            color: var(--color-text-primary);
             margin-left: 23px;
             overflow-y: auto;
             max-height: 400px;

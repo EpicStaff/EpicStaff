@@ -22,7 +22,7 @@
             font-weight: var(--font-weight-regular);
             letter-spacing: -0.02em;
             line-height: 1.2;
-            color: var(--white);
+            color: var(--color-text-primary);
             padding: 0 !important;
             margin: 0 !important;
             display: flex;
@@ -32,7 +32,7 @@
             overflow: hidden;
 
             .flows-prefix {
-                color: var(--white-alpha-60);
+                color: var(--color-text-secondary);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 display: flex;
@@ -53,13 +53,13 @@
                 }
 
                 &:hover {
-                    color: var(--white-alpha-90);
+                    color: var(--color-text-primary);
                 }
             }
         }
 
         .slash {
-            color: var(--gray-500);
+            color: var(--color-text-tertiary);
             margin: 0 var(--space-sm);
             font-size: var(--font-size-3xl);
             font-weight: var(--font-weight-regular);
@@ -82,7 +82,7 @@
             font-weight: var(--font-weight-regular);
             letter-spacing: -0.02em;
             line-height: 1.2;
-            color: var(--white);
+            color: var(--color-text-primary);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;

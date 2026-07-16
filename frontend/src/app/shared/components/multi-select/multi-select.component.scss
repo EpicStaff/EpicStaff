@@ -98,7 +98,7 @@
         // White checkbox override: border and check mark become white
         &--checkbox-white {
             ::ng-deep app-checkbox input[type='checkbox'] {
-                border-color: var(--white-alpha-60);
+                border-color: var(--color-text-secondary);
                 background: transparent;
             }
 

@@ -21,7 +21,7 @@
         flex-shrink: 0;
 
         .type {
-            color: var(--gray-500);
+            color: var(--color-text-tertiary);
             font-size: var(--font-size-2xs);
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -41,7 +41,7 @@
 
         .json-value {
             margin: 0;
-            color: var(--gray-300);
+            color: var(--color-text-secondary);
             white-space: pre-wrap;
             word-break: break-all;
         }

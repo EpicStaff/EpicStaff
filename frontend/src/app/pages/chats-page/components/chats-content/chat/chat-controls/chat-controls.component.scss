@@ -35,7 +35,7 @@
             flex: 1;
             background-color: transparent;
             border: none;
-            color: var(--white);
+            color: var(--color-text-primary);
             resize: none;
             padding: var(--space-sm);
             max-height: 120px;
@@ -49,7 +49,7 @@
             }
 
             &::placeholder {
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
             }
         }
 
@@ -158,7 +158,7 @@
             align-items: center;
             justify-content: center;
             background-color: transparent;
-            color: var(--gray-300);
+            color: var(--color-text-secondary);
             border: none;
             border-radius: var(--radius-md);
             width: 32px;
@@ -177,7 +177,7 @@
 
             &:hover {
                 background-color: var(--gray-700);
-                color: var(--white);
+                color: var(--color-text-primary);
             }
 
             &.active {

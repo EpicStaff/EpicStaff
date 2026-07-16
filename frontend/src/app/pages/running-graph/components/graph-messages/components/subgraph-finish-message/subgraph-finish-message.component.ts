@@ -156,7 +156,7 @@ import {
             }
 
             h3 {
-                color: var(--gray-100);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-xl);
                 font-weight: var(--font-weight-semibold);
                 margin: 0;
@@ -188,7 +188,7 @@ import {
             /* Section styling */
             .section-heading {
                 font-weight: var(--font-weight-medium);
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 margin-bottom: var(--space-sm);
                 cursor: pointer;
                 user-select: none;
@@ -257,7 +257,7 @@ import {
             }
 
             .item-name {
-                color: var(--gray-100);
+                color: var(--color-text-primary);
                 font-weight: var(--font-weight-medium);
                 flex: 1;
             }
@@ -283,7 +283,7 @@ import {
             }
 
             .detail-label {
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);
             }

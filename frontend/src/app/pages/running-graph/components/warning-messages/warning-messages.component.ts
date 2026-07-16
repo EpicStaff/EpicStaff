@@ -80,7 +80,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
             }
 
             .warning-count {
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);
             }
@@ -106,7 +106,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
             }
 
             h3 {
-                color: var(--gray-100);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-lg);
                 font-weight: var(--font-weight-semibold);
                 margin: 0;
@@ -134,7 +134,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
             }
 
             .warning-text {
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 font-size: var(--font-size-md);
                 line-height: 1.5;
                 margin: 0;

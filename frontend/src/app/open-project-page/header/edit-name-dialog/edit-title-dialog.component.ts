@@ -67,7 +67,7 @@ import { FormsModule } from '@angular/forms';
                 background-color: var(--white-alpha-10);
                 border: 1px solid var(--white-alpha-20);
                 border-radius: var(--radius-md);
-                color: var(--white);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-lg);
                 outline: none;
                 transition: all 0.2s ease;

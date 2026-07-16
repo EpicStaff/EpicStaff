@@ -145,7 +145,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             }
 
             h3 {
-                color: var(--gray-100);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-xl);
                 font-weight: var(--font-weight-semibold);
                 margin: 0;
@@ -179,7 +179,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             /* Section styling */
             .section-heading {
                 font-weight: var(--font-weight-medium);
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 margin-bottom: var(--space-sm);
                 cursor: pointer;
                 user-select: none;
@@ -199,7 +199,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
                 border-radius: var(--radius-lg);
                 padding: var(--space-lg);
                 position: relative;
-                color: var(--gray-200);
+                color: var(--color-text-primary);
                 font-style: italic;
                 margin-left: 23px;
             }

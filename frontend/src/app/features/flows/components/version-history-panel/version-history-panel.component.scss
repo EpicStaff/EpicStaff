@@ -9,7 +9,7 @@
     flex-direction: column;
     height: 100%;
     background-color: var(--graphite-900);
-    color: var(--gray-200);
+    color: var(--color-text-primary);
 }
 
 .dialog-header {
@@ -24,7 +24,7 @@
         margin: 0;
         font-size: var(--font-size-lg);
         font-weight: var(--font-weight-semibold);
-        color: var(--white);
+        color: var(--color-text-primary);
     }
 }
 
@@ -45,7 +45,7 @@
     height: 100%;
     padding: var(--space-5xl) var(--space-2xl);
     text-align: center;
-    color: var(--gray-500);
+    color: var(--color-text-tertiary);
 
     h2 {
         margin: 0 0 var(--space-sm);
@@ -57,7 +57,7 @@
         margin: 0;
         font-size: var(--font-size-sm);
         font-weight: var(--font-weight-regular);
-        color: var(--gray-600);
+        color: var(--color-text-disabled);
     }
 }
 
@@ -98,7 +98,7 @@
     border: 1px solid var(--fog-alpha-16);
     border-radius: var(--radius-sm);
     outline: none;
-    color: var(--white);
+    color: var(--color-text-primary);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
     padding: var(--space-3xs) var(--space-xs);
@@ -110,7 +110,7 @@
 .version-edit-textarea {
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-regular);
-    color: var(--gray-400);
+    color: var(--color-text-secondary);
     resize: none;
     line-height: 1.4;
     height: 1.6rem;
@@ -120,7 +120,7 @@
 .version-name {
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
-    color: var(--white);
+    color: var(--color-text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -128,7 +128,7 @@
 
 .version-description {
     font-size: var(--font-size-sm);
-    color: var(--gray-400);
+    color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -193,12 +193,12 @@
     border: none;
     text-align: left;
     font-size: var(--font-size-md);
-    color: var(--gray-300);
+    color: var(--color-text-secondary);
     cursor: pointer;
 
     &:hover {
         background-color: #353550;
-        color: var(--white);
+        color: var(--color-text-primary);
     }
 
     &--danger {

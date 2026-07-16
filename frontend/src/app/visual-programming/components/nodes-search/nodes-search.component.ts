@@ -131,7 +131,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                 transition: all 0.2s ease;
                 outline: none;
                 position: relative;
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
 
                 &:hover {
                     background-color: var(--gray-750);
@@ -143,7 +143,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
 
                 i {
                     font-size: var(--font-size-xl);
-                    color: var(--gray-300);
+                    color: var(--color-text-secondary);
                 }
 
                 &.active {
@@ -151,7 +151,7 @@ import { SearchNodeItemComponent } from './search-node-item/search-node-item.com
                     color: var(--white);
 
                     i {
-                        color: var(--white);
+                        color: var(--color-text-primary);
                     }
                 }
             }

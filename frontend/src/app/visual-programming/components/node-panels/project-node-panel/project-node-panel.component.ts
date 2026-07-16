@@ -148,7 +148,7 @@ interface InputMapPair {
                 align-items: center;
                 gap: var(--space-sm);
                 font-size: var(--font-size-md);
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 cursor: pointer;
 
                 input[type='checkbox'] {

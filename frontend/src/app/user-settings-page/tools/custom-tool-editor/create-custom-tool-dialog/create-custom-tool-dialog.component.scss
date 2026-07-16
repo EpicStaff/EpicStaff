@@ -29,7 +29,7 @@
             font-size: var(--font-size-2xl);
             line-height: 100%;
             font-weight: var(--font-weight-medium);
-            color: var(--white);
+            color: var(--color-text-primary);
             letter-spacing: 0;
         }
 
@@ -136,7 +136,7 @@
         font-size: var(--font-size-md);
         line-height: 130%;
         font-weight: var(--font-weight-bold);
-        color: var(--white);
+        color: var(--color-text-primary);
 
         .python-icon {
             color: #ffdd57;
@@ -168,7 +168,7 @@
 
             &:hover {
                 background-color: var(--white-alpha-6);
-                color: var(--white);
+                color: var(--color-text-primary);
             }
 
             &:focus-visible {
@@ -312,7 +312,7 @@
         align-items: center;
         min-width: 0;
         gap: var(--space-sm);
-        color: var(--white);
+        color: var(--color-text-primary);
         font-size: var(--font-size-md);
         line-height: 18px;
         font-weight: var(--font-weight-semibold);
@@ -354,13 +354,13 @@
 
             &:hover {
                 background-color: var(--white-alpha-6);
-                color: var(--white);
+                color: var(--color-text-primary);
             }
 
             &.active {
                 background-color: var(--purple-alpha-90);
                 border-color: var(--accent-color);
-                color: var(--white);
+                color: var(--color-text-primary);
             }
 
             &:focus-visible {

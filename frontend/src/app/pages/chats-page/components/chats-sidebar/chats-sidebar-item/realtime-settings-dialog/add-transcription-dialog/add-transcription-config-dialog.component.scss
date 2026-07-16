@@ -2,7 +2,7 @@
     background-color: var(--graphite-875);
     border-radius: var(--radius-2xl);
     padding: var(--space-2xl);
-    color: var(--white-alpha-90);
+    color: var(--color-text-primary);
     min-width: 400px;
 
     .dialog-header {
@@ -20,7 +20,7 @@
         .close-button {
             background: none;
             border: none;
-            color: var(--white-alpha-60);
+            color: var(--color-text-secondary);
             cursor: pointer;
             padding: var(--space-2xs);
             display: flex;
@@ -31,7 +31,7 @@
 
             &:hover {
                 background-color: var(--white-alpha-10);
-                color: var(--white-alpha-90);
+                color: var(--color-text-primary);
             }
         }
     }
@@ -84,7 +84,7 @@
                 transform: translateY(-50%);
                 background: none;
                 border: none;
-                color: var(--white-alpha-60);
+                color: var(--color-text-secondary);
                 cursor: pointer;
                 padding: var(--space-2xs);
                 display: flex;
@@ -92,7 +92,7 @@
                 justify-content: center;
 
                 &:hover {
-                    color: var(--white-alpha-90);
+                    color: var(--color-text-primary);
                 }
             }
         }
@@ -120,7 +120,7 @@
 
             &.secondary {
                 background-color: var(--white-alpha-10);
-                color: var(--white-alpha-90);
+                color: var(--color-text-primary);
 
                 &:hover {
                     background-color: var(--white-alpha-15);

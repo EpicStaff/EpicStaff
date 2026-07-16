@@ -128,7 +128,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     }
 
                     .flows-prefix {
-                        color: var(--white-alpha-60);
+                        color: var(--color-text-secondary);
                         cursor: pointer;
                         transition: all 0.2s ease;
                         display: flex;
@@ -149,18 +149,18 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                         }
 
                         &:hover {
-                            color: var(--white-alpha-90);
+                            color: var(--color-text-primary);
                         }
                     }
 
                     .slash {
-                        color: var(--gray-500);
+                        color: var(--color-text-tertiary);
                         margin: 0 var(--space-sm);
                         flex-shrink: 0;
                     }
 
                     .flow-name {
-                        color: var(--white);
+                        color: var(--color-text-primary);
                         min-width: 0;
                         flex: 0 1 auto;
                         overflow: hidden;
@@ -202,7 +202,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     align-items: center;
                     justify-content: flex-start;
                     gap: var(--space-sm);
-                    color: var(--gray-400) !important;
+                    color: var(--color-text-secondary) !important;
                     background: transparent !important;
                     border: none !important;
                     border-radius: var(--radius-md) !important;
@@ -232,7 +232,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                         cursor: not-allowed !important;
 
                         &:hover {
-                            color: var(--gray-400) !important;
+                            color: var(--color-text-secondary) !important;
                             background: transparent !important;
                         }
                     }

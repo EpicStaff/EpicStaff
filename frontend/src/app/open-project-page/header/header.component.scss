@@ -33,7 +33,7 @@
             flex: 1 1 auto;
 
             .project-prefix {
-                color: var(--white-alpha-60);
+                color: var(--color-text-secondary);
                 cursor: pointer;
                 transition: all 0.2s ease;
                 display: flex;
@@ -79,10 +79,10 @@
                 &__edit {
                     transition: all 0.2s ease;
                     cursor: pointer;
-                    color: var(--white-alpha-60);
+                    color: var(--color-text-secondary);
 
                     &:hover {
-                        color: var(--white);
+                        color: var(--color-text-primary);
                     }
                 }
             }

@@ -175,7 +175,7 @@
 
                 &.delete-icon {
                     i {
-                        color: var(--gray-400);
+                        color: var(--color-text-secondary);
                         transition: color 0.2s ease;
                     }
 
@@ -380,7 +380,7 @@
     &:hover,
     &:focus {
         background: var(--graphite-850);
-        color: var(--white);
+        color: var(--color-text-primary);
     }
 
     i {
@@ -433,12 +433,12 @@
 .show-inputs-btn:hover,
 .show-inputs-btn:focus {
     background: var(--graphite-850);
-    color: var(--white);
+    color: var(--color-text-primary);
 }
 .show-inputs-btn.active {
     background: var(--graphite-850);
-    border-color: var(--gray-500);
-    color: var(--white);
+    border-color: var(--color-text-tertiary);
+    color: var(--color-text-primary);
     font-weight: var(--font-weight-semibold);
     box-shadow: 0 0 0 2px #222 inset;
 }
@@ -454,15 +454,15 @@
 }
 
 .arrange-btn {
-    --arrange-icon-left: var(--fog-alpha-60);
-    --arrange-icon-right: var(--fog-200);
+    --arrange-icon-left: var(--color-text-secondary);
+    --arrange-icon-right: var(--color-text-primary);
 
     width: 38px;
     height: 38px;
     min-width: 38px;
     padding: var(--space-3xs);
-    background-color: var(--gray-800);
-    border: 1px solid var(--gray-750);
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-input-border);
     border-radius: var(--radius-md);
     display: flex;
     align-items: center;
@@ -474,7 +474,7 @@
     outline: none;
 
     &:hover:not(:disabled) {
-        background-color: var(--gray-750);
+        background-color: var(--color-input-background-hover);
     }
 
     &:active:not(:disabled) {
@@ -484,8 +484,8 @@
     }
 
     &:disabled {
-        --arrange-icon-left: var(--graphite-750);
-        --arrange-icon-right: var(--fog-alpha-20);
+        --arrange-icon-left: var(--color-text-disabled);
+        --arrange-icon-right: var(--color-text-tertiary);
         cursor: not-allowed;
         pointer-events: all;
     }

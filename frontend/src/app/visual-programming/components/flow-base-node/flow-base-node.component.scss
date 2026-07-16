@@ -18,7 +18,7 @@
 
     .node-name-label {
         background-color: var(--color-surface-card);
-        color: var(--gray-300);
+        color: var(--color-text-secondary);
         font-size: var(--font-size-xs);
         padding: var(--space-3xs) var(--space-xs);
         border-radius: var(--radius-sm);
@@ -87,11 +87,11 @@
         }
 
         &.edit-button i {
-            color: var(--gray-400);
+            color: var(--color-text-secondary);
             font-size: var(--font-size-lg);
 
             &:hover {
-                color: var(--white);
+                color: var(--color-text-primary);
             }
         }
 
@@ -112,7 +112,7 @@
         }
 
         &.delete-button i {
-            color: var(--gray-400);
+            color: var(--color-text-secondary);
             font-size: var(--font-size-lg);
         }
 

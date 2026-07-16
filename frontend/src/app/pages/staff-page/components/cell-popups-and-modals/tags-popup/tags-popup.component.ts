@@ -259,7 +259,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
                     font-size: var(--font-size-xs); // Reduced font size
                     font-weight: var(--font-weight-medium);
                     background: #5e9ced;
-                    color: var(--white);
+                    color: var(--color-text-primary);
                     border: none;
                     border-radius: var(--radius-md);
                     cursor: pointer;

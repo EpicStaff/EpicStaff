@@ -38,11 +38,11 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
                     gap: var(--space-sm);
 
                     app-svg-icon {
-                        color: var(--gray-400);
+                        color: var(--color-text-secondary);
                     }
 
                     p {
-                        color: var(--gray-400);
+                        color: var(--color-text-secondary);
                         font-size: var(--font-size-lg);
                         font-weight: var(--font-weight-medium);
                         margin: 0;

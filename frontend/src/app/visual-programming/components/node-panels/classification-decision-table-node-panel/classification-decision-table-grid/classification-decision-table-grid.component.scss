@@ -42,7 +42,7 @@
                 color 0.2s ease;
 
             &:hover {
-                color: var(--white);
+                color: var(--color-text-primary);
                 background: var(--purple-alpha-45);
                 border-color: var(--purple-alpha-60);
             }
@@ -109,13 +109,13 @@
 .group-menu-item {
     padding: 0.45rem var(--space-md);
     font-size: var(--font-size-sm);
-    color: var(--white-alpha-85);
+    color: var(--color-text-primary);
     cursor: pointer;
     transition: background 0.1s ease;
 
     &:hover {
         background: var(--purple-alpha-20);
-        color: var(--white);
+        color: var(--color-text-primary);
     }
 }
 
@@ -170,7 +170,7 @@
     gap: var(--space-2xs);
     padding: var(--space-3xs) var(--space-sm);
     border-radius: var(--radius-sm);
-    color: var(--white-alpha-85);
+    color: var(--color-text-primary);
     font-size: var(--font-size-xs);
     font-family: var(--font-family-mono);
 
@@ -193,7 +193,7 @@
 
         .field-chip-prefix {
             background: var(--purple-alpha-60);
-            color: var(--white);
+            color: var(--color-text-primary);
         }
     }
 
@@ -203,7 +203,7 @@
 
         .field-chip-prefix {
             background: var(--amber-alpha-60);
-            color: var(--white);
+            color: var(--color-text-primary);
         }
     }
 
@@ -261,13 +261,13 @@
     &--expr:hover {
         background: var(--purple-alpha-15);
         border-color: var(--purple-alpha-40);
-        color: var(--white);
+        color: var(--color-text-primary);
     }
 
     &--manip:hover {
         background: var(--amber-alpha-12);
         border-color: var(--amber-alpha-40);
-        color: var(--white);
+        color: var(--color-text-primary);
     }
 }
 
@@ -387,7 +387,7 @@
 
     &:hover {
         background: var(--purple-alpha-40);
-        color: var(--white);
+        color: var(--color-text-primary);
         border-color: var(--purple-alpha-70);
     }
 
@@ -451,7 +451,7 @@
     gap: var(--space-sm);
     padding: 0.45rem var(--space-md);
     font-size: var(--font-size-sm);
-    color: var(--white-alpha-85);
+    color: var(--color-text-primary);
     cursor: pointer;
     transition: background 0.1s ease;
 
@@ -462,7 +462,7 @@
 
     &:hover {
         background: var(--purple-alpha-20);
-        color: var(--white);
+        color: var(--color-text-primary);
 
         i {
             color: var(--purple-alpha-90);
@@ -616,7 +616,7 @@
         }
 
         .ti-x:hover {
-            color: var(--white-alpha-90) !important;
+            color: var(--color-text-primary) !important;
         }
 
         [col-id='actions'] .icon-header i {

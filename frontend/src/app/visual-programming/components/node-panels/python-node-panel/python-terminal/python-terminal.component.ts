@@ -140,7 +140,7 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                 justify-content: space-between;
                 padding: var(--space-2xs) var(--space-md);
                 border-bottom: 1px solid var(--white-alpha-5);
-                color: var(--gray-500);
+                color: var(--color-text-tertiary);
                 font-size: var(--font-size-xs);
                 user-select: none;
             }
@@ -198,13 +198,13 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
                 justify-content: center;
                 background: transparent;
                 border: none;
-                color: var(--gray-500);
+                color: var(--color-text-tertiary);
                 cursor: pointer;
                 padding: var(--space-3xs);
                 border-radius: var(--radius-sm);
 
                 &:hover {
-                    color: var(--gray-300);
+                    color: var(--color-text-secondary);
                     background: var(--white-alpha-10);
                 }
             }
@@ -223,16 +223,16 @@ export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
             }
 
             .timestamp {
-                color: var(--gray-500);
+                color: var(--color-text-tertiary);
                 margin-right: var(--space-sm);
             }
 
             .log-info .message {
-                color: var(--gray-500);
+                color: var(--color-text-tertiary);
             }
 
             .log-polling .message {
-                color: var(--gray-500);
+                color: var(--color-text-tertiary);
             }
 
             .log-stdout .message {

@@ -56,7 +56,7 @@ $transition-default: all 0.2s ease;
     line-height: 1.2;
     border-radius: var(--radius-md);
     background-color: var(--graphite-780);
-    color: var(--gray-200);
+    color: var(--color-text-primary);
     border: 1px solid var(--graphite-600);
     box-shadow: 0 1px 2px var(--black-alpha-10);
     transition: all 0.15s ease;
@@ -85,7 +85,7 @@ $transition-default: all 0.2s ease;
     gap: var(--space-2xs);
     margin: var(--space-xs) 0;
     padding: var(--space-xs);
-    color: var(--gray-100); // Light text for visibility
+    color: var(--color-text-primary); // Light text for visibility
 
     .tool-item {
         display: flex;
@@ -101,7 +101,7 @@ $transition-default: all 0.2s ease;
         .tool-icon {
             margin-right: var(--space-xs);
             font-style: normal;
-            color: var(--gray-100); // Light icon color
+            color: var(--color-text-primary); // Light icon color
         }
         &:hover {
             background-color: var(--graphite-600);
@@ -112,7 +112,7 @@ $transition-default: all 0.2s ease;
             text-overflow: ellipsis;
             font-size: var(--font-size-sm);
             font-weight: var(--font-weight-medium);
-            color: var(--gray-100); // Light text color
+            color: var(--color-text-primary); // Light text color
         }
     }
 }
@@ -235,7 +235,7 @@ $transition-default: all 0.2s ease;
                 max-width: 100%;
 
                 .custom-name {
-                    color: var(--gray-400);
+                    color: var(--color-text-secondary);
                     margin-left: var(--space-xs);
                     white-space: nowrap;
                     overflow: hidden;
@@ -250,7 +250,7 @@ $transition-default: all 0.2s ease;
         display: flex;
         align-items: flex-end;
         justify-content: flex-end;
-        color: var(--gray-400);
+        color: var(--color-text-secondary);
         font-style: italic;
         padding: var(--space-2xs) var(--space-sm);
         font-size: var(--font-size-sm);

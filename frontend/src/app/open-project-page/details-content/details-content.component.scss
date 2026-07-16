@@ -72,7 +72,7 @@ $hover-color: var(--gray-800);
 
         &:hover {
             background: var(--gray-800);
-            border-color: var(--gray-600);
+            border-color: var(--color-text-disabled);
         }
 
         &.editing {
@@ -104,12 +104,12 @@ $hover-color: var(--gray-800);
             }
 
             &::placeholder {
-                color: var(--gray-500);
+                color: var(--color-text-tertiary);
                 font-weight: var(--font-weight-light);
             }
 
             &:hover::placeholder {
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
             }
         }
     }

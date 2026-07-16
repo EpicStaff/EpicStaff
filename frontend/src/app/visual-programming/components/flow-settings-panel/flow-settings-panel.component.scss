@@ -32,7 +32,7 @@
 .title {
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-semibold);
-    color: var(--white-alpha-90);
+    color: var(--color-text-primary);
     margin: 0;
 }
 
@@ -44,13 +44,13 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: var(--white-alpha-60);
+    color: var(--color-text-secondary);
     border-radius: var(--radius-md);
     transition: background 0.15s;
 
     &:hover {
         background: var(--white-alpha-10);
-        color: var(--white-alpha-90);
+        color: var(--color-text-primary);
     }
 }
 

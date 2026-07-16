@@ -121,7 +121,7 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
             }
 
             h3 {
-                color: var(--gray-100);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-xl);
                 font-weight: var(--font-weight-semibold);
                 margin: 0;
@@ -141,7 +141,7 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
 
             .section-heading {
                 font-weight: var(--font-weight-medium);
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 margin-bottom: var(--space-sm);
                 cursor: pointer;
                 user-select: none;
@@ -170,7 +170,7 @@ import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-m
                 border: 1px solid var(--gray-750);
                 border-radius: var(--radius-lg);
                 padding: var(--space-lg);
-                color: var(--gray-200);
+                color: var(--color-text-primary);
                 white-space: pre-wrap;
                 word-break: break-word;
                 overflow-y: auto;

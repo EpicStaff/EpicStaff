@@ -4,7 +4,7 @@
 
 .dialog-container {
     background-color: var(--graphite-875);
-    color: var(--white-alpha-90);
+    color: var(--color-text-primary);
     display: flex;
     flex-direction: column;
     border-radius: var(--radius-2xl);
@@ -27,7 +27,7 @@
         justify-content: space-between;
 
         .dialog-title {
-            color: var(--white-alpha-90);
+            color: var(--color-text-primary);
             font-size: var(--font-size-xl);
             font-weight: var(--font-weight-semibold);
             margin: 0;
@@ -41,7 +41,7 @@
         .close-button {
             background: none;
             border: none;
-            color: var(--white-alpha-60);
+            color: var(--color-text-secondary);
             cursor: pointer;
             padding: var(--space-2xs);
             display: flex;
@@ -52,7 +52,7 @@
 
             &:hover {
                 background-color: var(--white-alpha-10);
-                color: var(--white-alpha-90);
+                color: var(--color-text-primary);
             }
         }
     }
@@ -75,7 +75,7 @@
 
             .section-title {
                 font-size: var(--font-size-lg);
-                color: var(--white-alpha-80);
+                color: var(--color-text-primary);
                 display: flex;
                 align-items: center;
                 gap: var(--space-sm);
@@ -213,7 +213,7 @@
 
         &:first-child {
             background-color: var(--white-alpha-10);
-            color: var(--white-alpha-90);
+            color: var(--color-text-primary);
 
             &:hover {
                 background-color: var(--white-alpha-15);
@@ -253,7 +253,7 @@
             align-items: center;
             gap: var(--space-sm);
             font-size: var(--font-size-md);
-            color: var(--white-alpha-80);
+            color: var(--color-text-primary);
             font-weight: var(--font-weight-medium);
         }
 
@@ -297,7 +297,7 @@
     transition: all 0.2s ease;
     border: 1px solid var(--white-alpha-20);
     background-color: var(--white-alpha-5);
-    color: var(--white-alpha-80);
+    color: var(--color-text-primary);
 
     &:hover {
         background-color: var(--white-alpha-10);

@@ -18,7 +18,7 @@
         align-items: center;
 
         h3 {
-            color: var(--white-alpha-90);
+            color: var(--color-text-primary);
             margin: 0;
             font-size: var(--font-size-lg);
             font-weight: var(--font-weight-semibold);
@@ -26,7 +26,7 @@
 
         .model-info {
             font-size: var(--font-size-xs);
-            color: var(--white-alpha-60);
+            color: var(--color-text-secondary);
             margin-top: var(--space-3xs);
         }
     }
@@ -48,7 +48,7 @@
                 padding: var(--space-sm) 1.2rem;
                 background: none;
                 border: none;
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);
                 cursor: pointer;
@@ -63,7 +63,7 @@
 
                 &:hover:not(.active) {
                     background-color: var(--gray-750);
-                    color: var(--gray-200);
+                    color: var(--color-text-primary);
                 }
             }
         }
@@ -82,12 +82,12 @@
                     left: 8px;
                     display: flex;
                     align-items: center;
-                    color: var(--gray-400);
+                    color: var(--color-text-secondary);
                 }
 
                 select {
                     background-color: var(--gray-800);
-                    color: var(--white);
+                    color: var(--color-text-primary);
                     border: 1px solid var(--gray-700);
                     border-radius: var(--radius-sm);
                     padding: var(--space-sm);
@@ -105,7 +105,7 @@
 
                     option {
                         background-color: var(--gray-800);
-                        color: var(--white);
+                        color: var(--color-text-primary);
                         padding: var(--space-sm);
                     }
                 }
@@ -129,7 +129,7 @@
 
             .settings-btn {
                 background-color: var(--gray-800);
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
                 border: 1px solid var(--gray-700);
                 border-radius: var(--radius-md);
                 padding: var(--space-sm);
@@ -143,7 +143,7 @@
 
                 &:hover {
                     background-color: var(--gray-750);
-                    color: var(--gray-200);
+                    color: var(--color-text-primary);
                     border-color: var(--accent-color, var(--accent-color));
                 }
             }

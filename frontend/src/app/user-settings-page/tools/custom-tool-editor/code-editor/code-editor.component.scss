@@ -30,7 +30,7 @@
         justify-content: center;
 
         .editor-title {
-            color: var(--gray-200);
+            color: var(--color-text-primary);
             font-weight: var(--font-weight-medium);
             margin-right: var(--space-lg);
             display: flex;
@@ -43,7 +43,7 @@
         }
 
         .entrypoint-main {
-            color: var(--gray-500);
+            color: var(--color-text-tertiary);
             font-weight: var(--font-weight-regular);
         }
 
@@ -64,11 +64,11 @@
         gap: var(--space-sm);
 
         app-icon-button {
-            color: var(--gray-200);
+            color: var(--color-text-primary);
             transition: color 0.2s ease;
 
             &:hover {
-                color: var(--white);
+                color: var(--color-text-primary);
             }
         }
     }
@@ -104,7 +104,7 @@
 
         span {
             margin-top: var(--space-sm);
-            color: var(--gray-200);
+            color: var(--color-text-primary);
             font-size: var(--font-size-lg);
         }
     }

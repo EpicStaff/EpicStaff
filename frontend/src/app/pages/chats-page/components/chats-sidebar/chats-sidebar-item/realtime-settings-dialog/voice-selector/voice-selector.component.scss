@@ -17,7 +17,7 @@
         padding: var(--space-md) var(--space-md);
         border: 1px solid var(--white-alpha-10);
         border-radius: var(--radius-md);
-        color: var(--gray-100);
+        color: var(--color-text-primary);
         font-size: var(--font-size-md);
         cursor: pointer;
         transition: all 0.2s ease;
@@ -34,7 +34,7 @@
         .selector-arrow {
             display: flex;
             align-items: center;
-            color: var(--white-alpha-80);
+            color: var(--color-text-primary);
             transition: transform 0.2s ease;
 
             &.open {
@@ -58,7 +58,7 @@
 
         .dropdown-item {
             padding: var(--space-md) var(--space-md);
-            color: var(--gray-100);
+            color: var(--color-text-primary);
             font-size: var(--font-size-md);
             cursor: pointer;
             transition: background-color 0.2s ease;

@@ -4,7 +4,7 @@
     padding: var(--space-2xl);
     min-width: 320px;
     max-width: 100%;
-    color: var(--white);
+    color: var(--color-text-primary);
     display: flex;
     flex-direction: column;
     gap: var(--space-lg);
@@ -28,7 +28,7 @@
     font-size: var(--font-size-xl);
     font-weight: var(--font-weight-medium);
     margin: 0;
-    color: var(--white);
+    color: var(--color-text-primary);
 }
 
 .dialog-message {
@@ -85,7 +85,7 @@
 }
 
 ::ng-deep .caution-message strong {
-    color: var(--white);
+    color: var(--color-text-primary);
     font-weight: var(--font-weight-semibold);
 }
 

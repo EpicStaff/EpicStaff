@@ -52,7 +52,7 @@
 
 .subtitle {
     margin: 0;
-    color: var(--gray-300);
+    color: var(--color-text-secondary);
     font-size: var(--font-size-md);
 }
 
@@ -66,7 +66,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-sm);
-    color: var(--gray-200);
+    color: var(--color-text-primary);
 }
 
 .chip {
@@ -103,7 +103,7 @@
 .label {
     display: block;
     font-size: var(--font-size-xs);
-    color: var(--gray-400);
+    color: var(--color-text-secondary);
 }
 
 .value {
@@ -148,7 +148,7 @@
 }
 
 .chunk-source {
-    color: var(--gray-200);
+    color: var(--color-text-primary);
     font-size: var(--font-size-md);
     flex: 1;
     white-space: nowrap;
@@ -158,7 +158,7 @@
 
 .similarity {
     font-size: var(--font-size-sm);
-    color: var(--gray-300);
+    color: var(--color-text-secondary);
 }
 
 .chunk-text {

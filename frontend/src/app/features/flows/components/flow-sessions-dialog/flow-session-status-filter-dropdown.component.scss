@@ -9,7 +9,7 @@
     gap: var(--space-xs);
     background: transparent;
     border: none;
-    color: var(--gray-300);
+    color: var(--color-text-secondary);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
     cursor: pointer;
@@ -18,14 +18,14 @@
 
     i {
         font-size: var(--font-size-lg);
-        color: var(--gray-400);
+        color: var(--color-text-secondary);
     }
 
     &:hover {
-        color: var(--gray-100);
+        color: var(--color-text-primary);
 
         i {
-            color: var(--gray-200);
+            color: var(--color-text-primary);
         }
     }
 }

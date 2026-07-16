@@ -110,7 +110,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             }
             .add-btn:hover {
                 background: var(--purple-alpha-50);
-                color: var(--white);
+                color: var(--color-text-primary);
                 border-color: var(--accent-color);
             }
             .chevron-btn {
@@ -126,12 +126,12 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
                 transition: color 0.15s ease;
             }
             .chevron-btn:hover {
-                color: var(--white-alpha-90);
+                color: var(--color-text-primary);
             }
             .params-label {
                 flex: 1;
                 font-size: var(--font-size-md);
-                color: var(--white-alpha-90);
+                color: var(--color-text-primary);
                 font-weight: var(--font-weight-medium);
                 white-space: nowrap;
                 overflow: hidden;
@@ -150,7 +150,7 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             .params-dropdown-item {
                 padding: var(--space-sm) var(--space-lg);
                 font-size: var(--font-size-sm);
-                color: var(--white-alpha-85);
+                color: var(--color-text-primary);
                 cursor: pointer;
                 white-space: nowrap;
             }

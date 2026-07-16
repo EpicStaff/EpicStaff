@@ -69,13 +69,13 @@ import { CardState } from '../staff-agent-card.component';
                 align-items: center;
                 gap: var(--space-md);
                 padding: var(--space-md) var(--space-lg);
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 cursor: pointer;
                 transition: all 0.2s ease;
             }
             .menu-item:hover {
                 background-color: var(--gray-800);
-                color: var(--gray-100);
+                color: var(--color-text-primary);
             }
             .menu-item app-svg-icon {
                 opacity: 0.8;

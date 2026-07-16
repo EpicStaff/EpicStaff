@@ -36,7 +36,7 @@ import { Component } from '@angular/core';
 
             .transition-text {
                 padding: 0 var(--space-lg);
-                color: var(--gray-500);
+                color: var(--color-text-tertiary);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);
                 text-transform: uppercase;

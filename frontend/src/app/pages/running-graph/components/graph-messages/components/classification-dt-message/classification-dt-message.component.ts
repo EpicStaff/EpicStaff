@@ -274,7 +274,7 @@ import {
             }
 
             h3 {
-                color: var(--gray-100);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-xl);
                 font-weight: var(--font-weight-semibold);
                 margin: 0;
@@ -321,7 +321,7 @@ import {
             }
 
             .detail-label {
-                color: var(--gray-400);
+                color: var(--color-text-secondary);
                 font-size: var(--font-size-md);
                 font-weight: var(--font-weight-medium);
                 min-width: 120px;
@@ -329,7 +329,7 @@ import {
             }
 
             .detail-value {
-                color: var(--gray-200);
+                color: var(--color-text-primary);
                 font-size: var(--font-size-md);
             }
 
@@ -342,7 +342,7 @@ import {
             }
 
             .detail-value.muted {
-                color: var(--gray-500);
+                color: var(--color-text-tertiary);
                 font-style: italic;
             }
 
@@ -352,7 +352,7 @@ import {
 
             .section-heading {
                 font-weight: var(--font-weight-medium);
-                color: var(--gray-300);
+                color: var(--color-text-secondary);
                 margin-bottom: var(--space-sm);
                 cursor: pointer;
                 user-select: none;
@@ -373,7 +373,7 @@ import {
                 border: 1px solid var(--gray-750);
                 border-radius: var(--radius-lg);
                 padding: var(--space-lg);
-                color: var(--gray-200);
+                color: var(--color-text-primary);
                 white-space: pre-wrap;
                 word-break: break-word;
                 font-family: 'JetBrains Mono', 'Fira Code', monospace;

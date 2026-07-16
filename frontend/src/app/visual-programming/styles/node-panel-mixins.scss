@@ -31,7 +31,7 @@
     }
 
     &:disabled {
-        background-color: var(--gray-600);
+        background-color: var(--color-text-disabled);
         cursor: not-allowed;
         opacity: 0.5;
         transform: none;
@@ -46,12 +46,12 @@
     cursor: pointer;
     transition: all 0.2s ease;
     background: transparent;
-    color: var(--gray-300);
+    color: var(--color-text-secondary);
     min-width: 80px;
 
     &:hover {
         background: var(--color-divider-subtle, var(--graphite-640));
-        color: var(--white);
+        color: var(--color-text-primary);
         transform: translateY(-1px);
     }
 
@@ -82,7 +82,7 @@
     }
 
     &:disabled {
-        background-color: var(--gray-600);
+        background-color: var(--color-text-disabled);
         cursor: not-allowed;
         opacity: 0.5;
         transform: none;
@@ -112,11 +112,11 @@
 
     i {
         font-size: var(--font-size-lg);
-        color: var(--gray-400);
+        color: var(--color-text-secondary);
     }
 
     &:hover i {
-        color: var(--white);
+        color: var(--color-text-primary);
     }
 }
 
@@ -134,7 +134,7 @@
 @mixin section-header {
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-semibold);
-    color: var(--white);
+    color: var(--color-text-primary);
     margin: 0 0 var(--space-lg) 0;
     padding-bottom: var(--space-sm);
     border-bottom: 1px solid var(--color-divider-subtle, var(--graphite-640));

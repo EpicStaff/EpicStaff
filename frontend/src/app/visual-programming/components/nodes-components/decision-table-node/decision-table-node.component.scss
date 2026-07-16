@@ -76,7 +76,7 @@
         .title {
             font-size: var(--font-size-md);
             font-weight: var(--font-weight-semibold);
-            color: var(--white);
+            color: var(--color-text-primary);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -107,7 +107,7 @@
         }
 
         .group-name {
-            color: var(--white);
+            color: var(--color-text-primary);
             font-size: var(--font-size-sm);
             font-weight: var(--font-weight-medium);
             overflow: hidden;
@@ -168,7 +168,7 @@
     &__empty {
         padding: var(--space-lg);
         text-align: center;
-        color: var(--gray-500);
+        color: var(--color-text-tertiary);
         font-size: var(--font-size-sm);
     }
 }

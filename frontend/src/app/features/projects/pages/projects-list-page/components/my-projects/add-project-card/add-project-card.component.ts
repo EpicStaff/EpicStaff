@@ -80,7 +80,7 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
             }
 
             .add-project-card:hover .title {
-                color: var(--white);
+                color: var(--color-text-primary);
             }
         `,
     ],

@@ -60,9 +60,9 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 
                 svg {
                     margin-top: var(--space-3xs);
-                    color: var(--white);
+                    color: var(--color-text-primary);
                     stroke-width: 1.5;
-                    color: var(--white);
+                    color: var(--color-text-primary);
                 }
             }
         `,
