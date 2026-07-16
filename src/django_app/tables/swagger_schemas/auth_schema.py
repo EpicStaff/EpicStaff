@@ -1,6 +1,8 @@
 from drf_spectacular.utils import OpenApiResponse, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 from tables.serializers.rbac_serializers import (
+    ApiKeyCreateRequestSerializer,
+    ApiKeyCreateResponseSerializer,
     ApiKeyValidateResponseSerializer,
     FirstSetupStatusSerializer,
     FirstSetupRequestSerializer,
@@ -38,6 +40,38 @@ API_KEY_VALIDATE_GET = dict(
                 ),
             ],
         ),
+    },
+)
+
+API_KEY_CREATE_POST = dict(
+    summary="Create a self-service API key",
+    description=(
+        "Mints a new API key owned by the calling (JWT- or key-authenticated) "
+        "user. The raw key is returned exactly once in this response body — "
+        "only its prefix and a salted hash are persisted, so it cannot be "
+        "recovered later. Use `X-Api-Key` or `Authorization: ApiKey <key>` "
+        "on subsequent requests."
+    ),
+    request=ApiKeyCreateRequestSerializer,
+    responses={
+        201: ApiKeyCreateResponseSerializer,
+        400: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Validation error — `name` is missing/blank or `scopes` is not a list of strings.",
+            examples=[
+                OpenApiExample(
+                    "Missing name",
+                    value={
+                        "status_code": 400,
+                        "code": "invalid",
+                        "message": "ValidationError: {'name': [ErrorDetail(string='This field is required.', code='required')]}",
+                    },
+                    response_only=True,
+                    status_codes=["400"],
+                ),
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
     },
 )
 

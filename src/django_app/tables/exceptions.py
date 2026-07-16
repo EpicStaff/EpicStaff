@@ -102,6 +102,34 @@ class SubGraphValidationError(CustomAPIExeption):
     )
 
 
+class ConditionGroupFieldError(CustomAPIExeption):
+    """
+    Raised when a `condition_groups` (or nested `conditions`) entry in a DT/CDT
+    node PATCH/PUT payload contains a field that does not exist on the target
+    model — e.g. a read-only `next_node` name round-tripped from a GET response,
+    or a `group_type` sent for a ClassificationConditionGroup (which has no such
+    field). Prevents the raw dict from being splatted into the model constructor,
+    which would otherwise raise an unhandled TypeError (500).
+    """
+
+    status_code = 400
+    default_code = "condition_group_field_error"
+
+    def __init__(self, *, entity_name: str, unsupported_fields, code=None):
+        # Keyword-only args: BaseException captures *positional* constructor
+        # args into `exc.args`, and utils.exception_handler.custom_exception_handler
+        # prefers `exc.args[0]` over `exc.detail` when args is non-empty. Passing
+        # these as keywords keeps `exc.args` empty so the handler surfaces our
+        # actionable `detail` dict instead of a bare entity name.
+        detail = {
+            "condition_groups": (
+                f"Unsupported field(s) for {entity_name}: {sorted(unsupported_fields)}. "
+                "Remove them from the request payload."
+            )
+        }
+        super().__init__(detail=detail, code=code or self.default_code, status_code=400)
+
+
 class BuiltInToolModificationError(CustomAPIExeption):
     """
     Exception raised when someone tries to modify a built-in PythonCodeTool.

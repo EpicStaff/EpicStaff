@@ -12,6 +12,7 @@ from tables.services.rbac.permissions import IsSuperadmin
 from tables.models.rbac_models import ApiKey
 from tables.serializers.rbac_serializers import (
     AdminPasswordResetSerializer,
+    ApiKeyCreateRequestSerializer,
     LoginSerializer,
     LogoutRequestSerializer,
     PasswordResetConfirmResponseSerializer,
@@ -20,6 +21,7 @@ from tables.serializers.rbac_serializers import (
     PasswordResetRequestSerializer,
     TokenIntrospectRequestSerializer,
 )
+from tables.services.rbac.api_key_service import ApiKeyService
 from tables.services.rbac.auth_service import TokenPair
 from tables.services.rbac.auth_validation_service import AuthValidationService
 from tables.services.rbac.first_setup_service import FirstSetupService
@@ -28,6 +30,7 @@ from tables.services.rbac.rbac_exceptions import InvalidRefreshTokenError
 from tables.services.rbac.reset_user_service import ResetUserService
 from tables.services.rbac.sse_ticket_service import SseTicketService
 from tables.swagger_schemas.auth_schema import (
+    API_KEY_CREATE_POST,
     API_KEY_VALIDATE_GET,
     FIRST_SETUP_GET,
     FIRST_SETUP_POST,
@@ -195,6 +198,41 @@ class ApiKeyValidateView(APIView):
                 "owner_user_id": key.created_by_id,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class ApiKeyCreateView(APIView):
+    """Self-service API key minting: any authenticated user can create an
+    API key for themselves. The raw key is returned once in this response
+    and is never stored or retrievable again — only its hash and prefix
+    persist on the `ApiKey` row.
+    """
+
+    authentication_classes = [JwtOrApiKeyAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    _service = ApiKeyService()
+
+    @extend_schema(**API_KEY_CREATE_POST)
+    def post(self, request):
+        serializer = ApiKeyCreateRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        api_key, raw_key = self._service.create_for_user(
+            user=request.user,
+            name=serializer.validated_data["name"],
+            scopes=serializer.validated_data["scopes"],
+        )
+
+        return Response(
+            {
+                "api_key": raw_key,
+                "prefix": api_key.prefix,
+                "name": api_key.name,
+                "scopes": api_key.scopes or [],
+                "created_at": api_key.created_at,
+            },
+            status=status.HTTP_201_CREATED,
         )
 
 

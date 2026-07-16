@@ -289,6 +289,75 @@ class TestAgentUpdateRag:
         # Verify collection removed
         assert response_data["knowledge_collection"] is None
 
+    def test_update_agent_attach_rag_without_search_configs_creates_default(
+        self, auth_client, source_collection, completed_naive_rag, agent_data
+    ):
+        """
+        Regression test for EST bug E: attaching RAG via update_agent (not
+        create_agent) without an explicit `search_configs` must still create a
+        default NaiveRagSearchConfig — otherwise the crew crashes at runtime with
+        `NaiveRagSearchConfig() argument after ** must be a mapping, not NoneType`.
+        """
+        create_url = reverse("agent-list")
+        agent_id = auth_client.post(create_url, agent_data, format="json").json()["id"]
+        agent = Agent.objects.get(id=agent_id)
+        assert NaiveRagSearchConfig.objects.filter(agent=agent).exists() is False
+
+        update_url = reverse("agent-detail", args=[agent_id])
+        data = {
+            "knowledge_collection": source_collection.collection_id,
+            "rag": {
+                "rag_type": "naive",
+                "rag_id": completed_naive_rag.naive_rag_id,
+            },
+        }
+
+        response = auth_client.patch(update_url, data, format="json")
+
+        assert response.status_code == status.HTTP_200_OK
+        response_data = response.json()
+
+        assert response_data["search_configs"] is not None
+        assert response_data["search_configs"]["naive"]["search_limit"] == 3
+        assert response_data["search_configs"]["naive"]["similarity_threshold"] == 0.2
+
+        search_config = NaiveRagSearchConfig.objects.get(agent_id=agent_id)
+        assert search_config.search_limit == 3
+        assert float(search_config.similarity_threshold) == 0.2
+
+    def test_update_agent_reassign_rag_without_search_configs_reuses_existing(
+        self, auth_client, agent_with_rag
+    ):
+        """
+        Re-assigning RAG on update must not clobber an already-customized search
+        config with fresh defaults (SearchConfigService.create_default_search_config
+        is get_or_create-based, so this stays a no-op when a config exists).
+        """
+        from tables.services.rag_assignment_service import SearchConfigService
+
+        SearchConfigService.update_search_config(
+            agent_with_rag, search_limit=12, similarity_threshold=0.9
+        )
+
+        url = reverse("agent-detail", args=[agent_with_rag.id])
+        rag_info = self._get_rag_info(agent_with_rag)
+        data = {
+            "rag": {"rag_type": "naive", "rag_id": rag_info["rag_id"]},
+        }
+
+        response = auth_client.patch(url, data, format="json")
+
+        assert response.status_code == status.HTTP_200_OK
+        response_data = response.json()
+        assert response_data["search_configs"]["naive"]["search_limit"] == 12
+        assert response_data["search_configs"]["naive"]["similarity_threshold"] == 0.9
+
+    @staticmethod
+    def _get_rag_info(agent):
+        from tables.services.rag_assignment_service import RagAssignmentService
+
+        return RagAssignmentService.get_assigned_rag_info(agent)
+
 
 # ============================================================================
 # SEARCH CONFIG UPDATE TESTS

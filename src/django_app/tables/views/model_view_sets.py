@@ -51,6 +51,7 @@ from tables.exceptions import (
     AgentSerializerError,
     BuiltInToolModificationError,
     BulkSaveValidationError,
+    ConditionGroupFieldError,
     TaskSerializerError,
     GraphSaveVersionConflictError,
 )
@@ -1400,6 +1401,21 @@ class DecisionTableNodeModelViewSet(
         Condition.objects.filter(condition_group__decision_table_node=node).delete()
         ConditionGroup.objects.filter(decision_table_node=node).delete()
 
+    # Real, settable model fields for ConditionGroup/Condition — anything else in
+    # a `condition_groups` payload (e.g. a `next_node` name round-tripped from a
+    # GET response) must be rejected with a 400, never splatted into the model
+    # constructor (which would raise an unhandled TypeError -> 500).
+    _CONDITION_GROUP_FIELD_NAMES = frozenset(
+        field.name
+        for field in ConditionGroup._meta.get_fields()
+        if field.concrete and field.name not in ("id", "decision_table_node")
+    )
+    _CONDITION_FIELD_NAMES = frozenset(
+        field.name
+        for field in Condition._meta.get_fields()
+        if field.concrete and field.name not in ("id", "condition_group")
+    )
+
     def _create_condition_groups(
         self, node: DecisionTableNode, groups_data: list[dict]
     ):
@@ -1412,6 +1428,16 @@ class DecisionTableNodeModelViewSet(
             conditions_data = copy_group_data.pop("conditions", [])
             copy_group_data.pop("decision_table_node", None)
             copy_group_data.pop("content_hash", None)
+            copy_group_data.pop("id", None)
+
+            unsupported_group_fields = (
+                set(copy_group_data) - self._CONDITION_GROUP_FIELD_NAMES
+            )
+            if unsupported_group_fields:
+                raise ConditionGroupFieldError(
+                    entity_name="ConditionGroup",
+                    unsupported_fields=unsupported_group_fields,
+                )
 
             group = ConditionGroup.objects.create(
                 decision_table_node=node, **copy_group_data
@@ -1421,8 +1447,16 @@ class DecisionTableNodeModelViewSet(
                 cond_data = {
                     k: v
                     for k, v in cond_data.items()
-                    if k not in ("condition_group", "content_hash")
+                    if k not in ("condition_group", "content_hash", "id")
                 }
+                unsupported_condition_fields = (
+                    set(cond_data) - self._CONDITION_FIELD_NAMES
+                )
+                if unsupported_condition_fields:
+                    raise ConditionGroupFieldError(
+                        entity_name="Condition",
+                        unsupported_fields=unsupported_condition_fields,
+                    )
                 Condition.objects.create(condition_group=group, **cond_data)
 
             # Re-save group so its hash includes the newly created conditions
@@ -1437,6 +1471,17 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph"]
+
+    # Real, settable model fields for ClassificationConditionGroup — anything
+    # else in a `condition_groups` payload (e.g. DT's `group_type`, which this
+    # model has no field for) must be rejected with a 400, never splatted into
+    # the model constructor (which would raise an unhandled TypeError -> 500).
+    _CONDITION_GROUP_FIELD_NAMES = frozenset(
+        field.name
+        for field in ClassificationConditionGroup._meta.get_fields()
+        if field.concrete
+        and field.name not in ("id", "classification_decision_table_node")
+    )
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -1477,6 +1522,12 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
                     for k, v in group_data.items()
                     if k not in ("id", "classification_decision_table_node")
                 }
+                unsupported_fields = set(gd) - self._CONDITION_GROUP_FIELD_NAMES
+                if unsupported_fields:
+                    raise ConditionGroupFieldError(
+                        entity_name="ClassificationConditionGroup",
+                        unsupported_fields=unsupported_fields,
+                    )
                 groups_to_create.append(
                     ClassificationConditionGroup(
                         classification_decision_table_node=node, **gd

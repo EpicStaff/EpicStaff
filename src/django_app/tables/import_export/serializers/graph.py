@@ -21,6 +21,9 @@ from tables.models import (
     SubGraphNode,
     ClassificationDecisionTableNode,
     ClassificationConditionGroup,
+    AgentNode,
+    AgentNodeTask,
+    TaskNode,
 )
 from tables.models.graph_models import (
     CodeAgentNode,
@@ -222,6 +225,44 @@ class CodeAgentNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = CodeAgentNode
         exclude = ["created_at", "updated_at"]
+
+
+class TaskNodeImportSerializer(BaseNodeImportSerializer):
+    class Meta(BaseNodeImportSerializer.Meta):
+        model = TaskNode
+        # `agent_definition` and `surface_list` are organization-scoped resources
+        # not tracked by the import/export system (same boundary as Agent's
+        # `knowledge_collection` in AgentImportSerializer) — the imported TaskNode
+        # is created with no agent assigned; the runtime already surfaces a clean
+        # "missing agent" error for this case (see TaskNode.agent_definition help_text).
+        exclude = ["created_at", "updated_at", "agent_definition", "surface_list"]
+
+
+class AgentNodeTaskImportSerializer(serializers.ModelSerializer):
+    agent_node = serializers.PrimaryKeyRelatedField(read_only=True)
+    agent_node_id = serializers.PrimaryKeyRelatedField(
+        queryset=AgentNode.objects.all(),
+        source="agent_node",
+        write_only=True,
+    )
+    # Sibling references are resolved locally in `import_agent_node` (old id ->
+    # newly created task), never written through this field directly — writing
+    # old ids straight through would either 404 or point at the wrong AgentNode's
+    # tasks entirely.
+    context_tasks = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+
+    class Meta:
+        model = AgentNodeTask
+        exclude = ["created_at", "updated_at"]
+
+
+class AgentNodeImportSerializer(BaseNodeImportSerializer):
+    tasks = AgentNodeTaskImportSerializer(many=True, required=False, read_only=True)
+
+    class Meta(BaseNodeImportSerializer.Meta):
+        model = AgentNode
+        # See TaskNodeImportSerializer — same untracked-entity boundary.
+        exclude = ["created_at", "updated_at", "agent_definition", "surface_list"]
 
 
 class GraphNoteImportSerializer(BaseNodeImportSerializer):

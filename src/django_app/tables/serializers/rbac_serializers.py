@@ -62,6 +62,24 @@ class ApiKeyValidateResponseSerializer(serializers.Serializer):
     owner_user_id = serializers.IntegerField(allow_null=True)
 
 
+# ---- API-key create ----
+
+
+class ApiKeyCreateRequestSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255)
+    scopes = serializers.ListField(
+        child=serializers.CharField(), required=False, default=list
+    )
+
+
+class ApiKeyCreateResponseSerializer(serializers.Serializer):
+    api_key = serializers.CharField()
+    prefix = serializers.CharField()
+    name = serializers.CharField()
+    scopes = serializers.ListField(child=serializers.CharField())
+    created_at = serializers.DateTimeField()
+
+
 # ---- Reset user ----
 
 

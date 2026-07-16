@@ -9,6 +9,9 @@ from tables.models import (
     DecisionTableNode,
     SubGraphNode,
     ClassificationDecisionTableNode,
+    AgentNode,
+    AgentNodeTask,
+    TaskNode,
 )
 from tables.models.graph_models import (
     GraphNote,
@@ -38,6 +41,9 @@ from tables.import_export.serializers.graph import (
     ScheduleTriggerNodeImportSerializer,
     ClassificationDecisionTableNodeImportSerializer,
     ClassificationConditionGroupImportSerializer,
+    TaskNodeImportSerializer,
+    AgentNodeImportSerializer,
+    AgentNodeTaskImportSerializer,
 )
 
 
@@ -227,6 +233,49 @@ def import_subgraph_node(
     return serializer.save()
 
 
+def import_agent_node(graph: Graph, node_data: dict, id_mapper: IDMapper) -> AgentNode:
+    """
+    Import an AgentNode and recreate its ordered AgentNodeTask children, inlined
+    the same way DecisionTableNode/CDT inline their condition groups.
+
+    `agent_definition`/`surface_list` are intentionally dropped — see
+    AgentNodeImportSerializer for why; the imported node runs with no agent
+    assigned until a user re-attaches one.
+    """
+    tasks_data = node_data.pop("tasks", [])
+
+    serializer = AgentNodeImportSerializer(data={**node_data, "graph": graph.id})
+    serializer.is_valid(raise_exception=True)
+    agent_node = serializer.save()
+
+    old_id_to_task: dict[int, AgentNodeTask] = {}
+    context_task_refs: dict[int, list[int]] = {}
+
+    for task_data in tasks_data:
+        old_task_id = task_data.get("id")
+        context_task_refs[old_task_id] = task_data.get("context_tasks", [])
+
+        task_serializer = AgentNodeTaskImportSerializer(
+            data={**task_data, "agent_node_id": agent_node.id}
+        )
+        task_serializer.is_valid(raise_exception=True)
+        task = task_serializer.save()
+
+        if old_task_id is not None:
+            old_id_to_task[old_task_id] = task
+
+    for old_task_id, task in old_id_to_task.items():
+        resolved_context_task_ids = [
+            old_id_to_task[ref_id].id
+            for ref_id in context_task_refs.get(old_task_id, [])
+            if ref_id in old_id_to_task
+        ]
+        if resolved_context_task_ids:
+            task.context_tasks.set(resolved_context_task_ids)
+
+    return agent_node
+
+
 NODE_HANDLERS = {
     NodeType.CREW_NODE: {
         "serializer": CrewNodeImportSerializer,
@@ -292,5 +341,14 @@ NODE_HANDLERS = {
     NodeType.SCHEDULE_TRIGGER_NODE: {
         "serializer": ScheduleTriggerNodeImportSerializer,
         "relation": "schedule_trigger_node_list",
+    },
+    NodeType.TASK_NODE: {
+        "serializer": TaskNodeImportSerializer,
+        "relation": "task_node_list",
+    },
+    NodeType.AGENT_NODE: {
+        "serializer": AgentNodeImportSerializer,
+        "relation": "agent_node_list",
+        "import_hook": import_agent_node,
     },
 }

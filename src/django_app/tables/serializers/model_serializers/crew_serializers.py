@@ -406,6 +406,12 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
         # Handle search configs (independent from RAG assignment)
         if search_configs_data:
             SearchConfigService.apply_search_configs(instance, search_configs_data)
+        elif rag_data:
+            # RAG (re)assigned but no config provided - create defaults
+            if rag_data["rag_type"] == "naive":
+                SearchConfigService.create_default_search_config(instance)
+            elif rag_data["rag_type"] == "graph":
+                SearchConfigService.create_default_graph_search_configs(instance)
 
         # Handle realtime agent
         if realtime_agent_data:

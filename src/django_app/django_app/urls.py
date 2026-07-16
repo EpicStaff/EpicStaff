@@ -19,6 +19,7 @@ from django.urls import include, path
 from rest_framework_simplejwt.views import TokenRefreshView
 from tables.views.auth_views import (
     AdminPasswordResetView,
+    ApiKeyCreateView,
     ApiKeyValidateView,
     FirstSetupView,
     LoginView,
@@ -52,6 +53,11 @@ urlpatterns = [
     path("api/auth/sse-ticket/", SseTicketView.as_view(), name="sse_ticket"),
     path(
         "api/auth/introspect/", TokenIntrospectView.as_view(), name="token_introspect"
+    ),
+    path(
+        "api/auth/api-key/",
+        ApiKeyCreateView.as_view(),
+        name="api_key_create",
     ),
     path(
         "api/auth/api-key/validate/",
