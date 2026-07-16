@@ -65,7 +65,8 @@ class OpRejectedMessage(BaseModel):
     op_id: str | None = None
     list_key: str
     node_ref: dict
-    # One of: "target_not_found", "no_snapshot", "unknown_list_key", "missing_identity".
+    # One of: "target_not_found", "no_snapshot", "unknown_list_key",
+    # "missing_identity", "precondition_failed".
     reason: str
     details: dict | None = None
 
@@ -90,10 +91,15 @@ class NodeUpdatedMessage(BaseModel):
     # Client-generated correlation id, echoed back on OpRejectedMessage so the
     # sender can match the rejection to the op it sent.
     op_id: str | None = None
+    # per changed field, the value the client believes the server currently holds (undo: the original op's "after").
+    # Only meaningful alongside changed_fields — see the validator below.
+    expected: dict | None = None
 
     @model_validator(mode="after")
     def _changed_fields_require_identity(self) -> "NodeUpdatedMessage":
         if self.changed_fields is None:
+            if self.expected is not None:
+                raise ValueError("'expected' requires 'changed_fields' to be set")
             return self
         if not self.changed_fields:
             raise ValueError(
@@ -105,6 +111,10 @@ class NodeUpdatedMessage(BaseModel):
                 "A partial NodeUpdatedMessage (changed_fields set) requires "
                 "'node' to carry an 'id' or 'temp_id'"
             )
+        if self.expected is not None and not set(self.expected.keys()) <= set(
+            self.changed_fields
+        ):
+            raise ValueError("'expected' keys must be a subset of 'changed_fields'")
         return self
 
 

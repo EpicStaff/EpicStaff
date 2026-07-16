@@ -6,7 +6,7 @@ from enum import Enum
 from asgiref.sync import sync_to_async
 from django.conf import settings
 
-from tables.graph_collab.entry_merge import deep_merge
+from tables.graph_collab.entry_merge import find_mismatched_keys, merge_entry
 from tables.graph_collab.protocol import (
     ConnectionCreatedMessage,
     ConnectionDeletedMessage,
@@ -661,7 +661,22 @@ class GraphLiveStateService:
         if target_index is None:
             return OpResult(OpStatus.REJECTED, "target_not_found", relay=False)
 
-        entries[target_index] = deep_merge(entries[target_index], overlay)
+        if message.expected is not None:
+            expected_norm = normalize_partial_op_entry(list_key, dict(message.expected))
+            expected_norm.pop("id", None)
+            expected_norm.pop("temp_id", None)
+            mismatched = find_mismatched_keys(entries[target_index], expected_norm)
+
+            if mismatched:
+                wire_mismatched = [key.removeprefix("metadata.") for key in mismatched]
+                return OpResult(
+                    OpStatus.REJECTED,
+                    "precondition_failed",
+                    relay=False,
+                    details={"mismatched_fields": wire_mismatched},
+                )
+
+        entries[target_index] = merge_entry(entries[target_index], overlay)
         return APPLIED_OK
 
     async def apply_op(self, graph_id: int, message) -> OpResult | None:
