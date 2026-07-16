@@ -3,7 +3,7 @@ import os
 from typing import Any
 import uuid
 from src.shared.models import CodeTaskData
-from tables.models import PythonCode
+from tables.models import PythonCode, PythonCodeResult
 from tables.services.redis_service import RedisService
 from utils.singleton_meta import SingletonMeta
 
@@ -19,6 +19,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         self,
         python_code_id: int,
         varaibles: dict,
+        organization_id: int,
+        user,
         additional_global_kwargs: dict[str, Any] | None = None,
     ) -> str:
         """
@@ -35,6 +37,12 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         python_code: PythonCode = PythonCode.objects.get(id=python_code_id)
         execution_id = self.gen_execution_id()
+        PythonCodeResult.objects.create(
+            execution_id=execution_id,
+            org_id=organization_id,
+            created_by=user,
+            python_code=python_code,
+        )
         code_task_data = CodeTaskData(
             venv_name=f"venv_{python_code_id}",
             libraries=python_code.get_libraries_list(),

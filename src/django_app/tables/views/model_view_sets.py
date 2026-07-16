@@ -271,6 +271,10 @@ from tables.swagger_schemas.twilio_schemas import (
     TWILIO_PHONE_NUMBERS_GET,
     TWILIO_CONFIGURE_WEBHOOK_POST,
 )
+from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
+from tables.models.rbac_models.rbac_enums import ResourceType
+from tables.services.rbac.org_context_service import OrgContextService
+from tables.services.rbac.permissions import HasOrgPermission
 from tables.graph_collab.notifications import GraphEditNotifier
 from utils.logger import logger
 
@@ -775,9 +779,11 @@ class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     filterset_fields = ["tool", "name"]
 
 
-class PythonCodeResultReadViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
-    # Superadmin-only
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+class PythonCodeResultReadViewSet(
+    OrgScopedViewSetMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
     queryset = PythonCodeResult.objects.all()
     serializer_class = PythonCodeResultSerializer
 

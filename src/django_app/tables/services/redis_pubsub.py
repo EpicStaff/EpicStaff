@@ -4,6 +4,7 @@ import time
 from collections import defaultdict, deque
 from typing import Type
 from uuid import uuid4
+from django.utils import timezone
 
 import redis
 from django.db import close_old_connections, IntegrityError, models, transaction
@@ -119,10 +120,27 @@ class RedisPubSub:
     def code_results_handler(self, message: dict):
         try:
             logger.debug(f"Received message from code_result_handler: {message}")
-            data = json.loads(message["data"])
-            CodeResultData.model_validate(data)
+            result = CodeResultData.model_validate_json(message["data"])
             close_old_connections()
-            PythonCodeResult.objects.create(**data)
+            updated = PythonCodeResult.objects.filter(
+                execution_id=result.execution_id,
+                status=PythonCodeResult.Status.PENDING,
+            ).update(
+                status=(
+                    PythonCodeResult.Status.COMPLETED
+                    if result.returncode == 0
+                    else PythonCodeResult.Status.ERROR
+                ),
+                result_data=result.result_data,
+                stderr=result.stderr,
+                stdout=result.stdout,
+                returncode=result.returncode,
+                finished_at=timezone.now(),
+            )
+            if not updated:
+                logger.debug(
+                    f"No pending execution for {result.execution_id}, skipping"
+                )
         except Exception as e:
             logger.error(f"Error handling code_results message: {e}")
 

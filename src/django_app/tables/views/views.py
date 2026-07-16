@@ -697,7 +697,12 @@ class RunPythonCodeAPIView(APIView):
                 }
             )
 
-        execution_id = run_python_code_service.run_code(python_code.id, variables)
+        execution_id = run_python_code_service.run_code(
+            python_code.id,
+            variables,
+            organization_id=org_id,
+            user=request.user,
+        )
         return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
 
     @staticmethod
