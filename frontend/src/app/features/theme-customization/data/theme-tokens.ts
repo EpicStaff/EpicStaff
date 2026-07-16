@@ -67,16 +67,6 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
                 samples: [{ kind: 'card', label: 'Flow', prop: 'background' }],
             },
             {
-                name: '--color-surface',
-                label: 'Surface',
-                samples: [{ kind: 'surface', label: 'Aa', prop: 'background' }],
-            },
-            {
-                name: '--color-surface-hover',
-                label: 'Surface hover',
-                samples: [{ kind: 'surface', label: 'Hover me', prop: 'background', hover: true }],
-            },
-            {
                 name: '--color-surface-card',
                 label: 'Surface card',
                 samples: [{ kind: 'card', label: 'Card', prop: 'background' }],

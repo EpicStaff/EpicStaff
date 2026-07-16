@@ -110,7 +110,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 flex-direction: column;
                 height: 100%;
                 min-height: 0;
-                background: var(--color-surface-card, var(--graphite-825));
+                background: var(--color-surface-card);
                 border-radius: var(--radius-lg);
                 overflow: hidden;
             }
@@ -148,7 +148,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 line-height: 1;
 
                 &:hover {
-                    background: var(--color-surface-hover, #333);
+                    background: var(--white-alpha-6);
                     color: var(--color-text-primary, #fff);
                 }
             }

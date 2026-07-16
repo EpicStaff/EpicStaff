@@ -367,7 +367,7 @@
     font-weight: var(--font-weight-regular);
     border-radius: var(--radius-sm);
     border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
-    background: var(--color-surface-card, var(--graphite-825));
+    background: var(--color-surface-card);
     color: var(--color-text-primary, var(--white));
     cursor: pointer;
     transition:
@@ -419,7 +419,7 @@
     font-size: var(--font-size-xs);
     border-radius: var(--radius-sm);
     border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
-    background: var(--color-surface-card, var(--graphite-825));
+    background: var(--color-surface-card);
     color: var(--color-text-primary, var(--white));
     cursor: pointer;
     transition:
@@ -448,7 +448,7 @@
     align-items: center;
     gap: var(--space-sm);
     padding: var(--space-xs) var(--space-lg);
-    background: var(--color-surface-card, var(--graphite-825));
+    background: var(--color-surface-card);
     border: 1.5px solid var(--color-divider-subtle, var(--gray-700));
     border-radius: var(--radius-sm);
 }

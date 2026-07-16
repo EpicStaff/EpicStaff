@@ -292,7 +292,7 @@
         background-position: right 8px center;
 
         option {
-            background-color: var(--color-surface, #1e1e2e);
+            background-color: var(--color-background-body);
             color: var(--color-text-primary);
         }
     }
@@ -392,7 +392,7 @@
 }
 
 .cdk-drag-preview {
-    background-color: var(--color-surface, #1e1e2e);
+    background-color: var(--color-background-body);
     border: 1px solid var(--accent-color, var(--accent-color));
     border-radius: var(--radius-sm);
     box-shadow: 0 4px 16px var(--black-alpha-40);

@@ -30,7 +30,7 @@ export interface ExpressionBuilderCellEditorParams extends ICellEditorParams {
                 display: block;
                 z-index: 10;
                 position: relative;
-                background: var(--graphite-825);
+                background: var(--color-surface-card);
                 width: 660px;
                 min-height: 320px;
             }
