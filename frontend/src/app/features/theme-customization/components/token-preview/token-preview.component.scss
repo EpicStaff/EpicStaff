@@ -152,7 +152,7 @@
 
     &__sample--node {
         padding: var(--space-xs) var(--space-md);
-        border: 1px solid var(--color-nodes-actionbar-border);
+        border: 1px solid var(--color-divider-subtle);
         border-radius: var(--radius-lg);
         background: var(--color-nodes-background);
         color: var(--color-text-secondary);
@@ -174,7 +174,7 @@
         height: 24px;
         border: 1px solid var(--color-divider-subtle);
         border-radius: var(--radius-md);
-        background: repeating-conic-gradient(var(--color-divider-strong) 0% 25%, transparent 0% 50%) 0 0 / 12px 12px;
+        background: repeating-conic-gradient(var(--fog-alpha-20) 0% 25%, transparent 0% 50%) 0 0 / 12px 12px;
         overflow: hidden;
 
         &::after {

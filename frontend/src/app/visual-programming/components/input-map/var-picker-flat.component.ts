@@ -48,7 +48,7 @@ export interface PickerItem {
     styles: [
         `
             .vpf-container {
-                background: var(--color-nodes-sidepanel-bg);
+                background: var(--color-surface-card);
                 border: 1px solid var(--color-divider-regular);
                 border-radius: var(--radius-md);
                 box-shadow: 0 8px 24px var(--black-alpha-40);

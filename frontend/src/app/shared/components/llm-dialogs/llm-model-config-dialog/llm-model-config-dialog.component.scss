@@ -22,7 +22,7 @@
 
     .error-message {
         background-color: var(--red-alpha-10);
-        color: var(--color-error, var(--red-500));
+        color: var(--color-status-error);
         padding: var(--space-md) var(--space-lg);
         margin: var(--space-lg) var(--space-2xl) 0;
         border-radius: var(--radius-sm);

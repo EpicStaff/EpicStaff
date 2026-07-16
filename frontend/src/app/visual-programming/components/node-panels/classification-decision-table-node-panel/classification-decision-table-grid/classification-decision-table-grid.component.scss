@@ -386,7 +386,7 @@
     top: 0;
 
     &:hover {
-        background: var(--inactive-purple);
+        background: var(--purple-alpha-40);
         color: var(--white);
         border-color: var(--purple-alpha-70);
     }
@@ -470,19 +470,19 @@
     }
 
     &--danger {
-        color: var(--error-color, var(--red-500));
+        color: var(--color-status-error);
 
         i {
-            color: var(--error-color, var(--red-500));
+            color: var(--color-status-error);
             opacity: 0.8;
         }
 
         &:hover {
             background: var(--red-alpha-15);
-            color: var(--error-color, var(--red-500));
+            color: var(--color-status-error);
 
             i {
-                color: var(--error-color, var(--red-500));
+                color: var(--color-status-error);
                 opacity: 1;
             }
         }

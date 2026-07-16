@@ -115,32 +115,12 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
                 samples: [{ kind: 'button', label: 'Press me', prop: 'background', active: true }],
             },
             {
-                name: '--accent-light',
-                label: 'Accent light',
-                samples: [{ kind: 'link', label: 'Accent light', prop: 'color' }],
-            },
-            {
-                name: '--accent-dark',
-                label: 'Accent dark',
-                samples: [{ kind: 'badge', label: 'Accent dark', prop: 'background' }],
-            },
-            {
-                name: '--accent-darker',
-                label: 'Accent darker',
-                samples: [{ kind: 'badge', label: 'Accent darker', prop: 'background' }],
-            },
-            {
                 name: '--active-color',
                 label: 'Active color',
                 samples: [
                     { kind: 'dot', prop: 'background' },
                     { kind: 'link', label: 'Active tab', prop: 'color' },
                 ],
-            },
-            {
-                name: '--inactive-purple',
-                label: 'Inactive accent',
-                samples: [{ kind: 'badge', label: 'Inactive', prop: 'background' }],
             },
             {
                 name: '--color-required-asterisk',
@@ -283,11 +263,6 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
                 samples: [{ kind: 'divider' }],
             },
             {
-                name: '--color-divider-strong',
-                label: 'Divider strong',
-                samples: [{ kind: 'divider' }],
-            },
-            {
                 name: '--color-line',
                 label: 'Line',
                 samples: [{ kind: 'divider' }],
@@ -297,30 +272,6 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
     {
         title: 'Statuses & feedback',
         tokens: [
-            {
-                name: '--color-error',
-                label: 'Error',
-                samples: [
-                    { kind: 'dot', prop: 'background' },
-                    { kind: 'text', label: 'Error message', prop: 'color' },
-                ],
-            },
-            {
-                name: '--error-color',
-                label: 'Error (legacy)',
-                samples: [
-                    { kind: 'dot', prop: 'background' },
-                    { kind: 'text', label: 'Error message', prop: 'color' },
-                ],
-            },
-            {
-                name: '--red-color',
-                label: 'Red',
-                samples: [
-                    { kind: 'dot', prop: 'background' },
-                    { kind: 'link', label: 'Delete', prop: 'color' },
-                ],
-            },
             {
                 name: '--success-color',
                 label: 'Success',
@@ -410,26 +361,6 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
         ],
     },
     {
-        title: 'Overlays',
-        tokens: [
-            {
-                name: '--color-scrim-strong',
-                label: 'Scrim strong',
-                samples: [{ kind: 'backdrop' }],
-            },
-            {
-                name: '--color-scrim-medium',
-                label: 'Scrim medium',
-                samples: [{ kind: 'backdrop' }],
-            },
-            {
-                name: '--color-scrim-subtle',
-                label: 'Scrim subtle',
-                samples: [{ kind: 'backdrop' }],
-            },
-        ],
-    },
-    {
         title: 'Scrollbar',
         tokens: [
             {
@@ -456,46 +387,6 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
                 name: '--color-nodes-background',
                 label: 'Node background',
                 samples: [{ kind: 'node', label: 'Node', prop: 'background' }],
-            },
-            {
-                name: '--color-nodes-background-translucent',
-                label: 'Node background translucent',
-                samples: [{ kind: 'backdrop' }],
-            },
-            {
-                name: '--color-nodes-background-disabled',
-                label: 'Node background disabled',
-                samples: [{ kind: 'node', label: 'Disabled', prop: 'background' }],
-            },
-            {
-                name: '--color-nodes-input-bg',
-                label: 'Node input background',
-                samples: [{ kind: 'input', label: 'Text', prop: 'background' }],
-            },
-            {
-                name: '--color-nodes-actionbar-bg',
-                label: 'Action bar background',
-                samples: [{ kind: 'node', label: 'Toolbar', prop: 'background' }],
-            },
-            {
-                name: '--color-nodes-actionbar-border',
-                label: 'Action bar border',
-                samples: [{ kind: 'node', label: 'Toolbar', prop: 'border' }],
-            },
-            {
-                name: '--color-nodes-sidepanel-bg',
-                label: 'Side panel background',
-                samples: [{ kind: 'node', label: 'Panel', prop: 'background' }],
-            },
-            {
-                name: '--color-nodes-flow-link',
-                label: 'Flow link',
-                samples: [{ kind: 'link', label: 'Flow link', prop: 'color' }],
-            },
-            {
-                name: '--color-nodes-flow-link-hover-bg',
-                label: 'Flow link hover background',
-                samples: [{ kind: 'link', label: 'Hover me', prop: 'background', hover: true }],
             },
         ],
     },
@@ -524,9 +415,12 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
         title: 'Misc',
         tokens: [
             {
-                name: '--color-storage-icon',
-                label: 'Storage icon',
-                description: 'Color of file and folder icons in the storage browser.',
+                name: '--color-icon',
+                label: 'Icon color',
+                samples: [
+                    { kind: 'dot', prop: 'color' },
+                    { kind: 'text', label: 'Icons', prop: 'color' },
+                ],
             },
         ],
     },

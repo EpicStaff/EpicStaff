@@ -127,7 +127,7 @@
                     transform: scale(1.05);
 
                     .close-icon {
-                        color: var(--red-color, var(--red-500));
+                        color: var(--color-status-error);
                     }
                 }
 
@@ -136,7 +136,7 @@
                     transform: scale(0.95);
 
                     .close-icon {
-                        color: var(--red-color, var(--red-500));
+                        color: var(--color-status-error);
                     }
                 }
             }

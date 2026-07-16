@@ -48,8 +48,8 @@ app-flow-header {
         border-color 0.15s ease;
 
     &:hover {
-        background: color-mix(in srgb, var(--color-error) 20%, transparent);
-        border-color: var(--color-error);
+        background: color-mix(in srgb, var(--color-status-error) 20%, transparent);
+        border-color: var(--color-status-error);
     }
 }
 

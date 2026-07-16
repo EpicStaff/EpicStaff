@@ -363,14 +363,14 @@
     padding: var(--space-xs) var(--space-sm);
     background: var(--red-alpha-10);
     border: 1px solid var(--red-alpha-30);
-    border-left: 3px solid var(--color-error);
+    border-left: 3px solid var(--color-status-error);
     border-radius: var(--radius-sm);
-    color: var(--color-error);
+    color: var(--color-status-error);
     font-size: var(--font-size-sm);
     line-height: 1.4;
 }
 
 .label-input.has-error,
 .rename-input.has-error {
-    border-color: var(--color-error) !important;
+    border-color: var(--color-status-error) !important;
 }

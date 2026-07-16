@@ -89,13 +89,13 @@
             }
 
             &--error {
-                border-color: var(--color-error, #e0575b);
+                border-color: var(--color-status-error);
             }
         }
 
         .error-message {
             font-size: var(--font-size-xs);
-            color: var(--color-error, #e0575b);
+            color: var(--color-status-error);
             margin-top: var(--space-2xs);
         }
     }

@@ -182,7 +182,7 @@
         position: relative;
 
         &:nth-child(even) {
-            background-color: var(--color-scrim-subtle);
+            background-color: var(--color-backdrop);
         }
 
         &:hover {

@@ -308,7 +308,7 @@
         padding: var(--space-2xs) var(--space-sm);
         border-radius: var(--radius-sm);
         background: var(--Transparent-red, var(--red-alpha-8));
-        color: var(--color-error);
+        color: var(--color-status-error);
         font-family: var(--font-family-base);
         font-style: normal;
         font-size: var(--font-size-md);
@@ -607,7 +607,7 @@
         padding: 0 var(--space-sm);
 
         &:nth-child(even) {
-            background-color: var(--color-scrim-subtle);
+            background-color: var(--color-backdrop);
         }
     }
 
@@ -663,7 +663,7 @@
         }
 
         &--blocked {
-            color: var(--color-error);
+            color: var(--color-status-error);
             background-color: var(--red-alpha-8);
         }
     }

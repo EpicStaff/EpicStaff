@@ -3,9 +3,9 @@
     align-items: center;
     justify-content: center;
 
-    border: 1px solid var(--color-nodes-flow-link);
+    border: 1px solid var(--teal-500);
     border-radius: var(--radius-sm);
-    color: var(--color-nodes-flow-link);
+    color: var(--teal-500);
     text-decoration: none;
     cursor: pointer;
 
@@ -25,7 +25,7 @@
     }
 
     &:hover {
-        background-color: var(--color-nodes-flow-link-hover-bg);
+        background-color: var(--teal-alpha-8);
     }
 
     &.disabled {

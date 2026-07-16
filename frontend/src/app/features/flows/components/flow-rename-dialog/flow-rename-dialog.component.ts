@@ -144,7 +144,7 @@ interface FlowRenameData {
 
             .error-message-block {
                 padding: var(--space-sm) var(--space-md);
-                color: var(--color-error);
+                color: var(--color-status-error);
                 font-size: var(--font-size-xs);
                 margin-top: var(--space-2xs);
             }

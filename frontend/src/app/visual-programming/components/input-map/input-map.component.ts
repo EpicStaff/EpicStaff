@@ -488,7 +488,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
                 .save-node-svg {
                     color: var(--accent-color);
-                    background: var(--color-nodes-sidepanel-bg);
+                    background: var(--color-surface-card);
                     border: none;
                     padding: var(--space-2xs);
                     border-radius: var(--radius-sm);

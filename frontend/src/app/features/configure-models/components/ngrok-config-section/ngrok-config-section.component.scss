@@ -49,7 +49,7 @@
             color: var(--color-text-secondary);
 
             &.error {
-                color: var(--color-error);
+                color: var(--color-status-error);
                 p {
                     margin-bottom: var(--space-lg);
                 }

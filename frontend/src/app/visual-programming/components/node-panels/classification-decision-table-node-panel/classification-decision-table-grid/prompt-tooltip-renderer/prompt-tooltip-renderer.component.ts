@@ -125,7 +125,7 @@ interface PromptTooltipParams extends ICellRendererParams {
                 gap: var(--space-2xs);
                 padding: var(--space-3xs) var(--space-sm);
                 background: rgba(255, 59, 48, 0.15);
-                color: var(--error-color, #ff3b30);
+                color: var(--color-status-error);
                 border: 1px solid rgba(255, 59, 48, 0.35);
                 border-radius: var(--radius-xl);
                 font-size: var(--font-size-xs);

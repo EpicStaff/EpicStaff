@@ -50,7 +50,7 @@
 }
 
 .caution-block {
-    border-left: 3px solid var(--color-error);
+    border-left: 3px solid var(--color-status-error);
     padding: var(--space-sm) var(--space-md);
     border-radius: var(--radius-sm);
     display: flex;
@@ -59,7 +59,7 @@
 }
 
 .caution-title {
-    color: var(--color-error);
+    color: var(--color-status-error);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
 }

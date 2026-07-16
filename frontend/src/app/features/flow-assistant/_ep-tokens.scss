@@ -5,7 +5,7 @@
 // Source reference: epicstaffchat-master/src/app/chat.component.scss:101-167
 @mixin epicchat-tokens {
     // surface + text
-    --ep-color-surface: var(--color-nodes-sidepanel-bg);
+    --ep-color-surface: var(--color-surface-card);
     --ep-color-surface-alt: var(--color-input-background);
     --ep-color-text: var(--color-text-primary);
     --ep-color-text-muted: var(--color-text-secondary);
@@ -20,7 +20,7 @@
     --ep-color-header-icon: var(--ep-color-accent);
 
     // danger / link
-    --ep-color-danger: var(--color-error);
+    --ep-color-danger: var(--color-status-error);
     --ep-color-link: var(--accent-color);
     --ep-color-link-hover: #8b85ff;
 

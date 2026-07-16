@@ -32,7 +32,7 @@
     overflow-x: auto;
     overflow-y: hidden;
     border: 1px solid var(--color-divider-regular);
-    background: var(--color-nodes-actionbar-bg);
+    background: var(--color-surface-card);
     min-height: 300px;
 }
 
@@ -126,7 +126,7 @@ table {
             background: var(--color-divider-regular);
             border-radius: var(--radius-sm);
             &:hover {
-                background: var(--color-divider-strong);
+                background: var(--fog-alpha-20);
             }
         }
     }

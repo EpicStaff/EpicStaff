@@ -288,11 +288,7 @@
     --accent-color: var(--purple-500);
     --accent-color-hover: var(--purple-600);
     --accent-color-active: var(--purple-700);
-    --accent-light: var(--purple-300);
-    --accent-dark: var(--purple-600);
-    --accent-darker: var(--purple-700);
     --active-color: var(--accent-color);
-    --inactive-purple: var(--purple-alpha-40);
     --color-required-asterisk: var(--accent-color);
     --color-secondary-btn-background: var(--graphite-800);
     --color-secondary-btn-background-hover: var(--white-alpha-9);
@@ -330,14 +326,10 @@
     --color-divider: var(--color-divider-regular);
     --color-divider-regular: var(--steel-alpha-14);
     --color-divider-subtle: var(--steel-alpha-8);
-    --color-divider-strong: var(--fog-alpha-20);
 
     // ------------------------------------------------------------------
     // SEMANTIC — statuses & feedback (independent from buttons)
     // ------------------------------------------------------------------
-    --color-error: var(--red-500);
-    --error-color: var(--red-500);
-    --red-color: var(--red-500);
     --success-color: var(--green-500);
     --color-warning: var(--amber-500);
     --color-status-error: var(--red-500);
@@ -359,14 +351,6 @@
     // SEMANTIC — visual programming nodes
     // ------------------------------------------------------------------
     --color-nodes-background: var(--graphite-800);
-    --color-nodes-background-translucent: rgba(60, 60, 72, 0.65); // flow previews
-    --color-nodes-background-disabled: var(--graphite-850);
-    --color-nodes-input-bg: var(--graphite-800);
-    --color-nodes-actionbar-bg: var(--graphite-850);
-    --color-nodes-actionbar-border: var(--steel-alpha-8);
-    --color-nodes-sidepanel-bg: var(--graphite-850);
-    --color-nodes-flow-link: var(--teal-500);
-    --color-nodes-flow-link-hover-bg: var(--teal-alpha-8);
 
     // ------------------------------------------------------------------
     // SEMANTIC — extended surfaces & text
@@ -376,13 +360,6 @@
     --color-card-background: #1e1e1e;
     --color-line: var(--graphite-700);
     --color-row-hover: var(--graphite-650);
-
-    // ------------------------------------------------------------------
-    // SEMANTIC — scrims (translucent overlays)
-    // ------------------------------------------------------------------
-    --color-scrim-strong: rgba(21, 21, 21, 0.72);
-    --color-scrim-medium: rgba(21, 21, 21, 0.6);
-    --color-scrim-subtle: rgba(21, 21, 21, 0.28);
 
     // ------------------------------------------------------------------
     // SEMANTIC — status indicators (info/warning/processing/failed)
@@ -395,7 +372,7 @@
     // ------------------------------------------------------------------
     // SEMANTIC — misc
     // ------------------------------------------------------------------
-    --color-storage-icon: rgba(230, 230, 230, 1);
+    --color-icon: var(--color-text-primary);
 }
 
 // ============================================================================
@@ -447,5 +424,5 @@
     --color-drag-drop-active: rgba(15, 15, 15, 0.12);
     --color-card-background: #ffffff;
     --color-surface-contrast: #f5f5f5;
-    --color-storage-icon: rgba(51, 65, 85, 1);
+    --color-icon: rgba(51, 65, 85, 1);
 }

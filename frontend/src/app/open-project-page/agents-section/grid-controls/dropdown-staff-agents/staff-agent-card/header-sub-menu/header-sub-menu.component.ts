@@ -84,14 +84,14 @@ import { CardState } from '../staff-agent-card.component';
                 opacity: 1;
             }
             .remove-item {
-                color: var(--red-color, #dc3545);
+                color: var(--color-status-error);
                 border-top: 1px solid var(--gray-750);
                 margin-top: var(--space-xs);
                 padding-top: var(--space-md);
             }
             .remove-item:hover {
                 background-color: rgba(220, 53, 69, 0.1);
-                color: var(--red-color, #dc3545);
+                color: var(--color-status-error);
             }
         `,
     ],
