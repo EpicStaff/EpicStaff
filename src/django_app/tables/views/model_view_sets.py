@@ -220,7 +220,6 @@ from tables.serializers.model_serializers import (
     EndNodeSerializer,
     FileExtractorNodeSerializer,
     GraphLightSerializer,
-    GraphOrganizationSerializer,
     GraphOrganizationUserSerializer,
     GraphSerializer,
     GraphSessionMessageSerializer,
@@ -1680,18 +1679,6 @@ class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewS
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
-
-
-class GraphOrganizationViewSet(
-    OrgScopedChildViewSetMixin, viewsets.ReadOnlyModelViewSet
-):
-    # Read-only: persistent-variable storage is derived (Domain-save sync +
-    # session write-back), never hand-edited over the API.
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
-    org_filter_path = "graph__org_id"
-    queryset = GraphOrganization.objects.all()
-    serializer_class = GraphOrganizationSerializer
 
 
 # TODO refactor to use user_variable for persistent variables

@@ -26,7 +26,6 @@ from tables.serializers.model_serializers.tag_serializers import GraphTagSeriali
 from tables.models.graph_models import (
     Graph,
     GraphNote,
-    GraphOrganization,
     GraphOrganizationUser,
     GraphSessionMessage,
 )
@@ -113,19 +112,6 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
             "messages_count_by_subgraph": messages_count_by_subgraph,
         }
         return data
-
-
-class GraphOrganizationSerializer(serializers.ModelSerializer):
-    # Storage is derived — seeded on Domain save and written back at session end
-    class Meta:
-        model = GraphOrganization
-        fields = [
-            "id",
-            "graph",
-            "persistent_variables",
-            "user_variables",
-        ]
-        read_only_fields = ["persistent_variables", "user_variables"]
 
 
 class GraphOrganizationUserSerializer(serializers.ModelSerializer):
