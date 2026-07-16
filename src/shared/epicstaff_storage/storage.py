@@ -84,14 +84,33 @@ def __is_path_allowed(normalized_path: str, allowed_paths: list[str]) -> bool:
     return False
 
 
+_MAX_ALLOWED_PATHS_IN_MESSAGE = 15
+
+
+def __format_allowed_paths(allowed: list[str]) -> str:
+    shown = ", ".join(allowed[:_MAX_ALLOWED_PATHS_IN_MESSAGE])
+    remainder = len(allowed) - _MAX_ALLOWED_PATHS_IN_MESSAGE
+    if remainder > 0:
+        shown += f" ({remainder} more)"
+    return shown
+
+
 def check_storage_permission(operation: str, path: str) -> None:
     allowed = __get_allowed_paths()
     if allowed is None:
         return
     normalized = __normalize_path(path)
     if not __is_path_allowed(normalized, allowed):
+        if allowed:
+            allowed_hint = (
+                f" Allowed paths: [{__format_allowed_paths(allowed)}]. "
+                "Specify one of these (root/'' listing is not available)."
+            )
+        else:
+            allowed_hint = " This flow has no allowed files."
         raise StoragePermissionError(
-            f"Access denied: {operation} on '{path}' — not in this flow's allowed files."
+            f"Access denied: {operation} on '{path}' is not within this flow's "
+            f"allowed files.{allowed_hint}"
         )
 
 

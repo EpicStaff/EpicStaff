@@ -43,6 +43,26 @@
 # imported) from subflow_tool/main.py, kept as close to verbatim as
 # possible. If a shared library becomes available to sandboxed tools in the
 # future, these helpers should be extracted there instead.
+#
+# RESILIENCE NOTE: a fan-out call can issue a lot of HTTP requests (one poll
+# GET roughly every POLL_INTERVAL_S per in-flight item, for up to
+# poll_timeout_s), which is enough traffic against a single-worker dev
+# server to occasionally see a connection get dropped mid-response
+# (httpx.RemoteProtocolError: "server disconnected without sending a
+# response"). Three things below address that:
+#   1. One pooled httpx.Client is shared for the whole fan-out call (see
+#      `_new_http_client`) instead of opening a fresh client per request,
+#      cutting connection churn. httpx.Client is documented as thread-safe
+#      for concurrent requests, so the same instance is safely shared across
+#      the ThreadPoolExecutor workers used by parallel mode.
+#   2. The initial POST /run-session/ retries a bounded number of times on a
+#      transient error (see `_post_run_session_with_retry`).
+#   3. Each poll GET treats a transient error as non-fatal (see
+#      `_poll_get_session` / `_poll_until_terminal`): it's logged and
+#      retried with backoff rather than aborting the item, since the
+#      sub-flow itself is very likely still running server-side. Only a
+#      real terminal status, the overall `poll_timeout_s` deadline, or too
+#      many *consecutive* transient failures in a row ends the poll.
 
 import concurrent.futures
 import json
@@ -68,6 +88,16 @@ MAX_FANOUT_WORKERS = 4  # cap on concurrent sub-flow runs in parallel mode
 TERMINAL_STATUSES = {"end", "error", "stop", "expired"}
 FAILURE_STATUSES = {"error", "stop", "expired"}
 
+# --- transient-connection-error resilience knobs -----------------------
+# A transient error here means the exact class of failure QA hit repeatedly:
+# httpx.RemoteProtocolError ("server disconnected without sending a
+# response"), httpx.ConnectError, httpx.ReadError, or a 5xx response — all
+# treated as "the API is momentarily unreachable", not "the sub-flow died".
+POST_MAX_ATTEMPTS = 3  # initial POST /run-session/: total attempts before giving up
+POST_BACKOFF_BASE_S = 0.5  # doubles each retry: 0.5s, 1.0s, ...
+MAX_CONSECUTIVE_POLL_ERRORS = 5  # consecutive transient poll failures before giving up
+MAX_POLL_ERROR_BACKOFF_S = 20.0  # cap on the doubling poll-retry backoff
+
 
 def _api_base_url() -> str:
     import os
@@ -85,6 +115,31 @@ def _api_base_url() -> str:
 
 def _headers(api_key: str) -> dict:
     return {"X-Api-Key": api_key, "Content-Type": "application/json"}
+
+
+def _new_http_client(pool_size: int):
+    """
+    Build a single pooled httpx.Client to be reused for every request made
+    during ONE fan-out call (the recursion check(s), the initial POST(s),
+    and every poll GET) instead of opening a fresh client per request.
+
+    This is what actually cuts the connection churn that produces "server
+    disconnected without sending a response" (httpx.RemoteProtocolError)
+    against a single-worker dev Django server: previously every POST and
+    every one of the ~150 poll GETs per item opened (and tore down) its own
+    TCP connection.
+
+    httpx.Client is documented as thread-safe for issuing requests
+    concurrently — the underlying connection pool has its own internal
+    locking — so ONE shared client instance is used here (not one client per
+    worker) and is safely passed into every ThreadPoolExecutor worker in
+    parallel mode.
+    """
+    import httpx
+
+    size = max(pool_size, 1)
+    limits = httpx.Limits(max_connections=size + 2, max_keepalive_connections=size)
+    return httpx.Client(timeout=HTTP_TIMEOUT_S, limits=limits)
 
 
 def _get_session_or_raise(client, base_url: str, headers: dict, session_id) -> dict:
@@ -142,38 +197,210 @@ def _check_recursion(
     return None
 
 
-def _run_subflow_and_wait(base_url, headers, graph_id, variables, poll_timeout_s, parent_session_id):
+def _post_run_session_with_retry(client, base_url, headers, payload, graph_id):
+    """
+    POST /run-session/ with a bounded retry on a transient error
+    (httpx.RemoteProtocolError / ConnectError / ReadError, or a 5xx
+    response). Small exponential backoff between attempts
+    (POST_BACKOFF_BASE_S, POST_BACKOFF_BASE_S * 2, ...).
+
+    Returns (response, error_message): exactly one of the two is None.
+    """
+    import httpx
+
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            response = client.post(
+                f"{base_url}/run-session/", json=payload, headers=headers
+            )
+        except (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError) as e:
+            if attempt >= POST_MAX_ATTEMPTS:
+                return None, (
+                    f"could not reach the EpicStaff API to start sub-flow "
+                    f"(graph_id={graph_id}) -- gave up after {attempt} attempt(s) "
+                    f"due to a transient connection error ({type(e).__name__}): "
+                    f"{str(e)[:300]}"
+                )
+            backoff = POST_BACKOFF_BASE_S * (2 ** (attempt - 1))
+            logger.warning(
+                f"fanout_tool: transient error POSTing run-session "
+                f"(graph_id={graph_id}), attempt {attempt}/{POST_MAX_ATTEMPTS}: "
+                f"{type(e).__name__}: {e}. Retrying in {backoff:.1f}s."
+            )
+            time.sleep(backoff)
+            continue
+        except httpx.HTTPError as e:
+            # Non-transient httpx error (e.g. a timeout) -- fail immediately,
+            # matching the previous no-retry behavior for these cases.
+            return None, (
+                f"could not reach the EpicStaff API to start sub-flow "
+                f"(graph_id={graph_id}): {str(e)[:300]}"
+            )
+
+        if response.status_code >= 500:
+            if attempt >= POST_MAX_ATTEMPTS:
+                return None, (
+                    f"failed to start sub-flow (graph_id={graph_id}) -- gave up "
+                    f"after {attempt} attempt(s), server kept returning "
+                    f"{response.status_code}: {response.text[:300]}"
+                )
+            backoff = POST_BACKOFF_BASE_S * (2 ** (attempt - 1))
+            logger.warning(
+                f"fanout_tool: server error ({response.status_code}) starting "
+                f"sub-flow (graph_id={graph_id}), attempt {attempt}/"
+                f"{POST_MAX_ATTEMPTS}. Retrying in {backoff:.1f}s."
+            )
+            time.sleep(backoff)
+            continue
+
+        return response, None
+
+
+def _poll_get_session(client, base_url, headers, session_id):
+    """
+    GET /sessions/<id>/ for use inside the poll loop. Unlike
+    `_get_session_or_raise` (used by the recursion guard, where any failure
+    must be fatal), this distinguishes a *transient* failure from a fatal
+    one so `_poll_until_terminal` can retry the former and abort on the
+    latter.
+
+    Returns (session_data, error) where exactly one is None. `error` is a
+    tuple (is_transient: bool, message: str).
+    """
+    import httpx
+
+    try:
+        response = client.get(f"{base_url}/sessions/{session_id}/", headers=headers)
+    except (httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadError) as e:
+        return None, (True, f"{type(e).__name__}: {e}")
+    except httpx.HTTPError as e:
+        return None, (False, f"{str(e)[:300]}")
+
+    if response.status_code >= 500:
+        return None, (True, f"status {response.status_code}: {response.text[:300]}")
+
+    if response.status_code != 200:
+        return None, (
+            False,
+            f"could not read session {session_id} (status "
+            f"{response.status_code}): {response.text[:300]}",
+        )
+
+    return response.json(), None
+
+
+def _poll_until_terminal(
+    client, base_url, headers, sub_session_id, graph_id, deadline, poll_timeout_s
+):
+    """
+    Poll GET /sessions/<id>/ until a terminal status is reached, the overall
+    `poll_timeout_s` deadline passes, or too many *consecutive* transient
+    errors happen in a row (MAX_CONSECUTIVE_POLL_ERRORS).
+
+    A single transient error (RemoteProtocolError / ConnectError / ReadError
+    / 5xx) does NOT abort the poll -- it's logged and retried with backoff,
+    since the sub-flow is very likely still running server-side. The
+    consecutive-error counter resets on every successful poll, so only a
+    truly-dead server (repeated failures back to back) terminates the item
+    early.
+
+    Returns (session_data, status, error_message): error_message is None on
+    success (a terminal status was reached).
+    """
+    consecutive_errors = 0
+
+    while True:
+        session_data, error = _poll_get_session(client, base_url, headers, sub_session_id)
+
+        if error is not None:
+            is_transient, message = error
+
+            if not is_transient:
+                return None, None, (
+                    f"could not reach the EpicStaff API while polling sub-flow "
+                    f"session {sub_session_id} (graph_id={graph_id}): {message}"
+                )
+
+            consecutive_errors += 1
+            if consecutive_errors >= MAX_CONSECUTIVE_POLL_ERRORS:
+                return None, None, (
+                    f"lost contact with the EpicStaff API while polling sub-flow "
+                    f"session {sub_session_id} (graph_id={graph_id}) -- gave up "
+                    f"after {consecutive_errors} consecutive transient connection "
+                    f"errors ({message}). This looks like a transient server "
+                    f"disconnect (e.g. 'server disconnected without sending a "
+                    f"response'), not a sub-flow failure -- the sub-flow itself "
+                    f"may still be running."
+                )
+
+            backoff = min(
+                POLL_INTERVAL_S * (2 ** (consecutive_errors - 1)),
+                MAX_POLL_ERROR_BACKOFF_S,
+            )
+            logger.warning(
+                f"fanout_tool: transient error polling sub-flow session "
+                f"{sub_session_id} (graph_id={graph_id}), consecutive failure "
+                f"{consecutive_errors}/{MAX_CONSECUTIVE_POLL_ERRORS}: {message}. "
+                f"Retrying in {backoff:.1f}s -- treating this as a transient "
+                f"disconnect, not a sub-flow failure."
+            )
+
+            if time.monotonic() >= deadline:
+                return None, None, (
+                    f"sub-flow session {sub_session_id} (graph_id={graph_id}) did "
+                    f"not finish within {poll_timeout_s}s (last state: transient "
+                    f"connection errors while polling, not a confirmed failure)."
+                )
+
+            time.sleep(backoff)
+            continue
+
+        consecutive_errors = 0
+        status = session_data.get("status")
+        if status in TERMINAL_STATUSES:
+            return session_data, status, None
+
+        if time.monotonic() >= deadline:
+            return None, None, (
+                f"sub-flow session {sub_session_id} (graph_id={graph_id}) did not "
+                f"finish within {poll_timeout_s}s (last status: '{status}')."
+            )
+
+        time.sleep(POLL_INTERVAL_S)
+
+
+def _run_subflow_and_wait(client, base_url, headers, graph_id, variables, poll_timeout_s, parent_session_id):
     """
     Start a single saved flow (graph_id) as a sub-flow, poll it to
     completion and return its output. Never raises.
 
-    Mirrors subflow_tool.main()'s run+poll logic exactly (minus the
-    graph_id/api_key presence checks and the recursion guard, which are the
-    caller's responsibility here since they only need to run once per
-    fan-out call, not once per child).
+    Mirrors subflow_tool.main()'s run+poll logic (minus the graph_id/api_key
+    presence checks and the recursion guard, which are the caller's
+    responsibility here since they only need to run once per fan-out call,
+    not once per child), plus the transient-error retry/pooling described in
+    the module docstring.
+
+    `client` is the single pooled httpx.Client shared across the whole
+    fan-out call (see `_new_http_client`) -- reused here for both the
+    initial POST and every poll GET instead of opening a fresh connection
+    per request.
 
     Returns a 3-tuple:
         (True, output_variables: dict, child_session_id) on success
         (False, error_message: str, None) on failure
     """
-    import httpx
-
     try:
-        try:
-            with httpx.Client(timeout=HTTP_TIMEOUT_S) as client:
-                payload = {"graph_id": graph_id, "variables": variables}
-                if parent_session_id is not None:
-                    payload["parent_session_id"] = parent_session_id
-                start_response = client.post(
-                    f"{base_url}/run-session/", json=payload, headers=headers
-                )
-        except httpx.HTTPError as e:
-            return (
-                False,
-                f"could not reach the EpicStaff API to start sub-flow "
-                f"(graph_id={graph_id}): {str(e)[:300]}",
-                None,
-            )
+        payload = {"graph_id": graph_id, "variables": variables}
+        if parent_session_id is not None:
+            payload["parent_session_id"] = parent_session_id
+
+        start_response, post_error = _post_run_session_with_retry(
+            client, base_url, headers, payload, graph_id
+        )
+        if post_error:
+            return False, post_error, None
 
         if start_response.status_code not in (200, 201):
             return (
@@ -193,40 +420,11 @@ def _run_subflow_and_wait(base_url, headers, graph_id, variables, poll_timeout_s
             )
 
         deadline = time.monotonic() + poll_timeout_s
-        session_data = None
-        status = None
-
-        try:
-            with httpx.Client(timeout=HTTP_TIMEOUT_S) as client:
-                while True:
-                    try:
-                        session_data = _get_session_or_raise(
-                            client, base_url, headers, sub_session_id
-                        )
-                    except RuntimeError as e:
-                        return False, str(e), None
-
-                    status = session_data.get("status")
-                    if status in TERMINAL_STATUSES:
-                        break
-
-                    if time.monotonic() >= deadline:
-                        return (
-                            False,
-                            f"sub-flow session {sub_session_id} (graph_id={graph_id}) "
-                            f"did not finish within {poll_timeout_s}s "
-                            f"(last status: '{status}').",
-                            None,
-                        )
-
-                    time.sleep(POLL_INTERVAL_S)
-        except httpx.HTTPError as e:
-            return (
-                False,
-                f"could not reach the EpicStaff API while polling sub-flow session "
-                f"{sub_session_id}: {str(e)[:300]}",
-                None,
-            )
+        session_data, status, poll_error = _poll_until_terminal(
+            client, base_url, headers, sub_session_id, graph_id, deadline, poll_timeout_s
+        )
+        if poll_error:
+            return False, poll_error, None
 
         if status in FAILURE_STATUSES:
             reason = (session_data.get("status_data") or {}).get("reason")
@@ -276,28 +474,6 @@ def _run_parallel(items, api_key, base_url, headers, poll_timeout_s, current_ses
             f"(MAX_FANOUT_ITEMS cap)."
         )
 
-    # Recursion guard runs once — every item targets the same graph_id and
-    # links to the same caller session, so a single ancestor-chain walk
-    # covers all of them.
-    if current_session_id is not None:
-        try:
-            with httpx.Client(timeout=HTTP_TIMEOUT_S) as client:
-                recursion_error = _check_recursion(
-                    client, base_url, headers, current_session_id, graph_id
-                )
-        except httpx.HTTPError as e:
-            return (
-                "Error: could not reach the EpicStaff API to verify recursion "
-                f"safety: {str(e)[:300]}"
-            )
-        if recursion_error:
-            return recursion_error
-    else:
-        logger.warning(
-            "fanout_tool: no caller session_id injected -- recursion guard and "
-            "parent_session linkage are disabled for this parallel run."
-        )
-
     results: list = [None] * len(items)
     runnable_indices = []
     for idx, item in enumerate(items):
@@ -314,27 +490,52 @@ def _run_parallel(items, api_key, base_url, headers, poll_timeout_s, current_ses
     max_workers = globals().get("max_workers") or MAX_FANOUT_WORKERS
     workers = max(1, min(max_workers, len(runnable_indices) or 1))
 
-    if runnable_indices:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-            future_to_index = {
-                executor.submit(
-                    _run_subflow_and_wait,
-                    base_url,
-                    headers,
-                    graph_id,
-                    items[idx],
-                    poll_timeout_s,
-                    current_session_id,
-                ): idx
-                for idx in runnable_indices
-            }
-            for future in concurrent.futures.as_completed(future_to_index):
-                idx = future_to_index[future]
-                try:
-                    ok, payload, _child_session_id = future.result()
-                except Exception as e:  # pragma: no cover - defensive, workers never raise
-                    ok, payload = False, f"unexpected exception: {e}"
-                results[idx] = payload if ok else {"error": payload}
+    # One pooled client, shared for the recursion check and every POST/poll
+    # made by every worker below — see `_new_http_client`.
+    with _new_http_client(workers) as client:
+        # Recursion guard runs once — every item targets the same graph_id
+        # and links to the same caller session, so a single ancestor-chain
+        # walk covers all of them.
+        if current_session_id is not None:
+            try:
+                recursion_error = _check_recursion(
+                    client, base_url, headers, current_session_id, graph_id
+                )
+            except httpx.HTTPError as e:
+                return (
+                    "Error: could not reach the EpicStaff API to verify recursion "
+                    f"safety: {str(e)[:300]}"
+                )
+            if recursion_error:
+                return recursion_error
+        else:
+            logger.warning(
+                "fanout_tool: no caller session_id injected -- recursion guard and "
+                "parent_session linkage are disabled for this parallel run."
+            )
+
+        if runnable_indices:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                future_to_index = {
+                    executor.submit(
+                        _run_subflow_and_wait,
+                        client,
+                        base_url,
+                        headers,
+                        graph_id,
+                        items[idx],
+                        poll_timeout_s,
+                        current_session_id,
+                    ): idx
+                    for idx in runnable_indices
+                }
+                for future in concurrent.futures.as_completed(future_to_index):
+                    idx = future_to_index[future]
+                    try:
+                        ok, payload, _child_session_id = future.result()
+                    except Exception as e:  # pragma: no cover - defensive, workers never raise
+                        ok, payload = False, f"unexpected exception: {e}"
+                    results[idx] = payload if ok else {"error": payload}
 
     output = {"mode": "parallel", "results": results}
     if truncated:
@@ -379,36 +580,40 @@ def _run_pipeline(input_payload, api_key, base_url, headers, poll_timeout_s, cur
     link_session_id = current_session_id
     stage_outputs = []
 
-    for idx, gid in enumerate(graph_ids):
-        if not gid:
-            return f"Error: graph_ids[{idx}] is missing or invalid."
+    # One pooled client, shared across every stage's recursion check, POST
+    # and poll — see `_new_http_client`. Stages run strictly sequentially so
+    # a small pool is enough; the size only needs to comfortably cover one
+    # in-flight request at a time.
+    with _new_http_client(pool_size=2) as client:
+        for idx, gid in enumerate(graph_ids):
+            if not gid:
+                return f"Error: graph_ids[{idx}] is missing or invalid."
 
-        if link_session_id is not None:
-            try:
-                with httpx.Client(timeout=HTTP_TIMEOUT_S) as client:
+            if link_session_id is not None:
+                try:
                     recursion_error = _check_recursion(
                         client, base_url, headers, link_session_id, gid
                     )
-            except httpx.HTTPError as e:
-                return (
-                    f"Error: could not reach the EpicStaff API to verify recursion "
-                    f"safety for pipeline stage {idx} (graph_id={gid}): "
-                    f"{str(e)[:300]}"
-                )
-            if recursion_error:
-                return recursion_error
+                except httpx.HTTPError as e:
+                    return (
+                        f"Error: could not reach the EpicStaff API to verify recursion "
+                        f"safety for pipeline stage {idx} (graph_id={gid}): "
+                        f"{str(e)[:300]}"
+                    )
+                if recursion_error:
+                    return recursion_error
 
-        ok, payload, child_session_id = _run_subflow_and_wait(
-            base_url, headers, gid, stage_input, poll_timeout_s, link_session_id
-        )
-        if not ok:
-            return (
-                f"Error: pipeline stage {idx} (graph_id={gid}) failed: {payload}"
+            ok, payload, child_session_id = _run_subflow_and_wait(
+                client, base_url, headers, gid, stage_input, poll_timeout_s, link_session_id
             )
+            if not ok:
+                return (
+                    f"Error: pipeline stage {idx} (graph_id={gid}) failed: {payload}"
+                )
 
-        stage_outputs.append(payload)
-        stage_input = payload
-        link_session_id = child_session_id
+            stage_outputs.append(payload)
+            stage_input = payload
+            link_session_id = child_session_id
 
     output = {
         "mode": "pipeline",

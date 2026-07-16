@@ -4,6 +4,9 @@ tool-data:
     A bash-like escape hatch for S3 storage: pass one command string and it is
     parsed and mapped onto S3 storage operations. Params: command (required)
     - the full command line, e.g. "ls -l reports/" or "grep -n TODO a.py".
+    All path arguments must be within your flow's allowed files (the files
+    attached to this flow); root/whole-bucket paths (e.g. bare "ls" or "find"
+    with no path) are not available - pass one of your allowed paths.
     Supported commands: ls [-l] [-R] [path] (list, -l adds size/modified,
     -R recurses); cat [-n] file... (print file contents, -n numbers lines,
     multiple files get "==> file <==" headers); head [-n N] file / tail

@@ -38,3 +38,28 @@ def test_path_traversal_rejected_when_allowlist_set(monkeypatch, storage, fake_c
 
     with pytest.raises(StoragePermissionError):
         storage.read("allowed/../../etc/passwd")
+
+
+def test_denied_root_op_lists_allowed_paths_in_message(monkeypatch, storage, fake_client):
+    allow_paths(monkeypatch, ["allowed/", "reports/x.csv"])
+
+    with pytest.raises(StoragePermissionError) as exc_info:
+        storage.list("")
+
+    message = str(exc_info.value)
+    assert "allowed/" in message
+    assert "reports/x.csv" in message
+    assert "not available" in message
+
+
+def test_denied_path_message_caps_long_allowlist(monkeypatch, storage, fake_client):
+    many_paths = [f"folder{i}/" for i in range(20)]
+    allow_paths(monkeypatch, many_paths)
+
+    with pytest.raises(StoragePermissionError) as exc_info:
+        storage.list("blocked/")
+
+    message = str(exc_info.value)
+    assert "folder0/" in message
+    assert "(5 more)" in message
+    assert "folder19/" not in message

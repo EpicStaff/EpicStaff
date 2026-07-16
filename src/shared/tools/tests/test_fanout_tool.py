@@ -479,6 +479,181 @@ class TestFanoutToolPipeline:
         assert "depth" in result or "deep" in result
 
 
+class TestFanoutToolResilience:
+    """Covers FIX B (EST-3285 QA report): 'server disconnected without
+    sending a response' (httpx.RemoteProtocolError) and other transient
+    connection errors must not abort an item outright -- see
+    `_post_run_session_with_retry` / `_poll_until_terminal` in main.py."""
+
+    def test_transient_poll_error_recovers_and_item_still_succeeds(self, monkeypatch):
+        """A single transient RemoteProtocolError on a poll GET is retried
+        (non-fatal) and the item succeeds once the next poll gets a normal
+        response -- proves the poll loop no longer treats one dropped
+        connection as a fatal error."""
+        _configure(fanout_module, graph_id=42)
+        monkeypatch.setattr(fanout_module.time, "sleep", lambda s: None)
+
+        poll_calls = {"count": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path == "/api/run-session/":
+                return httpx.Response(201, json={"session_id": 6001})
+
+            if request.method == "GET" and request.url.path == "/api/sessions/6001/":
+                poll_calls["count"] += 1
+                if poll_calls["count"] == 1:
+                    raise httpx.RemoteProtocolError(
+                        "server disconnected without sending a response"
+                    )
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": 6001,
+                        "graph": 42,
+                        "parent_session": None,
+                        "status": "end",
+                        "variables": {"result": "recovered"},
+                    },
+                )
+
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = fanout_main(mode="parallel", items=[{"n": 1}])
+        data = json.loads(result)
+
+        assert data["results"] == [{"result": "recovered"}]
+        # First poll hit the transient error, second poll succeeded.
+        assert poll_calls["count"] == 2
+
+    def test_post_retries_transient_error_then_succeeds(self, monkeypatch):
+        """The initial POST /run-session/ retries on a transient connection
+        error and succeeds on a later attempt (proves FIX B item 2)."""
+        _configure(fanout_module, graph_id=42)
+        monkeypatch.setattr(fanout_module.time, "sleep", lambda s: None)
+
+        post_calls = {"count": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path == "/api/run-session/":
+                post_calls["count"] += 1
+                if post_calls["count"] < 2:
+                    raise httpx.ConnectError("connection refused")
+                return httpx.Response(201, json={"session_id": 6002})
+
+            if request.method == "GET" and request.url.path == "/api/sessions/6002/":
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": 6002,
+                        "graph": 42,
+                        "parent_session": None,
+                        "status": "end",
+                        "variables": {"result": "ok"},
+                    },
+                )
+
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = fanout_main(mode="parallel", items=[{"n": 1}])
+        data = json.loads(result)
+
+        assert data["results"] == [{"result": "ok"}]
+        assert post_calls["count"] == 2
+
+    def test_post_gives_up_after_exhausting_retries(self, monkeypatch):
+        """A persistent transient error on the POST exhausts
+        POST_MAX_ATTEMPTS and returns a distinct transient-error message,
+        not a generic one."""
+        _configure(fanout_module, graph_id=42)
+        monkeypatch.setattr(fanout_module.time, "sleep", lambda s: None)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path == "/api/run-session/":
+                raise httpx.RemoteProtocolError(
+                    "server disconnected without sending a response"
+                )
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = fanout_main(mode="parallel", items=[{"n": 1}])
+        data = json.loads(result)
+
+        error = data["results"][0]["error"]
+        assert "transient connection error" in error
+        assert f"gave up after {fanout_module.POST_MAX_ATTEMPTS} attempt" in error
+
+    def test_persistent_poll_disconnect_exceeds_cap_and_reports_transient_error(
+        self, monkeypatch
+    ):
+        """A poll GET that NEVER recovers exhausts
+        MAX_CONSECUTIVE_POLL_ERRORS and reports a clearly transient-error
+        message -- distinguishable from a real sub-flow failure ('failed:')
+        and from a plain timeout ('did not finish within Ns')."""
+        _configure(fanout_module, graph_id=42)
+        monkeypatch.setattr(fanout_module.time, "sleep", lambda s: None)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path == "/api/run-session/":
+                return httpx.Response(201, json={"session_id": 6003})
+
+            if request.method == "GET" and request.url.path == "/api/sessions/6003/":
+                raise httpx.RemoteProtocolError(
+                    "server disconnected without sending a response"
+                )
+
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = fanout_main(mode="parallel", items=[{"n": 1}])
+        data = json.loads(result)
+
+        error = data["results"][0]["error"]
+        assert "consecutive transient connection errors" in error
+        assert "transient server disconnect" in error
+        # Must not be mistaken for a real sub-flow failure or a plain timeout.
+        assert "session ended with status" not in error
+        assert "did not finish within" not in error
+
+    def test_persistent_poll_disconnect_does_not_exceed_max_workers_pool(
+        self, monkeypatch
+    ):
+        """Sanity check: multiple items each hitting persistent transient
+        poll errors still resolve independently (one shared pooled client,
+        no cross-item interference) and each gets its own clear transient
+        error message."""
+        _configure(fanout_module, graph_id=42, max_workers=2)
+        monkeypatch.setattr(fanout_module.time, "sleep", lambda s: None)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path == "/api/run-session/":
+                payload = json.loads(request.content)
+                n = payload["variables"]["n"]
+                return httpx.Response(201, json={"session_id": 7000 + n})
+
+            if request.method == "GET" and request.url.path.startswith(
+                "/api/sessions/7"
+            ):
+                raise httpx.RemoteProtocolError(
+                    "server disconnected without sending a response"
+                )
+
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = fanout_main(mode="parallel", items=[{"n": 1}, {"n": 2}])
+        data = json.loads(result)
+
+        for entry in data["results"]:
+            assert "consecutive transient connection errors" in entry["error"]
+
+
 class TestFanoutToolCommon:
     def test_invalid_mode_returns_error(self):
         fanout_module.api_key = "test-key"

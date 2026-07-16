@@ -8,7 +8,7 @@
     },
     "path": {
       "type": "string",
-      "description": "Root folder to search under. Defaults to \"\" (bucket root)."
+      "description": "Folder to search under. Must be within your flow's allowed files (the files attached to this flow); root/whole-bucket listing is not available - pass one of your allowed paths."
     }
   },
   "required": ["pattern"]
