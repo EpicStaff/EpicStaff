@@ -2,7 +2,9 @@
 #
 # Runs another saved EpicStaff flow (graph) as a sub-flow via the existing
 # `POST /api/run-session/` + `GET /api/sessions/<id>/` REST endpoints, and
-# returns the sub-flow's final output (Session.variables) as the tool result.
+# returns the sub-flow's final output (Session.status_data["variables"], the
+# EndNode-mapped result -- NOT the static Session.variables snapshot of the
+# initial input) as the tool result.
 #
 # `graph_id`, `api_key`, `api_base_url` and `poll_timeout_s` are NOT function
 # parameters: they are declared in args_schema.json with
@@ -231,7 +233,20 @@ def main(input_variables: dict | None = None, **kwargs) -> str:
                 f"failed: {reason}"
             )
 
-        output_variables = session_data.get("variables") or {}
+        # `session_data["variables"]` (top level) is a STATIC copy of the
+        # run's initial input payload, captured once when the Session row is
+        # created -- it is never updated afterwards. The sub-flow's real,
+        # final output (as produced by the EndNode's output_map) instead
+        # lands in `session_data["status_data"]["variables"]`, populated
+        # when the crew engine reports the session as finished (see
+        # `session_status_handler` in redis_pubsub.py). Prefer that, and
+        # only fall back to the static `variables` if `status_data` is
+        # somehow missing (e.g. an old/degenerate session row).
+        output_variables = (
+            (session_data.get("status_data") or {}).get("variables")
+            or session_data.get("variables")
+            or {}
+        )
         try:
             return json.dumps(output_variables)
         except TypeError:

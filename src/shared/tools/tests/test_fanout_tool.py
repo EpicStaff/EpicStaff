@@ -83,6 +83,11 @@ class TestFanoutToolParallel:
             ):
                 sid = int(request.url.path.rstrip("/").rsplit("/", 1)[1])
                 n = sid - 1000
+                # Real API shape: top-level `variables` is the STATIC input
+                # echo (never updated); the real output only lands in
+                # `status_data.variables`. Kept deliberately different from
+                # each other so this test actually exercises which one the
+                # tool picks.
                 return httpx.Response(
                     200,
                     json={
@@ -90,7 +95,8 @@ class TestFanoutToolParallel:
                         "graph": 42,
                         "parent_session": 100,
                         "status": "end",
-                        "variables": {"result": n * 10},
+                        "variables": {"n": n},
+                        "status_data": {"variables": {"result": n * 10}},
                     },
                 )
 
@@ -110,6 +116,61 @@ class TestFanoutToolParallel:
             {"result": 40},
         ]
         assert "truncated" not in data
+
+    def test_returns_status_data_output_not_static_input_echo(self, monkeypatch):
+        """Regression test (EST-3285): the top-level `variables` field on a
+        session is a STATIC copy of the initial input, set once at session
+        creation and never updated. The sub-flow's real, declared output
+        (produced by the EndNode's output_map) only ever lands in
+        `status_data.variables`, populated when the crew engine reports the
+        session as finished. Against the pre-fix code (which read only
+        `session_data["variables"]`), this test fails: it would return the
+        echoed input `{"topic": "quantum computing"}` for every item instead
+        of each item's real, distinct summary output."""
+        _configure(fanout_module, graph_id=20)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path == "/api/run-session/":
+                payload = json.loads(request.content)
+                topic = payload["variables"]["topic"]
+                sid = {"quantum computing": 824, "black holes": 825}[topic]
+                return httpx.Response(201, json={"session_id": sid})
+
+            if request.method == "GET" and request.url.path in (
+                "/api/sessions/824/",
+                "/api/sessions/825/",
+            ):
+                sid = int(request.url.path.rstrip("/").rsplit("/", 1)[1])
+                topic, summary = {
+                    824: ("quantum computing", "Quantum computing uses qubits."),
+                    825: ("black holes", "Black holes trap light via gravity."),
+                }[sid]
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": sid,
+                        "graph": 20,
+                        "parent_session": None,
+                        "status": "end",
+                        # Static input echo -- must NOT be returned.
+                        "variables": {"topic": topic},
+                        # Real EndNode-mapped output -- must be returned.
+                        "status_data": {"variables": {"summary": summary}},
+                    },
+                )
+
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        items = [{"topic": "quantum computing"}, {"topic": "black holes"}]
+        result = fanout_main(mode="parallel", items=items)
+        data = json.loads(result)
+
+        assert data["results"] == [
+            {"summary": "Quantum computing uses qubits."},
+            {"summary": "Black holes trap light via gravity."},
+        ]
 
     def test_one_failing_item_does_not_block_others(self, monkeypatch):
         _configure(fanout_module, graph_id=42)
@@ -322,7 +383,10 @@ class TestFanoutToolPipeline:
             ):
                 sid = int(request.url.path.rstrip("/").rsplit("/", 1)[1])
                 gid = sid - 9000
-                # each stage doubles the running "value"
+                # each stage's real output is the running "value"; the
+                # top-level `variables` is deliberately kept as the STATIC
+                # input echo instead, so this test proves the tool reads
+                # `status_data.variables`, not `variables`.
                 return httpx.Response(
                     200,
                     json={
@@ -330,7 +394,8 @@ class TestFanoutToolPipeline:
                         "graph": gid,
                         "parent_session": None,
                         "status": "end",
-                        "variables": {"value": gid},
+                        "variables": {"value": 1},
+                        "status_data": {"variables": {"value": gid}},
                     },
                 )
 

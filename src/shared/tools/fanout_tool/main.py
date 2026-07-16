@@ -436,7 +436,21 @@ def _run_subflow_and_wait(client, base_url, headers, graph_id, variables, poll_t
                 None,
             )
 
-        output_variables = session_data.get("variables") or {}
+        # `session_data["variables"]` (top level) is a STATIC copy of the
+        # run's initial input payload, captured once when the Session row is
+        # created -- it is never updated afterwards. The sub-flow's real,
+        # final output (as produced by the EndNode's output_map) instead
+        # lands in `session_data["status_data"]["variables"]`, populated
+        # when the crew engine reports the session as finished (see
+        # `session_status_handler` in redis_pubsub.py). Prefer that, and
+        # only fall back to the static `variables` if `status_data` is
+        # somehow missing (e.g. an old/degenerate session row). Mirrors
+        # subflow_tool.main()'s extraction (see comment there).
+        output_variables = (
+            (session_data.get("status_data") or {}).get("variables")
+            or session_data.get("variables")
+            or {}
+        )
         return True, output_variables, sub_session_id
     except Exception as e:
         return (

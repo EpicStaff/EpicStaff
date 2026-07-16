@@ -69,6 +69,11 @@ class TestSubflowTool:
 
             if request.method == "GET" and request.url.path == "/api/sessions/555/":
                 calls["gets"] += 1
+                # Real API shape: top-level `variables` is a STATIC copy of
+                # the initial input payload (never updated), while the
+                # sub-flow's real, EndNode-mapped output lands in
+                # `status_data.variables`. The two must differ here so this
+                # test actually exercises which one the tool picks.
                 return httpx.Response(
                     200,
                     json={
@@ -76,7 +81,8 @@ class TestSubflowTool:
                         "graph": 42,
                         "parent_session": 100,
                         "status": "end",
-                        "variables": {"result": "meow"},
+                        "variables": {"topic": "cats"},
+                        "status_data": {"variables": {"result": "meow"}},
                     },
                 )
 
@@ -88,6 +94,49 @@ class TestSubflowTool:
 
         assert result == '{"result": "meow"}'
         assert calls["gets"] == 1
+
+    def test_returns_status_data_output_not_static_input_echo(self, monkeypatch):
+        """Regression test (EST-3285): the top-level `variables` field on a
+        session is a STATIC copy of the initial input, set once at session
+        creation and never updated. The sub-flow's real, declared output
+        (produced by the EndNode's output_map) only ever lands in
+        `status_data.variables`, populated when the crew engine reports the
+        session as finished. Against the pre-fix code (which read only
+        `session_data["variables"]`), this test fails: it would return the
+        echoed input `{"topic": "quantum computing"}` instead of the real
+        output `{"summary": "..."}`."""
+        _configure(subflow_module, graph_id=20)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path == "/api/run-session/":
+                return httpx.Response(201, json={"session_id": 824})
+
+            if request.method == "GET" and request.url.path == "/api/sessions/824/":
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": 824,
+                        "graph": 20,
+                        "parent_session": None,
+                        "status": "end",
+                        # Static input echo -- must NOT be returned.
+                        "variables": {"topic": "quantum computing"},
+                        # Real EndNode-mapped output -- must be returned.
+                        "status_data": {
+                            "variables": {
+                                "summary": "Quantum computing uses qubits.",
+                            }
+                        },
+                    },
+                )
+
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        _mock_httpx_client(monkeypatch, handler)
+
+        result = subflow_main(input_variables={"topic": "quantum computing"})
+
+        assert result == '{"summary": "Quantum computing uses qubits."}'
 
     def test_missing_graph_id_returns_error(self):
         subflow_module.api_key = "test-key"
