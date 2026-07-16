@@ -41,8 +41,20 @@ class EnvironmentConfigSerializer(serializers.Serializer):
 
 
 class InitRealtimeSerializer(serializers.Serializer):
-    agent_id = serializers.IntegerField(required=True)
+    agent_id = serializers.IntegerField(required=False)
+    agent_definition_id = serializers.IntegerField(required=False)
     config = serializers.DictField(required=False, default=dict)
+
+    def validate(self, attrs):
+        agent_id = attrs.get("agent_id")
+        agent_definition_id = attrs.get("agent_definition_id")
+
+        if bool(agent_id) == bool(agent_definition_id):
+            raise serializers.ValidationError(
+                "Exactly one of 'agent_id' or 'agent_definition_id' must be provided."
+            )
+
+        return attrs
 
 
 class BaseToolSerializer(serializers.Serializer):

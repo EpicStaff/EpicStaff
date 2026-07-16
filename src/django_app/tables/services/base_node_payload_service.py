@@ -10,6 +10,7 @@ from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool
 from tables.services.converter_service import ConverterService
+from tables.services.rag_lookup_service import RagLookupService
 from src.shared.models import (
     AgentDefinitionData,
     BaseToolData,
@@ -199,7 +200,9 @@ class BaseNodePayloadService:
     def _build_naive_search_config_entry(
         self, collection_id: int, naive_config
     ) -> SearchConfigEntry | None:
-        naive_rag = self._latest_rag(NaiveRag, collection_id, pk_field="naive_rag_id")
+        naive_rag = RagLookupService.latest_rag(
+            NaiveRag, collection_id, pk_field="naive_rag_id"
+        )
         if naive_rag is None:
             logger.warning(
                 "No NaiveRag found for collection {}, skipping naive search config.",
@@ -228,7 +231,9 @@ class BaseNodePayloadService:
     def _build_graph_search_config_entries(
         self, collection_id: int, knowledge: CombinedSurfaceKnowledgeData
     ) -> list[SearchConfigEntry]:
-        graph_rag = self._latest_rag(GraphRag, collection_id, pk_field="graph_rag_id")
+        graph_rag = RagLookupService.latest_rag(
+            GraphRag, collection_id, pk_field="graph_rag_id"
+        )
         if graph_rag is None:
             logger.warning(
                 "No GraphRag found for collection {}, skipping graph search config.",
@@ -286,16 +291,3 @@ class BaseNodePayloadService:
             )
 
         return entries
-
-    @staticmethod
-    def _latest_rag(model, collection_id: int, pk_field: str):
-        queryset = model.objects.filter(
-            base_rag_type__source_collection_id=collection_id
-        )
-        completed = (
-            queryset.filter(rag_status="completed").order_by(f"-{pk_field}").first()
-        )
-        if completed is not None:
-            return completed
-
-        return queryset.order_by(f"-{pk_field}").first()

@@ -796,23 +796,30 @@ class InitRealtimeAPIView(APIView):
         if not serializer.is_valid():
             logger.warning(f"Invalid data received in request: {serializer.errors}")
             return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST,
                 data={"error": str(serializer.errors)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        agent_id = serializer.validated_data["agent_id"]
+        agent_id = serializer.validated_data.get("agent_id")
+        agent_definition_id = serializer.validated_data.get("agent_definition_id")
         config = serializer.validated_data.get("config", {})
 
         try:
-            connection_key = realtime_service.init_realtime(
-                agent_id=agent_id,
-                config=config,
-            )
+            if agent_definition_id is not None:
+                connection_key = realtime_service.init_realtime_agent_definition(
+                    agent_definition_id=agent_definition_id,
+                    config=config,
+                )
+            else:
+                connection_key = realtime_service.init_realtime(
+                    agent_id=agent_id,
+                    config=config,
+                )
 
         except Exception as e:
             logger.exception(
-                f"Error occurred while creating realtime agent for agent_id {agent_id}"
+                f"Error occurred while creating realtime agent for agent_id {agent_id} "
+                f"or agent_definition_id {agent_definition_id}"
             )
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
         else:

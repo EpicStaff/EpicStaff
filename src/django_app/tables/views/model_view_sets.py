@@ -170,6 +170,7 @@ from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import (
     RealtimeAgent,
     RealtimeAgentChat,
+    RealtimeAgentDefinition,
     RealtimeSessionItem,
 )
 from tables.filters import (
@@ -230,6 +231,7 @@ from tables.serializers.model_serializers import (
     PythonCodeToolSerializer,
     PythonNodeSerializer,
     RealtimeAgentChatSerializer,
+    RealtimeAgentDefinitionSerializer,
     RealtimeAgentSerializer,
     RealtimeSessionItemSerializer,
     StartNodeSerializer,
@@ -1276,6 +1278,11 @@ class RealtimeAgentViewSet(viewsets.ModelViewSet):
     serializer_class = RealtimeAgentSerializer
 
 
+class RealtimeAgentDefinitionViewSet(viewsets.ModelViewSet):
+    queryset = RealtimeAgentDefinition.objects.all()
+    serializer_class = RealtimeAgentDefinitionSerializer
+
+
 class RealtimeAgentChatViewSet(ReadOnlyModelViewSet):
     """
     ViewSet for reading and deleting RealtimeAgentChat instances.
@@ -1284,7 +1291,7 @@ class RealtimeAgentChatViewSet(ReadOnlyModelViewSet):
     queryset = RealtimeAgentChat.objects.all()
     serializer_class = RealtimeAgentChatSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["rt_agent"]
+    filterset_fields = ["rt_agent", "rt_agent_definition"]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()

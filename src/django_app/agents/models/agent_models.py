@@ -192,6 +192,7 @@ class SurfacePlace(models.TextChoices):
     ALL = "all", "All Places"
     FLOW = "flow", "Flow"
     CHAT = "chat", "Chat"
+    REALTIME = "realtime", "Realtime"
 
 
 class AgentDefaultSurface(models.Model):
@@ -208,9 +209,9 @@ class AgentDefaultSurface(models.Model):
         help_text="Surface assigned as the default for this agent in the given place.",
     )
     place = models.CharField(
-        max_length=5,
+        max_length=16,
         choices=SurfacePlace.choices,
-        help_text="Context where this surface is the default: 'all' for any place, 'flow' for flow execution, 'chat' for chat sessions.",
+        help_text="Context where this surface is the default: 'all' for any place, 'flow' for flow execution, 'chat' for chat sessions, 'realtime' for voice sessions.",
     )
 
     class Meta:
