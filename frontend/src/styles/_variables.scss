@@ -372,7 +372,7 @@
     // ------------------------------------------------------------------
     // SEMANTIC — misc
     // ------------------------------------------------------------------
-    --color-icon: var(--color-text-primary);
+    --color-storage-icon: rgba(230, 230, 230, 1);
 }
 
 // ============================================================================
@@ -424,5 +424,5 @@
     --color-drag-drop-active: rgba(15, 15, 15, 0.12);
     --color-card-background: #ffffff;
     --color-surface-contrast: #f5f5f5;
-    --color-icon: rgba(51, 65, 85, 1);
+    --color-storage-icon: rgba(51, 65, 85, 1);
 }

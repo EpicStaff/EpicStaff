@@ -415,12 +415,9 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
         title: 'Misc',
         tokens: [
             {
-                name: '--color-icon',
-                label: 'Icon color',
-                samples: [
-                    { kind: 'dot', prop: 'color' },
-                    { kind: 'text', label: 'Icons', prop: 'color' },
-                ],
+                name: '--color-storage-icon',
+                label: 'Storage icon',
+                description: 'Color of file and folder icons in the storage browser.',
             },
         ],
     },
