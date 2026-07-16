@@ -510,6 +510,27 @@ export const THEME_TOKEN_GROUPS: ThemeTokenGroup[] = [
         ],
     },
     {
+        title: 'Decorative accents',
+        tokens: [
+            {
+                name: '--cyan-500',
+                label: 'Cyan accent',
+                samples: [
+                    { kind: 'dot', prop: 'background' },
+                    { kind: 'badge', label: 'Min', prop: 'background' },
+                ],
+            },
+            {
+                name: '--violet-500',
+                label: 'Violet accent',
+                samples: [
+                    { kind: 'dot', prop: 'background' },
+                    { kind: 'badge', label: 'Max', prop: 'background' },
+                ],
+            },
+        ],
+    },
+    {
         title: 'Misc',
         tokens: [
             {
