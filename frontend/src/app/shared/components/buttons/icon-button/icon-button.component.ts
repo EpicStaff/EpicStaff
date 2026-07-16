@@ -38,11 +38,11 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
                 padding: 0;
 
                 &:hover:not(:disabled) {
-                    background-color: var(--white-alpha-10);
+                    background-color: var(--color-ghost-btn-hover);
                 }
 
                 &:active:not(:disabled) {
-                    background-color: var(--white-alpha-15);
+                    background-color: var(--color-ghost-btn-active);
                 }
 
                 &:disabled {
@@ -51,7 +51,7 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
                 }
 
                 app-svg-icon {
-                    color: white;
+                    color: var(--color-text-primary);
                 }
             }
         `,

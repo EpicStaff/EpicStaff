@@ -4,7 +4,7 @@
 
 .llm-card {
     overflow: hidden;
-    border: 1px solid var(--white-alpha-8);
+    border: 1px solid var(--color-divider-regular);
     border-radius: var(--radius-2xl);
     padding: var(--space-lg) var(--space-lg);
     display: flex;
@@ -15,7 +15,7 @@
     transition: border-color 0.2s ease;
 
     &:hover {
-        border-color: var(--white-alpha-15);
+        border-color: var(--accent-color);
     }
 
     &__top {
@@ -70,7 +70,7 @@
             &:hover {
                 background: var(--red-alpha-12);
                 border-color: var(--red-alpha-50);
-                color: #ff5050;
+                color: var(--color-status-error);
             }
         }
     }
