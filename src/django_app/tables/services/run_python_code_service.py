@@ -8,6 +8,8 @@ from tables.models import PythonCode, PythonCodeResult
 from tables.services.redis_service import RedisService
 from utils.singleton_meta import SingletonMeta
 
+MAX_STORED_RESULTS = 200
+
 
 class RunPythonCodeService(metaclass=SingletonMeta):
     def __init__(self, redis_service: RedisService):
@@ -44,6 +46,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             created_by=user,
             python_code=python_code,
         )
+        self._evict_oldest_results(organization_id)
         code_task_data = CodeTaskData(
             venv_name=f"venv_{python_code_id}",
             libraries=python_code.get_libraries_list(),
@@ -77,6 +80,15 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             finished_at=timezone.now(),
         )
         return bool(updated)
+
+    def _evict_oldest_results(self, organization_id: int) -> None:
+        stale_ids = (
+            PythonCodeResult.objects.filter(org_id=organization_id)
+            .order_by("-created_at", "-pk")
+            .values_list("pk", flat=True)[MAX_STORED_RESULTS:]
+        )
+        if stale_ids:
+            PythonCodeResult.objects.filter(pk__in=list(stale_ids)).delete()
 
     def gen_execution_id(self):
         now = datetime.now()
