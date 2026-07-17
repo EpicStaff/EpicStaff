@@ -58,7 +58,7 @@ export class ConfigureModelsDialogComponent implements OnInit {
             id: ConfigureModelsTabId.NGROK_CONFIG,
             label: 'Ngrok Configuration',
             iconClass: 'ti ti-cloud',
-            isPermitted: this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
+            isPermitted: this.permissionService.isSuperadmin,
         },
         {
             id: ConfigureModelsTabId.VOICE_SETTINGS,

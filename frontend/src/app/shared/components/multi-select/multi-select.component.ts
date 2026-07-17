@@ -47,6 +47,7 @@ export class MultiSelectComponent implements OnInit {
     showSearch = input<boolean>(true);
     checkboxPosition = input<'left' | 'right'>('right');
     color = input<'primary' | 'white'>('primary');
+    disabled = input<boolean>(false);
 
     /** When true the default trigger button is not rendered.
      *  Use openAt(element) to open the dropdown anchored to an external element. */
@@ -105,14 +106,17 @@ export class MultiSelectComponent implements OnInit {
     }
 
     toggle() {
+        if (this.disabled()) return;
         this.isOpen() ? this.close() : this.openDropdown();
     }
 
     openDropdown(): void {
+        if (this.disabled()) return;
         this.openAt(this.triggerBtn.nativeElement);
     }
 
     openAt(originElement: HTMLElement, seedValues?: unknown[]): void {
+        if (this.disabled()) return;
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
             .withPositions([

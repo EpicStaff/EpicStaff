@@ -69,7 +69,9 @@ export class UserMenuComponent {
             .subscribe(() => {
                 this.isUserMenuOpen.set(false);
                 const targetUrl = this.getUrlForOrgSwitch(this.router.url);
-                void this.router.navigateByUrl(targetUrl);
+                void this.router.navigateByUrl('/profile', { skipLocationChange: true }).then(() => {
+                    void this.router.navigateByUrl(targetUrl);
+                });
             });
     }
 

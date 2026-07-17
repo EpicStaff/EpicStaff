@@ -16,7 +16,8 @@ import {
     TranscriptionModelConfigDialogComponent,
     VoiceModelConfigDialogComponent,
 } from '@shared/components';
-import { ModelTypes } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ModelTypes, ResourceCode } from '@shared/models';
 import { LlmLibraryModel, LlmLibraryProviderGroup } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
@@ -40,6 +41,7 @@ import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.co
         AppSvgIconComponent,
         LoadingSpinnerComponent,
         SelectComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './llm-library-section.component.html',
     styleUrls: ['./llm-library-section.component.scss'],
@@ -170,4 +172,7 @@ export class LlmLibrarySectionComponent implements OnInit {
                 });
             });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

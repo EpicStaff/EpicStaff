@@ -1,7 +1,7 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { catchError, EMPTY, finalize, Observable, of, shareReplay, tap, throwError } from 'rxjs';
+import { catchError, finalize, Observable, shareReplay, tap, throwError } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
 import { ProfileService } from '../../services/auth/profile.service';
@@ -30,13 +30,13 @@ export const forbiddenInterceptor: HttpInterceptorFn = (req, next) => {
                             .navigateByUrl('/profile', { skipLocationChange: true })
                             .then(() => void router.navigateByUrl(currentUrl));
                     }),
-                    catchError(() => of(undefined)),
+                    catchError(() => throwError(() => err)),
                     finalize(() => (refresh$ = null)),
                     shareReplay(1)
                 );
             }
 
-            return refresh$.pipe(switchMap(() => EMPTY));
+            return refresh$.pipe(switchMap(() => throwError(() => err)));
         })
     );
 };
