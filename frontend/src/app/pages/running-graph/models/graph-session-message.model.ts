@@ -114,10 +114,10 @@ export interface UpdateSessionStatusMessageData {
 }
 
 export interface ExtractedChunk {
-    chunk_text: string;
-    chunk_order: number;
-    chunk_source: string;
-    chunk_similarity: number;
+    text: string;
+    order: number;
+    source: string;
+    similarity: number;
 }
 
 export interface RagSearchConfig {

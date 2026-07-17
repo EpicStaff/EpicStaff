@@ -10,7 +10,7 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { UserRole } from '@shared/models';
+import { FullMembership, UserRole } from '@shared/models';
 import { EMPTY } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
@@ -97,6 +97,8 @@ export class ProfilePageComponent implements OnInit {
     roleLabel(roleId: number): string {
         return ROLE_LABELS[roleId as UserRole] ?? String(roleId);
     }
+
+    trackByMembershipId = (_: number, m: FullMembership): number => m.id;
 
     onPasswordChange(): void {
         this.dialog.open(PasswordChangeDialogComponent, {

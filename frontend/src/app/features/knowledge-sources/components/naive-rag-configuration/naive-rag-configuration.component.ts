@@ -92,6 +92,7 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
 
     ngOnInit() {
         const id = this.naiveRagId();
+        this.documentsStorageService.clear();
         this.documentsStorageService
             .fetchDocumentConfigs(id)
             .pipe(takeUntilDestroyed(this.destroyRef))

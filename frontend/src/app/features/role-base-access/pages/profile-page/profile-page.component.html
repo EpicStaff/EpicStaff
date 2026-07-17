@@ -133,7 +133,10 @@
                 </div>
 
                 <div class="org-list-scroll">
-                    <app-list [items]="sortedOrganizations()">
+                    <app-list
+                        [items]="sortedOrganizations()"
+                        [trackBy]="trackByMembershipId"
+                    >
                         <ng-template
                             let-item
                             let-i="index"

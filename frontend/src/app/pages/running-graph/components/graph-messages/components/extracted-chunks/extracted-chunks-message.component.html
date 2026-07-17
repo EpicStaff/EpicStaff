@@ -59,20 +59,20 @@
                 class="chunk-card"
                 *ngFor="let chunk of data.chunks; trackBy: trackByOrder"
             >
-                <app-copy-button [text]="chunk.chunk_text" />
+                <app-copy-button [text]="chunk.text" />
                 <div class="chunk-header">
-                    <div class="chunk-order">#{{ chunk.chunk_order }}</div>
+                    <div class="chunk-order">#{{ chunk.order }}</div>
                     <div
                         class="chunk-source"
-                        [title]="chunk.chunk_source"
+                        [title]="chunk.source"
                     >
-                        {{ chunk.chunk_source || 'Unknown source' }}
+                        {{ chunk.source || 'Unknown source' }}
                     </div>
                     <span class="similarity">
-                        {{ chunk.chunk_similarity | percent: '1.0-2' }}
+                        {{ chunk.similarity | percent: '1.0-2' }}
                     </span>
                 </div>
-                <pre class="chunk-text">{{ chunk.chunk_text }}</pre>
+                <pre class="chunk-text">{{ chunk.text }}</pre>
             </article>
         </div>
     </div>

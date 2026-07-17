@@ -4,7 +4,7 @@
             class="list__content"
             [style.width]="width()"
         >
-            @for (item of items(); track item; let i = $index; let odd = $odd) {
+            @for (item of items(); track trackItem($index, item); let i = $index; let odd = $odd) {
                 <li
                     class="list__item"
                     [class.list__item--dark]="odd"

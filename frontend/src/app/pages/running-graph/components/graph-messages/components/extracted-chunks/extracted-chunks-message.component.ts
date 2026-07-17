@@ -31,7 +31,7 @@ export class ExtractedChunksMessageComponent {
     }
 
     trackByOrder(_index: number, chunk: ExtractedChunk): number {
-        return chunk.chunk_order;
+        return chunk.order;
     }
 
     toggle(): void {
