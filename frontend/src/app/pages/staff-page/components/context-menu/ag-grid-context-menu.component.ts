@@ -1,12 +1,14 @@
 import { NgStyle } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-ag-grid-context-menu',
     standalone: true,
-    imports: [NgStyle, AppSvgIconComponent],
+    imports: [NgStyle, AppSvgIconComponent, HasPermissionDirective],
     templateUrl: './ag-grid-context-menu.component.html',
     styleUrls: ['./ag-grid-context-menu.component.scss'],
 })
@@ -15,6 +17,7 @@ export class AgGridContextMenuComponent {
     @Input() left: number = 0;
     @Input() top: number = 0;
     @Input() parent?: string = 'Agent';
+    @Input() permissionResource?: ResourceCode;
 
     @Output() delete = new EventEmitter<void>();
     @Output() copy = new EventEmitter<void>();
@@ -46,4 +49,7 @@ export class AgGridContextMenuComponent {
     onAddEmptyAgentAbove(): void {
         this.addEmptyAgentAbove.emit();
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

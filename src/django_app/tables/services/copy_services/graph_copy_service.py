@@ -1,10 +1,6 @@
 from tables.import_export.utils import ensure_unique_identifier
 from tables.models import Graph
-from tables.models.graph_models import (
-    ClassificationConditionGroup,
-    ConditionalEdge,
-    Edge,
-)
+from tables.models.graph_models import ConditionalEdge, Edge, GraphOrganization
 from tables.services.copy_services.base_copy_service import BaseCopyService
 from tables.services.copy_services.helpers import copy_python_code
 from tables.services.copy_services.node_copy_handlers import NODE_COPY_HANDLERS
@@ -19,21 +15,26 @@ class GraphCopyService(BaseCopyService):
     DecisionTableNode fields and graph metadata JSON.
     """
 
-    def copy(self, graph: Graph, name: str | None = None) -> Graph:
+    def copy(
+        self, graph: Graph, name: str | None = None, org_id: int | None = None
+    ) -> Graph:
         existing_names = Graph.objects.values_list("name", flat=True)
         new_name = ensure_unique_identifier(
             base_name=name if name else graph.name,
             existing_names=existing_names,
         )
 
+        target_org_id = org_id if org_id is not None else graph.org_id
         new_graph = Graph.objects.create(
             name=new_name,
             description=graph.description,
             metadata=graph.metadata,
             time_to_live=graph.time_to_live,
             persistent_variables=graph.persistent_variables,
+            org_id=target_org_id,
         )
         new_graph.labels.set(graph.labels.all())
+        GraphOrganization.objects.create(graph=new_graph, organization_id=target_org_id)
 
         node_id_map: dict[int, int] = {}
         for _, (relation_name, handler) in NODE_COPY_HANDLERS.items():

@@ -25,4 +25,8 @@ from .rbac_models import (
     ApiKey,
 )
 from .default_models import DefaultModels
-from .flow_assistant_models import FlowAssistant, FlowAssistantConversation, FlowAssistantMessage
+from .flow_assistant_models import (
+    FlowAssistant,
+    FlowAssistantConversation,
+    FlowAssistantMessage,
+)

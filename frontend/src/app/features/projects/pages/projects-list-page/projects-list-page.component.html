@@ -12,6 +12,7 @@
             </div>
             <div class="header-actions">
                 <app-button
+                    *appHasPermission="[ResourceCode.Projects, ActionCode.Create]"
                     type="primary"
                     class="btn-primary create-btn"
                     [leftIcon]="'plus'"

@@ -18,6 +18,7 @@ import {
     ViewChild,
     ViewChildren,
 } from '@angular/core';
+import { Router } from '@angular/router';
 import { MarkdownModule } from 'ngx-markdown';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { exhaustMap, map, takeUntil } from 'rxjs/operators';
@@ -35,6 +36,7 @@ import { GetAgentRequest } from '../../../../features/staff/models/agent.model';
 import { AgentsService } from '../../../../features/staff/services/staff.service';
 import { GetTaskRequest } from '../../../../features/tasks/models/task.model';
 import { TasksService } from '../../../../features/tasks/services/tasks.service';
+import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     CodeAgentStreamMessageData,
@@ -260,6 +262,8 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         public sseService: RunSessionSSEService,
         private agentsService: AgentsService,
         private tasksService: TasksService,
+        private toast: ToastService,
+        private router: Router,
         private cdr: ChangeDetectorRef,
         private answerToLLMService: AnswerToLLMService,
         private runGraphPageService: RunGraphPageService,
@@ -538,10 +542,9 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     }
                     this.loadMoreMessages();
                 },
-                error: () => {
-                    this.sseEnabled = true;
-                    this.sseService.startStream(this.sessionId!);
-                    this.loadMoreMessages();
+                error: (err) => {
+                    this.toast.error(err.error?.detail || 'Failed to fetch session');
+                    void this.router.navigate(['/sessions']);
                 },
             });
 

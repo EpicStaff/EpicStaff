@@ -102,12 +102,24 @@
             (click)="onCancel()"
             >Cancel</app-button
         >
-        <app-button
-            type="primary"
-            [disabled]="form.invalid || form.pending"
-            (click)="onSave()"
-        >
-            {{ isEditMode ? 'Update' : 'Create' }}
-        </app-button>
+        @if (isEditMode) {
+            <app-button
+                *appHasPermission="[ResourceCode.Tools, ActionCode.Update]"
+                type="primary"
+                [disabled]="form.invalid || form.pending"
+                (click)="onSave()"
+            >
+                Update
+            </app-button>
+        } @else {
+            <app-button
+                *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+                type="primary"
+                [disabled]="form.invalid || form.pending"
+                (click)="onSave()"
+            >
+                Create
+            </app-button>
+        }
     </div>
 </div>

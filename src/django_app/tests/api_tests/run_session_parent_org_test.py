@@ -3,55 +3,79 @@ Tests for the org-ownership validation of `parent_session_id` on
 POST /api/run-session/ (EST-3285 item 5.2 fix).
 
 A `parent_session_id` must only be accepted when the parent Session's graph
-belongs to the SAME organization as the graph/session being created (or when
-neither graph has an organization at all). This closes the vector where a
-tool (subflow_tool) could otherwise link -- and later read back, via the
-recursion-guard walk over GET /api/sessions/<id>/ -- a session belonging to
-a different organization by simply passing its id as parent_session_id.
+belongs to the SAME organization as the graph/session being created. This
+closes the vector where a tool (subflow_tool) could otherwise link -- and
+later read back, via the recursion-guard walk over GET /api/sessions/<id>/ --
+a session belonging to a different organization by simply passing its id as
+parent_session_id.
 
-NOTE: at the time this test was written, the local dev environment does not
-have `django` installed (`ModuleNotFoundError: No module named 'django'`),
-which is a pre-existing blocker unrelated to this change -- the whole
-`run_session_api_test.py` module is already skipped for the same class of
-reason. This test could not be executed locally; the validation logic was
-verified by inspection instead (see `RunSession.post` in
-`tables/views/views.py`).
+NOTE: rewritten for EST-2423 RBAC org-scoping (main). Graph.org is now a
+required FK (see migrations 0185/0186) and is the sole org boundary enforced
+by `RunSession.post` -- the older `GraphOrganization` model is unrelated to
+org ownership post-RBAC (it only carries persistent "user_variables" for a
+flow) so it is no longer used to establish the org boundary in this test.
 """
 
 import pytest
 
 from django.urls import reverse
 from rest_framework import status
+from rest_framework.test import APIClient
 
 from tables.models import (
     Crew,
     CrewNode,
     Edge,
     Graph,
-    GraphOrganization,
     Organization,
+    OrganizationUser,
+    Role,
     Session,
     StartNode,
 )
+from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tests.fixtures import *  # noqa: F401,F403
 
 
 @pytest.fixture
+def role_member(db):
+    return Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+
+
+@pytest.fixture
 def org_a(db):
-    return Organization.objects.create(name="org-a")
+    return Organization.objects.create(name="parent-org-a")
 
 
 @pytest.fixture
 def org_b(db):
-    return Organization.objects.create(name="org-b")
+    return Organization.objects.create(name="parent-org-b")
 
 
-def _build_runnable_graph(name: str, crew: Crew) -> Graph:
+@pytest.fixture
+def member_a(db, django_user_model, org_a, role_member):
+    user = django_user_model.objects.create_user(
+        email="parent_session_member_a@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org_a, role=role_member)
+    return user
+
+
+@pytest.fixture
+def auth_client(member_a, org_a):
+    """A member of org_a only -- single-org membership needs no active-org
+    header for the RBAC context resolver to pick org_a."""
+    client = APIClient()
+    client.force_authenticate(user=member_a)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org_a.id))
+    return client
+
+
+def _build_runnable_graph(name: str, crew: Crew, org: Organization) -> Graph:
     """Mirrors the `session_data` fixture's graph shape (crew_node +
     start_node + edge) so `create_session_data`/`subgraph_validator` don't
-    reject it -- but as a standalone Graph object we can attach a
-    GraphOrganization to."""
-    graph = Graph.objects.create(name=name)
+    reject it."""
+    graph = Graph.objects.create(name=name, org=org)
     crew_node = CrewNode.objects.create(node_name="crew_node_1", crew=crew, graph=graph)
     start_node = StartNode.objects.create(graph=graph, variables={})
     Edge.objects.create(
@@ -62,21 +86,12 @@ def _build_runnable_graph(name: str, crew: Crew) -> Graph:
 
 @pytest.fixture
 def graph_in_org_a(crew: Crew, org_a: Organization) -> Graph:
-    graph = _build_runnable_graph("graph-in-org-a", crew)
-    GraphOrganization.objects.create(graph=graph, organization=org_a)
-    return graph
+    return _build_runnable_graph("graph-in-org-a", crew, org_a)
 
 
 @pytest.fixture
 def graph_in_org_b(crew: Crew, org_b: Organization) -> Graph:
-    graph = _build_runnable_graph("graph-in-org-b", crew)
-    GraphOrganization.objects.create(graph=graph, organization=org_b)
-    return graph
-
-
-@pytest.fixture
-def graph_without_org(crew: Crew) -> Graph:
-    return _build_runnable_graph("graph-without-org", crew)
+    return _build_runnable_graph("graph-in-org-b", crew, org_b)
 
 
 @pytest.fixture
@@ -156,28 +171,3 @@ def test_nonexistent_parent_session_id_is_rejected(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-
-
-@pytest.mark.django_db
-def test_parent_session_id_accepted_when_neither_graph_has_org(
-    auth_client, redis_client_mock, graph_without_org
-):
-    """When neither the target graph nor the parent session's graph belong to
-    any organization, linkage is still allowed (both sides resolve to
-    `None` org, i.e. treated as the same "no org" bucket)."""
-    url = reverse("run-session")
-    parent_session = Session.objects.create(
-        graph=graph_without_org, status=Session.SessionStatus.END
-    )
-
-    response = auth_client.post(
-        url,
-        {
-            "graph_id": graph_without_org.pk,
-            "variables": {},
-            "parent_session_id": parent_session.pk,
-        },
-        format="json",
-    )
-
-    assert response.status_code == status.HTTP_201_CREATED, response.content

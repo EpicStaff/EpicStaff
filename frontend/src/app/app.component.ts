@@ -1,5 +1,7 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { NavigationStart, Router, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 
 import { ToastComponent } from './services/notifications/notification/toast.component';
 
@@ -15,4 +17,13 @@ import { ToastComponent } from './services/notifications/notification/toast.comp
     `,
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AppComponent {}
+export class AppComponent {
+    constructor(
+        private router: Router,
+        private cdkDialog: Dialog
+    ) {
+        this.router.events.pipe(filter((e) => e instanceof NavigationStart)).subscribe(() => {
+            this.cdkDialog.closeAll();
+        });
+    }
+}

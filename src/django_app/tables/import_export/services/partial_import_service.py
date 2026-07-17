@@ -1,8 +1,10 @@
 from django.db import transaction
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from tables.models import Graph
+from tables.models.rbac_models.rbac_enums import Permission
 from tables.import_export.id_mapper import IDMapper
+from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.constants import DEPENDENCY_ORDER
 from tables.import_export.enums import EntityType
@@ -42,7 +44,13 @@ class PartialImportService:
     def __init__(self, registry: EntityRegistry):
         self.registry = registry
 
-    def import_data(self, export_data: dict, graph: Graph) -> IDMapper:
+    def import_data(
+        self,
+        export_data: dict,
+        graph: Graph,
+        org_id: int = None,
+        effective_permissions=None,
+    ) -> IDMapper:
         nodes_data = self._collect_nodes(export_data)
         if not nodes_data:
             raise ValidationError({"detail": "No nodes found in the import file."})
@@ -51,10 +59,18 @@ class PartialImportService:
 
         with transaction.atomic():
             # Step 1: import non-node dependencies (LLM configs, crews, etc.)
-            self._import_dependencies(export_data, id_mapper)
+            # into the active org, enforcing per-resource CREATE permission.
+            self._import_dependencies(
+                export_data,
+                id_mapper,
+                org_id=org_id,
+                effective_permissions=effective_permissions,
+            )
 
             # Step 2: build a graph-children payload from the export data
-            # and create nodes + edges inside the existing graph
+            # and create nodes + edges inside the existing graph. Nodes are
+            # graph children (no own org column); they inherit the target
+            # graph's org and reference the dependencies created above.
             graph_strategy: GraphStrategy = self.registry.get_strategy(EntityType.GRAPH)
 
             edges_data = export_data.get("edge_list", [])
@@ -71,8 +87,20 @@ class PartialImportService:
 
         return id_mapper
 
-    def _import_dependencies(self, export_data: dict, id_mapper: IDMapper) -> None:
-        """Import all non-node, non-graph entity types in dependency order."""
+    def _import_dependencies(
+        self,
+        export_data: dict,
+        id_mapper: IDMapper,
+        org_id: int = None,
+        effective_permissions=None,
+    ) -> None:
+        """Import all non-node, non-graph entity types in dependency order.
+
+        Mirrors ImportService: each genuinely-new create is gated on CREATE
+        for the mapped ResourceType; org_id is stamped on created rows and
+        scopes find_existing reuse to the active org. Denials are collected
+        and raised once, inside the caller's atomic block, so nothing persists.
+        """
         dep_types = [
             et
             for et in DEPENDENCY_ORDER
@@ -81,15 +109,33 @@ class PartialImportService:
             and et in export_data
         ]
 
+        denied_resources = set()
+
         for entity_type in dep_types:
             strategy = self.registry.get_strategy(entity_type)
             for entity_data in export_data.get(entity_type, []):
                 old_id = entity_data["id"]
-                existing = strategy.find_existing(entity_data, id_mapper)
+                existing = strategy.find_existing(entity_data, id_mapper, org_id=org_id)
                 was_created = existing is None
-                instance = strategy.import_entity(entity_data, id_mapper, is_main=False)
+
+                if was_created and effective_permissions is not None:
+                    resource = ENTITY_RESOURCE_MAP.get(entity_type)
+                    if resource is not None and not effective_permissions.can(
+                        resource, Permission.CREATE
+                    ):
+                        denied_resources.add(resource)
+
+                instance = strategy.import_entity(
+                    entity_data, id_mapper, is_main=False, org_id=org_id
+                )
                 if instance is not None:
                     id_mapper.map(entity_type, old_id, instance.id, was_created)
+
+        if denied_resources:
+            names = ", ".join(sorted(r.value for r in denied_resources))
+            raise PermissionDenied(
+                f"Missing CREATE permission on: {names}. No changes were made."
+            )
 
     def _collect_nodes(self, export_data: dict) -> list:
         """

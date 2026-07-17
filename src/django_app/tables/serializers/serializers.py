@@ -17,7 +17,6 @@ class RunSessionSerializer(serializers.Serializer):
     files = serializers.DictField(
         child=serializers.CharField(), required=False, allow_null=True, default=dict
     )
-    username = serializers.CharField(required=False)
     # Optional: links the newly created Session to a caller session via the
     # existing Session.parent_session self-FK (see migration 0162). Used by
     # the built-in "subflow_tool" so a sub-flow run is traceable back to the

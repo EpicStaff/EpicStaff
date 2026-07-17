@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import {
     ConfirmResetPasswordRequest,
@@ -39,6 +39,9 @@ export class AuthService {
     private refreshInProgress$: Observable<string | null> | null = null;
     private statusCache$: Observable<FirstSetupStatus> | null = null;
 
+    // ID of the organization created during initial superadmin setup
+    defaultOrgId = signal<number | null>(null);
+
     private get baseUrl(): string {
         return `${this.configService.apiUrl}auth/`;
     }
@@ -58,7 +61,8 @@ export class AuthService {
 
     runSetup(payload: FirstSetupRequest): Observable<FirstSetupResponse> {
         return this.http.post<FirstSetupResponse>(`${this.baseUrl}first-setup/`, payload).pipe(
-            tap(() => {
+            tap((resp) => {
+                this.defaultOrgId.set(resp.organization.id);
                 this.statusCache$ = null;
             })
         );

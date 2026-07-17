@@ -1,6 +1,7 @@
 from django.db import models
 
 from tables.models.base_models import ContentHashMixin
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 class PythonCode(ContentHashMixin, models.Model):
@@ -13,8 +14,8 @@ class PythonCode(ContentHashMixin, models.Model):
         return list(filter(None, self.libraries.split(" ")))
 
 
-class PythonCodeTool(models.Model):
-    name = models.TextField(unique=True)
+class PythonCodeTool(OrgScopedModel, models.Model):
+    name = models.TextField()
     description = models.TextField()
     variables = models.JSONField(default=list, blank=True)
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE, null=False)
@@ -22,14 +23,23 @@ class PythonCodeTool(models.Model):
     built_in = models.BooleanField(default=False)
     use_storage = models.BooleanField(default=False)
 
+    class Meta(OrgScopedModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name"],
+                name="unique_pythoncodetool_name_per_org",
+            ),
+        ]
 
-class PythonCodeToolConfig(models.Model):
+
+class PythonCodeToolConfig(OrgScopedModel, models.Model):
     name = models.CharField(blank=False, null=False, max_length=255)
     tool = models.ForeignKey("PythonCodeTool", on_delete=models.CASCADE)
     configuration = models.JSONField(default=dict)
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
         unique_together = (
+            "org",
             "tool",
             "name",
         )

@@ -114,7 +114,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         self,
         graph_id: int,
         variables: dict | None = None,
-        username: str | None = None,
+        user=None,
         entrypoint: str | None = None,
         parent_session_id: int | None = None,
         token_budget: int | None = None,
@@ -141,12 +141,19 @@ class SessionManagerService(metaclass=SingletonMeta):
         # Remove 'shared' initialization dict - it's for Redis proxy, not storage
         variables_for_db = {k: v for k, v in variables.items() if k != "shared"}
 
-        time_to_live = Graph.objects.get(pk=graph_id).time_to_live
-        # TODO: replace with
-        # request.user + org context instead of email lookup.
-        graph_user = GraphOrganizationUser.objects.filter(
-            organization_user__user__email=username, graph_id=graph_id
-        ).first()
+        graph = Graph.objects.get(pk=graph_id)
+        time_to_live = graph.time_to_live
+        # Per-user persistent state is resolved from the authenticated user and
+        # the flow's organization. Superadmin (or unauthenticated trigger runs)
+        # have no membership row, so graph_user stays None.
+        graph_user = None
+        if user is not None and not getattr(user, "is_superadmin", False):
+            # TODO: refactor in scope of persistant variables story
+            graph_user = GraphOrganizationUser.objects.filter(
+                organization_user__user=user,
+                organization_user__org_id=graph.org_id,
+                graph_id=graph_id,
+            ).first()
         # EST-3285 4.2c: stash an optional per-run token budget in the
         # already-existing status_data JSONField (no migration) purely as an
         # audit trail of what was requested at session creation. NOTE: this
@@ -198,7 +205,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         self,
         graph_id: int,
         variables: dict | None = None,
-        username: str | None = None,
+        user=None,
         entrypoint: str | None = None,
         parent_session_id: int | None = None,
         token_budget: int | None = None,
@@ -212,7 +219,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         session: Session = self.create_session(
             graph_id=graph_id,
             variables=variables,
-            username=username,
+            user=user,
             entrypoint=entrypoint,
             parent_session_id=parent_session_id,
             token_budget=token_budget,
