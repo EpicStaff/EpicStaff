@@ -25,6 +25,8 @@ import { LlmConfigStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { catchError, EMPTY, filter, finalize, forkJoin, map, Observable, of, switchMap, take, tap, timer } from 'rxjs';
 import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
+import { buildNodeBackendPayload } from 'src/app/features/flows/services/graph-collaboration.ws.service';
+import { mergeNodeEntry } from 'src/app/visual-programming/utils/save/partial-node-broadcast';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
@@ -235,6 +237,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             this.toastService.error(`Auto-save failed: ${event.reason}`, 5000, 'bottom-right');
         });
 
+        this.wsService.opRejected$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const text =
+                msg.reason === 'target_not_found'
+                    ? 'This node was deleted by other user. Your changes not applied'
+                    : `Changes not applied (${msg.reason})`;
+            this.toastService.error(text, 5000, 'bottom-right');
+        });
+
         this.wsService.graphState$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
             const currentUserId = this.profileService.currentUserSignal()?.id;
             if (msg.restored_by && msg.restored_by.user_id === currentUserId) {
@@ -290,23 +300,36 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.wsService.nodeUpdated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
             const p = msg.node as Record<string, unknown>;
+            const existing =
+                p['temp_id'] != null
+                    ? this.flowService.nodes().find((n) => n.id === p['temp_id'])
+                    : typeof p['id'] === 'number'
+                      ? this.flowService.nodes().find((n) => n.backendId === p['id'])
+                      : undefined;
+
+            if (msg.changed_fields && msg.changed_fields.length > 0) {
+                if (!existing) return;
+                const existingPayload = buildNodeBackendPayload(
+                    existing,
+                    0,
+                    this.flowService.nodes(),
+                    this.flowService.connections()
+                );
+                if (!existingPayload) return;
+                const mergedPayload = mergeNodeEntry(existingPayload, p);
+                const merged = mapWsNodePayloadToModel(mergedPayload, msg.list_key);
+                if (!merged) return;
+                this.flowService.updateNode({ ...merged, id: existing.id });
+                this.applyRemoteTableRouting(existing.id, mergedPayload, msg.list_key);
+                return;
+            }
+
             const updated = mapWsNodePayloadToModel(p, msg.list_key);
             if (!updated) return;
 
-            if (p['temp_id']) {
-                const exists = this.flowService.nodes().some((n) => n.id === p['temp_id']);
-                if (exists) {
-                    this.flowService.updateNode(updated);
-                    this.applyRemoteTableRouting(updated.id, p, msg.list_key);
-                }
-            } else if (typeof p['id'] === 'number') {
-                const existing = this.flowService.nodes().find((n) => n.backendId === p['id']);
-                if (existing) {
-                    // Preserve the canvas id — it may differ from stableNodeId when the
-                    // node was originally created via WS and never reloaded from the API.
-                    this.flowService.updateNode({ ...updated, id: existing.id });
-                    this.applyRemoteTableRouting(existing.id, p, msg.list_key);
-                }
+            if (existing) {
+                this.flowService.updateNode({ ...updated, id: existing.id });
+                this.applyRemoteTableRouting(existing.id, p, msg.list_key);
             }
         });
 

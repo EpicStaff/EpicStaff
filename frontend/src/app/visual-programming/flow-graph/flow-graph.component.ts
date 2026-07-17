@@ -903,12 +903,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onNodePanelSaved(updatedNode: NodeModel): void {
         const normalizedNode = normalizeTableNodeSize(updatedNode);
+        const prev = this.flowService.nodes().find((n) => n.id === normalizedNode.id) ?? null;
         this.flowService.updateNode(normalizedNode);
         this.wsService.sendNodeUpdated(
             normalizedNode,
             this.currentFlowId!,
             this.flowState.nodes,
-            this.flowService.connections()
+            this.flowService.connections(),
+            prev
         );
         const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
         this.sidePanelService.clearSelection();
@@ -930,12 +932,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onNodePanelAutosaved(updatedNode: NodeModel): void {
         const normalizedNode = normalizeTableNodeSize(updatedNode);
+        const prev = this.flowService.nodes().find((n) => n.id === normalizedNode.id) ?? null;
         this.flowService.updateNode(normalizedNode);
         this.wsService.sendNodeUpdated(
             normalizedNode,
             this.currentFlowId!,
             this.flowState.nodes,
-            this.flowService.connections()
+            this.flowService.connections(),
+            prev
         );
         const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
 

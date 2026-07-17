@@ -3,6 +3,7 @@ import { IPoint } from '@foblex/2d';
 import { Subject } from 'rxjs';
 import { debounceTime, filter, throttleTime } from 'rxjs';
 import { NodeType } from 'src/app/visual-programming/core/enums/node-type';
+import { buildPartialNodePayload } from 'src/app/visual-programming/utils/save/partial-node-broadcast';
 
 import { ProfileService } from '../../../services/auth/profile.service';
 import { WsTicketService } from '../../../services/auth/ws-ticket.service';
@@ -63,7 +64,8 @@ type ServerMessage =
     | LockStateMessage
     | SaveFailedMessage
     | PresenceStateUpdated
-    | GraphFilesChangedMessage;
+    | GraphFilesChangedMessage
+    | OpRejectedMessage;
 
 type PresenceStateMessage = { type: 'presence_state'; editors: EditorInfo[] };
 type UserJoinedMessage = { type: 'user_joined'; editor: EditorInfo };
@@ -95,6 +97,17 @@ export type NodeUpdatedMessage = {
     node: Record<string, unknown>;
     list_key: string;
     editor: EditorInfo;
+    changed_fields?: string[];
+    op_id?: string;
+};
+export type OpRejectedMessage = {
+    type: 'op_rejected';
+    op_type: string;
+    op_id: string | null;
+    list_key: string;
+    node_ref: { id: number | null; temp_id: string | null };
+    reason: string;
+    details: Record<string, unknown> | null;
 };
 export type NodesDeletedMessage = { type: 'nodes_deleted'; refs: EntryDeleteRef[]; editor: EditorInfo };
 export type ConnectionCreatedMessage = {
@@ -503,6 +516,7 @@ export class GraphCollaborationWsService {
     public graphState$ = new Subject<GraphStateMessage>();
     public nodeCreated$ = new Subject<NodeCreatedMessage>();
     public nodeUpdated$ = new Subject<NodeUpdatedMessage>();
+    public opRejected$ = new Subject<OpRejectedMessage>();
     public nodesDeleted$ = new Subject<NodesDeletedMessage>();
     public connectionCreated$ = new Subject<ConnectionCreatedMessage>();
     public connectionDeleted$ = new Subject<ConnectionDeletedMessage>();
@@ -660,6 +674,9 @@ export class GraphCollaborationWsService {
             case 'node_updated':
                 this.nodeUpdated$.next(message);
                 break;
+            case 'op_rejected':
+                this.opRejected$.next(message);
+                break;
             case 'nodes_deleted':
                 this.nodesDeleted$.next(message);
                 break;
@@ -751,14 +768,34 @@ export class GraphCollaborationWsService {
         node: NodeModel,
         graphId: number,
         allNodes: NodeModel[] = [],
-        connections: ConnectionModel[] = []
+        connections: ConnectionModel[] = [],
+        prevNode: NodeModel | null = null
     ): void {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return;
         const payload = buildNodeBackendPayload(node, graphId, allNodes, connections);
         if (!payload) return;
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'node_updated', node: payload, list_key, editor });
+        if (!editor) return;
+
+        if (prevNode) {
+            const prevPayload = buildNodeBackendPayload(prevNode, graphId, allNodes, connections);
+            if (prevPayload) {
+                const { node: partial, changed_fields } = buildPartialNodePayload(prevPayload, payload);
+                if (changed_fields.length === 0) return;
+                this.sendRaw({
+                    type: 'node_updated',
+                    node: partial,
+                    list_key,
+                    changed_fields,
+                    op_id: crypto.randomUUID(),
+                    editor,
+                });
+                return;
+            }
+        }
+
+        this.sendRaw({ type: 'node_updated', node: payload, list_key, editor });
     }
 
     public sendNodePositionDuringDrag(

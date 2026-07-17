@@ -132,6 +132,21 @@ export class LockableFieldComponent implements OnDestroy {
         }
     }
 
+    @HostListener('pointerdown')
+    onPointerDown(): void {
+        if (!this.isLockedByOther()) {
+            this.wsService.sendNodeLocked(this.nodeId(), this.fieldId());
+        }
+    }
+
+    @HostListener('document:pointerdown', ['$event'])
+    onDocumentPointerDown(event: PointerEvent): void {
+        if (!this.isLockedByMe()) return;
+        const target = event.target as Node | null;
+        if (target && this.el.nativeElement.contains(target)) return;
+        this.wsService.sendNodeUnlocked(this.nodeId(), this.fieldId());
+    }
+
     @HostListener('focusout', ['$event'])
     onFocusOut(event: FocusEvent): void {
         const relatedTarget = event.relatedTarget as Node | null;

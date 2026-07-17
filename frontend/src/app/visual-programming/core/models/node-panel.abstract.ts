@@ -1,8 +1,10 @@
 import { ApplicationRef, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AbstractControl, FormBuilder, FormGroup, ValidatorFn, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ValidatorFn, Validators } from '@angular/forms';
+import { debounceTime } from 'rxjs';
 import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
+import { SidePanelService } from '../../services/side-panel.service';
 import { UniqueNodeNameValidatorService } from '../../services/unique-node-name.validator';
 import { NodeModel } from './node.model';
 
@@ -16,6 +18,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     protected uniqueNameValidator = inject(UniqueNodeNameValidatorService);
     protected destroyRef = inject(DestroyRef);
     protected readonly wsService = inject(GraphCollaborationWsService);
+    private readonly baseSidePanelService = inject(SidePanelService);
     private lastInitializedNodeId: string | null = null;
 
     node = input.required<T>();
@@ -25,6 +28,8 @@ export abstract class BaseSidePanel<T extends NodeModel> {
 
     protected readonly dirtyCheckTick = signal(0);
     private initialNodeSnapshot = '';
+
+    private baseline: Record<string, unknown> | null = null;
 
     public readonly isDirty = computed(() => {
         this.dirtyCheckTick();
@@ -68,31 +73,43 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         });
     }
 
-    // Merge a remote update into the form without discarding the user's in-progress
-    // edits: fields the user has not touched take the remote value, dirty fields are
-    // preserved so a subsequent save does not overwrite the remote change on them.
     private mergeRemoteIntoForm(): void {
-        this.mergeGroup(this.form, this.initializeForm());
-
-        if (!this.form.dirty) {
-            this.initialNodeSnapshot = JSON.stringify(this.createUpdatedNode());
-        }
+        const remoteValue = this.initializeForm().getRawValue() as Record<string, unknown>;
+        this.applyRemoteDiff(this.form, remoteValue, this.baseline ?? {});
+        this.baseline = remoteValue;
         this.dirtyCheckTick.update((v) => v + 1);
     }
 
-    private mergeGroup(target: FormGroup, source: FormGroup): void {
-        for (const key of Object.keys(source.controls)) {
-            const targetControl: AbstractControl | null = target.get(key);
-            const sourceControl: AbstractControl | null = source.get(key);
-            if (!targetControl || !sourceControl) continue;
+    private applyRemoteDiff(
+        target: FormGroup,
+        remote: Record<string, unknown>,
+        baseline: Record<string, unknown>
+    ): void {
+        for (const key of Object.keys(target.controls)) {
+            const control = target.get(key);
+            if (!control) continue;
+            const remoteVal = remote ? remote[key] : undefined;
+            const baseVal = baseline ? baseline[key] : undefined;
 
-            if (!targetControl.dirty) {
-                target.setControl(key, sourceControl, { emitEvent: false });
+            if (
+                control instanceof FormGroup &&
+                remoteVal &&
+                typeof remoteVal === 'object' &&
+                !Array.isArray(remoteVal)
+            ) {
+                this.applyRemoteDiff(
+                    control,
+                    remoteVal as Record<string, unknown>,
+                    (baseVal as Record<string, unknown>) ?? {}
+                );
                 continue;
             }
 
-            if (targetControl instanceof FormGroup && sourceControl instanceof FormGroup) {
-                this.mergeGroup(targetControl, sourceControl);
+            if (JSON.stringify(remoteVal) === JSON.stringify(baseVal)) continue;
+            try {
+                control.setValue(remoteVal, { emitEvent: false });
+            } catch {
+                /* structural mismatch (e.g. FormArray length) — keep local */
             }
         }
     }
@@ -101,10 +118,15 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         this.form = this.initializeForm();
         this.lastInitializedNodeId = node.id;
 
+        this.baseline = this.form.getRawValue() as Record<string, unknown>;
         this.initialNodeSnapshot = JSON.stringify(this.createUpdatedNode());
 
         this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.dirtyCheckTick.update((v) => v + 1);
+        });
+
+        this.form.valueChanges.pipe(debounceTime(400), takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.baseSidePanelService.triggerAutosave();
         });
     }
 
@@ -126,7 +148,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         }
         const updatedNode = this.createUpdatedNode();
         this.initialNodeSnapshot = JSON.stringify(updatedNode);
-        this.form.markAsPristine();
+        this.baseline = this.form.getRawValue() as Record<string, unknown>;
         this.dirtyCheckTick.update((v) => v + 1);
         return updatedNode;
     }
@@ -138,7 +160,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         try {
             const updatedNode = this.createUpdatedNode();
             this.initialNodeSnapshot = JSON.stringify(updatedNode);
-            this.form.markAsPristine();
+            this.baseline = this.form.getRawValue() as Record<string, unknown>;
             this.dirtyCheckTick.update((v) => v + 1);
             return updatedNode;
         } catch {
