@@ -14,6 +14,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { renderAsync } from 'docx-preview';
 import * as Papa from 'papaparse';
 import type { Sheet as ExcelSheet } from 'read-excel-file/browser';
@@ -36,7 +38,7 @@ export interface SheetData {
 
 @Component({
     selector: 'app-storage-preview',
-    imports: [DecimalPipe, JsonPipe, AppSvgIconComponent, ButtonComponent, MatTooltipModule],
+    imports: [DecimalPipe, JsonPipe, AppSvgIconComponent, ButtonComponent, MatTooltipModule, HasPermissionDirective],
     templateUrl: './storage-preview.component.html',
     styleUrls: ['./storage-preview.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -340,4 +342,7 @@ export class StoragePreviewComponent {
             this.currentBlobUrl = null;
         }
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }
