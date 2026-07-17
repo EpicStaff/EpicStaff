@@ -21,6 +21,30 @@ class ApiKeySerializer(serializers.ModelSerializer):
         ]
 
 
+class ApiKeyCreateRequestSerializer(serializers.Serializer):
+    # Schema-only: request validation is performed by
+    # `ApiKeyValidationService.validate_create` so errors can be
+    # aggregated and formatted uniformly.
+    name = serializers.CharField(max_length=255)
+    expires_in_days = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+        max_value=3650,
+        help_text="Omit for the 90-day default; null for a non-expiring key.",
+    )
+
+
+class ApiKeyCreateResponseSerializer(ApiKeySerializer):
+    api_key = serializers.CharField(
+        read_only=True,
+        help_text="The raw key. Shown only in this response — it cannot be retrieved again.",
+    )
+
+    class Meta(ApiKeySerializer.Meta):
+        fields = ApiKeySerializer.Meta.fields + ["api_key"]
+
+
 class ApiKeyOwnerSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
