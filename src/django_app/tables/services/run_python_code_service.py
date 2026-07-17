@@ -2,7 +2,8 @@ from datetime import datetime
 import os
 from typing import Any
 import uuid
-from src.shared.models import CodeTaskData
+from django.utils import timezone
+from src.shared.models import CodeResultData, CodeTaskData
 from tables.models import PythonCode, PythonCodeResult
 from tables.services.redis_service import RedisService
 from utils.singleton_meta import SingletonMeta
@@ -58,6 +59,24 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             channel, code_task_data.model_dump_json()
         )
         return execution_id
+
+    def save_execution_result(self, result: CodeResultData) -> bool:
+        updated = PythonCodeResult.objects.filter(
+            execution_id=result.execution_id,
+            status=PythonCodeResult.Status.PENDING,
+        ).update(
+            status=(
+                PythonCodeResult.Status.COMPLETED
+                if result.returncode == 0
+                else PythonCodeResult.Status.ERROR
+            ),
+            result_data=result.result_data,
+            stderr=result.stderr,
+            stdout=result.stdout,
+            returncode=result.returncode,
+            finished_at=timezone.now(),
+        )
+        return bool(updated)
 
     def gen_execution_id(self):
         now = datetime.now()

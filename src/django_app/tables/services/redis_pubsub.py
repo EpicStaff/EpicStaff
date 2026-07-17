@@ -4,7 +4,6 @@ import time
 from collections import defaultdict, deque
 from typing import Type
 from uuid import uuid4
-from django.utils import timezone
 
 import redis
 from django.db import close_old_connections, IntegrityError, models, transaction
@@ -24,11 +23,11 @@ from django_app.settings import (
 from tables.models import (
     GraphOrganization,
     GraphSessionMessage,
-    PythonCodeResult,
     Session,
     SessionStorageFile,
     StorageFile,
 )
+from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.services.schedule_trigger_service import ScheduleTriggerService
@@ -122,22 +121,7 @@ class RedisPubSub:
             logger.debug(f"Received message from code_result_handler: {message}")
             result = CodeResultData.model_validate_json(message["data"])
             close_old_connections()
-            updated = PythonCodeResult.objects.filter(
-                execution_id=result.execution_id,
-                status=PythonCodeResult.Status.PENDING,
-            ).update(
-                status=(
-                    PythonCodeResult.Status.COMPLETED
-                    if result.returncode == 0
-                    else PythonCodeResult.Status.ERROR
-                ),
-                result_data=result.result_data,
-                stderr=result.stderr,
-                stdout=result.stdout,
-                returncode=result.returncode,
-                finished_at=timezone.now(),
-            )
-            if not updated:
+            if not RunPythonCodeService().save_execution_result(result):
                 logger.debug(
                     f"No pending execution for {result.execution_id}, skipping"
                 )
