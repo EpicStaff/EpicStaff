@@ -254,3 +254,4 @@ class TestWebhookTriggerProviderSwitchCleanup:
         assert trigger.provider_type == ProviderType.NGROK
         cfg = NgrokWebhookConfig.objects.get(trigger=trigger)
         assert cfg.auth_token == "new"
+

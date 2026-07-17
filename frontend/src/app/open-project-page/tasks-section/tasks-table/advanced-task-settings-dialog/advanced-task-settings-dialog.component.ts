@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, Inject, inject, OnInit,
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
@@ -28,6 +29,7 @@ export interface AdvancedTaskSettingsData {
         NgClass,
         FormsModule,
         MatSlideToggleModule,
+        MatTooltipModule,
         JsonEditorComponent,
         HelpTooltipComponent,
         AppSvgIconComponent,

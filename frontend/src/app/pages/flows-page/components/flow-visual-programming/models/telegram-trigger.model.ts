@@ -1,4 +1,7 @@
-import { WebhookTriggerModel, WebhookTriggerWrite } from '../../../../../visual-programming/core/models/webhook-trigger.model';
+import {
+    WebhookTriggerModel,
+    WebhookTriggerWrite,
+} from '../../../../../visual-programming/core/models/webhook-trigger.model';
 
 export interface TelegramTriggerField {
     field_name: string;

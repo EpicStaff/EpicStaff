@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, forwardRef, input, model } from '@angular/core';
 import { ControlValueAccessor, FormControl, NG_VALUE_ACCESSOR, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { CustomInputComponent, TooltipComponent } from '@shared/components';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -8,7 +9,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
     selector: 'app-listbox',
     templateUrl: './listbox.component.html',
     styleUrls: ['./listbox.component.scss'],
-    imports: [TooltipComponent, CustomInputComponent, AppSvgIconComponent, ReactiveFormsModule],
+    imports: [TooltipComponent, CustomInputComponent, AppSvgIconComponent, ReactiveFormsModule, MatTooltipModule],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,

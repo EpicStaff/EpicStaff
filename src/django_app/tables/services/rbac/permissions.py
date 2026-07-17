@@ -1,5 +1,5 @@
 from django.core.exceptions import ImproperlyConfigured
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
@@ -22,6 +22,26 @@ class IsSuperadmin(BasePermission):
         return bool(
             user and user.is_authenticated and getattr(user, "is_superadmin", False)
         )
+
+
+class IsSuperadminOrReadOnly(BasePermission):
+    """Authenticated users may read (safe methods); only superadmins may write.
+
+    Method-based companion to `SuperadminWriteMixin` for **global** resources
+    exposed as plain APIViews (default-* config singletons, voice/Twilio
+    settings) where there is no DRF `action`. Reads stay open to any
+    authenticated user; create/update/delete require `is_superadmin`.
+    """
+
+    message = "Superadmin privileges are required to modify this resource."
+
+    def has_permission(self, request, view):
+        user = getattr(request, "user", None)
+        if not (user and user.is_authenticated):
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        return bool(getattr(user, "is_superadmin", False))
 
 
 class HasOrgPermission(BasePermission):

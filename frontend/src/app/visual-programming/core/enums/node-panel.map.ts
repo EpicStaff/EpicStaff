@@ -1,6 +1,7 @@
 import { Type } from '@angular/core';
 
 import { AudioToTextNodePanelComponent } from '../../components/node-panels/audio-to-text-node-panel/audio-to-text-node-panel.component';
+import { ClassificationDecisionTableNodePanelComponent } from '../../components/node-panels/classification-decision-table-node-panel/classification-decision-table-node-panel.component';
 import { CodeAgentNodePanelComponent } from '../../components/node-panels/code-agent-node-panel/code-agent-node-panel.component';
 import { ConditionalEdgeNodePanelComponent } from '../../components/node-panels/conditional-edge-node-panel/conditional-edge-node-panel.component';
 import { DecisionTableNodePanelComponent } from '../../components/node-panels/decision-table-node-panel/decision-table-node-panel.component';
@@ -14,7 +15,6 @@ import { TelegramTriggerNodePanelComponent } from '../../components/node-panels/
 import { WebhookTriggerNodePanelComponent } from '../../components/node-panels/webhook-trigger-node-panel/webhook-trigger-node-panel.component';
 import { NodeModel } from '../models/node.model';
 import { NodePanel } from '../models/node-panel.interface';
-import { ClassificationDecisionTableNodePanelComponent } from '../../components/node-panels/classification-decision-table-node-panel/classification-decision-table-node-panel.component';
 import { NodeType } from './node-type';
 
 const asNodePanelComponent = <T extends NodeModel>(component: Type<NodePanel<T>>): Type<NodePanel<NodeModel>> =>

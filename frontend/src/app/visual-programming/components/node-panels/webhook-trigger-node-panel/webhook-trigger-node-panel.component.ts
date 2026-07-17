@@ -2,6 +2,7 @@ import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { CustomInputComponent, WebhookTriggerFieldComponent } from '@shared/components';
 
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
@@ -17,6 +18,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
         CodeEditorComponent,
         CommonModule,
         ClipboardModule,
+        MatTooltipModule,
         WebhookTriggerFieldComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',

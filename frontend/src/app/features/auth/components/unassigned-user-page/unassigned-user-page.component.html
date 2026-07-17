@@ -1,0 +1,27 @@
+<div class="page">
+    <div class="card status">
+        <app-svg-icon
+            icon="logo"
+            size="120px"
+        />
+        <div class="title-section">
+            <h1 class="title">You are <span>registered</span></h1>
+            <p class="subtitle">
+                Your account is all set. Hang tight - your administrator will add you to an organization shortly.
+            </p>
+        </div>
+        <div class="status-indicator">
+            <app-svg-icon
+                icon="clock"
+                size="40px"
+            />
+        </div>
+        <app-button
+            class="btn"
+            type="outline-primary"
+            (click)="onSignOut()"
+        >
+            Sign out
+        </app-button>
+    </div>
+</div>

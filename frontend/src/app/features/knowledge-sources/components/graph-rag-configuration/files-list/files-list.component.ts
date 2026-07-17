@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, model } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -25,6 +26,7 @@ import { GraphRagService } from '../../../services/graph-rag.service';
         ListComponent,
         ListRowComponent,
         AppSvgIconComponent,
+        MatTooltipModule,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

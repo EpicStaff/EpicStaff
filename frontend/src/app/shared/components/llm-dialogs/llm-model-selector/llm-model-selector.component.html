@@ -1,0 +1,180 @@
+@if (label()) {
+    <app-tooltip
+        [required]="required()"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+        [icon]="icon()"
+    />
+}
+
+<button
+    #triggerBtn
+    type="button"
+    class="llm-selector__trigger"
+    [class.llm-selector__trigger--open]="open()"
+    [class.llm-selector__trigger--placeholder]="!selectedModelInfo()"
+    [class.llm-selector__trigger--disabled]="isDisabled()"
+    [disabled]="isDisabled()"
+    (click)="toggle()"
+>
+    @if (selectedModelInfo(); as info) {
+        <app-svg-icon
+            [icon]="getProviderIcon(info.provider.name)"
+            size="18px"
+        />
+        <span class="llm-selector__trigger-label">
+            <span class="llm-selector__trigger-provider">{{ info.provider.name }}:</span>
+            <span class="llm-selector__trigger-model">{{ info.model.name }}</span>
+        </span>
+    } @else {
+        <span>{{ placeholder() }}</span>
+    }
+
+    <svg
+        class="llm-selector__chevron"
+        [class.llm-selector__chevron--open]="open()"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+    >
+        <path
+            d="M6 9l6 6 6-6"
+            stroke="currentColor"
+            stroke-width="2"
+            fill="none"
+            stroke-linecap="round"
+        />
+    </svg>
+</button>
+
+<ng-template #dropdownTemplate>
+    <div class="model-selector">
+        <div class="model-selector__search">
+            <input
+                type="text"
+                class="model-selector__search-input"
+                placeholder="Search provider or model..."
+                autocomplete="off"
+                [value]="searchQuery()"
+                (input)="onSearchChange($event)"
+            />
+        </div>
+
+        <div class="model-selector__content">
+            @if (modelsResource.isLoading()) {
+                <div class="model-selector__loading">
+                    <div class="model-selector__spinner"></div>
+                    <p>Loading providers and models...</p>
+                </div>
+            } @else if (filteredProviders().length === 0) {
+                <div class="model-selector__empty">
+                    <app-svg-icon
+                        icon="ui/search"
+                        size="2rem"
+                    />
+                    <p class="model-selector__empty-title">Model not found</p>
+                    <p class="model-selector__empty-text">Please find a provider to add the LLM</p>
+                </div>
+            } @else {
+                @for (providerData of filteredProviders(); track providerData.provider.id) {
+                    <div class="model-selector__provider">
+                        <!-- Provider Header -->
+                        <div class="model-selector__provider-header">
+                            <div class="model-selector__provider-info">
+                                <app-svg-icon
+                                    [icon]="getProviderIcon(providerData.provider.name)"
+                                    size="1.125rem"
+                                />
+                                <span class="model-selector__provider-name">
+                                    {{ providerData.provider.name | uppercase }}
+                                </span>
+                            </div>
+                            <app-button
+                                type="primary"
+                                mod="small"
+                                (click)="openAllModelsModal(providerData.provider)"
+                            >
+                                + Add model
+                            </app-button>
+                        </div>
+
+                        <!-- Models -->
+                        @if (providerData.models.length > 0) {
+                            <div class="model-selector__models">
+                                @for (model of getVisibleModels(providerData); track model.id) {
+                                    <div
+                                        class="model-selector__model"
+                                        [class.model-selector__model--selected]="isModelSelected(model.id)"
+                                        [class.model-selector__model--not-visible]="model.is_visible === false"
+                                    >
+                                        <button
+                                            type="button"
+                                            class="model-selector__model-select"
+                                            (click)="selectModel(model, providerData.provider)"
+                                        >
+                                            <span class="model-selector__model-name">{{ model.name }}</span>
+                                        </button>
+                                        @if (model.predefined === false || model.is_custom) {
+                                            <app-icon-button
+                                                icon="edit"
+                                                size="2rem"
+                                                tooltip="Edit model"
+                                                (click)="
+                                                    openEditModal(model, providerData.provider);
+                                                    $event.stopPropagation()
+                                                "
+                                            />
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            @if (isCollapsible(providerData)) {
+                                <button
+                                    type="button"
+                                    class="model-selector__expand-btn"
+                                    (click)="toggleExpand(providerData.provider.id); $event.stopPropagation()"
+                                >
+                                    @if (expandedProviders().has(providerData.provider.id)) {
+                                        <svg
+                                            width="12"
+                                            height="12"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path
+                                                d="M18 15l-6-6-6 6"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                fill="none"
+                                                stroke-linecap="round"
+                                            />
+                                        </svg>
+                                        Show less
+                                    } @else {
+                                        <svg
+                                            width="12"
+                                            height="12"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path
+                                                d="M6 9l6 6 6-6"
+                                                stroke="currentColor"
+                                                stroke-width="2"
+                                                fill="none"
+                                                stroke-linecap="round"
+                                            />
+                                        </svg>
+                                        {{ hiddenCount(providerData) }} more
+                                    }
+                                </button>
+                            }
+                        } @else {
+                            <div class="model-selector__no-favorites">
+                                <p>No visible models. Click "Add model" to manage visibility.</p>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</ng-template>

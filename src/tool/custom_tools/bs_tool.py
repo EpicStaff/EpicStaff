@@ -9,9 +9,9 @@ from langchain.tools import tool
 from pygments.lexer import RegexLexer
 from pygments.token import Token
 from typing import Type, Any
-from crewai_tools import BaseTool
+from crewai.tools import BaseTool
 
-# TODO: change import after update: from crewai.tools import BaseTool
+
 class BSharpLexer(RegexLexer):
     """
     Custom lexer for the BSharp language, defining syntax highlighting rules using Pygments.

@@ -85,12 +85,12 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     constructor() {
         super();
         effect(() => {
-            const refreshed = this.refreshedIsActive();
-            const isActive = refreshed !== undefined ? refreshed : (this.node().data.isActive ?? false);
+            const nodeIsActive = this.node().data.isActive ?? false;
             const ctrl = this.form?.get('is_active');
             if (!ctrl) return;
-            if (ctrl.value !== isActive) {
-                ctrl.patchValue(isActive, { emitEvent: false });
+            if (this.scheduleDirty()) return;
+            if (ctrl.value !== nodeIsActive) {
+                ctrl.patchValue(nodeIsActive, { emitEvent: false });
             }
         });
         this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -396,7 +396,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
                         this.refreshedNextRun.set(dto.schedule?.next_run_date_time ?? null);
                         this.refreshedIsActive.set(dto.is_active);
                         this.refreshedCurrentRuns.set(dto.current_runs);
-                        this.syncRefreshedDataToNode(dto);
+                        this.syncRefreshedDataToNode(dto, false);
                         this.stopPolling$.next();
                         this.schedulePoll(this.computeNextPollDelay(dto));
                     },
@@ -826,10 +826,10 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
             });
     }
 
-    private syncRefreshedDataToNode(dto: GetScheduleTriggerNodeRequest): void {
+    private syncRefreshedDataToNode(dto: GetScheduleTriggerNodeRequest, includeIsActive = true): void {
         if (this.scheduleDirty()) return;
         const current = this.node();
-        const newIsActive = dto.is_active;
+        const newIsActive = includeIsActive ? dto.is_active : current.data.isActive;
         const newNextRun = dto.schedule?.next_run_date_time ?? null;
         const newCurrentRuns = dto.current_runs;
         if (

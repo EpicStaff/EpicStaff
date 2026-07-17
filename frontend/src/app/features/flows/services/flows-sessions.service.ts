@@ -62,29 +62,29 @@ export interface DurationFilter {
     value2?: number;
 }
 
-export type SessionStatusesCounts = {
-    run: number;
-    wait_for_user: number;
-    error: number;
-    pending: number;
-    stop: number;
-};
+// export type SessionStatusesCounts = {
+//     run: number;
+//     wait_for_user: number;
+//     error: number;
+//     pending: number;
+//     stop: number;
+// };
 
 export type DurationOperator = 'lessThan' | 'greaterThan' | 'equal' | 'between';
 
-export type GraphSessionStatusesCounts = {
-    [graph_id: string]: SessionStatusesCounts;
-};
+// export type GraphSessionStatusesCounts = {
+//     [graph_id: string]: SessionStatusesCounts;
+// };
 
-export type SessionStatusesCountsMap = Map<string, SessionStatusesCounts>;
+// export type SessionStatusesCountsMap = Map<string, SessionStatusesCounts>;
 
-export const defaultSessionStatusesCounts = (): SessionStatusesCounts => ({
-    run: 0,
-    wait_for_user: 0,
-    error: 0,
-    pending: 0,
-    stop: 0,
-});
+// export const defaultSessionStatusesCounts = (): SessionStatusesCounts => ({
+//     run: 0,
+//     wait_for_user: 0,
+//     error: 0,
+//     pending: 0,
+//     stop: 0,
+// });
 
 @Injectable({
     providedIn: 'root',
@@ -102,30 +102,30 @@ export class GraphSessionService {
         return this.configService.apiUrl + 'sessions/';
     }
 
-    getAllSessions(): Observable<GraphSession[]> {
-        return this.http.get<ApiGetRequest<GraphSession>>(this.apiUrl).pipe(
-            map((response) => {
-                return response.results.sort((a, b) => b.id - a.id);
-            })
-        );
-    }
+    // getAllSessions(): Observable<GraphSession[]> {
+    //     return this.http.get<ApiGetRequest<GraphSession>>(this.apiUrl).pipe(
+    //         map((response) => {
+    //             return response.results.sort((a, b) => b.id - a.id);
+    //         })
+    //     );
+    // }
 
-    getSessionStatuses(graphId?: string): Observable<SessionStatusesCountsMap> {
-        const params = new HttpParams().set('graph_id', graphId!.toString());
-        return this.http.get<GraphSessionStatusesCounts>(this.apiUrl + 'statuses/', { params }).pipe(
-            map((response) => {
-                const outerMap: SessionStatusesCountsMap = new Map();
-                Object.entries(response).forEach(([graphId, statuses]) => {
-                    const normalizedStatuses: SessionStatusesCounts = {
-                        ...defaultSessionStatusesCounts(),
-                        ...statuses,
-                    };
-                    outerMap.set(graphId, normalizedStatuses);
-                });
-                return outerMap;
-            })
-        );
-    }
+    // getSessionStatuses(graphId?: string): Observable<SessionStatusesCountsMap> {
+    //     const params = new HttpParams().set('graph_id', graphId!.toString());
+    //     return this.http.get<GraphSessionStatusesCounts>(this.apiUrl + 'statuses/', { params }).pipe(
+    //         map((response) => {
+    //             const outerMap: SessionStatusesCountsMap = new Map();
+    //             Object.entries(response).forEach(([graphId, statuses]) => {
+    //                 const normalizedStatuses: SessionStatusesCounts = {
+    //                     ...defaultSessionStatusesCounts(),
+    //                     ...statuses,
+    //                 };
+    //                 outerMap.set(graphId, normalizedStatuses);
+    //             });
+    //             return outerMap;
+    //         })
+    //     );
+    // }
 
     getSessionById(sessionId: number): Observable<GraphSession> {
         return this.http.get<GraphSession>(`${this.apiUrl}${sessionId}/`);
@@ -185,13 +185,13 @@ export class GraphSessionService {
         }
     }
 
-    deleteSessionById(sessionId: number): Observable<void> {
-        return this.http.delete<void>(`${this.apiUrl}${sessionId}/`).pipe(
-            map(() => {
-                this._sessionsChanged$.next();
-            })
-        );
-    }
+    // deleteSessionById(sessionId: number): Observable<void> {
+    //     return this.http.delete<void>(`${this.apiUrl}${sessionId}/`).pipe(
+    //         map(() => {
+    //             this._sessionsChanged$.next();
+    //         })
+    //     );
+    // }
 
     bulkDeleteSessions(ids: number[]): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}bulk_delete/`, { ids }).pipe(

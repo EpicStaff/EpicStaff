@@ -53,6 +53,11 @@
     flex-direction: column;
     gap: 0.35rem;
     min-width: 0;
+
+    &--toggle {
+        align-items: flex-start;
+        min-width: 100px;
+    }
 }
 
 .header-label {
@@ -112,6 +117,36 @@
     }
 }
 
+.cdt-toggle {
+    position: relative;
+    width: 50px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    cursor: default;
+    transition: background 0.2s ease;
+    margin-top: 2px;
+
+    .toggle-thumb {
+        position: absolute;
+        top: 3px;
+        left: 12px;
+        width: 14px;
+        height: 14px;
+        background: #fff;
+        border-radius: 30%;
+        transition: transform 0.2s ease;
+    }
+
+    &--on {
+        background: #685fff;
+
+        .toggle-thumb {
+            transform: translateX(16px);
+        }
+    }
+}
+
 // Tab row
 .tabs-row {
     display: flex;
@@ -130,6 +165,23 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
+
+        ::ng-deep app-action-dropdown-button {
+            .adb {
+                width: 100px;
+                min-width: 100px;
+            }
+
+            .adb__main {
+                padding: 3px 10px;
+                font-size: 0.8em;
+            }
+
+            .adb__chevron {
+                flex: 0 0 28px;
+                padding: 3px 6px;
+            }
+        }
     }
 }
 
@@ -185,6 +237,39 @@
     color: rgba(255, 255, 255, 0.2);
     font-size: 0.875rem;
     user-select: none;
+}
+
+// Export / Import action buttons in the tabs row
+.tabs-row__divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 0 0.25rem;
+}
+
+.import-btn {
+    display: inline-flex;
+    align-items: center;
+    width: 100px;
+    min-width: 100px;
+    border-radius: 6px;
+    background: var(--accent-color, #5e9eff);
+    color: #fff;
+    border: none;
+    padding: 3px 10px;
+    font-size: 0.8em;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.18s;
+
+    &:hover:not(:disabled) {
+        background: var(--accent-color-hover, #3a7edc);
+    }
+}
+
+.hidden-file-input {
+    display: none;
 }
 
 // Grid section

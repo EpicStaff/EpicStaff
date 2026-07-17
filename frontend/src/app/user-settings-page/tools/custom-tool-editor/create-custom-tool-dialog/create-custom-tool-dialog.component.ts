@@ -4,6 +4,9 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
@@ -25,13 +28,17 @@ import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip
 import { JsonEditorComponent, JsonError } from '../../../../shared/components/json-editor/json-editor.component';
 import { TextareaComponent } from '../../../../shared/components/textarea/textarea.component';
 import { CodeEditorComponent } from '../code-editor/code-editor.component';
-import { parseToolVariablesJson, serializeVariables, ToolVariable } from './parameters';
 import {
     DrillStep,
     ParametersTableViewComponent,
 } from './components/parameters-table-view/parameters-table-view.component';
 import { toCreatePayload } from './models/create-custom-tool-form.model';
-import { isToolJsonSchemaValid, objectDefaultDataMarkers, TOOL_VARIABLES_JSON_SCHEMA } from './schema/tool-variables-schema';
+import { parseToolVariablesJson, serializeVariables, ToolVariable } from './parameters';
+import {
+    isToolJsonSchemaValid,
+    objectDefaultDataMarkers,
+    TOOL_VARIABLES_JSON_SCHEMA,
+} from './schema/tool-variables-schema';
 
 enum ActiveEditor {
     None = 'none',
@@ -56,6 +63,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
     imports: [
         CommonModule,
         ReactiveFormsModule,
+        MatTooltipModule,
         AppSvgIconComponent,
         ButtonComponent,
         ChipsInputComponent,
@@ -66,6 +74,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
         TextareaComponent,
         ToggleSwitchComponent,
         ParametersTableViewComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './create-custom-tool-dialog.component.html',
     styleUrls: ['./create-custom-tool-dialog.component.scss'],
@@ -502,4 +511,7 @@ export class CreateCustomToolDialogComponent {
     private buildPayload(): CreatePythonCodeToolPayload {
         return toCreatePayload(this.form.getRawValue());
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

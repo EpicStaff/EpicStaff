@@ -30,7 +30,8 @@ export class NodeFactoryService {
         const icon = NODE_ICONS[type] || 'ti ti-help';
         const size = getDefaultNodeSize(type, nodeData);
         const ports: ViewPort[] = type === NodeType.NOTE ? [] : generatePortsForNode(id, type, nodeData);
-        const nodeNumber = this.flowService.getNextNodeNumber();
+        const nodeNumber =
+            type === NodeType.START || type === NodeType.END ? undefined : this.flowService.getNextNodeNumber();
         const nodeName = generateNodeDisplayName(type, nodeData, nodeNumber);
         const snappedPosition = snapPointToGrid(overrides?.position ?? { x: 0, y: 0 });
 

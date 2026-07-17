@@ -22,6 +22,10 @@ class CallableParser:
         try:
             package = importlib.import_module(package_name)
             pkg_name = package.__name__
+
+            if not hasattr(package, "__path__"):
+                return getattr(package, class_name, None)
+
             pkg_path = package.__path__
             for module_info in pkgutil.walk_packages(pkg_path, pkg_name + "."):
                 try:

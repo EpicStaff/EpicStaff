@@ -11,9 +11,10 @@ from tables.models.tag_models import (
     RealtimeConfigTag,
     RealtimeTranscriptionConfigTag,
 )
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
-class LLMModel(models.Model):
+class LLMModel(OrgScopedModel, models.Model):
     name = models.TextField()
     predefined = models.BooleanField(default=False)
     description = models.TextField(null=True, blank=True)
@@ -27,7 +28,7 @@ class LLMModel(models.Model):
     is_custom = models.BooleanField(default=False)
     tags = models.ManyToManyField(LLMModelTag, blank=True, related_name="llm_models")
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
         unique_together = (
             "name",
             "llm_provider",
@@ -60,8 +61,8 @@ class DefaultLLMConfig(DefaultBaseModel):
     is_visible = models.BooleanField(default=True)
 
 
-class LLMConfig(AbstractDefaultFillableModel):
-    custom_name = models.TextField(unique=True)
+class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
+    custom_name = models.TextField()
     model = models.ForeignKey(LLMModel, on_delete=models.CASCADE, null=True)
     temperature = models.FloatField(
         default=0.5,
@@ -89,6 +90,14 @@ class LLMConfig(AbstractDefaultFillableModel):
     is_visible = models.BooleanField(default=True)
     tags = models.ManyToManyField(LLMConfigTag, blank=True, related_name="llm_configs")
 
+    class Meta(OrgScopedModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "custom_name"],
+                name="unique_llmconfig_name_per_org",
+            ),
+        ]
+
     def get_default_model(self):
         return DefaultLLMConfig.load()
 
@@ -113,7 +122,7 @@ class LLMConfig(AbstractDefaultFillableModel):
 # ElevenLabsRealtimeConfig, or GeminiRealtimeConfig from realtime_models.py.
 # ---------------------------------------------------------------------------
 
-class RealtimeModel(models.Model):
+class RealtimeModel(OrgScopedModel, models.Model):
     """DEPRECATED: use provider-specific config models in realtime_models.py."""
 
     name = models.CharField(
@@ -125,7 +134,7 @@ class RealtimeModel(models.Model):
     is_custom = models.BooleanField(default=False)
 
 
-class RealtimeConfig(models.Model):
+class RealtimeConfig(OrgScopedModel, models.Model):
     """DEPRECATED: use OpenAIRealtimeConfig / ElevenLabsRealtimeConfig / GeminiRealtimeConfig."""
 
     custom_name = models.CharField(max_length=250)
@@ -136,7 +145,7 @@ class RealtimeConfig(models.Model):
     )
 
 
-class RealtimeTranscriptionModel(models.Model):
+class RealtimeTranscriptionModel(OrgScopedModel, models.Model):
     """DEPRECATED: transcription model is now a field inside OpenAIRealtimeConfig."""
 
     name = models.CharField(max_length=250, default="whisper-1")
@@ -146,7 +155,7 @@ class RealtimeTranscriptionModel(models.Model):
     is_custom = models.BooleanField(default=False)
 
 
-class RealtimeTranscriptionConfig(models.Model):
+class RealtimeTranscriptionConfig(OrgScopedModel, models.Model):
     """DEPRECATED: transcription config is now embedded in OpenAIRealtimeConfig."""
 
     custom_name = models.CharField(max_length=250)

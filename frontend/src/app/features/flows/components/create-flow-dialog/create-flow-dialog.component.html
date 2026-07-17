@@ -3,6 +3,8 @@
         <h2 class="dialog-title">{{ dialogTitle }}</h2>
         <button
             class="close-button"
+            matTooltip="Close"
+            matTooltipPosition="above"
             (click)="onCancel()"
             [disabled]="isSubmitting"
         >

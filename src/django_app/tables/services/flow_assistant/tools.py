@@ -184,7 +184,7 @@ def _serialize_classification_decision_table_rules(
                 "field_expressions": group.field_expressions or {},
                 "continue_to_next_rule": group.continue_flag,
                 "routes_to_node_id": group.next_node_id,
-                "prompt_id": group.prompt_id,
+                "prompt_id": group.prompt.prompt_key if group.prompt else None,
             }
         )
     return rules

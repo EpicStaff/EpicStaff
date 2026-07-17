@@ -18,7 +18,6 @@ from tables.graph_versioning.handlers import HANDLER_REGISTRY, _MissingSets
 from tables.models import (
     Graph,
     ConditionalEdge,
-    Organization,
     GraphOrganization,
     PythonCode,
     PythonCodeTool,
@@ -26,7 +25,6 @@ from tables.models import (
     WebhookTrigger,
     WebhookTriggerNode,
 )
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 
 
 class GraphVersioningManager:
@@ -350,6 +348,7 @@ class GraphVersioningManager:
         *,
         graph_name: str,
         version_name: str,
+        org_id: int,
     ) -> tuple[Graph, IDMapper]:
         """
         Create a brand-new Graph from a filtered snapshot.
@@ -386,10 +385,9 @@ class GraphVersioningManager:
 
         serializer = self._graph_strategy.serializer_class(data=snapshot_copy)
         serializer.is_valid(raise_exception=True)
-        graph = serializer.save()
+        graph = serializer.save(org_id=org_id)
 
-        organization = Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
-        GraphOrganization.objects.get_or_create(graph=graph, organization=organization)
+        GraphOrganization.objects.get_or_create(graph=graph, organization_id=org_id)
 
         node_mapper = self._graph_strategy.recreate_graph_children(
             graph,

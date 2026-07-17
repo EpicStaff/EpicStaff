@@ -6,11 +6,3 @@ export interface GetFileExtractorNodeRequest {
     output_variable_path: string | null;
     metadata: Record<string, unknown>;
 }
-
-export interface CreateFileExtractorNodeRequest {
-    node_name: string;
-    graph: number;
-    input_map: Record<string, unknown>;
-    output_variable_path: string | null;
-    metadata?: Record<string, unknown>;
-}

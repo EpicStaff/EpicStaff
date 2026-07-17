@@ -1,10 +1,18 @@
 from rest_framework import serializers
 
 from tables.models.label_models import Label
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    resolve_active_org_id,
+)
 
 
 class LabelSerializer(serializers.ModelSerializer):
     full_path = serializers.CharField(read_only=True)
+    # A label may only be parented under another label in the active org.
+    parent = OrgScopedPrimaryKeyRelatedField(
+        queryset=Label.objects.all(), required=False, allow_null=True
+    )
 
     class Meta:
         model = Label
@@ -16,15 +24,22 @@ class LabelSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         name = attrs.get("name")
+        if name is None:  # partial update not touching the name
+            return attrs
         parent = attrs.get("parent")
 
+        org_id = resolve_active_org_id(self.context["request"])
+        qs = Label.objects.filter(org_id=org_id, name=name)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+
         if parent is None:
-            if Label.objects.filter(name=name, parent__isnull=True).exists():
+            if qs.filter(parent__isnull=True).exists():
                 raise serializers.ValidationError(
                     {"name": "Top-level label with this name already exists."}
                 )
         else:
-            if Label.objects.filter(name=name, parent=parent).exists():
+            if qs.filter(parent=parent).exists():
                 raise serializers.ValidationError(
                     {"name": "Label with this name already exists under this parent."}
                 )

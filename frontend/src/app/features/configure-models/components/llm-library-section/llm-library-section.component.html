@@ -8,7 +8,10 @@
 
             <div class="header-right">
                 <div class="search">
-                    <i class="ti ti-search search-icon" aria-hidden="true"></i>
+                    <i
+                        class="ti ti-search search-icon"
+                        aria-hidden="true"
+                    ></i>
                     <input
                         type="text"
                         class="search-input"
@@ -27,8 +30,16 @@
                     />
                 </div>
 
-                <button type="button" class="add-btn" (click)="onAddModel()">
-                    <i class="ti ti-plus" aria-hidden="true"></i>
+                <button
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
+                    type="button"
+                    class="add-btn"
+                    (click)="onAddModel()"
+                >
+                    <i
+                        class="ti ti-plus"
+                        aria-hidden="true"
+                    ></i>
                     Add Configuration
                 </button>
             </div>
@@ -83,7 +94,10 @@
                                             title="Edit"
                                             (click)="onEditConfig(provider, c)"
                                         >
-                                            <i class="ti ti-pencil" aria-hidden="true"></i>
+                                            <i
+                                                class="ti ti-pencil"
+                                                aria-hidden="true"
+                                            ></i>
                                         </button>
                                         <button
                                             type="button"
@@ -91,7 +105,10 @@
                                             title="Delete"
                                             (click)="onDeleteConfig(provider, c)"
                                         >
-                                            <i class="ti ti-x" aria-hidden="true"></i>
+                                            <i
+                                                class="ti ti-x"
+                                                aria-hidden="true"
+                                            ></i>
                                         </button>
                                     </div>
                                 </div>

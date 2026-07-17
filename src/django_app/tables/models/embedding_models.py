@@ -2,9 +2,10 @@ from django.db import models
 from tables.models.tag_models import EmbeddingModelTag, EmbeddingConfigTag
 from tables.models import DefaultBaseModel
 from tables.models import EmbedderTask
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
-class EmbeddingModel(models.Model):
+class EmbeddingModel(OrgScopedModel, models.Model):
     name = models.TextField()
     predefined = models.BooleanField(default=False)
     embedding_provider = models.ForeignKey(
@@ -18,16 +19,16 @@ class EmbeddingModel(models.Model):
         EmbeddingModelTag, blank=True, related_name="embedding_models"
     )
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
         unique_together = (
             "name",
             "embedding_provider",
         )
 
 
-class EmbeddingConfig(models.Model):
+class EmbeddingConfig(OrgScopedModel, models.Model):
     model = models.ForeignKey("EmbeddingModel", on_delete=models.SET_NULL, null=True)
-    custom_name = models.TextField(unique=True)
+    custom_name = models.TextField()
     task_type = models.CharField(
         max_length=255, choices=EmbedderTask.choices, default=EmbedderTask.RETRIEVAL_DOC
     )
@@ -36,6 +37,14 @@ class EmbeddingConfig(models.Model):
     tags = models.ManyToManyField(
         EmbeddingConfigTag, blank=True, related_name="embedding_configs"
     )
+
+    class Meta(OrgScopedModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "custom_name"],
+                name="unique_embeddingconfig_name_per_org",
+            ),
+        ]
 
     def delete(self, *args, **kwargs):
         from tables.models import set_field_value_null_in_tool_configs

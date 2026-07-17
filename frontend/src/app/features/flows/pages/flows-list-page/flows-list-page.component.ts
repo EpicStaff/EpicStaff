@@ -14,7 +14,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import {
     AppStorageService,
     EmbeddingConfigStorageService,
@@ -94,6 +97,8 @@ type ImportFileData = Record<string, ImportFileEntity[]>;
         ImportFlowOptionsPopoverComponent,
         OverlayModule,
         FlowsFilterMenuComponent,
+        HasPermissionDirective,
+        MatTooltipModule,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -515,4 +520,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     public navigateToSessions() {
         this.router.navigate(['/sessions']);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

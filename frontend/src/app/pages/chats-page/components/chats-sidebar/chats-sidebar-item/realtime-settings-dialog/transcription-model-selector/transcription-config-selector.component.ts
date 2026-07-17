@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { EnhancedTranscriptionConfig } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -8,7 +9,7 @@ import { ClickOutsideDirective } from '../../../../../../../shared/directives/cl
 @Component({
     selector: 'app-transcription-config-selector',
     standalone: true,
-    imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent],
+    imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent, MatTooltip],
     templateUrl: './transcription-config-selector.component.html',
     styleUrls: ['./transcription-config-selector.component.scss'],
 })

@@ -1,6 +1,6 @@
 <div
     class="decision-table"
-    [class.is-blocked-llm]="hasMissingLlmConfig"
+    [class.is-blocked-llm]="hasMissingLlmConfig || hasEmptyConditionName"
     appClickOrDrag
     (actualClick)="onEditClick()"
 >
@@ -33,12 +33,12 @@
             ></i>
         </div>
         <div class="title">{{ node.node_name || 'Classification Table' }}</div>
-        @if (hasMissingLlmConfig) {
+        @if (errorMessages.length > 0) {
             <div
                 class="blocked-badge"
-                title="LLM config is missing or was deleted"
+                [matTooltip]="errorsTooltip"
             >
-                Missed LLM config in prompt
+                ⚠ {{ errorsBadgeLabel }}
             </div>
         }
     </div>

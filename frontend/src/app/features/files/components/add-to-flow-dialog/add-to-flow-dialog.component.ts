@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { forkJoin } from 'rxjs';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -37,7 +38,7 @@ interface FlowOption {
 
 @Component({
     selector: 'app-add-to-flow-dialog',
-    imports: [FormsModule, AppSvgIconComponent],
+    imports: [FormsModule, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './add-to-flow-dialog.component.html',
     styleUrls: ['./add-to-flow-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
