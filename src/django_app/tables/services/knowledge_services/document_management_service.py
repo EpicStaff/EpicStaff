@@ -5,6 +5,7 @@ from django.core.files.uploadedfile import UploadedFile
 from loguru import logger
 
 from tables.models import SourceCollection, DocumentMetadata, DocumentContent
+from tables.models.knowledge_models import NaiveRag
 from tables.constants.knowledge_constants import (
     MAX_FILE_SIZE,
     ALLOWED_FILE_TYPES,
@@ -310,7 +311,14 @@ class DocumentManagementService:
         )
 
         content = document.document_content
+        affected_rags = list(
+            NaiveRag.objects.filter(naive_rag_configs__document=document).distinct()
+        )
+
         document.delete()
+
+        for rag in affected_rags:
+            rag.update_rag_status()
 
         if content and not content.metadata_records.exists():
             content.delete()
@@ -373,9 +381,25 @@ class DocumentManagementService:
             doc.document_content_id for doc in documents if doc.document_content_id
         ]
 
+        affected_rags = list(
+            NaiveRag.objects.filter(
+                naive_rag_configs__document_id__in=found_ids
+            ).distinct()
+        )
+
         # Delete all documents
         _, details = documents.delete()
         deleted_count = details.get(DocumentMetadata._meta.label, 0)
+
+        collection_ids = {
+            d["collection_id"] for d in deleted_info if d["collection_id"]
+        }
+        for collection in SourceCollection.objects.filter(
+            collection_id__in=collection_ids
+        ):
+            collection.update_collection_status()
+        for rag in affected_rags:
+            rag.update_rag_status()
 
         # Delete dangling content
         dangling_content = (

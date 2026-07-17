@@ -86,8 +86,8 @@ class NaiveRag(models.Model):
         else:
             current_status = WARNING
 
-        self.status = current_status
-        self.save()
+        self.rag_status = current_status
+        self.save(update_fields=["rag_status", "updated_at"])
 
 
 class NaiveRagDocumentConfig(models.Model):

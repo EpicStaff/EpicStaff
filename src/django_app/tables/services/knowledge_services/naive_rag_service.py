@@ -665,7 +665,7 @@ class NaiveRagService:
             raise InvalidChunkParametersException("config_ids list cannot be empty")
 
         # Verify NaiveRag exists
-        NaiveRagService.get_naive_rag(naive_rag_id)
+        naive_rag = NaiveRagService.get_naive_rag(naive_rag_id)
 
         # Get configs that belong to this naive_rag
         configs = NaiveRagDocumentConfig.objects.filter(
@@ -684,6 +684,7 @@ class NaiveRagService:
 
         # Delete configs
         configs.delete()
+        naive_rag.update_rag_status()
 
         logger.info(f"Bulk deleted {deleted_count} document configs: {found_ids}")
 
@@ -723,6 +724,7 @@ class NaiveRagService:
 
         document_name = config.document.file_name
         config.delete()
+        config.naive_rag.update_rag_status()
 
         logger.info(
             f"Deleted document config {config_id} for document '{document_name}'"
