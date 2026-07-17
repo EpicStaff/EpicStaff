@@ -5,6 +5,9 @@
 export function deepEqual(a: unknown, b: unknown): boolean {
     if (Object.is(a, b)) return true;
 
+    // SameValueZero: treat +0 and -0 as equal (Object.is treats them as distinct).
+    if (typeof a === 'number' && typeof b === 'number' && a === 0 && b === 0) return true;
+
     if (a === null || a === undefined || b === null || b === undefined) {
         return a === b;
     }
@@ -12,6 +15,8 @@ export function deepEqual(a: unknown, b: unknown): boolean {
     if (a instanceof Date && b instanceof Date) {
         return a.getTime() === b.getTime();
     }
+
+    if (Array.isArray(a) !== Array.isArray(b)) return false;
 
     if (Array.isArray(a) && Array.isArray(b)) {
         if (a.length !== b.length) return false;
