@@ -698,8 +698,8 @@ class RunPythonCodeAPIView(APIView):
             )
 
         execution_id = run_python_code_service.run_code(
-            python_code.id,
-            variables,
+            python_code_id=python_code.id,
+            varaibles=variables,
             organization_id=org_id,
             user=request.user,
         )
