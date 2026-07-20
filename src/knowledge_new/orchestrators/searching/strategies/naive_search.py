@@ -31,4 +31,4 @@ class NaiveSearch(AbstractSearch):
             )
 
         logger.info("Search in rag {} returned {} chunks", request.rag_id, len(chunks))
-        return SearchResponse(request=request, chunks=chunks)
+        return SearchResponse(request=request, result=chunks)

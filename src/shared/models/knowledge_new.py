@@ -106,7 +106,7 @@ class SearchResponse(ValueObject):
     """Chunks matched for a `SearchRequest`."""
 
     request: SearchRequest
-    chunks: list[FoundChunk]
+    result: list[FoundChunk] | str
 
 
 class CancelRequest(ValueObject):

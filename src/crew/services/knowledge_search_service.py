@@ -152,6 +152,8 @@ class KnowledgeSearchService:
         if self.writer is not None:
             self._add_knowledges_to_graph_message(response, knowledge_collection_id)
 
+        if isinstance(response.result, str):
+            return [response.result]
         return [chunk.text for chunk in response.chunks]
 
     @staticmethod
@@ -202,15 +204,20 @@ class KnowledgeSearchService:
     def _add_knowledges_to_graph_message(
         self, response: SearchResponse, collection_id: int
     ):
+        if isinstance(response.result, str):
+            chunks = [response.result]
+        else:
+            chunks = [c.model_dump() for c in response.result]
+
         knowledge_results_data = {
             "message_type": "extracted_chunks",
             "crew_id": self.crew_id,
             "agent_id": self.agent_id,
             "collection_id": collection_id,
-            "retrieved_chunks": len(response.chunks),
+            "retrieved_chunks": len(chunks),
             "knowledge_query": response.request.query,
             "rag_search_config": response.request.search_config.model_dump(),
-            "chunks": [chunk.model_dump() for chunk in response.chunks],
+            "chunks": chunks,
             "token_usage": {},  # not yet in new contract thats why empty
         }
         graph_message = GraphMessage(
