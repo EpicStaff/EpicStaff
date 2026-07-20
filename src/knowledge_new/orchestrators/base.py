@@ -19,10 +19,10 @@ class AbstractOrchestrator[TRequest, TResponse](abc.ABC):
             logger.info("{} cancelled for request {}.", type(self).__name__, request)
             await asyncio.shield(self.on_cancel(request))
         except RepositoryError as e:
-            logger.error("{} failed during DB access: {}", type(self).__name__, e)
+            logger.exception("{} failed during DB access: {}", type(self).__name__, e)
             raise
         except Exception as e:
-            logger.error("{} failed during execution: {}", type(self).__name__, e)
+            logger.exception("{} failed during execution: {}", type(self).__name__, e)
             await asyncio.shield(self.on_error(request, e))
             raise
 
