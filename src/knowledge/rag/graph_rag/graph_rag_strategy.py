@@ -178,11 +178,33 @@ class GraphRAGStrategy(BaseRAGStrategy):
         """
         Run the GraphRAG indexing pipeline.
 
+        graphrag's `build_index` does not raise on workflow failure — each
+        failed workflow is reported via `PipelineRunResult.errors` instead.
+        We inspect every result and raise if any workflow errored, so the
+        caller's except block correctly marks the RAG as "failed".
+
         Args:
             config: GraphRagConfig instance
+
+        Raises:
+            RuntimeError: If one or more graphrag workflows completed with errors
         """
         # GraphRAG's build_index is async
-        asyncio.run(build_index(config))
+        pipeline_results = asyncio.run(build_index(config))
+
+        failed_workflows = [
+            (result.workflow, result.errors)
+            for result in pipeline_results
+            if result.errors
+        ]
+        if failed_workflows:
+            details = "; ".join(
+                f"{workflow}: {[str(error) for error in errors]}"
+                for workflow, errors in failed_workflows
+            )
+            raise RuntimeError(
+                f"GraphRAG indexing failed for workflow(s): {details}"
+            )
 
     # ==================== Search ====================
 
