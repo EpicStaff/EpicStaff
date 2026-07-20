@@ -5,7 +5,6 @@ from models import Document, PrechunkRequest, PrechunkResponse
 from orchestrators.prechunking.base import AbstractPrechunker
 from services.chunkers import build_chunker
 from services.file_text_extractors import build_file_text_extractor
-from services.indexing_error_classifier import IndexingErrorClassifier
 
 
 class NaivePrechunker(AbstractPrechunker):
