@@ -48,6 +48,37 @@ The import/export process follows these steps:
 
 ---
 
+## Organization Scoping
+
+Imports run in the caller's **active organization** (resolved at the endpoint and
+threaded as `org_id` through `ImportService` into every strategy). Both reuse and
+creation are organization-scoped:
+
+- **Reuse (`find_existing`)** is filtered by `strategy.get_org_scope_q(org_id)`:
+  - **Strict** resources (Agent, LLM/Embedding/Realtime configs, McpTool, Label)
+    match only rows in the active org — `Q(org_id=org_id)`.
+  - **Hybrid** resources (provider models, PythonCodeTool) match shared built-in
+    rows **or** custom rows in the active org — e.g.
+    `Q(is_custom=False) | Q(org_id=org_id)` (models) /
+    `Q(built_in=True) | Q(org_id=org_id)` (python tools).
+  - **WebhookTrigger** has no org column; it matches only when a flow in the
+    active org already references its path —
+    `Q(webhook_trigger_nodes__graph__org_id=org_id)`.
+  - **Tags** are global and never scoped (default `Q()`).
+- **Creation (`create_entity`)** stamps the active org, overriding any `org`
+  carried in the export file. Org-scoped serializers that have a `(org, name)`
+  uniqueness validator must receive the active org in their input data (e.g.
+  `data={**data, "org": org_id}`) so the validator checks the target org, not the
+  source org. A newly-created **hybrid** row is created as custom + org-owned
+  (`is_custom=True` / `built_in=False`) — imports never create global built-ins.
+- **Naming** uniqueness (`ensure_unique_identifier`) is checked within the active
+  org, except provider models whose `(name, provider)` constraint is global.
+
+Every `get_org_scope_q` returns `Q()` when `org_id is None`, so direct/internal
+callers that do not pass an org are unaffected.
+
+---
+
 ## Adding New Entities
 
 To add a new entity to the import/export system, follow these steps:
@@ -68,6 +99,7 @@ To add a new entity to the import/export system, follow these steps:
    - Override `extract_dependencies_from_instance()` if necessary.
    - Override `find_existing()` if logic is needed to find existing entities.
    - Override `create_entity()` to handle all creation logic for the entity.
+   - Override `get_org_scope_q()` and stamp `org_id` in `create_entity()` if the entity is organization-scoped (see [Organization Scoping](#organization-scoping)).
 
 4. **Register the Entity**:
    - Open the `tables/apps.py` file.

@@ -5,6 +5,8 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { EditorInfo } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
@@ -31,6 +33,7 @@ import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
         SaveDropdownComponent,
         GraphPresenceIndicatorsComponent,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
     templateUrl: './flow-header.component.html',
     styleUrls: ['./flow-header.component.scss'],
@@ -117,4 +120,7 @@ export class FlowHeaderComponent {
             }
         });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

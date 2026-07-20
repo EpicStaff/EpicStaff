@@ -18,37 +18,6 @@
             type="image/x-icon"
             href="logo.ico"
         />
-        <link
-            rel="stylesheet"
-            href="https://fonts.googleapis.com/css?family=Inter&display=swap"
-        />
-        <!-- Roboto font for Material Design -->
-        <link
-            rel="stylesheet"
-            href="https://fonts.googleapis.com/css?family=Roboto:300,400,500&display=swap"
-        />
-        <!-- Material Icons -->
-        <link
-            rel="stylesheet"
-            href="https://fonts.googleapis.com/icon?family=Material+Icons"
-        />
-        <!-- Material Icons Outlined -->
-        <link
-            rel="stylesheet"
-            href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined"
-        />
-        <link
-            rel="stylesheet"
-            href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"
-        />
-        <link
-            href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap"
-            rel="stylesheet"
-        />
-        <link
-            href="https://fonts.googleapis.com/icon?family=Material+Icons"
-            rel="stylesheet"
-        />
     </head>
     <body class="mat-typography">
         <svg
@@ -3181,6 +3150,24 @@
             </symbol>
 
             <symbol
+                id="icon-circle-check"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <path
+                    stroke="none"
+                    d="M0 0h24v24H0z"
+                    fill="none"
+                />
+                <path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+                <path d="M9 12l2 2l4 -4" />
+            </symbol>
+
+            <symbol
                 id="icon-circle-dot"
                 viewBox="0 0 24 24"
                 fill="none"
@@ -4207,16 +4194,16 @@
         </svg>
 
         <app-root></app-root>
-        <!-- EpicChat Widget. Choose ONE <script> tag below; comment the others out:
-               - prod (CDN, pinned): predictable, won't break on widget releases.
-                 To upgrade, bump v2-0-3 → v2-0-N after checking the new version.
-                 Versions: https://gitlab.hysdev.com/sheetsui/epicstaffchat/-/tags
-               - dev (CDN, rolling): always the latest widget master build.
-                 Use to catch regressions on dev/staging hosts.
-               - local widget dev: loads the widget from public/epicchat-widget/. -->
+        <!-- EpicChat Widget — self-hosted from public/epicchat-widget/ (required default).
+               Privacy directive (EST-3245): no third-party runtime fetches; the widget
+               must NOT be loaded from a CDN in any shipped build.
+               To upgrade the widget, rebuild it from the widget repo and refresh the
+               prebuilt files in frontend/public/epicchat-widget/.
+                 Widget repo/versions: https://gitlab.hysdev.com/sheetsui/epicstaffchat/-/tags
+               Dev-only alternative (never commit active): the rolling CDN build at
+               epicstaffchat.pages.dev/embed.js can be swapped in locally to test the
+               latest widget master, e.g. a v2-0-N pinned subdomain or the root host. -->
 
-        <!-- <script src="https://v2-0-3.epicstaffchat.pages.dev/embed.js"></script> -->
-        <script src="https://epicstaffchat.pages.dev/embed.js"></script>
-        <!-- <script src="/epicchat-widget/embed.js"></script> -->
+        <script src="/epicchat-widget/embed.js"></script>
     </body>
 </html>

@@ -39,6 +39,7 @@
                     Delete Selected
                 </button>
                 <app-action-dropdown-button
+                    *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                     [label]="'Export (' + (selectedIds().size === 0 ? totalCount : selectedIds().size) + ')'"
                     [items]="exportItems"
                     [disabled]="isDeleting() || isExporting() || (selectedIds().size === 0 && totalCount === 0)"

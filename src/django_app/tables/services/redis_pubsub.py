@@ -215,7 +215,7 @@ class RedisPubSub:
             variables = data.get("status_data", {}).get("variables")
             if not variables:
                 return
-
+            # TODO: rbac refactor
             graph_organization = GraphOrganization.objects.filter(
                 graph=session.graph
             ).first()

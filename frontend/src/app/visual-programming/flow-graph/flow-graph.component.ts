@@ -52,7 +52,6 @@ import {
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { ToastService } from '../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ToggleSwitchComponent } from '../../shared/components/form-controls/toggle-switch/toggle-switch.component';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';
@@ -138,7 +137,6 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
         NodePanelShellComponent,
         FlowShortcutsButtonComponent,
         AppSvgIconComponent,
-        ToggleSwitchComponent,
         WaypointTooltipDirective,
         FlowExportImportButtonComponent,
         FlowFilesButtonComponent,

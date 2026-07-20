@@ -22,7 +22,9 @@ class AgentCopyService(BaseCopyService):
     agent's ``role`` field and no unique-name resolution is performed.
     """
 
-    def copy(self, agent: Agent, name: str | None = None) -> Agent:
+    def copy(
+        self, agent: Agent, name: str | None = None, org_id: int | None = None
+    ) -> Agent:
         new_agent = Agent.objects.create(
             role=name if name else agent.role,
             goal=agent.goal,
@@ -40,6 +42,7 @@ class AgentCopyService(BaseCopyService):
             llm_config=agent.llm_config,
             fcm_llm_config=agent.fcm_llm_config,
             knowledge_collection=agent.knowledge_collection,
+            org_id=org_id if org_id is not None else agent.org_id,
         )
 
         for row in agent.configured_tools.all():

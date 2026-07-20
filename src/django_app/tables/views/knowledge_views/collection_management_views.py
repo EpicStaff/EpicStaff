@@ -20,10 +20,16 @@ from tables.serializers.knowledge_serializers import (
     CopySourceCollectionSerializer,
 )
 
+from rest_framework.permissions import IsAuthenticated
+
 from tables.services.redis_service import RedisService
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
+from tables.views.mixins import OrgScopedResolverMixin
+from tables.services.rbac.permissions import HasOrgPermission
+from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.swagger_schemas.knowledge_schemas.collection_management_schemas import (
     SOURCE_COLLECTIONS_GET,
     SOURCE_COLLECTION_GET,
@@ -40,7 +46,7 @@ from tables.exceptions import CollectionNotFoundException
 redis_service = RedisService()
 
 
-class SourceCollectionViewSet(viewsets.ModelViewSet):
+class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
     """
     ViewSet for SourceCollection CRUD operations.
 
@@ -59,9 +65,18 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
 
     http_method_names = ["get", "post", "patch", "put", "delete"]
 
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "bulk_delete": Permission.DELETE,
+        "copy": Permission.CREATE,
+        "available_rags": Permission.READ,
+    }
+
     def get_queryset(self):
-        """Optimize queries based on action."""
-        queryset = SourceCollection.objects.all()
+        """Active-org collections only, optimized per action."""
+        queryset = SourceCollection.objects.filter(org_id=self.get_active_org_id())
 
         if self.action == "list" or self.action == "retrieve":
             queryset = queryset.prefetch_related("documents")
@@ -105,6 +120,7 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
                 collection_name=serializer.validated_data.get("collection_name"),
                 user_id=serializer.validated_data.get("user_id"),
                 collection_origin=serializer.validated_data.get("collection_origin"),
+                org_id=self.get_active_org_id(),
             )
 
             output_serializer = SourceCollectionDetailSerializer(collection)
@@ -182,6 +198,14 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Narrow to ids the active org actually owns — ids in another org are
+        # silently ignored (no cross-org delete, no existence leak).
+        collection_ids = list(
+            self.get_queryset()
+            .filter(collection_id__in=collection_ids)
+            .values_list("collection_id", flat=True)
+        )
+
         try:
             result = CollectionManagementService.bulk_delete_collections(collection_ids)
 
@@ -202,15 +226,18 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
     @extend_schema(**SOURCE_COLLECTION_COPY_POST)
     @action(detail=True, methods=["post"])
     def copy(self, request, pk=None):
+        # get_object() is org-scoped (404 for another org's collection).
+        collection = self.get_object()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         try:
             new_collection = CollectionManagementService.copy_collection(
-                source_collection_id=int(pk),
+                source_collection_id=collection.collection_id,
                 new_collection_name=serializer.validated_data.get(
                     "new_collection_name"
                 ),
+                org_id=self.get_active_org_id(),
             )
 
             output_serializer = SourceCollectionDetailSerializer(new_collection)
@@ -234,9 +261,13 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
     @extend_schema(**SOURCE_COLLECTION_AVAILABLE_RAGS_GET)
     @action(detail=True, methods=["get"], url_path="available-rags")
     def available_rags(self, request, pk=None):
+        # get_object() is org-scoped (404 for another org's collection).
+        collection = self.get_object()
         try:
             # Get all RAG configurations for this collection
-            rag_configs = CollectionManagementService.get_rag_configurations(int(pk))
+            rag_configs = CollectionManagementService.get_rag_configurations(
+                collection.collection_id
+            )
 
             # Get status filter from query params (default to completed,warning)
             status_filter = request.query_params.get("status", "completed,warning,new")

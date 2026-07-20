@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Output } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
@@ -86,4 +87,6 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
 })
 export class AddProjectCardComponent {
     @Output() public createClick = new EventEmitter();
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

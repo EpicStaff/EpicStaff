@@ -8,6 +8,7 @@ from tables.import_export.version_conversions.base import VersionConverter
 from tables.import_export.registry import entity_registry
 from tables.import_export.constants import MAIN_ENTITY_KEY
 from tables.import_export.export_format_strategies import JsonExportFormatStrategy
+from tables.services.rbac.permission_resolver import PermissionResolver
 
 
 class ViewSetImportExportService:
@@ -44,9 +45,7 @@ class ViewSetImportExportService:
         return strategy.render(data, self.entity_type, self.export_prefix, base_name)
 
     def import_entity(
-        self,
-        file,
-        settings: ImportSettings = None,
+        self, file, user, settings: ImportSettings = None, org_id: int = None
     ):
         try:
             data = json.load(file)
@@ -62,10 +61,13 @@ class ViewSetImportExportService:
         # convert data to newer version
         data = VersionConverter.convert(data)
 
+        effective_permissions = PermissionResolver().resolve(user=user, org_id=org_id)
         id_mapper, registry = self.import_service.import_data(
             data,
             self.entity_type,
             settings=settings,
+            org_id=org_id,
+            effective_permissions=effective_permissions,
         )
         summary = id_mapper.get_detailed_summary(registry)
 

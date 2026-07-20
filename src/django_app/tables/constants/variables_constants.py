@@ -1,3 +1,4 @@
+# TODO: refactor, persistant variables story
 DOMAIN_VARIABLES_KEY = "variables"
 DOMAIN_PERSISTENT_KEY = "persistent_variables"
 DOMAIN_ORGANIZATION_KEY = "organization"

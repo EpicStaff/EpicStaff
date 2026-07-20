@@ -5,8 +5,6 @@ import tarfile
 import zipfile
 from typing import Iterator
 
-from rest_framework.exceptions import PermissionDenied
-
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
     ArchiveUploadResult,
@@ -19,10 +17,6 @@ from tables.services.storage_service.dataclasses import (
     UploadResult,
 )
 from tables.services.storage_service.db_sync import StorageFileSync
-from tables.services.storage_service.decorators import check_permission
-from tables.services.storage_service.enums import StorageAction
-
-from tables.models import OrganizationUser
 
 
 _DOCUMENT_EXTENSIONS = frozenset(
@@ -66,9 +60,10 @@ class StorageManager:
     operations work naturally — source and destination keys can belong to
     different orgs without any backend changes.
 
-    Every public method checks permissions via _require_permission before
-    touching storage. Extend that method to add roles, path ACLs, audit
-    logging, or any other access control logic.
+    Authorization is enforced at the API layer (StorageAPIView:
+    IsAuthenticated + HasOrgPermission(FILES) + active-org membership, and
+    superadmin-only for cross-org transfers). This manager only composes
+    org-scoped keys and delegates to the backend.
     """
 
     def __init__(self, backend: AbstractStorageBackend):
@@ -87,43 +82,12 @@ class StorageManager:
             return storage_key[len(prefix) :]
         return storage_key
 
-    # --- Permission gate ---
-
-    def _require_permission(
-        self, user_name: str, org_id: int, action: StorageAction, path: str
-    ) -> None:
-        """
-        Verify that user_name may perform action on path within org_id.
-
-        Currently checks org membership only. This is the single extension
-        point for all future access control:
-          - Add role lookups to restrict actions (e.g. viewers cannot delete)
-          - Add path-based ACLs for fine-grained file access
-          - Add audit logging here to capture every storage operation
-        """
-
-        if not OrganizationUser.objects.filter(org_id=org_id).exists():
-            raise PermissionDenied(
-                f"User '{user_name}' does not have '{action}' permission "
-                f"in organization {org_id}."
-            )
-
-        # Future: role = OrganizationUser.objects.get(...).role
-        # Future: if not role.allows(action): raise PermissionDenied(...)
-        # Future: if not path_acl_allows(role, path): raise PermissionDenied(...)
-
     # --- Single-org operations ---
 
-    @check_permission
-    def list_(
-        self, user_name: str, org_id: int, prefix: str = ""
-    ) -> list[FileListItem]:
+    def list_(self, org_id: int, prefix: str = "") -> list[FileListItem]:
         return self._backend.list_(self._build_storage_key(org_id, prefix))
 
-    @check_permission
-    def upload(
-        self, user_name: str, org_id: int, path: str, file_object
-    ) -> UploadResult:
+    def upload(self, org_id: int, path: str, file_object) -> UploadResult:
         result = self._backend.upload(
             self._build_storage_key(org_id, path), file_object
         )
@@ -131,43 +95,31 @@ class StorageManager:
         StorageFileSync.on_upload(org_id, relative_path)
         return UploadResult(path=relative_path, size=result.size)
 
-    @check_permission
-    def download(self, user_name: str, org_id: int, path: str) -> bytes:
+    def download(self, org_id: int, path: str) -> bytes:
         return self._backend.download(self._build_storage_key(org_id, path))
 
-    @check_permission
-    def delete(self, user_name: str, org_id: int, path: str) -> None:
+    def delete(self, org_id: int, path: str) -> None:
         self._backend.delete(self._build_storage_key(org_id, path))
         StorageFileSync.on_delete(org_id, path)
 
-    @check_permission
-    def mkdir(self, user_name: str, org_id: int, path: str) -> None:
+    def mkdir(self, org_id: int, path: str) -> None:
         self._backend.mkdir(self._build_storage_key(org_id, path))
 
-    @check_permission
-    def move(
-        self, user_name: str, org_id: int, source_path: str, destination_path: str
-    ) -> None:
+    def move(self, org_id: int, source_path: str, destination_path: str) -> None:
         self._backend.move(
             self._build_storage_key(org_id, source_path),
             self._build_storage_key(org_id, destination_path),
         )
         StorageFileSync.on_move(org_id, source_path, destination_path)
 
-    @check_permission
-    def rename(
-        self, user_name: str, org_id: int, source_path: str, destination_path: str
-    ) -> None:
+    def rename(self, org_id: int, source_path: str, destination_path: str) -> None:
         self._backend.rename(
             self._build_storage_key(org_id, source_path),
             self._build_storage_key(org_id, destination_path),
         )
         StorageFileSync.on_move(org_id, source_path, destination_path)
 
-    @check_permission
-    def copy(
-        self, user_name: str, org_id: int, source_path: str, destination_path: str
-    ) -> None:
+    def copy(self, org_id: int, source_path: str, destination_path: str) -> None:
         actual_keys = self._backend.copy(
             self._build_storage_key(org_id, source_path),
             self._build_storage_key(org_id, destination_path),
@@ -175,21 +127,16 @@ class StorageManager:
         actual_paths = [self._strip_org_prefix(org_id, k) for k in actual_keys]
         StorageFileSync.on_copy(org_id, actual_paths)
 
-    @check_permission
-    def info(self, user_name: str, org_id: int, path: str) -> FileInfo | FolderInfo:
+    def info(self, org_id: int, path: str) -> FileInfo | FolderInfo:
         result = self._backend.info(self._build_storage_key(org_id, path))
         return dataclasses.replace(
             result, path=self._strip_org_prefix(org_id, result.path)
         )
 
-    @check_permission
-    def exists(self, user_name: str, org_id: int, path: str) -> bool:
+    def exists(self, org_id: int, path: str) -> bool:
         return self._backend.exists(self._build_storage_key(org_id, path))
 
-    @check_permission
-    def download_zip(
-        self, user_name: str, org_id: int, paths: list[str]
-    ) -> Iterator[bytes]:
+    def download_zip(self, org_id: int, paths: list[str]) -> Iterator[bytes]:
         """
         Yield a zip archive of the given paths.
         Zip entry names are relative (no org prefix) so callers don't see
@@ -234,9 +181,7 @@ class StorageManager:
         file_object.seek(pos)
         return result
 
-    def upload_file(
-        self, user_name: str, org_id: int, path: str, file_object
-    ) -> UploadFileResult:
+    def upload_file(self, org_id: int, path: str, file_object) -> UploadFileResult:
         """
         Upload a file, auto-extracting archives (ZIP/TAR).
         Returns FileUploadResult or ArchiveUploadResult.
@@ -244,9 +189,6 @@ class StorageManager:
         is_archive = self._is_archive(file_object, filename=file_object.name)
 
         if is_archive:
-            self._require_permission(
-                user_name, org_id, action=StorageAction.UPLOAD, path=path
-            )
             extracted = self._upload_archive(org_id, path, file_object)
 
             for p in extracted:
@@ -257,9 +199,6 @@ class StorageManager:
         destination = (
             f"{path.rstrip('/')}/{file_object.name}" if path else file_object.name
         )
-        self._require_permission(
-            user_name, org_id, action=StorageAction.UPLOAD, path=destination
-        )
         result = self._backend.upload(
             self._build_storage_key(org_id, destination), file_object
         )
@@ -267,10 +206,8 @@ class StorageManager:
         StorageFileSync.on_upload(org_id, relative_path)
         return FileUploadResult(type="file", path=relative_path, size=result.size)
 
-    @check_permission
     def list_tree(
         self,
-        user_name: str,
         org_id: int,
         prefix: str = "",
         max_depth: int | None = None,
@@ -290,10 +227,8 @@ class StorageManager:
         )
         return dataclasses.replace(node, path=stripped_path, children=children)
 
-    @check_permission
     def search(
         self,
-        user_name: str,
         org_id: int,
         q: str,
         path: str = "",
@@ -312,26 +247,20 @@ class StorageManager:
         rows = list(qs.order_by("path").values("path", "name")[offset : offset + limit])
         return rows, total
 
-    # --- Cross-org operations ---
+    # --- Cross-org operations (superadmin-only; enforced at the API layer) ---
 
     def copy_cross_org(
         self,
-        user_name: str,
         src_org_id: int,
         src_path: str,
         dst_org_id: int,
         dst_path: str,
     ) -> None:
         """
-        Copy a file from one org to another. User must have permission in both.
-        Uses a server-side S3 copy — no data streams through the app.
+        Copy a file from one org to another. Caller authorization (superadmin)
+        is enforced at the API layer. Uses a server-side S3 copy — no data
+        streams through the app.
         """
-        self._require_permission(
-            user_name, src_org_id, action=StorageAction.DOWNLOAD, path=src_path
-        )
-        self._require_permission(
-            user_name, dst_org_id, action=StorageAction.UPLOAD, path=dst_path
-        )
         actual_keys = self._backend.copy(
             self._build_storage_key(src_org_id, src_path),
             self._build_storage_key(dst_org_id, dst_path),
@@ -342,23 +271,16 @@ class StorageManager:
 
     def move_cross_org(
         self,
-        user_name: str,
         src_org_id: int,
         src_path: str,
         dst_org_id: int,
         dst_path: str,
     ) -> None:
         """
-        Move a file from one org to another. User must have permission in both.
-        Non-atomic: if the delete step fails after a successful copy, the file
-        will exist in both orgs.
+        Move a file from one org to another. Caller authorization (superadmin)
+        is enforced at the API layer. Non-atomic: if the delete step fails after
+        a successful copy, the file will exist in both orgs.
         """
-        self._require_permission(
-            user_name, src_org_id, action=StorageAction.DELETE, path=src_path
-        )
-        self._require_permission(
-            user_name, dst_org_id, action=StorageAction.UPLOAD, path=dst_path
-        )
         self._backend.move(
             self._build_storage_key(src_org_id, src_path),
             self._build_storage_key(dst_org_id, dst_path),
