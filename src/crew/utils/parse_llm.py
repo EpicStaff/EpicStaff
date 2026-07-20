@@ -1,3 +1,5 @@
+import litellm
+
 from src.shared.models import LLMData
 from src.crew.utils.llm_wrapper import PatchedLLM, _NO_TEMPERATURE_PATTERNS
 
@@ -10,9 +12,21 @@ def _strip_unsupported_params(llm_config: dict) -> dict:
     return llm_config
 
 
+def _qualify_model(provider: str | None, model: str | None) -> str | None:
+    if not provider or not model or "/" in model:
+        return model
+    candidate = f"{provider}/{model}"
+    try:
+        litellm.get_llm_provider(model=candidate)
+    except Exception:
+        return model
+    return candidate
+
+
 def parse_llm(llm: LLMData, **kwargs):
     llm_config = {**llm.config.model_dump()}
     llm_config.update(kwargs)
+    llm_config["model"] = _qualify_model(llm.provider, llm_config.get("model"))
     return PatchedLLM(**llm_config)
 
 
