@@ -28,6 +28,14 @@ from rag.graph_rag.utils import (
 DEFAULT_CHAT_MODEL_ID = "default_chat_model"
 DEFAULT_EMBEDDING_MODEL_ID = "default_embedding_model"
 
+# graphrag's LanguageModelConfig defaults to max_retries=10 with exponential
+# backoff and retries even non-retryable errors (e.g. 401 AuthenticationError).
+# With an invalid API key that becomes a retry storm across every LLM/embedding
+# call, leaving indexing stuck in "processing" for 15+ minutes. Bound retries
+# and add a request timeout so failures surface fast instead of hanging.
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_REQUEST_TIMEOUT = 60.0
+
 
 class GraphRagConfigBuilder:
     """
@@ -146,6 +154,8 @@ class GraphRagConfigBuilder:
             "type": model_type,
             "model": model_name,
             "api_key": api_key,
+            "max_retries": DEFAULT_MAX_RETRIES,
+            "request_timeout": DEFAULT_REQUEST_TIMEOUT,
         }
 
         if model_type in [ModelType.Chat, ModelType.Embedding]:
