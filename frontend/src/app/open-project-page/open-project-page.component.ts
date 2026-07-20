@@ -19,17 +19,21 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
-import { EMPTY, filter, forkJoin, from, Observable, of, Subscription } from 'rxjs';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { ActivatedRoute, Router } from '@angular/router';
+import { ActionCode, ResourceCode } from '@shared/models';
+import { EMPTY, filter, forkJoin, from, Observable, of, Subscription, throwError } from 'rxjs';
 import { catchError, concatMap, finalize, map, switchMap, tap, toArray } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../core/guards/unsaved-changes.guard';
+import { UnsavedChangesRegistry } from '../core/services/unsaved-changes-registry.service';
 import { GetProjectRequest } from '../features/projects/models/project.model';
 import { ProjectsStorageService } from '../features/projects/services/projects-storage.service';
 import { CreateAgentRequest } from '../features/staff/models/agent.model';
 import { FullAgent, FullAgentService } from '../features/staff/services/full-agent.service';
 import { AgentsService } from '../features/staff/services/staff.service';
 import { TasksService } from '../features/tasks/services/tasks.service';
+import { PermissionsService } from '../services/auth/permissions.service';
 import { ToastService } from '../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../shared/components/app-svg-icon/app-svg-icon.component';
 import { CreateAgentFormComponent } from '../shared/components/create-agent-form-dialog/create-agent-form-dialog.component';
@@ -100,6 +104,7 @@ function asTaskPendingPayloadRecord(payload: unknown): Record<string, unknown> {
     styleUrl: './open-project-page.component.scss',
     imports: [
         CommonModule,
+        MatTooltipModule,
 
         HeaderComponent,
         DetailsContentComponent,
@@ -155,15 +160,20 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
         private fullAgentService: FullAgentService,
         private fullTaskService: FullTaskService,
         public projectStateService: ProjectStateService,
+        private permissionsService: PermissionsService,
         private toastService: ToastService,
         private route: ActivatedRoute,
+        private router: Router,
         private dialog: Dialog,
         private agentsService: AgentsService,
         private unsavedChangesDialog: UnsavedChangesDialogService,
+        private unsavedChangesRegistry: UnsavedChangesRegistry,
         private destroyRef: DestroyRef
     ) {}
 
     ngOnInit() {
+        this.unsavedChangesRegistry.register(this);
+
         if (this.inputProjectId) {
             this.projectId = String(this.inputProjectId);
             this.loadData();
@@ -262,6 +272,12 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                             agents: this.fullAgentService.getFullAgentsByProject(+this.projectId),
                         }).pipe(map(({ tasks, agents }) => ({ project, tasks, agents })));
                     }),
+                    catchError((err) => {
+                        this.toastService.error(err.error?.detail || 'Failed to load project data');
+                        this.isLoading.set(false);
+                        void this.router.navigate(['/projects/my']);
+                        return throwError(() => err);
+                    }),
                     finalize(() => {
                         // Ensure minimum loading time of 500ms
                         const loadTime = Date.now() - loadStartTime;
@@ -287,14 +303,8 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                         this.baselineAgentsById = new Map(
                             (agents ?? []).map((a: any) => [Number(a.id), structuredClone(a)])
                         );
-
-                        this.cdr.markForCheck();
                     },
-                    error: () => {
-                        this.toastService.error('Failed to load project data');
-                        this.isLoading.set(false);
-                        this.cdr.markForCheck();
-                    },
+                    complete: () => this.cdr.markForCheck(),
                 })
         );
     }
@@ -415,36 +425,18 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     }
 
     ngOnDestroy() {
+        this.unsavedChangesRegistry.unregister(this);
         this.projectStateService.setProject(null);
         this.subscription.unsubscribe();
     }
 
-    private normalizeDetails(input: { description: string; tags: string[] }) {
-        const description = (input.description ?? '').trim();
-
-        const tags = (input.tags ?? [])
-            .map((t) => String(t ?? '').trim())
-            .filter(Boolean)
-            .map((t) => (t.startsWith('#') ? t.slice(1) : t))
-            .map((t) => t.toLowerCase())
-            .sort();
-
-        return { description, tags };
-    }
-
-    public onDetailsChanged(change: { description: string; tags: string[] }): void {
+    public onDetailsChanged(change: { description: string }): void {
         if (!this.project) return;
 
-        const next = this.normalizeDetails(change);
-        const current = this.normalizeDetails({
-            description: this.project.description ?? '',
-            tags: ((this.project as unknown as Record<string, unknown>)['tags'] as string[]) ?? [], // якщо tags є в моделі
-        });
+        const nextDescription = (change.description ?? '').trim();
+        const currentDescription = (this.project.description ?? '').trim();
 
-        const isSame =
-            next.description === current.description && JSON.stringify(next.tags) === JSON.stringify(current.tags);
-
-        if (isSame) {
+        if (nextDescription === currentDescription) {
             this.pendingProjectUpdate = null;
             this.hasUnsavedChanges = false;
             this.cdr.markForCheck();
@@ -453,7 +445,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
 
         this.pendingProjectUpdate = {
             description: change.description ?? '',
-            tags: [...(change.tags ?? [])] as unknown as number[],
         };
 
         this.hasUnsavedChanges = true;
@@ -655,11 +646,6 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
                     this.cdr.markForCheck();
                 },
             });
-    }
-
-    public get detailsTagsAsStrings(): string[] {
-        const tags = (this.project as any)?.tags ?? [];
-        return Array.isArray(tags) ? tags.map(String) : [];
     }
 
     private normalizeSettingValue(key: keyof GetProjectRequest, value: any): any {
@@ -935,6 +921,7 @@ export class OpenProjectPageComponent implements OnInit, OnDestroy, CanComponent
     }
 
     public canDeactivate(): boolean | Observable<boolean> {
+        if (!this.permissionsService.can(ResourceCode.Projects, ActionCode.Update)) return true;
         if (!this.hasUnsavedChanges) return true;
 
         return this.unsavedChangesDialog

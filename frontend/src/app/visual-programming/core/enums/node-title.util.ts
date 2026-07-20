@@ -53,9 +53,9 @@ export function getNodeTitle(node: NodeModel): string {
 
         // Fixed-name types
         case NodeType.START:
-            return withNumber('Start', node);
+            return 'Start';
         case NodeType.END:
-            return withNumber('End', node);
+            return 'End';
         case NodeType.NOTE:
             return 'Note';
         case NodeType.SUBGRAPH: {

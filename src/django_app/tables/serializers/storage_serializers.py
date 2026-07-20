@@ -3,7 +3,6 @@ import re
 
 from rest_framework import serializers
 
-from tables.models import Graph
 from tables.validators.file_upload_validator import FileValidator
 
 
@@ -161,15 +160,6 @@ class StorageAddToGraphSerializer(serializers.Serializer):
 
     def validate_paths(self, value: list[str]) -> list[str]:
         return [_normalize_path(path) for path in value]
-
-    def validate_graph_ids(self, value: list[int]) -> list[int]:
-        existing = set(Graph.objects.filter(id__in=value).values_list("id", flat=True))
-        missing = [gid for gid in value if gid not in existing]
-
-        if missing:
-            raise serializers.ValidationError(f"Graphs not found: {missing}")
-
-        return value
 
 
 class FileItemSerializer(serializers.Serializer):

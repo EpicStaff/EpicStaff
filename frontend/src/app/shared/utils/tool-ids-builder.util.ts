@@ -1,15 +1,7 @@
 import { ToolUniqueName } from '../../features/staff/models/agent.model';
 
-export function buildToolIdsArray(
-    configuredToolIds: number[],
-    pythonToolIds: number[],
-    mcpToolIds: number[] = []
-): ToolUniqueName[] {
+export function buildToolIdsArray(pythonToolIds: number[], mcpToolIds: number[] = []): ToolUniqueName[] {
     const toolIds: ToolUniqueName[] = [];
-
-    configuredToolIds.forEach((id) => {
-        toolIds.push(`configured-tool:${id}`);
-    });
 
     pythonToolIds.forEach((id) => {
         toolIds.push(`python-code-tool:${id}`);

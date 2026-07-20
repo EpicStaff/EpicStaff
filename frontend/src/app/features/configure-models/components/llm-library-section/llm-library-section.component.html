@@ -33,6 +33,7 @@
                 </div>
 
                 <button
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
                     type="button"
                     class="llm-library__add-btn"
                     (click)="onAddModel()"

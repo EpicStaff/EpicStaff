@@ -81,8 +81,10 @@
                         <button
                             type="button"
                             class="toggle-icon-button"
-                            (click)="toggleCodeEditorFullWidth()"
+                            [matTooltip]="isCodeEditorFullWidth() ? 'Collapse editor' : 'Expand editor'"
+                            matTooltipPosition="right"
                             [attr.aria-label]="isCodeEditorFullWidth() ? 'Collapse code editor' : 'Expand code editor'"
+                            (click)="toggleCodeEditorFullWidth()"
                         >
                             <svg
                                 width="9"

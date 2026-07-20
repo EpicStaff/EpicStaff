@@ -15,6 +15,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { Subject } from 'rxjs';
 
 import { FullAgent } from '../../../../../features/staff/services/full-agent.service';
@@ -23,7 +24,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
 @Component({
     selector: 'app-agent-selection-popup',
     standalone: true,
-    imports: [NgFor, FormsModule, NgIf, AppSvgIconComponent],
+    imports: [NgFor, FormsModule, NgIf, AppSvgIconComponent, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './agent-popup.component.html',
     styleUrls: ['./agent-popup.component.scss'],

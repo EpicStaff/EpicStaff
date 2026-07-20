@@ -1,103 +1,183 @@
-.tab {
+.voice-settings {
     display: flex;
     flex-direction: column;
     gap: 16px;
     color: var(--color-text-primary);
 
-    &__header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 24px;
-    }
-
-    &__header-left {
+    .header {
         display: flex;
         flex-direction: column;
         gap: 6px;
-    }
 
-    &__title {
-        font-size: 20px;
-        font-weight: 500;
-        color: var(--configure-models-dialog-active-color, #d9d9de);
-        margin: 0;
-    }
+        .title {
+            margin: 0;
+            font-size: 20px;
+            color: var(--color-text-primary);
+        }
 
-    &__subtitle {
-        font-size: 14px;
-        color: rgba(217, 217, 222, 0.6);
-        margin: 0;
-    }
-
-    &__form {
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-        max-width: 480px;
-    }
-
-    &__url-field {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
-
-    &__url-label {
-        font-size: 0.875rem;
-        color: var(--color-ks-text);
-    }
-
-    &__url-input {
-        width: 100%;
-        height: 2.5rem;
-        padding: 0.75rem 0.5rem;
-        background: var(--color-ks-line, #2b2d30);
-        border: 1px solid rgba(217, 217, 222, 0.16);
-        border-radius: 0.25rem;
-        color: var(--color-text-secondary);
-        font-size: 0.875rem;
-        cursor: default;
-        box-sizing: border-box;
-
-        &:focus {
-            outline: none;
+        .subtitle {
+            margin: 0;
+            font-size: 14px;
+            color: var(--color-text-secondary);
         }
     }
 
-    &__section-title {
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: var(--color-text-secondary);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        padding-top: 0.5rem;
-        border-top: 1px solid rgba(217, 217, 222, 0.1);
-    }
-
-    &__phone-row {
-        display: flex;
-        gap: 0.75rem;
-        align-items: flex-end;
-
-        app-select {
-            flex: 1;
-        }
-    }
-
-    &__hint {
-        font-size: 0.8rem;
-        color: var(--color-text-secondary);
-        margin: 0;
-    }
-
-    &__loading-state {
+    .loading-state {
         text-align: center;
         padding: 2rem;
         color: var(--color-text-secondary);
 
-        &--error {
+        &.error {
             color: var(--color-error);
+        }
+    }
+
+    .layout {
+        display: flex;
+        gap: 24px;
+        align-items: start;
+    }
+
+    .left {
+        flex: 0 0 55%;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+
+        .form {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+
+            .row {
+                display: grid;
+                grid-template-columns: 134px minmax(0, 1fr);
+                align-items: center;
+                gap: 12px;
+                position: relative;
+
+                .label {
+                    display: flex;
+                    justify-content: flex-end;
+                    align-items: center;
+                    gap: 12px;
+                    font-size: 14px;
+                    color: var(--color-text-secondary);
+
+                    i {
+                        font-size: 14px;
+                        color: var(--color-text-secondary);
+                    }
+
+                    .tooltip-icon {
+                        color: var(--accent-color);
+
+                        &:hover {
+                            opacity: 0.7;
+                        }
+                    }
+                }
+
+                .phone-select {
+                    display: contents;
+                }
+            }
+
+            .test-row {
+                display: flex;
+                justify-content: flex-end;
+            }
+
+            .divider {
+                margin-top: 6px;
+                border-top: var(--color-divider-subtle);
+            }
+
+            .section-title {
+                font-size: 16px;
+                font-weight: 600;
+                color: var(--color-text-primary);
+            }
+
+            .hint {
+                font-size: 0.8rem;
+                color: var(--color-text-secondary);
+                margin: 0;
+            }
+
+            .actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: 12px;
+                margin-top: 6px;
+            }
+        }
+    }
+
+    .right {
+        flex: 0 0 calc(45% - 24px);
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+
+        .card {
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.02);
+            padding: 24px;
+
+            .card-title {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 16px;
+                color: var(--accent-color);
+            }
+
+            .card-text {
+                margin: 12px 0 0;
+                font-size: 13px;
+                color: var(--color-text-secondary);
+                line-height: 1.6;
+            }
+
+            .steps {
+                margin: 16px 0 0;
+                padding-left: 20px;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                font-size: 14px;
+                color: var(--color-text-secondary);
+                line-height: 1.6;
+                list-style: decimal;
+
+                li {
+                    padding-left: 4px;
+
+                    &::marker {
+                        color: var(--color-text-secondary);
+                    }
+                }
+
+                .arrow-icon {
+                    color: var(--accent-color);
+                }
+            }
+        }
+    }
+}
+
+@media (max-width: 1100px) {
+    .voice-settings {
+        .layout {
+            flex-direction: column;
+        }
+
+        .left,
+        .right {
+            flex: 1;
+            width: 100%;
         }
     }
 }

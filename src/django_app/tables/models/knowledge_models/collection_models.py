@@ -2,8 +2,10 @@ from django.db import models
 
 from loguru import logger
 
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 
-class SourceCollection(models.Model):
+
+class SourceCollection(OrgScopedModel, models.Model):
     class SourceCollectionStatus(models.TextChoices):
         """
         Status of SourceCollection
@@ -42,11 +44,11 @@ class SourceCollection(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
         constraints = [
             models.UniqueConstraint(
-                fields=["user_id", "collection_name"],
-                name="unique_collection_name_per_user",
+                fields=["org", "collection_name"],
+                name="unique_collection_name_per_org",
             )
         ]
 
@@ -55,7 +57,7 @@ class SourceCollection(models.Model):
 
     def _generate_unique_collection_name(self, base_name):
         existing_names = SourceCollection.objects.filter(
-            user_id=self.user_id, collection_name__startswith=base_name
+            org_id=self.org_id, collection_name__startswith=base_name
         ).values_list("collection_name", flat=True)
 
         if base_name not in existing_names:

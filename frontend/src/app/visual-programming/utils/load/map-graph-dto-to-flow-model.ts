@@ -25,6 +25,25 @@ import { mapWebhookTriggerNodeToModel } from './nodes/webhook-trigger-node.mappe
 import { resolveClassificationDecisionTableNodeRefs } from './ref-resolvers/classification-decision-table-refs';
 import { resolveDecisionTableNodeRefs } from './ref-resolvers/decision-table-refs';
 
+/**
+ * Reassigns colliding/missing nodeNumbers to the next free integers.
+ * BE-imported nodes keep their source graph's nodeNumber, which can duplicate
+ * existing ones — this guarantees a unique #N badge per node after load.
+ */
+function deduplicateNodeNumbers(nodes: NodeModel[]): NodeModel[] {
+    const seen = new Set<number>();
+    let next = Math.max(0, ...nodes.map((n) => n.nodeNumber ?? 0)) + 1;
+    return nodes.map((n) => {
+        if (n.nodeNumber == null || seen.has(n.nodeNumber)) {
+            const num = next++;
+            seen.add(num);
+            return { ...n, nodeNumber: num };
+        }
+        seen.add(n.nodeNumber);
+        return n;
+    });
+}
+
 export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     // ── 1. Map each backend node list to UI node models ──────────────────
     const startNodes = (graph.start_node_list ?? []).map((n) => mapStartNodeToModel(n));
@@ -122,5 +141,5 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         );
     }
 
-    return { nodes: allNodes, connections: allConnections };
+    return { nodes: deduplicateNodeNumbers(allNodes), connections: allConnections };
 }

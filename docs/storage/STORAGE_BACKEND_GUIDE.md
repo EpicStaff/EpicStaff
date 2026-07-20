@@ -51,7 +51,7 @@ STORAGE_BUCKET_NAME=<your-bucket-name>
 ```
 StorageAPIView (REST endpoints)
        |
-  StorageManager (org isolation, permissions)
+  StorageManager (org isolation, path composition)
        |
   get_storage_backend()          <-- factory, builds S3StorageBackend from settings
        |
@@ -66,12 +66,9 @@ StorageAPIView (REST endpoints)
 | `tables/services/storage_service/__init__.py` | Factory functions `get_storage_backend()`, `get_storage_manager()` |
 | `tables/services/storage_service/base.py` | `AbstractStorageBackend` interface |
 | `tables/services/storage_service/s3_backend.py` | S3/MinIO implementation |
-| `tables/services/storage_service/manager.py` | `StorageManager` (org prefixing, permissions, archive handling) |
-| `tables/services/storage_service/enums.py` | `StorageAction` enum |
-| `tables/services/storage_service/decorators.py` | `@check_permission` decorator |
+| `tables/services/storage_service/manager.py` | `StorageManager` (org prefixing, archive handling) |
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` — keeps DB in sync with storage mutations |
 | `tables/services/storage_service/dataclasses.py` | Data classes: `FileListItem`, `FileInfo`, `FolderInfo`, `UploadResult`, etc. |
-| `tables/storage_permissions.py` | `StoragePermission` DRF permission class |
 | `tables/validators/file_upload_validator.py` | `FileValidator` — blocks executable uploads, scans archives |
 | `tables/models/graph_models.py` | `StorageFile`, `GraphStorageFile`, `SessionStorageFile` models |
 | `tables/views/storage_views.py` | `StorageAPIView` REST endpoints |
@@ -110,9 +107,13 @@ Tests exercise the same interface against `InMemoryStorageBackend` (see `django_
 
 All paths are automatically prefixed with `org_{org_id}/`. The caller works with relative paths only — the org prefix is added/stripped transparently.
 
-### Permission checks
+### Authorization
 
-Every public method is decorated with `@check_permission`, which calls `_require_permission()` before touching storage. Currently checks org membership via `OrganizationUser`. Extension points exist for role-based access and path-based ACLs.
+The `StorageManager` performs **no** authorization — it only composes org-scoped
+keys and delegates to the backend. Access control is enforced at the REST API layer
+(`StorageAPIView`): `IsAuthenticated` + `HasOrgPermission(FILES)` + active-org
+membership (via `OrgContextService`), with cross-org transfers restricted to
+superadmin. See `docs/rbac/organization_scoping.md`.
 
 ### Archive auto-extraction
 
@@ -128,10 +129,11 @@ Document formats (`.xlsx`, `.docx`, `.pptx`, `.epub`, `.jar`, `.apk`, `.war`, `.
 
 ### Cross-org operations
 
-- `copy_cross_org(user_name, src_org_id, src_path, dst_org_id, dst_path)` -- copy between orgs
-- `move_cross_org(user_name, src_org_id, src_path, dst_org_id, dst_path)` -- move between orgs (non-atomic: if delete fails after copy, file exists in both)
+- `copy_cross_org(src_org_id, src_path, dst_org_id, dst_path)` -- copy between orgs
+- `move_cross_org(src_org_id, src_path, dst_org_id, dst_path)` -- move between orgs (non-atomic: if delete fails after copy, file exists in both)
 
-Both require the user to have permission in source and destination orgs.
+Cross-org transfers are restricted to **superadmin**, enforced at the API layer
+(`StorageAPIView`); the manager itself does not check permissions.
 
 ---
 

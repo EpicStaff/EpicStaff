@@ -29,6 +29,7 @@ from tables.views.auth_views import (
     SseTicketView,
     SwaggerTokenView,
     TokenIntrospectView,
+    WsTicketView,
 )
 from tables.views.permission_views import (
     MyPermissionsView,
@@ -50,6 +51,7 @@ urlpatterns = [
     path("api/auth/logout/", LogoutView.as_view(), name="logout"),
     path("api/auth/refresh/", TokenRefreshView.as_view(), name="refresh"),
     path("api/auth/sse-ticket/", SseTicketView.as_view(), name="sse_ticket"),
+    path("api/auth/ws-ticket/", WsTicketView.as_view(), name="ws_ticket"),
     path(
         "api/auth/introspect/", TokenIntrospectView.as_view(), name="token_introspect"
     ),

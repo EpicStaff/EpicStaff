@@ -204,12 +204,13 @@ def processing_naive_rag(base_rag_type, test_embedding_config):
 
 
 @pytest.fixture
-def agent_without_rag():
+def agent_without_rag(default_org):
     """Create an agent without RAG assignment."""
     return Agent.objects.create(
         role="Test Agent",
         goal="Test Goal",
         backstory="Test Backstory",
+        org=default_org,
     )
 
 

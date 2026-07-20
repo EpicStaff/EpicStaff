@@ -5,22 +5,13 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 import json
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from db.config import AsyncSessionLocal
 from sqlalchemy import text
 import uvicorn
 
 from repositories.session_repository import SessionRepository
-from models.models import (
-    RunToolParamsModel,
-    ToolInitConfigurationModel,
-    ClassDataResponseModel,
-    RunToolResponseModel,
-)
 
-from repositories.import_tool_data_repository import ImportToolDataRepository
-from services.tool_image_service import ToolImageService
-from services.tool_container_service import ToolContainerService
 from services.redis_service import RedisService
 from services.session_timeout_service import SessionTimeoutService
 from services.schedule_service import ScheduleService
@@ -30,14 +21,6 @@ from helpers.logger import logger
 
 app = FastAPI()
 
-import_tool_data_repository = ImportToolDataRepository()
-tool_image_service = ToolImageService(
-    import_tool_data_repository=import_tool_data_repository
-)
-tool_container_service = ToolContainerService(
-    tool_image_service=tool_image_service,
-    import_tool_data_repository=import_tool_data_repository,
-)
 redis_service = RedisService()
 
 session_repository = SessionRepository(AsyncSessionLocal)
@@ -52,42 +35,6 @@ session_timeout_service = SessionTimeoutService(
 )
 
 schedule_service = ScheduleService(redis_service=redis_service)
-
-
-@app.post(
-    "/tool/{tool_alias}/class-data",
-    status_code=200,
-    response_model=ClassDataResponseModel,
-)
-def post_class_data(
-    tool_alias: str, tool_init_configuration: ToolInitConfigurationModel
-):
-    logger.info(f"{tool_alias}; {tool_init_configuration.tool_init_configuration}")
-    try:
-        classdata = tool_container_service.request_class_data(
-            tool_alias=tool_alias,
-            tool_init_configuration=tool_init_configuration.model_dump(),
-        )["classdata"]
-        logger.info(f"Class data retrieved successfully for tool alias: {tool_alias}")
-        return ClassDataResponseModel(classdata=classdata)
-    except Exception as e:
-        logger.error(f"Failed to retrieve class data for tool alias {tool_alias}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@app.post(
-    "/tool/{tool_alias}/run", status_code=200, response_model=RunToolResponseModel
-)
-def run(tool_alias: str, run_tool_params_model: RunToolParamsModel):
-    try:
-        run_tool_response = tool_container_service.request_run_tool(
-            tool_alias=tool_alias, run_tool_params_model=run_tool_params_model
-        )
-        logger.info(f"Tool with alias {tool_alias} run successfully.")
-        return RunToolResponseModel(data=run_tool_response["data"])
-    except Exception as e:
-        logger.error(f"Failed to run tool with alias {tool_alias}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 async def test_database_connection():

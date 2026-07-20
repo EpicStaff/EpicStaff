@@ -14,17 +14,21 @@
     </div>
     <div class="item__right">
         <app-button
+            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
             type="ghost"
             (click)="onConfigure()"
             >Configure</app-button
         >
-        <div class="item__separator"></div>
-        <app-icon-button
-            icon="x"
-            [size]="'2rem'"
-            ariaLabel="Delete"
-            (onClick)="onDelete()"
-            class="item__delete-btn"
-        ></app-icon-button>
+        <ng-container *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]">
+            <div class="item__separator"></div>
+            <app-icon-button
+                icon="x"
+                [size]="'2rem'"
+                ariaLabel="Delete"
+                tooltip="Delete"
+                (onClick)="onDelete()"
+                class="item__delete-btn"
+            ></app-icon-button>
+        </ng-container>
     </div>
 </div>

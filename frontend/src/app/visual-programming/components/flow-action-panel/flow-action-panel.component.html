@@ -3,7 +3,8 @@
         @for (action of actionIcons; track action.action) {
             <button
                 class="action-button"
-                [title]="action.tooltip"
+                [matTooltip]="action.tooltip"
+                matTooltipPosition="right"
                 [disabled]="isActionDisabled(action.action)"
                 (click)="handleAction(action.action)"
             >

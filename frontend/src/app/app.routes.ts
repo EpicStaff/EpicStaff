@@ -1,14 +1,16 @@
 import { inject } from '@angular/core';
 import { Router, Routes } from '@angular/router';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { authGuard } from './core/guards/auth.guard';
 import { bootstrapGuard } from './core/guards/bootstrap.guard';
 import { guestGuard } from './core/guards/guest.guard';
-import { onboardingGuard } from './core/guards/onboarding.guard';
+import { onboardingGuard, resourceGuard, unassignedGuard } from './core/guards/resource.guard';
 import { UnsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 import { permissionGuard, superAdminGuard, workspaceGuard } from './core/guards/workspace.guard';
 import { MainLayoutComponent } from './layouts/main-layout/main-layout.component';
 import { RoutedAuthShellComponent } from './layouts/routed-auth-shell/routed-auth-shell.component';
+import { PermissionsService } from './services/auth/permissions.service';
 import { LastVisitedTabService } from './services/last-visited-tab.service';
 
 export const routes: Routes = [
@@ -41,29 +43,36 @@ export const routes: Routes = [
         canActivate: [guestGuard],
     },
     {
-        path: 'onboarding',
-        loadComponent: () =>
-            import('./features/auth/components/onboarding-page/onboarding-page.component').then(
-                (m) => m.OnboardingPageComponent
-            ),
-        canActivate: [onboardingGuard],
-    },
-    {
         path: '',
         component: RoutedAuthShellComponent,
-        canActivate: [authGuard],
+        canActivate: [authGuard, bootstrapGuard],
         children: [
+            {
+                path: 'onboarding',
+                loadComponent: () =>
+                    import('./features/auth/components/onboarding-page/onboarding-page.component').then(
+                        (m) => m.OnboardingPageComponent
+                    ),
+                canActivate: [onboardingGuard],
+            },
+            {
+                path: 'unassigned',
+                loadComponent: () =>
+                    import('./features/auth/components/unassigned-user-page/unassigned-user-page.component').then(
+                        (m) => m.UnassignedUserPageComponent
+                    ),
+                canActivate: [unassignedGuard],
+            },
             {
                 path: '',
                 component: MainLayoutComponent,
-                canActivate: [bootstrapGuard],
+                canActivate: [resourceGuard],
                 children: [
                     {
                         path: '',
                         canActivate: [
                             () => {
-                                const last = inject(LastVisitedTabService).get('/projects');
-                                return inject(Router).parseUrl(last ?? '/projects/my');
+                                return inject(Router).parseUrl(inject(PermissionsService).resolveDefaultRoute());
                             },
                         ],
                         children: [],
@@ -74,6 +83,8 @@ export const routes: Routes = [
                             import('./features/projects/pages/projects-list-page/projects-list-page.component').then(
                                 (m) => m.ProjectsListPageComponent
                             ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Projects, ActionCode.Read] },
                         children: [
                             { path: '', redirectTo: 'my', pathMatch: 'full' },
                             {
@@ -98,6 +109,8 @@ export const routes: Routes = [
                             import('./open-project-page/open-project-page.component').then(
                                 (m) => m.OpenProjectPageComponent
                             ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Projects, ActionCode.Read] },
                         canDeactivate: [UnsavedChangesGuard],
                     },
                     {
@@ -105,6 +118,8 @@ export const routes: Routes = [
                         loadComponent: () =>
                             import('./pages/staff-page/staff-page.component').then((m) => m.StaffPageComponent),
                         canDeactivate: [UnsavedChangesGuard],
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Agents, ActionCode.Read] },
                     },
                     {
                         path: 'agents',
@@ -120,6 +135,8 @@ export const routes: Routes = [
                             import('./features/tools/pages/tools-list-page/tools-list-page.component').then(
                                 (m) => m.ToolsListPageComponent
                             ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Tools, ActionCode.Read] },
                         children: [
                             {
                                 path: '',
@@ -153,6 +170,8 @@ export const routes: Routes = [
                             import('./features/flows/pages/flows-list-page/flows-list-page.component').then(
                                 (m) => m.FlowsListPageComponent
                             ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Flows, ActionCode.Read] },
                         children: [
                             {
                                 path: '',
@@ -186,6 +205,8 @@ export const routes: Routes = [
                             import('./pages/flows-page/components/flow-visual-programming/flow-visual-programming.component').then(
                                 (m) => m.FlowVisualProgrammingComponent
                             ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Flows, ActionCode.Read] },
                         canDeactivate: [UnsavedChangesGuard],
                     },
                     {
@@ -194,6 +215,8 @@ export const routes: Routes = [
                             import('./pages/running-graph/pages/running-graph-page/running-graph-page.component').then(
                                 (m) => m.RunningGraphComponent
                             ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Flows, ActionCode.Read] },
                     },
                     {
                         path: 'knowledge-sources',
@@ -223,6 +246,8 @@ export const routes: Routes = [
                                     import('./features/knowledge-sources/pages/collections-list-page/collections-list-page.component').then(
                                         (m) => m.CollectionsListPageComponent
                                     ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.KnowledgeSources, ActionCode.Read] },
                             },
                             {
                                 path: 'storage',
@@ -230,6 +255,8 @@ export const routes: Routes = [
                                     import('./features/files/pages/files-list-page/components/storage-page/storage-page.component').then(
                                         (m) => m.StoragePageComponent
                                     ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.Files, ActionCode.Read] },
                             },
                         ],
                     },
@@ -244,6 +271,8 @@ export const routes: Routes = [
                             import('./features/flows/pages/global-sessions-list/global-sessions-list.component').then(
                                 (m) => m.GlobalSessionsListComponent
                             ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Flows, ActionCode.Read] },
                     },
                     {
                         path: 'workspace',
@@ -273,7 +302,7 @@ export const routes: Routes = [
                                         (m) => m.OrganizationsTabComponent
                                     ),
                                 canActivate: [permissionGuard],
-                                data: { permission: ['organizations', 'read'] },
+                                data: { permission: [ResourceCode.Organizations, ActionCode.Read] },
                             },
                             {
                                 path: 'users',
@@ -282,7 +311,7 @@ export const routes: Routes = [
                                         (m) => m.UsersTabComponent
                                     ),
                                 canActivate: [permissionGuard],
-                                data: { permission: ['users', 'read'] },
+                                data: { permission: [ResourceCode.Users, ActionCode.Read] },
                             },
                             {
                                 path: 'roles',
@@ -291,14 +320,7 @@ export const routes: Routes = [
                                         (m) => m.RolesTabComponent
                                     ),
                                 canActivate: [permissionGuard],
-                                data: { permission: ['roles', 'read'] },
-                            },
-                            {
-                                path: 'roles',
-                                loadComponent: () =>
-                                    import('./features/role-base-access/pages/overview-page/roles-tab/roles-tab.component').then(
-                                        (m) => m.RolesTabComponent
-                                    ),
+                                data: { permission: [ResourceCode.Roles, ActionCode.Read] },
                             },
                         ],
                     },

@@ -8,6 +8,7 @@ export * from './embeddings/full-embedding.service';
 export * from './llms/full-llm-config.service';
 export * from './llms/llm-config.service';
 export * from './llms/llm-config-storage.service';
+export * from './llms/llm-library.service';
 export * from './llms/llm-models.service';
 export * from './llms/llm-models-storage.service';
 export * from './llms/llm-providers.service';

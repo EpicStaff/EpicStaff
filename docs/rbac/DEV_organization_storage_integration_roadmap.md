@@ -44,6 +44,12 @@ Owner: **Story 7** (active-org switching). `_resolve_context` reads
 `(request.user.id, org_id)`. Single-membership users transparently default
 to their only org.
 
+> Note: this resolves the default org by name. The canonical anchor is now
+> `Organization.is_default` (see the bootstrap/backfill change). When Story 7
+> lands it switches to the caller's active org (org id from the request). If
+> Story 7 slips, a one-line `filter(is_default=True)` swap hardens it against
+> rename in the meantime.
+
 ### `tables/views/model_view_sets.py:801` and `tables/import_export/strategies/graph.py:85`
 
 Both `Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)` lookups for
@@ -52,6 +58,11 @@ assigning newly-imported objects to the default org.
 Owner: **Story 8** (resource scoping). When Flow / Agent / Tool gain `org_id`
 FK, the import flow gets the org from the calling user's active org instead
 of guessing the default.
+
+> Note: these resolve the default org by name. The canonical anchor is now
+> `Organization.is_default` (see the bootstrap/backfill change). When Story 8
+> lands they switch to the caller's active org. If Story 8 slips, a one-line
+> `filter(is_default=True)` swap hardens them against rename in the meantime.
 
 ### `tables/constants/organization_constants.py`
 

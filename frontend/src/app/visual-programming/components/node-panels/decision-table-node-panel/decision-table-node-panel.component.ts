@@ -1,7 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
-
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
@@ -25,6 +26,7 @@ import { DecisionTableGridComponent } from './decision-table-grid/decision-table
         CustomInputComponent,
         CommonModule,
         DecisionTableGridComponent,
+        MatTooltipModule,
         SelectComponent,
         HelpTooltipComponent,
     ],

@@ -4,6 +4,9 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
@@ -60,6 +63,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
     imports: [
         CommonModule,
         ReactiveFormsModule,
+        MatTooltipModule,
         AppSvgIconComponent,
         ButtonComponent,
         ChipsInputComponent,
@@ -70,6 +74,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
         TextareaComponent,
         ToggleSwitchComponent,
         ParametersTableViewComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './create-custom-tool-dialog.component.html',
     styleUrls: ['./create-custom-tool-dialog.component.scss'],
@@ -509,4 +514,7 @@ export class CreateCustomToolDialogComponent {
     private buildPayload(): CreatePythonCodeToolPayload {
         return toCreatePayload(this.form.getRawValue());
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

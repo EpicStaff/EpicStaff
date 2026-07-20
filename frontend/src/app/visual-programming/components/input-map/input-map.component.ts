@@ -117,6 +117,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                     icon="trash"
                                     size="1rem"
                                     class="delete-icon"
+                                    matTooltip="Remove"
+                                    matTooltipPosition="above"
                                     (click)="removePair(i)"
                                 ></app-svg-icon>
                             </div>
@@ -169,6 +171,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                     icon="trash"
                                     size="1rem"
                                     class="delete-icon"
+                                    matTooltip="Remove"
+                                    matTooltipPosition="above"
                                     (click)="removeTestVariable(i)"
                                 ></app-svg-icon>
                             </div>
@@ -194,7 +198,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                         class="btn-secondary"
                         (click)="onClearAll()"
                     >
-                        Clear All
+                        Clear Variables
                     </button>
                     <button
                         type="button"
@@ -1090,7 +1094,7 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
             return 'Save the graph first to enable this feature';
         }
         if (!this.hasSuccessfulSession()) {
-            return 'Fill out the Input list and complete a successful session to access Input Variables.';
+            return 'Fill out the Input list and complete a successful session to access Input Variables (available after entering the first test values).';
         }
         return '';
     }

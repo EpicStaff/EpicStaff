@@ -29,6 +29,21 @@ class EntityType(str, Enum):
     LLM_CONFIG_TAG = "LLMConfigTag"
     EMBEDDING_MODEL_TAG = "EmbeddingModelTag"
 
+    START_NODE = "StartNode"
+    CREW_NODE = "CrewNode"
+    PYTHON_NODE = "PythonNode"
+    AUDIO_TRANSCRIPTION_NODE = "AudioTranscriptionNode"
+    FILE_EXTRACTOR_NODE = "FileExtractorNode"
+    TELEGRAM_TRIGGER_NODE = "TelegramTriggerNode"
+    WEBHOOK_TRIGGER_NODE = "WebhookTriggerNode"
+    DECISION_TABLE_NODE = "DecisionTableNode"
+    CLASSIFICATION_DECISION_TABLE_NODE = "ClassificationDecisionTableNode"
+    SUBGRAPH_NODE = "SubgraphNode"
+    END_NODE = "EndNode"
+    NOTE_NODE = "GraphNote"
+    CODE_AGENT_NODE = "CodeAgentNode"
+    SCHEDULE_TRIGGER_NODE = "ScheduleTriggerNode"
+
 
 class NodeType(str, Enum):
     START_NODE = "StartNode"

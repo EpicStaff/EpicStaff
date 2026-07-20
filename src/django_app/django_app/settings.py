@@ -81,6 +81,8 @@ INSTALLED_APPS = [
     "django_filters",
     "corsheaders",
     "django_redis",
+    "channels",
+    "channels_redis",
 ]
 
 
@@ -135,6 +137,8 @@ SIMPLE_JWT = {
 }
 
 ROOT_URLCONF = "django_app.urls"
+ASGI_APPLICATION = "django_app.asgi.application"
+
 
 TEMPLATES = [
     {
@@ -230,6 +234,24 @@ CACHES = {
         },
     }
 }
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [
+                {
+                    "host": REDIS_HOST,
+                    "port": REDIS_PORT,
+                    "password": REDIS_PASSWORD,
+                }
+            ],
+        },
+    },
+}
+
+GRAPH_WS_TICKET_TTL_SECONDS = 30
+
 MEDIA_ROOT = os.environ.get("DJANGO_MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
 MEDIA_URL = "/media/"
 

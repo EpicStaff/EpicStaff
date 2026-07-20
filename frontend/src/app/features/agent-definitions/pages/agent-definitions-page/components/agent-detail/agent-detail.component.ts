@@ -133,7 +133,6 @@ export class AgentDetailComponent implements OnInit {
         llm_config: [null as number | null],
     });
 
-    readonly llmConfigs = this.fullLlmConfigService.fullConfigs;
     readonly llmLoading = signal<boolean>(true);
 
     readonly bootAsDoc = signal<boolean>(false);

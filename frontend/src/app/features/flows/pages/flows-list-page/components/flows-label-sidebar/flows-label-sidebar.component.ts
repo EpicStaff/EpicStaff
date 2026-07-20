@@ -15,7 +15,9 @@ import {
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogComponent, DialogResult } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
 import { ResizableSidebarDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { SidebarWidthService } from '@shared/services';
 
 import { LabelColorPickerComponent } from '../../../../components/label-color-picker/label-color-picker.component';
@@ -38,8 +40,9 @@ const SIDEBAR_STORAGE_KEY = 'flows';
         DialogModule,
         AppSvgIconComponent,
         LabelColorPickerComponent,
-        ResizableSidebarDirective,
         MatTooltipModule,
+        HasPermissionDirective,
+        ResizableSidebarDirective,
     ],
     templateUrl: './flows-label-sidebar.component.html',
     styleUrls: ['./flows-label-sidebar.component.scss'],
@@ -329,4 +332,7 @@ export class FlowsLabelSidebarComponent implements OnInit {
         }
         return 'Failed to save label. Please try again.';
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

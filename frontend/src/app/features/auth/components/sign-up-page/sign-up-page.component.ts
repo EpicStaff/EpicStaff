@@ -78,7 +78,6 @@ export class SignUpPageComponent {
         forkJoin([this.authService.runSetup({ email, password }), timer(1000)]).subscribe({
             next: ([resp]) => {
                 this.authService.storeTokens({ access: resp.access, refresh: resp.refresh });
-                sessionStorage.setItem('needs_onboarding', 'true');
                 this.state.set('success');
                 timer(1000).subscribe(() => {
                     void this.router.navigate(['/onboarding']);

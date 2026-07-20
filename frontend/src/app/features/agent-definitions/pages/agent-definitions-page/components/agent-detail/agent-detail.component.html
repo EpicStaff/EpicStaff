@@ -59,7 +59,6 @@
                             <label class="label">LLM</label>
                             <app-llm-model-selector
                                 formControlName="llm_config"
-                                [llmConfigs]="llmConfigs()"
                                 [loading]="llmLoading()"
                                 placeholder="Select LLM model"
                                 (modelSelected)="autosave()"

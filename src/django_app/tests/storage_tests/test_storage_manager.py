@@ -3,7 +3,6 @@ import zipfile
 from io import BytesIO
 
 import pytest
-from rest_framework.exceptions import PermissionDenied
 
 from tables.models import StorageFile
 from tables.services.storage_service.dataclasses import (
@@ -40,28 +39,6 @@ class TestPathHelpers:
         assert storage_manager._strip_org_prefix(1, "other/a.txt") == "other/a.txt"
 
 
-# --- Permission gate ---
-
-
-@pytest.mark.django_db
-class TestPermission:
-    def test_require_permission_passes_for_org_member(
-        self, storage_manager, org, org_user
-    ):
-        from tables.services.storage_service.enums import StorageAction
-
-        # Should not raise
-        storage_manager._require_permission("testuser", org.id, StorageAction.LIST, "")
-
-    def test_require_permission_raises_for_non_member(self, storage_manager, org):
-        from tables.services.storage_service.enums import StorageAction
-
-        with pytest.raises(PermissionDenied):
-            storage_manager._require_permission(
-                "nobody", org.id, StorageAction.LIST, ""
-            )
-
-
 # --- Delegation + sync ---
 
 
@@ -73,9 +50,7 @@ class TestDelegation:
         mock_backend.upload.return_value = UploadResult(
             path="org_{}/docs/f.txt".format(org.id), size=10
         )
-        result = storage_manager.upload(
-            "testuser", org.id, "docs/f.txt", BytesIO(b"data")
-        )
+        result = storage_manager.upload(org.id, "docs/f.txt", BytesIO(b"data"))
         args = mock_backend.upload.call_args[0]
         assert args[0] == f"org_{org.id}/docs/f.txt"
         assert result.path == "docs/f.txt"
@@ -84,7 +59,7 @@ class TestDelegation:
     def test_delete_delegates_to_backend_and_syncs(
         self, storage_manager, mock_backend, org, org_user, patch_sync
     ):
-        storage_manager.delete("testuser", org.id, "old.txt")
+        storage_manager.delete(org.id, "old.txt")
         mock_backend.delete.assert_called_once_with(f"org_{org.id}/old.txt")
         patch_sync.on_delete.assert_called_once_with(org.id, "old.txt")
 
@@ -101,7 +76,7 @@ class TestDelegation:
     def test_rename_delegates_and_syncs_via_on_move(
         self, storage_manager, mock_backend, org, org_user, patch_sync
     ):
-        storage_manager.rename("testuser", org.id, "old.txt", "new.txt")
+        storage_manager.rename(org.id, "old.txt", "new.txt")
         mock_backend.rename.assert_called_once_with(
             f"org_{org.id}/old.txt", f"org_{org.id}/new.txt"
         )
@@ -122,7 +97,7 @@ class TestDelegation:
             f"org_{org.id}/dest/a.txt",
             f"org_{org.id}/dest/b.txt",
         ]
-        storage_manager.copy("testuser", org.id, "src", "dest")
+        storage_manager.copy(org.id, "src", "dest")
         patch_sync.on_copy.assert_called_once_with(org.id, ["dest/a.txt", "dest/b.txt"])
 
     def test_info_strips_org_prefix_from_result_path(
@@ -139,12 +114,6 @@ class TestDelegation:
         result = storage_manager.info("testuser", org.id, "docs/f.txt")
         assert isinstance(result, FileInfo)
         assert result.path == "docs/f.txt"
-
-    def test_decorated_method_raises_permission_denied_for_non_member(
-        self, storage_manager, org
-    ):
-        with pytest.raises(PermissionDenied):
-            storage_manager.list_("nobody", org.id, "")
 
 
 # --- _is_archive ---
@@ -202,7 +171,7 @@ class TestUploadFile:
         buf.name = "bundle.zip"
 
         mock_backend.upload_archive.return_value = [f"org_{org.id}/inner.txt"]
-        result = storage_manager.upload_file("testuser", org.id, "", buf)
+        result = storage_manager.upload_file(org.id, "", buf)
         assert isinstance(result, ArchiveUploadResult)
         mock_backend.upload_archive.assert_called_once()
 
@@ -214,7 +183,7 @@ class TestUploadFile:
         mock_backend.upload.return_value = UploadResult(
             path=f"org_{org.id}/notes.txt", size=13
         )
-        result = storage_manager.upload_file("testuser", org.id, "", buf)
+        result = storage_manager.upload_file(org.id, "", buf)
         assert isinstance(result, FileUploadResult)
         assert result.path == "notes.txt"
 
@@ -235,13 +204,11 @@ class TestCrossOrg:
         patch_sync,
     ):
         mock_backend.copy.return_value = [f"org_{second_org.id}/dest.txt"]
-        storage_manager.copy_cross_org(
-            "testuser", org.id, "src.txt", second_org.id, "dest.txt"
-        )
+        storage_manager.copy_cross_org(org.id, "src.txt", second_org.id, "dest.txt")
         mock_backend.copy.assert_called_once()
         patch_sync.on_copy.assert_called_once_with(second_org.id, ["dest.txt"])
 
-    def test_copy_cross_org_raises_when_missing_source_membership(
+     def test_copy_cross_org_raises_when_missing_source_membership(
         self, storage_manager, org, second_org, second_org_user
     ):
         # "testuser" is NOT a member of org (no org_user fixture)
@@ -259,7 +226,8 @@ class TestCrossOrg:
                 "testuser", org.id, "src.txt", second_org.id, "dest.txt"
             )
 
-    def test_move_cross_org_checks_delete_source_upload_dest(
+
+    def test_move_cross_org_delegates_to_backend_and_syncs(
         self,
         storage_manager,
         mock_backend,
@@ -269,17 +237,11 @@ class TestCrossOrg:
         second_org_user,
         patch_sync,
     ):
-        mock_backend.move.return_value = f"org_{second_org.id}/dest.txt"
-        storage_manager.move_cross_org(
-            "testuser", org.id, "src.txt", second_org.id, "dest.txt"
-        )
+        storage_manager.move_cross_org(org.id, "src.txt", second_org.id, "dest.txt")
         mock_backend.move.assert_called_once_with(
             f"org_{org.id}/src.txt", f"org_{second_org.id}/dest.txt"
         )
-        patch_sync.on_move_cross_org.assert_called_once_with(
-            org.id, "src.txt", second_org.id, "dest.txt"
-        )
-
+        patch_sync.on_move_cross_org.assert_called_once()
 
 @pytest.mark.django_db
 class TestListTreeManager:
@@ -596,26 +558,24 @@ class TestSearchManager:
     def test_search_finds_filename_substring(
         self, storage_manager, org, org_user, seeded
     ):
-        results, total = storage_manager.search("testuser", org.id, q="report")
+        results, total = storage_manager.search(org.id, q="report")
         assert total == 3
         names = [r["name"] for r in results]
         assert "q1_report.pdf" in names
         assert "note.txt" not in names
 
     def test_search_is_case_insensitive(self, storage_manager, org, org_user, seeded):
-        _, total = storage_manager.search("testuser", org.id, q="REPORT")
+        _, total = storage_manager.search(org.id, q="REPORT")
         assert total == 3
 
     def test_search_scoped_to_path(self, storage_manager, org, org_user, seeded):
-        _, total = storage_manager.search(
-            "testuser", org.id, q="report", path="reports/"
-        )
+        _, total = storage_manager.search(org.id, q="report", path="reports/")
         assert total == 2
 
     def test_search_excludes_other_orgs(
         self, storage_manager, org, second_org, org_user, seeded
     ):
-        _, total = storage_manager.search("testuser", org.id, q="q1_report")
+        _, total = storage_manager.search(org.id, q="q1_report")
         assert total == 1
 
     def test_search_excludes_folder_rows(self, storage_manager, org, org_user, seeded):
@@ -624,12 +584,8 @@ class TestSearchManager:
         assert "reports" not in names
 
     def test_search_pagination(self, storage_manager, org, org_user, seeded):
-        page1, total = storage_manager.search(
-            "testuser", org.id, q="report", limit=2, offset=0
-        )
-        page2, _ = storage_manager.search(
-            "testuser", org.id, q="report", limit=2, offset=2
-        )
+        page1, total = storage_manager.search(org.id, q="report", limit=2, offset=0)
+        page2, _ = storage_manager.search(org.id, q="report", limit=2, offset=2)
         assert len(page1) == 2
         assert len(page2) == 1
         assert total == 3

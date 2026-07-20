@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
@@ -8,7 +9,7 @@ import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip
 @Component({
     selector: 'app-tool-libraries',
     standalone: true,
-    imports: [CommonModule, FormsModule, AppSvgIconComponent, HelpTooltipComponent],
+    imports: [CommonModule, FormsModule, AppSvgIconComponent, HelpTooltipComponent, MatTooltipModule],
     templateUrl: './tool-libraries.component.html',
     styleUrls: ['./tool-libraries.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

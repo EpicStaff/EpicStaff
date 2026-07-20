@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ButtonComponent, StepConfig } from '@shared/components';
 import { StepperComponent } from '@shared/components';
 import { Observable, of } from 'rxjs';
@@ -30,6 +31,7 @@ import { RagStrategyFactory } from './factory/rag-creation.factory';
         StepSelectRagComponent,
         AppSvgIconComponent,
         NgComponentOutlet,
+        MatTooltipModule,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

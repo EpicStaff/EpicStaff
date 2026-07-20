@@ -10,6 +10,7 @@
             size="1rem"
             class="add-icon"
             (click)="onAddVariable(); $event.preventDefault()"
+            matTooltip="Add variable"
         ></app-svg-icon>
     </div>
 
@@ -52,6 +53,7 @@
                             <button
                                 class="delete-variable-btn"
                                 (click)="removeVariable(i); $event.preventDefault()"
+                                matTooltip="Delete variable"
                             >
                                 <app-svg-icon
                                     icon="x"

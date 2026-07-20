@@ -6,9 +6,11 @@ import {
     computed,
     EventEmitter,
     Input,
+    input,
     Output,
     signal,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -60,6 +62,7 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
         FlowNodeVariablesOverlayComponent,
         GoToButtonComponent,
         AppSvgIconComponent,
+        MatTooltipModule,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
@@ -77,6 +80,7 @@ export class FlowBaseNodeComponent {
     public isExpanded = signal(false);
     public isToggleDisabled = signal(false);
     @Input() showVariables: boolean = false;
+    multiSelectActive = input<boolean>(false);
 
     @Output() projectExpandToggled = new EventEmitter<ProjectNodeModel>();
     @Output() portMouseenter = new EventEmitter<void>();
@@ -188,7 +192,7 @@ export class FlowBaseNodeComponent {
         return this.node.type === NodeType.TABLE ? (this.node as DecisionTableNodeModel) : null;
     }
 
-    public get classificationDecisionTableNode(): ClassificationDecisionTableNodeModel | null {
+    public get classificationTableNode(): ClassificationDecisionTableNodeModel | null {
         return this.node.type === NodeType.CLASSIFICATION_TABLE
             ? (this.node as ClassificationDecisionTableNodeModel)
             : null;

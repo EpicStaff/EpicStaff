@@ -16,6 +16,7 @@ from tables.models.base_models import (
     SoftDeleteMixin,
 )
 from tables.models.label_models import Label
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 from tables.exceptions import GraphSaveVersionConflictError
 
 
@@ -45,14 +46,14 @@ class GraphManager(models.Manager):
         return self.filter(id__in=subgraph_ids).prefetch_related("tags")
 
 
-class Graph(TimestampMixin, models.Model):
+class Graph(OrgScopedModel, TimestampMixin):
     objects = GraphManager()
 
     tags = models.ManyToManyField(to="GraphTag", blank=True, default=[])
     labels = models.ManyToManyField(Label, blank=True, related_name="flows")
 
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
-    name = models.CharField(max_length=255, blank=False, unique=True)
+    name = models.CharField(max_length=255, blank=False)
     description = models.TextField(blank=True)
     metadata = models.JSONField(default=dict)
     time_to_live = models.IntegerField(
@@ -83,6 +84,14 @@ class Graph(TimestampMixin, models.Model):
             )
             raise GraphSaveVersionConflictError(current_version=current)
         return expected + 1
+
+    class Meta(OrgScopedModel.Meta):
+        abstract = False
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name"], name="unique_graph_name_per_org"
+            ),
+        ]
 
 
 class BaseNode(BaseGraphEntity, BaseGlobalNode):
@@ -242,15 +251,17 @@ class Edge(BaseGraphEntity, models.Model):
         ]
 
     def clean(self):
-        # Using the unified class method to find any node type by ID
+        # Start/end nodes must exist AND belong to this edge's graph (which also
+        # keeps them in the same org). A node in another graph/org is treated as
+        # not found.
         start_node = BaseGlobalNode.find_globally(self.start_node_id)
-        if not start_node:
+        if not start_node or start_node.graph_id != self.graph_id:
             raise ObjectDoesNotExist(
                 f"Start node with ID {self.start_node_id} not found."
             )
 
         end_node = BaseGlobalNode.find_globally(self.end_node_id)
-        if not end_node:
+        if not end_node or end_node.graph_id != self.graph_id:
             raise ObjectDoesNotExist(f"End node with ID {self.end_node_id} not found.")
 
 
@@ -360,7 +371,7 @@ class DecisionTableNode(BaseGraphEntity, BaseGlobalNode):
 
         if self.default_next_node_id:
             default_next_node = BaseGlobalNode.find_globally(self.default_next_node_id)
-            if not default_next_node:
+            if not default_next_node or default_next_node.graph_id != self.graph_id:
                 raise ValidationError(
                     {
                         "default_next_node_id": f"Default next node with ID '{self.default_next_node_id}' not found."
@@ -369,7 +380,7 @@ class DecisionTableNode(BaseGraphEntity, BaseGlobalNode):
 
         if self.next_error_node_id:
             next_error_node = BaseGlobalNode.find_globally(self.next_error_node_id)
-            if not next_error_node:
+            if not next_error_node or next_error_node.graph_id != self.graph_id:
                 raise ValidationError(
                     {
                         "next_error_node_id": f"Error node with ID '{self.next_error_node_id}' not found."
@@ -416,7 +427,9 @@ class ConditionGroup(ContentHashMixin, models.Model):
 
         if self.next_node_id:
             next_node = BaseGlobalNode.find_globally(self.next_node_id)
-            if not next_node:
+            # Same graph as the owning decision table (⇒ same org).
+            owner_graph_id = getattr(self.decision_table_node, "graph_id", None)
+            if not next_node or next_node.graph_id != owner_graph_id:
                 raise ValidationError(
                     {
                         "next_node_id": f"Next node with ID '{self.next_node_id}' not found."
@@ -754,7 +767,13 @@ class ClassificationConditionGroup(BaseGraphEntity, models.Model):
     group_name = models.CharField(max_length=255, blank=False)
     order = models.PositiveIntegerField(blank=False, default=0)
     expression = models.TextField(null=True, default=None, blank=True)
-    prompt_id = models.CharField(max_length=255, null=True, default=None, blank=True)
+    prompt = models.ForeignKey(
+        "ClassificationDecisionTablePrompt",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="condition_groups",
+    )
     manipulation = models.TextField(null=True, default=None, blank=True)
     continue_flag = models.BooleanField(default=False)
     next_node_id = models.BigIntegerField(null=True, default=None)

@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from django.db.models import Q
+
 from tables.models import (
     LLMConfig,
     EmbeddingConfig,
@@ -63,11 +65,17 @@ class BaseConfigStrategy(EntityImportExportStrategy):
 
         return deps
 
+    def get_org_scope_q(self, org_id: int) -> Q:
+        if org_id is None:
+            return Q()
+        return Q(org_id=org_id)
+
     def create_entity(self, data, id_mapper: IDMapper, **kwargs):
+        org_id = kwargs.get("org_id")
         if "custom_name" in data:
-            existing_names = self.config_model.objects.values_list(
-                "custom_name", flat=True
-            )
+            existing_names = self.config_model.objects.filter(
+                org_id=org_id
+            ).values_list("custom_name", flat=True)
             data["custom_name"] = ensure_unique_identifier(
                 base_name=data["custom_name"],
                 existing_names=existing_names,
@@ -84,7 +92,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
 
         resolved_fks = self.remap_foreign_keys(data, id_mapper)
         serializer = self.serializer_class(
-            data={**data, **resolved_fks, **tag_overrides}
+            data={**data, **resolved_fks, **tag_overrides, "org": org_id}
         )
         serializer.is_valid(raise_exception=True)
         return serializer.save()
@@ -92,7 +100,7 @@ class BaseConfigStrategy(EntityImportExportStrategy):
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data
 
-    def find_existing(self, data, id_mapper):
+    def find_existing(self, data, id_mapper, org_id: int = None):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
         data_copy.pop("tags", None)
@@ -100,11 +108,15 @@ class BaseConfigStrategy(EntityImportExportStrategy):
         fk_filters = self.resolve_fk_filters(data_copy, id_mapper)
         filters, null_filters = create_filters(data_copy)
 
-        return self.config_model.objects.filter(
-            **filters,
-            **null_filters,
-            **fk_filters,
-        ).first()
+        return (
+            self.config_model.objects.filter(
+                **filters,
+                **null_filters,
+                **fk_filters,
+            )
+            .filter(self.get_org_scope_q(org_id))
+            .first()
+        )
 
     def remap_foreign_keys(self, data: dict, id_mapper: IDMapper) -> dict:
         old_model_id = data.pop(self.model_fk_field, None)

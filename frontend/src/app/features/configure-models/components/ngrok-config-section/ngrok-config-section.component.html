@@ -7,6 +7,7 @@
 
         <div class="header-right">
             <app-button
+                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
                 type="primary"
                 leftIcon="plus"
                 (click)="onAddConfig()"

@@ -104,7 +104,7 @@ class RedisPubSub:
                     session.status = data["status"]
                     session.status_data = status_data
                     session.token_usage = status_data["total_token_usage"]
-                    session.save()
+                    session.save(force_update=True)
 
                     if session.status in [
                         Session.SessionStatus.END,
@@ -215,7 +215,7 @@ class RedisPubSub:
             variables = data.get("status_data", {}).get("variables")
             if not variables:
                 return
-
+            # TODO: rbac refactor
             graph_organization = GraphOrganization.objects.filter(
                 graph=session.graph
             ).first()

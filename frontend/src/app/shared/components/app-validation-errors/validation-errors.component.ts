@@ -39,6 +39,7 @@ export class ValidationErrorsComponent {
         pattern: () => 'The value does not match the required pattern.',
         email: () => 'Invalid email address.',
         numericOnly: () => 'Password cannot be entirely numeric.',
+        whitespace: () => 'Value cannot be blank string.',
     };
 
     messagesList = computed<string[]>(() => {

@@ -71,6 +71,8 @@ import { SidePanelService } from '../../../services/side-panel.service';
                             <button
                                 class="expand-btn"
                                 aria-label="Toggle panel size"
+                                [matTooltip]="isExpanded() ? 'Minimize panel' : 'Expand panel'"
+                                matTooltipPosition="below"
                                 (click)="toggleExpanded()"
                             >
                                 <app-svg-icon
@@ -84,6 +86,8 @@ import { SidePanelService } from '../../../services/side-panel.service';
                             <button
                                 class="close-btn"
                                 aria-label="Close dialog"
+                                matTooltip="Close"
+                                matTooltipPosition="below"
                                 (click)="onCloseClick()"
                             >
                                 <app-svg-icon icon="x"></app-svg-icon>

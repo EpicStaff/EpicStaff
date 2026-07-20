@@ -35,9 +35,15 @@ from tables.models.graph_models import (
 )
 from tables.models.label_models import Label
 from tables.serializers.base_serializer import BaseGraphEntityMixin
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueValidator,
+)
 
 
 class GraphNoteSerializer(BaseGraphEntityMixin, serializers.ModelSerializer):
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
+
     class Meta(BaseGraphEntityMixin.Meta):
         model = GraphNote
         fields = "__all__"
@@ -47,6 +53,69 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = GraphSessionMessage
         fields = "__all__"
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        message_data = data.get("message_data") or {}
+        if message_data.get("message_type") != "subgraph_start":
+            return data
+
+        exec_id = message_data.get("subgraph_execution_id")
+        if not exec_id:
+            return data
+
+        subtree_messages = list(
+            GraphSessionMessage.objects.filter(
+                session_id=instance.session_id,
+                message_data__subgraph_execution_ids__contains=[exec_id],
+            )
+            .exclude(id=instance.id)
+            .values("parent_subgraph_execution_id", "message_data", "name")
+        )
+
+        exec_to_subgraph_id = {exec_id: message_data.get("subgraph_id")}
+        counts_by_exec_id: dict[str, dict[str, int]] = {}
+        seen_code_agent_streams = set()
+        for msg in subtree_messages:
+            msg_data = msg["message_data"] or {}
+            msg_type = msg_data.get("message_type")
+            if not msg_type:
+                continue
+
+            if msg_type == "subgraph_start":
+                child_exec = msg_data.get("subgraph_execution_id")
+                child_sgid = msg_data.get("subgraph_id")
+                if child_exec and child_sgid is not None:
+                    exec_to_subgraph_id[child_exec] = child_sgid
+
+            parent_exec = msg["parent_subgraph_execution_id"]
+            if not parent_exec:
+                continue
+            parent_exec = str(parent_exec)
+
+            if msg_type == "code_agent_stream":
+                dedup_key = (parent_exec, msg["name"])
+                if dedup_key in seen_code_agent_streams:
+                    continue
+                seen_code_agent_streams.add(dedup_key)
+
+            per_type = counts_by_exec_id.setdefault(parent_exec, {})
+            per_type[msg_type] = per_type.get(msg_type, 0) + 1
+
+        messages_count_by_subgraph: dict[int, dict[str, int]] = {}
+        for e_id, per_type in counts_by_exec_id.items():
+            sgid = exec_to_subgraph_id.get(e_id)
+            if sgid is None:
+                continue
+            agg = messages_count_by_subgraph.setdefault(sgid, {})
+            for msg_type, count in per_type.items():
+                agg[msg_type] = agg.get(msg_type, 0) + count
+
+        data["message_data"] = {
+            **message_data,
+            "messages_count_by_subgraph": messages_count_by_subgraph,
+        }
+        return data
 
 
 class GraphOrganizationSerializer(serializers.ModelSerializer):
@@ -166,11 +235,19 @@ class GraphSerializer(serializers.ModelSerializer):
     schedule_trigger_node_list = ScheduleTriggerNodeSerializer(
         many=True, read_only=True
     )
-    label_ids = serializers.PrimaryKeyRelatedField(
+    label_ids = OrgScopedPrimaryKeyRelatedField(
         many=True, source="labels", queryset=Label.objects.all(), required=False
     )
     graph_note_list = GraphNoteSerializer(many=True, read_only=True)
     save_version = serializers.IntegerField(required=True)
+    name = serializers.CharField(
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=Graph.objects.all(),
+                message="A flow with this name already exists.",
+            )
+        ]
+    )
 
     class Meta:
         model = Graph

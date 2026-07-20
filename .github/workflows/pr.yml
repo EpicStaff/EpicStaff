@@ -32,8 +32,17 @@ jobs:
             exit 1
           fi
 
+  check-external-urls:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for runtime CDN / external URL references
+        run: node scripts/check-external-urls.mjs
+
   build:
-    needs: check-cla
+    needs: [check-cla, check-external-urls]
     uses: ./.github/workflows/compose-build.yml
     with:
       compose-file: src/docker-compose.yaml

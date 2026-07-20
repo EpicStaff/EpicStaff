@@ -18,6 +18,7 @@ import {
     ViewChild,
     ViewChildren,
 } from '@angular/core';
+import { Router } from '@angular/router';
 import { MarkdownModule } from 'ngx-markdown';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { exhaustMap, map, takeUntil } from 'rxjs/operators';
@@ -35,13 +36,15 @@ import { GetAgentRequest } from '../../../../features/staff/models/agent.model';
 import { AgentsService } from '../../../../features/staff/services/staff.service';
 import { GetTaskRequest } from '../../../../features/tasks/models/task.model';
 import { TasksService } from '../../../../features/tasks/services/tasks.service';
+import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
-    AgentNodeStreamMessageData,
     CodeAgentStreamMessageData,
     GraphMessage,
-    MessageData,
     MessageType,
+    StartSubflowMessageData,
+    AgentNodeStreamMessageData,
+    MessageData,
     TaskNodeStreamMessageData,
 } from '../../models/graph-session-message.model';
 import { SessionStatusMessageData } from '../../models/update-session-status.model';
@@ -119,6 +122,7 @@ interface MessageViewEntry {
     project: GetProjectRequest | null;
     subgraphName: string | null;
     hasNestedMessages: boolean;
+    nestedMessagesCount: number;
     isNestedMessagesOpen: boolean;
     shouldShowTransition: boolean;
     rootKey: string | null;
@@ -248,6 +252,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private messageContexts: MessageContext[] = [];
     private messageContextByKey = new Map<string, MessageContext>();
     private messageByKey = new Map<string, GraphMessage>();
+    private codeAgentVisibleIndices = new Set<number>();
     private messageGraphIdByKey = new Map<string, number>();
     private graphCache = new Map<number, GraphDto>();
     private graphNameById = new Map<number, string>();
@@ -273,6 +278,8 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         public sseService: RunSessionSSEService,
         private agentsService: AgentsService,
         private tasksService: TasksService,
+        private toast: ToastService,
+        private router: Router,
         private cdr: ChangeDetectorRef,
         private answerToLLMService: AnswerToLLMService,
         private runGraphPageService: RunGraphPageService,
@@ -551,10 +558,9 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     }
                     this.loadMoreMessages();
                 },
-                error: () => {
-                    this.sseEnabled = true;
-                    this.sseService.startStream(this.sessionId!);
-                    this.loadMoreMessages();
+                error: (err) => {
+                    this.toast.error(err.error?.detail || 'Failed to fetch session');
+                    void this.router.navigate(['/sessions']);
                 },
             });
 
@@ -905,9 +911,67 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private hasNestedMessagesForContext(context: MessageContext): boolean {
-        if (!context.isSubgraphStart) return false;
+        return this.getNestedMessagesCountForContext(context) > 0;
+    }
+
+    private getNestedMessagesCountForContext(context: MessageContext): number {
+        if (!context.isSubgraphStart) return 0;
+        const backendCount = this.getBackendNestedMessagesCount(context);
+        const liveCount = this.getLiveNestedMessagesCount(context);
+        return Math.max(backendCount, liveCount);
+    }
+
+    private getBackendNestedMessagesCount(context: MessageContext): number {
+        const message = this.messages[context.index];
+        const data = message?.message_data as StartSubflowMessageData | undefined;
+        if (!data?.messages_count_by_subgraph || data.subgraph_id == null) return 0;
+        const countsByType = data.messages_count_by_subgraph[data.subgraph_id];
+        if (!countsByType) return 0;
+        let sum = 0;
+        for (const [type, count] of Object.entries(countsByType)) {
+            if (RENDERABLE_MESSAGE_TYPES.has(type)) sum += count;
+        }
+        return sum;
+    }
+
+    private getLiveNestedMessagesCount(context: MessageContext): number {
         const nestedPath = [...context.path, context.key];
-        return this.messageContexts.some((ctx) => this.pathsEqual(ctx.path, nestedPath));
+        return this.messageContexts.reduce(
+            (count, ctx) =>
+                this.pathsEqual(ctx.path, nestedPath) &&
+                this.isRenderableNestedMessage(ctx) &&
+                this.isCodeAgentVisible(ctx)
+                    ? count + 1
+                    : count,
+            0
+        );
+    }
+
+    // Mirrors the @switch cases in the nested drilldown template: only messages
+    // whose type matches a case render as a card, so only those should be counted.
+    private isRenderableNestedMessage(ctx: MessageContext): boolean {
+        const type = this.messages[ctx.index]?.message_data?.message_type;
+        switch (type) {
+            case 'start':
+            case 'user':
+            case 'agent':
+            case 'agent_finish':
+            case 'python':
+            case 'llm':
+            case 'extracted_chunks':
+            case 'error':
+            case 'task':
+            case 'condition_group':
+            case 'classification_prompt':
+            case 'condition_group_manipulation':
+            case 'finish':
+            case 'code_agent_stream':
+            case 'subgraph_start':
+            case 'subgraph_finish':
+                return true;
+            default:
+                return false;
+        }
     }
 
     private isNestedMessagesOpenForContext(context: MessageContext): boolean {
@@ -1224,6 +1288,36 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         });
 
         this.buildMessageGraphContexts(messages);
+        this.computeCodeAgentVisibleIndices();
+    }
+
+    private computeCodeAgentVisibleIndices(): void {
+        const chosen = new Map<string, number>();
+        for (const ctx of this.messageContexts) {
+            const msg = this.messages[ctx.index];
+            if (msg?.message_data?.message_type !== MessageType.CODE_AGENT_STREAM) continue;
+
+            const groupKey = `${ctx.path.join('|')}::${msg.name}`;
+            const existing = chosen.get(groupKey);
+            const isFinal = (msg.message_data as CodeAgentStreamMessageData).is_final;
+
+            if (existing === undefined || isFinal) {
+                chosen.set(groupKey, ctx.index);
+            } else {
+                const existingMsg = this.messages[existing];
+                const existingFinal = (existingMsg?.message_data as CodeAgentStreamMessageData)?.is_final;
+                if (!existingFinal) {
+                    chosen.set(groupKey, ctx.index);
+                }
+            }
+        }
+        this.codeAgentVisibleIndices = new Set(chosen.values());
+    }
+
+    private isCodeAgentVisible(context: MessageContext): boolean {
+        const msg = this.messages[context.index];
+        if (msg?.message_data?.message_type !== MessageType.CODE_AGENT_STREAM) return true;
+        return this.codeAgentVisibleIndices.has(context.index);
     }
 
     private syncDrillPaths(messages: GraphMessage[]): void {
@@ -1284,6 +1378,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private buildMessageEntry(message: GraphMessage, context?: MessageContext | null): MessageViewEntry {
         const resolvedContext = context ?? this.getMessageContext(message);
         const hasNestedMessages = resolvedContext ? this.hasNestedMessagesForContext(resolvedContext) : false;
+        const nestedMessagesCount = resolvedContext ? this.getNestedMessagesCountForContext(resolvedContext) : 0;
         const isNestedMessagesOpen = resolvedContext ? this.isNestedMessagesOpenForContext(resolvedContext) : false;
         const index = resolvedContext ? resolvedContext.index : 0;
         const rootKey = resolvedContext ? this.getRootKeyForContext(resolvedContext) : null;
@@ -1295,6 +1390,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             project: this.getProjectFromMessage(message),
             subgraphName: this.getSubgraphName(message),
             hasNestedMessages,
+            nestedMessagesCount,
             isNestedMessagesOpen,
             shouldShowTransition: this.shouldShowTransition(message, index),
             rootKey,
@@ -1363,6 +1459,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 const data = msg?.message_data;
                 const type = data?.message_type;
                 if (!type || !RENDERABLE_MESSAGE_TYPES.has(type)) return false;
+                return this.isCodeAgentVisible(context);
                 if (this.isSseHidden(data)) return false;
                 if (!STREAM_MESSAGE_TYPES.has(type)) return true;
                 return streamShowSet.has(context.index);
@@ -1391,7 +1488,12 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
         this.drillPaths.forEach((path, rootKey) => {
             const nestedEntries = this.messageContexts
-                .filter((context) => this.pathsEqual(context.path, path))
+                .filter(
+                    (context) =>
+                        this.pathsEqual(context.path, path) &&
+                        this.isRenderableNestedMessage(context) &&
+                        this.isCodeAgentVisible(context)
+                )
                 .map((context) => this.buildMessageEntry(this.messages[context.index], context));
             this.drilldownEntriesByRoot.set(rootKey, nestedEntries);
 
