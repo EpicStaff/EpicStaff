@@ -97,7 +97,10 @@ class GraphSearch(AbstractSearch):
             config = await self.uow.graph_rag_repo.get_config(request.rag_id)
 
         if request.search_config.method not in self._SEARCH_MAP:
-            raise UnsupportedError
+            raise UnsupportedError(
+                that='graph search method',
+                got=request.search_config.method,
+            )
 
         specs = self._SEARCH_MAP[request.search_config.method]
         setattr(
