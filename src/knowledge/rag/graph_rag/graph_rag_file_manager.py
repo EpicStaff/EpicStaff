@@ -206,6 +206,7 @@ class GraphRagFileManager:
             - Falls back to replacement characters for binary files
         """
         loaded_files: Dict[int, Path] = {}
+        used_stems: set[str] = set()
 
         for graph_doc in graph_rag_documents:
             doc_metadata = graph_doc.document
@@ -225,10 +226,25 @@ class GraphRagFileManager:
                 )
                 continue
 
-            # Determine file name
-            file_name = (
-                doc_metadata.file_name or f"document_{doc_metadata.document_id}.txt"
+            # Determine file name. GraphRAG's text input loader only matches
+            # `*.txt` files, so every input document is written with a `.txt`
+            # extension regardless of its original extension (.md, .pdf, etc.),
+            # while preserving the original stem for readability.
+            original_name = (
+                doc_metadata.file_name or f"document_{doc_metadata.document_id}"
             )
+            stem = Path(original_name).stem or f"document_{doc_metadata.document_id}"
+
+            file_stem = stem
+            if file_stem in used_stems:
+                file_stem = f"{stem}_{doc_metadata.document_id}"
+                suffix = 1
+                while file_stem in used_stems:
+                    file_stem = f"{stem}_{doc_metadata.document_id}_{suffix}"
+                    suffix += 1
+            used_stems.add(file_stem)
+
+            file_name = f"{file_stem}.txt"
             file_path = input_folder / file_name
 
             # Get binary content
