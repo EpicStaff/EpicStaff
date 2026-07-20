@@ -2,6 +2,7 @@ from typing import Dict, Any, Optional
 import threading
 from loguru import logger
 from langgraph.types import StreamWriter
+from pydantic import TypeAdapter
 
 import settings
 from models.graph_models import GraphMessage
@@ -30,8 +31,8 @@ class RagSearchConfigFactory:
     """
 
     _configs = {
-        "naive": NaiveSearchConfig,
-        "graph": GraphSearchConfig,
+        "naive": NaiveSearchConfig.model_validate,
+        "graph": TypeAdapter(GraphSearchConfig).validate_python,
     }
 
     _timeouts = {
@@ -58,7 +59,11 @@ class RagSearchConfigFactory:
                 f"Supported types: {list(cls._configs.keys())}"
             )
 
-        return config_class(**config_dict)
+        data = {k: v for k, v in config_dict['search_params'].items() if k != 'search_method'}
+        data['rag_strategy'] = rag_type
+        data['method'] = config_dict['search_params']['search_method']
+
+        return config_class(data)
 
     @classmethod
     def get_timeout(cls, rag_type: str) -> int:
