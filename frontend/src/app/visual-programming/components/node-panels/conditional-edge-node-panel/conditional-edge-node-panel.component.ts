@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
 import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
@@ -16,7 +17,14 @@ interface InputMapPair {
 @Component({
     standalone: true,
     selector: 'app-conditional-edge-node-panel',
-    imports: [ReactiveFormsModule, CustomInputComponent, InputMapComponent, CodeEditorComponent, CommonModule],
+    imports: [
+        ReactiveFormsModule,
+        CustomInputComponent,
+        InputMapComponent,
+        CodeEditorComponent,
+        CommonModule,
+        MatTooltipModule,
+    ],
     template: `
         <div class="panel-container">
             <div class="panel-content">
@@ -47,6 +55,8 @@ interface InputMapPair {
                                 type="button"
                                 class="toggle-fields-button"
                                 [class.toggle-fields-button--inside]="!isFormFieldsVisible()"
+                                [matTooltip]="isFormFieldsVisible() ? 'Hide form fields' : 'Show form fields'"
+                                matTooltipPosition="right"
                                 (click)="toggleFormFieldsVisibility()"
                                 [attr.aria-label]="isFormFieldsVisible() ? 'Hide form fields' : 'Show form fields'"
                             >

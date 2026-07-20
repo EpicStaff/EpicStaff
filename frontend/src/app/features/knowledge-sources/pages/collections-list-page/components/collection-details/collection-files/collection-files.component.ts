@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, model } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 
 import { ListComponent } from '../../../../../../../shared/components/list/list.component';
@@ -13,7 +14,14 @@ import { DocumentsStorageService } from '../../../../../services/documents-stora
     selector: 'app-collection-details-files',
     templateUrl: './collection-files.component.html',
     styleUrls: ['./collection-files.component.scss'],
-    imports: [AppSvgIconComponent, FileSizePipe, ListActionsComponent, ListComponent, ListRowComponent],
+    imports: [
+        AppSvgIconComponent,
+        FileSizePipe,
+        ListActionsComponent,
+        ListComponent,
+        ListRowComponent,
+        MatTooltipModule,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionFilesComponent {

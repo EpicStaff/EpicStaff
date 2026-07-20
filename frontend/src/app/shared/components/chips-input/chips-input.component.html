@@ -20,6 +20,8 @@
             [class.disabled]="inputControl.invalid"
             icon="plus"
             size="1.5rem"
+            [matTooltip]="addButtonTooltip()"
+            matTooltipPosition="above"
             (click)="onAdd()"
         />
     </div>

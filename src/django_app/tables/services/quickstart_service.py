@@ -49,7 +49,7 @@ class QuickstartService(metaclass=SingletonMeta):
 
     def __init__(self): ...
 
-    def quickstart(self, provider: str, api_key: str) -> dict:
+    def quickstart(self, provider: str, api_key: str, org_id: int) -> dict:
         try:
             if provider not in self.PROVIDER_CONFIGS:
                 supported = ", ".join(self.PROVIDER_CONFIGS.keys())
@@ -61,27 +61,28 @@ class QuickstartService(metaclass=SingletonMeta):
             provider_obj = Provider.objects.get(name=provider)
             with transaction.atomic():
                 llm_config = self._create_llm_model_config(
-                    provider_obj, api_key, config_name
+                    provider_obj, api_key, config_name, org_id=org_id
                 )
                 embedding_config = self._create_embedder_config(
-                    provider_obj, api_key, config_name
+                    provider_obj, api_key, config_name, org_id=org_id
                 )
                 realtime_config = None
                 realtime_transcription_config = None
                 if provider == "openai":
                     realtime_config = self._create_realtime_config(
-                        provider_obj, api_key, config_name
+                        provider_obj, api_key, config_name, org_id=org_id
                     )
                     realtime_transcription_config = (
                         self._create_realtime_transcription_config(
-                            provider_obj, api_key, config_name
+                            provider_obj, api_key, config_name, org_id=org_id
                         )
                     )
 
                 elif provider == "gemini":
-                    self._create_realtime_config(provider_obj, api_key, config_name)
+                    self._create_realtime_config(
+                        provider_obj, api_key, config_name, org_id=org_id
+                    )
 
-                    
                 self._apply_quickstart_tag(
                     llm_config,
                     embedding_config,
@@ -109,14 +110,16 @@ class QuickstartService(metaclass=SingletonMeta):
     def get_supported_providers(self):
         return self.PROVIDER_CONFIGS.keys()
 
-    def get_last_quickstart(self) -> dict | None:
+    def get_last_quickstart(self, org_id: int) -> dict | None:
         """
-        Returns the active quickstart config — identified by the predefined 'quickstart'
-        tag on LLMConfig. The tag is moved to the newest config on every quickstart run.
-        Returns None if no quickstart has been run.
+        Returns the active quickstart config for the given organization —
+        identified by the predefined 'quickstart' tag on LLMConfig. The tag is
+        moved to the newest config on every quickstart run. Scoped to org_id so
+        one org never sees another org's quickstart config (or its api key).
+        Returns None if no quickstart has been run in this org.
         """
         llm = LLMConfig.objects.filter(
-            tags__name=self.QUICKSTART_TAG, tags__predefined=True
+            tags__name=self.QUICKSTART_TAG, tags__predefined=True, org_id=org_id
         ).first()
         if not llm:
             return None
@@ -124,13 +127,13 @@ class QuickstartService(metaclass=SingletonMeta):
             "config_name": llm.custom_name,
             "llm_config": llm,
             "embedding_config": EmbeddingConfig.objects.filter(
-                tags__name=self.QUICKSTART_TAG, tags__predefined=True
+                tags__name=self.QUICKSTART_TAG, tags__predefined=True, org_id=org_id
             ).first(),
             "realtime_config": RealtimeConfig.objects.filter(
-                tags__name=self.QUICKSTART_TAG, tags__predefined=True
+                tags__name=self.QUICKSTART_TAG, tags__predefined=True, org_id=org_id
             ).first(),
             "realtime_transcription_config": RealtimeTranscriptionConfig.objects.filter(
-                tags__name=self.QUICKSTART_TAG, tags__predefined=True
+                tags__name=self.QUICKSTART_TAG, tags__predefined=True, org_id=org_id
             ).first(),
         }
 
@@ -219,31 +222,37 @@ class QuickstartService(metaclass=SingletonMeta):
         return bool(checks) and all(checks)
 
     def _create_llm_model_config(
-        self, provider: Provider, api_key: str, config_name: str
+        self, provider: Provider, api_key: str, config_name: str, org_id: int
     ) -> LLMConfig:
         llm_model = self._get_or_create_llm_model(provider)
         return LLMConfig.objects.create(
-            model=llm_model, custom_name=config_name, api_key=api_key
+            model=llm_model, custom_name=config_name, api_key=api_key, org_id=org_id
         )
 
     def _create_embedder_config(
-        self, provider: Provider, api_key: str, config_name: str
+        self, provider: Provider, api_key: str, config_name: str, org_id: int
     ) -> EmbeddingConfig:
         embedder_model = self._get_or_create_embedder_model(provider)
         return EmbeddingConfig.objects.create(
-            model=embedder_model, custom_name=config_name, api_key=api_key
+            model=embedder_model,
+            custom_name=config_name,
+            api_key=api_key,
+            org_id=org_id,
         )
 
     def _create_realtime_config(
-        self, provider: Provider, api_key: str, config_name: str
+        self, provider: Provider, api_key: str, config_name: str, org_id: int
     ) -> RealtimeConfig:
         realtime_model = self._get_or_create_realtime_model(provider)
         return RealtimeConfig.objects.create(
-            realtime_model=realtime_model, custom_name=config_name, api_key=api_key
+            realtime_model=realtime_model,
+            custom_name=config_name,
+            api_key=api_key,
+            org_id=org_id,
         )
 
     def _create_realtime_transcription_config(
-        self, provider: Provider, api_key: str, config_name: str
+        self, provider: Provider, api_key: str, config_name: str, org_id: int
     ) -> RealtimeTranscriptionConfig:
         realtime_transcription_model = self._get_or_create_realtime_transcription_model(
             provider
@@ -252,6 +261,7 @@ class QuickstartService(metaclass=SingletonMeta):
             realtime_transcription_model=realtime_transcription_model,
             custom_name=config_name,
             api_key=api_key,
+            org_id=org_id,
         )
 
     def _get_or_create_llm_model(self, provider: Provider):

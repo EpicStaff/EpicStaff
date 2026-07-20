@@ -1,24 +1,25 @@
 from django.db import models
 from .base_models import MetadataMixin
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
-class Label(MetadataMixin):
+class Label(OrgScopedModel, MetadataMixin):
     name = models.CharField(max_length=100)
     parent = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.CASCADE, related_name="children"
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
         constraints = [
             models.UniqueConstraint(
-                fields=["name", "parent"],
-                name="unique_label_name_per_level",
+                fields=["org", "name", "parent"],
+                name="unique_label_name_per_org_level",
             ),
             models.UniqueConstraint(
-                fields=["name"],
+                fields=["org", "name"],
                 condition=models.Q(parent__isnull=True),
-                name="unique_top_level_label_name",
+                name="unique_top_level_label_name_per_org",
             ),
         ]
 

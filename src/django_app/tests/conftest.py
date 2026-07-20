@@ -24,10 +24,18 @@ def flush_test_db_once(django_db_setup, django_db_blocker):
     with django_db_blocker.unblock():
         call_command("flush", "--noinput")
         # Migration module names start with digits and cannot be imported via
-        # `from ... import`; use importlib. Delegating to the migration's own
-        # seed function keeps the role list defined in exactly one place.
-        seed_module = import_module("tables.migrations.0171_seed_builtin_roles")
-        seed_module.seed_builtin_roles(django_apps, None)
+        # `from ... import`; use importlib. Delegating to the migrations' own
+        # seed functions keeps the role/permission definitions in one place.
+        # Replay BOTH seeds in migration order: 0171 seeds roles + initial
+        # permission bitmasks, then 0183 overrides them with the authoritative
+        # bitmasks (e.g. Org Admin export on agents/projects). Re-seeding only
+        # 0171 would leave tests on the stale pre-0183 permissions.
+        roles_module = import_module("tables.migrations.0171_seed_builtin_roles")
+        roles_module.seed_builtin_roles(django_apps, None)
+        perms_module = import_module(
+            "tables.migrations.0183_seed_builtin_role_permissions"
+        )
+        perms_module.seed_role_permissions(django_apps, None)
 
 
 @pytest.fixture(autouse=True)
@@ -99,8 +107,14 @@ def jwt_tokens(regular_user):
 
 
 @pytest.fixture
-def auth_client(api_client, jwt_tokens) -> APIClient:
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
+def auth_client(api_client, jwt_tokens, default_org) -> APIClient:
+    # regular_user is an Org Admin member of default_org; the shared resource
+    # fixtures (graph/agent/crew) are created in the same org, so sending the
+    # active-org header makes org-scoped endpoints resolve and authorize.
+    api_client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}",
+        HTTP_X_ORGANIZATION_ID=str(default_org.id),
+    )
     return api_client
 
 

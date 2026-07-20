@@ -1,26 +1,29 @@
 <!-- Node badge number -->
 <div
-   
     class="node-name-wrapper"
-   
-    *ngIf="!noteNode && node.nodeNumber != null && node.type !== NodeType.CLASSIFICATION_TABLE"
-
+    *ngIf="
+        !noteNode &&
+        node.nodeNumber != null &&
+        node.type !== NodeType.CLASSIFICATION_TABLE &&
+        node.type !== NodeType.START &&
+        node.type !== NodeType.END
+    "
 >
     <div class="node-name-label">#{{ node.nodeNumber }}</div>
 </div>
 
 <!-- Control buttons positioned above the node -->
 <div
-   
     class="actions"
+    *ngIf="node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE"
     (mousedown)="$event.stopPropagation()"
-
 >
     <!-- Edit Button for Note -->
     <div
         *ngIf="node.type === NodeType.NOTE"
         class="action-button edit-button"
-        title="Edit Note"
+        matTooltip="Edit note"
+        matTooltipPosition="above"
         (click)="onEditClick($event)"
     >
         <app-svg-icon icon="edit"></app-svg-icon>
@@ -29,7 +32,8 @@
     <div
         *ngIf="node.type === NodeType.PROJECT"
         class="action-button ungroup-button"
-        title="Expand Project"
+        matTooltip="Expand project"
+        matTooltipPosition="above"
         (click)="onExpandProjectClick()"
     >
         <app-svg-icon icon="edit"></app-svg-icon>
@@ -38,7 +42,8 @@
     <div
         *ngIf="node.type !== NodeType.START"
         class="action-button delete-button"
-        title="Delete node"
+        matTooltip="Delete node"
+        matTooltipPosition="above"
         (click)="onDeleteClick($event)"
     >
         <i class="ti ti-trash"></i>
@@ -89,7 +94,10 @@
         (actualClick)="onEditClick()"
     >
         <!-- Header Section -->
-        <div class="header" *ngIf="node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE">
+        <div
+            class="header"
+            *ngIf="node.type !== NodeType.TABLE && node.type !== NodeType.CLASSIFICATION_TABLE"
+        >
             <div class="icon-wrapper">
                 <i
                     [class]="node.icon"
@@ -139,13 +147,13 @@
     }
     @case (NodeType.TABLE) {
         <app-decision-table-node
-            [node]="tableNode!"
+            [node]="decisionTableNode!"
             (actualClick)="onEditClick($event)"
         ></app-decision-table-node>
-    }    
+    }
     @case (NodeType.CLASSIFICATION_TABLE) {
         <app-classification-decision-table-node
-            [node]="tableNode!"
+            [node]="classificationTableNode!"
             (actualClick)="onEditClick()"
         ></app-classification-decision-table-node>
     }

@@ -1214,39 +1214,6 @@ def test_delete_crew_invalid_id(api_client):
 
 
 @pytest.mark.django_db
-def test_delete_crew_with_sessions(api_client, crew, session_factory):
-    session_factory(crew=crew)
-    session_factory(crew=crew)
-
-    url = reverse("delete-crew", args=[crew.pk])
-    response = api_client.delete(f"{url}?delete_sessions=true")
-    assert response.status_code == status.HTTP_200_OK, response.content
-
-    assert not Session.objects.filter(crew=crew).exists()
-
-
-@pytest.mark.django_db
-def test_delete_crew_without_sessions(api_client, crew, session_factory):
-    session_factory(crew=crew)
-    session_factory(crew=crew)
-
-    url = reverse("delete-crew", args=[crew.pk])
-    response = api_client.delete(f"{url}?delete_sessions=false")
-    assert response.status_code == status.HTTP_200_OK, response.content
-
-    assert not Session.objects.filter(crew=crew).exists()
-    assert Session.objects.filter(crew=None).count() == 2
-
-
-@pytest.mark.django_db
-def test_delete_crew_invalid_query_param(api_client, crew):
-    url = reverse("delete-crew", args=[crew.pk])
-    response = api_client.delete(f"{url}?delete_sessions=yes")
-    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert "Invalid value for delete_sessions" in response.data["error"]
-
-
-@pytest.mark.django_db
 def test_delete_task(api_client, test_task):
     url = reverse("task-detail", args=[test_task.pk])
     response = api_client.delete(url)

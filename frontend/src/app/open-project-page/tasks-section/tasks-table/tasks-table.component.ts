@@ -46,6 +46,7 @@ import { ClickOutsideDirective } from '../../../shared/directives/click-outside.
 import { buildToolIdsArray } from '../../../shared/utils/tool-ids-builder.util';
 import { FullTaskService } from '../../services/full-task.service';
 import { ProjectStateService } from '../../services/project-state.service';
+import { ActionCellRendererComponent } from './action-cell-renderer/action-cell-renderer.component';
 import {
     AdvancedTaskSettingsData,
     AdvancedTaskSettingsDialogComponent,
@@ -590,9 +591,7 @@ export class TasksTableComponent implements OnChanges {
         {
             headerName: '',
             field: 'actions',
-            cellRenderer: () => {
-                return `<i class="ti ti-settings action-icon"></i>`;
-            },
+            cellRenderer: ActionCellRendererComponent,
             width: 40,
             cellClass: 'action-cell',
 
@@ -869,10 +868,6 @@ export class TasksTableComponent implements OnChanges {
         const mergedTools =
             (taskData as TableFullTask & { mergedTools?: Array<{ type?: string; id?: unknown }> }).mergedTools || [];
 
-        const configuredTools = mergedTools
-            .filter((tool: { type?: string; id?: unknown }) => tool.type === 'tool-config')
-            .map((tool: { id?: unknown }) => Number(tool.id))
-            .filter((id): id is number => Number.isFinite(id));
         const pythonTools = mergedTools
             .filter((tool: { type?: string; id?: unknown }) => tool.type === 'python-tool')
             .map((tool: { id?: unknown }) => Number(tool.id))
@@ -886,7 +881,6 @@ export class TasksTableComponent implements OnChanges {
             ...taskData,
             agent: Number.isFinite(agentId) ? agentId : null,
             crew,
-            configured_tools: configuredTools,
             python_code_tools: pythonTools,
             mcp_tools: mcpTools,
             mergedTools,
@@ -936,10 +930,9 @@ export class TasksTableComponent implements OnChanges {
             this.requiredErrorsRows.delete(rowKey);
 
             const parsedData = this.parseTaskData(event.data);
-            const configuredToolIds = parsedData.configured_tools || [];
             const pythonToolIds = parsedData.python_code_tools || [];
             const mcpToolIds = parsedData.mcp_tools || [];
-            const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+            const toolIds = buildToolIdsArray(pythonToolIds, mcpToolIds);
 
             const createTaskData: CreateTaskRequest = {
                 ...parsedData,
@@ -950,7 +943,6 @@ export class TasksTableComponent implements OnChanges {
                 config: parsedData.config ?? null,
                 output_model: parsedData.output_model ?? null,
                 task_context_list: parsedData.task_context_list ?? [],
-                configured_tools: configuredToolIds,
                 python_code_tools: pythonToolIds,
                 mcp_tools: mcpToolIds,
                 tool_ids: toolIds,
@@ -1126,10 +1118,9 @@ export class TasksTableComponent implements OnChanges {
             this.requiredErrorsRows.delete(rowKey);
 
             const parsedTaskData = this.parseTaskData(updatedTask as FullTask);
-            const cfg = parsedTaskData.configured_tools || [];
             const py = parsedTaskData.python_code_tools || [];
             const mcp = parsedTaskData.mcp_tools || [];
-            const tool_ids = buildToolIdsArray(cfg, py, mcp);
+            const tool_ids = buildToolIdsArray(py, mcp);
 
             this.setPending(rowKey, {
                 rowKey,
@@ -1137,7 +1128,6 @@ export class TasksTableComponent implements OnChanges {
                 payload: {
                     ...parsedTaskData,
                     knowledge_query: updatedTask.knowledge_query ?? null,
-                    configured_tools: cfg,
                     python_code_tools: py,
                     mcp_tools: mcp,
                     tool_ids,
@@ -1155,10 +1145,9 @@ export class TasksTableComponent implements OnChanges {
         const parsedTaskData = this.parseTaskData(updatedTask as FullTask);
 
         // Build tool_ids array for settings update
-        const settingsConfiguredToolIds = parsedTaskData.configured_tools || [];
         const settingsPythonToolIds = parsedTaskData.python_code_tools || [];
         const settingsMcpToolIds = parsedTaskData.mcp_tools || [];
-        const settingsToolIds = buildToolIdsArray(settingsConfiguredToolIds, settingsPythonToolIds, settingsMcpToolIds);
+        const settingsToolIds = buildToolIdsArray(settingsPythonToolIds, settingsMcpToolIds);
 
         // Prepare the payload for the backend update request (excluding tools field)
         const updateTaskData: UpdateTaskRequest = {
@@ -1175,7 +1164,6 @@ export class TasksTableComponent implements OnChanges {
             crew: updatedTask.crew,
             agent: parsedTaskData.agent,
             task_context_list: updatedTask.task_context_list,
-            configured_tools: settingsConfiguredToolIds,
             python_code_tools: settingsPythonToolIds,
             mcp_tools: settingsMcpToolIds,
             tool_ids: settingsToolIds,
@@ -1311,10 +1299,9 @@ export class TasksTableComponent implements OnChanges {
         const parsedTaskData = this.parseTaskData(newTaskData);
 
         // Build tool_ids array for paste operation
-        const pasteConfiguredToolIds = parsedTaskData.configured_tools || [];
         const pastePythonToolIds = parsedTaskData.python_code_tools || [];
         const pasteMcpToolIds = parsedTaskData.mcp_tools || [];
-        const pasteToolIds = buildToolIdsArray(pasteConfiguredToolIds, pastePythonToolIds, pasteMcpToolIds);
+        const pasteToolIds = buildToolIdsArray(pastePythonToolIds, pasteMcpToolIds);
 
         const createTaskData: CreateTaskRequest = {
             ...parsedTaskData,
@@ -1330,7 +1317,6 @@ export class TasksTableComponent implements OnChanges {
             crew: newTaskData.crew ?? null,
             agent: newTaskData.agent ?? null,
             task_context_list: newTaskData.task_context_list ?? [],
-            configured_tools: pasteConfiguredToolIds,
             python_code_tools: pastePythonToolIds,
             mcp_tools: pasteMcpToolIds,
             tool_ids: pasteToolIds,
@@ -1823,7 +1809,6 @@ export class TasksTableComponent implements OnChanges {
             crew: parsed.crew ?? null,
             agent: parsed.agent ?? null,
             task_context_list: this.normalizeIdList(parsed.task_context_list),
-            configured_tools: this.normalizeIdList(parsed.configured_tools),
             python_code_tools: this.normalizeIdList(parsed.python_code_tools),
             mcp_tools: this.normalizeIdList(parsed.mcp_tools),
         };
@@ -1839,10 +1824,9 @@ export class TasksTableComponent implements OnChanges {
         if (isTemp) return;
 
         const parsedUpdateData = this.parseTaskData(taskData as FullTask);
-        const configured = parsedUpdateData.configured_tools || [];
         const python = parsedUpdateData.python_code_tools || [];
         const mcp = parsedUpdateData.mcp_tools || [];
-        const toolIds = buildToolIdsArray(configured, python, mcp);
+        const toolIds = buildToolIdsArray(python, mcp);
 
         const idNum = Number(parsedUpdateData.id);
         if (!Number.isFinite(idNum)) return;
@@ -1854,7 +1838,6 @@ export class TasksTableComponent implements OnChanges {
             ...parsedWithoutOrder,
             id: idNum,
             knowledge_query: parsedUpdateData.knowledge_query ?? null,
-            configured_tools: configured,
             python_code_tools: python,
             mcp_tools: mcp,
             tool_ids: toolIds,
@@ -2239,10 +2222,9 @@ export class TasksTableComponent implements OnChanges {
             if (!this.isTempRowTouched(row)) continue;
             if (!this.isTempRowValid(row)) continue;
             const parsedData = this.parseTaskData(row as FullTask);
-            const configuredToolIds = parsedData.configured_tools || [];
             const pythonToolIds = parsedData.python_code_tools || [];
             const mcpToolIds = parsedData.mcp_tools || [];
-            const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds);
+            const toolIds = buildToolIdsArray(pythonToolIds, mcpToolIds);
 
             const createTaskData: CreateTaskRequest = {
                 ...parsedData,
@@ -2253,7 +2235,6 @@ export class TasksTableComponent implements OnChanges {
                 config: parsedData.config ?? null,
                 output_model: parsedData.output_model ?? null,
                 task_context_list: parsedData.task_context_list ?? [],
-                configured_tools: configuredToolIds,
                 python_code_tools: pythonToolIds,
                 mcp_tools: mcpToolIds,
                 tool_ids: toolIds,

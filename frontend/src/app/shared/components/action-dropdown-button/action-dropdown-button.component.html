@@ -20,6 +20,8 @@
     <button
         class="adb__chevron"
         [disabled]="disabled() || loading()"
+        matTooltip="More options"
+        matTooltipPosition="above"
         (click)="toggle($event)"
     >
         <app-svg-icon
@@ -33,7 +35,7 @@
     cdkConnectedOverlay
     [cdkConnectedOverlayOrigin]="origin"
     [cdkConnectedOverlayOpen]="isOpen()"
-    [cdkConnectedOverlayWidth]="160"
+    [cdkConnectedOverlayWidth]="panelWidth()"
     cdkConnectedOverlayPanelClass="action-dropdown-panel"
     [cdkConnectedOverlayPositions]="[
         {

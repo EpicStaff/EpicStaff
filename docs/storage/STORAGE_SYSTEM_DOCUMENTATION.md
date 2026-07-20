@@ -44,7 +44,6 @@ StorageAPIView (REST endpoints)        SessionViewSet.output_files()
     ▼                                        ▼
 StorageManager                         SessionStorageFile queries
   ├─ org isolation (org_{id}/ prefix)
-  ├─ permission checks (OrganizationUser)
   ├─ archive auto-extraction
   ├─ DB sync (StorageFileSync)
   │
@@ -58,7 +57,7 @@ Storage SDK (EpicStaffStorage)
   └─ Direct S3 access with path allowlist
 ```
 
-**StorageManager** is the central org-aware service. It wraps every backend operation with org isolation, permission checks, and DB sync. Views never call the backend directly.
+**StorageManager** is the central org-aware service. It wraps every backend operation with org isolation and DB sync (authorization is enforced upstream at the REST API layer, not in the manager). Views never call the backend directly.
 
 **AbstractStorageBackend** defines the interface. Two implementations exist: `LocalStorageBackend` for development/testing and `S3StorageBackend` for production (MinIO or any S3-compatible service).
 
@@ -188,23 +187,19 @@ These formats use ZIP internally but represent document containers, not archives
 
 ## 7. Cross-Org Operations
 
-Both cross-org operations require explicit permission verification in both the source and destination organizations.
+Cross-org operations are restricted to **superadmin**, enforced at the REST API layer (`StorageAPIView`).
 
 ### `copy_cross_org`
 
-- Requires DOWNLOAD permission in source org
-- Requires UPLOAD permission in destination org
 - Uses server-side S3 copy (no data round-trip through application server)
 - DB sync: `on_copy_cross_org(dst_org, dst_path)` creates record in destination
 
 ### `move_cross_org`
 
-- Requires DELETE permission in source org
-- Requires UPLOAD permission in destination org
 - **Non-atomic**: copy happens first, then delete. If the delete step fails, the file exists in both orgs. No automatic rollback.
 - DB sync: `on_move_cross_org(src_org, src_path, dst_org, dst_path)` deletes from source, creates in destination
 
-Permissions are checked via `_require_permission()` which validates `OrganizationUser` membership.
+Authorization (superadmin) is enforced at the API layer; the `StorageManager` performs no permission checks.
 
 ---
 
@@ -226,12 +221,12 @@ Permissions are checked via `_require_permission()` which validates `Organizatio
 
 | Control | Mechanism |
 |---------|-----------|
-| Org isolation | All storage keys namespaced under `org_{id}/`; cross-org access requires explicit permission |
+| Org isolation | All storage keys namespaced under `org_{id}/`; every request scoped to the active org, cross-org transfer superadmin-only |
 | Executable blocking | Upload and rename reject known executable extensions via `FileValidator` |
 | Archive scanning | ZIP/TAR contents inspected for executable entries without extraction |
 | Password-protected archives | Rejected at upload time before extraction begins |
 | Path traversal protection | Local backend resolves and validates paths; SDK normalizes and checks via `posixpath.normpath` |
-| Permission checks | Every `StorageManager` method verifies the user is an `OrganizationUser` member |
+| Authorization | Enforced at the REST API layer: `IsAuthenticated` + `HasOrgPermission(FILES)` + active-org membership (`StorageAPIView`) |
 | SDK allowlist | Flow execution constrains file access to paths listed in `STORAGE_ALLOWED_PATHS` env var |
 
 ---
@@ -250,9 +245,7 @@ Permissions are checked via `_require_permission()` which validates `Organizatio
 | `tables/services/storage_service/s3_backend.py` | S3/MinIO backend |
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` (DB sync layer) |
 | `tables/services/storage_service/dataclasses.py` | `FileListItem`, `FileInfo`, `FolderInfo`, etc. |
-| `tables/services/storage_service/enums.py` | `StorageAction` enum |
 | `tables/validators/file_upload_validator.py` | `FileValidator` (upload security) |
-| `tables/storage_permissions.py` | `StoragePermission` DRF permission class |
 | `shared/epicstaff_storage/storage.py` | Storage SDK for flow execution |
 | `tables/views/views.py` | `SessionViewSet.output_files` endpoint |
 

@@ -1,0 +1,17 @@
+@use '../auth-page' as auth;
+
+.page {
+    @include auth.auth-page;
+
+    .card {
+        @include auth.auth-card;
+
+        .title-section {
+            @include auth.auth-title-section;
+        }
+    }
+
+    .status-indicator {
+        color: var(--accent-color);
+    }
+}

@@ -1,13 +1,15 @@
 from django.db import models
 
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 
-class McpTool(models.Model):
+
+class McpTool(OrgScopedModel, models.Model):
     """
     Configuration for a FastMCP client connecting to remote MCP tools via SSE.
     """
 
     name = models.CharField(
-        max_length=255, unique=True, help_text="Unique name for mcp configuration"
+        max_length=255, help_text="Unique name for mcp configuration"
     )
 
     transport = models.CharField(
@@ -27,6 +29,12 @@ class McpTool(models.Model):
         help_text="Timeout for session initialization. Optional, default is 10 seconds.",
     )
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
         verbose_name = "MCP Tool Data"
         verbose_name_plural = "MCP Tool Data"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name"],
+                name="unique_mcptool_name_per_org",
+            ),
+        ]

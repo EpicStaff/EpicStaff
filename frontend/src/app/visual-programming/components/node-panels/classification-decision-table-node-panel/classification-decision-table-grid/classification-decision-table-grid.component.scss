@@ -628,6 +628,14 @@
             border: 1px solid #ff3b30 !important;
         }
 
+        .ag-root-wrapper:not(:focus-within) .ag-cell.cell-required-invalid,
+        .ag-root-wrapper:focus-within .ag-cell.cell-required-invalid,
+        .ag-cell.cell-required-invalid {
+            border: 1px solid rgba(255, 77, 79, 0.95) !important;
+            box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.35) !important;
+            border-radius: 6px;
+        }
+
         .ag-header-cell-resize::after {
             height: 100% !important;
             top: 0 !important;

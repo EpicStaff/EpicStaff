@@ -1,4 +1,7 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../../../../../shared/components/buttons/button/button.component';
@@ -10,7 +13,7 @@ import { GetMcpToolRequest } from '../../../../../../models/mcp-tool.model';
     standalone: true,
     templateUrl: './mcp-tool-card.component.html',
     styleUrls: ['./mcp-tool-card.component.scss'],
-    imports: [AppSvgIconComponent, ToggleSwitchComponent, ButtonComponent],
+    imports: [AppSvgIconComponent, ToggleSwitchComponent, ButtonComponent, MatTooltipModule, HasPermissionDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class McpToolCardComponent {
@@ -52,4 +55,7 @@ export class McpToolCardComponent {
     public onDelete(): void {
         this.delete.emit(this.tool);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

@@ -20,7 +20,7 @@ import {
     VARIABLE_SECTIONS,
     VariableInputType,
     variableToRowData,
-} from '../parameters-table.config';
+} from '../../parameters';
 import { VariableSectionComponent, VariableSectionMode } from '../variable-section/variable-section.component';
 import { BreadcrumbItem, VariablesBreadcrumbComponent } from '../variables-breadcrumb/variables-breadcrumb.component';
 
@@ -28,7 +28,7 @@ export type DrillStepKind = 'object' | 'array';
 
 export interface DrillStep {
     sectionType: VariableInputType;
-    /** Index into the currently-displayed rows when this step was created. Always 0 for steps inside an array sub-view (only one synthesized row). */
+
     rowIndex: number;
     label: string;
     kind: DrillStepKind;
@@ -372,8 +372,6 @@ export class ParametersTableViewComponent implements OnInit {
         return result;
     }
 }
-
-// --- module-local helpers ---
 
 function setStackOnRoots(roots: ToolVariable[], stack: DrillStep[], children: ToolVariable[]): ToolVariable[] {
     if (stack.length === 0) return roots;

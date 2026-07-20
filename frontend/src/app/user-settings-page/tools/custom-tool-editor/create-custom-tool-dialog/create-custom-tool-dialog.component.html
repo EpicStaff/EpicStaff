@@ -8,6 +8,7 @@
             <div class="dialog-header-right">
                 @if (isEditMode) {
                     <app-button
+                        *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
                         type="outline-primary"
                         mod="default"
                         [disabled]="isCopying()"
@@ -19,6 +20,8 @@
                     class="header-icon-btn header-icon-btn--cancel"
                     type="button"
                     [attr.aria-label]="isEditMode ? 'Discard changes' : 'Cancel'"
+                    matTooltip="Cancel"
+                    matTooltipPosition="above"
                     (click)="close()"
                 >
                     <app-svg-icon
@@ -27,10 +30,13 @@
                     ></app-svg-icon>
                 </button>
                 <button
+                    *appHasPermission="[ResourceCode.Tools, isEditMode ? ActionCode.Update : ActionCode.Create]"
                     class="header-icon-btn header-icon-btn--confirm"
                     type="button"
                     [disabled]="isSaving()"
                     [attr.aria-label]="isEditMode ? 'Save changes' : 'Create tool'"
+                    matTooltip="Save"
+                    matTooltipPosition="above"
                     (click)="submit()"
                 >
                     <app-svg-icon
@@ -97,6 +103,8 @@
                                 <button
                                     type="button"
                                     aria-label="Copy Python code"
+                                    matTooltip="Copy"
+                                    matTooltipPosition="above"
                                     (click)="copyPythonCode()"
                                 >
                                     <app-svg-icon
@@ -109,6 +117,8 @@
                                     [attr.aria-label]="
                                         pythonSectionExpanded() ? 'Collapse Python section' : 'Expand Python section'
                                     "
+                                    matTooltip="View"
+                                    matTooltipPosition="above"
                                     (click)="togglePythonSection()"
                                 >
                                     <app-svg-icon
@@ -119,6 +129,8 @@
                                 <button
                                     type="button"
                                     aria-label="Show Python editor on the right"
+                                    matTooltip="Expand"
+                                    matTooltipPosition="above"
                                     (click)="toggleEditor(ActiveEditor.Python)"
                                 >
                                     <app-svg-icon
@@ -148,6 +160,11 @@
                             <app-help-tooltip
                                 text="Configure the JSON parameters your custom tool accepts."
                             ></app-help-tooltip>
+                            @if (!parametersTableMode() && jsonIssues().length) {
+                                <span class="parameters-issue-label">
+                                    Issues detected. Switching modes may lose changes
+                                </span>
+                            }
                         </div>
                         <div class="parameters-mode-switch">
                             <span>Table mode</span>
@@ -180,11 +197,27 @@
                                         [text]="variablesSchemaTooltip"
                                         position="top"
                                     ></app-help-tooltip>
+                                    @if (jsonIssues().length && lastValidJson()) {
+                                        <button
+                                            type="button"
+                                            class="revert-action"
+                                            title="Revert to the last valid JSON — the most recent version with no errors"
+                                            aria-label="Revert to the last valid JSON"
+                                            (click)="revertToLastValidJson()"
+                                        >
+                                            <app-svg-icon
+                                                icon="refresh"
+                                                size="1rem"
+                                            ></app-svg-icon>
+                                        </button>
+                                    }
                                 </div>
                                 <div class="editor-card-actions">
                                     <button
                                         type="button"
                                         aria-label="Copy JSON configuration"
+                                        matTooltip="Copy"
+                                        matTooltipPosition="above"
                                         (click)="copyJsonConfiguration()"
                                     >
                                         <app-svg-icon
@@ -197,6 +230,8 @@
                                         [attr.aria-label]="
                                             jsonSectionExpanded() ? 'Collapse JSON section' : 'Expand JSON section'
                                         "
+                                        matTooltip="Collapse"
+                                        matTooltipPosition="above"
                                         (click)="toggleJsonSection()"
                                     >
                                         <app-svg-icon
@@ -207,6 +242,8 @@
                                     <button
                                         type="button"
                                         aria-label="Show JSON editor on the right"
+                                        matTooltip="Expand"
+                                        matTooltipPosition="above"
                                         (click)="toggleEditor(ActiveEditor.Json)"
                                     >
                                         <app-svg-icon
@@ -221,9 +258,12 @@
                                     <app-json-editor
                                         [showHeader]="false"
                                         [fullHeight]="true"
+                                        [jsonSchema]="toolVariablesSchema"
+                                        [extraValidate]="objectDefaultMarkers"
                                         [jsonData]="form.controls.variablesJson.value"
                                         (jsonChange)="onJsonChange($event)"
                                         (validationChange)="onJsonValidationChange($event)"
+                                        (errorsChange)="onJsonErrorsChange($event)"
                                         (editorReady)="onJsonEditorReady($event)"
                                     ></app-json-editor>
                                 </div>
@@ -276,6 +316,8 @@
                                         ? 'Copy Python code'
                                         : 'Copy JSON configuration'
                                 "
+                                matTooltip="Copy"
+                                matTooltipPosition="above"
                                 (click)="
                                     activeEditor() === ActiveEditor.Python ? copyPythonCode() : copyJsonConfiguration()
                                 "
@@ -288,6 +330,8 @@
                             <button
                                 type="button"
                                 aria-label="Collapse editor panel"
+                                matTooltip="Collapse"
+                                matTooltipPosition="above"
                                 (click)="closeEditorPane()"
                             >
                                 <app-svg-icon
@@ -311,8 +355,11 @@
                                 [showHeader]="false"
                                 [jsonData]="form.controls.variablesJson.value"
                                 [fullHeight]="true"
+                                [jsonSchema]="toolVariablesSchema"
+                                [extraValidate]="objectDefaultMarkers"
                                 (jsonChange)="onJsonChange($event)"
                                 (validationChange)="onJsonValidationChange($event)"
+                                (errorsChange)="onJsonErrorsChange($event)"
                                 (editorReady)="onJsonEditorReady($event)"
                             ></app-json-editor>
                         }

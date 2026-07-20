@@ -55,9 +55,11 @@ export class SelectComponent implements ControlValueAccessor {
     items = input<SelectItem[]>([]);
     placeholder = input<string>('Select option');
     invalid = input<boolean>(false);
+    disabled = input<boolean>(false);
 
     open = signal(false);
-    isDisabled = signal(false);
+    private controlDisabled = signal(false);
+    isDisabled = computed(() => this.disabled() || this.controlDisabled());
 
     selectedValue = model<unknown | null>(null);
     selectedItem = computed(() => {
@@ -83,6 +85,7 @@ export class SelectComponent implements ControlValueAccessor {
     private destroyRef = inject(DestroyRef);
 
     toggle() {
+        if (this.isDisabled()) return;
         this.open() ? this.close() : this.openDropdown();
     }
 
@@ -158,6 +161,6 @@ export class SelectComponent implements ControlValueAccessor {
     }
 
     setDisabledState(isDisabled: boolean): void {
-        this.isDisabled.set(isDisabled);
+        this.controlDisabled.set(isDisabled);
     }
 }

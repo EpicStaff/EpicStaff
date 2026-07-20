@@ -5,6 +5,8 @@
             class="storage-details-dialog__close"
             type="button"
             aria-label="Close dialog"
+            matTooltip="Close"
+            matTooltipPosition="above"
             (click)="close()"
         >
             <app-svg-icon
@@ -43,6 +45,8 @@
                     class="storage-details-dialog__copy-btn"
                     type="button"
                     aria-label="Copy path"
+                    matTooltip="Copy path"
+                    matTooltipPosition="above"
                     (click)="copyPath()"
                 >
                     <app-svg-icon

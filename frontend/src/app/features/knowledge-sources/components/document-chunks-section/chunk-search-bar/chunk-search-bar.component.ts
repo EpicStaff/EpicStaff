@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { debounceTime, distinctUntilChanged, Subject } from 'rxjs';
 
@@ -28,7 +29,7 @@ export interface ChunkSearchParams {
     templateUrl: './chunk-search-bar.component.html',
     styleUrls: ['./chunk-search-bar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FormsModule, AppSvgIconComponent],
+    imports: [FormsModule, AppSvgIconComponent, MatTooltip],
 })
 export class ChunkSearchBarComponent implements OnInit, OnChanges {
     totalChunks = input.required<number>();

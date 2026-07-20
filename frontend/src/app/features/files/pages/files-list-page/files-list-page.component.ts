@@ -2,7 +2,10 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -27,6 +30,8 @@ import { StorageApiService } from '../../services/storage-api.service';
         FormsModule,
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
+        MatTooltipModule,
+        HasPermissionDirective,
     ],
     templateUrl: './files-list-page.component.html',
     styleUrls: ['./files-list-page.component.scss'],
@@ -62,4 +67,7 @@ export class FilesListPageComponent {
             this.storageApiService.triggerRefresh();
         });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

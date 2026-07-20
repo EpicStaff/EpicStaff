@@ -1,4 +1,4 @@
-import { Directive, effect, inject, Input, signal, TemplateRef, ViewContainerRef } from '@angular/core';
+import { Directive, effect, inject, input, TemplateRef, ViewContainerRef } from '@angular/core';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
@@ -11,19 +11,27 @@ export class HasPermissionDirective {
     private readonly vcr = inject(ViewContainerRef);
     private readonly perms = inject(PermissionsService);
 
-    private readonly value = signal<[ResourceCode, ActionCode] | null>(null);
+    public appHasPermission = input.required<[ResourceCode | undefined, ActionCode | ActionCode[]]>();
 
     constructor() {
         effect(() => {
-            const v = this.value();
+            const v = this.appHasPermission();
             this.vcr.clear();
-            if (v !== null && this.perms.can(v[0], v[1])) {
+
+            const [resource, action] = v;
+
+            if (!resource) {
+                this.vcr.createEmbeddedView(this.tpl);
+                return;
+            }
+
+            const allowed = Array.isArray(action)
+                ? this.perms.canAny(resource, action)
+                : this.perms.can(resource, action);
+
+            if (allowed) {
                 this.vcr.createEmbeddedView(this.tpl);
             }
         });
-    }
-
-    @Input() set appHasPermission(value: [ResourceCode, ActionCode]) {
-        this.value.set(value);
     }
 }
