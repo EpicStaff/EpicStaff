@@ -13,7 +13,7 @@ class GraphIndexer(AbstractIndexer):
     async def on_execute(self, request: IndexRequest):
         async with self.uow:
             rag = await self._get_rag_under_uow(request.rag_id)
-            config = await self._get_config(rag.id)
+            config = await self._get_config_under_uow(rag.id)
             documents = await self._get_documents_under_uow(rag.id, request.document_ids)
 
         rag.mark_as_processing(request.document_ids)
@@ -57,7 +57,7 @@ class GraphIndexer(AbstractIndexer):
         self.state["rag"] = rag
         return rag
 
-    async def _get_config(self, rag_id: int):
+    async def _get_config_under_uow(self, rag_id: int):
         config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id)
         if not config:
             raise GraphRagConfigNotFoundError(rag_id=rag_id)
