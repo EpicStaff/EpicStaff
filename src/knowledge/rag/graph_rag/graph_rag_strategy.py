@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -8,6 +9,7 @@ from loguru import logger
 from graphrag.api.index import build_index
 from graphrag.api.query import basic_search, local_search
 from graphrag.config.models.graph_rag_config import GraphRagConfig
+from graphrag.language_model.manager import ModelManager
 
 from rag.base_rag_strategy import BaseRAGStrategy
 from rag.graph_rag.graph_rag_file_manager import GraphRagFileManager
@@ -18,6 +20,38 @@ from src.shared.models import (
     KnowledgeChunkResponse,
 )
 from settings import UnitOfWork
+
+
+# graphrag's ModelManager (graphrag/language_model/manager.py) is a process-wide
+# singleton dict keyed by a NAME string. That name is NOT GraphRagConfig.models'
+# model_id — every pipeline/query call site hardcodes a fixed per-stage name, and
+# get_or_create_chat_model()/get_or_create_embedding_model() silently return the
+# ALREADY-registered client for that name, ignoring the new config/api_key
+# entirely. So two collections with different LLM/embedder API keys that hit the
+# same stage collide on the same cached client regardless of model_id (making
+# GraphRagConfigBuilder's model ids unique per collection would NOT fix this).
+# Confirmed call sites for the paths this strategy exercises:
+#   indexing (graphrag.api.index.build_index):
+#     extract_graph/graph_intelligence_strategy.py           -> chat  "extract_graph"
+#     summarize_descriptions/graph_intelligence_strategy.py  -> chat  "summarize_descriptions"
+#     summarize_communities/strategies.py                    -> chat  "community_reporting"
+#     extract_covariates/extract_covariates.py               -> chat  "extract_claims"
+#     embed_text/strategies/openai.py                        -> embed "text_embedding"
+#   search (graphrag.api.query.basic_search / local_search -> query/factory.py):
+#     get_basic_search_engine -> chat "basic_search_chat", embed "basic_search_embedding"
+#     get_local_search_engine -> chat "local_search_chat", embed "local_search_embedding"
+#
+# The knowledge service runs up to 3 indexing jobs and up to 10 searches
+# concurrently (see indexing_semaphore / search_semaphore in main.py), each in
+# its own worker thread. Because these names are fixed, evicting them after a
+# run only prevents *sequential* contamination — two jobs racing through
+# registration at the same instant would still share a client. The locks below
+# serialize the actual graphrag pipeline/query call (not the surrounding file
+# I/O) per category so registration + eviction for one collection always
+# completes before the next collection in the same category starts. Indexing
+# and search use disjoint name sets, so they don't need to block each other.
+_INDEXING_MODEL_MANAGER_LOCK = threading.Lock()
+_SEARCH_MODEL_MANAGER_LOCK = threading.Lock()
 
 
 class GraphRAGStrategy(BaseRAGStrategy):
@@ -174,6 +208,14 @@ class GraphRAGStrategy(BaseRAGStrategy):
                 )
             raise
 
+    _INDEXING_CHAT_MODEL_NAMES = (
+        "extract_graph",
+        "summarize_descriptions",
+        "community_reporting",
+        "extract_claims",
+    )
+    _INDEXING_EMBEDDING_MODEL_NAMES = ("text_embedding",)
+
     def _run_indexing(self, config: GraphRagConfig) -> None:
         """
         Run the GraphRAG indexing pipeline.
@@ -183,28 +225,59 @@ class GraphRAGStrategy(BaseRAGStrategy):
         We inspect every result and raise if any workflow errored, so the
         caller's except block correctly marks the RAG as "failed".
 
+        Serialized against `_INDEXING_MODEL_MANAGER_LOCK` and evicts this run's
+        registered models afterwards (in a `finally`, so it runs on success and
+        on failure), so a concurrent/subsequent collection's indexing job never
+        reuses this collection's cached LLM/embedder client (and API key) from
+        graphrag's ModelManager singleton — see the module-level comment.
+
         Args:
             config: GraphRagConfig instance
 
         Raises:
             RuntimeError: If one or more graphrag workflows completed with errors
         """
-        # GraphRAG's build_index is async
-        pipeline_results = asyncio.run(build_index(config))
+        with _INDEXING_MODEL_MANAGER_LOCK:
+            try:
+                # GraphRAG's build_index is async
+                pipeline_results = asyncio.run(build_index(config))
 
-        failed_workflows = [
-            (result.workflow, result.errors)
-            for result in pipeline_results
-            if result.errors
-        ]
-        if failed_workflows:
-            details = "; ".join(
-                f"{workflow}: {[str(error) for error in errors]}"
-                for workflow, errors in failed_workflows
-            )
-            raise RuntimeError(
-                f"GraphRAG indexing failed for workflow(s): {details}"
-            )
+                failed_workflows = [
+                    (result.workflow, result.errors)
+                    for result in pipeline_results
+                    if result.errors
+                ]
+                if failed_workflows:
+                    details = "; ".join(
+                        f"{workflow}: {[str(error) for error in errors]}"
+                        for workflow, errors in failed_workflows
+                    )
+                    raise RuntimeError(
+                        f"GraphRAG indexing failed for workflow(s): {details}"
+                    )
+            finally:
+                self._evict_models(
+                    self._INDEXING_CHAT_MODEL_NAMES,
+                    self._INDEXING_EMBEDDING_MODEL_NAMES,
+                )
+
+    @staticmethod
+    def _evict_models(
+        chat_model_names: tuple[str, ...],
+        embedding_model_names: tuple[str, ...],
+    ) -> None:
+        """
+        Remove the given names from graphrag's ModelManager singleton.
+
+        `remove_chat`/`remove_embedding` use `dict.pop(name, None)`, so this is a
+        safe no-op for names that were never registered (e.g. a run that didn't
+        use claim extraction never registered "extract_claims").
+        """
+        model_manager = ModelManager.get_instance()
+        for name in chat_model_names:
+            model_manager.remove_chat(name)
+        for name in embedding_model_names:
+            model_manager.remove_embedding(name)
 
     # ==================== Search ====================
 
@@ -325,15 +398,27 @@ class GraphRAGStrategy(BaseRAGStrategy):
         graphrag_config: GraphRagConfig,
         query: str,
     ) -> tuple:
-        """Run basic search using text_units only."""
+        """
+        Run basic search using text_units only.
+
+        Serialized against `_SEARCH_MODEL_MANAGER_LOCK` and evicts the
+        "basic_search_chat"/"basic_search_embedding" ModelManager entries
+        afterwards — a concurrent search on a different collection would
+        otherwise reuse this collection's cached LLM/embedder client. See the
+        module-level comment on graphrag's ModelManager singleton.
+        """
         text_units = self._load_parquet(root_folder, "text_units.parquet")
-        return asyncio.run(
-            basic_search(
-                config=graphrag_config,
-                text_units=text_units,
-                query=query,
-            )
-        )
+        with _SEARCH_MODEL_MANAGER_LOCK:
+            try:
+                return asyncio.run(
+                    basic_search(
+                        config=graphrag_config,
+                        text_units=text_units,
+                        query=query,
+                    )
+                )
+            finally:
+                self._evict_models(("basic_search_chat",), ("basic_search_embedding",))
 
     def _run_local_search(
         self,
@@ -344,6 +429,12 @@ class GraphRAGStrategy(BaseRAGStrategy):
         """
         Run local search using entities, communities, community_reports,
         text_units, relationships, and optional covariates.
+
+        Serialized against `_SEARCH_MODEL_MANAGER_LOCK` and evicts the
+        "local_search_chat"/"local_search_embedding" ModelManager entries
+        afterwards — a concurrent search on a different collection would
+        otherwise reuse this collection's cached LLM/embedder client. See the
+        module-level comment on graphrag's ModelManager singleton.
         """
         text_units = self._load_parquet(root_folder, "text_units.parquet")
         entities = self._load_parquet(root_folder, "entities.parquet")
@@ -357,20 +448,24 @@ class GraphRAGStrategy(BaseRAGStrategy):
         if covariates_path.exists():
             covariates = pd.read_parquet(covariates_path)
 
-        return asyncio.run(
-            local_search(
-                config=graphrag_config,
-                entities=entities,
-                communities=communities,
-                community_reports=community_reports,
-                text_units=text_units,
-                relationships=relationships,
-                covariates=covariates,
-                community_level=2,
-                response_type="Multiple Paragraphs",
-                query=query,
-            )
-        )
+        with _SEARCH_MODEL_MANAGER_LOCK:
+            try:
+                return asyncio.run(
+                    local_search(
+                        config=graphrag_config,
+                        entities=entities,
+                        communities=communities,
+                        community_reports=community_reports,
+                        text_units=text_units,
+                        relationships=relationships,
+                        covariates=covariates,
+                        community_level=2,
+                        response_type="Multiple Paragraphs",
+                        query=query,
+                    )
+                )
+            finally:
+                self._evict_models(("local_search_chat",), ("local_search_embedding",))
 
     def _load_parquet(self, root_folder: Path, filename: str) -> pd.DataFrame:
         """Load a parquet file from the output directory."""
