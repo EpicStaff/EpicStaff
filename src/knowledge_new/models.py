@@ -10,7 +10,6 @@ from enums import (
 from pydantic import Field, computed_field
 from src.shared.models.base import Entity, ValueObject
 from src.shared.models.knowledge_new import (
-    BaseSearchConfig,
     CancelRequest,
     FoundChunk,
     GraphSearchConfig,
@@ -25,7 +24,6 @@ from src.shared.models.knowledge_new import (
 )
 
 __all__ = [
-    "BaseSearchConfig",
     "CancelRequest",
     "ChunkingConfig",
     "Document",
