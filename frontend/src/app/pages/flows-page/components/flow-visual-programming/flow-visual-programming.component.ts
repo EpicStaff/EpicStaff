@@ -205,8 +205,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (!isFinite(graphId)) return;
             if (graphId === this.lastFetchedGraphId) return;
             this.lastFetchedGraphId = graphId;
-            this.undoRedoService.setUndoStack([]);
-            this.undoRedoService.setRedoStack([]);
+            this.undoRedoService.clear();
             const warnings = this.createGraphWarningService.readPending();
             if (warnings.length) this.restoreWarnings.set(warnings);
             this.fetchGraph(graphId);
@@ -234,6 +233,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 }
 
                 this.flowService.applyConnectionIdMap(tempIdMap, event.graph_id);
+                this.undoRedoService.remapTempIds(tempIdMap);
             }
             this.savedFlowState.set(cloneFlowState(this.currentFlowState()));
         });
@@ -243,6 +243,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         });
 
         this.wsService.opRejected$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            if (msg.reason === 'precondition_failed') return;
             const text =
                 msg.reason === 'target_not_found'
                     ? 'This node was deleted by other user. Your changes not applied'
@@ -271,8 +272,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }
 
             if (msg.restored_by) {
-                this.undoRedoService.setUndoStack([]);
-                this.undoRedoService.setRedoStack([]);
+                this.undoRedoService.clear();
                 const restoredBy = msg.restored_by.display_name ?? `User ${msg.restored_by.user_id}`;
                 const versionName = msg.version_name ?? 'a previous version';
                 this.toastService.info(`Flow restored to ${versionName} by ${restoredBy}`);
@@ -1224,8 +1224,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             )
             .subscribe((response) => {
                 this.restoreWarnings.set(response.warnings);
-                this.undoRedoService.setUndoStack([]);
-                this.undoRedoService.setRedoStack([]);
+                this.undoRedoService.clear();
                 this.refreshCurrentFlow();
             });
     }

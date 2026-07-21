@@ -99,6 +99,7 @@ export type NodeUpdatedMessage = {
     editor: EditorInfo;
     changed_fields?: string[];
     op_id?: string;
+    expected?: Record<string, unknown>;
 };
 export type OpRejectedMessage = {
     type: 'op_rejected';
@@ -769,33 +770,42 @@ export class GraphCollaborationWsService {
         graphId: number,
         allNodes: NodeModel[] = [],
         connections: ConnectionModel[] = [],
-        prevNode: NodeModel | null = null
-    ): void {
+        prevNode: NodeModel | null = null,
+        withExpected = false
+    ): string | null {
         const list_key = nodeTypeToListKey(node.type);
-        if (!list_key) return;
+        if (!list_key) return null;
         const payload = buildNodeBackendPayload(node, graphId, allNodes, connections);
-        if (!payload) return;
+        if (!payload) return null;
         const editor = this.buildEditorInfo();
-        if (!editor) return;
+        if (!editor) return null;
 
         if (prevNode) {
             const prevPayload = buildNodeBackendPayload(prevNode, graphId, allNodes, connections);
             if (prevPayload) {
                 const { node: partial, changed_fields } = buildPartialNodePayload(prevPayload, payload);
-                if (changed_fields.length === 0) return;
-                this.sendRaw({
+                if (changed_fields.length === 0) return null;
+                const op_id = crypto.randomUUID();
+                const message: NodeUpdatedMessage = {
                     type: 'node_updated',
                     node: partial,
                     list_key,
                     changed_fields,
                     op_id: crypto.randomUUID(),
                     editor,
-                });
-                return;
+                };
+                if (withExpected) {
+                    const expected: Record<string, unknown> = {};
+                    for (const key of changed_fields) expected[key] = prevPayload[key];
+                    message.expected = expected;
+                }
+                this.sendRaw(message);
+                return op_id;
             }
         }
 
         this.sendRaw({ type: 'node_updated', node: payload, list_key, editor });
+        return null;
     }
 
     public sendNodePositionDuringDrag(

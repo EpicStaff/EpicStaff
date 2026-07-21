@@ -326,7 +326,10 @@
             </button>
         </div>
     </div>
-    <app-flow-action-panel (undoRedoPerformed)="onUndoRedoPerformed($event)"></app-flow-action-panel>
+    <app-flow-action-panel
+        (undo)="onUndo()"
+        (redo)="onRedo()"
+    ></app-flow-action-panel>
 
     @if (showContextMenu()) {
         <app-flow-graph-context-menu
