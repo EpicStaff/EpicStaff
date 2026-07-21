@@ -39,6 +39,11 @@ Our core philosophy: **We hide the complexity, not the logic.**
 </div>
 
 ---
+## Keep your coding agent
+
+Keep your coding agent. It writes tools, flows, and routing rules brilliantly — EpicStaff is the governed runtime they run in: session ledger, sandboxed execution, per-agent permissions, and a canvas your operations team can read.
+
+---
  <p align="center">
     
 ## Visual Agent Orchestrator in Action
