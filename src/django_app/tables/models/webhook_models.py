@@ -5,6 +5,7 @@ from django.core.validators import RegexValidator
 from django.db import models
 
 from tables.models.base_models import DefaultBaseModel
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 class ProviderType(models.TextChoices):
@@ -81,7 +82,7 @@ class LocalhostWebhookConfig(models.Model):
         return self.name
 
 
-class WebhookTrigger(models.Model):
+class WebhookTrigger(OrgScopedModel, models.Model):
     path = models.CharField(
         max_length=255,
         validators=[
@@ -98,7 +99,8 @@ class WebhookTrigger(models.Model):
         blank=True,
     )
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
+        abstract = False
         unique_together = [
             ("path", "provider_type"),
         ]
@@ -119,7 +121,7 @@ class WebhookTrigger(models.Model):
 # ---------------------------------------------------------------------------
 
 
-class RealtimeChannel(models.Model):
+class RealtimeChannel(OrgScopedModel, models.Model):
     """
     A named, typed communication channel linked to a RealtimeAgent.
 
@@ -137,7 +139,8 @@ class RealtimeChannel(models.Model):
         # future: WHATSAPP = "whatsapp", "WhatsApp"
         # future: TELEGRAM = "telegram", "Telegram"
 
-    class Meta:
+    class Meta(OrgScopedModel.Meta):
+        abstract = False
         db_table = "realtime_channel"
 
     name = models.CharField(max_length=250)
@@ -170,6 +173,12 @@ class TwilioChannel(models.Model):
     The Twilio webhook URL should be configured as:
         POST  /voice/{channel.token}/
         WS    /voice/{channel.token}/stream
+
+    Org scoping lives on the parent `RealtimeChannel` (`channel`), not here
+    — `channel` is a mandatory, non-nullable OneToOneField (it IS this
+    model's PK), so org visibility is always reachable transitively via
+    `channel__org_id` with no risk of hiding rows behind a missing detail
+    row (unlike the reverse direction, RealtimeChannel -> TwilioChannel).
     """
 
     class Meta:

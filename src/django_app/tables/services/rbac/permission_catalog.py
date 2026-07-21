@@ -101,6 +101,13 @@ RESOURCE_TYPE_METADATA = [
         "description": "Provider API keys, credentials, sensitive config",
         "applicable_actions": ["create", "read", "update", "delete"],
     },
+    {
+        "code": ResourceType.VOICE.value,
+        "label": "Voice",
+        "group": "config",
+        "description": "Voice model configurations and settings",
+        "applicable_actions": ["create", "read", "update", "delete"],
+    }
 ]
 
 

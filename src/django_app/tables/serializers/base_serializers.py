@@ -12,7 +12,7 @@ from utils.logger import logger
 
 class NgrokConfigInlineSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=50)
-    auth_token = serializers.CharField(max_length=255)
+    auth_token = serializers.CharField(max_length=255, write_only=True)
     domain = serializers.CharField(
         max_length=255, required=False, allow_blank=True, allow_null=True
     )

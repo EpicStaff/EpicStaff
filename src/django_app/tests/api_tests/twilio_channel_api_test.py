@@ -17,12 +17,25 @@ from tables.models.realtime_models import RealtimeAgent
 # ---------------------------------------------------------------------------
 
 
-def _make_realtime_channel(db):
-    """Create a minimal RealtimeChannel (no RealtimeAgent required)."""
-    return RealtimeChannel.objects.create(name="test-channel")
+def _make_realtime_channel(db, org, **kwargs):
+    """Create a minimal RealtimeChannel (no RealtimeAgent required).
+
+    RealtimeChannel is org-scoped (EST-3491 follow-up) — every direct ORM
+    .create() must pass `org`, same as the API path stamps it via the
+    active org (OrgScopedViewSetMixin.perform_create).
+    """
+    return RealtimeChannel.objects.create(name="test-channel", org=org, **kwargs)
 
 
-def _make_twilio_channel(realtime_channel, **kwargs):
+def _make_twilio_channel(realtime_channel, org=None, **kwargs):
+    """Create a TwilioChannel attached to `realtime_channel`.
+
+    TwilioChannel itself has no `org` column (EST-3491 follow-up) — org
+    lives on the parent RealtimeChannel. `org` is accepted only for
+    call-site compatibility (it is not written anywhere here); callers must
+    have already created `realtime_channel` with the right org via
+    `_make_realtime_channel`.
+    """
     return TwilioChannel.objects.create(
         channel=realtime_channel,
         account_sid="AC_test",
@@ -31,8 +44,12 @@ def _make_twilio_channel(realtime_channel, **kwargs):
     )
 
 
-def _make_webhook_trigger_with_ngrok(path="test-voice"):
-    trigger = WebhookTrigger.objects.create(path=path, provider_type=ProviderType.NGROK)
+def _make_webhook_trigger_with_ngrok(org, path="test-voice"):
+    # WebhookTrigger is now org-owned (EST-3491) — every direct ORM .create()
+    # must pass `org`, same as the API path stamps it via the active org.
+    trigger = WebhookTrigger.objects.create(
+        path=path, provider_type=ProviderType.NGROK, org=org
+    )
     NgrokWebhookConfig.objects.create(
         trigger=trigger,
         name="test-ngrok",
@@ -42,9 +59,9 @@ def _make_webhook_trigger_with_ngrok(path="test-voice"):
     return trigger
 
 
-def _make_webhook_trigger_with_localhost(path="test-localhost"):
+def _make_webhook_trigger_with_localhost(org, path="test-localhost"):
     trigger = WebhookTrigger.objects.create(
-        path=path, provider_type=ProviderType.LOCALHOST
+        path=path, provider_type=ProviderType.LOCALHOST, org=org
     )
     LocalhostWebhookConfig.objects.create(
         trigger=trigger,
@@ -61,9 +78,9 @@ def _make_webhook_trigger_with_localhost(path="test-localhost"):
 
 @pytest.mark.django_db
 class TestTwilioChannelWebhookTrigger:
-    def test_create_twilio_channel_without_webhook_trigger(self, auth_client, db):
+    def test_create_twilio_channel_without_webhook_trigger(self, auth_client, db, default_org):
         """POST without webhook_trigger should create successfully with null trigger."""
-        rc = _make_realtime_channel(db)
+        rc = _make_realtime_channel(db, default_org)
         url = reverse("twiliochannel-list")
         payload = {
             "channel": rc.pk,
@@ -74,10 +91,10 @@ class TestTwilioChannelWebhookTrigger:
         assert response.status_code == 201, response.json()
         assert response.json()["webhook_trigger"] is None
 
-    def test_create_twilio_channel_with_ngrok_trigger(self, auth_client, db):
+    def test_create_twilio_channel_with_ngrok_trigger(self, auth_client, db, default_org):
         """POST with webhook_trigger FK; GET should return nested webhook_trigger with live_url=null."""
-        rc = _make_realtime_channel(db)
-        trigger = _make_webhook_trigger_with_ngrok(path="voice-ngrok-test")
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="voice-ngrok-test")
 
         url = reverse("twiliochannel-list")
         payload = {
@@ -99,11 +116,11 @@ class TestTwilioChannelWebhookTrigger:
         # The read path still returns the FK id (TwilioChannelSerializer is used for both)
         assert data["webhook_trigger"] == trigger.pk
 
-    def test_two_channels_share_one_trigger(self, auth_client, db):
+    def test_two_channels_share_one_trigger(self, auth_client, db, default_org):
         """Two TwilioChannels may point at the same WebhookTrigger."""
-        rc1 = _make_realtime_channel(db)
-        rc2 = RealtimeChannel.objects.create(name="channel-b")
-        trigger = _make_webhook_trigger_with_ngrok(path="shared-trigger")
+        rc1 = _make_realtime_channel(db, default_org)
+        rc2 = RealtimeChannel.objects.create(name="channel-b", org=default_org)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="shared-trigger")
 
         url = reverse("twiliochannel-list")
         for rc, sid in [(rc1, "AC_one"), (rc2, "AC_two")]:
@@ -130,11 +147,11 @@ class TestTwilioChannelWebhookTrigger:
             assert get_resp.status_code == 200
             assert get_resp.json()["webhook_trigger"] == trigger.pk
 
-    def test_patch_twilio_channel_remove_trigger(self, auth_client, db):
+    def test_patch_twilio_channel_remove_trigger(self, auth_client, db, default_org):
         """PATCH webhook_trigger=null should clear the FK."""
-        rc = _make_realtime_channel(db)
-        trigger = _make_webhook_trigger_with_ngrok(path="removable-trigger")
-        tc = _make_twilio_channel(rc, webhook_trigger=trigger)
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="removable-trigger")
+        tc = _make_twilio_channel(rc, default_org, webhook_trigger=trigger)
 
         url = reverse("twiliochannel-detail", args=[tc.channel_id])
         response = auth_client.patch(url, {"webhook_trigger": None}, format="json")
@@ -144,11 +161,11 @@ class TestTwilioChannelWebhookTrigger:
         tc.refresh_from_db()
         assert tc.webhook_trigger_id is None
 
-    def test_configure_webhook_rejects_localhost_provider(self, auth_client, db):
+    def test_configure_webhook_rejects_localhost_provider(self, auth_client, db, default_org):
         """configure-webhook must 400 when the trigger uses the localhost provider."""
-        rc = _make_realtime_channel(db)
-        trigger = _make_webhook_trigger_with_localhost(path="cfg-localhost")
-        _make_twilio_channel(rc, webhook_trigger=trigger)
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_localhost(default_org, path="cfg-localhost")
+        _make_twilio_channel(rc, default_org, webhook_trigger=trigger)
 
         url = reverse("twilio-configure-webhook")
         response = auth_client.post(
@@ -159,38 +176,38 @@ class TestTwilioChannelWebhookTrigger:
         assert response.status_code == 400, response.json()
         assert "localhost" in response.json()["error"].lower()
 
-    def test_validate_provider_rejects_localhost(self, db):
+    def test_validate_provider_rejects_localhost(self, db, default_org):
         """validate_provider() returns an error message for local-only providers."""
-        rc = _make_realtime_channel(db)
-        trigger = _make_webhook_trigger_with_localhost(path="vp-localhost")
-        tc = _make_twilio_channel(rc, webhook_trigger=trigger)
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_localhost(default_org, path="vp-localhost")
+        tc = _make_twilio_channel(rc, default_org, webhook_trigger=trigger)
 
         error = tc.validate_provider()
         assert error is not None
         assert "localhost" in error.lower()
 
-    def test_validate_provider_accepts_ngrok(self, db):
+    def test_validate_provider_accepts_ngrok(self, db, default_org):
         """validate_provider() returns None for a publicly reachable provider."""
-        rc = _make_realtime_channel(db)
-        trigger = _make_webhook_trigger_with_ngrok(path="vp-ngrok")
-        tc = _make_twilio_channel(rc, webhook_trigger=trigger)
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="vp-ngrok")
+        tc = _make_twilio_channel(rc, default_org, webhook_trigger=trigger)
 
         assert tc.validate_provider() is None
 
-    def test_validate_provider_rejects_missing_trigger(self, db):
+    def test_validate_provider_rejects_missing_trigger(self, db, default_org):
         """validate_provider() returns an error when no trigger is configured."""
-        rc = _make_realtime_channel(db)
-        tc = _make_twilio_channel(rc)
+        rc = _make_realtime_channel(db, default_org)
+        tc = _make_twilio_channel(rc, default_org)
 
         error = tc.validate_provider()
         assert error is not None
         assert "no webhook trigger" in error.lower()
 
-    def test_realtime_channel_get_expands_twilio_webhook_trigger(self, auth_client, db):
+    def test_realtime_channel_get_expands_twilio_webhook_trigger(self, auth_client, db, default_org):
         """GET /realtime-channels/{id}/ should include twilio.webhook_trigger with path and live_url."""
-        trigger = _make_webhook_trigger_with_ngrok(path="realtime-voice")
-        rc = _make_realtime_channel(db)
-        _make_twilio_channel(rc, webhook_trigger=trigger)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="realtime-voice")
+        rc = _make_realtime_channel(db, default_org)
+        _make_twilio_channel(rc, default_org, webhook_trigger=trigger)
 
         url = reverse("realtimechannel-detail", args=[rc.pk])
         response = auth_client.get(url)

@@ -13,32 +13,25 @@ from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerValidator,
 )
 from tables.services.schedule_trigger_service import ScheduleTriggerService
-from tables.models.webhook_models import WebhookTrigger, ProviderType
+from tables.models.webhook_models import WebhookTrigger
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
 )
-from tables.serializers.utils.mixins import (
-    NestedPythonCodeMixin,
-    WebhookCreationMixin,
-    WebhookTriggerIntRefMixin,
-)
+from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
+from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
-from tables.serializers.base_serializers import (
-    WebhookTriggerNestedSerializer,
-)
 
 
 class WebhookTriggerNodeSerializer(
     BaseGraphEntityMixin,
     NestedPythonCodeMixin,
-    WebhookTriggerIntRefMixin,
-    WebhookCreationMixin,
     serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
-
-    webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
+    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    )
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
@@ -51,41 +44,9 @@ class WebhookTriggerNodeSerializer(
             "webhook_trigger",
         ] + BaseGraphEntityMixin.Meta.common_fields
 
-    def _wait_for_tunnel_url(self, webhook_trigger):
-        from tables.services.webhook_trigger_service import WebhookTriggerService
 
-        if webhook_trigger is None:
-            return
-        service = WebhookTriggerService()
-        if webhook_trigger.provider_type == ProviderType.NGROK:
-            service.wait_for_tunnel_url(webhook_trigger)
-        elif webhook_trigger.provider_type == ProviderType.LOCALHOST:
-            service.wait_for_localhost_tunnel_url(webhook_trigger)
-
-    def create(self, validated_data):
-        webhook_trigger_data = validated_data.pop("webhook_trigger", None)
-        if not self._apply_webhook_trigger_fk_to_create(validated_data):
-            if webhook_trigger_data:
-                trigger, _ = self._get_or_create_webhook_trigger(webhook_trigger_data)
-                validated_data["webhook_trigger"] = trigger
-                self._wait_for_tunnel_url(trigger)
-
-        return self._create_with_python_code(WebhookTriggerNode, validated_data)
-
-    def update(self, instance, validated_data):
-        if not self._apply_webhook_trigger_fk_to_update(instance, validated_data):
-            if "webhook_trigger" in validated_data:
-                webhook_trigger_data = validated_data.pop("webhook_trigger")
-                if webhook_trigger_data:
-                    trigger, _ = self._get_or_create_webhook_trigger(
-                        webhook_trigger_data
-                    )
-                    instance.webhook_trigger = trigger
-                    self._wait_for_tunnel_url(trigger)
-                else:
-                    instance.webhook_trigger = None
-
-        return super().update(instance, validated_data)
+class WebhookTriggerNodeReadSerializer(WebhookTriggerNodeSerializer):
+    webhook_trigger = WebhookTriggerNestedSerializer(read_only=True)
 
 
 class TelegramTriggerNodeFieldSerializer(
@@ -104,11 +65,11 @@ class TelegramTriggerNodeFieldSerializer(
 
 class TelegramTriggerNodeSerializer(
     ContentHashWritableMixin,
-    WebhookTriggerIntRefMixin,
-    WebhookCreationMixin,
     serializers.ModelSerializer,
 ):
-    webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
+    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    )
     fields = TelegramTriggerNodeFieldSerializer(many=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -125,30 +86,13 @@ class TelegramTriggerNodeSerializer(
 
     def create(self, validated_data):
         fields_data = validated_data.pop("fields", [])
-        webhook_trigger_data = validated_data.pop("webhook_trigger", None)
-        if not self._apply_webhook_trigger_fk_to_create(validated_data):
-            if webhook_trigger_data:
-                trigger, _ = self._get_or_create_webhook_trigger(webhook_trigger_data)
-                validated_data["webhook_trigger"] = trigger
-
         node = TelegramTriggerNode.objects.create(**validated_data)
         for item in fields_data:
             TelegramTriggerNodeField.objects.create(telegram_trigger_node=node, **item)
-
         return node
 
     def update(self, instance, validated_data):
         fields_data = validated_data.pop("fields", None)
-        if not self._apply_webhook_trigger_fk_to_update(instance, validated_data):
-            if "webhook_trigger" in validated_data:
-                webhook_trigger_data = validated_data.pop("webhook_trigger")
-                webhook_trigger_instance = None
-                if webhook_trigger_data:
-                    webhook_trigger_instance, _ = self._get_or_create_webhook_trigger(
-                        webhook_trigger_data
-                    )
-                instance.webhook_trigger = webhook_trigger_instance
-
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -161,6 +105,10 @@ class TelegramTriggerNodeSerializer(
                 )
 
         return instance
+
+
+class TelegramTriggerNodeReadSerializer(TelegramTriggerNodeSerializer):
+    webhook_trigger = WebhookTriggerNestedSerializer(read_only=True)
 
 
 class TelegramTriggerNodeDataFieldsSerializer(serializers.Serializer):

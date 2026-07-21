@@ -2,6 +2,8 @@ import pytest
 from django.urls import reverse
 
 from tables.models.graph_models import Graph
+from tables.models.rbac_models import Organization, OrganizationUser, Role
+from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
@@ -9,14 +11,37 @@ from tables.models.webhook_models import (
     WebhookTrigger,
 )
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
+from rest_framework.test import APIClient
+
+
+@pytest.fixture
+def other_org(db):
+    return Organization.objects.create(name="Other Organization")
+
+
+@pytest.fixture
+def other_org_client(other_org, django_user_model):
+    """A Member of `other_org` — used to prove cross-org invisibility/rejection."""
+    role_member = Role.objects.get(
+        name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True
+    )
+    user = django_user_model.objects.create_user(
+        email="other-org-member@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=other_org, role=role_member)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(other_org.id))
+    return client
 
 
 @pytest.mark.django_db
 class TestWebhookTriggerAndNodeAPI:
-    def test_create_webhook_trigger(self, auth_client):
+    def test_create_webhook_trigger(self, auth_client, default_org):
         """
         Basic smoke test for /api/webhook-triggers/ create endpoint.
-        Creates a trigger with no provider (provider_type=None).
+        Creates a trigger with no provider (provider_type=None), lands in the
+        caller's active org.
         """
         url = reverse("webhooktrigger-list")
         payload = {
@@ -31,16 +56,26 @@ class TestWebhookTriggerAndNodeAPI:
         trigger = WebhookTrigger.objects.first()
         assert trigger.path == "myWebhook123"
         assert trigger.provider_type is None
+        assert trigger.org_id == default_org.id
 
     def test_create_webhook_trigger_node_with_nested_trigger(
-        self, auth_client, graph: Graph
+        self, auth_client, graph: Graph, default_org
     ):
         """
-        Ensure /api/webhook-trigger-nodes/ accepts nested webhook_trigger payload
-        with no provider and links node to the corresponding WebhookTrigger.
+        Inline trigger creation from a node was removed (EST-2987/EST-3491) —
+        /api/webhook-trigger-nodes/ only accepts an *existing* WebhookTrigger
+        id. Create the trigger via /api/webhook-triggers/ first, then attach
+        it to the node by id.
         """
-        url = reverse("webhooktriggernode-list")
+        trigger_response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "myWebhookNested", "provider_type": None},
+            format="json",
+        )
+        assert trigger_response.status_code == 201, trigger_response.json()
+        trigger_id = trigger_response.json()["id"]
 
+        url = reverse("webhooktriggernode-list")
         payload = {
             "node_name": "My Webhook Trigger",
             "graph": graph.id,
@@ -50,33 +85,72 @@ class TestWebhookTriggerAndNodeAPI:
                 "entrypoint": "handler",
                 "global_kwargs": {},
             },
-            "webhook_trigger": {
-                "path": "myWebhookNested",
-                "provider_type": None,
+            "webhook_trigger": trigger_id,
+            "metadata": {},
+        }
+
+        response = auth_client.post(url, payload, format="json")
+
+        assert response.status_code == 201, response.json()
+        data = response.json()
+        assert data["node_name"] == "My Webhook Trigger"
+        assert data["webhook_trigger"] == trigger_id
+
+        # WebhookTrigger should be created with no provider type, org-stamped
+        trigger = WebhookTrigger.objects.get(path="myWebhookNested")
+        assert trigger.provider_type is None
+        assert trigger.org_id == default_org.id
+
+    def test_create_webhook_trigger_node_without_trigger(
+        self, auth_client, graph: Graph
+    ):
+        """
+        `webhook_trigger` is optional (matches the nullable model FK) — a node
+        may be created before any trigger is attached to it.
+        """
+        url = reverse("webhooktriggernode-list")
+        payload = {
+            "node_name": "No Trigger Yet",
+            "graph": graph.id,
+            "python_code": {
+                "libraries": [],
+                "code": "def handler(event, context):\n    return event",
+                "entrypoint": "handler",
+                "global_kwargs": {},
             },
             "metadata": {},
         }
 
         response = auth_client.post(url, payload, format="json")
 
-        assert response.status_code == 201
+        assert response.status_code == 201, response.json()
         data = response.json()
-        assert data["node_name"] == "My Webhook Trigger"
-        assert data["webhook_trigger"]["path"] == "myWebhookNested"
-
-        # WebhookTrigger should be created with no provider type
-        trigger = WebhookTrigger.objects.get(path="myWebhookNested")
-        assert trigger.provider_type is None
+        assert data["webhook_trigger"] is None
 
     def test_create_webhook_trigger_node_with_ngrok_trigger(
         self, auth_client, graph: Graph
     ):
         """
-        Ensure /api/webhook-trigger-nodes/ accepts a nested ngrok webhook_trigger
-        and creates both the WebhookTrigger and the linked NgrokWebhookConfig.
+        Create a WebhookTrigger with a nested ngrok config via
+        /api/webhook-triggers/, then attach it to a node by id.
         """
-        url = reverse("webhooktriggernode-list")
+        trigger_response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "myNgrokWebhook",
+                "provider_type": "ngrok",
+                "ngrok_config": {
+                    "name": "test-ngrok",
+                    "auth_token": "test-token-abc",
+                    "domain": None,
+                },
+            },
+            format="json",
+        )
+        assert trigger_response.status_code == 201, trigger_response.json()
+        trigger_id = trigger_response.json()["id"]
 
+        url = reverse("webhooktriggernode-list")
         payload = {
             "node_name": "My Ngrok Webhook Trigger",
             "graph": graph.id,
@@ -86,24 +160,16 @@ class TestWebhookTriggerAndNodeAPI:
                 "entrypoint": "handler",
                 "global_kwargs": {},
             },
-            "webhook_trigger": {
-                "path": "myNgrokWebhook",
-                "provider_type": "ngrok",
-                "ngrok_config": {
-                    "name": "test-ngrok",
-                    "auth_token": "test-token-abc",
-                    "domain": None,
-                },
-            },
+            "webhook_trigger": trigger_id,
             "metadata": {},
         }
 
         response = auth_client.post(url, payload, format="json")
 
-        assert response.status_code == 201
+        assert response.status_code == 201, response.json()
         data = response.json()
         assert data["node_name"] == "My Ngrok Webhook Trigger"
-        assert data["webhook_trigger"]["path"] == "myNgrokWebhook"
+        assert data["webhook_trigger"] == trigger_id
 
         trigger = WebhookTrigger.objects.get(path="myNgrokWebhook")
         assert trigger.provider_type == ProviderType.NGROK
@@ -113,11 +179,25 @@ class TestWebhookTriggerAndNodeAPI:
         self, auth_client, graph: Graph
     ):
         """
-        Ensure /api/webhook-trigger-nodes/ accepts a nested localhost webhook_trigger
-        and creates both the WebhookTrigger and the linked LocalhostWebhookConfig.
+        Create a WebhookTrigger with a nested localhost config via
+        /api/webhook-triggers/, then attach it to a node by id.
         """
-        url = reverse("webhooktriggernode-list")
+        trigger_response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "myLocalhostWebhook",
+                "provider_type": "localhost",
+                "localhost_config": {
+                    "name": "test-localhost",
+                    "domain": "localhost:8080",
+                },
+            },
+            format="json",
+        )
+        assert trigger_response.status_code == 201, trigger_response.json()
+        trigger_id = trigger_response.json()["id"]
 
+        url = reverse("webhooktriggernode-list")
         payload = {
             "node_name": "My Localhost Webhook Trigger",
             "graph": graph.id,
@@ -127,27 +207,321 @@ class TestWebhookTriggerAndNodeAPI:
                 "entrypoint": "handler",
                 "global_kwargs": {},
             },
-            "webhook_trigger": {
-                "path": "myLocalhostWebhook",
-                "provider_type": "localhost",
-                "localhost_config": {
-                    "name": "test-localhost",
-                    "domain": "localhost:8080",
-                },
-            },
+            "webhook_trigger": trigger_id,
             "metadata": {},
         }
 
         response = auth_client.post(url, payload, format="json")
 
-        assert response.status_code == 201
+        assert response.status_code == 201, response.json()
         data = response.json()
         assert data["node_name"] == "My Localhost Webhook Trigger"
-        assert data["webhook_trigger"]["path"] == "myLocalhostWebhook"
+        assert data["webhook_trigger"] == trigger_id
 
         trigger = WebhookTrigger.objects.get(path="myLocalhostWebhook")
         assert trigger.provider_type == ProviderType.LOCALHOST
         assert LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
+
+    def test_get_webhook_trigger_node_expands_nested_trigger_info(
+        self, auth_client, graph: Graph
+    ):
+        """
+        GET on /api/webhook-trigger-nodes/{id}/ (and the list endpoint) must
+        expand `webhook_trigger` to its full nested representation (path,
+        provider_type, ngrok_config) instead of the bare id — the write side
+        (POST/PATCH) still takes/returns a plain id.
+        """
+        trigger_response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "myNgrokWebhookForGet",
+                "provider_type": "ngrok",
+                "ngrok_config": {
+                    "name": "get-test-ngrok",
+                    "auth_token": "super-secret-value",
+                    "domain": None,
+                },
+            },
+            format="json",
+        )
+        assert trigger_response.status_code == 201, trigger_response.json()
+        trigger_id = trigger_response.json()["id"]
+
+        create_response = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            {
+                "node_name": "Get Nested Trigger",
+                "graph": graph.id,
+                "python_code": {
+                    "libraries": [],
+                    "code": "def handler(event, context):\n    return event",
+                    "entrypoint": "handler",
+                    "global_kwargs": {},
+                },
+                "webhook_trigger": trigger_id,
+                "metadata": {},
+            },
+            format="json",
+        )
+        assert create_response.status_code == 201, create_response.json()
+        # Write side (POST response) still returns the plain id, unchanged.
+        assert create_response.json()["webhook_trigger"] == trigger_id
+        node_id = create_response.json()["id"]
+
+        detail = auth_client.get(
+            reverse("webhooktriggernode-detail", args=[node_id])
+        )
+        assert detail.status_code == 200, detail.json()
+        wt = detail.json()["webhook_trigger"]
+        assert wt is not None
+        assert wt["id"] == trigger_id
+        assert wt["path"] == "myNgrokWebhookForGet"
+        assert wt["provider_type"] == "ngrok"
+        assert wt["ngrok_config"]["name"] == "get-test-ngrok"
+        # auth_token must stay write-only/masked on the nested read (EST-3491)
+        assert "auth_token" not in wt["ngrok_config"]
+
+        listing = auth_client.get(reverse("webhooktriggernode-list"))
+        assert listing.status_code == 200
+        listed = next(
+            row for row in listing.json()["results"] if row["id"] == node_id
+        )
+        assert listed["webhook_trigger"]["path"] == "myNgrokWebhookForGet"
+
+    def test_get_webhook_trigger_node_with_no_trigger_returns_null(
+        self, auth_client, graph: Graph
+    ):
+        create_response = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            {
+                "node_name": "No Trigger For Get",
+                "graph": graph.id,
+                "python_code": {
+                    "libraries": [],
+                    "code": "def handler(event, context):\n    return event",
+                    "entrypoint": "handler",
+                    "global_kwargs": {},
+                },
+                "metadata": {},
+            },
+            format="json",
+        )
+        assert create_response.status_code == 201, create_response.json()
+        node_id = create_response.json()["id"]
+
+        detail = auth_client.get(
+            reverse("webhooktriggernode-detail", args=[node_id])
+        )
+        assert detail.status_code == 200
+        assert detail.json()["webhook_trigger"] is None
+
+
+@pytest.mark.django_db
+class TestWebhookTriggerOrgIsolation:
+    """EST-3491: WebhookTrigger is now a top-level org-owned resource."""
+
+    def test_non_superadmin_can_crud_own_org_trigger(
+        self, auth_client, graph: Graph, default_org
+    ):
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "org-crud-path", "provider_type": None},
+            format="json",
+        )
+        assert create.status_code == 201
+        trigger_id = create.data["id"]
+
+        # EST-3491 follow-up: /api/webhook-triggers/ only lists/retrieves
+        # triggers that are actually attached to a flow trigger node — attach
+        # one here so the subsequent list/update calls resolve via
+        # get_queryset() as expected for a real flow-owned trigger.
+        node_response = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            {
+                "node_name": "Own org CRUD node",
+                "graph": graph.id,
+                "python_code": {
+                    "libraries": [],
+                    "code": "def handler(event, context):\n    return event",
+                    "entrypoint": "handler",
+                    "global_kwargs": {},
+                },
+                "webhook_trigger": trigger_id,
+                "metadata": {},
+            },
+            format="json",
+        )
+        assert node_response.status_code == 201, node_response.json()
+
+        listing = auth_client.get(reverse("webhooktrigger-list"))
+        assert listing.status_code == 200
+        ids = [row["id"] for row in listing.json()["results"]]
+        assert trigger_id in ids
+
+        update = auth_client.patch(
+            reverse("webhooktrigger-detail", args=[trigger_id]),
+            {"path": "org-crud-path-renamed"},
+            format="json",
+        )
+        assert update.status_code == 200
+        assert WebhookTrigger.objects.get(id=trigger_id).path == "org-crud-path-renamed"
+
+    def test_another_orgs_trigger_is_invisible(
+        self, auth_client, other_org_client, other_org
+    ):
+        other_trigger = WebhookTrigger.objects.create(
+            path="other-org-only-path", provider_type=None, org=other_org
+        )
+        # EST-3491 follow-up: /api/webhook-triggers/ only surfaces triggers
+        # attached to a flow trigger node — attach one in other_org so the
+        # "own org can see it" control below reflects a real flow-owned row.
+        other_org_graph = Graph.objects.create(name="other-org-graph", org=other_org)
+        node_response = other_org_client.post(
+            reverse("webhooktriggernode-list"),
+            {
+                "node_name": "Other org node",
+                "graph": other_org_graph.id,
+                "python_code": {
+                    "libraries": [],
+                    "code": "def handler(event, context):\n    return event",
+                    "entrypoint": "handler",
+                    "global_kwargs": {},
+                },
+                "webhook_trigger": other_trigger.id,
+                "metadata": {},
+            },
+            format="json",
+        )
+        assert node_response.status_code == 201, node_response.json()
+
+        listing = auth_client.get(reverse("webhooktrigger-list"))
+        assert listing.status_code == 200
+        ids = [row["id"] for row in listing.json()["results"]]
+        assert other_trigger.id not in ids
+
+        detail = auth_client.get(
+            reverse("webhooktrigger-detail", args=[other_trigger.id])
+        )
+        assert detail.status_code == 404
+
+        # confirm the other org's own client *can* see it (control)
+        own_detail = other_org_client.get(
+            reverse("webhooktrigger-detail", args=[other_trigger.id])
+        )
+        assert own_detail.status_code == 200
+
+    def test_reusing_path_of_another_orgs_trigger_is_rejected(
+        self, auth_client, other_org
+    ):
+        """
+        Path is a global namespace, but a trigger already claimed by another
+        org must be rejected exactly like a non-existent row. This is
+        WebhookCreationMixin behavior, exercised via /api/webhook-triggers/
+        (the actual trigger-creation flow now that nodes only reference an
+        existing trigger by id).
+        """
+        WebhookTrigger.objects.create(
+            path="claimed-by-other-org", provider_type=None, org=other_org
+        )
+
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "claimed-by-other-org", "provider_type": None},
+            format="json",
+        )
+        assert response.status_code == 400
+        # the other org's row must not have been reused or mutated
+        assert (
+            WebhookTrigger.objects.filter(path="claimed-by-other-org").count() == 1
+        )
+
+    def test_creating_node_with_webhook_trigger_int_ref_to_other_org_is_rejected(
+        self, auth_client, graph: Graph, other_org
+    ):
+        other_trigger = WebhookTrigger.objects.create(
+            path="cross-org-int-ref", provider_type=None, org=other_org
+        )
+
+        response = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            {
+                "node_name": "Cross org int ref",
+                "graph": graph.id,
+                "python_code": {
+                    "libraries": [],
+                    "code": "def handler(event, context):\n    return event",
+                    "entrypoint": "handler",
+                    "global_kwargs": {},
+                },
+                "webhook_trigger": other_trigger.id,
+                "metadata": {},
+            },
+            format="json",
+        )
+        assert response.status_code == 400
+
+    def test_non_superadmin_can_set_ngrok_config_on_own_org_trigger(
+        self, auth_client
+    ):
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "own-org-ngrok",
+                "provider_type": "ngrok",
+                "ngrok_config": {
+                    "name": "own-org-ngrok-config",
+                    "auth_token": "secret-token-value",
+                    "domain": None,
+                },
+            },
+            format="json",
+        )
+        assert response.status_code == 201, response.json()
+        trigger = WebhookTrigger.objects.get(path="own-org-ngrok")
+        assert NgrokWebhookConfig.objects.filter(trigger=trigger).exists()
+
+    def test_auth_token_absent_from_get_response(self, auth_client, graph: Graph):
+        create = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "hide-auth-token",
+                "provider_type": "ngrok",
+                "ngrok_config": {
+                    "name": "hide-token-config",
+                    "auth_token": "super-secret-value",
+                    "domain": None,
+                },
+            },
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        trigger_id = create.json()["id"]
+
+        # WebhookTriggerViewSet.get_queryset only surfaces triggers attached
+        # to a flow trigger node — attach one so the detail lookup below
+        # resolves for a real flow-owned trigger.
+        node_response = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            {
+                "node_name": "Ngrok auth token hidden",
+                "graph": graph.id,
+                "python_code": {
+                    "libraries": [],
+                    "code": "def handler(event, context):\n    return event",
+                    "entrypoint": "handler",
+                    "global_kwargs": {},
+                },
+                "webhook_trigger": trigger_id,
+                "metadata": {},
+            },
+            format="json",
+        )
+        assert node_response.status_code == 201, node_response.json()
+
+        detail = auth_client.get(reverse("webhooktrigger-detail", args=[trigger_id]))
+        assert detail.status_code == 200
+        ngrok_config = detail.json()["ngrok_config"]
+        assert "auth_token" not in ngrok_config
 
 
 @pytest.mark.django_db
@@ -160,9 +534,9 @@ class TestWebhookTriggerProviderSwitchCleanup:
         serializer = WebhookTriggerNestedSerializer()
         return serializer.update(instance, data)
 
-    def test_switch_ngrok_to_localhost_deletes_ngrok_config(self):
+    def test_switch_ngrok_to_localhost_deletes_ngrok_config(self, default_org):
         trigger = WebhookTrigger.objects.create(
-            path="switchNgrokToLocal", provider_type=ProviderType.NGROK
+            path="switchNgrokToLocal", provider_type=ProviderType.NGROK, org=default_org
         )
         NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token="tok")
 
@@ -179,9 +553,9 @@ class TestWebhookTriggerProviderSwitchCleanup:
         assert LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
         assert not NgrokWebhookConfig.objects.filter(trigger=trigger).exists()
 
-    def test_switch_localhost_to_ngrok_deletes_localhost_config(self):
+    def test_switch_localhost_to_ngrok_deletes_localhost_config(self, default_org):
         trigger = WebhookTrigger.objects.create(
-            path="switchLocalToNgrok", provider_type=ProviderType.LOCALHOST
+            path="switchLocalToNgrok", provider_type=ProviderType.LOCALHOST, org=default_org
         )
         LocalhostWebhookConfig.objects.create(
             trigger=trigger, name="lh", domain="localhost:8080"
@@ -200,7 +574,7 @@ class TestWebhookTriggerProviderSwitchCleanup:
         assert NgrokWebhookConfig.objects.filter(trigger=trigger).exists()
         assert not LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
 
-    def test_update_deletes_orphan_independent_of_new_config_presence(self):
+    def test_update_deletes_orphan_independent_of_new_config_presence(self, default_org):
         """Internal `update()` contract: cleanup of the old provider's config
         must not depend on the new provider's config being supplied.
 
@@ -211,7 +585,7 @@ class TestWebhookTriggerProviderSwitchCleanup:
         The real API-reachable case of this class of bug is covered by
         `test_clear_provider_deletes_existing_config`."""
         trigger = WebhookTrigger.objects.create(
-            path="switchNoData", provider_type=ProviderType.NGROK
+            path="switchNoData", provider_type=ProviderType.NGROK, org=default_org
         )
         NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token="tok")
 
@@ -221,9 +595,9 @@ class TestWebhookTriggerProviderSwitchCleanup:
         assert trigger.provider_type == ProviderType.LOCALHOST
         assert not NgrokWebhookConfig.objects.filter(trigger=trigger).exists()
 
-    def test_clear_provider_deletes_existing_config(self):
+    def test_clear_provider_deletes_existing_config(self, default_org):
         trigger = WebhookTrigger.objects.create(
-            path="clearProvider", provider_type=ProviderType.LOCALHOST
+            path="clearProvider", provider_type=ProviderType.LOCALHOST, org=default_org
         )
         LocalhostWebhookConfig.objects.create(
             trigger=trigger, name="lh", domain="localhost:8080"
@@ -235,10 +609,10 @@ class TestWebhookTriggerProviderSwitchCleanup:
         assert trigger.provider_type is None
         assert not LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
 
-    def test_no_provider_change_keeps_config(self):
+    def test_no_provider_change_keeps_config(self, default_org):
         """Same provider + new config data updates in place, no deletion."""
         trigger = WebhookTrigger.objects.create(
-            path="sameProvider", provider_type=ProviderType.NGROK
+            path="sameProvider", provider_type=ProviderType.NGROK, org=default_org
         )
         NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token="old")
 
@@ -254,4 +628,93 @@ class TestWebhookTriggerProviderSwitchCleanup:
         assert trigger.provider_type == ProviderType.NGROK
         cfg = NgrokWebhookConfig.objects.get(trigger=trigger)
         assert cfg.auth_token == "new"
+
+
+@pytest.mark.django_db
+class TestWebhookTriggerTwilioOnlyVisibility:
+    """EST-3491 follow-up, corrected: /api/webhook-triggers/ exposes every
+    WebhookTrigger in the org regardless of what else references it.
+    WebhookTrigger is a standalone resource — a row also reused by
+    TwilioChannelSerializer (an AGENTS-domain concern) has no bearing on its
+    visibility through this Flows endpoint."""
+
+    def test_twilio_only_trigger_remains_visible(self, auth_client, default_org):
+        from tables.models.webhook_models import RealtimeChannel, TwilioChannel
+
+        twilio_only_trigger = WebhookTrigger.objects.create(
+            path="twilio-only-path", provider_type=None, org=default_org
+        )
+        realtime_channel = RealtimeChannel.objects.create(
+            name="twilio-only-channel", org=default_org
+        )
+        TwilioChannel.objects.create(
+            channel=realtime_channel,
+            account_sid="AC_test",
+            auth_token="auth_test",
+            webhook_trigger=twilio_only_trigger,
+        )
+
+        listing = auth_client.get(reverse("webhooktrigger-list"))
+        assert listing.status_code == 200
+        ids = [row["id"] for row in listing.json()["results"]]
+        assert twilio_only_trigger.id in ids
+
+        detail = auth_client.get(
+            reverse("webhooktrigger-detail", args=[twilio_only_trigger.id])
+        )
+        assert detail.status_code == 200
+
+    def test_trigger_with_flow_node_and_twilio_only_trigger_both_remain_visible(
+        self, auth_client, graph: Graph, default_org
+    ):
+        from tables.models.webhook_models import RealtimeChannel, TwilioChannel
+
+        # A Twilio-only trigger in the same org, to prove it stays visible too.
+        twilio_only_trigger = WebhookTrigger.objects.create(
+            path="twilio-only-sibling", provider_type=None, org=default_org
+        )
+        realtime_channel = RealtimeChannel.objects.create(
+            name="twilio-only-sibling-channel", org=default_org
+        )
+        TwilioChannel.objects.create(
+            channel=realtime_channel,
+            account_sid="AC_test",
+            auth_token="auth_test",
+            webhook_trigger=twilio_only_trigger,
+        )
+
+        # A real flow-owned trigger: created via /api/webhook-triggers/, then
+        # attached to a node by id (inline node creation was removed).
+        trigger_response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "flow-owned-path", "provider_type": None},
+            format="json",
+        )
+        assert trigger_response.status_code == 201, trigger_response.json()
+        flow_owned_trigger_id = trigger_response.json()["id"]
+
+        node_response = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            {
+                "node_name": "Flow owned trigger",
+                "graph": graph.id,
+                "python_code": {
+                    "libraries": [],
+                    "code": "def handler(event, context):\n    return event",
+                    "entrypoint": "handler",
+                    "global_kwargs": {},
+                },
+                "webhook_trigger": flow_owned_trigger_id,
+                "metadata": {},
+            },
+            format="json",
+        )
+        assert node_response.status_code == 201, node_response.json()
+        flow_owned_trigger = WebhookTrigger.objects.get(path="flow-owned-path")
+
+        listing = auth_client.get(reverse("webhooktrigger-list"))
+        assert listing.status_code == 200
+        ids = [row["id"] for row in listing.json()["results"]]
+        assert flow_owned_trigger.id in ids
+        assert twilio_only_trigger.id in ids
 

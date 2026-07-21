@@ -55,7 +55,6 @@ from tables.exceptions import (
     BuiltInToolModificationError,
     BulkSaveValidationError,
     TaskSerializerError,
-    GraphSaveVersionConflictError,
 )
 from tables.services.rbac.authentication import IsAuthenticatedOrApiKey
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
@@ -97,8 +96,6 @@ from tables.models import (
     SubGraphNode,
     Task,
     TaskContext,
-    TemplateAgent,
-    ToolConfig,
     ToolConfigField,
 )
 from tables.models.crew_models import (
@@ -188,7 +185,6 @@ from tables.models.label_models import Label
 from tables.models.vector_models import MemoryDatabase
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
-    NgrokWebhookConfig,
     VoiceSettings,
     WebhookTrigger,
     RealtimeChannel,
@@ -206,12 +202,12 @@ from tables.views.mixins import (
     CopyActionMixin,
     OrgScopedChildViewSetMixin,
     OrgScopedHybridViewSetMixin,
-    OrgScopedQuerysetMixin,
     OrgScopedViewSetMixin,
     SuperadminWriteMixin,
 )
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
+from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
@@ -242,7 +238,6 @@ from tables.serializers.model_serializers import (
     LabelSerializer,
     McpToolSerializer,
     MemorySerializer,
-    NgrokWebhookConfigModelSerializer,
     ProviderSerializer,
     PythonCodeResultSerializer,
     PythonCodeToolConfigSerializer,
@@ -262,15 +257,16 @@ from tables.serializers.model_serializers import (
     RealtimeTranscriptionConfigSerializer,
     RealtimeTranscriptionModelSerializer,
     TwilioChannelSerializer,
-    RealtimeAgentSerializer,
     StartNodeSerializer,
     SubGraphNodeSerializer,
     TaskReadSerializer,
     TaskWriteSerializer,
     VoiceSettingsSerializer,
     WebhookTriggerNodeSerializer,
+    WebhookTriggerNodeReadSerializer,
     ScheduleTriggerNodeSerializer,
     TelegramTriggerNodeSerializer,
+    TelegramTriggerNodeReadSerializer,
 )
 
 from tables.serializers.serializers import (
@@ -1564,7 +1560,12 @@ class GeminiRealtimeConfigViewSet(viewsets.ModelViewSet):
     serializer_class = GeminiRealtimeConfigSerializer
 
 
-class RealtimeChannelViewSet(viewsets.ModelViewSet):
+class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+
+    rbac_resource_type = ResourceType.VOICE
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+
     queryset = RealtimeChannel.objects.select_related(
         "twilio__webhook_trigger__ngrok",
         "twilio__webhook_trigger__localhost",
@@ -1572,13 +1573,16 @@ class RealtimeChannelViewSet(viewsets.ModelViewSet):
     serializer_class = RealtimeChannelSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["realtime_agent", "channel_type", "is_active", "token"]
-    permission_classes = [IsAuthenticatedOrApiKey]
 
 
-class TwilioChannelViewSet(viewsets.ModelViewSet):
+class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    org_filter_path = "channel__org_id"
     queryset = TwilioChannel.objects.select_related(
         "webhook_trigger__ngrok", "webhook_trigger__localhost"
     )
+    rbac_resource_type = ResourceType.VOICE
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
     serializer_class = TwilioChannelSerializer
 
     def create(self, request, *args, **kwargs):
@@ -1592,12 +1596,20 @@ class TwilioChannelViewSet(viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
 
-class ConversationRecordingViewSet(viewsets.ModelViewSet):
+class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    """
+    Scoped through the recording's chat -> realtime agent to its agent's org
+    (mirrors RealtimeAgentChatViewSet's scoping). Recordings whose chat has no
+    rt_agent (orphaned) are not visible — same accepted trade-off as chat history.
+    """
+
     queryset = ConversationRecording.objects.all()
     serializer_class = ConversationRecordingSerializer
     parser_classes = [MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["rt_agent_chat", "recording_type"]
+    rbac_resource_type = ResourceType.AGENTS
+    org_filter_path = "rt_agent_chat__rt_agent__agent__org_id"
     permission_classes = [IsAuthenticatedOrApiKey]
 
     def perform_create(self, serializer):
@@ -1928,10 +1940,17 @@ class WebhookTriggerNodeViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = WebhookTriggerNode.objects.all()
+    queryset = WebhookTriggerNode.objects.select_related(
+        "webhook_trigger__ngrok", "webhook_trigger__localhost"
+    )
     serializer_class = WebhookTriggerNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph", "node_name", "webhook_trigger__path"]
+
+    def get_serializer_class(self):
+        if self.action in ["list", "retrieve"]:
+            return WebhookTriggerNodeReadSerializer
+        return WebhookTriggerNodeSerializer
 
     def create(self, request, *args, **kwargs):
         logger.info(f"[WebhookTriggerNode] CREATE payload: {request.data}")
@@ -1945,20 +1964,13 @@ class WebhookTriggerNodeViewSet(
             raise
 
 
-# TODO: deprecate view/EP
-class WebhookTriggerViewSet(OrgScopedQuerysetMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, IsSuperadmin]
-    rbac_resource_type = ResourceType.FLOWS
+class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
-    scope_distinct = True  # reverse join via trigger nodes can duplicate rows
     queryset = WebhookTrigger.objects.select_related("ngrok", "localhost")
     serializer_class = WebhookTriggerNestedSerializer
     filter_backends = [DjangoFilterBackend]
-
-    def get_org_scope_q(self, org_id: int) -> Q:
-        # A standalone trigger has no org column; it is visible through the
-        # flow(s) whose trigger nodes reference it.
-        return Q(webhook_trigger_nodes__graph__org_id=org_id)
 
     def _wait_for_tunnel_url(self, trigger):
         service = WebhookTriggerService()
@@ -2000,8 +2012,15 @@ class TelegramTriggerNodeViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = TelegramTriggerNode.objects.prefetch_related("fields")
+    queryset = TelegramTriggerNode.objects.select_related(
+        "webhook_trigger__ngrok", "webhook_trigger__localhost"
+    ).prefetch_related("fields")
     serializer_class = TelegramTriggerNodeSerializer
+
+    def get_serializer_class(self):
+        if self.action in ["list", "retrieve"]:
+            return TelegramTriggerNodeReadSerializer
+        return TelegramTriggerNodeSerializer
 
 
 class ScheduleTriggerNodeViewSet(
@@ -2030,32 +2049,6 @@ class GraphNoteViewSet(
     org_filter_path = "graph__org_id"
     queryset = GraphNote.objects.all()
     serializer_class = GraphNoteSerializer
-
-
-class NgrokWebhookConfigViewSet(ModelViewSet):
-    # Global infrastructure config holding the ngrok auth token (a secret).
-    # Superadmin-only for both read and write so the token is never exposed to
-    # ordinary org users.
-    permission_classes = [IsAuthenticated, IsSuperadmin]
-    queryset = NgrokWebhookConfig.objects.all()
-    serializer_class = NgrokWebhookConfigModelSerializer
-
-    def create(self, request, *args, **kwargs):
-        response = super().create(request, *args, **kwargs)
-        instance = NgrokWebhookConfig.objects.get(pk=response.data["id"])
-        # wait_for_tunnel_url() takes the WebhookTrigger (it resolves
-        # webhook_trigger.ngrok internally), not the NgrokWebhookConfig itself —
-        # NgrokWebhookConfig is now a related OneToOne off WebhookTrigger.
-        WebhookTriggerService().wait_for_tunnel_url(instance.trigger)
-        response.data = self.get_serializer(instance).data
-        return response
-
-    def update(self, request, *args, **kwargs):
-        response = super().update(request, *args, **kwargs)
-        instance = NgrokWebhookConfig.objects.get(pk=response.data["id"])
-        WebhookTriggerService().wait_for_tunnel_url(instance.trigger)
-        response.data = self.get_serializer(instance).data
-        return response
 
 
 class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
@@ -2170,10 +2163,17 @@ class TwilioPhoneNumbersView(generics.GenericAPIView):
 
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):
-    """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL."""
+    """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL.
 
-    # Manages the platform Twilio account (uses the secret token) — superadmin only.
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+    Credentials and the target channel are org-owned (RealtimeChannel is an
+    OrgScopedModel; EST-3491 follow-up) — org isolation is the boundary here,
+    not a superadmin gate: any authenticated member of the channel's own org
+    may configure their own org's Twilio number. A channel belonging to
+    another org (or none at all) is rejected exactly like a missing token,
+    so existence never leaks.
+    """
+
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(**TWILIO_CONFIGURE_WEBHOOK_POST)
     def post(self, request):
@@ -2203,6 +2203,15 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
             )
 
         twilio = getattr(channel, "twilio", None)
+        active_org_id = resolve_active_org_id(request)
+        if channel.org_id != active_org_id:
+            logger.warning(
+                f"configure-webhook: channel {channel.id} does not belong to "
+                f"the active org ({active_org_id})"
+            )
+            return Response(
+                {"error": "Channel not found"}, status=status.HTTP_404_NOT_FOUND
+            )
         if not twilio or not twilio.account_sid or not twilio.auth_token:
             logger.warning(
                 f"configure-webhook: no Twilio credentials for channel {channel.id}"

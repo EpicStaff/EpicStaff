@@ -22,6 +22,8 @@ from .trigger_serializers import (
     ScheduleTriggerNodeSerializer,
     TelegramTriggerNodeDataFieldsSerializer,
     TelegramTriggerNodeFieldSerializer,
+    TelegramTriggerNodeReadSerializer,
     TelegramTriggerNodeSerializer,
+    WebhookTriggerNodeReadSerializer,
     WebhookTriggerNodeSerializer,
 )

@@ -328,27 +328,45 @@ class WebhookCreationMixin:
     def _get_or_create_webhook_trigger(self, data):
         path = data.get("path")
         provider_type = data.get("provider_type")
+        request = self.context.get("request")
+        org_id = resolve_active_org_id(request) if request is not None else None
+        if request is None:
+            logger.warning(
+                "WebhookCreationMixin._get_or_create_webhook_trigger called "
+                "without a request in context; org scope cannot be applied."
+            )
 
         try:
-            trigger = WebhookTrigger.objects.get(path=path)
-            created = False
+            existing = WebhookTrigger.objects.get(path=path)
         except WebhookTrigger.DoesNotExist:
-            trigger = WebhookTrigger.objects.create(
-                path=path, provider_type=provider_type
-            )
-            created = True
+            existing = None
         except WebhookTrigger.MultipleObjectsReturned:
             logger.warning(
                 "Multiple WebhookTrigger rows found for path=%r — "
                 "expected at most one. Using the first result.",
                 path,
             )
-            trigger = WebhookTrigger.objects.filter(path=path).first()
-            if trigger is None:
+            existing = WebhookTrigger.objects.filter(path=path).first()
+
+        if existing is not None:
+            if org_id is None or existing.org_id != org_id:
                 raise serializers.ValidationError(
-                    f"WebhookTrigger with path={path!r} disappeared during lookup."
+                    {"path": f'Invalid pk "{path}" - object does not exist.'}
                 )
+            trigger = existing
             created = False
+        else:
+            if org_id is None:
+                raise serializers.ValidationError(
+                    "Organization context is required to create a webhook trigger."
+                )
+            trigger = WebhookTrigger.objects.create(
+                path=path,
+                provider_type=provider_type,
+                org_id=org_id,
+                created_by=getattr(request, "user", None),
+            )
+            created = True
 
         if not created and trigger.provider_type != provider_type:
             # Provider changed — delete the old config to avoid orphan
@@ -370,24 +388,7 @@ class WebhookCreationMixin:
             trigger.save(update_fields=["provider_type"])
 
         if provider_type == ProviderType.NGROK:
-            # NgrokWebhookConfig has no `org` column — it is global platform
-            # infrastructure (real ngrok auth tokens), and the dedicated
-            # /api/ngrok-config/ endpoint (NgrokWebhookConfigViewSet) is
-            # superadmin-only. Creating/updating it via this nested path must
-            # honor the same gate — otherwise any user wiring up a webhook
-            # trigger node could set or overwrite ngrok credentials that a
-            # non-superadmin isn't allowed to touch directly.
-            #
-            # TODO: TECH DEBT (per-org ngrok): NgrokWebhookConfig has no `org`
-            # column, so this is a superadmin gate rather than org scoping. To
-            # make webhook tunnels per-organization, add an `org` FK to
-            # NgrokWebhookConfig, scope it, and replace this gate with
-            # OrgScopedPrimaryKeyRelatedField.
-            request = self.context.get("request")
-            is_superadmin = getattr(
-                getattr(request, "user", None), "is_superadmin", False
-            )
-            ngrok_data = data.get("ngrok_config") if is_superadmin else None
+            ngrok_data = data.get("ngrok_config")
             if ngrok_data:
                 NgrokWebhookConfig.objects.update_or_create(
                     trigger=trigger, defaults=ngrok_data
@@ -400,50 +401,3 @@ class WebhookCreationMixin:
                 )
 
         return trigger, created
-
-
-class WebhookTriggerIntRefMixin:
-    """Accept webhook_trigger as an integer PK in addition to a nested dict.
-
-    Stores the raw PK in _webhook_trigger_id during to_internal_value so that
-    create/update can resolve it without re-running nested validation.
-    """
-
-    def to_internal_value(self, data):
-        wt = data.get("webhook_trigger")
-        if isinstance(wt, int):
-            self._webhook_trigger_id = wt
-            data = data.copy()
-            data["webhook_trigger"] = None
-        else:
-            self._webhook_trigger_id = None
-        return super().to_internal_value(data)
-
-    def _apply_webhook_trigger_fk_to_create(self, validated_data: dict) -> bool:
-        """Set validated_data['webhook_trigger'] from int PK if one was supplied.
-
-        Returns True if the PK branch was taken so callers can skip the
-        nested-dict branch.
-        """
-        wt_id = getattr(self, "_webhook_trigger_id", None)
-        if wt_id:
-            validated_data["webhook_trigger"] = WebhookTrigger.objects.filter(
-                id=wt_id
-            ).first()
-            return True
-        return False
-
-    def _apply_webhook_trigger_fk_to_update(
-        self, instance, validated_data: dict
-    ) -> bool:
-        """Set instance.webhook_trigger from int PK if one was supplied.
-
-        Returns True if the PK branch was taken so callers can skip the
-        nested-dict branch.
-        """
-        wt_id = getattr(self, "_webhook_trigger_id", None)
-        if wt_id:
-            instance.webhook_trigger = WebhookTrigger.objects.filter(id=wt_id).first()
-            validated_data.pop("webhook_trigger", None)
-            return True
-        return False
