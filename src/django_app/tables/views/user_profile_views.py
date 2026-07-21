@@ -15,14 +15,15 @@ from tables.serializers.user_profile_serializers import (
     ProfileResponseSerializer,
 )
 from tables.graph_collab.notifications import GraphEditNotifier
-from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.user_profile_service import UserProfileService
 from tables.services.rbac.user_validation_service import UserValidationService
 from tables.throttles import LoginThrottle
 
 
 def _require_user_context(request):
-    """Reject env-seeded API keys (created_by=None → AnonymousUser).
+    """Reject principals without a user identity (system API keys →
+    SystemServicePrincipal has no email).
     The profile surface is meaningless without a user identity.
     Inlined per design decision D19 (matches the auth_views.py pattern)."""
     if not getattr(request.user, "is_authenticated", False) or not hasattr(
@@ -32,7 +33,7 @@ def _require_user_context(request):
 
 
 class ProfileView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     _service = UserProfileService()
@@ -84,7 +85,7 @@ class ProfileView(APIView):
 
 class ProfileAvatarView(APIView):
     parser_classes = [MultiPartParser, FormParser]
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     _service = UserProfileService()
@@ -132,7 +133,7 @@ class ProfileAvatarView(APIView):
 
 
 class PasswordChangeRequestView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [LoginThrottle]
 
@@ -158,7 +159,7 @@ class PasswordChangeRequestView(APIView):
 
 
 class PasswordChangeConfirmView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     _service = UserProfileService()

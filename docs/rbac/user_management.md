@@ -306,7 +306,7 @@ Errors:
 | Self-removal | `DELETE /admin/organizations/{org_id}/users/{user_id}/` is allowed when removing yourself, unless it would trip the last-Org-Admin guard. The FE should still show a confirmation dialog. |
 | Self-revoke superadmin | Allowed when not the last active superadmin. FE should warn. |
 | Self-assignment in batch | `POST /admin/organizations/{org_id}/assign-users/` rejects an Org Admin caller whose own `user_id` appears in `assignments` (`code: cannot_self_assign`). Superadmin bypasses the rule. For deliberate self-changes use the single-row `PATCH /admin/organizations/{org_id}/users/{user_id}/` endpoint instead. |
-| API key authentication | API keys carry exactly the owning user's permissions. A Member-bound API key cannot reach superadmin endpoints. Env-seeded keys (no `created_by`) fail every Story 5 endpoint. |
+| API key authentication | User API keys carry exactly the owning user's permissions — a Member-bound API key cannot reach superadmin endpoints. The system key (no `created_by`) resolves to a superadmin-equivalent service principal and passes every superadmin-gated endpoint on this page. See [api_keys.md](api_keys.md). |
 | Org Admin assigning Org Admin role | Allowed (matches Story 5 D6). Org Admins can promote other members to Org Admin in their own org. |
 | 401 vs 403 | 401 = no/expired token (re-login). 403 = valid token but insufficient role. |
 | Password redaction | Validation echoes the offending value back, except `password` which is replaced with `***`. |

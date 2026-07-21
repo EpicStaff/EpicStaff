@@ -23,7 +23,9 @@ Tickets are:
 
 ### `POST /api/auth/sse-ticket/`
 
-- **Auth:** standard JWT via `Authorization: Bearer <access>`.
+- **Auth:** standard JWT via `Authorization: Bearer <access>`. Also accepts a
+  user API key (`X-Api-Key`) — the ticket then resolves to the key's owner;
+  see [api_keys.md](api_keys.md).
 - **Body:** none.
 - **Response 200:**
   ```json
