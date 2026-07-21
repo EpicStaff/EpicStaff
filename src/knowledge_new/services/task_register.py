@@ -11,7 +11,7 @@ class TaskRegister:
     def register(self, key: str, task: asyncio.Task):
         if key in self._pending_to_cancel:
             self._pending_to_cancel.discard(key)
-            task.cancel(msg='Cancelled before registration.')
+            task.cancel(msg="Cancelled before registration.")
         else:
             self._task[key] = task
 
