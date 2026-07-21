@@ -1,4 +1,3 @@
-import dataclasses
 import io
 import mimetypes
 import os
@@ -456,14 +455,26 @@ class StorageManager:
             parent["children_map"][leaf_name] = node
             count += 1
 
-    def _strip_tree_org_prefix(self, org_id: int, node: TreeNode) -> TreeNode:
-        stripped_path = self._strip_org_prefix(org_id, node.path)
-        children = (
-            None
-            if node.children is None
-            else [self._strip_tree_org_prefix(org_id, child) for child in node.children]
-        )
-        return dataclasses.replace(node, path=stripped_path, children=children)
+        def build(node_dict: dict) -> TreeNode:
+            if node_dict["children_map"] is None:
+                children = None
+            else:
+                sorted_children = sorted(
+                    node_dict["children_map"].values(),
+                    key=lambda n: (n["type"] != "folder", n["name"].lower()),
+                )
+                children = [build(child) for child in sorted_children]
+            return TreeNode(
+                id=node_dict["id"],
+                name=node_dict["name"],
+                path=node_dict["path"],
+                type=node_dict["type"],
+                size=node_dict["size"],
+                modified=node_dict["modified"],
+                children=children,
+            )
+
+        return build(root_dict), truncated
 
     def search(
         self,

@@ -33,7 +33,7 @@ def patched_backend():
         _backend = backend
 
     with patch(
-        "tables.services.storage_service.get_storage_manager",
+        "tables.management.commands.backfill_storage_files.get_storage_manager",
         return_value=FakeManager(),
     ):
         yield backend

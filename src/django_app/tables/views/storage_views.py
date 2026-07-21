@@ -12,6 +12,7 @@ from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.views.mixins import OrgScopedResolverMixin
+from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
 from tables.services.rbac.permissions import HasOrgPermission
 from tables.serializers.storage_serializers import (
     GraphStorageFileSerializer,
@@ -54,6 +55,7 @@ from tables.swagger_schemas.storage_schema import (
 
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
+    authentication_classes = [JwtOrApiKeyAuthentication]
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FILES
     rbac_action_map = {
@@ -62,6 +64,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "download": Permission.READ,
         "tree": Permission.READ,
         "graph_files": Permission.READ,
+        "files_by_ids": Permission.READ,
         "search": Permission.READ,
         "download_zip": Permission.EXPORT,
         "upload": Permission.CREATE,
@@ -188,9 +191,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         paths = serializer.validated_data["paths"]
 
         try:
-            zip_filename, zip_chunks = self.manager.download_zip(
-                org_id, paths
-            )
+            zip_filename, zip_chunks = self.manager.download_zip(org_id, paths)
             response = HttpResponse(
                 b"".join(zip_chunks), content_type="application/zip"
             )
@@ -417,7 +418,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
     @action(detail=False, methods=["get"], url_path="files")
     @swagger_auto_schema(**STORAGE_FILES_BY_IDS_SWAGGER)
     def files_by_ids(self, request):
-        _, org_id = self._resolve_context(request)
+        org_id = self.get_active_org_id()
         params = StorageFilesByIdsQuerySerializer(data=request.query_params)
         params.is_valid(raise_exception=True)
         qs = StorageFile.objects.filter(
