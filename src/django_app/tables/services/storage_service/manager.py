@@ -8,7 +8,6 @@ from typing import Iterator
 
 from django.db.models import Case, IntegerField, Value, When
 from django.db.models.functions import Lower
-from rest_framework.exceptions import PermissionDenied
 
 from tables.services.storage_service.base import AbstractStorageBackend
 from tables.services.storage_service.dataclasses import (
@@ -22,8 +21,6 @@ from tables.services.storage_service.dataclasses import (
     UploadResult,
 )
 from tables.services.storage_service.db_sync import StorageFileSync
-from tables.services.storage_service.decorators import check_permission
-from tables.services.storage_service.enums import StorageAction
 
 from tables.models import OrganizationUser, StorageFile
 
@@ -237,7 +234,9 @@ class StorageManager:
     def exists(self, org_id: int, path: str) -> bool:
         return self._backend.exists(self._build_storage_key(org_id, path))
 
-    def download_zip(self, org_id: int, paths: list[str]) -> tuple[str, Iterator[bytes]]:
+    def download_zip(
+        self, org_id: int, paths: list[str]
+    ) -> tuple[str, Iterator[bytes]]:
         """
         Resolve the zip filename and archive entries eagerly (DB-first), then
         return the resolved filename alongside a generator that streams the
@@ -466,8 +465,6 @@ class StorageManager:
         )
         return dataclasses.replace(node, path=stripped_path, children=children)
 
-
-
     def search(
         self,
         org_id: int,
@@ -523,12 +520,6 @@ class StorageManager:
         is enforced at the API layer. Non-atomic: if the delete step fails after
         a successful copy, the file will exist in both orgs.
         """
-        self._require_permission(
-            user_name, src_org_id, action=StorageAction.DELETE, path=src_path
-        )
-        self._require_permission(
-            user_name, dst_org_id, action=StorageAction.UPLOAD, path=dst_path
-        )
         actual_key = self._backend.move(
             self._build_storage_key(src_org_id, src_path),
             self._build_storage_key(dst_org_id, dst_path),
