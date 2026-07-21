@@ -6,6 +6,7 @@ from orchestrators.indexing.base import AbstractIndexer
 
 _STRATEGIES: dict[RAGStrategy, type[AbstractIndexer]] = {
     RAGStrategy.NAIVE: strategies.NaiveIndexer,
+    RAGStrategy.GRAPH: strategies.GraphIndexer,
 }
 
 

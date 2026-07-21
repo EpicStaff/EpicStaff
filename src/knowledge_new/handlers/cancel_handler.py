@@ -1,8 +1,7 @@
 from typing import Never
 
-from loguru import logger
-
 from handlers import AbstractHandler
+from loguru import logger
 from models import CancelRequest
 from services.task_register import task_register
 from settings import settings
@@ -19,5 +18,7 @@ class CancelHandler(AbstractHandler[CancelRequest, Never]):
         if result:
             logger.info("Requested cancellation for request {}", request.target_request)
         else:
-            logger.info("No running task for request {}, marked pending-cancel", request.target_request)
+            logger.info(
+                "No running task for request {}, marked pending-cancel", request.target_request
+            )
         return None

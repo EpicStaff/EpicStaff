@@ -54,7 +54,6 @@ from .knowledge import (
     ChunkDocumentMessageResponse,
 )
 from .knowledge_new import (
-    BaseSearchConfig,
     NaiveSearchConfig,
     GraphSearchConfig,
     SearchConfig,
@@ -161,7 +160,6 @@ __all__ = [
     "ChunkDocumentMessageResponse",
     # knowledge_rag (cross-service pub/sub contract)
     "ValueObject",
-    "BaseSearchConfig",
     "NaiveSearchConfig",
     "GraphSearchConfig",
     "SearchConfig",

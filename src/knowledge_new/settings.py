@@ -3,7 +3,6 @@ from pathlib import Path
 from loguru import logger
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 from src.shared.communication.dns import build_dns
 
 __all__ = ["settings"]
@@ -43,6 +42,8 @@ class MainSettings(BaseSettings):
     PRECHUNK_RESPONSE_CHANNEL: str
     INDEX_REQUEST_CHANNEL: str
     CANCEL_REQUEST_CHANNEL: str
+
+    GRAPHRAG_ROOT: Path = BASE_DIR / "graph_data"
 
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / "../.env",

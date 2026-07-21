@@ -2,6 +2,7 @@ from typing import Dict, Any, Optional
 import threading
 from loguru import logger
 from langgraph.types import StreamWriter
+from pydantic import TypeAdapter
 
 import settings
 from models.graph_models import GraphMessage
@@ -30,8 +31,8 @@ class RagSearchConfigFactory:
     """
 
     _configs = {
-        "naive": NaiveSearchConfig,
-        "graph": GraphSearchConfig,
+        "naive": NaiveSearchConfig.model_validate,
+        "graph": TypeAdapter(GraphSearchConfig).validate_python,
     }
 
     _timeouts = {
@@ -58,7 +59,11 @@ class RagSearchConfigFactory:
                 f"Supported types: {list(cls._configs.keys())}"
             )
 
-        return config_class(**config_dict)
+        data = {k: v for k, v in config_dict['search_params'].items() if k != 'search_method'}
+        data['rag_strategy'] = rag_type
+        data['method'] = config_dict['search_params']['search_method']
+
+        return config_class(data)
 
     @classmethod
     def get_timeout(cls, rag_type: str) -> int:
@@ -152,6 +157,8 @@ class KnowledgeSearchService:
         if self.writer is not None:
             self._add_knowledges_to_graph_message(response, knowledge_collection_id)
 
+        if isinstance(response.result, str):
+            return [response.result]
         return [chunk.text for chunk in response.chunks]
 
     @staticmethod
@@ -202,15 +209,20 @@ class KnowledgeSearchService:
     def _add_knowledges_to_graph_message(
         self, response: SearchResponse, collection_id: int
     ):
+        if isinstance(response.result, str):
+            chunks = [response.result]
+        else:
+            chunks = [c.model_dump() for c in response.result]
+
         knowledge_results_data = {
             "message_type": "extracted_chunks",
             "crew_id": self.crew_id,
             "agent_id": self.agent_id,
             "collection_id": collection_id,
-            "retrieved_chunks": len(response.chunks),
+            "retrieved_chunks": len(chunks),
             "knowledge_query": response.request.query,
             "rag_search_config": response.request.search_config.model_dump(),
-            "chunks": [chunk.model_dump() for chunk in response.chunks],
+            "chunks": chunks,
             "token_usage": {},  # not yet in new contract thats why empty
         }
         graph_message = GraphMessage(

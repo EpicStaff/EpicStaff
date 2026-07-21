@@ -6,6 +6,7 @@ from orchestrators.searching.base import AbstractSearch
 
 _STRATEGIES: dict[RAGStrategy, type[AbstractSearch]] = {
     RAGStrategy.NAIVE: strategies.NaiveSearch,
+    RAGStrategy.GRAPH: strategies.GraphSearch,
 }
 
 
