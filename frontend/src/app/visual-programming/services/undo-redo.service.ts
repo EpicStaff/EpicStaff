@@ -30,8 +30,25 @@ export class UndoRedoService {
 
     public record(entry: UndoEntry): void {
         if (!entry.nodes.length && !entry.connections.length) return;
+        const stack = this.undoStack();
+        const last = stack[stack.length - 1];
+        if (last && this.isSameNodeFieldUpdate(last, entry)) {
+            const merged: UndoEntry = {
+                nodes: [{ before: last.nodes[0].before, after: entry.nodes[0].after }],
+                connections: [],
+            };
+            this.undoStack.update((s) => [...s.slice(0, -1), this.clone(merged)]);
+            this.redoStack.set([]);
+            return;
+        }
         this.undoStack.update((s) => [...s, this.clone(entry)]);
         this.redoStack.set([]);
+    }
+
+    private isSameNodeFieldUpdate(a: UndoEntry, b: UndoEntry): boolean {
+        const single = (e: UndoEntry) =>
+            e.connections.length === 0 && e.nodes.length === 1 && !!e.nodes[0].before && !!e.nodes[0].after;
+        return single(a) && single(b) && a.nodes[0].after!.id === b.nodes[0].after!.id;
     }
 
     public popUndo(): UndoEntry | null {

@@ -57,6 +57,13 @@ export abstract class BaseSidePanel<T extends NodeModel> {
             this.reinitializeForm(node);
         });
 
+        effect(() => {
+            const node = this.node();
+            if (!node || !this.form) return;
+            if (this.shouldReinitializeForm(node)) return;
+            this.mergeRemoteIntoForm();
+        });
+
         this.wsService.nodeUpdated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
             if (!this.isSameNode(msg.node)) return;
 
