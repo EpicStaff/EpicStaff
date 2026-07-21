@@ -1,3 +1,4 @@
+from tables.serializers.utils.secret_fields import SecretCharField
 from rest_framework import serializers
 
 from tables.serializers.model_serializers.tag_serializers import (
@@ -30,6 +31,7 @@ class RealtimeModelSerializer(serializers.ModelSerializer):
 
 
 class RealtimeConfigSerializer(serializers.ModelSerializer):
+    api_key = SecretCharField()
     provider_name = serializers.CharField(
         source="realtime_model.provider.name", read_only=True
     )
@@ -52,6 +54,7 @@ class RealtimeTranscriptionModelSerializer(serializers.ModelSerializer):
 
 
 class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
+    api_key = SecretCharField()
     # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.
     realtime_transcription_model = OrgVisiblePrimaryKeyRelatedField(
         queryset=RealtimeTranscriptionModel.objects.all()
@@ -64,6 +67,7 @@ class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
 
 
 class LLMConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
+    api_key = SecretCharField()
     tags = LLMConfigTagSerializer(many=True, required=False)
     tag_model = LLMConfigTag
     # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.
