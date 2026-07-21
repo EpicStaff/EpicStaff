@@ -1033,7 +1033,33 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
 
 
 @extend_schema_view(
+    list=extend_schema(
+        description=(
+            "Returns a paginated list of graph versions for the given graph. "
+            "Soft-deleted versions are excluded. "
+            "Use the `graph_id` query parameter to filter by a specific graph."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="graph_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter versions by graph ID.",
+            )
+        ],
+    ),
     restore=extend_schema(
+        summary="Restore the graph to the state captured in this version, with optional auto-backup before restoring.",
+        description=(
+            "Restores the target graph to the exact state stored in this version's snapshot. "
+            "Before applying the snapshot, the service validates that all external dependencies "
+            "(LLMs, tools, knowledge sources) referenced in the snapshot are still available; "
+            "any that are missing are stripped and reported in the `warnings` list. "
+            "If the `backup` query parameter is `true`, the current graph state is saved as a new "
+            "version before restoring, and its ID is returned in `auto_backup_version_id`. "
+            "Uses optimistic locking via `save_version` to prevent overwriting concurrent edits."
+        ),
         request=RestoreVersionInputSerializer,
         responses={
             200: inline_serializer(
@@ -1056,6 +1082,13 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
         ],
     ),
     create_graph=extend_schema(
+        summary="Create a new independent graph from this version's snapshot.",
+        description=(
+            "Creates a new, fully independent graph from the snapshot stored in this version. "
+            "The new graph is a copy — it does not remain linked to the original. "
+            "Missing dependencies are stripped from the snapshot and reported in `warnings`. "
+            "Returns the ID of the newly created graph."
+        ),
         request=None,
         responses={
             201: inline_serializer(
@@ -1066,6 +1099,24 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
                 },
             )
         },
+    ),
+    all=extend_schema(
+        summary="List all graph versions including soft-deleted ones.",
+        description=(
+            "Returns all graph versions including those that have been soft-deleted. "
+            "Intended for audit or recovery workflows where deleted versions need to be visible. "
+            "Use the `graph_id` query parameter to scope results to a specific graph."
+        ),
+        responses={200: GraphVersionReadSerializer(many=True)},
+        parameters=[
+            OpenApiParameter(
+                name="graph_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter versions by graph ID.",
+            )
+        ],
     ),
 )
 class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):

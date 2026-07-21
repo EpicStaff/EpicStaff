@@ -67,9 +67,12 @@ export class PermissionsService implements StorageService {
     /** Fetches the current user's permissions for the active org.
      *  Requires X-Organization-Id header (attached automatically by the interceptor). */
     loadActivePermissions(): Observable<ActivePermissions> {
-        return this.http
-            .get<ActivePermissions>(`${this.baseUrl}me/`)
-            .pipe(tap((permissions) => this._active.set(permissions)));
+        return this.http.get<ActivePermissions>(`${this.baseUrl}me/`).pipe(
+            tap((permissions) => {
+                this._active.set(permissions);
+                this.setSuperadmin(permissions.is_superadmin);
+            })
+        );
     }
 
     resolveDefaultRoute(): string {
