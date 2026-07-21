@@ -1,3 +1,14 @@
+<ng-template #exportButtonTpl>
+    <app-action-dropdown-button
+        label="Export"
+        [items]="exportFormatItems"
+        [panelWidth]="100"
+        [buttonWidth]="null"
+        (mainClick)="exportAsJson()"
+        (itemClick)="onExportItemSelected($event)"
+    />
+</ng-template>
+
 <div class="panel-container">
     <div class="panel-content">
         @if (form) {
@@ -88,16 +99,6 @@
                             >
                                 Prompt library
                             </button>
-
-                            <span class="tabs-row__divider"></span>
-
-                            <app-action-dropdown-button
-                                label="Export"
-                                [items]="exportFormatItems"
-                                [panelWidth]="100"
-                                (mainClick)="exportAsJson()"
-                                (itemClick)="onExportItemSelected($event)"
-                            />
                         </div>
                     </div>
                 </div>

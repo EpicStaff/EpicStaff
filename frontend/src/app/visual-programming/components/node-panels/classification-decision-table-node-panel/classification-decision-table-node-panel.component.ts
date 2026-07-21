@@ -8,7 +8,9 @@ import {
     inject,
     input,
     signal,
+    TemplateRef,
     untracked,
+    viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -71,6 +73,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
 export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel<ClassificationDecisionTableNodeModel> {
     public override readonly isExpanded = input<boolean>(true);
     public readonly graphId = input<number | null>(null);
+    public readonly exportButtonTemplate = viewChild<TemplateRef<unknown>>('exportButtonTpl');
 
     private flowService = inject(FlowService);
 
@@ -572,6 +575,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public exportAsCsv(): void {
         if (this.node().backendId == null) {
             this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
         }
         const exportData = this.cdtExportImportService.buildExportData({
             nodeName: this.form.value.node_name ?? '',
