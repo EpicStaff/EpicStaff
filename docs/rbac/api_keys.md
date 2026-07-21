@@ -15,10 +15,10 @@ examples: `http://localhost:8000`.
 A raw key looks like:
 
 ```
-es_kR3f9s1n1qz8vY0aB2cD4eF6gH8iJ0kLmNoPqRsTuVw
+es-kR3f9s1n1qz8vY0aB2cD4eF6gH8iJ0kLmNoPqRsTuVw
 ```
 
-- `es_` prefix (the `ApiKeyGenerator.KEY_PREFIX`) so leaked keys are
+- `es-` prefix (the `ApiKeyGenerator.KEY_PREFIX`) so leaked keys are
   recognizable to humans and secret scanners.
 - The rest is `secrets.token_urlsafe(32)` — 256 bits of entropy.
 - The **raw key is shown exactly once**, in the response body of
@@ -94,13 +94,13 @@ Response `201`:
 {
   "id": 12,
   "name": "laptop-cli",
-  "prefix": "es_kR3f9s1n1",
+  "prefix": "es-kR3f9s1n1",
   "created_at": "2026-07-14T10:00:00Z",
   "expires_at": "2026-08-13T10:00:00Z",
   "last_used_at": null,
   "revoked_at": null,
   "status": "active",
-  "api_key": "es_kR3f9s1n1qz8vY0aB2cD4eF6gH8iJ0kLmNoPqRsTuVw"
+  "api_key": "es-kR3f9s1n1qz8vY0aB2cD4eF6gH8iJ0kLmNoPqRsTuVw"
 }
 ```
 
@@ -141,7 +141,7 @@ includes the raw key or `key_hash`:
   {
     "id": 12,
     "name": "laptop-cli",
-    "prefix": "es_kR3f9s1n1",
+    "prefix": "es-kR3f9s1n1",
     "created_at": "2026-07-14T10:00:00Z",
     "expires_at": "2026-08-13T10:00:00Z",
     "last_used_at": "2026-07-15T09:30:00Z",
@@ -252,7 +252,7 @@ Each item embeds the owner:
 {
   "id": 12,
   "name": "laptop-cli",
-  "prefix": "es_kR3f9s1n1",
+  "prefix": "es-kR3f9s1n1",
   "created_at": "2026-07-14T10:00:00Z",
   "expires_at": "2026-08-13T10:00:00Z",
   "last_used_at": "2026-07-15T09:30:00Z",
@@ -291,13 +291,13 @@ configure:
 
 ```bash
 curl -s http://localhost:8000/api/admin/roles/ \
-  -H "X-Api-Key: es_kR3f9s1n1qz8vY0aB2cD4eF6gH8iJ0kLmNoPqRsTuVw" \
+  -H "X-Api-Key: es-kR3f9s1n1qz8vY0aB2cD4eF6gH8iJ0kLmNoPqRsTuVw" \
   -H "X-Organization-Id: 3"
 ```
 
 ```powershell
 Invoke-RestMethod http://localhost:8000/api/admin/roles/ `
-  -Headers @{ "X-Api-Key" = "es_kR3f9s1n1qz8..."; "X-Organization-Id" = "3" }
+  -Headers @{ "X-Api-Key" = "es-kR3f9s1n1qz8..."; "X-Organization-Id" = "3" }
 ```
 
 - If the owner is a member of org `3`, the request is evaluated with that
@@ -335,7 +335,7 @@ identity to bind the ticket to:
 
 ```bash
 curl -s -X POST http://localhost:8000/api/auth/sse-ticket/ \
-  -H "X-Api-Key: es_kR3f9s1n1qz8vY0aB2cD4eF6gH8iJ0kLmNoPqRsTuVw"
+  -H "X-Api-Key: es-kR3f9s1n1qz8vY0aB2cD4eF6gH8iJ0kLmNoPqRsTuVw"
 ```
 
 ---

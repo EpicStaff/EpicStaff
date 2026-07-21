@@ -59,7 +59,7 @@ All RBAC models live in `tables/models/rbac_models/`. All business logic lives i
 | `OrganizationUser` | `rbac_organization_user` | Membership: (`user`, `org`) unique, carries exactly one `role`. Deleting the row revokes access. |
 | `Role` | `rbac_role` | `is_built_in=True, org=NULL` for the four built-ins (immutable); custom roles carry `org`. |
 | `RolePermission` | `rbac_role_permission` | One row per (role, resource_type) with an integer permission **bitmask**. |
-| `ApiKey` | — | Service-to-service auth. Stores a plain SHA-256 hash + 12-char `es_` prefix; `key_type` is `system` or `user`. System keys (no owner) resolve to `SystemServicePrincipal` (superadmin-equivalent); user keys resolve to their owning user. No scopes field — see [api_keys.md](api_keys.md) for detail. |
+| `ApiKey` | — | Service-to-service auth. Stores a plain SHA-256 hash + 12-char `es-` prefix; `key_type` is `system` or `user`. System keys (no owner) resolve to `SystemServicePrincipal` (superadmin-equivalent); user keys resolve to their owning user. No scopes field — see [api_keys.md](api_keys.md) for detail. |
 | `PasswordResetToken` | `rbac_password_reset_token` | Single-use UUID token, TTL `PASSWORD_RESET_TOKEN_TTL` (default 900 s). |
 | `OrgScopedModel` | abstract | Adds `org` FK (+ index) and `created_by` FK to any resource model. `org` is declared nullable in Python; NOT NULL is enforced per-table at the DB layer after backfill. |
 

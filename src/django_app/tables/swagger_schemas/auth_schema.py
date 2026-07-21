@@ -35,7 +35,7 @@ API_KEY_VALIDATE_GET = dict(
                     value={
                         "active": True,
                         "name": "my-key",
-                        "prefix": "es_abc12345",
+                        "prefix": "es-abc12345",
                         "owner_user_id": 3,
                     },
                     response_only=True,

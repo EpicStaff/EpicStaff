@@ -445,7 +445,7 @@ request.
   {
     "active":        true,
     "name":          "system",
-    "prefix":        "es_fnFo21JtA",
+    "prefix":        "es-fnFo21JtA",
     "owner_user_id": null    // null for the SYSTEM key; a user id for a USER key
   }
   ```
@@ -646,7 +646,7 @@ curl -s http://localhost:8000/api/graphs/ -H "Authorization: Bearer $ACCESS" | j
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `401 authentication_failed — "Invalid API key"` | Lookup is an exact match on `key_hash` (SHA-256 of the raw key) — any typo, a truncated paste, or a revoked key all miss. Raw keys are always `es_`-prefixed. | Re-copy the full raw key from where it was issued (it's shown once, at creation). If it was revoked, issue a new one via `POST /api/profile/api-keys/`. See [api_keys.md](api_keys.md). |
+| `401 authentication_failed — "Invalid API key"` | Lookup is an exact match on `key_hash` (SHA-256 of the raw key) — any typo, a truncated paste, or a revoked key all miss. Raw keys are always `es-`-prefixed. | Re-copy the full raw key from where it was issued (it's shown once, at creation). If it was revoked, issue a new one via `POST /api/profile/api-keys/`. See [api_keys.md](api_keys.md). |
 | `401 authentication_failed — "API key has expired"` | The key's `expires_at` is in the past. | Issue a new key; the expired one cannot be renewed. |
 | `409 Setup has already been completed` | At least one User exists. | Expected. If intentional reset, use `POST /api/auth/reset-user/` or `manage.py reset_user`. |
 | FE shows login form but `needs_setup` is `true` | Frontend isn't calling `GET /api/auth/first-setup/` on boot. | Wire the boot check per "Frontend changes required". |

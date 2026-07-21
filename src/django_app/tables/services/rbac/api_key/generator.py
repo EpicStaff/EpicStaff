@@ -3,7 +3,7 @@ import secrets
 from dataclasses import dataclass
 
 
-KEY_PREFIX = "es_"
+KEY_PREFIX = "es-"
 # Chars of the raw key stored/displayed as the key's public identifier.
 PREFIX_LENGTH = 12
 
