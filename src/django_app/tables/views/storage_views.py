@@ -8,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
+from tables.graph_collab.notifications import GraphEditNotifier
 from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
@@ -340,6 +341,9 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
                 )
                 results.append(obj)
 
+        for graph_id in set(graph_ids):
+            GraphEditNotifier.notify_graph_files_changed(graph_id, user=request.user)
+
         return Response(
             GraphStorageFileSerializer(results, many=True).data,
             status=status.HTTP_201_CREATED,
@@ -358,11 +362,17 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             path for p in paths for path in (p, p.rstrip("/"), p.rstrip("/") + "/")
         }
 
-        GraphStorageFile.objects.filter(
+        matching = GraphStorageFile.objects.filter(
             graph_id__in=graph_ids,
             storage_file__path__in=normalized_paths,
             storage_file__org_id=org_id,
-        ).delete()
+        )
+        affected_graph_ids = set(matching.values_list("graph_id", flat=True))
+        matching.delete()
+
+        for graph_id in affected_graph_ids:
+            GraphEditNotifier.notify_graph_files_changed(graph_id, user=request.user)
+
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["get"], url_path="tree")

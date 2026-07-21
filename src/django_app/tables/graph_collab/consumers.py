@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from tables.graph_collab.autosave_loop import ensure_autosave_loop_running
 from tables.graph_collab.flush_service import flush_service
 from tables.graph_collab.graph_state_service import graph_state_service
+from tables.graph_collab.groups import graph_group_name, org_group_name
 from tables.graph_collab.notifications import anotify_graph_saved
 from tables.services.redis_service import RedisService
 from tables.graph_collab.lock_service import lock_service
@@ -37,10 +38,6 @@ from tables.graph_collab.protocol import (
 )
 
 from utils.logger import logger
-
-
-def _group_name(graph_id: int) -> str:
-    return f"graph_edit_{graph_id}"
 
 
 def _cursor_channel_name(graph_id: int) -> str:
@@ -74,12 +71,13 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4400)
             return
 
-        exists = await sync_to_async(self._graph_exists)(self.graph_id)
-        if not exists:
+        org_id = await sync_to_async(self._get_graph_org_id)(self.graph_id)
+        if org_id is None:
             await self.close(code=4404)
             return
 
-        self.group = _group_name(self.graph_id)
+        self.group = graph_group_name(self.graph_id)
+        self.org_group = org_group_name(org_id)
 
         # Per-field asyncio timer handles; keyed by "{node_id}:{field}".
         self._lock_timers: dict[str, asyncio.Task] = {}
@@ -93,6 +91,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         self._cursor_flush_task: asyncio.Task | None = None
 
         await self.channel_layer.group_add(self.group, self.channel_name)
+        await self.channel_layer.group_add(self.org_group, self.channel_name)
         await self.accept()
         logger.info(
             "User {} connected to graph {} edit channel", user.pk, self.graph_id
@@ -213,6 +212,10 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                             "Last-leave flush failed for graph {}: {}", graph_id, exc
                         )
             await self.channel_layer.group_discard(group, self.channel_name)
+
+        org_group = getattr(self, "org_group", None)
+        if org_group:
+            await self.channel_layer.group_discard(org_group, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
         """
@@ -468,6 +471,9 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
     async def presence_state_updated(self, event):
         await self.send_json(event)
 
+    async def graph_files_changed(self, event):
+        await self.send_json(event)
+
     # --- Cursor pub/sub (Redis, lossy) ---
 
     async def _handle_cursor_moved(self, content: dict) -> None:
@@ -595,7 +601,9 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             logger.error("Cursor flush loop error for graph {}: {}", self.graph_id, exc)
 
     @staticmethod
-    def _graph_exists(graph_id: int) -> bool:
+    def _get_graph_org_id(graph_id: int) -> int | None:
         from tables.models import Graph
 
-        return Graph.objects.filter(pk=graph_id).exists()
+        return (
+            Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
+        )

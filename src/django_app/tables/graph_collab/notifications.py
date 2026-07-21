@@ -4,11 +4,13 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
 from tables.graph_collab.graph_state_service import graph_state_service
+from tables.graph_collab.groups import graph_group_name, org_group_name
 from tables.graph_collab.utils import build_editor_info
 from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.protocol import (
     EditorInfo,
     EntryDeleteRef,
+    GraphFilesChangedMessage,
     GraphSaveFailedMessage,
     GraphSavedMessage,
     GraphStateMessage,
@@ -22,10 +24,6 @@ from utils.logger import logger
 # TODO remove editor from GraphSavedMessage
 # Used by the global autosave loop, which has no acting user.
 _SYSTEM_EDITOR = EditorInfo(user_id=0, display_name="Autosave", avatar_url=None)
-
-
-def _group_name(graph_id: int) -> str:
-    return f"graph_edit_{graph_id}"
 
 
 def _build_graph_saved_message(
@@ -178,6 +176,27 @@ class GraphEditNotifier:
         GraphEditNotifier._send(graph_id, message.model_dump())
 
     @staticmethod
+    def notify_graph_files_changed(graph_id: int, user=None) -> None:
+        """Broadcast graph_files_changed after a graph's attached-files list
+        changes
+        """
+        editor = (
+            build_editor_info(user)
+            if user is not None and user.is_authenticated
+            else None
+        )
+        message = GraphFilesChangedMessage(graph_id=graph_id, editor=editor)
+        GraphEditNotifier._send(graph_id, message.model_dump())
+
+    @staticmethod
+    def notify_org_files_changed(org_id: int) -> None:
+        """Broadcast graph_files_changed org-wide after any storage-tree
+        mutation, so every open "Add files" dialog in the org can live-refresh
+        """
+        message = GraphFilesChangedMessage(graph_id=None, editor=None)
+        GraphEditNotifier._send_to_org(org_id, message.model_dump())
+
+    @staticmethod
     def notify_profile_updated(user) -> None:
         editor = build_editor_info(user)
         affected = presence_service.update_editor_for_user(user.pk, editor)
@@ -197,9 +216,23 @@ class GraphEditNotifier:
             )
             return
         try:
-            async_to_sync(layer.group_send)(_group_name(graph_id), message)
+            async_to_sync(layer.group_send)(graph_group_name(graph_id), message)
         except Exception as exc:
             logger.error("Failed to broadcast to graph {} group: {}", graph_id, exc)
+
+    @staticmethod
+    def _send_to_org(org_id: int, message: dict) -> None:
+        layer = get_channel_layer()
+        if layer is None:
+            logger.warning(
+                "Channel layer is not configured — skipping broadcast for org {}",
+                org_id,
+            )
+            return
+        try:
+            async_to_sync(layer.group_send)(org_group_name(org_id), message)
+        except Exception as exc:
+            logger.error("Failed to broadcast to org {} group: {}", org_id, exc)
 
 
 async def anotify_graph_saved(
@@ -238,7 +271,7 @@ async def anotify_graph_saved(
         temp_id_map=temp_id_map,
     )
     try:
-        await layer.group_send(_group_name(graph_id), message)
+        await layer.group_send(graph_group_name(graph_id), message)
     except Exception as exc:
         logger.error("Failed to async broadcast to graph {} group: {}", graph_id, exc)
 
@@ -272,7 +305,7 @@ async def anotify_save_failed(
         saved_at=saved_at,
     ).model_dump()
     try:
-        await layer.group_send(_group_name(graph_id), message)
+        await layer.group_send(graph_group_name(graph_id), message)
     except Exception as exc:
         logger.error(
             "Failed to async broadcast save_failed to graph {} group: {}", graph_id, exc

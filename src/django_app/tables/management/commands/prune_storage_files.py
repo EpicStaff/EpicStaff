@@ -22,6 +22,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        from tables.graph_collab.notifications import GraphEditNotifier
         from tables.models import Organization, StorageFile
         from tables.services.storage_service import get_storage_manager
 
@@ -75,3 +76,5 @@ class Command(BaseCommand):
                 StorageFile.objects.filter(id__in=batch).delete()
                 pruned += len(batch)
                 self.stdout.write(f"[org={org.id}] pruned {pruned}/{orphan_count}")
+
+            GraphEditNotifier.notify_org_files_changed(org.id)

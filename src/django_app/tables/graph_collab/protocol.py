@@ -91,8 +91,8 @@ class NodeUpdatedMessage(BaseModel):
     # Client-generated correlation id, echoed back on OpRejectedMessage so the
     # sender can match the rejection to the op it sent.
     op_id: str | None = None
-    # per changed field, the value the client believes the server currently holds (undo: the original op's "after").
-    # Only meaningful alongside changed_fields — see the validator below.
+    # per changed field, the value the client believes the server currently holds
+    # Only meaningful alongside changed_fields
     expected: dict | None = None
 
     @model_validator(mode="after")
@@ -225,3 +225,11 @@ class GraphStateMessage(BaseModel):
     restored_by: EditorInfo | None = None
     new_save_version: int | None = None
     version_name: str | None = None
+
+
+class GraphFilesChangedMessage(BaseModel):
+    """Broadcast whenever a graph's storage files list changes"""
+
+    type: str = "graph_files_changed"
+    graph_id: int | None
+    editor: EditorInfo | None = None
