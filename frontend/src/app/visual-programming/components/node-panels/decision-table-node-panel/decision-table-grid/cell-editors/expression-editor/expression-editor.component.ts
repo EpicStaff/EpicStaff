@@ -15,6 +15,7 @@ import {
     ViewContainerRef,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ICellEditorAngularComp } from 'ag-grid-angular';
 import { ICellEditorParams } from 'ag-grid-community';
 
@@ -28,7 +29,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 @Component({
     selector: 'app-expression-editor',
     standalone: true,
-    imports: [CommonModule, FormsModule, EditorToolbarComponent, OverlayModule, AppSvgIconComponent],
+    imports: [CommonModule, FormsModule, EditorToolbarComponent, OverlayModule, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './expression-editor.component.html',
     styleUrls: ['./expression-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

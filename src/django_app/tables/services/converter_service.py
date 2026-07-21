@@ -809,7 +809,7 @@ class ConverterService(metaclass=SingletonMeta):
             ClassificationConditionGroupData(
                 group_name=cg.group_name,
                 expression=cg.expression,
-                prompt_id=cg.prompt_id,
+                prompt_id=cg.prompt.prompt_key if cg.prompt else None,
                 manipulation=cg.manipulation,
                 continue_flag=cg.continue_flag,
                 next_node=resolver(cg.next_node_id) if cg.next_node_id else None,

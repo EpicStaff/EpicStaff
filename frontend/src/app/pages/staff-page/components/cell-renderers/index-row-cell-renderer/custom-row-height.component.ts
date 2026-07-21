@@ -8,16 +8,22 @@ import {
     NgZone,
     OnDestroy,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ICellRendererAngularComp } from 'ag-grid-angular';
 import { ICellRendererParams } from 'ag-grid-community';
 
 @Component({
     selector: 'app-index-cell-renderer',
     standalone: true,
-    imports: [CommonModule],
+    imports: [CommonModule, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <span class="row-index">{{ params.value }}</span>
+        <span
+            class="row-index"
+            matTooltip="Right-click for options: delete, add row"
+            matTooltipPosition="right"
+            >{{ params.value }}</span
+        >
         <div
             class="resize-handler"
             [ngStyle]="{ opacity: resizerOpacity }"

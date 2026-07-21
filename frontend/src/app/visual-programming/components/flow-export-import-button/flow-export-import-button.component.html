@@ -1,0 +1,85 @@
+<ng-container *appHasPermission="[ResourceCode.Flows, [ActionCode.Export, ActionCode.Update]]">
+    <button
+        #origin="cdkOverlayOrigin"
+        cdkOverlayOrigin
+        class="feib"
+        [class.feib--active]="selectedCount() > 0"
+        [class.feib--open]="isOpen()"
+        matTooltip="Export / Import nodes"
+        matTooltipPosition="below"
+        (click)="toggle($event)"
+    >
+        <app-svg-icon
+            class="feib__icon"
+            icon="flow-export"
+            size="10px"
+        />
+        @if (selectedCount() > 0) {
+            <span class="feib__count">{{ selectedCount() }}</span>
+        }
+        <app-svg-icon
+            class="feib__chevron"
+            [class.feib__chevron--open]="isOpen()"
+            icon="chevron-small"
+            size="10px"
+        />
+    </button>
+
+    <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="origin"
+        [cdkConnectedOverlayOpen]="isOpen()"
+        cdkConnectedOverlayPanelClass="action-dropdown-panel"
+        [cdkConnectedOverlayPositions]="[
+            {
+                originX: 'start',
+                originY: 'bottom',
+                overlayX: 'start',
+                overlayY: 'top',
+                offsetY: 6,
+            },
+        ]"
+        (overlayOutsideClick)="close()"
+        (detach)="close()"
+    >
+        <div class="action-dropdown-panel__inner">
+            @if (selectedCount() > 0) {
+                <button
+                    *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+                    class="action-dropdown-panel__item"
+                    matTooltip="Start and End nodes excluded"
+                    (click)="onExportSelectedJson()"
+                >
+                    Export Selected as JSON
+                </button>
+                @if (allSelectedAreCdt()) {
+                    <button
+                        *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+                        class="action-dropdown-panel__item"
+                        matTooltip="Start and End nodes excluded"
+                        (click)="onExportSelectedCsv()"
+                    >
+                        Export Selected as CSV
+                    </button>
+                }
+                <div class="action-dropdown-panel__separator"></div>
+            }
+            <button
+                *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
+                class="action-dropdown-panel__item"
+                matTooltip="Start and End nodes excluded"
+                (click)="onExportJson()"
+            >
+                Export All as JSON
+            </button>
+            <div class="action-dropdown-panel__separator"></div>
+            <button
+                *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                class="action-dropdown-panel__item"
+                (click)="onImport()"
+            >
+                Import
+            </button>
+        </div>
+    </ng-template>
+</ng-container>

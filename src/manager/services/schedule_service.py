@@ -1,8 +1,8 @@
 import asyncio
 import json
 import os
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import pytz
 from apscheduler.events import EVENT_JOB_REMOVED
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.jobstores.base import JobLookupError
@@ -35,7 +35,7 @@ class ScheduleService:
     def __init__(self, redis_service: RedisService):
         self.redis_service = redis_service
         self.repository = ScheduleTriggerNodeRepository()
-        self.tz = pytz.timezone(TIMEZONE)
+        self.tz = ZoneInfo(TIMEZONE)
 
         self.scheduler = AsyncIOScheduler(
             jobstores={"default": MemoryJobStore()},
@@ -231,12 +231,12 @@ class ScheduleService:
             )
 
     def _resolve_tz(self, name: str | None):
-        """Return a pytz tz for the given IANA name, falling back to server tz."""
+        """Return a zoneinfo tz for the given IANA name, falling back to server tz."""
         if not name:
             return self.tz
         try:
-            return pytz.timezone(name)
-        except pytz.UnknownTimeZoneError:
+            return ZoneInfo(name)
+        except ZoneInfoNotFoundError:
             logger.warning(
                 f"[ScheduleService] Unknown tz {name!r}, falling back to server tz"
             )

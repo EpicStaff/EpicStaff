@@ -1,5 +1,15 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, inject, input, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    ChangeDetectorRef,
+    Component,
+    computed,
+    effect,
+    inject,
+    input,
+    signal,
+    untracked,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
@@ -7,13 +17,19 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
+import { ImportExportService } from '../../../../core/services/import-export.service';
+import { ToastService } from '../../../../services/notifications/toast.service';
+import {
+    ActionDropdownButtonComponent,
+    ActionDropdownItem,
+} from '../../../../shared/components/action-dropdown-button/action-dropdown-button.component';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { LlmModelSelectorComponent } from '../../../../shared/components/llm-model-selector/llm-model-selector.component';
 import { SelectComponent, SelectItem } from '../../../../shared/components/select/select.component';
-import { FullLLMConfig, FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
+import { FullLLMConfigService } from '../../../../shared/services/llms/full-llm-config.service';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
@@ -27,6 +43,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
 type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
@@ -44,6 +61,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         CodeEditorComponent,
         HelpTooltipComponent,
         AppSvgIconComponent,
+        ActionDropdownButtonComponent,
         SelectComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
@@ -75,7 +93,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
-    public llmConfigs: FullLLMConfig[] = [];
+    public readonly llmConfigs = this.fullLlmConfigService.fullLLMConfigs;
     public editingPromptId = signal<string | null>(null);
     public pendingPromptName = signal<string>('');
     public newPromptId = '';
@@ -85,6 +103,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly codeChange$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
+    private readonly importExportService = inject(ImportExportService);
+    private readonly cdtExportImportService = inject(CdtExportImportService);
+    private readonly toastService = inject(ToastService);
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -132,31 +153,35 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return [];
     });
 
-    public get llmConfigOptions(): { id: number; label: string }[] {
-        return this.llmConfigs.map((c) => ({
+    public readonly llmConfigOptions = computed<{ id: number; label: string }[]>(() =>
+        this.llmConfigs().map((c) => ({
             id: c.id,
             label: c.custom_name || `LLM #${c.id}`,
-        }));
-    }
+        }))
+    );
 
     constructor() {
         super();
+        effect(() => {
+            const node = this.node();
+            const nodePrompts = ((node?.data as { table?: ClassificationDecisionTableData })?.table?.prompts ??
+                {}) as Record<string, PromptConfig>;
+            const current = untracked(() => this.prompts());
+            const updated = { ...current };
+            let changed = false;
+            for (const [key, cfg] of Object.entries(nodePrompts)) {
+                const typedCfg = cfg as PromptConfig;
+                if (typedCfg.backendId != null && (updated[key] as PromptConfig | undefined)?.backendId == null) {
+                    updated[key] = { ...(updated[key] as PromptConfig), backendId: typedCfg.backendId };
+                    changed = true;
+                }
+            }
+            if (changed) this.prompts.set(updated);
+        });
         this.codeChange$
             .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.sidePanelService.triggerAutosave());
-        this.fullLlmConfigService
-            .getFullLLMConfigs()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (configs) => {
-                    this.llmConfigs = configs;
-                    this.cdr.markForCheck();
-                },
-                error: () => {
-                    this.llmConfigs = [];
-                    this.cdr.markForCheck();
-                },
-            });
+        this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     public availableNodeItems = computed<SelectItem[]>(() => {
@@ -512,6 +537,79 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const highlighted = escaped.replace(/\{[^}]+\}/g, (match) => `<span class="var-token">${match}</span>`);
         return this.sanitizer.bypassSecurityTrustHtml(highlighted);
+    }
+
+    // ── Export ──
+
+    readonly exportFormatItems: ActionDropdownItem[] = [
+        { label: 'JSON', value: 'json' },
+        { label: 'CSV', value: 'csv' },
+    ];
+
+    public onExportItemSelected(item: ActionDropdownItem): void {
+        if (item.value === 'csv') {
+            this.exportAsCsv();
+        } else {
+            this.exportAsJson();
+        }
+    }
+
+    public exportAsJson(): void {
+        const backendId = this.node().backendId;
+        if (backendId == null) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        this.importExportService
+            .cdtExport(backendId, 'json')
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (blob) => this.downloadBlob(blob, this.buildFileName('json')),
+                error: () => this.toastService.error('Export failed.'),
+            });
+    }
+
+    public exportAsCsv(): void {
+        if (this.node().backendId == null) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+        }
+        const exportData = this.cdtExportImportService.buildExportData({
+            nodeName: this.form.value.node_name ?? '',
+            preCode: this.preCode,
+            preLibraries: this.parseLibraries(this.form.value.pre_libraries),
+            preInputMap: this.serializeInputMap('pre_input_map'),
+            preOutputVariablePath: this.form.value.pre_output_variable_path || null,
+            postCode: this.postCode,
+            postLibraries: this.parseLibraries(this.form.value.post_libraries),
+            postInputMap: this.serializeInputMap('post_input_map'),
+            postOutputVariablePath: this.form.value.post_output_variable_path || null,
+            defaultLlmConfig: this.form.value.default_llm_config || null,
+            conditionGroups: this.conditionGroups(),
+            prompts: this.prompts(),
+        });
+        const csv = this.cdtExportImportService.exportToCsv(exportData);
+        this.cdtExportImportService.downloadFile(csv, this.buildFileName('csv'), 'text/csv;charset=utf-8;');
+    }
+
+    private downloadBlob(blob: Blob, filename: string): void {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    private buildFileName(extension: string): string {
+        const base = (this.form.value.node_name || 'classification-decision-table')
+            .toString()
+            .trim()
+            .replace(/[^a-z0-9-_]+/gi, '-')
+            .replace(/^-+|-+$/g, '')
+            .toLowerCase();
+        return `${base || 'cdt'}.${extension}`;
     }
 
     // ── Code editor handlers ──

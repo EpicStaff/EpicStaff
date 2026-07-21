@@ -69,13 +69,6 @@ def test_get_session_by_id(auth_client, session):
 
     response = auth_client.get(url)
 
-    # TODO: check out graph_schema
-    # crew_data = NestedSessionSerializer(session).data["crew"]
-    # converter_service.inject_tasks(crew_data)
-    # for task in crew_data.get("tasks", []):
-    #     if "crew" in task:
-    #         del task["crew"]
-
     assert response.status_code == status.HTTP_200_OK, response.content
     assert response.data["id"] == session.pk
     assert response.data["graph"] == session.graph.id

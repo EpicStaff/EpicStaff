@@ -1,8 +1,10 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AppSvgIconComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
 
 @Component({
@@ -19,4 +21,10 @@ import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/direct
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class OverviewComponent {}
+export class OverviewComponent {
+    private readonly permissionsService = inject(PermissionsService);
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
+    protected readonly isSuperadmin = this.permissionsService.isSuperadmin;
+}

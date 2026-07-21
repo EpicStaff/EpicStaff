@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { GetClassificationDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -13,7 +13,7 @@ export function mapClassificationDecisionTableNodeToModel(
         NodeType.CLASSIFICATION_TABLE
     );
     return {
-        id: uuidv4(),
+        id: generateUuid(),
         backendId: n.id,
         type: NodeType.CLASSIFICATION_TABLE,
         node_name: n.node_name,
@@ -31,6 +31,7 @@ export function mapClassificationDecisionTableNodeToModel(
                     const dict: Record<string, unknown> = {};
                     for (const p of n.prompt_configs ?? []) {
                         dict[p.prompt_key] = {
+                            backendId: p.id,
                             prompt_text: p.prompt_text ?? '',
                             llm_config: p.llm_config ?? null,
                             output_schema: p.output_schema ?? null,
@@ -59,7 +60,7 @@ export function mapClassificationDecisionTableNodeToModel(
                     group_name: g.group_name,
                     order: g.order,
                     expression: g.expression,
-                    prompt_id: g.prompt_id,
+                    prompt_id: n.prompt_configs.find((p) => p.id === g.prompt)?.prompt_key ?? null,
                     manipulation: g.manipulation,
                     continue_flag: g.continue_flag,
                     route_code: g.route_code ?? null,

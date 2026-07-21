@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GraphNoteModel } from '../../core/models/node.model';
@@ -18,7 +19,7 @@ import { GraphNoteModel } from '../../core/models/node.model';
 @Component({
     selector: 'app-note-edit-dialog',
     standalone: true,
-    imports: [CommonModule, FormsModule, AppSvgIconComponent],
+    imports: [CommonModule, FormsModule, AppSvgIconComponent, MatTooltipModule],
     template: `
         <div
             class="backdrop"
@@ -43,6 +44,8 @@ import { GraphNoteModel } from '../../core/models/node.model';
                                 icon="x"
                                 (click)="close()"
                                 style="cursor:pointer"
+                                matTooltip="Close"
+                                matTooltipPosition="above"
                             ></app-svg-icon>
                         </div>
                     </div>

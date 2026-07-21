@@ -1,4 +1,4 @@
-# INDIVIDUAL CONTRIBUTOR LICENSE AGREEMENT ("ICLA")
+# INDIVIDUAL CONTRIBUTOR LICENSE AGREEMENT ("ICLA") - VERSION 1.0.0
 
 Effective as of the date of acceptance by the Contributor.
 

@@ -18,26 +18,22 @@ dependencies = [
     "psycopg2 (>=2.9.10,<3.0.0)",
     "tiktoken (>=0.12.0,<0.13.0)",
     "lxml (>=5.3.1,<6.0.0)",
-    "cachetools (>=5.5.2,<6.0.0)",
     "beautifulsoup4 (>=4.13.3,<5.0.0)",
     "google-genai (>=1.13.0,<2.0.0)",
-    "cohere (>=5.15.0,<6.0.0)",
-    "mistralai (>=1.7.0,<2.0.0)",
-    "together (>=1.5.7,<2.0.0)",
+    "httpx (>=0.28.1,<0.29.0)",
     "sqlalchemy (>=2.0.43,<3.0.0)",
     "pgvector (>=0.4.1,<0.5.0)",
     "python-docx (>=1.1.2,<2.0.0)",
-    "chonkie (>=1.2.1,<1.4.0)",
-    "watchfiles (>=1.1.1,<2.0.0)",
     "numpy (<2.4)",
     "pdfplumber (>=0.11.9,<0.12.0)",
     "pandas (>=2.2.3,<3.0.0)",
-    "pyarrow (>=17.0.0,<20.0.0)",
 ]
 
 [tool.poetry.group.graphrag.dependencies]
 graphrag = {path = "libraries/graphrag"}
 
+[tool.poetry.group.dev.dependencies]
+watchfiles = ">=1.1.1,<2.0.0"
 
 
 [build-system]

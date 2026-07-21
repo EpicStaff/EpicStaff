@@ -1,10 +1,17 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { expandCollapseAnimation } from '@shared/animations';
-import { CustomInputComponent, JsonEditorComponent, SelectComponent, SelectItem } from '@shared/components';
-import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
+import {
+    CustomInputComponent,
+    JsonEditorComponent,
+    LlmModelSelectorComponent,
+    SelectComponent,
+    SelectItem,
+} from '@shared/components';
+import { FullLLMConfigService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -33,7 +40,9 @@ import { DEFAULT_OUTPUT_SCHEMA } from './default-output-schema';
         CodeEditorComponent,
         CommonModule,
         JsonEditorComponent,
+        MatTooltipModule,
         SelectComponent,
+        LlmModelSelectorComponent,
     ],
     animations: [expandCollapseAnimation],
     templateUrl: './code-agent-node-panel.component.html',
@@ -50,21 +59,12 @@ export class CodeAgentNodePanelComponent extends BaseSidePanel<CodeAgentNodeMode
     outputSchemaText: string = '';
     outputSchemaError: string = '';
     codeEditorHasError: boolean = false;
-    llmConfigs = signal<FullLLMConfig[]>([]);
     private readonly codeChange$ = new Subject<string>();
 
     readonly agentModeItems: SelectItem[] = [
         { name: 'Build', value: 'build' },
         { name: 'Plan', value: 'plan' },
     ];
-
-    readonly llmConfigItems = computed<SelectItem[]>(() => [
-        { name: '— None —', value: null },
-        ...this.llmConfigs().map((cfg) => ({
-            name: cfg.custom_name || 'Config #' + cfg.id,
-            value: cfg.id,
-        })),
-    ]);
 
     constructor(
         private readonly sidePanelService: SidePanelService,
@@ -75,13 +75,7 @@ export class CodeAgentNodePanelComponent extends BaseSidePanel<CodeAgentNodeMode
         this.codeChange$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => {
             this.sidePanelService.triggerAutosave();
         });
-        this.fullLLMConfigService
-            .getFullLLMConfigs()
-            .pipe(takeUntilDestroyed())
-            .subscribe((configs) => {
-                this.llmConfigs.set(configs);
-                this.cdr.markForCheck();
-            });
+        this.fullLLMConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed()).subscribe();
     }
 
     get activeColor(): string {

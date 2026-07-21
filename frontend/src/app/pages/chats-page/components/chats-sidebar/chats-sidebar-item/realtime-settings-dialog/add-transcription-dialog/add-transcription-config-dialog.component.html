@@ -72,6 +72,7 @@
                     <button
                         type="button"
                         class="eye-button"
+                        [matTooltip]="showApiKey ? 'Hide API key' : 'Show API key'"
                         (click)="toggleApiKeyVisibility()"
                     >
                         @if (showApiKey) {

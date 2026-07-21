@@ -2,6 +2,8 @@ import { Dialog } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { ConfirmationDialogService } from '../../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { LoadingSpinnerComponent } from '../../../../../../shared/components/loading-spinner/loading-spinner.component';
@@ -9,8 +11,6 @@ import { FlowRenameDialogComponent } from '../../../../../flows/components/flow-
 import { CreateProjectComponent } from '../../../../components/create-project-form-dialog/create-project.component';
 import { ProjectCardComponent } from '../../../../components/project-card/project-card.component';
 import { GetProjectRequest } from '../../../../models/project.model';
-import { ProjectTagsApiService } from '../../../../services/project-tags-api.service';
-import { ProjectTagsStorageService } from '../../../../services/project-tags-storage.service';
 import { ProjectsStorageService } from '../../../../services/projects-storage.service';
 import { AddProjectCardComponent } from './add-project-card/add-project-card.component';
 
@@ -36,7 +36,10 @@ import { AddProjectCardComponent } from './add-project-card/add-project-card.com
                     </button>
                 } @else {
                     <div class="grid">
-                        <app-add-project-card (createClick)="onCreateProject()"></app-add-project-card>
+                        <app-add-project-card
+                            *appHasPermission="[ResourceCode.Projects, ActionCode.Create]"
+                            (createClick)="onCreateProject()"
+                        ></app-add-project-card>
 
                         @if (filteredProjects().length === 0) {
                             <div class="empty-message">
@@ -92,14 +95,12 @@ import { AddProjectCardComponent } from './add-project-card/add-project-card.com
             }
         `,
     ],
-    imports: [ProjectCardComponent, AddProjectCardComponent, LoadingSpinnerComponent],
+    imports: [ProjectCardComponent, AddProjectCardComponent, LoadingSpinnerComponent, HasPermissionDirective],
 })
 export class MyProjectsComponent implements OnInit {
     private readonly router = inject(Router);
     private readonly projectsStorageService = inject(ProjectsStorageService);
-    private readonly projectTagsStorageService = inject(ProjectTagsStorageService);
     private readonly dialog = inject(Dialog);
-    private readonly projectTagsApiService = inject(ProjectTagsApiService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
 
     public readonly error = signal<string | null>(null);
@@ -109,8 +110,6 @@ export class MyProjectsComponent implements OnInit {
     constructor() {
         // Initial data fetch
         this.projectsStorageService.getProjects().subscribe();
-        // Load tags for later use
-        this.projectTagsStorageService.ensureLoaded().subscribe();
     }
 
     public ngOnInit(): void {
@@ -154,9 +153,6 @@ export class MyProjectsComponent implements OnInit {
             case 'edit':
                 this.router.navigate(['/projects', project.id, 'edit']);
                 break;
-            // case 'manage-tags':
-            //     this.openTagsDialog(project);
-            //     break;
             case 'delete':
                 this.confirmAndDeleteProject(project);
                 break;
@@ -186,28 +182,6 @@ export class MyProjectsComponent implements OnInit {
         });
     }
 
-    // private openTagsDialog(project: GetProjectRequest): void {
-    //     const dialogRef = this.dialog.open<GetProjectRequest>(
-    //         ProjectTagsDialogComponent,
-    //         {
-    //             data: { project },
-    //             panelClass: 'tags-dialog-panel',
-    //         }
-    //     );
-
-    //     dialogRef.closed.subscribe((updatedProject) => {
-    //         if (updatedProject) {
-    //             // Update the project in storage with new tags using the proper update method
-    //             this.updateProjectInStorage(updatedProject);
-    //         }
-    //     });
-    // }
-
-    private updateProjectInStorage(updatedProject: GetProjectRequest): void {
-        // Use the proper method to update project in cache
-        this.projectsStorageService.updateProjectInCache(updatedProject);
-    }
-
     public editProject(project: GetProjectRequest): void {
         this.router.navigate(['/projects', project.id, 'settings']);
     }
@@ -216,4 +190,7 @@ export class MyProjectsComponent implements OnInit {
         // Logic to open a dialog or navigate to a creation page
         this.router.navigate(['/projects', 'new']);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

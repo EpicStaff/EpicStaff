@@ -6,9 +6,11 @@ import {
     computed,
     EventEmitter,
     Input,
+    input,
     Output,
     signal,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -19,6 +21,7 @@ import { getNodeTitle } from '../../core/enums/node-title.util';
 import { NodeType } from '../../core/enums/node-type';
 import {
     AgentNodeModel,
+    ClassificationDecisionTableNodeModel,
     DecisionTableNodeModel,
     EdgeNodeModel,
     EndNodeModel,
@@ -35,9 +38,9 @@ import {
 } from '../../core/models/node.model';
 import { CustomPortId } from '../../core/models/port.model';
 import { FlowService } from '../../services/flow.service';
+import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-edge/conditional-edge.component';
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
-import { ClassificationDecisionTableNodeComponent } from '../nodes-components/classification-decision-table-node/classification-decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
 import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay.component';
 
@@ -59,6 +62,7 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
         FlowNodeVariablesOverlayComponent,
         GoToButtonComponent,
         AppSvgIconComponent,
+        MatTooltipModule,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
@@ -76,6 +80,7 @@ export class FlowBaseNodeComponent {
     public isExpanded = signal(false);
     public isToggleDisabled = signal(false);
     @Input() showVariables: boolean = false;
+    multiSelectActive = input<boolean>(false);
 
     @Output() projectExpandToggled = new EventEmitter<ProjectNodeModel>();
     @Output() portMouseenter = new EventEmitter<void>();
@@ -184,9 +189,13 @@ export class FlowBaseNodeComponent {
         return this.node.type === NodeType.EDGE ? (this.node as EdgeNodeModel) : null;
     }
 
-    public get tableNode() {
-        return this.node.type === NodeType.TABLE || this.node.type === NodeType.CLASSIFICATION_TABLE
-            ? (this.node as any)
+    public get decisionTableNode(): DecisionTableNodeModel | null {
+        return this.node.type === NodeType.TABLE ? (this.node as DecisionTableNodeModel) : null;
+    }
+
+    public get classificationTableNode(): ClassificationDecisionTableNodeModel | null {
+        return this.node.type === NodeType.CLASSIFICATION_TABLE
+            ? (this.node as ClassificationDecisionTableNodeModel)
             : null;
     }
 

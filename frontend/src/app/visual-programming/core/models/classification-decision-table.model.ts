@@ -46,6 +46,7 @@ export interface OutputVariableMapping {
 }
 
 export interface PromptConfig {
+    backendId?: number;
     prompt_text: string;
     llm_config: number | null;
     output_schema: Record<string, unknown> | string | null;

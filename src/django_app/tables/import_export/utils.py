@@ -6,22 +6,24 @@ from tables.models import PythonCode
 
 def ensure_unique_identifier(base_name: str, existing_names: List[str]) -> str:
     """
-    Creates new unique name from base_name.
+    Creates new unique name from base_name using a trailing "#N" suffix.
+
+    If base_name is already unique it is returned unchanged. Otherwise any
+    existing "#N" (or "# N") suffix is stripped to get the base, and the lowest
+    free number is appended, e.g. "My Node" -> "My Node #2",
+    "Node #4" -> "Node #5".
     """
     if base_name not in existing_names:
         return base_name
 
-    match = re.match(r"^(.+?)\s*\(\d+\)$", base_name.strip())
+    match = re.match(r"^(.+?)\s*#\s*\d+$", base_name.strip())
     if match:
         clean_base = match.group(1)
     else:
         clean_base = base_name.strip()
 
-    if clean_base not in existing_names:
-        return clean_base
-
     existing_numbers = set()
-    pattern = re.compile(rf"^{re.escape(clean_base)}\s*\((\d+)\)$")
+    pattern = re.compile(rf"^{re.escape(clean_base)}\s*#\s*(\d+)$")
 
     for name in existing_names:
         if name == clean_base:
@@ -35,7 +37,7 @@ def ensure_unique_identifier(base_name: str, existing_names: List[str]) -> str:
     while i in existing_numbers:
         i += 1
 
-    return f"{clean_base} ({i})"
+    return f"{clean_base} #{i}"
 
 
 def create_filters(data: dict) -> tuple[dict, dict]:
