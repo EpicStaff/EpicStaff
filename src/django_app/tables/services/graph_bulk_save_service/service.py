@@ -47,6 +47,11 @@ class GraphBulkSaveService:
     # node/edge serializer's context so org-scoped fields can resolve the active
     # org. Defaults to None so a helper called without save() denies (fail-safe).
     _request = None
+    # Explicit org id, set per-invocation in save() for non-request write paths
+    # (e.g. WS autosave flush) that source it from a trusted server-side value
+    # (graph.org_id) rather than a request. Threaded into every node/edge
+    # serializer's context alongside _request. Defaults to None (fail-safe).
+    _org_id = None
 
     @staticmethod
     @lru_cache(maxsize=1)
@@ -60,12 +65,14 @@ class GraphBulkSaveService:
 
     @transaction.atomic
     def save(
-        self, graph: Graph, validated_input: dict, request=None
+        self, graph: Graph, validated_input: dict, request=None, org_id=None
     ) -> tuple["Graph", dict[str, int]]:
-        # Thread the request so node/edge serializers can org-scope their FK
-        # fields (e.g. CrewNode.crew_id, SubGraphNode.subgraph). Without it those
-        # fields deny all pks rather than falling back to an unfiltered queryset.
+        # Thread the request (and/or an explicit org_id for non-request write
+        # paths) so node/edge serializers can org-scope their FK fields (e.g.
+        # CrewNode.crew_id, SubGraphNode.subgraph). Without either, those fields
+        # deny all pks rather than falling back to an unfiltered queryset.
         self._request = request
+        self._org_id = org_id
         expected_save_version = validated_input["save_version"]
         deleted_data = validated_input.get("deleted", {})
         all_errors: dict = {}
@@ -245,7 +252,7 @@ class GraphBulkSaveService:
         if routing_errors:
             return BuildSaveableResult(error={"index": index, "errors": routing_errors})
 
-        context = {"request": self._request}
+        context = {"request": self._request, "org_id": self._org_id}
         s = (
             config.serializer_class(instance, data=data, context=context)
             if instance is not None
@@ -282,7 +289,7 @@ class GraphBulkSaveService:
     ) -> EdgeListValidationResult:
         """Validate all Edge items."""
         result = EdgeListValidationResult()
-        context = {"request": self._request}
+        context = {"request": self._request, "org_id": self._org_id}
 
         db_map = {obj.id: obj for obj in model_class.objects.filter(graph=graph)}
         existing_endpoint_pairs = set(
@@ -389,7 +396,7 @@ class GraphBulkSaveService:
     ) -> EdgeListValidationResult:
         """Validate all ConditionalEdge items."""
         result = EdgeListValidationResult()
-        context = {"request": self._request}
+        context = {"request": self._request, "org_id": self._org_id}
 
         db_map = {obj.id: obj for obj in ConditionalEdge.objects.filter(graph=graph)}
         existing_source_ids = set(

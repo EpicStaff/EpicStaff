@@ -17,6 +17,22 @@ def resolve_active_org_id(request) -> int:
     return org_id
 
 
+def resolve_context_org_id(context) -> int | None:
+    """Active org id for a serializer context.
+
+    Prefers an explicit ``org_id`` in context — used by non-request write paths
+    (WS autosave flush, background jobs) that source it from a trusted
+    server-side value (e.g. ``graph.org_id``), never from client payload data.
+    Falls back to deriving it from ``request`` (the REST path). Returns
+    ``None`` when neither is present, so the caller denies (fail-safe).
+    """
+    org_id = context.get("org_id")
+    if org_id is not None:
+        return org_id
+    request = context.get("request")
+    return resolve_active_org_id(request) if request is not None else None
+
+
 def org_visible_q(model, org_id):
     """The visibility filter (`Q`) for `model` under `org_id`, or ``None`` when the
     model is global (has no `org` field). Single source of truth for the scoping
@@ -47,10 +63,11 @@ def org_visible_queryset(model, org_id):
     return model.objects.filter(q) if q is not None else model.objects.all()
 
 
-def _warn_missing_request(field) -> None:
-    """Log a warning when an org-scoped related field is resolved without a request
-    in context — a programming error (the serializer was built without
-    ``context={"request": request}``) that makes the field deny all pks."""
+def _warn_missing_org_context(field) -> None:
+    """Log a warning when an org-scoped related field is resolved without a
+    request or an explicit org_id in context — a programming error (the
+    serializer was built without ``context={"request": request}`` or
+    ``context={"org_id": org_id}``) that makes the field deny all pks."""
     parent_name = (
         type(field.parent).__name__
         if field.parent is not None
@@ -58,9 +75,9 @@ def _warn_missing_request(field) -> None:
     )
     logger.warning(
         f"{type(field).__name__} '{field.field_name}' on {parent_name} was resolved "
-        f"without a request in the serializer context; denying all pks because org "
-        f"scope cannot be applied. Construct the serializer with the request in its "
-        f"context."
+        f"without a request or org_id in the serializer context; denying all pks "
+        f"because org scope cannot be applied. Construct the serializer with a "
+        f"request or org_id in its context."
     )
 
 
@@ -76,12 +93,15 @@ class OrgScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
     - default ``"org_id"`` for models that own an ``org`` FK directly (e.g. Agent);
     - e.g. ``"crew__org_id"`` for a model scoped via a parent.
 
-    Requires the serializer context to carry ``request`` (the active org is read
-    from the ``X-Organization-Id`` header via ``OrgContextService``). With no
-    request in context the field cannot apply org scoping, so it **denies all
-    pks** (returns an empty queryset) and logs a warning — a missing request on
-    a write path is a programming error (the serializer was built without
-    ``context={"request": request}``), and denying is fail-safe rather than
+    Requires the serializer context to carry either ``request`` (the active org
+    is read from the ``X-Organization-Id`` header via ``OrgContextService``) or
+    an explicit ``org_id`` — used by non-request write paths (WS autosave
+    flush, background jobs) that source it from a trusted server-side value.
+    With neither in context the field cannot apply org scoping, so it **denies
+    all pks** (returns an empty queryset) and logs a warning — a missing
+    request/org_id on a write path is a programming error (the serializer was
+    built without ``context={"request": request}`` or
+    ``context={"org_id": org_id}``), and denying is fail-safe rather than
     leaking cross-org rows.
     """
 
@@ -94,11 +114,11 @@ class OrgScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        request = self.context.get("request")
-        if request is None:
-            _warn_missing_request(self)
+        org_id = resolve_context_org_id(self.context)
+        if org_id is None:
+            _warn_missing_org_context(self)
             return queryset.none()
-        return queryset.filter(**{self.org_lookup: resolve_active_org_id(request)})
+        return queryset.filter(**{self.org_lookup: org_id})
 
 
 class OrgVisiblePrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
@@ -113,16 +133,17 @@ class OrgVisiblePrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
     ``OrgScopedPrimaryKeyRelatedField`` — for FKs whose target is a hybrid model,
     otherwise shared built-ins would wrongly become unreferenceable.
 
-    Same no-request deny+warn fallback as ``OrgScopedPrimaryKeyRelatedField``.
+    Same no-request/no-org_id deny+warn fallback as
+    ``OrgScopedPrimaryKeyRelatedField``.
     """
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        request = self.context.get("request")
-        if request is None:
-            _warn_missing_request(self)
+        org_id = resolve_context_org_id(self.context)
+        if org_id is None:
+            _warn_missing_org_context(self)
             return queryset.none()
-        q = org_visible_q(queryset.model, resolve_active_org_id(request))
+        q = org_visible_q(queryset.model, org_id)
         return queryset.filter(q) if q is not None else queryset
 
 

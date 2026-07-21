@@ -150,7 +150,7 @@ def _do_db_flush(graph_id: int, snapshot: dict):
 
     try:
         graph, temp_id_map = GraphBulkSaveService().save(
-            graph, serializer.validated_data
+            graph, serializer.validated_data, org_id=graph.org_id
         )
     except BulkSaveValidationError as exc:
         logger.warning(
