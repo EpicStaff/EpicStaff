@@ -27,12 +27,19 @@ class SearchSpecification:
     required_files: Iterable[str]
     optional_files: Iterable[str] | None = None
     extra_kwargs: dict[str, Any] = field(default_factory=dict)
+    adjust: Callable[[Any, Any, dict], dict[str, Any]] | None = None
+
+
+def _drift_adjust(cfg, section, files) -> dict[str, Any]:
+    # Пустые primer folds заставляют primer выдумывать из имён сущностей, если folds
+    # больше, чем доступно community-репортов — ограничиваем folds их числом.
+    usable_reports = min(section.drift_k_followups, len(files["community_reports"]))
+    section.primer_folds = max(1, min(section.primer_folds, usable_reports))
+    return {"community_level": cfg.community_level}
 
 
 class GraphSearch(AbstractSearch):
     DEFAULT_RESPONSE_TYPE = "Multiple Paragraphs"
-    DEFAULT_COMMUNITY_LEVEL = 2
-    DEFAULT_DYNAMIC_COMMUNITY_SELECTION = False
 
     _SEARCH_MAP: ClassVar[dict[GraphSearchMethodEnum, SearchSpecification]] = {
         GraphSearchMethodEnum.BASIC: SearchSpecification(
@@ -54,10 +61,8 @@ class GraphSearch(AbstractSearch):
                 "entities",
             ],
             optional_files=["covariates"],
-            extra_kwargs={
-                "response_type": DEFAULT_RESPONSE_TYPE,
-                "community_level": DEFAULT_COMMUNITY_LEVEL,
-            },
+            extra_kwargs={"response_type": DEFAULT_RESPONSE_TYPE},
+            adjust=lambda cfg, section, files: {"community_level": cfg.community_level},
         ),
         GraphSearchMethodEnum.GLOBAL: SearchSpecification(
             searcher=global_search,
@@ -68,10 +73,10 @@ class GraphSearch(AbstractSearch):
                 "communities",
                 "community_reports",
             ],
-            extra_kwargs={
-                "response_type": DEFAULT_RESPONSE_TYPE,
-                "community_level": DEFAULT_COMMUNITY_LEVEL,
-                "dynamic_community_selection": DEFAULT_DYNAMIC_COMMUNITY_SELECTION,
+            extra_kwargs={"response_type": DEFAULT_RESPONSE_TYPE},
+            adjust=lambda cfg, section, files: {
+                "community_level": cfg.dynamic_search_max_level,
+                "dynamic_community_selection": cfg.dynamic_community_selection,
             },
         ),
         GraphSearchMethodEnum.DRIFT: SearchSpecification(
@@ -85,10 +90,8 @@ class GraphSearch(AbstractSearch):
                 "relationships",
                 "entities",
             ],
-            extra_kwargs={
-                "response_type": DEFAULT_RESPONSE_TYPE,
-                "community_level": DEFAULT_COMMUNITY_LEVEL,
-            },
+            extra_kwargs={"response_type": DEFAULT_RESPONSE_TYPE},
+            adjust=_drift_adjust,
         ),
     }
 
@@ -98,26 +101,29 @@ class GraphSearch(AbstractSearch):
 
         if request.search_config.method not in self._SEARCH_MAP:
             raise UnsupportedError(
-                that='graph search method',
+                that="graph search method",
                 got=request.search_config.method,
             )
 
         specs = self._SEARCH_MAP[request.search_config.method]
+        section = specs.config_model.model_validate(request.search_config.model_dump())
+
         setattr(
             config,
             specs.config_field,
-            specs.config_model.model_validate(request.search_config.model_dump()),
+            section,
         )
         files = await self._resolve_files(
             config=config,
             required_files=specs.required_files,
             optional_files=specs.optional_files,
         )
+        dynamic = (
+            specs.adjust(request.search_config, section, files) if specs.adjust else {}
+        )
+
         result, _ = await specs.searcher(
-            query=request.query,
-            config=config,
-            **files,
-            **specs.extra_kwargs,
+            query=request.query, config=config, **files, **specs.extra_kwargs, **dynamic
         )
 
         return SearchResponse(request=request, result=result)

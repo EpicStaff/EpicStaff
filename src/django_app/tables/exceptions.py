@@ -357,3 +357,29 @@ class BulkSaveValidationError(CustomAPIExeption):
     def __init__(self, errors: dict):
         self.errors = errors
         super().__init__(str(errors))
+
+
+class NoGraphRagForCollectionException(RagException):
+    """Raised when a collection has no GraphRag configuration at all."""
+
+    status_code = 404
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRag for collection {collection_id} does not exist. "
+            f"Create a GraphRag for this collection first."
+        )
+
+
+class GraphRagIndexNotReadyException(RagException):
+    """Raised when GraphRag exists but its index has not finished building."""
+
+    status_code = 409
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRAG index for collection {collection_id} not ready. "
+            f"Run indexing and wait for rag_status='completed'."
+        )

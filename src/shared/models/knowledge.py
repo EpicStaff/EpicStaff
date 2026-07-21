@@ -32,14 +32,63 @@ class GraphRagLocalSearchParams(BaseModel):
     prompt: str | None = None
     text_unit_prop: float = 0.5
     community_prop: float = 0.15
+    community_level: int = 2
     conversation_history_max_turns: int = 5
     top_k_entities: int = 10
     top_k_relationships: int = 10
     max_context_tokens: int = 12000
 
 
+class GraphRagGlobalSearchParams(BaseModel):
+    search_method: Literal["global"] = "global"
+    dynamic_community_selection: bool = False
+    map_prompt: str | None = None
+    reduce_prompt: str | None = None
+    knowledge_prompt: str | None = None
+    max_context_tokens: int = 12000
+    data_max_tokens: int = 12000
+    map_max_length: int = 1000
+    reduce_max_length: int = 2000
+    dynamic_search_threshold: int = 1
+    dynamic_search_keep_parent: bool = False
+    dynamic_search_num_repeats: int = 1
+    dynamic_search_use_summary: bool = False
+    dynamic_search_max_level: int = 2
+
+
+class GraphRagDriftSearchParams(BaseModel):
+    search_method: Literal["drift"] = "drift"
+    prompt: str | None = None
+    reduce_prompt: str | None = None
+    data_max_tokens: int = 12000
+    reduce_max_tokens: int | None = None
+    reduce_max_completion_tokens: int | None = None
+    primer_llm_max_tokens: int = 12000
+    local_search_max_data_tokens: int = 12000
+    local_search_llm_max_gen_tokens: int | None = None
+    local_search_llm_max_gen_completion_tokens: int | None = None
+    concurrency: int = 32
+    drift_k_followups: int = 20
+    primer_folds: int = 5
+    n_depth: int = 3
+    community_level: int = 2
+    local_search_text_unit_prop: float = 0.9
+    local_search_community_prop: float = 0.1
+    local_search_top_k_mapped_entities: int = 10
+    local_search_top_k_relationships: int = 10
+    reduce_temperature: float = 0.0
+    local_search_temperature: float = 0.0
+    local_search_top_p: float = 1.0
+    local_search_n: int = 1
+
+
 GraphSearchParams = Annotated[
-    Union[GraphRagBasicSearchParams, GraphRagLocalSearchParams],
+    Union[
+        GraphRagBasicSearchParams,
+        GraphRagLocalSearchParams,
+        GraphRagGlobalSearchParams,
+        GraphRagDriftSearchParams,
+    ],
     Field(discriminator="search_method"),
 ]
 

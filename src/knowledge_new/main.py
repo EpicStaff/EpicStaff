@@ -7,9 +7,11 @@ from loguru import logger
 from services.processing_run import set_process_pool
 from settings import settings
 from src.shared.communication import Consumer, Producer, brokers, storages
+from orchestrators.searching.strategies.prompt_grounding import apply_prompt_grounding
 
 
 async def main():
+    apply_prompt_grounding()
     process_pool = ProcessPoolExecutor(settings.MAX_PROCESS_WORKERS)
     set_process_pool(process_pool)
 

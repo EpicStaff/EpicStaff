@@ -1,7 +1,11 @@
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_serializer
-from src.shared.enums.knowledge_new import DocumentStatusEnum, GraphSearchMethodEnum, RAGStrategy
+from src.shared.enums.knowledge_new import (
+    DocumentStatusEnum,
+    GraphSearchMethodEnum,
+    RAGStrategy,
+)
 from src.shared.models.base import ValueObject
 
 __all__ = [
@@ -81,6 +85,10 @@ class GraphLocalSearchConfig(ValueObject):
         description="The community proportion.",
         default=0.15,
     )
+    community_level: int = Field(
+        description="Max Leiden community-hierarchy level to include.",
+        default=2,
+    )
     conversation_history_max_turns: int = Field(
         description="The conversation history maximum turns.",
         default=5,
@@ -150,6 +158,10 @@ class GraphGlobalSearchConfig(ValueObject):
         description="The maximum level of community hierarchy to consider if none of the processed communities are relevant",
         default=2,
     )
+    dynamic_community_selection: bool = Field(
+        description="Enable dynamic community selection at query time.",
+        default=False,
+    )
 
 
 class GraphDriftSearchConfig(ValueObject):
@@ -182,6 +194,10 @@ class GraphDriftSearchConfig(ValueObject):
     concurrency: int = Field(
         description="The number of concurrent requests.",
         default=32,
+    )
+    community_level: int = Field(
+        description="Max Leiden community-hierarchy level to include.",
+        default=2,
     )
     drift_k_followups: int = Field(
         description="The number of top global results to retrieve.",
@@ -249,7 +265,9 @@ GraphSearchConfig = Annotated[
     Field(discriminator="method"),
 ]
 
-SearchConfig = Annotated[GraphSearchConfig | NaiveSearchConfig, Field(discriminator="rag_strategy")]
+SearchConfig = Annotated[
+    GraphSearchConfig | NaiveSearchConfig, Field(discriminator="rag_strategy")
+]
 
 
 class PrechunkRequest(ValueObject):
