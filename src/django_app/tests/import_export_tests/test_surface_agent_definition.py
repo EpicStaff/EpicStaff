@@ -45,8 +45,9 @@ def default_org(db):
 
 
 @pytest.fixture
-def mcp_tool():
+def mcp_tool(default_org):
     return McpTool.objects.create(
+        org=default_org,
         name="mcp_tool_1",
         transport="https://example.com/mcp",
         tool_name="search",
