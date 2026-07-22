@@ -48,7 +48,7 @@ class GraphBulkSaveService:
     # node/edge serializer's context so org-scoped fields can resolve the active
     # org. Defaults to None so a helper called without save() denies (fail-safe).
     _request = None
-    
+
     @staticmethod
     def _resolve_organization() -> Organization | None:
         """Resolve the default organization for serializer validation context.
@@ -84,7 +84,10 @@ class GraphBulkSaveService:
         all_errors: dict = {}
         node_saveables: list[_NodeSaveable] = []
         edge_saveables: list = []
-        self._serializer_context = {"organization": self._resolve_organization()}
+        self._serializer_context = {
+            "organization": self._resolve_organization(),
+            "request": self._request,
+        }
 
         payload_temp_ids: set[str] = self._collect_payload_temp_ids(validated_input)
 
@@ -244,7 +247,6 @@ class GraphBulkSaveService:
         if routing_errors:
             return BuildSaveableResult(error={"index": index, "errors": routing_errors})
 
-        context = {"request": self._request}
         s = (
             config.serializer_class(
                 instance, data=data, context=self._serializer_context
@@ -283,7 +285,6 @@ class GraphBulkSaveService:
     ) -> EdgeListValidationResult:
         """Validate all Edge items."""
         result = EdgeListValidationResult()
-        context = {"request": self._request}
 
         db_map = {obj.id: obj for obj in model_class.objects.filter(graph=graph)}
 
@@ -351,7 +352,6 @@ class GraphBulkSaveService:
     ) -> EdgeListValidationResult:
         """Validate all ConditionalEdge items."""
         result = EdgeListValidationResult()
-        context = {"request": self._request}
 
         db_map = {obj.id: obj for obj in ConditionalEdge.objects.filter(graph=graph)}
 
@@ -371,7 +371,9 @@ class GraphBulkSaveService:
 
             if item_id is None:
                 item_data.pop("id", None)
-                s = ConditionalEdgeBulkSerializer(data=item_data, context=context)
+                s = ConditionalEdgeBulkSerializer(
+                    data=item_data, context=self._serializer_context
+                )
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
@@ -391,7 +393,7 @@ class GraphBulkSaveService:
 
                 item_data.pop("id", None)
                 s = ConditionalEdgeBulkSerializer(
-                    db_instance, data=item_data, context=context
+                    db_instance, data=item_data, context=self._serializer_context
                 )
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})

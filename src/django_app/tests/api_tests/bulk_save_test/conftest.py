@@ -7,6 +7,7 @@ from tables.models.graph_models import (
     DecisionTableNode,
     Edge,
     PythonNode,
+    StartNode,
     TaskNode,
 )
 from tables.models.mcp_models import McpTool
@@ -22,6 +23,11 @@ def python_node(graph, python_code) -> PythonNode:
 @pytest.fixture
 def crew_node(graph, crew) -> CrewNode:
     return CrewNode.objects.create(graph=graph, crew=crew)
+
+
+@pytest.fixture
+def start_node(graph) -> StartNode:
+    return StartNode.objects.create(graph=graph, variables={})
 
 
 @pytest.fixture
