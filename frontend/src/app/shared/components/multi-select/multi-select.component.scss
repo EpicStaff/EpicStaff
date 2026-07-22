@@ -118,6 +118,13 @@
         color: var(--color-ks-transparent-text-60);
     }
 
+    &__empty {
+        margin: 0;
+        padding: 0.625rem 0.75rem;
+        color: var(--color-text-secondary);
+        font-size: 0.875rem;
+    }
+
     &__footer {
         display: flex;
         justify-content: flex-end;
