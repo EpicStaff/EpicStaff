@@ -19,6 +19,7 @@ from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationDecisionTablePrompt,
 )
+from tables.serializers.utils.mixins import assert_node_ref_in_graph
 
 # Fields bulk_update is allowed to write back on an existing condition group.
 _GROUP_UPDATE_FIELDS = [
@@ -35,14 +36,23 @@ _GROUP_UPDATE_FIELDS = [
     "section",
 ]
 
-# Incoming keys that are not writable group columns.
-_GROUP_EXCLUDED_INPUT = {"id", "classification_decision_table_node", "prompt_key"}
+# Validated keys that must not be written to the group as-is. `prompt_id` is
+# stripped here and re-added only as a node-local instance via `_resolve_prompt`,
+# so a foreign prompt can't attach directly. The rest guard against a raw
+# non-column key ever forcing a PK or colliding with the explicit node kwarg.
+_GROUP_EXCLUDED_INPUT = {
+    "id",
+    "classification_decision_table_node",
+    "classification_decision_table_node_id",
+    "prompt_key",
+    "prompt_id",
+}
 
 
 def sync_classification_decision_table_children(
     node, *, prompt_configs_data=None, condition_groups_data=None
 ):
-    """Sync a CDT node's prompt configs and condition groups from payload data.
+    """Reconcile a CDT node's prompt configs and condition groups from validated data.
 
     Prompt configs are synced first so condition groups can resolve their
     ``prompt`` FK against the node's current prompts. ``None`` means "not in
@@ -60,11 +70,7 @@ def _sync_prompt_configs(node, prompt_configs_data):
         prompt_key__in=incoming_keys
     ).delete()
     for prompt_data in prompt_configs_data:
-        defaults = {
-            k: v
-            for k, v in prompt_data.items()
-            if k not in ("prompt_key", "id", "cdt_node")
-        }
+        defaults = {k: v for k, v in prompt_data.items() if k != "prompt_key"}
         ClassificationDecisionTablePrompt.objects.update_or_create(
             cdt_node=node,
             prompt_key=prompt_data["prompt_key"],
@@ -88,16 +94,21 @@ def _resolve_prompt(value, prompt_by_id):
 
 
 def _sync_condition_groups(node, condition_groups_data):
+    graph = node.graph
     prompt_by_id = {
-        p.id: p
-        for p in ClassificationDecisionTablePrompt.objects.filter(cdt_node=node)
+        p.id: p for p in ClassificationDecisionTablePrompt.objects.filter(cdt_node=node)
     }
 
     # Normalize payload rows once: strip non-column keys, resolve prompt FK.
     rows = []
     for group_data in condition_groups_data:
         gd = {k: v for k, v in group_data.items() if k not in _GROUP_EXCLUDED_INPUT}
-        gd["prompt"] = _resolve_prompt(gd.pop("prompt", None), prompt_by_id)
+        assert_node_ref_in_graph(
+            node_id=gd.get("next_node_id"),
+            graph=graph,
+            field="condition_groups.next_node_id",
+        )
+        gd["prompt"] = _resolve_prompt(group_data.get("prompt_id"), prompt_by_id)
         rows.append(gd)
 
     routed = [gd for gd in rows if gd.get("route_code")]
@@ -112,8 +123,7 @@ def _sync_condition_groups(node, condition_groups_data):
         route_code__in=incoming_route_codes
     ).delete()
     existing_by_rc = {
-        g.route_code: g
-        for g in node.condition_groups.exclude(route_code__isnull=True)
+        g.route_code: g for g in node.condition_groups.exclude(route_code__isnull=True)
     }
     for gd in routed:
         existing = existing_by_rc.get(gd["route_code"])
@@ -145,7 +155,7 @@ def _sync_condition_groups(node, condition_groups_data):
                     classification_decision_table_node=node, **gd
                 )
             )
-    surplus_ids = [g.id for g in existing_unrouted[len(unrouted):]]
+    surplus_ids = [g.id for g in existing_unrouted[len(unrouted) :]]
 
     if surplus_ids:
         ClassificationConditionGroup.objects.filter(id__in=surplus_ids).delete()

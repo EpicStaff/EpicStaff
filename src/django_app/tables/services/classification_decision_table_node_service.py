@@ -6,6 +6,8 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from tables.models.graph_models import ClassificationDecisionTableNode
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     ClassificationDecisionTableNodeSerializer,
+    ClassificationDecisionTablePromptSerializer,
+    ClassificationConditionGroupSerializer,
 )
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
@@ -41,15 +43,29 @@ class ClassificationDecisionTableNodeService:
         data: dict,
         instance: ClassificationDecisionTableNode | None = None,
         partial: bool = False,
+        *,
+        request=None,
     ) -> tuple[ClassificationDecisionTableNode, list | None]:
         data = data.copy()
-        condition_groups_data = data.pop("condition_groups", None)
-        prompt_configs_data = data.pop("prompt_configs", None)
+        raw_condition_groups = data.pop("condition_groups", None)
+        raw_prompt_configs = data.pop("prompt_configs", None)
 
         serializer = ClassificationDecisionTableNodeSerializer(
-            instance, data=data, partial=partial
+            instance, data=data, partial=partial, context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
+
+        prompt_configs_data = self._validate_children(
+            serializer_class=ClassificationDecisionTablePromptSerializer,
+            raw=raw_prompt_configs,
+            request=request,
+        )
+        condition_groups_data = self._validate_children(
+            serializer_class=ClassificationConditionGroupSerializer,
+            raw=raw_condition_groups,
+            request=request,
+        )
+
         node = serializer.save()
 
         if partial and condition_groups_data is None and prompt_configs_data is None:
@@ -62,6 +78,16 @@ class ClassificationDecisionTableNodeService:
         )
 
         return node, condition_groups_data
+
+    @staticmethod
+    def _validate_children(serializer_class, raw, request):
+        if raw is None:
+            return None
+        child = serializer_class(
+            data=raw, many=True, partial=True, context={"request": request}
+        )
+        child.is_valid(raise_exception=True)
+        return child.validated_data
 
     def export(self, pk, export_format: str = "json") -> NodeExportResult:
         export_format = (export_format or "json").lower()

@@ -1606,7 +1606,12 @@ class DecisionTableNodeModelViewSet(
         node.save()
 
 
-class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
+class ClassificationDecisionTableNodeModelViewSet(
+    OrgScopedChildViewSetMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = ClassificationDecisionTableNode.objects.all()
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1618,7 +1623,9 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        node, _ = self._node_service.create_or_update(data=request.data)
+        node, _ = self._node_service.create_or_update(
+            data=request.data, request=request
+        )
         return Response(self.get_serializer(node).data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
@@ -1626,7 +1633,10 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
         node, _ = self._node_service.create_or_update(
-            data=request.data, instance=instance, partial=partial
+            data=request.data,
+            instance=instance,
+            partial=partial,
+            request=request,
         )
         return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
 
