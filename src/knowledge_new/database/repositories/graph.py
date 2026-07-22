@@ -1,3 +1,5 @@
+from typing import Literal
+
 from database.models import (
     DocumentMetadata,
     EmbeddingConfig,
@@ -78,6 +80,21 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
                 )
             )
         return documents
+
+    async def update_status_of_documents(
+        self,
+        rag_id: int,
+        ids: frozenset[int],
+        status: Literal['new', 'indexed'],
+    ):
+        await self._session.execute(
+            update(GraphRagDocument)
+            .where(
+                GraphRagDocument.graph_rag_id == rag_id,
+                GraphRagDocument.graph_rag_document_id.in_(ids),
+            )
+            .values(status=status)
+        )
 
     async def get_config(self, rag_id: int) -> GraphRagConfig | None:
         result = await self._session.execute(

@@ -2,6 +2,7 @@ import abc
 import functools
 import inspect
 from collections.abc import Awaitable, Callable
+from typing import Literal
 
 from errors import RepositoryError
 from graphrag.config.models.graph_rag_config import GraphRagConfig
@@ -176,4 +177,19 @@ class AbstractGraphRagRepository(RepositoryErrorWrapper, abc.ABC):
 
         Args:
             rag_id: Primary key of the GraphRAG collection.
+        """
+
+    @abc.abstractmethod
+    async def update_status_of_documents(
+        self,
+        rag_id: int,
+        ids: frozenset[int],
+        status: Literal['new', 'indexed'],
+    ):
+        """Persist status of `documents` within the RAG collection `rag_id`.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
+            ids: Primary keys of the documents to retrieve.
+            status: Status of document.
         """

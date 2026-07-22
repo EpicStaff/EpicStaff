@@ -131,6 +131,7 @@ class GraphRagDocument(BaseModel):
 
     graph_rag_document_id = Column(Integer, primary_key=True, autoincrement=True)
     created_at = Column(DateTime, default=utcnow)
+    status = Column(String, default='new')
 
     graph_rag_id = Column(Integer, ForeignKey("graph_rag.graph_rag_id"), nullable=False)
     document_id = Column(Integer, ForeignKey("tables_documentmetadata.document_id"), nullable=False)

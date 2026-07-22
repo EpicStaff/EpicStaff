@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from typing import Literal
 
 import pandas
 from errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
@@ -33,6 +34,7 @@ class GraphIndexer(AbstractIndexer):
                 list(errors.values()),
             )
 
+        await self._update_status_of_documents(rag.id, request.document_ids, status='indexed')
         rag.mark_as_completed()
         await self._update_rag(rag)
 
@@ -75,4 +77,18 @@ class GraphIndexer(AbstractIndexer):
     async def _update_rag(self, rag: Rag):
         async with self.uow:
             await self.uow.graph_rag_repo.update_rag(rag)
+            await self.uow.commit()
+
+    async def _update_status_of_documents(
+        self,
+        rag_id: int,
+        ids: frozenset[int],
+        status: Literal['new', 'indexed'],
+    ):
+        async with self.uow:
+            await self.uow.graph_rag_repo.update_status_of_documents(
+                rag_id=rag_id,
+                ids=ids,
+                status=status,
+            )
             await self.uow.commit()

@@ -140,6 +140,10 @@ class GraphRagDocument(models.Model):
     - Allows adding/removing documents from GraphRag independently
     """
 
+    class Status(models.TextChoices):
+        NEW = 'new'
+        INDEXED = 'indexed'
+
     graph_rag_document_id = models.AutoField(primary_key=True)
     graph_rag = models.ForeignKey(
         GraphRag,
@@ -150,6 +154,11 @@ class GraphRagDocument(models.Model):
         DocumentMetadata,
         on_delete=models.CASCADE,
         related_name="graph_rag_links",
+    )
+    status = models.CharField(
+        default=Status.NEW,
+        choices=Status.choices,
+        max_length=20,
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
