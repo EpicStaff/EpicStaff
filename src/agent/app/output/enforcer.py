@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from loguru import logger
 
 from app.constants import FAILURE_STOP_REASONS
@@ -12,15 +14,30 @@ from app.tools.system_tools.structured_output import ANSWER_TOOL, build_answer_t
 from shared.models.agent_service import TokenUsage
 
 
+@dataclass(frozen=True)
+class EnforcementResult:
+    """Outcome of ``StructuredOutputEnforcer.enforce()``.
+
+    Carries the parsed answer plus the token usage, iterations, and tool
+    invocations accumulated across every retry attempt the enforcer drove
+    internally, so callers can fold them into the final ``LoopResult``.
+    """
+
+    parsed: dict
+    token_usage: TokenUsage
+    iterations: int
+    tool_invocations: int
+
+
 class StructuredOutputEnforcer:
     def __init__(self, loop: AgentLoop, max_retries: int) -> None:
         self._loop = loop
         self._max_retries = max_retries
 
-    async def enforce(
-        self, context, output_schema: dict, emitter
-    ) -> tuple[dict, TokenUsage]:
+    async def enforce(self, context, output_schema: dict, emitter) -> EnforcementResult:
         usage = TokenUsage()
+        iterations = 0
+        tool_invocations = 0
         corrective = "Call submit_final_answer with your final answer matching the required schema."
 
         for attempt in range(self._max_retries + 1):
@@ -37,6 +54,8 @@ class StructuredOutputEnforcer:
                 context, registry, emitter, MaxIterAndNoToolCalls(max_iter=1)
             )
             usage = add_usage(usage, result.token_usage)
+            iterations += result.iterations
+            tool_invocations += result.tool_invocations
 
             if result.stop_reason in FAILURE_STOP_REASONS:
                 context.tool_choice = None
@@ -64,7 +83,12 @@ class StructuredOutputEnforcer:
                     context.correlation_id,
                 )
                 context.tool_choice = None
-                return candidate, usage
+                return EnforcementResult(
+                    parsed=candidate,
+                    token_usage=usage,
+                    iterations=iterations,
+                    tool_invocations=tool_invocations,
+                )
 
             logger.debug(
                 "schema_enforce attempt={} correlation_id={} ok=False error={}",

@@ -87,13 +87,13 @@ async def run_task_through_loop(
 
     if output_schema and not has_tools:
         enforcer = StructuredOutputEnforcer(deps.loop, schema_retries)
-        parsed, usage = await enforcer.enforce(context, output_schema, emitter)
+        enforcement = await enforcer.enforce(context, output_schema, emitter)
         return LoopResult(
-            final_text=json.dumps(parsed),
-            tool_invocations=0,
-            iterations=1,
+            final_text=json.dumps(enforcement.parsed),
+            tool_invocations=enforcement.tool_invocations,
+            iterations=enforcement.iterations,
             stop_reason=StopReason.SCHEMA_SATISFIED.value,
-            token_usage=usage,
+            token_usage=enforcement.token_usage,
         )
 
     stop = MaxIterAndNoToolCalls(max_iter)
@@ -106,11 +106,14 @@ async def run_task_through_loop(
 
     if output_schema:
         enforcer = StructuredOutputEnforcer(deps.loop, schema_retries)
-        parsed, usage = await enforcer.enforce(context, output_schema, emitter)
+        enforcement = await enforcer.enforce(context, output_schema, emitter)
         result = result.model_copy(
             update={
-                "final_text": json.dumps(parsed),
-                "token_usage": add_usage(result.token_usage, usage),
+                "final_text": json.dumps(enforcement.parsed),
+                "token_usage": add_usage(result.token_usage, enforcement.token_usage),
+                "iterations": result.iterations + enforcement.iterations,
+                "tool_invocations": result.tool_invocations
+                + enforcement.tool_invocations,
                 "stop_reason": (
                     result.stop_reason
                     if result.stop_reason == StopReason.MAX_CONSECUTIVE_FAILURES.value

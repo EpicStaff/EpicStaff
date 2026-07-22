@@ -199,6 +199,7 @@ from tables.views.mixins import (
     OrgScopedViewSetMixin,
     SuperadminWriteMixin,
 )
+from tables.models.rbac_models import Organization
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
@@ -1335,8 +1336,14 @@ class CodeAgentNodeViewSet(
 
 
 class TaskNodeViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
 ):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = TaskNode.objects.select_related("inline_surface").prefetch_related(
         "surface_list",
         "inline_surface__python_tools",
@@ -1350,15 +1357,25 @@ class TaskNodeViewSet(
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["organization"] = Organization.objects.get(
-            name=DEFAULT_ORGANIZATION_NAME
-        )
+        context["organization"] = Organization.objects.get(id=self.get_active_org_id())
         return context
+
+    def perform_update(self, serializer):
+        # The serializer allows writing `graph`; without this check a PATCH
+        # could move the node into another org's graph.
+        self._assert_parent_in_active_org(serializer)
+        super().perform_update(serializer)
 
 
 class AgentNodeViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
 ):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
     queryset = AgentNode.objects.select_related("inline_surface").prefetch_related(
         "surface_list",
         "tasks",
@@ -1374,114 +1391,56 @@ class AgentNodeViewSet(
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["organization"] = Organization.objects.get(
-            name=DEFAULT_ORGANIZATION_NAME
-        )
+        context["organization"] = Organization.objects.get(id=self.get_active_org_id())
         return context
 
+    def perform_update(self, serializer):
+        # The serializer allows writing `graph`; without this check a PATCH
+        # could move the node into another org's graph.
+        self._assert_parent_in_active_org(serializer)
+        super().perform_update(serializer)
 
-class AgentNodeTaskViewSet(viewsets.ModelViewSet):
+
+class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "agent_node__graph__org_id"
     queryset = AgentNodeTask.objects.all()
     serializer_class = AgentNodeTaskSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["agent_node"]
 
-    @transaction.atomic
-    def perform_create(self, serializer):
+    def _clean_and_save(self, serializer):
         instance = serializer.save()
-
         try:
             instance.full_clean()
         except ValidationError as error:
             raise serializers.ValidationError(
                 error.message_dict if hasattr(error, "message_dict") else error.messages
             )
-
-    @transaction.atomic
-    def perform_update(self, serializer):
-        instance = serializer.save()
-
-        try:
-            instance.full_clean()
-        except ValidationError as error:
-            raise serializers.ValidationError(
-                error.message_dict if hasattr(error, "message_dict") else error.messages
-            )
-
-
-class TaskNodeViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
-):
-    queryset = TaskNode.objects.select_related("inline_surface").prefetch_related(
-        "surface_list",
-        "inline_surface__python_tools",
-        "inline_surface__mcp_tools",
-        "inline_surface__storage_items",
-        "inline_surface__knowledge__naive_search_config",
-        "inline_surface__knowledge__graph_basic_search_config",
-        "inline_surface__knowledge__graph_local_search_config",
-    )
-    serializer_class = TaskNodeSerializer
-
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context["organization"] = Organization.objects.get(
-            name=DEFAULT_ORGANIZATION_NAME
-        )
-        return context
-
-
-class AgentNodeViewSet(
-    IdempotentNodeCreateMixin, ContentHashPreconditionMixin, viewsets.ModelViewSet
-):
-    queryset = AgentNode.objects.select_related("inline_surface").prefetch_related(
-        "surface_list",
-        "tasks",
-        "tasks__context_tasks",
-        "inline_surface__python_tools",
-        "inline_surface__mcp_tools",
-        "inline_surface__storage_items",
-        "inline_surface__knowledge__naive_search_config",
-        "inline_surface__knowledge__graph_basic_search_config",
-        "inline_surface__knowledge__graph_local_search_config",
-    )
-    serializer_class = AgentNodeSerializer
-
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context["organization"] = Organization.objects.get(
-            name=DEFAULT_ORGANIZATION_NAME
-        )
-        return context
-
-
-class AgentNodeTaskViewSet(viewsets.ModelViewSet):
-    queryset = AgentNodeTask.objects.all()
-    serializer_class = AgentNodeTaskSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["agent_node"]
 
     @transaction.atomic
     def perform_create(self, serializer):
-        instance = serializer.save()
-
-        try:
-            instance.full_clean()
-        except ValidationError as error:
-            raise serializers.ValidationError(
-                error.message_dict if hasattr(error, "message_dict") else error.messages
-            )
+        # Parent org lives on agent_node.graph, so the mixin's default assert
+        # (which reads parent.org_id) does not apply — check explicitly.
+        agent_node = serializer.validated_data.get("agent_node")
+        if agent_node is not None and (
+            agent_node.graph.org_id != self.get_active_org_id()
+        ):
+            raise NotFound()
+        self._clean_and_save(serializer)
 
     @transaction.atomic
     def perform_update(self, serializer):
-        instance = serializer.save()
-
-        try:
-            instance.full_clean()
-        except ValidationError as error:
-            raise serializers.ValidationError(
-                error.message_dict if hasattr(error, "message_dict") else error.messages
-            )
+        # Parent org lives on agent_node.graph — same reasoning as
+        # perform_create: a PATCH could otherwise reassign agent_node to
+        # another org's parent.
+        agent_node = serializer.validated_data.get("agent_node")
+        if agent_node is not None and (
+            agent_node.graph.org_id != self.get_active_org_id()
+        ):
+            raise NotFound()
+        self._clean_and_save(serializer)
 
 
 class EdgeViewSet(
@@ -1651,7 +1610,6 @@ class RealtimeAgentViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     org_filter_path = "agent__org_id"
     queryset = RealtimeAgent.objects.all()
     serializer_class = RealtimeAgentSerializer
-
 
 
 class RealtimeAgentDefinitionViewSet(viewsets.ModelViewSet):

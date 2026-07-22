@@ -18,6 +18,7 @@ from app.llm.client import LLMChunk
 from app.loop.agent_loop import AgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
+from app.output.enforcer import EnforcementResult
 from app.resources.resolver import AgentResolver, ResolvedAgent
 from app.runners.deps import RunnerDependencies
 from app.runners.single_task import SingleTaskRunner
@@ -332,6 +333,9 @@ async def test_output_schema_no_tools_skips_plain_loop():
     assert final.stop_reason == "schema_satisfied"
     # Enforcer uses 1 loop call; the plain loop is never called
     assert answer_loop.call_count == 1
+    # No-tools path: reported counts come solely from the enforcer's turn.
+    assert final.iterations == 1
+    assert final.tool_invocations == 1
 
 
 async def test_output_schema_with_tools_runs_loop_then_enforces():
@@ -367,6 +371,10 @@ async def test_output_schema_with_tools_runs_loop_then_enforces():
     assert final.token_usage.prompt_tokens == 8
     assert final.token_usage.total_tokens == 11
     assert answer_loop.call_count == 2
+    # Tools path: plain loop's iterations/tool_invocations (1, 0) plus the
+    # enforcer's own turn (1, 1) — the enforcer's counts must not be dropped.
+    assert final.iterations == 2
+    assert final.tool_invocations == 1
 
 
 async def test_schema_validation_error_calls_on_error():
@@ -510,7 +518,12 @@ async def test_agent_schema_max_retries_zero_overrides_settings_default():
         patch("app.runners.task_execution.StructuredOutputEnforcer") as enforcer_class,
     ):
         enforcer_class.return_value.enforce = AsyncMock(
-            return_value=({"x": "result"}, usage)
+            return_value=EnforcementResult(
+                parsed={"x": "result"},
+                token_usage=usage,
+                iterations=1,
+                tool_invocations=1,
+            )
         )
         await runner.execute(request, emitter)
 
@@ -541,7 +554,12 @@ async def test_agent_schema_max_retries_none_falls_back_to_settings():
         patch("app.runners.task_execution.StructuredOutputEnforcer") as enforcer_class,
     ):
         enforcer_class.return_value.enforce = AsyncMock(
-            return_value=({"x": "result"}, usage)
+            return_value=EnforcementResult(
+                parsed={"x": "result"},
+                token_usage=usage,
+                iterations=1,
+                tool_invocations=1,
+            )
         )
         await runner.execute(request, emitter)
 

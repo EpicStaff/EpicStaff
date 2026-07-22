@@ -128,10 +128,12 @@ async def test_valid_on_first_attempt_returns_parsed():
     enforcer = StructuredOutputEnforcer(loop, max_retries=2)
     context = _make_context()
 
-    parsed, result_usage = await enforcer.enforce(context, OBJECT_SCHEMA, FakeEmitter())
+    result = await enforcer.enforce(context, OBJECT_SCHEMA, FakeEmitter())
 
-    assert parsed == {"answer": "hello"}
-    assert result_usage == usage
+    assert result.parsed == {"answer": "hello"}
+    assert result.token_usage == usage
+    assert result.iterations == 1
+    assert result.tool_invocations == 1
     assert context.tool_choice is None
 
 
@@ -157,12 +159,14 @@ async def test_invalid_then_valid_uses_second_attempt():
     enforcer = StructuredOutputEnforcer(loop, max_retries=2)
     context = _make_context()
 
-    parsed, total_usage = await enforcer.enforce(context, OBJECT_SCHEMA, FakeEmitter())
+    result = await enforcer.enforce(context, OBJECT_SCHEMA, FakeEmitter())
 
-    assert parsed == {"answer": "ok"}
-    assert total_usage.prompt_tokens == 10
-    assert total_usage.completion_tokens == 5
-    assert total_usage.total_tokens == 15
+    assert result.parsed == {"answer": "ok"}
+    assert result.token_usage.prompt_tokens == 10
+    assert result.token_usage.completion_tokens == 5
+    assert result.token_usage.total_tokens == 15
+    assert result.iterations == 2
+    assert result.tool_invocations == 2
 
 
 async def test_usage_is_summed_across_attempts():
@@ -176,11 +180,32 @@ async def test_usage_is_summed_across_attempts():
     enforcer = StructuredOutputEnforcer(loop, max_retries=2)
     context = _make_context()
 
-    _, total_usage = await enforcer.enforce(context, OBJECT_SCHEMA, FakeEmitter())
+    result = await enforcer.enforce(context, OBJECT_SCHEMA, FakeEmitter())
 
-    assert total_usage.prompt_tokens == 6
-    assert total_usage.completion_tokens == 2
-    assert total_usage.total_tokens == 8
+    assert result.token_usage.prompt_tokens == 6
+    assert result.token_usage.completion_tokens == 2
+    assert result.token_usage.total_tokens == 8
+
+
+async def test_iterations_and_tool_invocations_summed_across_attempts():
+    """Every enforcer turn's iterations/tool_invocations are aggregated,
+    not discarded — including a turn where the tool was never called."""
+    u = TokenUsage()
+    loop = ScriptedLoop(
+        [
+            (None, u),  # tool not called → iterations+=1, tool_invocations+=0
+            ({"answer": 1}, u),  # invalid → iterations+=1, tool_invocations+=1
+            ({"answer": "ok"}, u),  # valid → iterations+=1, tool_invocations+=1
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(loop, max_retries=2)
+    context = _make_context()
+
+    result = await enforcer.enforce(context, OBJECT_SCHEMA, FakeEmitter())
+
+    assert result.parsed == {"answer": "ok"}
+    assert result.iterations == 3
+    assert result.tool_invocations == 2
 
 
 async def test_capture_never_set_raises_schema_validation_error():
@@ -240,9 +265,9 @@ async def test_wrapped_non_object_schema_returns_unwrapped_value():
     enforcer = StructuredOutputEnforcer(loop, max_retries=2)
     context = _make_context()
 
-    parsed, _ = await enforcer.enforce(context, STRING_SCHEMA, FakeEmitter())
+    result = await enforcer.enforce(context, STRING_SCHEMA, FakeEmitter())
 
-    assert parsed == inner_value
+    assert result.parsed == inner_value
 
 
 async def test_corrective_message_appended_on_no_capture():
