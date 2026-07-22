@@ -51,7 +51,7 @@ class GraphIndexer(AbstractIndexer):
             await self._update_rag(rag)
 
     async def _get_rag_under_uow(self, rag_id: int) -> Rag:
-        rag = await self.uow.naive_rag_repo.get_rag(rag_id=rag_id)
+        rag = await self.uow.graph_rag_repo.get_rag(rag_id=rag_id)
         if rag is None:
             raise RagNotFoundError(rag_id=rag_id)
         self.state["rag"] = rag
@@ -66,7 +66,7 @@ class GraphIndexer(AbstractIndexer):
     async def _get_documents_under_uow(
         self, rag_id: int, ids: frozenset[int]
     ) -> list[TextDocument]:
-        documents = await self.uow.naive_rag_repo.get_documents(rag_id=rag_id, ids=ids)
+        documents = await self.uow.graph_rag_repo.get_documents(rag_id=rag_id, ids=ids)
 
         if not documents:
             raise DocumentNotFoundError(f"No Document found for RAG(id={rag_id}).")
