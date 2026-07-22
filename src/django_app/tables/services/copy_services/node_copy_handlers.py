@@ -27,10 +27,6 @@ from tables.services.copy_services.helpers import copy_python_code, get_base_nod
 
 
 def copy_start_node(graph: Graph, node: StartNode) -> StartNode:
-    # The owning-org GraphOrganization row is created once by GraphCopyService.
-    # TODO: persistent variables story — decide whether a copy should inherit
-    # the source graph's org/user persistent state (GraphOrganization /
-    # GraphOrganizationUser). For now a copy starts fresh.
     return StartNode.objects.create(
         graph=graph,
         variables=node.variables,

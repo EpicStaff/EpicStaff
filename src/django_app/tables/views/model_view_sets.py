@@ -220,7 +220,6 @@ from tables.serializers.model_serializers import (
     EndNodeSerializer,
     FileExtractorNodeSerializer,
     GraphLightSerializer,
-    GraphOrganizationSerializer,
     GraphOrganizationUserSerializer,
     GraphSerializer,
     GraphSessionMessageSerializer,
@@ -870,7 +869,7 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
     def perform_create(self, serializer):
         org_id = self.get_active_org_id()
         created_graph = serializer.save(org_id=org_id, created_by=self.request.user)
-        GraphOrganization.objects.create(graph=created_graph, organization_id=org_id)
+        GraphOrganization.objects.create(graph=created_graph)
 
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
@@ -1733,23 +1732,7 @@ class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewS
         return Response(serializer.data)
 
 
-class GraphOrganizationViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
-    org_filter_path = "graph__org_id"
-    queryset = GraphOrganization.objects.all()
-    serializer_class = GraphOrganizationSerializer
-
-    def perform_create(self, serializer):
-        # Enforce the invariant: a flow's persistent-state row is always owned
-        # by the flow's own org (never a different organization).
-        self._assert_parent_in_active_org(serializer)
-        serializer.save(organization_id=serializer.validated_data["graph"].org_id)
-
-    def perform_update(self, serializer):
-        serializer.save(organization_id=serializer.instance.graph.org_id)
-
-
+# TODO refactor to use user_variable for persistent variables
 class GraphOrganizationUserViewSet(
     OrgScopedChildViewSetMixin, viewsets.ReadOnlyModelViewSet
 ):

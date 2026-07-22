@@ -556,8 +556,7 @@ def test_create_graph_from_snapshot_links_to_default_organization(
     )
 
     assert GraphOrganization.objects.filter(graph=new_graph).exists()
-    graph_org = GraphOrganization.objects.get(graph=new_graph)
-    assert graph_org.organization == default_org
+    assert new_graph.org == default_org
 
 
 @pytest.mark.django_db
