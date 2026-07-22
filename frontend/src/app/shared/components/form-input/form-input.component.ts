@@ -7,6 +7,7 @@ import {
     forwardRef,
     Input,
     Output,
+    signal,
     ViewChild,
 } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
@@ -46,7 +47,8 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     [attr.autocomplete]="effectiveAutocomplete"
                     [placeholder]="placeholder"
                     [(ngModel)]="value"
-                    (blur)="onTouched(); blur.emit()"
+                    (focus)="focused.set(true)"
+                    (blur)="focused.set(false); onTouched(); blur.emit(); scrollToEndIfSecret()"
                     class="text-input"
                     [class.has-toggle]="hasToggle"
                     [class.masked]="isMasked"
@@ -70,6 +72,11 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
             @if (errorMessage) {
                 <div class="error-message">
                     {{ errorMessage }}
+                </div>
+            }
+            @if (isSecret && focused() && cautionMessage) {
+                <div class="caution-message">
+                    {{ cautionMessage }}
                 </div>
             }
         </div>
@@ -169,6 +176,16 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     margin-top: 4px;
                     line-height: 1.4;
                 }
+
+                .caution-message {
+                    margin-top: 6px;
+                    padding: 0.625rem;
+                    background-color: rgba(104, 95, 255, 0.1);
+                    border-radius: 6px;
+                    border-left: 3px solid #685fff;
+                    font-size: 12px;
+                    color: #ffffffb3;
+                }
             }
         `,
     ],
@@ -185,7 +202,7 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
 
     @Input() label: string = '';
     @Input() placeholder: string = '';
-    @Input() type: string = 'text';
+    @Input() type: 'text' | 'secret' | 'password' = 'text';
     @Input() id: string = '';
     @Input() name: string = '';
     @Input() autocomplete: string | null = null;
@@ -195,8 +212,11 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     @Input() required: boolean = false;
     @Input() activeColor: string = '#685fff';
     @Input() errorMessage: string = '';
+    @Input() cautionMessage: string = '';
 
     @Output() blur = new EventEmitter<void>();
+
+    focused = signal<boolean>(false);
 
     passwordVisible: boolean = false;
 
@@ -243,23 +263,19 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     }
 
     get effectiveType(): string {
-        if (this.isSecret) {
-            if (this.passwordVisible) return 'text';
-            return this.supportsTextSecurity ? 'text' : 'password';
-        }
         return this.isPassword && this.passwordVisible ? 'text' : this.type;
     }
 
     get isMasked(): boolean {
-        return this.isSecret && !this.passwordVisible && this.supportsTextSecurity;
+        return this.isPassword && !this.passwordVisible && this.supportsTextSecurity;
     }
 
     get hasToggle(): boolean {
-        return this.isSecret || this.isPassword;
+        return this.isPassword;
     }
 
     get effectiveAutocomplete(): string | null {
-        return this.isSecret ? 'off' : this.autocomplete;
+        return this.autocomplete;
     }
 
     get isClassIcon(): boolean {
@@ -272,6 +288,17 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
 
     writeValue(value: string): void {
         this._value = value || '';
+        if (this.isSecret) {
+            queueMicrotask(() => this.scrollToEndIfSecret());
+        }
+    }
+
+    scrollToEndIfSecret(): void {
+        if (!this.isSecret) return;
+        const el = this.inputEl?.nativeElement;
+        if (el) {
+            el.scrollLeft = el.scrollWidth;
+        }
     }
 
     registerOnChange(fn: (value: string) => void): void {
@@ -289,6 +316,9 @@ export class CustomInputComponent implements ControlValueAccessor, AfterViewInit
     ngAfterViewInit(): void {
         if (this.autofocus) {
             queueMicrotask(() => this.inputEl?.nativeElement.focus());
+        }
+        if (this.isSecret) {
+            queueMicrotask(() => this.scrollToEndIfSecret());
         }
     }
 }

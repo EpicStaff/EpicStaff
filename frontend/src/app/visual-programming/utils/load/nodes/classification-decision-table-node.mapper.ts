@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { GetClassificationDecisionTableNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -13,7 +13,7 @@ export function mapClassificationDecisionTableNodeToModel(
         NodeType.CLASSIFICATION_TABLE
     );
     return {
-        id: uuidv4(),
+        id: generateUuid(),
         backendId: n.id,
         type: NodeType.CLASSIFICATION_TABLE,
         node_name: n.node_name,

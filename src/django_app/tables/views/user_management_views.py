@@ -15,7 +15,7 @@ from tables.serializers.user_management_serializers import (
     UserResponseSerializer,
 )
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
 from tables.services.rbac.user_management_service import UserManagementService
 from tables.services.rbac.user_validation_service import UserValidationService
@@ -40,7 +40,7 @@ class UserAdminViewSet(viewsets.ViewSet):
     or translate them.
     """
 
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, IsSuperadmin]
     pagination_class = UserPagination
     lookup_value_regex = "[0-9]+"
@@ -132,7 +132,7 @@ class OrganizationMembershipAdminViewSet(viewsets.ViewSet):
     in the org_id from the URL.
     """
 
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     # Order matters: IsAuthenticated runs first so HasOrgPermission can
     # rely on request.user.is_authenticated.
     permission_classes = [IsAuthenticated, HasOrgPermission]

@@ -1,7 +1,6 @@
 import json
 from datetime import datetime, timezone
 from collections import defaultdict
-from drf_yasg.utils import swagger_auto_schema
 import uuid
 import base64
 from tables.services.webhook_trigger_service import WebhookTriggerService
@@ -1077,7 +1076,7 @@ class RegisterWebhooksApiView(APIView):
 
 
 class PythonNodeLastTestInputView(APIView):
-    @swagger_auto_schema(**_LAST_TEST_INPUT_SWAGGER)
+    @extend_schema(**_LAST_TEST_INPUT_SWAGGER)
     def get(self, request, pk):
         try:
             python_node = PythonNode.objects.get(pk=pk)

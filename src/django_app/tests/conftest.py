@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from tables.models.rbac_models import ApiKey, Organization, OrganizationUser, Role
+from tables.services.rbac.api_key.generator import ApiKeyGenerator
 
 # Import shared fixtures (graph, crew, session_data, etc.)
 from .fixtures import *  # noqa: F401,F403
@@ -133,18 +134,33 @@ def superadmin_client(api_client, superadmin_jwt_tokens) -> APIClient:
 
 
 @pytest.fixture
-def env_api_key(db):
-    raw = ApiKey.generate_raw_key()
-    key = ApiKey(name="env-system")
-    key.set_key(raw)
-    key.save()
-    return raw, key
+def issue_api_key(db):
+    """Factory: create an ApiKey directly (bypasses endpoint/cap) and
+    return (raw_key, ApiKey). user=None + key_type=SYSTEM makes a system key."""
+
+    def _issue(user=None, **overrides):
+        generated = ApiKeyGenerator.generate()
+        key = ApiKey.objects.create(
+            name=overrides.pop("name", "test-key"),
+            key_type=overrides.pop(
+                "key_type",
+                ApiKey.KeyType.USER if user else ApiKey.KeyType.SYSTEM,
+            ),
+            prefix=generated.prefix,
+            key_hash=generated.key_hash,
+            created_by=user,
+            **overrides,
+        )
+        return generated.raw_key, key
+
+    return _issue
 
 
 @pytest.fixture
-def user_api_key(regular_user):
-    raw = ApiKey.generate_raw_key()
-    key = ApiKey(name="user-key", created_by=regular_user)
-    key.set_key(raw)
-    key.save()
-    return raw, key
+def env_api_key(issue_api_key):
+    return issue_api_key(user=None, name="env-system")
+
+
+@pytest.fixture
+def user_api_key(regular_user, issue_api_key):
+    return issue_api_key(user=regular_user, name="user-key")

@@ -198,7 +198,7 @@ export interface ClassificationPromptMessageData {
 
 export interface ConditionGroupManipulationMessageData {
     group_name: string;
-    state: Record<string, unknown>;
+    state: Record<string, Record<string, unknown>>;
     changed_variables: Record<string, unknown>;
     message_type: MessageType.CONDITION_GROUP_MANIPULATION;
 }
