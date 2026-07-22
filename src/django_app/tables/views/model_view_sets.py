@@ -1367,9 +1367,9 @@ class MemoryViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    # TODO(EST-2423 deferred):  org-scope agent memory. MemoryDatabase has no org
-    # link (UUID pk; agent_id/user_id live inside the opaque JSON payload), so it
-    # needs a denormalized org before it can be scoped. Authenticated-only for now.
+    # NOTE: this endpoint is scheduled for removal. Until then it is locked to
+    # superadmin
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = MemoryDatabase.objects.all()
     serializer_class = MemorySerializer
     filter_backends = [DjangoFilterBackend]
