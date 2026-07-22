@@ -155,6 +155,12 @@ class GraphNodesPartialExportSerializer(serializers.Serializer):
     schedule_trigger_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
+    agent_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    task_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
     edge_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
