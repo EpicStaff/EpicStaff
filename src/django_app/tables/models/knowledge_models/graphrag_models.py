@@ -60,6 +60,7 @@ class GraphRag(models.Model):
         choices=GraphRagStatus.choices,
         default=GraphRagStatus.NEW,
     )
+    reindex_reason = models.JSONField(default=dict, blank=True)
     error_message = models.TextField(null=True, blank=True)
 
     indexing_document_config_ids = ArrayField(
@@ -74,6 +75,12 @@ class GraphRag(models.Model):
 
     class Meta:
         db_table = "graph_rag"
+
+    def add_reindex_reason(self, code: str, detail: str):
+        self.reindex_reason.setdefault(code, detail)
+
+    def require_reindex(self) -> bool:
+        return bool(self.reindex_reason)
 
     def update_rag_status(self: "GraphRag"):
         """Update status based on document states."""

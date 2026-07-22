@@ -37,6 +37,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
                 status=data.rag_status,
                 indexing_document_ids=data.indexing_document_config_ids,
                 error_message=data.error_message,
+                reindex_reason=data.reindex_reason,
             )
         return None
 
@@ -48,6 +49,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
                 rag_status=rag.status,
                 indexing_document_config_ids=list(rag.indexing_document_ids),
                 error_message=rag.error_message,
+                reindex_reason=rag.reindex_reason,
             )
         )
 

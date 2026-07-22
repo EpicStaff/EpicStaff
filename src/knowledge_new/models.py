@@ -47,6 +47,7 @@ class Rag(Entity):
     status: IndexStatusEnum
     indexing_document_ids: set[int]
     error_message: str | None = None
+    reindex_reason: dict[str, str] = Field(default_factory=dict)
 
     def finish_document(self, document_id: int):
         self.indexing_document_ids.discard(document_id)
@@ -59,6 +60,7 @@ class Rag(Entity):
     def mark_as_completed(self):
         self.status = IndexStatusEnum.COMPLETED
         self.indexing_document_ids.clear()
+        self.reindex_reason.clear()
 
     def mark_as_failed(self, error: Exception | str):
         self.status = IndexStatusEnum.FAILED

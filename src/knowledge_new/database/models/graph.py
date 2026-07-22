@@ -101,6 +101,7 @@ class GraphRag(BaseModel):
     rag_status = Column(String(20), default="new")
     error_message = Column(Text, nullable=True)
     indexing_document_config_ids = Column(ARRAY(Integer), nullable=False, server_default="{}")
+    reindex_reason = Column(JSON, default=dict)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     indexed_at = Column(DateTime, nullable=True)
