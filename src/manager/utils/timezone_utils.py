@@ -1,6 +1,4 @@
-from datetime import datetime
-
-import pytz
+from datetime import datetime, timezone
 
 
 def ensure_aware(dt: datetime | None) -> datetime | None:
@@ -8,5 +6,5 @@ def ensure_aware(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        return pytz.UTC.localize(dt)
+        return dt.replace(tzinfo=timezone.utc)
     return dt

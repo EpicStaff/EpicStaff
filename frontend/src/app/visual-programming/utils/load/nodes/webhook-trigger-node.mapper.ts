@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { GetWebhookTriggerNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
 import { NodeType } from '../../../core/enums/node-type';
@@ -8,7 +8,7 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 export function mapWebhookTriggerNodeToModel(wn: GetWebhookTriggerNodeRequest): WebhookTriggerNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(wn.metadata, NodeType.WEBHOOK_TRIGGER);
     return {
-        id: uuidv4(),
+        id: generateUuid(),
         backendId: wn.id,
         type: NodeType.WEBHOOK_TRIGGER,
         node_name: wn.node_name,

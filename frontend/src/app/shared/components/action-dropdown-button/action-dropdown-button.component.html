@@ -3,6 +3,8 @@
     cdkOverlayOrigin
     class="adb"
     [class.adb--disabled]="disabled() || loading()"
+    [style.width]="buttonWidth() === null ? 'auto' : buttonWidth() + 'px'"
+    [style.min-width]="buttonWidth() === null ? '0' : buttonWidth() + 'px'"
 >
     <button
         class="adb__main"

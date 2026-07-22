@@ -165,23 +165,6 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-
-        ::ng-deep app-action-dropdown-button {
-            .adb {
-                width: 100px;
-                min-width: 100px;
-            }
-
-            .adb__main {
-                padding: 3px 10px;
-                font-size: 0.8em;
-            }
-
-            .adb__chevron {
-                flex: 0 0 28px;
-                padding: 3px 6px;
-            }
-        }
     }
 }
 
