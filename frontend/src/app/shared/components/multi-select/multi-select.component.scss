@@ -57,12 +57,39 @@
     }
 
     &__group-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
         font-size: 0.75rem;
         color: var(--color-ks-transparent-text-60);
         text-transform: uppercase;
         letter-spacing: 0.04em;
         &:not(:first-of-type) {
             padding-top: 0.8rem;
+        }
+
+        &--natural {
+            text-transform: none;
+            letter-spacing: normal;
+        }
+    }
+
+    &__group-count {
+        margin-left: 0.125rem;
+        font-size: 0.75rem;
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__group-icon {
+        color: var(--color-ks-text);
+        flex-shrink: 0;
+
+        // Tabler font-icon variant (e.g. "ti ti-robot") — app-svg-icon variant is styled via its own component.
+        &.ti {
+            display: inline-flex;
+            align-items: center;
+            font-size: 1.05rem;
+            line-height: 1;
         }
     }
 
@@ -127,8 +154,26 @@
 
     &__footer {
         display: flex;
-        justify-content: flex-end;
-        padding: 0.75rem 1.25rem;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 20px;
+    }
+
+    &__footer-actions {
+        display: flex;
+        align-items: center;
         column-gap: 0.5rem;
+        margin-left: auto;
+    }
+
+    &__footer-btn {
+        flex-shrink: 0;
+
+        ::ng-deep .btn {
+            padding-left: 1rem;
+            padding-right: 1rem;
+            border-radius: 8px;
+            font-weight: 500;
+        }
     }
 }

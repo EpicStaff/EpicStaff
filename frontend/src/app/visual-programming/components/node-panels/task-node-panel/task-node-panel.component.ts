@@ -102,6 +102,11 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         return localCount > 0 ? `${assignedCount} assigned + ${localCount} local` : `${assignedCount} assigned`;
     });
 
+    public readonly surfaceGroupIcons: Record<string, string> = {
+        'Agent Surfaces': 'ti ti-robot',
+        'Shared Surfaces': 'surfaces-tab',
+    };
+
     constructor(
         private readonly sidePanelService: SidePanelService,
         private readonly agentDefinitionsApi: AgentDefinitionsApiService,

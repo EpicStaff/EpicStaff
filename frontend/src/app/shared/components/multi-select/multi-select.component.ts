@@ -54,6 +54,17 @@ export class MultiSelectComponent implements OnInit {
      *  Use openAt(element) to open the dropdown anchored to an external element. */
     hideTrigger = input<boolean>(false);
 
+    /** Maps a group name to an app-svg-icon id, rendered before the group label. */
+    groupIcons = input<Record<string, string>>({});
+    /** Show a "selected/total" count after each group label. */
+    showGroupCounts = input<boolean>(false);
+    /** When false, group labels render in natural case instead of uppercase. */
+    uppercaseGroupLabels = input<boolean>(true);
+    /** Show a "Clear Filter" button in the footer that deselects all items without saving. */
+    showClearFilter = input<boolean>(false);
+    /** Text of the primary (save) button. */
+    saveLabel = input<string>('Save Selection');
+
     isOpen = signal(false);
     search = signal('');
     tempSelected = signal<unknown[]>([]);
@@ -93,6 +104,27 @@ export class MultiSelectComponent implements OnInit {
     });
 
     readonly hasResults = computed(() => this.groupedFiltered().some((g) => g.items.length > 0));
+
+    readonly groupCounts = computed<Map<string, { selected: number; total: number }>>(() => {
+        const map = new Map<string, { selected: number; total: number }>();
+        const selected = this.tempSelected();
+
+        for (const item of this.items()) {
+            const group = item.group ?? 'Other';
+
+            if (!map.has(group)) {
+                map.set(group, { selected: 0, total: 0 });
+            }
+
+            const entry = map.get(group)!;
+            entry.total += 1;
+            if (selected.includes(item.value)) {
+                entry.selected += 1;
+            }
+        }
+
+        return map;
+    });
 
     @ViewChild('triggerBtn') triggerBtn!: ElementRef<HTMLElement>;
     @ViewChild('dropdownTemplate') dropdownTemplate!: TemplateRef<unknown>;
@@ -172,6 +204,11 @@ export class MultiSelectComponent implements OnInit {
         return this.tempSelected().includes(value);
     }
 
+    /** Distinguishes a Tabler font-icon class (e.g. "ti ti-robot") from an app-svg-icon id. */
+    isTablerIcon(icon: string): boolean {
+        return icon.startsWith('ti ') || icon.startsWith('ti-');
+    }
+
     toggleValue(value: unknown) {
         const arr = [...this.tempSelected()];
         const i = arr.indexOf(value);
@@ -183,6 +220,10 @@ export class MultiSelectComponent implements OnInit {
     cancel() {
         this.tempSelected.set([...this.selectedValues()]);
         this.close();
+    }
+
+    clearFilter() {
+        this.tempSelected.set([]);
     }
 
     save() {
