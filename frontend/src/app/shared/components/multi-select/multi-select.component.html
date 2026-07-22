@@ -76,6 +76,10 @@
                     </div>
                 }
             }
+
+            @if (!hasResults()) {
+                <p class="multi-select__empty">{{ emptyText() }}</p>
+            }
         </div>
 
         <div class="multi-select__footer">

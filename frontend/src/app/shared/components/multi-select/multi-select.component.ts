@@ -48,6 +48,7 @@ export class MultiSelectComponent implements OnInit {
     checkboxPosition = input<'left' | 'right'>('right');
     color = input<'primary' | 'white'>('primary');
     disabled = input<boolean>(false);
+    emptyText = input<string>('No items available');
 
     /** When true the default trigger button is not rendered.
      *  Use openAt(element) to open the dropdown anchored to an external element. */
@@ -90,6 +91,8 @@ export class MultiSelectComponent implements OnInit {
             items,
         }));
     });
+
+    readonly hasResults = computed(() => this.groupedFiltered().some((g) => g.items.length > 0));
 
     @ViewChild('triggerBtn') triggerBtn!: ElementRef<HTMLElement>;
     @ViewChild('dropdownTemplate') dropdownTemplate!: TemplateRef<unknown>;
