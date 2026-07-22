@@ -40,33 +40,48 @@
         <div class="multi-select__list">
             @for (group of groupedFiltered(); track group.group ?? 'default') {
                 @if (group.group) {
-                    <label
-                        class="multi-select__group-label"
-                        [class.multi-select__group-label--natural]="!uppercaseGroupLabels()"
-                    >
-                        @if (groupIcons()[group.group]) {
-                            @if (isTablerIcon(groupIcons()[group.group])) {
-                                <i
-                                    class="multi-select__group-icon"
-                                    [class]="groupIcons()[group.group]"
-                                ></i>
-                            } @else {
-                                <app-svg-icon
-                                    class="multi-select__group-icon"
-                                    size="0.875rem"
-                                    [icon]="groupIcons()[group.group]"
-                                />
+                    <div class="multi-select__group-header">
+                        <label
+                            class="multi-select__group-label"
+                            [class.multi-select__group-label--natural]="!uppercaseGroupLabels()"
+                        >
+                            @if (groupIcons()[group.group]) {
+                                @if (isTablerIcon(groupIcons()[group.group])) {
+                                    <i
+                                        class="multi-select__group-icon"
+                                        [class]="groupIcons()[group.group]"
+                                    ></i>
+                                } @else {
+                                    <app-svg-icon
+                                        class="multi-select__group-icon"
+                                        size="1.125rem"
+                                        [icon]="groupIcons()[group.group]"
+                                    />
+                                }
                             }
+                            {{ group.group }}
+                            @if (showGroupCounts() && (groupCounts().get(group.group)?.total ?? 0) > 0) {
+                                <span class="multi-select__group-count">
+                                    {{ groupCounts().get(group.group)?.selected ?? 0 }}/{{
+                                        groupCounts().get(group.group)?.total ?? 0
+                                    }}
+                                </span>
+                            }
+                        </label>
+
+                        @if (groupActionIcon()[group.group]) {
+                            <button
+                                type="button"
+                                class="multi-select__group-action"
+                                (click)="onGroupAction($event, group.group)"
+                            >
+                                <app-svg-icon
+                                    size="1.25rem"
+                                    [icon]="groupActionIcon()[group.group]"
+                                />
+                            </button>
                         }
-                        {{ group.group }}
-                        @if (showGroupCounts()) {
-                            <span class="multi-select__group-count">
-                                {{ groupCounts().get(group.group)?.selected ?? 0 }}/{{
-                                    groupCounts().get(group.group)?.total ?? 0
-                                }}
-                            </span>
-                        }
-                    </label>
+                    </div>
                 }
 
                 @for (item of group.items; track item.name) {
@@ -75,6 +90,7 @@
                         [class.multi-select__item--selected]="isChecked(item.value)"
                         [class.multi-select__item--checkbox-left]="checkboxPosition() === 'left'"
                         [class.multi-select__item--checkbox-white]="color() === 'white'"
+                        [class.multi-select__item--has-action]="!!item.trailingActionIcon"
                         (click)="toggleValue(item.value)"
                     >
                         @if (checkboxPosition() === 'left') {
@@ -96,6 +112,18 @@
                                 color="secondary"
                                 [checked]="isChecked(item.value)"
                             />
+                        }
+                        @if (item.trailingActionIcon) {
+                            <button
+                                type="button"
+                                class="multi-select__item-action"
+                                (click)="onItemAction($event, item.value)"
+                            >
+                                <app-svg-icon
+                                    size="1rem"
+                                    [icon]="item.trailingActionIcon"
+                                />
+                            </button>
                         }
                     </div>
                 }

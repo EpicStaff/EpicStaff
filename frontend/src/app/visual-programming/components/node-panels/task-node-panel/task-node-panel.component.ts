@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { Dialog } from '@angular/cdk/dialog';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    inject,
+    Injector,
+    input,
+    signal,
+    viewChildren,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
@@ -18,14 +28,23 @@ import { catchError, of } from 'rxjs';
 
 import { AgentDefinition } from '../../../../features/agent-definitions/models/agent-definition.model';
 import { Surface } from '../../../../features/agent-definitions/models/surface.model';
+import {
+    SurfaceSummaryDialogComponent,
+    SurfaceSummaryDialogData,
+} from '../../../../features/agent-definitions/pages/agent-definitions-page/components/surface-summary-dialog/surface-summary-dialog.component';
 import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
+import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
 import { TaskNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
+
+const LOCAL_SURFACE_VALUE = '__local_surface__';
 
 @Component({
     selector: 'app-task-node-panel',
@@ -53,9 +72,12 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     public readonly surfaces = signal<Surface[]>([]);
     public readonly agentDefinitionId = signal<number | null>(null);
     public readonly selectedSurfaceIds = signal<number[]>([]);
+    public readonly inlineSurface = signal<InlineSurface | null>(null);
     public readonly outputSchemaExpanded = signal<boolean>(false);
 
     public readonly mainView = signal<'instructions' | 'schema'>('instructions');
+
+    private readonly surfaceMultiSelects = viewChildren(MultiSelectComponent);
 
     outputSchemaText = '{}';
     outputSchemaError = '';
@@ -75,14 +97,21 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         return this.agentDefinitions().find((agent) => agent.id === id)?.name ?? null;
     });
 
-    /**
-     * "Local surface" (task-scoped) has no backend representation on the `Surface` model
-     * yet (only `owner_agent: number | null` exists) — see plan Issues/doubts. Only the two
-     * real groups populate for now; this recomputes whenever the selected agent changes.
-     */
-    public readonly surfaceMultiSelectItems = computed<SelectItem<number>[]>(() => {
+    public readonly hasLocalSurface = computed<boolean>(() => this.inlineSurface() !== null);
+
+    public readonly surfaceMultiSelectItems = computed<SelectItem<unknown>[]>(() => {
         const agentId = this.agentDefinitionId();
-        const items: SelectItem<number>[] = [];
+        const items: SelectItem<unknown>[] = [];
+
+        if (this.hasLocalSurface()) {
+            items.push({
+                name: 'Local surface',
+                value: LOCAL_SURFACE_VALUE,
+                group: 'Local surface',
+                trailingActionIcon: 'edit-label',
+            });
+        }
+
         for (const surface of this.surfaces()) {
             if (surface.owner_agent === null) {
                 items.push({ name: surface.name, value: surface.id, group: 'Shared Surfaces' });
@@ -93,25 +122,45 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         return items;
     });
 
+    public readonly surfaceGroupActionIcon = computed<Record<string, string>>(() => {
+        const icons: Record<string, string> = {};
+        if (!this.hasLocalSurface()) {
+            icons['Local surface'] = 'plus';
+        }
+        return icons;
+    });
+
+    public readonly surfaceSelectedValues = computed<unknown[]>(() =>
+        this.hasLocalSurface() ? [...this.selectedSurfaceIds(), LOCAL_SURFACE_VALUE] : this.selectedSurfaceIds()
+    );
+
     public readonly surfaceSummaryLabel = computed<string>(() => {
-        const total = this.selectedSurfaceIds().length;
-        if (total === 0) return 'Assign surface';
-        // Local (task-scoped) surfaces aren't backed by data yet — see surfaceMultiSelectItems.
-        const localCount = 0;
-        const assignedCount = total - localCount;
-        return localCount > 0 ? `${assignedCount} assigned + ${localCount} local` : `${assignedCount} assigned`;
+        const assigned = this.selectedSurfaceIds().length;
+        const local = this.hasLocalSurface() ? 1 : 0;
+        if (assigned === 0 && local === 0) return 'Assign surface';
+
+        const parts: string[] = [];
+        if (assigned > 0) parts.push(`${assigned} assigned`);
+        if (local > 0) parts.push(`${local} local`);
+        return parts.join(' + ');
     });
 
     public readonly surfaceGroupIcons: Record<string, string> = {
+        'Local surface': 'local-surface',
         'Agent Surfaces': 'ti ti-robot',
         'Shared Surfaces': 'surfaces-tab',
     };
+
+    private readonly dialog: Dialog = inject(Dialog);
+    private readonly injector: Injector = inject(Injector);
+    private readonly nodeSurfaceCombineApi: NodeSurfaceCombineApiService = inject(NodeSurfaceCombineApiService);
 
     constructor(
         private readonly sidePanelService: SidePanelService,
         private readonly agentDefinitionsApi: AgentDefinitionsApiService,
         private readonly surfacesApi: SurfacesApiService,
-        private readonly toastService: ToastService
+        private readonly toastService: ToastService,
+        private readonly localSurfaceDialog: LocalSurfaceDialogService
     ) {
         super();
         this.agentDefinitionsApi
@@ -148,9 +197,69 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     }
 
     onSurfacesChange(values: unknown[]): void {
-        this.selectedSurfaceIds.set(values as number[]);
+        const realIds = values.filter((v): v is number => v !== LOCAL_SURFACE_VALUE) as number[];
+        this.selectedSurfaceIds.set(realIds);
+
+        if (this.hasLocalSurface() && !values.includes(LOCAL_SURFACE_VALUE)) {
+            this.inlineSurface.set(null);
+        }
+
         this.sidePanelService.triggerAutosave();
         this.notifyExternalChange();
+    }
+
+    onCreateLocalSurface(): void {
+        this.localSurfaceDialog
+            .open({ mode: 'create', inlineSurface: null })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                if (result) {
+                    this.inlineSurface.set(result);
+                    this.sidePanelService.triggerAutosave();
+                    this.notifyExternalChange();
+                }
+
+                this.surfaceMultiSelects().forEach((ms) => ms.close());
+            });
+    }
+
+    onEditLocalSurface(): void {
+        this.localSurfaceDialog
+            .open({ mode: 'edit', inlineSurface: this.inlineSurface() })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                if (result) {
+                    this.inlineSurface.set(result);
+                    this.sidePanelService.triggerAutosave();
+                    this.notifyExternalChange();
+                }
+
+                this.surfaceMultiSelects().forEach((ms) => ms.close());
+            });
+    }
+
+    onViewSummary(): void {
+        const id = this.node().backendId;
+        if (id == null) return;
+
+        this.nodeSurfaceCombineApi
+            .combineTaskNode(id)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (combined) => {
+                    this.dialog.open<void, SurfaceSummaryDialogData>(SurfaceSummaryDialogComponent, {
+                        width: 'calc(100vw - 2rem)',
+                        height: 'calc(100vh - 2rem)',
+                        maxWidth: '100vw',
+                        panelClass: 'surface-summary-dialog-panel',
+                        injector: this.injector,
+                        data: { combined, placeLabel: this.node().data.name || 'Surface Summary' },
+                    });
+                },
+                error: () => {
+                    // Backend endpoint may not exist yet — fail quietly.
+                },
+            });
     }
 
     toggleOutputSchema(): void {
@@ -195,6 +304,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
         this.agentDefinitionId.set(data.agent_definition ?? null);
         this.selectedSurfaceIds.set(data.surface_list ?? []);
+        this.inlineSurface.set(data.inline_surface ?? null);
         this.outputSchemaExpanded.set(false);
         this.mainView.set('instructions');
 
@@ -231,9 +341,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
                 remember_output: this.node().data.remember_output ?? false,
                 agent_definition: this.agentDefinitionId(),
                 surface_list: this.selectedSurfaceIds(),
-                // TODO: Local (inline) surface editor — see plan. Passed through unmodified
-                // for now (no UI in this pass); defaults to `null` when absent.
-                inline_surface: this.node().data.inline_surface ?? null,
+                inline_surface: this.inlineSurface(),
             },
         };
     }

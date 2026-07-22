@@ -73,9 +73,12 @@
                                     emptyText="No surfaces available"
                                     checkboxPosition="left"
                                     [items]="surfaceMultiSelectItems()"
-                                    [selectedValues]="selectedSurfaceIds()"
+                                    [selectedValues]="surfaceSelectedValues()"
                                     (selectionChange)="onSurfacesChange($event)"
                                     [groupIcons]="surfaceGroupIcons"
+                                    [groupActionIcon]="surfaceGroupActionIcon()"
+                                    (groupAction)="onCreateLocalSurface()"
+                                    (itemAction)="onEditLocalSurface()"
                                     [showGroupCounts]="true"
                                     [uppercaseGroupLabels]="false"
                                     [showClearFilter]="true"
@@ -84,12 +87,12 @@
                                 <button
                                     type="button"
                                     class="view-summary-btn"
-                                    disabled
-                                    title="Coming soon"
+                                    title="View combined surface summary"
+                                    (click)="onViewSummary()"
                                 >
                                     <app-svg-icon
                                         icon="sum"
-                                        size="10px"
+                                        size="12px"
                                     />
                                     View Summary
                                 </button>
@@ -298,9 +301,12 @@
                                 emptyText="No surfaces available"
                                 checkboxPosition="left"
                                 [items]="surfaceMultiSelectItems()"
-                                [selectedValues]="selectedSurfaceIds()"
+                                [selectedValues]="surfaceSelectedValues()"
                                 (selectionChange)="onSurfacesChange($event)"
                                 [groupIcons]="surfaceGroupIcons"
+                                [groupActionIcon]="surfaceGroupActionIcon()"
+                                (groupAction)="onCreateLocalSurface()"
+                                (itemAction)="onEditLocalSurface()"
                                 [showGroupCounts]="true"
                                 [uppercaseGroupLabels]="false"
                                 [showClearFilter]="true"
@@ -309,12 +315,12 @@
                             <button
                                 type="button"
                                 class="view-summary-btn"
-                                disabled
-                                title="Coming soon"
+                                title="View combined surface summary"
+                                (click)="onViewSummary()"
                             >
                                 <app-svg-icon
                                     icon="sum"
-                                    size="10px"
+                                    size="12px"
                                 />
                                 View Summary
                             </button>

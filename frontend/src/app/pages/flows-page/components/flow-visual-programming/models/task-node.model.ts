@@ -1,29 +1,33 @@
-/** Write-shape entries used by `InlineSurface`'s tool/storage/knowledge lists. */
-export interface InlineSurfacePythonTool {
-    python_tool: number;
-    mode: string;
-}
+import {
+    SurfaceKnowledge,
+    SurfaceMcpTool,
+    SurfacePythonTool,
+    SurfaceStorageItem,
+} from '../../../../../features/agent-definitions/models/surface.model';
 
-export interface InlineSurfaceMcpTool {
-    mcp_tool: number;
-    mode: string;
-}
+/**
+ * Write-shape entries used by `InlineSurface`'s tool/storage/knowledge lists.
+ * These are field-for-field identical to the regular `Surface` sub-types on the backend
+ * (the `inline_surface` write serializer reuses the `Surface` write serializers), so we
+ * reuse the `Surface` sub-types directly rather than redefining narrower shapes.
+ */
+export type InlineSurfacePythonTool = SurfacePythonTool;
 
-export interface InlineSurfaceStorageItem {
-    storage_file: number;
-    can_view: string;
-}
+export type InlineSurfaceMcpTool = SurfaceMcpTool;
 
-export interface InlineSurfaceKnowledge {
-    collection: number;
-    naive_search_config?: unknown;
-}
+export type InlineSurfaceStorageItem = SurfaceStorageItem;
+
+export type InlineSurfaceKnowledge = SurfaceKnowledge;
 
 /**
  * The task-local ("Local surface") nested object. Independent of `surface_list` (which
  * references existing catalog `Surface` ids). `null` means no local surface; omitting the
  * field on a PATCH-style update leaves it untouched server-side; a full object replaces it.
  * `id`/`created_at`/`updated_at` are read-only (present on read, absent when creating).
+ *
+ * Field-for-field identical to `Surface` EXCEPT it has no `name`, `organization`, or
+ * `owner_agent` (per the backend `inline_surface` write serializer, which reuses the
+ * regular `Surface` write serializers).
  */
 export interface InlineSurface {
     id?: number;

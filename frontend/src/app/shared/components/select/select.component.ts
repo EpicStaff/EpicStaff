@@ -29,6 +29,8 @@ export interface SelectItem<T = unknown> {
     value: T;
     group?: string;
     icon?: string;
+    /** app-svg-icon id for an optional trailing action button rendered at the end of the item row (e.g. edit-pencil). */
+    trailingActionIcon?: string;
 }
 
 @Component({

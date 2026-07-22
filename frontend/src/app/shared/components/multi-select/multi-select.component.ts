@@ -42,6 +42,10 @@ export class MultiSelectComponent implements OnInit {
     items = input<SelectItem[]>([]);
     selectedValues = model<unknown[]>([]);
     selectionChange = output<unknown[]>();
+    /** Emits the group name when a group header's trailing action button (see groupActionIcon) is clicked. */
+    groupAction = output<string>();
+    /** Emits item.value when an item's trailing action button (see SelectItem.trailingActionIcon) is clicked. */
+    itemAction = output<unknown>();
 
     grouped = input<boolean>(false);
     showSearch = input<boolean>(true);
@@ -60,6 +64,9 @@ export class MultiSelectComponent implements OnInit {
     showGroupCounts = input<boolean>(false);
     /** When false, group labels render in natural case instead of uppercase. */
     uppercaseGroupLabels = input<boolean>(true);
+    /** Maps a group name to an app-svg-icon id, rendered as a trailing action button on that group's header row.
+     *  Groups present here are "pinned": their header is always rendered, even when they have zero items. */
+    groupActionIcon = input<Record<string, string>>({});
     /** Show a "Clear Filter" button in the footer that deselects all items without saving. */
     showClearFilter = input<boolean>(false);
     /** Text of the primary (save) button. */
@@ -97,10 +104,20 @@ export class MultiSelectComponent implements OnInit {
             map.get(group)!.push(item);
         }
 
-        return Array.from(map.entries()).map(([group, items]) => ({
-            group,
-            items,
-        }));
+        // Pinned/action groups always render their header, even with zero items, and come first.
+        const pinnedGroups = Object.keys(this.groupActionIcon());
+        const result: GroupedItems[] = [];
+
+        for (const group of pinnedGroups) {
+            result.push({ group, items: map.get(group) ?? [] });
+            map.delete(group);
+        }
+
+        for (const [group, items] of map.entries()) {
+            result.push({ group, items });
+        }
+
+        return result;
     });
 
     readonly hasResults = computed(() => this.groupedFiltered().some((g) => g.items.length > 0));
@@ -215,6 +232,16 @@ export class MultiSelectComponent implements OnInit {
         if (i >= 0) arr.splice(i, 1);
         else arr.push(value);
         this.tempSelected.set(arr);
+    }
+
+    onGroupAction(event: Event, group: string): void {
+        event.stopPropagation();
+        this.groupAction.emit(group);
+    }
+
+    onItemAction(event: Event, value: unknown): void {
+        event.stopPropagation();
+        this.itemAction.emit(value);
     }
 
     cancel() {
