@@ -75,6 +75,11 @@
                                     [items]="surfaceMultiSelectItems()"
                                     [selectedValues]="selectedSurfaceIds()"
                                     (selectionChange)="onSurfacesChange($event)"
+                                    [groupIcons]="surfaceGroupIcons"
+                                    [showGroupCounts]="true"
+                                    [uppercaseGroupLabels]="false"
+                                    [showClearFilter]="true"
+                                    saveLabel="Save"
                                 ></app-multi-select>
                                 <button
                                     type="button"
@@ -295,6 +300,11 @@
                                 [items]="surfaceMultiSelectItems()"
                                 [selectedValues]="selectedSurfaceIds()"
                                 (selectionChange)="onSurfacesChange($event)"
+                                [groupIcons]="surfaceGroupIcons"
+                                [showGroupCounts]="true"
+                                [uppercaseGroupLabels]="false"
+                                [showClearFilter]="true"
+                                saveLabel="Save"
                             ></app-multi-select>
                             <button
                                 type="button"

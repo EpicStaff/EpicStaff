@@ -95,6 +95,11 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         return total === 0 ? 'Assign surface' : `${total} assigned`;
     });
 
+    public readonly surfaceGroupIcons: Record<string, string> = {
+        'Agent Surfaces': 'ti ti-robot',
+        'Shared Surfaces': 'surfaces-tab',
+    };
+
     public readonly effectiveRightPane = computed<RightPaneSelection | null>(() => {
         const taskList = this.tasks();
         if (taskList.length === 0) return null;
