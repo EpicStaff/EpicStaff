@@ -4,11 +4,15 @@ from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from agents.models.surface_models import Surface
 from tables.models.rbac_models import Organization
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+from tables.services.rbac.permissions import HasOrgPermission
+from tables.views.mixins import OrgScopedResolverMixin
 from agents.serializers.surface_serializers import (
     SurfaceCombineRequestSerializer,
     SurfacePatchWriteSerializer,
@@ -18,7 +22,10 @@ from agents.serializers.surface_serializers import (
 from agents.services.surface_combine_service import SurfaceCombineService
 
 
-class SurfaceViewSet(viewsets.ModelViewSet):
+class SurfaceViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.SURFACES
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "combine": Permission.READ}
     queryset = Surface.objects.select_related(
         "organization",
         "owner_agent",
@@ -33,7 +40,7 @@ class SurfaceViewSet(viewsets.ModelViewSet):
     )
 
     def _get_organization(self):
-        return Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
+        return Organization.objects.get(id=self.get_active_org_id())
 
     def get_serializer_class(self):
         if self.action in ("list", "retrieve"):

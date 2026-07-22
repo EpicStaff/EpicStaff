@@ -2,18 +2,23 @@ from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from agents.models import AgentDefinition
 from tables.models.rbac_models import Organization
+from tables.models.rbac_models.rbac_enums import ResourceType
+from tables.services.rbac.permissions import HasOrgPermission
+from tables.views.mixins import OrgScopedResolverMixin
 from agents.serializers.agent_definition_serializers import (
     AgentDefinitionReadSerializer,
     AgentDefinitionWriteSerializer,
 )
 
 
-class AgentDefinitionViewSet(viewsets.ModelViewSet):
+class AgentDefinitionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.AGENTS
     queryset = AgentDefinition.objects.select_related(
         "organization", "llm_config", "fcm_llm_config"
     ).prefetch_related("default_surfaces__surface", "owned_surfaces")
@@ -21,7 +26,7 @@ class AgentDefinitionViewSet(viewsets.ModelViewSet):
     filterset_fields = ["llm_config", "fcm_llm_config"]
 
     def _get_organization(self):
-        return Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
+        return Organization.objects.get(id=self.get_active_org_id())
 
     def get_serializer_class(self):
         if self.action in ["list", "retrieve"]:

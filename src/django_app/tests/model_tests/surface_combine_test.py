@@ -26,7 +26,8 @@ from tables.models.knowledge_models.collection_models import (
 )
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.rbac_models import Organization
+from tables.models.rbac_models import Organization, OrganizationUser, Role
+from tables.models.rbac_models.rbac_enums import BuiltInRole
 from agents.services.surface_combine_service import SurfaceCombineService
 
 
@@ -311,8 +312,18 @@ def org(db):
 
 
 @pytest.fixture
-def client():
-    return APIClient()
+def client(django_user_model, org):
+    role = Role.objects.get(
+        name=BuiltInRole.ORG_ADMIN, is_built_in=True, org__isnull=True
+    )
+    user = django_user_model.objects.create_user(
+        email="combine-test@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    api_client = APIClient()
+    api_client.force_authenticate(user=user)
+    api_client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
+    return api_client
 
 
 @pytest.fixture
@@ -404,19 +415,15 @@ def surface_c(db, org):
 def test_combine_happy_path_returns_merged_result(
     client, org, surface_a, surface_b, py_tool_a, py_tool_b, storage_file_a
 ):
-    from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-    from tables.models.rbac_models import Organization as Org
-
-    # The view uses _get_organization() which fetches by DEFAULT_ORGANIZATION_NAME.
-    # We need a surface scoped to that org, so create a default-named org.
-    default_org = Org.objects.get_or_create(name=DEFAULT_ORGANIZATION_NAME)[0]
+    # The view resolves the active org from the client's X-Organization-Id
+    # header, so surfaces must be scoped to that same org.
     s_a = Surface.objects.create(
-        organization=default_org,
+        organization=org,
         name="api-combine-a",
         instructions="be concise",
     )
     s_b = Surface.objects.create(
-        organization=default_org,
+        organization=org,
         name="api-combine-b",
         instructions="use bullets",
     )
@@ -448,21 +455,13 @@ def test_combine_happy_path_returns_merged_result(
 
 
 @pytest.mark.django_db
-def test_combine_empty_surface_ids_returns_400(client, db):
-    from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-    from tables.models.rbac_models import Organization as Org
-
-    Org.objects.get_or_create(name=DEFAULT_ORGANIZATION_NAME)
+def test_combine_empty_surface_ids_returns_400(client, org):
     response = client.post("/api/surfaces/combine/", {"surface_ids": []}, format="json")
     assert response.status_code == 400
 
 
 @pytest.mark.django_db
-def test_combine_unknown_surface_id_returns_400(client, db):
-    from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-    from tables.models.rbac_models import Organization as Org
-
-    Org.objects.get_or_create(name=DEFAULT_ORGANIZATION_NAME)
+def test_combine_unknown_surface_id_returns_400(client, org):
     response = client.post(
         "/api/surfaces/combine/", {"surface_ids": [99999]}, format="json"
     )
@@ -470,18 +469,14 @@ def test_combine_unknown_surface_id_returns_400(client, db):
 
 
 @pytest.mark.django_db
-def test_combine_conflicting_knowledge_returns_400(client):
-    from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-    from tables.models.rbac_models import Organization as Org
-
-    default_org = Org.objects.get_or_create(name=DEFAULT_ORGANIZATION_NAME)[0]
+def test_combine_conflicting_knowledge_returns_400(client, org):
     coll = SourceCollection.objects.create(collection_name="api-conflict-coll")
     BaseRagType.objects.create(
         rag_type=BaseRagType.RagType.NAIVE, source_collection=coll
     )
 
-    s_a = Surface.objects.create(organization=default_org, name="api-conflict-a")
-    s_b = Surface.objects.create(organization=default_org, name="api-conflict-b")
+    s_a = Surface.objects.create(organization=org, name="api-conflict-a")
+    s_b = Surface.objects.create(organization=org, name="api-conflict-b")
 
     sk_a = SurfaceKnowledge.objects.create(surface=s_a, collection=coll)
     SurfaceNaiveSearchConfig.objects.create(
@@ -501,13 +496,9 @@ def test_combine_conflicting_knowledge_returns_400(client):
 
 
 @pytest.mark.django_db
-def test_combine_duplicate_surface_ids_returns_400(client, db):
-    from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-    from tables.models.rbac_models import Organization as Org
-
-    default_org = Org.objects.get_or_create(name=DEFAULT_ORGANIZATION_NAME)[0]
+def test_combine_duplicate_surface_ids_returns_400(client, org):
     surface = Surface.objects.create(
-        organization=default_org,
+        organization=org,
         name="api-duplicate-combine",
     )
 
@@ -520,13 +511,9 @@ def test_combine_duplicate_surface_ids_returns_400(client, db):
 
 
 @pytest.mark.django_db
-def test_combine_single_surface_returns_its_effective_data(client):
-    from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-    from tables.models.rbac_models import Organization as Org
-
-    default_org = Org.objects.get_or_create(name=DEFAULT_ORGANIZATION_NAME)[0]
+def test_combine_single_surface_returns_its_effective_data(client, org):
     surface = Surface.objects.create(
-        organization=default_org,
+        organization=org,
         name="api-single-combine",
         instructions="solo instructions",
     )
