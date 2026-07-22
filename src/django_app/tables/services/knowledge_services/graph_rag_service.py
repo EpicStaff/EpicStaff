@@ -1,5 +1,7 @@
 from typing import List, Dict, Any, Optional
 from django.db import transaction
+from django.db.models import Count
+from django.db.models.functions import Concat
 from loguru import logger
 
 from tables.models.knowledge_models import (
@@ -212,108 +214,16 @@ class GraphRagService:
         return graph_rag
 
     @staticmethod
-    def _validate_index_config_params(
-        chunk_size: Optional[int] = None,
-        chunk_overlap: Optional[int] = None,
-        chunk_strategy: Optional[str] = None,
-        entity_types: Optional[List[str]] = None,
-        max_gleanings: Optional[int] = None,
-        max_cluster_size: Optional[int] = None,
-    ) -> None:
-        """
-        Validate index config parameters.
-
-        Raises:
-            InvalidGraphRagParametersException: If parameters are invalid
-        """
-        errors = []
-
-        if chunk_size is not None:
-            if (
-                chunk_size < GRAPHRAG_MIN_CHUNK_SIZE
-                or chunk_size > GRAPHRAG_MAX_CHUNK_SIZE
-            ):
-                errors.append(
-                    f"chunk_size must be between {GRAPHRAG_MIN_CHUNK_SIZE} and {GRAPHRAG_MAX_CHUNK_SIZE}"
-                )
-
-        if chunk_overlap is not None:
-            if (
-                chunk_overlap < GRAPHRAG_MIN_CHUNK_OVERLAP
-                or chunk_overlap > GRAPHRAG_MAX_CHUNK_OVERLAP
-            ):
-                errors.append(
-                    f"chunk_overlap must be between {GRAPHRAG_MIN_CHUNK_OVERLAP} and {GRAPHRAG_MAX_CHUNK_OVERLAP}"
-                )
-
-        if chunk_size is not None and chunk_overlap is not None:
-            if chunk_overlap >= chunk_size:
-                errors.append("chunk_overlap must be less than chunk_size")
-
-        if chunk_strategy is not None:
-            valid_strategies = [
-                choice[0] for choice in GraphRagChunkStrategyType.choices
-            ]
-            if chunk_strategy not in valid_strategies:
-                errors.append(
-                    f"chunk_strategy must be one of: {', '.join(valid_strategies)}"
-                )
-
-        if entity_types is not None:
-            if not isinstance(entity_types, list):
-                errors.append("entity_types must be a list")
-            elif len(entity_types) == 0:
-                errors.append("entity_types cannot be empty")
-
-        if max_gleanings is not None:
-            if (
-                max_gleanings < GRAPHRAG_MIN_MAX_GLEANINGS
-                or max_gleanings > GRAPHRAG_MAX_MAX_GLEANINGS
-            ):
-                errors.append(
-                    f"max_gleanings must be between {GRAPHRAG_MIN_MAX_GLEANINGS} and {GRAPHRAG_MAX_MAX_GLEANINGS}"
-                )
-
-        if max_cluster_size is not None:
-            if (
-                max_cluster_size < GRAPHRAG_MIN_MAX_CLUSTER_SIZE
-                or max_cluster_size > GRAPHRAG_MAX_MAX_CLUSTER_SIZE
-            ):
-                errors.append(
-                    f"max_cluster_size must be between {GRAPHRAG_MIN_MAX_CLUSTER_SIZE} and {GRAPHRAG_MAX_MAX_CLUSTER_SIZE}"
-                )
-
-        if errors:
-            raise InvalidGraphRagParametersException("; ".join(errors))
-
-    @staticmethod
     @transaction.atomic
     def update_index_config(
         graph_rag_id: int,
-        # Input config
-        file_type: Optional[str] = None,
-        # Chunking config
-        chunk_size: Optional[int] = None,
-        chunk_overlap: Optional[int] = None,
-        chunk_strategy: Optional[str] = None,
-        # Extract graph config
-        entity_types: Optional[List[str]] = None,
-        max_gleanings: Optional[int] = None,
-        # Cluster graph config
-        max_cluster_size: Optional[int] = None,
+        data: dict[str, Any],
     ) -> GraphRag:
         """
         Update index configuration for GraphRag.
 
         Args:
             graph_rag_id: ID of GraphRag
-            file_type: Input file type (csv, text, json)
-            chunk_size: Chunk size
-            chunk_overlap: Chunk overlap
-            chunk_strategy: Chunking strategy (tokens, sentence)
-            entity_types: List of entity types to extract
-            max_gleanings: Maximum gleanings for entity extraction
-            max_cluster_size: Maximum cluster size
 
         Returns:
             Updated GraphRag instance
@@ -322,66 +232,43 @@ class GraphRagService:
             GraphRagNotFoundException: If GraphRag not found
             InvalidGraphRagParametersException: If parameters are invalid
         """
-        graph_rag = GraphRagService.get_graph_rag(graph_rag_id)
-
-        if not graph_rag.index_config:
+        logger.info('start update index config for data: {}', data)
+        rag = GraphRagService.get_graph_rag(graph_rag_id)
+        if not rag.index_config:
             raise InvalidGraphRagParametersException(
                 "GraphRag has no index configuration"
             )
+        index_config = rag.index_config
 
-        index_config = graph_rag.index_config
-
-        # Get current values for validation
-        final_chunk_size = (
-            chunk_size if chunk_size is not None else index_config.chunk_size
-        )
-        final_chunk_overlap = (
-            chunk_overlap if chunk_overlap is not None else index_config.chunk_overlap
-        )
-
-        # Validate parameters
-        GraphRagService._validate_index_config_params(
-            chunk_size=final_chunk_size,
-            chunk_overlap=final_chunk_overlap,
-            chunk_strategy=chunk_strategy,
-            entity_types=entity_types,
-            max_gleanings=max_gleanings,
-            max_cluster_size=max_cluster_size,
-        )
-
-        # Validate file_type if provided
-        if file_type is not None:
-            valid_file_types = [choice[0] for choice in GraphRagInputFileType.choices]
-            if file_type not in valid_file_types:
+        chunk_size = data.get('chunk_size')
+        chunk_overlap = data.get('chunk_overlap')
+        if chunk_size and not chunk_overlap or not chunk_size and chunk_overlap:
+            chunk_size = chunk_size or index_config.chunk_size
+            chunk_overlap = chunk_overlap or index_config.chunk_overlap
+            if chunk_overlap >= chunk_size:
                 raise InvalidGraphRagParametersException(
-                    f"file_type must be one of: {', '.join(valid_file_types)}"
+                    "'chunk_overlap' must be less then 'chunk_size'"
                 )
 
-        # Build update dict
-        updates = {}
-        if file_type is not None:
-            updates["file_type"] = file_type
-        if chunk_size is not None:
-            updates["chunk_size"] = chunk_size
-        if chunk_overlap is not None:
-            updates["chunk_overlap"] = chunk_overlap
-        if chunk_strategy is not None:
-            updates["chunk_strategy"] = chunk_strategy
-        if entity_types is not None:
-            updates["entity_types"] = entity_types
-        if max_gleanings is not None:
-            updates["max_gleanings"] = max_gleanings
-        if max_cluster_size is not None:
-            updates["max_cluster_size"] = max_cluster_size
+        updated_fields = set()
+        for field, value in data.items():
+            old_value = getattr(index_config, field)
+            if value is not None and old_value != value:
+                setattr(index_config, field, value)
+                updated_fields.add(field)
 
-        # Apply updates
-        for field, value in updates.items():
-            setattr(index_config, field, value)
+        if updated_fields:
+            index_config.save(update_fields=updated_fields)
 
-        if updates:
-            index_config.save(update_fields=list(updates.keys()))
+            has_document_in_rag = rag.graph_rag_documents.exists()
+            if has_document_in_rag:
+                rag.add_reindex_reason(
+                    code='index_config_changed',
+                    detail='Index config was changed.',
+                )
+                rag.save(update_fields={'reindex_reason'})
 
-        logger.info(f"Updated index config for GraphRag {graph_rag_id}")
+        logger.info("Updated index config for GraphRag(id={})", graph_rag_id)
 
         return GraphRagService.get_graph_rag(graph_rag_id)
 
@@ -400,24 +287,35 @@ class GraphRagService:
         Returns:
             dict with removal info
         """
-        graph_rag = GraphRagService.get_graph_rag(graph_rag_id)
+        rag = GraphRagService.get_graph_rag(graph_rag_id)
+        documents = (
+            rag.graph_rag_documents
+            .filter(graph_rag_id=graph_rag_id, document_id__in=document_ids)
+            .only('document_id', 'status')
+        )  # fmt: off
 
-        # Get links to delete
-        links = GraphRagDocument.objects.filter(
-            graph_rag=graph_rag, document_id__in=document_ids
-        )
+        has_indexed_link = False
+        ids = []
+        for document in documents:
+            ids.append(document.document_id)
+            if document.status == GraphRagDocument.Status.INDEXED:
+                has_indexed_link = True
 
-        deleted_ids = list(links.values_list("document_id", flat=True))
-        deleted_count = links.count()
+        documents.delete()
 
-        links.delete()
+        has_document_in_rag = rag.graph_rag_documents.exists()
+        if not has_document_in_rag and rag.require_reindex():
+            rag.reindex_reason.clear()
+        elif has_document_in_rag and has_indexed_link:
+            rag.add_reindex_reason(
+                code='indexed_documents_deleted',
+                detail='Indexed documents were deleted.',
+            )
+        rag.save()
 
-        logger.info(f"Removed {deleted_count} documents from GraphRag {graph_rag_id}")
+        logger.info("Removed {} documents from GraphRag(id={})", len(ids), graph_rag_id)
 
-        return {
-            "removed_count": deleted_count,
-            "removed_document_ids": deleted_ids,
-        }
+        return {"removed_count": len(ids), "removed_document_ids": ids}
 
     @staticmethod
     @transaction.atomic
@@ -432,23 +330,31 @@ class GraphRagService:
         Returns:
             dict with removal info
         """
-        graph_rag = GraphRagService.get_graph_rag(graph_rag_id)
-
-        try:
-            link = GraphRagDocument.objects.get(
-                graph_rag=graph_rag, document_id=document_id
-            )
-        except GraphRagDocument.DoesNotExist:
+        rag = GraphRagService.get_graph_rag(graph_rag_id)
+        document = (
+            rag.graph_rag_documents
+            .filter(document_id=document_id)
+            .only('document_id', 'status')
+            .first()
+        )  # fmt: off
+        if document is None:
             raise GraphRagDocumentNotFoundException(document_id, graph_rag_id)
 
-        link.delete()
+        document.delete()
 
-        logger.info(f"Removed document {document_id} from GraphRag {graph_rag_id}")
+        has_document_in_rag = rag.graph_rag_documents.exists()
+        if not has_document_in_rag and rag.require_reindex():
+            rag.reindex_reason.clear()
+        elif has_document_in_rag and document.status == GraphRagDocument.Status.INDEXED:
+            rag.add_reindex_reason(
+                code='indexed_documents_deleted',
+                detail='Indexed documents were deleted.',
+            )
+        rag.save()
 
-        return {
-            "graph_rag_id": graph_rag_id,
-            "document_id": document_id,
-        }
+        logger.info("Removed document(id={}) from GraphRag(id={})", document_id, graph_rag_id)
+
+        return {"graph_rag_id": graph_rag_id, "document_id": document_id}
 
     @staticmethod
     def get_documents_for_graph_rag(graph_rag_id: int) -> List[DocumentMetadata]:

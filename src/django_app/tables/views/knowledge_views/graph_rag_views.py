@@ -221,7 +221,7 @@ class GraphRagViewSet(viewsets.GenericViewSet):
         try:
             graph_rag = GraphRagService.update_index_config(
                 graph_rag_id=int(pk),
-                **serializer.validated_data,
+                data=serializer.validated_data,
             )
 
             response_serializer = GraphRagDetailSerializer(graph_rag)
