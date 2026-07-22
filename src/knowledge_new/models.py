@@ -61,7 +61,7 @@ class Rag(Entity):
         self.indexing_document_ids.clear()
 
     def mark_as_failed(self, error: Exception | str):
-        self.status = IndexStatusEnum.COMPLETED
+        self.status = IndexStatusEnum.FAILED
         self.error_message = str(error)
         self.indexing_document_ids.clear()
 
