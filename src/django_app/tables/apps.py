@@ -58,6 +58,8 @@ class TablesConfig(AppConfig):
             note_node,
             code_agent_node,
             schedule_trigger_node,
+            agent_node,
+            task_node,
         )
 
         if "runserver" in sys.argv:
@@ -127,3 +129,5 @@ class TablesConfig(AppConfig):
         entity_registry.register(note_node.NoteNodeStrategy())
         entity_registry.register(code_agent_node.CodeAgentNodeStrategy())
         entity_registry.register(schedule_trigger_node.ScheduleTriggerNodeStrategy())
+        entity_registry.register(agent_node.AgentNodeStrategy())
+        entity_registry.register(task_node.TaskNodeStrategy())

@@ -53,8 +53,9 @@ def default_org(db):
 
 
 @pytest.fixture
-def mcp_tool():
+def mcp_tool(default_org):
     return McpTool.objects.create(
+        org=default_org,
         name="mcp_tool_1",
         transport="https://example.com/mcp",
         tool_name="search",
@@ -82,6 +83,7 @@ def node_graph_seeded_db(rich_seeded_db, default_org, mcp_tool):
     )
 
     graph = Graph.objects.create(
+        org=default_org,
         name="node_graph_1",
         metadata={"nodes": [], "edges": []},
     )
@@ -117,7 +119,8 @@ def node_graph_seeded_db(rich_seeded_db, default_org, mcp_tool):
         storage_file=agent_storage_file,
     )
     agent_collection = SourceCollection.objects.create(
-        collection_name="agent_inline_collection"
+        org=default_org,
+        collection_name="agent_inline_collection",
     )
     AgentInlineSurfaceKnowledge.objects.create(
         agent_inline_surface=agent_inline_surface,
@@ -163,7 +166,8 @@ def node_graph_seeded_db(rich_seeded_db, default_org, mcp_tool):
         storage_file=task_storage_file,
     )
     task_collection = SourceCollection.objects.create(
-        collection_name="task_inline_collection"
+        org=default_org,
+        collection_name="task_inline_collection",
     )
     InlineSurfaceKnowledge.objects.create(
         inline_surface=inline_surface,
@@ -190,12 +194,14 @@ class TestAgentTaskNodeRoundTrip:
     """
 
     def test_nodes_recreated(
-        self, node_graph_seeded_db, export_service, import_service
+        self, node_graph_seeded_db, export_service, import_service, default_org
     ):
         graph = node_graph_seeded_db["graph"]
 
         export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
-        id_mapper, _ = import_service.import_data(export_data, EntityType.GRAPH)
+        id_mapper, _ = import_service.import_data(
+            export_data, EntityType.GRAPH, org_id=default_org.id
+        )
 
         new_graph_id = id_mapper.get_new_ids(EntityType.GRAPH)[0]
         new_graph = Graph.objects.get(id=new_graph_id)
@@ -204,13 +210,15 @@ class TestAgentTaskNodeRoundTrip:
         assert new_graph.task_node_list.count() == 1
 
     def test_agent_definition_remapped(
-        self, node_graph_seeded_db, export_service, import_service
+        self, node_graph_seeded_db, export_service, import_service, default_org
     ):
         graph = node_graph_seeded_db["graph"]
         agent_definition = node_graph_seeded_db["agent_definition"]
 
         export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
-        id_mapper, _ = import_service.import_data(export_data, EntityType.GRAPH)
+        id_mapper, _ = import_service.import_data(
+            export_data, EntityType.GRAPH, org_id=default_org.id
+        )
 
         new_graph_id = id_mapper.get_new_ids(EntityType.GRAPH)[0]
         new_graph = Graph.objects.get(id=new_graph_id)
@@ -223,12 +231,14 @@ class TestAgentTaskNodeRoundTrip:
         )
 
     def test_surface_list_remapped(
-        self, node_graph_seeded_db, export_service, import_service
+        self, node_graph_seeded_db, export_service, import_service, default_org
     ):
         graph = node_graph_seeded_db["graph"]
 
         export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
-        id_mapper, _ = import_service.import_data(export_data, EntityType.GRAPH)
+        id_mapper, _ = import_service.import_data(
+            export_data, EntityType.GRAPH, org_id=default_org.id
+        )
 
         new_graph_id = id_mapper.get_new_ids(EntityType.GRAPH)[0]
         new_graph = Graph.objects.get(id=new_graph_id)
@@ -239,12 +249,14 @@ class TestAgentTaskNodeRoundTrip:
         assert new_surface.id in id_mapper.get_new_ids(EntityType.SURFACE)
 
     def test_inline_surface_tools_and_modes_preserved(
-        self, node_graph_seeded_db, export_service, import_service
+        self, node_graph_seeded_db, export_service, import_service, default_org
     ):
         graph = node_graph_seeded_db["graph"]
 
         export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
-        id_mapper, _ = import_service.import_data(export_data, EntityType.GRAPH)
+        id_mapper, _ = import_service.import_data(
+            export_data, EntityType.GRAPH, org_id=default_org.id
+        )
 
         new_graph_id = id_mapper.get_new_ids(EntityType.GRAPH)[0]
         new_graph = Graph.objects.get(id=new_graph_id)
@@ -267,12 +279,14 @@ class TestAgentTaskNodeRoundTrip:
         assert new_task_python_tool.mode == ToolMode.ALLOW
 
     def test_agent_node_tasks_and_context_tasks_recreated(
-        self, node_graph_seeded_db, export_service, import_service
+        self, node_graph_seeded_db, export_service, import_service, default_org
     ):
         graph = node_graph_seeded_db["graph"]
 
         export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
-        id_mapper, _ = import_service.import_data(export_data, EntityType.GRAPH)
+        id_mapper, _ = import_service.import_data(
+            export_data, EntityType.GRAPH, org_id=default_org.id
+        )
 
         new_graph_id = id_mapper.get_new_ids(EntityType.GRAPH)[0]
         new_graph = Graph.objects.get(id=new_graph_id)
@@ -291,7 +305,7 @@ class TestAgentTaskNodeRoundTrip:
         assert context_task_names == {"task1"}
 
     def test_no_storage_or_knowledge_leakage(
-        self, node_graph_seeded_db, export_service, import_service
+        self, node_graph_seeded_db, export_service, import_service, default_org
     ):
         """
         The fixture seeds one storage item and one knowledge row on each of
@@ -311,7 +325,7 @@ class TestAgentTaskNodeRoundTrip:
         task_inline_knowledge_count_before = InlineSurfaceKnowledge.objects.count()
 
         export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
-        import_service.import_data(export_data, EntityType.GRAPH)
+        import_service.import_data(export_data, EntityType.GRAPH, org_id=default_org.id)
 
         assert (
             AgentInlineSurfaceStorageItem.objects.count()

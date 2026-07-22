@@ -44,4 +44,6 @@ DEPENDENCY_ORDER = (
     EntityType.NOTE_NODE,
     EntityType.CODE_AGENT_NODE,
     EntityType.SCHEDULE_TRIGGER_NODE,
+    EntityType.AGENT_NODE,
+    EntityType.TASK_NODE,
 )
