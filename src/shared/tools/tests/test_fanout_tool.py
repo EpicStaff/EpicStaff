@@ -24,6 +24,7 @@ def _reset_globals():
         "max_items",
         "max_workers",
         "session_id",
+        "org_id",
     ]
     for name in names:
         if hasattr(fanout_module, name):
@@ -767,3 +768,23 @@ class TestFanoutToolCommon:
         data = json.loads(result)
 
         assert data["results"] == [{"result": "ok"}]
+
+
+class TestFanoutToolHeaders:
+    """EST-3285: org_id (server-side resolved from Graph.org_id, injected by
+    the crew engine) must be sent as X-Organization-Id so org-scoped API
+    endpoints (e.g. GET /sessions/<id>/) don't 400 with org_context_required."""
+
+    def test_headers_includes_org_header_when_org_id_injected(self):
+        fanout_module.org_id = 42
+
+        headers = fanout_module._headers("test-key")
+
+        assert headers["X-Organization-Id"] == "42"
+        assert headers["X-Api-Key"] == "test-key"
+
+    def test_headers_omits_org_header_when_org_id_absent(self):
+        headers = fanout_module._headers("test-key")
+
+        assert "X-Organization-Id" not in headers
+        assert headers["X-Api-Key"] == "test-key"

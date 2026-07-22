@@ -114,7 +114,18 @@ def _api_base_url() -> str:
 
 
 def _headers(api_key: str) -> dict:
-    return {"X-Api-Key": api_key, "Content-Type": "application/json"}
+    headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
+
+    org_id = globals().get("org_id")
+    if org_id:
+        headers["X-Organization-Id"] = str(org_id)
+    else:
+        logger.warning(
+            "fanout_tool: no org_id injected -- calls to org-scoped API "
+            "endpoints may fail with org_context_required."
+        )
+
+    return headers
 
 
 def _new_http_client(pool_size: int):
@@ -312,27 +323,37 @@ def _poll_until_terminal(
     consecutive_errors = 0
 
     while True:
-        session_data, error = _poll_get_session(client, base_url, headers, sub_session_id)
+        session_data, error = _poll_get_session(
+            client, base_url, headers, sub_session_id
+        )
 
         if error is not None:
             is_transient, message = error
 
             if not is_transient:
-                return None, None, (
-                    f"could not reach the EpicStaff API while polling sub-flow "
-                    f"session {sub_session_id} (graph_id={graph_id}): {message}"
+                return (
+                    None,
+                    None,
+                    (
+                        f"could not reach the EpicStaff API while polling sub-flow "
+                        f"session {sub_session_id} (graph_id={graph_id}): {message}"
+                    ),
                 )
 
             consecutive_errors += 1
             if consecutive_errors >= MAX_CONSECUTIVE_POLL_ERRORS:
-                return None, None, (
-                    f"lost contact with the EpicStaff API while polling sub-flow "
-                    f"session {sub_session_id} (graph_id={graph_id}) -- gave up "
-                    f"after {consecutive_errors} consecutive transient connection "
-                    f"errors ({message}). This looks like a transient server "
-                    f"disconnect (e.g. 'server disconnected without sending a "
-                    f"response'), not a sub-flow failure -- the sub-flow itself "
-                    f"may still be running."
+                return (
+                    None,
+                    None,
+                    (
+                        f"lost contact with the EpicStaff API while polling sub-flow "
+                        f"session {sub_session_id} (graph_id={graph_id}) -- gave up "
+                        f"after {consecutive_errors} consecutive transient connection "
+                        f"errors ({message}). This looks like a transient server "
+                        f"disconnect (e.g. 'server disconnected without sending a "
+                        f"response'), not a sub-flow failure -- the sub-flow itself "
+                        f"may still be running."
+                    ),
                 )
 
             backoff = min(
@@ -348,10 +369,14 @@ def _poll_until_terminal(
             )
 
             if time.monotonic() >= deadline:
-                return None, None, (
-                    f"sub-flow session {sub_session_id} (graph_id={graph_id}) did "
-                    f"not finish within {poll_timeout_s}s (last state: transient "
-                    f"connection errors while polling, not a confirmed failure)."
+                return (
+                    None,
+                    None,
+                    (
+                        f"sub-flow session {sub_session_id} (graph_id={graph_id}) did "
+                        f"not finish within {poll_timeout_s}s (last state: transient "
+                        f"connection errors while polling, not a confirmed failure)."
+                    ),
                 )
 
             time.sleep(backoff)
@@ -363,15 +388,21 @@ def _poll_until_terminal(
             return session_data, status, None
 
         if time.monotonic() >= deadline:
-            return None, None, (
-                f"sub-flow session {sub_session_id} (graph_id={graph_id}) did not "
-                f"finish within {poll_timeout_s}s (last status: '{status}')."
+            return (
+                None,
+                None,
+                (
+                    f"sub-flow session {sub_session_id} (graph_id={graph_id}) did not "
+                    f"finish within {poll_timeout_s}s (last status: '{status}')."
+                ),
             )
 
         time.sleep(POLL_INTERVAL_S)
 
 
-def _run_subflow_and_wait(client, base_url, headers, graph_id, variables, poll_timeout_s, parent_session_id):
+def _run_subflow_and_wait(
+    client, base_url, headers, graph_id, variables, poll_timeout_s, parent_session_id
+):
     """
     Start a single saved flow (graph_id) as a sub-flow, poll it to
     completion and return its output. Never raises.
@@ -421,7 +452,13 @@ def _run_subflow_and_wait(client, base_url, headers, graph_id, variables, poll_t
 
         deadline = time.monotonic() + poll_timeout_s
         session_data, status, poll_error = _poll_until_terminal(
-            client, base_url, headers, sub_session_id, graph_id, deadline, poll_timeout_s
+            client,
+            base_url,
+            headers,
+            sub_session_id,
+            graph_id,
+            deadline,
+            poll_timeout_s,
         )
         if poll_error:
             return False, poll_error, None
@@ -460,7 +497,9 @@ def _run_subflow_and_wait(client, base_url, headers, graph_id, variables, poll_t
         )
 
 
-def _run_parallel(items, api_key, base_url, headers, poll_timeout_s, current_session_id) -> str:
+def _run_parallel(
+    items, api_key, base_url, headers, poll_timeout_s, current_session_id
+) -> str:
     import httpx
 
     graph_id = globals().get("graph_id")
@@ -547,7 +586,9 @@ def _run_parallel(items, api_key, base_url, headers, poll_timeout_s, current_ses
                     idx = future_to_index[future]
                     try:
                         ok, payload, _child_session_id = future.result()
-                    except Exception as e:  # pragma: no cover - defensive, workers never raise
+                    except (
+                        Exception
+                    ) as e:  # pragma: no cover - defensive, workers never raise
                         ok, payload = False, f"unexpected exception: {e}"
                     results[idx] = payload if ok else {"error": payload}
 
@@ -563,7 +604,9 @@ def _run_parallel(items, api_key, base_url, headers, poll_timeout_s, current_ses
         return str(output)
 
 
-def _run_pipeline(input_payload, api_key, base_url, headers, poll_timeout_s, current_session_id) -> str:
+def _run_pipeline(
+    input_payload, api_key, base_url, headers, poll_timeout_s, current_session_id
+) -> str:
     import httpx
 
     graph_ids = globals().get("graph_ids")
@@ -618,12 +661,16 @@ def _run_pipeline(input_payload, api_key, base_url, headers, poll_timeout_s, cur
                     return recursion_error
 
             ok, payload, child_session_id = _run_subflow_and_wait(
-                client, base_url, headers, gid, stage_input, poll_timeout_s, link_session_id
+                client,
+                base_url,
+                headers,
+                gid,
+                stage_input,
+                poll_timeout_s,
+                link_session_id,
             )
             if not ok:
-                return (
-                    f"Error: pipeline stage {idx} (graph_id={gid}) failed: {payload}"
-                )
+                return f"Error: pipeline stage {idx} (graph_id={gid}) failed: {payload}"
 
             stage_outputs.append(payload)
             stage_input = payload

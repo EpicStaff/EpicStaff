@@ -25,9 +25,10 @@
 #     tool instance can never read/modify/delete another graph's (and, by
 #     extension, another organization's) schedules even though schedule ids
 #     are plain integers. This mirrors subflow_tool's graph_id-is-config-only
-#     pattern; there is currently no Organization-level scoping on
-#     /schedule-trigger-nodes/ or /run-session/ in the wider system, so
-#     graph_id pinning is the strongest ownership boundary available today.
+#     pattern. /schedule-trigger-nodes/ IS org-scoped RBAC (requires
+#     X-Organization-Id, injected below from the authoritative Graph.org_id),
+#     but graph_id pinning remains the primary ownership boundary since it
+#     also prevents cross-graph access within the same organization.
 #
 # Jitter: recurring schedules whose start_date_time lands exactly on a round
 # clock boundary (seconds == 0 and minute is a multiple of 30 -- i.e. :00 or
@@ -79,7 +80,23 @@ def _api_base_url() -> str:
 
 
 def _headers(api_key: str) -> dict:
-    return {"X-Api-Key": api_key, "Content-Type": "application/json"}
+    headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
+
+    org_id = globals().get("org_id")
+    if org_id:
+        # Injected by the crew engine, resolved server-side from the
+        # authoritative Graph.org_id (see run_python_code_service.py /
+        # converter_service.py) -- never from agent/tool config input.
+        # Required so /schedule-trigger-nodes/ (org-scoped) doesn't 400
+        # with org_context_required.
+        headers["X-Organization-Id"] = str(org_id)
+    else:
+        logger.warning(
+            "schedule_manager_tool: no org_id injected -- calls to "
+            "/schedule-trigger-nodes/ may fail with org_context_required."
+        )
+
+    return headers
 
 
 def _coerce_graph_id(graph_id):

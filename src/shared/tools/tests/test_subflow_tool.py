@@ -14,7 +14,14 @@ def _reset_globals():
     # globals (see wrap_code() in sandbox/dynamic_venv_executor_chain.py and
     # global_kwargs["session_id"] in crew_node.py) — set/clear them directly
     # on the loaded module instead of passing them as function arguments.
-    names = ["graph_id", "api_key", "api_base_url", "poll_timeout_s", "session_id"]
+    names = [
+        "graph_id",
+        "api_key",
+        "api_base_url",
+        "poll_timeout_s",
+        "session_id",
+        "org_id",
+    ]
     for name in names:
         if hasattr(subflow_module, name):
             delattr(subflow_module, name)
@@ -384,3 +391,23 @@ class TestSubflowTool:
 
         assert result.startswith("Error:")
         assert "did not finish" in result
+
+
+class TestSubflowToolHeaders:
+    """EST-3285: org_id (server-side resolved from Graph.org_id, injected by
+    the crew engine) must be sent as X-Organization-Id so org-scoped API
+    endpoints (e.g. GET /sessions/<id>/) don't 400 with org_context_required."""
+
+    def test_headers_includes_org_header_when_org_id_injected(self):
+        subflow_module.org_id = 42
+
+        headers = subflow_module._headers("test-key")
+
+        assert headers["X-Organization-Id"] == "42"
+        assert headers["X-Api-Key"] == "test-key"
+
+    def test_headers_omits_org_header_and_warns_when_org_id_absent(self):
+        headers = subflow_module._headers("test-key")
+
+        assert "X-Organization-Id" not in headers
+        assert headers["X-Api-Key"] == "test-key"

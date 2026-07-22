@@ -12,7 +12,7 @@ def _reset_globals():
     # Mirrors how the sandbox injects PythonCodeToolConfig.configuration
     # values as bare module globals (see subflow_tool tests for the same
     # pattern).
-    names = ["graph_id", "api_key", "api_base_url"]
+    names = ["graph_id", "api_key", "api_base_url", "org_id"]
     for name in names:
         if hasattr(schedule_module, name):
             delattr(schedule_module, name)
@@ -429,3 +429,24 @@ class TestScheduleManagerToolGeneral:
         result = schedule_main(action="list", graph_id=999, api_key="stray-kwarg-key")
 
         assert "Error" not in result
+
+
+class TestScheduleManagerToolHeaders:
+    """EST-3285: org_id (server-side resolved from Graph.org_id, injected by
+    the crew engine) must be sent as X-Organization-Id so
+    /schedule-trigger-nodes/ (org-scoped) doesn't 400 with
+    org_context_required."""
+
+    def test_headers_includes_org_header_when_org_id_injected(self):
+        schedule_module.org_id = 42
+
+        headers = schedule_module._headers("test-key")
+
+        assert headers["X-Organization-Id"] == "42"
+        assert headers["X-Api-Key"] == "test-key"
+
+    def test_headers_omits_org_header_when_org_id_absent(self):
+        headers = schedule_module._headers("test-key")
+
+        assert "X-Organization-Id" not in headers
+        assert headers["X-Api-Key"] == "test-key"

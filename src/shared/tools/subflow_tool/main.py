@@ -63,7 +63,18 @@ def _api_base_url() -> str:
 
 
 def _headers(api_key: str) -> dict:
-    return {"X-Api-Key": api_key, "Content-Type": "application/json"}
+    headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
+
+    org_id = globals().get("org_id")
+    if org_id:
+        headers["X-Organization-Id"] = str(org_id)
+    else:
+        logger.warning(
+            "subflow_tool: no org_id injected -- calls to org-scoped API "
+            "endpoints may fail with org_context_required."
+        )
+
+    return headers
 
 
 def _get_session_or_raise(client, base_url: str, headers: dict, session_id) -> dict:
