@@ -100,9 +100,10 @@ class FlowAssistantConfigView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
+    _org_service = OrgContextService()
 
     def get(self, request, graph_id: int):
-        org_id = OrgContextService().resolve(request=request)
+        org_id = self._org_service.resolve(request=request)
         assert_org_permission(
             user=request.user,
             org_id=org_id,
@@ -119,7 +120,7 @@ class FlowAssistantConfigView(APIView):
         return Response(serializer.data)
 
     def patch(self, request, graph_id: int):
-        org_id = OrgContextService().resolve(request=request)
+        org_id = self._org_service.resolve(request=request)
         assert_org_permission(
             user=request.user,
             org_id=org_id,
