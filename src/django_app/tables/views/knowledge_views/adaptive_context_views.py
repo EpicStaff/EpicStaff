@@ -99,6 +99,11 @@ class NaiveRagSuggestParamsView(APIView):
             req = NaiveRagSuggestRequest(**(request.data or {}))
         except ValidationError as exc:
             return _validation_error_response(exc)
+        except TypeError:
+            return Response(
+                {"error": "Request body must be a JSON object."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             ctx, llm_name, warning, is_trusted = _resolve_llm_ctx(req.llm_config_id)
@@ -106,18 +111,17 @@ class NaiveRagSuggestParamsView(APIView):
                 req.knowledge_collection_id, "naive"
             )
             suggested, clamped = build_naive_params(metrics, req.user_custom_params)
+            return _build_response(
+                metrics, ctx, llm_name, warning, suggested, clamped, is_trusted
+            )
         except (CollectionNotFoundException, LLMConfigNotFoundException) as exc:
             return Response({"error": str(exc)}, status=exc.status_code)
         except Exception:
+            # No 5xx on the wire: log the traceback and defer to the project's
+            # custom_exception_handler, which envelopes unexpected errors without
+            # emitting a 500 in production.
             logger.exception("Unexpected error in NaiveRagSuggestParamsView")
-            return Response(
-                {"error": "Internal server error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        return _build_response(
-            metrics, ctx, llm_name, warning, suggested, clamped, is_trusted
-        )
+            raise
 
 
 class GraphRagSuggestParamsView(APIView):
@@ -129,6 +133,11 @@ class GraphRagSuggestParamsView(APIView):
             req = GraphRagSuggestRequest(**(request.data or {}))
         except ValidationError as exc:
             return _validation_error_response(exc)
+        except TypeError:
+            return Response(
+                {"error": "Request body must be a JSON object."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             strategy = get_graph_strategy(req.search_method)
@@ -143,28 +152,27 @@ class GraphRagSuggestParamsView(APIView):
             suggested, clamped = strategy.builder(
                 metrics, ctx, is_trusted, req.user_custom_params
             )
-        except (CollectionNotFoundException, LLMConfigNotFoundException) as exc:
-            return Response({"error": str(exc)}, status=exc.status_code)
+            return _build_response(
+                metrics,
+                ctx,
+                llm_name,
+                warning,
+                suggested,
+                clamped,
+                is_trusted,
+                recommended_method=recommend_graph_search_method(metrics),
+            )
         except (
+            CollectionNotFoundException,
+            LLMConfigNotFoundException,
             NoGraphRagForCollectionException,
             GraphRagIndexNotReadyException,
         ) as exc:
             # User-actionable, no sensitive detail — safe to surface verbatim.
             return Response({"error": str(exc)}, status=exc.status_code)
         except Exception:
+            # No 5xx on the wire: log the traceback and defer to the project's
+            # custom_exception_handler, which envelopes unexpected errors without
+            # emitting a 500 in production.
             logger.exception("Unexpected error in GraphRagSuggestParamsView")
-            return Response(
-                {"error": "Internal server error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        return _build_response(
-            metrics,
-            ctx,
-            llm_name,
-            warning,
-            suggested,
-            clamped,
-            is_trusted,
-            recommended_method=recommend_graph_search_method(metrics),
-        )
+            raise

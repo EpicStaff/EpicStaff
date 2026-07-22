@@ -31,8 +31,8 @@ class SearchSpecification:
 
 
 def _drift_adjust(cfg, section, files) -> dict[str, Any]:
-    # Пустые primer folds заставляют primer выдумывать из имён сущностей, если folds
-    # больше, чем доступно community-репортов — ограничиваем folds их числом.
+    # Empty primer folds cause the primer to hallucinate from entity names if folds
+    # exceed the number of available community reports — limit folds to the report count.
     usable_reports = min(section.drift_k_followups, len(files["community_reports"]))
     section.primer_folds = max(1, min(section.primer_folds, usable_reports))
     return {"community_level": cfg.community_level}

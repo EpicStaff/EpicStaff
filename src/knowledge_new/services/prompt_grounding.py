@@ -18,8 +18,6 @@ that the available documents do not cover this topic.
 
 ---End of Data Grounding Rules---"""
 
-# graphrag's stock drift local prompt fixes intermediate_answer at "exactly 2000
-# characters", truncating content before the reduce stage aggregates it.
 _DRIFT_LENGTH_OVERRIDE = """
 
 ---Response Length Override---

@@ -1,8 +1,14 @@
-"""Adaptive context management service — pure functions + strategy registry.
+"""Suggests good search settings for a RAG collection.
 
-Given a `CollectionMetrics` snapshot and the effective LLM context window,
-this module produces suggested search-parameter Pydantic models for both
-Naive and Graph RAG.
+IN:  facts about the collection (how many documents, how many chunks, the
+     average chunk size) and the LLM context window size.
+DO:  small math formulas turn those numbers into search settings. Bigger
+     collections get bigger settings. Token settings are kept under a safe
+     part of the context window. The user can also send their own values;
+     those always win.
+OUT: one ready settings object per search method (naive, or graph basic /
+     local / global / drift), plus the list of fields we had to lower to
+     fit the budget. It can also say which graph method fits best.
 """
 
 import math
@@ -31,6 +37,7 @@ def _lerp_buckets(
     *,
     round_to_int: bool = False,
     round_decimals: int = 3,
+    log_x: bool = False,
 ) -> float | int:
     """Linear interpolation between (x, y) anchor points.
 
@@ -43,46 +50,80 @@ def _lerp_buckets(
     Anchors MUST be sorted by x ascending. For integer-typed fields pass
     `round_to_int=True`; otherwise the result is rounded to `round_decimals`
     decimal places (default 3) to keep responses tidy.
+
+    `log_x=True` interpolates in log10(x) space so a single anchor table spans
+    many orders of magnitude (tens to millions) without the mid-range collapsing
+    — corpus sizes are log-distributed. Requires all anchor x > 0; `value <= 0`
+    returns the first anchor's y.
     """
-    if value <= anchors[0][0]:
-        result = anchors[0][1]
-    elif value >= anchors[-1][0]:
-        result = anchors[-1][1]
+    if log_x:
+        xs = [(math.log10(x), y) for x, y in anchors]
+        # value <= 0 is below the first anchor; -inf routes it through the clamp.
+        v = math.log10(value) if value > 0 else float("-inf")
     else:
-        # `value` is strictly inside the anchor range, so one segment below
+        xs = anchors
+        v = value
+
+    if v <= xs[0][0]:
+        result = xs[0][1]
+    elif v >= xs[-1][0]:
+        result = xs[-1][1]
+    else:
+        # `v` is strictly inside the anchor range, so one segment below
         # always matches and overwrites this. Kept only as a safety net against
         # an UnboundLocalError if anchors were ever malformed (unsorted/empty).
-        result = anchors[-1][1]
-        for (x0, y0), (x1, y1) in zip(anchors, anchors[1:]):
-            if x0 <= value <= x1:
-                result = y0 + (y1 - y0) * (value - x0) / (x1 - x0)
+        result = xs[-1][1]
+        for (x0, y0), (x1, y1) in zip(xs, xs[1:]):
+            if x0 <= v <= x1:
+                result = y0 + (y1 - y0) * (v - x0) / (x1 - x0)
                 break
     if round_to_int:
         return int(round(result))
     return round(result, round_decimals)
 
 
+def _lerp_int_log(value: float, anchors: list[tuple[float, float]]) -> int:
+    """Integer, log-scaled anchor lookup — the default shape for corpus-size-driven
+    count/level/length fields. Thin wrapper over `_lerp_buckets`."""
+    return _lerp_buckets(value, anchors, round_to_int=True, log_x=True)
+
+
 def calc_naive_search_limit(total_chunks: int) -> int:
-    return _lerp_buckets(
+    return _lerp_int_log(
         total_chunks,
-        [(50, 3), (500, 5), (5000, 8), (50000, 10)],
-        round_to_int=True,
+        [(50, 3), (500, 5), (5000, 8), (50000, 10), (500000, 12), (5000000, 15)],
     )
 
 
 def calc_naive_similarity_threshold(total_chunks: int) -> float:
+    # Larger corpora yield more near-duplicate candidates, so raise the floor to
+    # stay selective; extended past 50k so enterprise-scale libraries keep ramping.
     return _lerp_buckets(
         total_chunks,
-        [(50, 0.15), (500, 0.20), (5000, 0.25), (50000, 0.30)],
+        [
+            (50, 0.15),
+            (500, 0.20),
+            (5000, 0.25),
+            (50000, 0.30),
+            (500000, 0.33),
+            (5000000, 0.35),
+        ],
+        log_x=True,
     )
 
 
 def calc_top_k(total_chunks: int) -> int:
     """Shared formula for `k`, `top_k_entities`, `top_k_relationships`, etc."""
-    return _lerp_buckets(
+    return _lerp_int_log(
         total_chunks,
-        [(50, 5), (500, 10), (5000, 15), (50000, 20)],
-        round_to_int=True,
+        [
+            (50, 5),
+            (500, 10),
+            (5000, 15),
+            (50000, 20),
+            (500000, 25),
+            (5000000, 30),
+        ],
     )
 
 
@@ -109,6 +150,9 @@ def calc_community_prop(total_documents: int) -> float:
     degenerate, so we give them a small slice. Caller must guarantee that
     `text_unit_prop + community_prop <= 1.0` so the worker's implicit
     `local_prop = 1 - text - community` slice stays non-negative.
+
+    Linear (not log_x) on purpose: this is a bounded proportion, not a
+    corpus-scaled count — the endpoints matter more than the curve shape.
     """
     return _lerp_buckets(
         total_documents,
@@ -117,15 +161,28 @@ def calc_community_prop(total_documents: int) -> float:
 
 
 def calc_global_map_max_length(total_chunks: int) -> int:
-    return 1000 if total_chunks <= 500 else 1500
+    # Was a two-step 1000/1500 flip at 500 chunks; smooth ramp keeps map answers
+    # growing with corpus size instead of saturating immediately past 500.
+    return _lerp_int_log(
+        total_chunks,
+        [(500, 1000), (5000, 1500), (50000, 2000), (500000, 2500)],
+    )
 
 
 def calc_global_reduce_max_length(total_chunks: int) -> int:
-    return 2000 if total_chunks <= 500 else 3000
+    return _lerp_int_log(
+        total_chunks,
+        [(500, 2000), (5000, 3000), (50000, 3500), (500000, 4000)],
+    )
 
 
 def calc_global_dynamic_search_threshold(total_documents: int) -> int:
-    return 1 if total_documents <= 50 else 2
+    # Higher rating bar for larger corpora: more communities → be pickier about
+    # which ones clear the relevance gate during dynamic selection.
+    return _lerp_int_log(
+        total_documents,
+        [(50, 1), (5000, 2), (500000, 3)],
+    )
 
 
 def calc_community_level(total_documents: int) -> int:
@@ -138,31 +195,33 @@ def calc_community_level(total_documents: int) -> int:
 
     Tiny corpora (≤5 docs) have a flat or near-flat community structure
     — depth 1 is enough. Depth grows with corpus size to capture nested
-    sub-communities; capped at 4 (the practical maximum that GraphRag's
-    Leiden clustering tends to produce).
+    sub-communities; capped at 5 (the practical maximum that GraphRag's
+    Leiden clustering tends to produce even for very large corpora).
     """
-    return _lerp_buckets(
+    return _lerp_int_log(
         total_documents,
-        [(5, 1), (50, 2), (500, 3), (5000, 4)],
-        round_to_int=True,
+        [(5, 1), (50, 2), (500, 3), (5000, 4), (50000, 5)],
     )
 
 
 def calc_drift_concurrency(total_chunks: int) -> int:
-    return _lerp_buckets(
+    # Capped at 96 to keep enterprise-scale corpora from tripping provider
+    # rate limits; higher would just queue and stall behind 429s.
+    return _lerp_int_log(
         total_chunks,
-        [(500, 16), (5000, 32), (50000, 64)],
-        round_to_int=True,
+        [(500, 16), (5000, 32), (50000, 64), (500000, 96)],
     )
 
 
 def calc_drift_k_followups(total_chunks: int) -> int:
     """Drift follow-ups grow with √N: small corpora need few extra LLM calls
-    (everything fits in the primer), large corpora need more exploration."""
+    (everything fits in the primer), large corpora need more exploration.
+    Capped at 25 so cost stays bounded (drift isn't recommended past ~15k
+    chunks anyway — the recommender routes larger corpora to global)."""
     if total_chunks < 1:
         return 3
     raw = int(math.sqrt(total_chunks) / 3)
-    return max(3, min(20, raw))
+    return max(3, min(25, raw))
 
 
 def calc_conversation_history_max_turns(safe_budget_value: int) -> int:
@@ -177,10 +236,9 @@ def calc_conversation_history_max_turns(safe_budget_value: int) -> int:
 
 
 def calc_drift_primer_folds(total_documents: int) -> int:
-    return _lerp_buckets(
+    return _lerp_int_log(
         total_documents,
-        [(5, 3), (50, 5), (500, 7)],
-        round_to_int=True,
+        [(5, 3), (50, 5), (500, 7), (5000, 9), (50000, 12)],
     )
 
 
@@ -189,12 +247,12 @@ def calc_drift_n_depth(total_documents: int) -> int:
 
     Anchors are decreasing in y — a small corpus benefits from drilling
     deeper into each followup branch (more recursive expansion) since the
-    space is small enough; a large corpus needs broader, shallower coverage.
+    space is small enough; a large corpus needs broader, shallower coverage
+    and floors at 2.
     """
-    return _lerp_buckets(
+    return _lerp_int_log(
         total_documents,
         [(5, 4), (50, 3), (500, 2)],
-        round_to_int=True,
     )
 
 
@@ -313,6 +371,25 @@ def _rebalance_props(text_unit: float, community: float) -> tuple[float, float]:
     return text_unit, community
 
 
+def _resolved_props(
+    custom: dict | None,
+    metrics: CollectionMetrics,
+    text_key: str,
+    community_key: str,
+) -> tuple[float, float]:
+    """Resolve text_unit / community proportions (user override → formula) and
+    rebalance so their sum stays <= 1.0 for the mixed-context worker.
+
+    Shared by local and drift builders, which differ only in the custom-dict
+    key names (`text_unit_prop` vs `local_search_text_unit_prop`).
+    """
+    text_unit = _pick(custom, text_key, calc_text_unit_prop(metrics.avg_chunk_size))
+    community = _pick(
+        custom, community_key, calc_community_prop(metrics.total_documents)
+    )
+    return _rebalance_props(text_unit, community)
+
+
 def build_naive_params(
     metrics: CollectionMetrics,
     custom: dict | None,
@@ -360,11 +437,11 @@ def build_graph_local_params(
 ) -> tuple[GraphRagLocalSearchParams, list[str]]:
     chunks = metrics.total_chunks
     docs = metrics.total_documents
-    avg_size = metrics.avg_chunk_size
+    top_k = calc_top_k(chunks)
 
-    text_unit = _pick(custom, "text_unit_prop", calc_text_unit_prop(avg_size))
-    community = _pick(custom, "community_prop", calc_community_prop(docs))
-    text_unit, community = _rebalance_props(text_unit, community)
+    text_unit, community = _resolved_props(
+        custom, metrics, "text_unit_prop", "community_prop"
+    )
 
     default_budget = safe_budget(ctx, is_trusted)
     token_fields, clamped = clamp_token_fields(
@@ -384,10 +461,8 @@ def build_graph_local_params(
                 "conversation_history_max_turns",
                 calc_conversation_history_max_turns(default_budget),
             ),
-            top_k_entities=_pick(custom, "top_k_entities", calc_top_k(chunks)),
-            top_k_relationships=_pick(
-                custom, "top_k_relationships", calc_top_k(chunks)
-            ),
+            top_k_entities=_pick(custom, "top_k_entities", top_k),
+            top_k_relationships=_pick(custom, "top_k_relationships", top_k),
             community_level=_pick(
                 custom, "community_level", calc_community_level(docs)
             ),
@@ -463,13 +538,11 @@ def build_graph_drift_params(
 ) -> tuple[GraphRagDriftSearchParams, list[str]]:
     chunks = metrics.total_chunks
     docs = metrics.total_documents
-    avg_size = metrics.avg_chunk_size
+    top_k = calc_top_k(chunks)
 
-    text_unit = _pick(
-        custom, "local_search_text_unit_prop", calc_text_unit_prop(avg_size)
+    text_unit, community = _resolved_props(
+        custom, metrics, "local_search_text_unit_prop", "local_search_community_prop"
     )
-    community = _pick(custom, "local_search_community_prop", calc_community_prop(docs))
-    text_unit, community = _rebalance_props(text_unit, community)
 
     default_budget = safe_budget(ctx, is_trusted)
     token_fields, clamped = clamp_token_fields(
@@ -515,10 +588,10 @@ def build_graph_drift_params(
             local_search_text_unit_prop=text_unit,
             local_search_community_prop=community,
             local_search_top_k_mapped_entities=_pick(
-                custom, "local_search_top_k_mapped_entities", calc_top_k(chunks)
+                custom, "local_search_top_k_mapped_entities", top_k
             ),
             local_search_top_k_relationships=_pick(
-                custom, "local_search_top_k_relationships", calc_top_k(chunks)
+                custom, "local_search_top_k_relationships", top_k
             ),
             reduce_temperature=0.0,
             local_search_temperature=0.0,
