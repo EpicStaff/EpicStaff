@@ -1,10 +1,13 @@
 import os
 import asyncio
 import json
+from typing import Callable, Awaitable, TypeVar
+
 import time
 from concurrent.futures import ThreadPoolExecutor
 from loguru import logger
 
+from services.background_event_loop import background_loop
 from services.collection_processor_service import CollectionProcessorService
 from services.redis_service import RedisService
 from services.chunking_job_registry import chunking_job_registry
@@ -12,9 +15,9 @@ from src.shared.models import (
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
     BaseKnowledgeSearchMessage,
+    BaseKnowledgeSearchMessageResponse,
     ProcessRagIndexingMessage,
 )
-
 
 collection_processor_service = CollectionProcessorService()
 # Redis Configuration
@@ -40,6 +43,23 @@ knowledge_indexing_channel = os.getenv(
 )
 
 
+async def run_executor[T](
+    func: Callable[[], Awaitable[T]],
+    *,
+    attempts: int = 3,
+    backoff: float = 1.0,
+) -> T:
+    assert attempts >= 1
+    for attempt in range(1, attempts + 1):
+        try:
+            return await func()
+        except Exception as e:
+            logger.warning("worker attempt {}/{} failed: {}", attempt, attempts, e)
+            if attempt >= attempts:
+                raise
+            await asyncio.sleep(backoff * attempt)
+
+
 async def execute_indexing(
     rag_id: int,
     rag_type: str,
@@ -58,15 +78,18 @@ async def execute_indexing(
     async with semaphore:
         try:
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
-                executor,
-                collection_processor_service.process_rag_indexing,
-                rag_id,
-                rag_type,
+            await run_executor(
+                lambda: loop.run_in_executor(
+                    executor,
+                    collection_processor_service.process_rag_indexing,
+                    rag_id,
+                    rag_type,
+                ),
+                attempts=1,
             )
-            logger.info(f"RAG indexing completed: rag_type={rag_type}, rag_id={rag_id}")
+            logger.info("RAG indexing completed: rag_type={}, rag_id={}", rag_type, rag_id)
         except Exception as e:
-            logger.error(f"Error processing indexing: {e}")
+            logger.error("Indexing failed: rag_id={}, {}", rag_id, e)
 
 
 async def indexing(
@@ -80,8 +103,7 @@ async def indexing(
         f"Subscribed to channel '{knowledge_indexing_channel}' for RAG indexing."
     )
 
-    pubsub = await redis_service.async_subscribe(knowledge_indexing_channel)
-    async for message in pubsub.listen():
+    async for message in redis_service.listen(knowledge_indexing_channel):
         if message["type"] == "message":
             try:
                 data = json.loads(message["data"])
@@ -105,7 +127,7 @@ async def indexing(
                 task.add_done_callback(background_tasks.discard)
 
             except Exception as e:
-                logger.error(f"Error parsing indexing message: {e}")
+                logger.error("Failed to parse message on {}: {}", knowledge_indexing_channel, e)
 
 
 async def execute_preview_chunking(
@@ -145,12 +167,14 @@ async def execute_preview_chunking(
             # Run preview chunking via CollectionProcessorService -> Strategy
             # Pass the token directly
             loop = asyncio.get_running_loop()
-            chunk_count = await loop.run_in_executor(
-                executor,
-                collection_processor_service.process_preview_chunking,
-                rag_type,
-                config_id,
-                token,
+            chunk_count = await run_executor(
+                lambda: loop.run_in_executor(
+                    executor,
+                    collection_processor_service.process_preview_chunking,
+                    rag_type,
+                    config_id,
+                    token,
+                )
             )
 
             elapsed_time = round(time.perf_counter() - start_time, 3)
@@ -245,8 +269,7 @@ async def chunking(
         f"Subscribed to channel '{knowledge_document_chunk_channel}' for preview chunking."
     )
 
-    pubsub = await redis_service.async_subscribe(knowledge_document_chunk_channel)
-    async for message in pubsub.listen():
+    async for message in redis_service.listen(knowledge_document_chunk_channel):
         if message["type"] == "message":
             try:
                 data = json.loads(message["data"])
@@ -276,7 +299,7 @@ async def chunking(
                 task.add_done_callback(background_tasks.discard)
 
             except Exception as e:
-                logger.error(f"Error parsing chunking message: {e}")
+                logger.error("Failed to parse message on {}: {}", knowledge_document_chunk_channel, e)
 
 
 async def execute_search(
@@ -306,25 +329,27 @@ async def execute_search(
     """
     async with semaphore:
         try:
-            result = await asyncio.to_thread(
-                collection_processor_service.search,
-                rag_id=rag_id,
-                rag_type=rag_type,
-                collection_id=collection_id,
-                uuid=uuid,
-                query=query,
-                rag_search_config=rag_search_config,
+            result = await run_executor(
+                lambda: asyncio.to_thread(
+                    collection_processor_service.search,
+                    rag_id=rag_id,
+                    rag_type=rag_type,
+                    collection_id=collection_id,
+                    uuid=uuid,
+                    query=query,
+                    rag_search_config=rag_search_config,
+                )
             )
-
             await redis_service.async_publish(response_channel, result)
-
-            logger.info(f"Search completed for {rag_type}_rag_id: {rag_id}")
+            logger.info("Search completed for {}_rag_id: {}", rag_type, rag_id)
         except Exception as e:
-            logger.error(f"Error processing search: {e}")
+            logger.error("Search failed for {}_rag_id={}: {}", rag_type, rag_id, e)
 
 
 async def searching(
-    redis_service: RedisService, semaphore: asyncio.Semaphore, background_tasks: set
+    redis_service: RedisService,
+    semaphore: asyncio.Semaphore,
+    background_tasks: set,
 ):
     """
     Handles search queries from the Redis queue asynchronously.
@@ -335,8 +360,7 @@ async def searching(
         f"Subscribed to channel '{knowledge_search_get_channel}' for search queries."
     )
 
-    pubsub = await redis_service.async_subscribe(knowledge_search_get_channel)
-    async for message in pubsub.listen():
+    async for message in redis_service.listen(knowledge_search_get_channel):
         if message["type"] == "message":
             try:
                 parsed_data = json.loads(message["data"])
@@ -363,7 +387,7 @@ async def searching(
                 task.add_done_callback(background_tasks.discard)
 
             except Exception as e:
-                logger.error(f"Error parsing search message: {e}")
+                logger.error("Failed to parse message on {}: {}", knowledge_search_get_channel, e)
 
 
 async def main():
@@ -399,9 +423,10 @@ async def main():
         )
     )
     try:
-        await asyncio.gather(task1, task2, task3, return_exceptions=True)
+        await asyncio.gather(task1, task2, task3)
     except Exception as e:
         logger.exception(e)
+        raise
     finally:
         # Wait for all background tasks to complete
         if background_tasks:
@@ -409,6 +434,7 @@ async def main():
                 f"Waiting for {len(background_tasks)} background tasks to complete..."
             )
             await asyncio.gather(*background_tasks, return_exceptions=True)
+        background_loop.stop()
         executor.shutdown(wait=True)
 
 
