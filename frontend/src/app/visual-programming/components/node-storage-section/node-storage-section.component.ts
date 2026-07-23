@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, OnInit, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ToggleSwitchComponent } from '../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
@@ -37,7 +37,7 @@ const STORAGE_HEADER_COMMENT = `from epicstaff_storage import storage
     styleUrl: './node-storage-section.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class NodeStorageSectionComponent implements OnInit {
+export class NodeStorageSectionComponent {
     readonly useStorage = input.required<boolean>();
 
     readonly onInsertCode = output<string>();
@@ -46,8 +46,12 @@ export class NodeStorageSectionComponent implements OnInit {
 
     readonly enabled = signal<boolean>(false);
 
-    ngOnInit(): void {
-        this.enabled.set(this.useStorage());
+    constructor() {
+        // Mirror the input into the local signal on every change so a collaborator's
+        // use_storage toggle is reflected here. ngOnInit only ran once, leaving it stale.
+        effect(() => {
+            this.enabled.set(this.useStorage());
+        });
     }
 
     onToggle(value: boolean): void {

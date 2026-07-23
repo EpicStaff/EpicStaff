@@ -92,6 +92,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private sanitizer = inject(DomSanitizer);
 
     public activeTab = signal<TabType>('table');
+    private lastFormNodeId: string | null = null;
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
@@ -319,7 +320,13 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.conditionGroups.set(groupsCopy);
         this.prompts.set({ ...(tableData.prompts || {}) });
 
-        this.activeTab.set('table');
+        // Only reset to the Table tab when a different node is opened — not on every remote
+        // merge (initializeForm runs on each peer update), which would yank a viewing
+        // collaborator back to the Table tab whenever the editor changes anything.
+        if (this.lastFormNodeId !== node.id) {
+            this.activeTab.set('table');
+            this.lastFormNodeId = node.id;
+        }
 
         return form;
     }
@@ -418,7 +425,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             prompt_text: '',
             llm_config: null,
             output_schema: null,
-            result_variable: '',
+            result_variable: 'prompt_result',
             variable_mappings: {},
         };
         this.prompts.update((p) => ({ ...p, [newId]: newConfig }));
@@ -480,7 +487,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         if (this.editingPromptId() === id) {
             this.editingPromptId.set(null);
         }
-        this.flowService.updateNode(this.createUpdatedNode());
+        this.sidePanelService.triggerAutosave();
     }
 
     public toggleEditPrompt(id: string): void {

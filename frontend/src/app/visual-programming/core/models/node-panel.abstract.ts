@@ -1,6 +1,6 @@
 import { ApplicationRef, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, FormGroup, ValidatorFn, Validators } from '@angular/forms';
+import { AbstractControl, FormArray, FormBuilder, FormGroup, ValidatorFn, Validators } from '@angular/forms';
 import { debounceTime } from 'rxjs';
 import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
@@ -81,34 +81,29 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     }
 
     private mergeRemoteIntoForm(): void {
-        const remoteValue = this.initializeForm().getRawValue() as Record<string, unknown>;
-        this.applyRemoteDiff(this.form, remoteValue, this.baseline ?? {});
+        const source = this.initializeForm();
+        const remoteValue = source.getRawValue() as Record<string, unknown>;
+        this.applyRemoteDiff(this.form, source, this.baseline ?? {});
         this.baseline = remoteValue;
         this.dirtyCheckTick.update((v) => v + 1);
     }
 
-    private applyRemoteDiff(
-        target: FormGroup,
-        remote: Record<string, unknown>,
-        baseline: Record<string, unknown>
-    ): void {
+    private applyRemoteDiff(target: FormGroup, source: FormGroup, baseline: Record<string, unknown>): void {
         for (const key of Object.keys(target.controls)) {
             const control = target.get(key);
-            if (!control) continue;
-            const remoteVal = remote ? remote[key] : undefined;
+            const sourceControl = source.get(key);
+            if (!control || !sourceControl) continue;
+            const remoteVal = sourceControl.getRawValue();
             const baseVal = baseline ? baseline[key] : undefined;
 
-            if (
-                control instanceof FormGroup &&
-                remoteVal &&
-                typeof remoteVal === 'object' &&
-                !Array.isArray(remoteVal)
-            ) {
-                this.applyRemoteDiff(
-                    control,
-                    remoteVal as Record<string, unknown>,
-                    (baseVal as Record<string, unknown>) ?? {}
-                );
+            if (control instanceof FormGroup && sourceControl instanceof FormGroup) {
+                this.applyRemoteDiff(control, sourceControl, (baseVal as Record<string, unknown>) ?? {});
+                continue;
+            }
+
+            if (control instanceof FormArray && sourceControl instanceof FormArray) {
+                if (JSON.stringify(remoteVal) === JSON.stringify(baseVal)) continue;
+                this.syncFormArray(control, sourceControl);
                 continue;
             }
 
@@ -116,7 +111,31 @@ export abstract class BaseSidePanel<T extends NodeModel> {
             try {
                 control.setValue(remoteVal, { emitEvent: false });
             } catch {
-                /* structural mismatch (e.g. FormArray length) — keep local */
+                /* structural mismatch — keep local */
+            }
+        }
+    }
+
+    // Resizes the live FormArray to match the remote one: overlapping rows keep their existing
+    // control (preserving focus/subscriptions) and get their value set; grown rows steal the
+    // correctly-structured item control from the freshly-built (and discarded) source array;
+    // shrunk rows are dropped from the tail. Fixes add/remove of input-list items not appearing live.
+    private syncFormArray(target: FormArray, source: FormArray): void {
+        const sourceControls: AbstractControl[] = source.controls.slice();
+
+        while (target.length > sourceControls.length) {
+            target.removeAt(target.length - 1, { emitEvent: false });
+        }
+
+        for (let i = 0; i < sourceControls.length; i++) {
+            if (i < target.length) {
+                try {
+                    target.at(i).setValue(sourceControls[i].getRawValue(), { emitEvent: false });
+                } catch {
+                    /* structural mismatch of a single row — keep local */
+                }
+            } else {
+                target.push(sourceControls[i], { emitEvent: false });
             }
         }
     }
