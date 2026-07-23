@@ -17,7 +17,10 @@ from typing import Callable, get_args
 
 from pydantic import BaseModel
 
-from src.shared.models.adaptive_context import CollectionMetrics, GraphSearchMethod
+from src.shared.models.search_config_suggestion import (
+    SuggestedCollectionMetrics,
+    GraphSearchMethod,
+)
 from src.shared.models.knowledge import (
     GraphRagBasicSearchParams,
     GraphRagDriftSearchParams,
@@ -39,22 +42,10 @@ def _lerp_buckets(
     round_decimals: int = 3,
     log_x: bool = False,
 ) -> float | int:
-    """Linear interpolation between (x, y) anchor points.
-
-    Replaces the step-bucket pattern `if v <= b1: return v1; if v <= b2: ...`
-    with a smooth ramp through the same anchor points. At `value <=
-    anchors[0][0]` returns the first anchor's y; at `value >= anchors[-1][0]`
-    returns the last anchor's y; otherwise linearly interpolates inside the
-    segment containing `value`.
-
-    Anchors MUST be sorted by x ascending. For integer-typed fields pass
-    `round_to_int=True`; otherwise the result is rounded to `round_decimals`
-    decimal places (default 3) to keep responses tidy.
-
-    `log_x=True` interpolates in log10(x) space so a single anchor table spans
-    many orders of magnitude (tens to millions) without the mid-range collapsing
-    — corpus sizes are log-distributed. Requires all anchor x > 0; `value <= 0`
-    returns the first anchor's y.
+    """Linear interpolation between sorted (x, y) anchors, clamped to the end anchors.
+    `round_to_int` for integer fields; otherwise rounded to `round_decimals`.
+    `log_x` interpolates in log10(x) space (corpus sizes are log-distributed);
+    requires anchor x > 0 and treats `value <= 0` as the first anchor.
     """
     if log_x:
         xs = [(math.log10(x), y) for x, y in anchors]
@@ -83,12 +74,12 @@ def _lerp_buckets(
 
 
 def _lerp_int_log(value: float, anchors: list[tuple[float, float]]) -> int:
-    """Integer, log-scaled anchor lookup — the default shape for corpus-size-driven
-    count/level/length fields. Thin wrapper over `_lerp_buckets`."""
+    """Integer, log-scaled anchor lookup — the default shape for corpus-driven fields."""
     return _lerp_buckets(value, anchors, round_to_int=True, log_x=True)
 
 
 def calc_naive_search_limit(total_chunks: int) -> int:
+    """How many chunks to retrieve; grows with corpus size."""
     return _lerp_int_log(
         total_chunks,
         [(50, 3), (500, 5), (5000, 8), (50000, 10), (500000, 12), (5000000, 15)],
@@ -96,8 +87,7 @@ def calc_naive_search_limit(total_chunks: int) -> int:
 
 
 def calc_naive_similarity_threshold(total_chunks: int) -> float:
-    # Larger corpora yield more near-duplicate candidates, so raise the floor to
-    # stay selective; extended past 50k so enterprise-scale libraries keep ramping.
+    """Min similarity to keep a chunk; raised for bigger corpora (more near-duplicates)."""
     return _lerp_buckets(
         total_chunks,
         [
@@ -128,13 +118,8 @@ def calc_top_k(total_chunks: int) -> int:
 
 
 def calc_text_unit_prop(avg_chunk_size: float) -> float:
-    """Local search text_unit_prop driven by average chunk size.
-
-    Bigger chunks carry more raw signal per token, so we lean more on text
-    units when chunks are large. Capped at 0.65 so there is always room for
-    community summaries (calc_community_prop) AND for the implicit local
-    context slice (entity/relationship/covariate = 1 - text - community).
-    """
+    """Local search text_unit_prop from avg chunk size (bigger chunks → more).
+    Capped at 0.65 to leave room for community and local-context slices."""
     return _lerp_buckets(
         avg_chunk_size,
         [(400, 0.40), (1200, 0.65)],
@@ -142,18 +127,9 @@ def calc_text_unit_prop(avg_chunk_size: float) -> float:
 
 
 def calc_community_prop(total_documents: int) -> float:
-    """Local search community_prop driven by collection size.
-
-    Community summaries compress information across many documents — they
-    matter more when the corpus is large enough that entity-level signal
-    alone is fragmented. For tiny corpora (1-5 docs) communities are nearly
-    degenerate, so we give them a small slice. Caller must guarantee that
-    `text_unit_prop + community_prop <= 1.0` so the worker's implicit
-    `local_prop = 1 - text - community` slice stays non-negative.
-
-    Linear (not log_x) on purpose: this is a bounded proportion, not a
-    corpus-scaled count — the endpoints matter more than the curve shape.
-    """
+    """Local search community_prop from corpus size (small share for tiny corpora).
+    Linear, not log — it's a bounded proportion. Caller must keep
+    text_unit_prop + community_prop <= 1.0 so the worker's local slice stays >= 0."""
     return _lerp_buckets(
         total_documents,
         [(5, 0.10), (50, 0.20), (500, 0.25), (5000, 0.30)],
@@ -161,8 +137,7 @@ def calc_community_prop(total_documents: int) -> float:
 
 
 def calc_global_map_max_length(total_chunks: int) -> int:
-    # Was a two-step 1000/1500 flip at 500 chunks; smooth ramp keeps map answers
-    # growing with corpus size instead of saturating immediately past 500.
+    """Global map-step answer length; grows with corpus size."""
     return _lerp_int_log(
         total_chunks,
         [(500, 1000), (5000, 1500), (50000, 2000), (500000, 2500)],
@@ -170,6 +145,7 @@ def calc_global_map_max_length(total_chunks: int) -> int:
 
 
 def calc_global_reduce_max_length(total_chunks: int) -> int:
+    """Global reduce-step answer length; grows with corpus size."""
     return _lerp_int_log(
         total_chunks,
         [(500, 2000), (5000, 3000), (50000, 3500), (500000, 4000)],
@@ -177,8 +153,7 @@ def calc_global_reduce_max_length(total_chunks: int) -> int:
 
 
 def calc_global_dynamic_search_threshold(total_documents: int) -> int:
-    # Higher rating bar for larger corpora: more communities → be pickier about
-    # which ones clear the relevance gate during dynamic selection.
+    """Rating bar for dynamic community selection; stricter for bigger corpora."""
     return _lerp_int_log(
         total_documents,
         [(50, 1), (5000, 2), (500000, 3)],
@@ -186,18 +161,8 @@ def calc_global_dynamic_search_threshold(total_documents: int) -> int:
 
 
 def calc_community_level(total_documents: int) -> int:
-    """Max Leiden community-tree depth to include, driven by corpus size.
-
-    Shared by global search's `dynamic_search_max_level` and the static
-    `community_level` used by local / global / drift search — both express
-    "how deep into the community hierarchy to go", which scales with corpus
-    size the same way.
-
-    Tiny corpora (≤5 docs) have a flat or near-flat community structure
-    — depth 1 is enough. Depth grows with corpus size to capture nested
-    sub-communities; capped at 5 (the practical maximum that GraphRag's
-    Leiden clustering tends to produce even for very large corpora).
-    """
+    """Max community-tree depth to include; grows with corpus size, capped at 5.
+    Shared by static community_level and global's dynamic_search_max_level."""
     return _lerp_int_log(
         total_documents,
         [(5, 1), (50, 2), (500, 3), (5000, 4), (50000, 5)],
@@ -205,8 +170,7 @@ def calc_community_level(total_documents: int) -> int:
 
 
 def calc_drift_concurrency(total_chunks: int) -> int:
-    # Capped at 96 to keep enterprise-scale corpora from tripping provider
-    # rate limits; higher would just queue and stall behind 429s.
+    """Parallel drift requests; grows with corpus size, capped at 96 to avoid rate limits."""
     return _lerp_int_log(
         total_chunks,
         [(500, 16), (5000, 32), (50000, 64), (500000, 96)],
@@ -214,10 +178,7 @@ def calc_drift_concurrency(total_chunks: int) -> int:
 
 
 def calc_drift_k_followups(total_chunks: int) -> int:
-    """Drift follow-ups grow with √N: small corpora need few extra LLM calls
-    (everything fits in the primer), large corpora need more exploration.
-    Capped at 25 so cost stays bounded (drift isn't recommended past ~15k
-    chunks anyway — the recommender routes larger corpora to global)."""
+    """Drift follow-ups ≈ √N, clamped to 3..25 to bound cost."""
     if total_chunks < 1:
         return 3
     raw = int(math.sqrt(total_chunks) / 3)
@@ -225,17 +186,12 @@ def calc_drift_k_followups(total_chunks: int) -> int:
 
 
 def calc_conversation_history_max_turns(safe_budget_value: int) -> int:
-    """How many prior conversation turns to include in local search context.
-
-    Assumes ~1000 tokens per turn (typical user query + assistant reply with
-    citation snippets). Capped at 5 (Pydantic default, also the GraphRag-side
-    upper bound for sensible recall) and floored at 2 so degenerate ctx
-    (custom small models) still allows at least minimal dialog memory.
-    """
+    """Prior turns in local search context (~1000 tokens/turn), clamped to 2..5."""
     return max(2, min(5, safe_budget_value // 5000))
 
 
 def calc_drift_primer_folds(total_documents: int) -> int:
+    """Drift primer folds; grows with corpus size."""
     return _lerp_int_log(
         total_documents,
         [(5, 3), (50, 5), (500, 7), (5000, 9), (50000, 12)],
@@ -243,13 +199,7 @@ def calc_drift_primer_folds(total_documents: int) -> int:
 
 
 def calc_drift_n_depth(total_documents: int) -> int:
-    """Drift descent depth: smaller corpora need deeper exploration.
-
-    Anchors are decreasing in y — a small corpus benefits from drilling
-    deeper into each followup branch (more recursive expansion) since the
-    space is small enough; a large corpus needs broader, shallower coverage
-    and floors at 2.
-    """
+    """Drift descent depth; deeper for small corpora, floors at 2 for large."""
     return _lerp_int_log(
         total_documents,
         [(5, 4), (50, 3), (500, 2)],
@@ -257,15 +207,9 @@ def calc_drift_n_depth(total_documents: int) -> int:
 
 
 def safe_budget(target_ctx: int, is_trusted: bool = True) -> int:
-    """Token budget for a given LLM context window.
-
-    `is_trusted=True`  → ctx came from litellm (authoritative); use the full
-                         `ctx × SAFE_FRACTION` with no artificial ceiling.
-    `is_trusted=False` → ctx came from LLMConfig.context_window override or
-                         from FALLBACK_CONTEXT_WINDOW; cap at
-                         MAX_TOKEN_FIELD_VALUE so a mistyped override (e.g.,
-                         "2_000_000" instead of "200_000") cannot push our
-                         suggestions to absurd values.
+    """Token budget = ctx × SAFE_FRACTION. Untrusted ctx (user override or
+    fallback, not litellm) is capped at MAX_TOKEN_FIELD_VALUE so a mistyped
+    override can't push suggestions to absurd values.
     """
     raw = int(target_ctx * SAFE_FRACTION)
     if is_trusted:
@@ -278,16 +222,9 @@ def clamp_token_fields(
     budget: int,
     is_trusted: bool,
 ) -> tuple[dict[str, int | None], list[str]]:
-    """Clamp token-typed fields to a precomputed `budget` (typically `safe_budget(ctx, is_trusted)`).
-
-    Caller passes the already-resolved budget so builders can reuse the
-    same value as both the default and the ceiling without recomputing.
-
-    `is_trusted=False` (litellm did not recognise the model and we are using
-    a user override or the global fallback) disables clamping: applying
-    safe_budget to user overrides under a guessed ctx is unfair — the user
-    may know their custom model supports more. The save-side DRF serializer
-    still enforces MAX_TOKEN_FIELD_VALUE as the last line of defence.
+    """Clamp token-typed fields to `budget`, returning (clamped_values, clamped_names).
+    Untrusted ctx disables clamping — the user may know their custom model
+    supports more; the save-side DRF serializer still enforces the hard cap.
     """
     if not is_trusted:
         return dict(fields), []
@@ -306,11 +243,8 @@ def clamp_token_fields(
 
 
 def _pick(custom: dict | None, key: str, default):
-    """Return `custom[key]` if user supplied it, otherwise `default`.
-
-    Treats an explicit `None` from the user as "not supplied" so that
-    formulas / Pydantic defaults are used — matches the spec's intent
-    that None in user_custom_params means "use suggested default".
+    """Return `custom[key]` if supplied, else `default`. An explicit None counts
+    as "not supplied" (means "use suggested default").
     """
     if custom is None:
         return default
@@ -320,24 +254,14 @@ def _pick(custom: dict | None, key: str, default):
 
 
 def default_data_tokens(
-    metrics: CollectionMetrics,
+    metrics: SuggestedCollectionMetrics,
     budget: int,
     ctx_share: float,
     corpus_share: float,
 ) -> int:
-    """Per-method default for a token-typed field.
-
-    Combines two heuristics and takes the larger value, capped at `budget`:
-      - `ctx_share`: fraction of safe_budget — LLM-ceiling-driven default.
-      - `corpus_share`: fraction of total corpus tokens — data-driven default.
-
-    `max(by_ctx, by_corpus)` ensures small corpora aren't starved by a tiny
-    corpus_share, while large corpora can't blow past the LLM ceiling. Both
-    fields default to a 1000-token floor so empty/tiny collections still
-    produce a meaningful suggestion.
-
-    Caller picks the per-method shares (see build_graph_*_params); this
-    helper has no opinion on which method is which.
+    """Per-method default for a token field: max of ctx_share × budget and
+    corpus_share × corpus_tokens, floored at 1000 and capped at budget. The max
+    keeps small corpora from starving and large ones from exceeding the LLM ceiling.
     """
     corpus_tokens = int(metrics.total_chunks * max(metrics.avg_chunk_size, 0.0))
     by_ctx = int(budget * ctx_share)
@@ -346,21 +270,9 @@ def default_data_tokens(
 
 
 def _rebalance_props(text_unit: float, community: float) -> tuple[float, float]:
-    """Ensure text_unit_prop + community_prop <= 1.0, preserving the ratio
-    when normalization is needed.
-
-    The worker (graphrag.mixed_context.build_context) derives a third slice
-    `local_prop = 1 - text_unit - community` for entity/relationship/covariate
-    context, and raises ValueError when the sum > 1. So our job here is NOT
-    to force sum == 1 (that would starve the local slice) but to keep the
-    sum strictly safe for the worker.
-
-    Strategy:
-      1. Clamp each field into [0.0, 1.0].
-      2. If the sum exceeds 1.0, normalize proportionally so it becomes 1.0
-         (local_prop will be 0 in that case — caller intentionally maxed out).
-      3. If the sum is <= 1.0, leave both values as-is; the worker fills the
-         remaining budget with local context.
+    """Keep text_unit_prop + community_prop <= 1.0 (the worker derives
+    local_prop = 1 - text - community and rejects sum > 1). Clamp each to
+    [0, 1]; normalize proportionally only if the sum exceeds 1, else leave as-is.
     """
     text_unit = max(0.0, min(1.0, float(text_unit)))
     community = max(0.0, min(1.0, float(community)))
@@ -373,15 +285,12 @@ def _rebalance_props(text_unit: float, community: float) -> tuple[float, float]:
 
 def _resolved_props(
     custom: dict | None,
-    metrics: CollectionMetrics,
+    metrics: SuggestedCollectionMetrics,
     text_key: str,
     community_key: str,
 ) -> tuple[float, float]:
-    """Resolve text_unit / community proportions (user override → formula) and
-    rebalance so their sum stays <= 1.0 for the mixed-context worker.
-
-    Shared by local and drift builders, which differ only in the custom-dict
-    key names (`text_unit_prop` vs `local_search_text_unit_prop`).
+    """Resolve text_unit / community proportions (override → formula) and rebalance
+    to sum <= 1.0. Shared by local and drift builders (they differ only in key names).
     """
     text_unit = _pick(custom, text_key, calc_text_unit_prop(metrics.avg_chunk_size))
     community = _pick(
@@ -391,7 +300,7 @@ def _resolved_props(
 
 
 def build_naive_params(
-    metrics: CollectionMetrics,
+    metrics: SuggestedCollectionMetrics,
     custom: dict | None,
 ) -> tuple[NaiveRagSearchConfig, list[str]]:
     chunks = metrics.total_chunks
@@ -405,7 +314,7 @@ def build_naive_params(
 
 
 def build_graph_basic_params(
-    metrics: CollectionMetrics,
+    metrics: SuggestedCollectionMetrics,
     ctx: int,
     is_trusted: bool,
     custom: dict | None,
@@ -430,7 +339,7 @@ def build_graph_basic_params(
 
 
 def build_graph_local_params(
-    metrics: CollectionMetrics,
+    metrics: SuggestedCollectionMetrics,
     ctx: int,
     is_trusted: bool,
     custom: dict | None,
@@ -473,7 +382,7 @@ def build_graph_local_params(
 
 
 def build_graph_global_params(
-    metrics: CollectionMetrics,
+    metrics: SuggestedCollectionMetrics,
     ctx: int,
     is_trusted: bool,
     custom: dict | None,
@@ -531,7 +440,7 @@ def build_graph_global_params(
 
 
 def build_graph_drift_params(
-    metrics: CollectionMetrics,
+    metrics: SuggestedCollectionMetrics,
     ctx: int,
     is_trusted: bool,
     custom: dict | None,
@@ -604,7 +513,7 @@ def build_graph_drift_params(
 
 
 BuilderFn = Callable[
-    [CollectionMetrics, int, bool, dict | None],
+    [SuggestedCollectionMetrics, int, bool, dict | None],
     tuple[BaseModel, list[str]],
 ]
 
@@ -660,12 +569,12 @@ class MethodApplicability:
 
     `predicate(metrics)` returns True when this method is the recommended
     default for a corpus with those metrics. Predicates may inspect any
-    field of CollectionMetrics (total_documents, total_chunks,
+    field of SuggestedCollectionMetrics (total_documents, total_chunks,
     avg_chunk_size, or derived quantities).
     """
 
     method_name: str
-    predicate: Callable[[CollectionMetrics], bool]
+    predicate: Callable[[SuggestedCollectionMetrics], bool]
 
 
 GRAPH_METHOD_RECOMMENDATION_ORDER: list[MethodApplicability] = [
@@ -688,7 +597,7 @@ GRAPH_METHOD_RECOMMENDATION_ORDER: list[MethodApplicability] = [
 ]
 
 
-def recommend_graph_search_method(metrics: CollectionMetrics) -> str:
+def recommend_graph_search_method(metrics: SuggestedCollectionMetrics) -> str:
     """Recommend the optimal graph RAG search method for this corpus size.
 
     Walks GRAPH_METHOD_RECOMMENDATION_ORDER and returns the first method

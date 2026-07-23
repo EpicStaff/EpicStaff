@@ -1,4 +1,4 @@
-"""HTTP-boundary DTOs for the Adaptive Context Management endpoints.
+"""HTTP-boundary DTOs for the search-config suggestion endpoints.
 
 Kept separate from `shared/models/knowledge.py` (the Redis message contract)
 so HTTP-layer evolution stays decoupled from the message bus. The existing
@@ -28,13 +28,13 @@ SuggestedSearchParams = (
 GraphSearchMethod = Literal["basic", "local", "global", "drift"]
 
 
-class CollectionMetrics(BaseModel):
+class SuggestedCollectionMetrics(BaseModel):
     total_documents: int = Field(ge=0)
     total_chunks: int = Field(ge=0)
     avg_chunk_size: float = Field(ge=0)
 
 
-class NaiveRagSuggestRequest(BaseModel):
+class NaiveRagSuggestInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     knowledge_collection_id: int = Field(gt=0)
@@ -42,7 +42,7 @@ class NaiveRagSuggestRequest(BaseModel):
     user_custom_params: dict | None = None
 
 
-class GraphRagSuggestRequest(BaseModel):
+class GraphRagSuggestInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     knowledge_collection_id: int = Field(gt=0)
@@ -51,8 +51,8 @@ class GraphRagSuggestRequest(BaseModel):
     user_custom_params: dict | None = None
 
 
-class SuggestResponse(BaseModel):
-    metrics: CollectionMetrics
+class SuggestOutput(BaseModel):
+    metrics: SuggestedCollectionMetrics
     resolved_llm_name: str | None = None
     llm_resolution_warning: str | None = None
     effective_llm_context_window: int = Field(gt=0)

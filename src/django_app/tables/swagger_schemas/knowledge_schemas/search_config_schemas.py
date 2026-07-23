@@ -1,11 +1,9 @@
 from drf_spectacular.utils import OpenApiExample
 
-from tables.serializers.adaptive_context_serializers import (
-    ErrorResponseSerializer,
-    GraphRagSuggestRequestSerializer,
-    NaiveRagSuggestRequestSerializer,
-    SuggestResponseSerializer,
-    ValidationErrorResponseSerializer,
+from tables.serializers.search_config_serializers import (
+    GraphRagSuggestInputSerializer,
+    NaiveRagSuggestInputSerializer,
+    SuggestOutputSerializer,
 )
 
 NAIVE_RAG_SUGGEST_PARAMS_POST = dict(
@@ -17,13 +15,8 @@ NAIVE_RAG_SUGGEST_PARAMS_POST = dict(
         "target LLM's context window. Pass overrides via "
         "`user_custom_params` to lock specific fields."
     ),
-    request=NaiveRagSuggestRequestSerializer,
-    responses={
-        200: SuggestResponseSerializer,
-        400: ValidationErrorResponseSerializer,
-        404: ErrorResponseSerializer,
-        500: ErrorResponseSerializer,
-    },
+    request=NaiveRagSuggestInputSerializer,
+    responses={200: SuggestOutputSerializer},
     examples=[
         OpenApiExample(
             "Minimal — use all suggested defaults",
@@ -58,14 +51,8 @@ GRAPH_RAG_SUGGEST_PARAMS_POST = dict(
         "`safe_token_budget` unless the LLM model could not be resolved "
         "by litellm (see `llm_resolution_warning`)."
     ),
-    request=GraphRagSuggestRequestSerializer,
-    responses={
-        200: SuggestResponseSerializer,
-        400: ValidationErrorResponseSerializer,
-        404: ErrorResponseSerializer,
-        409: ErrorResponseSerializer,
-        500: ErrorResponseSerializer,  # GraphRagArtifactMissingException + unexpected
-    },
+    request=GraphRagSuggestInputSerializer,
+    responses={200: SuggestOutputSerializer},
     examples=[
         OpenApiExample(
             "Basic search — defaults",

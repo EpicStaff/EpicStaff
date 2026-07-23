@@ -7,7 +7,7 @@ from loguru import logger
 from services.processing_run import set_process_pool
 from settings import settings
 from src.shared.communication import Consumer, Producer, brokers, storages
-from knowledge_new.services.prompt_grounding import apply_prompt_grounding
+from knowledge_new.services.prompt_patching import apply_prompt_grounding
 
 
 async def main():

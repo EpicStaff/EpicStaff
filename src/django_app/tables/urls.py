@@ -113,7 +113,7 @@ from tables.views.knowledge_views.naive_rag_views import (
 from tables.views.knowledge_views.graph_rag_views import (
     GraphRagViewSet,
 )
-from tables.views.knowledge_views.adaptive_context_views import (
+from tables.views.knowledge_views.search_config_views import (
     GraphRagSuggestParamsView,
     NaiveRagSuggestParamsView,
 )

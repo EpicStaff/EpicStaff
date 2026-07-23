@@ -56,7 +56,7 @@ class TablesConfig(AppConfig):
             or "daphne" in argv0
         )
         if is_web_server:
-            from tables.utils.llm_context_windows import start_litellm_refresh_if_owner
+            from tables.utils.litellm_model_info import start_litellm_refresh_if_owner
 
             start_litellm_refresh_if_owner()
 

@@ -5,10 +5,10 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from src.shared.models.adaptive_context import (
-    GraphRagSuggestRequest,
-    NaiveRagSuggestRequest,
-    SuggestResponse,
+from src.shared.models.search_config_suggestion import (
+    GraphRagSuggestInput,
+    NaiveRagSuggestInput,
+    SuggestOutput,
 )
 from tables.exceptions import (
     CollectionNotFoundException,
@@ -17,15 +17,15 @@ from tables.exceptions import (
     NoGraphRagForCollectionException,
 )
 from tables.models.llm_models import LLMConfig
-from tables.serializers.adaptive_context_serializers import (
-    GraphRagSuggestRequestSerializer,
-    NaiveRagSuggestRequestSerializer,
+from tables.serializers.search_config_serializers import (
+    GraphRagSuggestInputSerializer,
+    NaiveRagSuggestInputSerializer,
 )
-from tables.swagger_schemas.knowledge_schemas.adaptive_context_schemas import (
+from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
     GRAPH_RAG_SUGGEST_PARAMS_POST,
     NAIVE_RAG_SUGGEST_PARAMS_POST,
 )
-from tables.services.knowledge_services.adaptive_context_service import (
+from tables.services.knowledge_services.search_config_service import (
     build_naive_params,
     get_graph_strategy,
     recommend_graph_search_method,
@@ -34,7 +34,7 @@ from tables.services.knowledge_services.adaptive_context_service import (
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
-from tables.utils.llm_context_windows import resolve_context_window
+from tables.utils.litellm_model_info import resolve_context_window
 
 
 def _validation_error_response(exc: ValidationError) -> Response:
@@ -77,7 +77,7 @@ def _build_response(
     is_trusted: bool,
     recommended_method: str | None = None,
 ) -> Response:
-    payload = SuggestResponse(
+    payload = SuggestOutput(
         metrics=metrics,
         resolved_llm_name=llm_name or None,
         llm_resolution_warning=warning,
@@ -91,12 +91,12 @@ def _build_response(
 
 
 class NaiveRagSuggestParamsView(APIView):
-    serializer_class = NaiveRagSuggestRequestSerializer
+    serializer_class = NaiveRagSuggestInputSerializer
 
     @extend_schema(**NAIVE_RAG_SUGGEST_PARAMS_POST)
     def post(self, request):
         try:
-            req = NaiveRagSuggestRequest(**(request.data or {}))
+            req = NaiveRagSuggestInput(**(request.data or {}))
         except ValidationError as exc:
             return _validation_error_response(exc)
         except TypeError:
@@ -125,12 +125,12 @@ class NaiveRagSuggestParamsView(APIView):
 
 
 class GraphRagSuggestParamsView(APIView):
-    serializer_class = GraphRagSuggestRequestSerializer
+    serializer_class = GraphRagSuggestInputSerializer
 
     @extend_schema(**GRAPH_RAG_SUGGEST_PARAMS_POST)
     def post(self, request):
         try:
-            req = GraphRagSuggestRequest(**(request.data or {}))
+            req = GraphRagSuggestInput(**(request.data or {}))
         except ValidationError as exc:
             return _validation_error_response(exc)
         except TypeError:

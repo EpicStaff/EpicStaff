@@ -106,12 +106,14 @@ class GraphSearch(AbstractSearch):
             )
 
         specs = self._SEARCH_MAP[request.search_config.method]
-        section = specs.config_model.model_validate(request.search_config.model_dump())
+        method_config = specs.config_model.model_validate(
+            request.search_config.model_dump()
+        )
 
         setattr(
             config,
             specs.config_field,
-            section,
+            method_config,
         )
         files = await self._resolve_files(
             config=config,
@@ -119,7 +121,9 @@ class GraphSearch(AbstractSearch):
             optional_files=specs.optional_files,
         )
         dynamic = (
-            specs.adjust(request.search_config, section, files) if specs.adjust else {}
+            specs.adjust(request.search_config, method_config, files)
+            if specs.adjust
+            else {}
         )
 
         result, _ = await specs.searcher(
