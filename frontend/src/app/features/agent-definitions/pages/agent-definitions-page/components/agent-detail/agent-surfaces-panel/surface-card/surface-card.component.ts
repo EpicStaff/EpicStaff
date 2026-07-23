@@ -117,6 +117,7 @@ export class SurfaceCardComponent {
     draggable = input<boolean>(false);
     hideHeader = input<boolean>(false);
     isCreating = input<boolean>(false);
+    hideInstructions = input<boolean>(false);
 
     readonly save = output<void>();
     readonly cancel = output<void>();

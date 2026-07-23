@@ -3,11 +3,13 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { AppSvgIconComponent } from '@shared/components';
 
 import { CombinedSurface, Surface } from '../../../../models/surface.model';
+import { SurfaceCatalogsStore } from '../../../../services/surface-catalogs-store.service';
 import { SurfaceCardComponent } from '../agent-detail/agent-surfaces-panel/surface-card/surface-card.component';
 
 export interface SurfaceSummaryDialogData {
     combined: CombinedSurface;
     placeLabel: string;
+    hideInstructions?: boolean;
 }
 
 @Component({
@@ -16,12 +18,14 @@ export interface SurfaceSummaryDialogData {
     templateUrl: './surface-summary-dialog.component.html',
     styleUrls: ['./surface-summary-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    providers: [SurfaceCatalogsStore],
 })
 export class SurfaceSummaryDialogComponent {
     private readonly dialogRef = inject<DialogRef<void>>(DialogRef);
     private readonly data = inject<SurfaceSummaryDialogData>(DIALOG_DATA);
 
     readonly placeLabel = this.data.placeLabel;
+    readonly hideInstructions = this.data.hideInstructions ?? false;
 
     readonly summarySurface = computed<Surface>(() => {
         const c = this.data.combined;

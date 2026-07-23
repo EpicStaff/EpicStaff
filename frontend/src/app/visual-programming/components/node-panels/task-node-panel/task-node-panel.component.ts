@@ -271,7 +271,11 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
                         maxWidth: '100vw',
                         panelClass: 'surface-summary-dialog-panel',
                         injector: this.injector,
-                        data: { combined, placeLabel: this.node().data.name || 'Surface Summary' },
+                        data: {
+                            combined,
+                            placeLabel: this.node().data.name || 'Surface Summary',
+                            hideInstructions: true,
+                        },
                     });
                 },
                 error: () => {

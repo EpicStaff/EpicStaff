@@ -198,24 +198,26 @@
                 </div>
             }
 
-            <div class="field">
-                @if (readOnly()) {
-                    <p class="field__readonly-text">{{ instructions() || 'No instructions.' }}</p>
-                } @else {
-                    <label class="field__label">Instructions</label>
-                    <textarea
-                        #instrTa
-                        class="field__textarea"
-                        placeholder="Add instructions on how the agent should use this Surface..."
-                        rows="3"
-                        [ngModel]="instructions()"
-                        (ngModelChange)="instructions.set($event)"
-                        appEnterBlur
-                        (focus)="onInstructionsFocus()"
-                        (blur)="onInstructionsBlur()"
-                    ></textarea>
-                }
-            </div>
+            @if (!hideInstructions()) {
+                <div class="field">
+                    @if (readOnly()) {
+                        <p class="field__readonly-text">{{ instructions() || 'No instructions.' }}</p>
+                    } @else {
+                        <label class="field__label">Instructions</label>
+                        <textarea
+                            #instrTa
+                            class="field__textarea"
+                            placeholder="Add instructions on how the agent should use this Surface..."
+                            rows="3"
+                            [ngModel]="instructions()"
+                            (ngModelChange)="instructions.set($event)"
+                            appEnterBlur
+                            (focus)="onInstructionsFocus()"
+                            (blur)="onInstructionsBlur()"
+                        ></textarea>
+                    }
+                </div>
+            }
 
             <nav class="tabs">
                 <button
