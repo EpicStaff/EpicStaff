@@ -168,25 +168,6 @@ _DECISION_TABLE_LIST_KEYS: tuple[str, ...] = (
     "classification_decision_table_node_list",
 )
 
-_EMPTY_DELETED: dict[str, list] = {
-    "edge_ids": [],
-    "conditional_edge_ids": [],
-    "crew_node_ids": [],
-    "python_node_ids": [],
-    "file_extractor_node_ids": [],
-    "audio_transcription_node_ids": [],
-    "start_node_ids": [],
-    "end_node_ids": [],
-    "subgraph_node_ids": [],
-    "decision_table_node_ids": [],
-    "graph_note_ids": [],
-    "webhook_trigger_node_ids": [],
-    "telegram_trigger_node_ids": [],
-    "schedule_trigger_node_ids": [],
-    "code_agent_node_ids": [],
-    "classification_decision_table_node_ids": [],
-}
-
 
 class GraphLiveStateService:
     """Maintains per-graph authoritative live snapshots in Redis.
@@ -323,7 +304,7 @@ class GraphLiveStateService:
         temp_id_map: dict[str, int],
         new_save_version: int,
         *,
-        flushed_deleted: dict[str, list] | None = None,
+        flushed_deleted: dict[str, list],
         flushed_temp_id_to_list_key: dict[str, str] | None = None,
     ) -> None:
         """Rewrite temp_id references in the stored snapshot to real DB ids.
@@ -417,22 +398,16 @@ class GraphLiveStateService:
 
             # Remove from the live accumulator only the ids that were in the
             # flushed snapshot at flush-read time — ids accumulated after that
-            # point (concurrent apply_op deletes) are preserved.
-            if flushed_deleted is not None:
-                for delete_key, persisted_ids in flushed_deleted.items():
-                    if not persisted_ids:
-                        continue
-                    live_ids: list = live_deleted.get(delete_key, [])
-                    persisted_set = set(persisted_ids)
-                    live_deleted[delete_key] = [
-                        id_ for id_ in live_ids if id_ not in persisted_set
-                    ]
-
-            else:
-                # Fallback for callers that do not supply flushed_deleted
-                # (e.g. legacy test call-sites): blanket-clear as before.
-                snapshot["deleted"] = _make_empty_deleted()
-                live_deleted = snapshot["deleted"]
+            # point (concurrent apply_op delete) must not be wiped, so this is
+            # a precise set-difference, never a blanket clear.
+            for delete_key, persisted_ids in flushed_deleted.items():
+                if not persisted_ids:
+                    continue
+                live_ids: list = live_deleted.get(delete_key, [])
+                persisted_set = set(persisted_ids)
+                live_deleted[delete_key] = [
+                    id_ for id_ in live_ids if id_ not in persisted_set
+                ]
 
             # Orphan node detection.
             # A node with temp_id T was in the flushed snapshot (and therefore
@@ -848,7 +823,7 @@ def _cascade_deleted_node_refs(snapshot: dict, deleted: dict, node_id: int) -> N
 
 def _make_empty_deleted() -> dict:
     """Return a fresh deleted accumulator with all expected keys."""
-    return {key: [] for key in _EMPTY_DELETED}
+    return {delete_key: [] for delete_key in _LIST_KEY_TO_DELETE_KEY.values()}
 
 
 @sync_to_async

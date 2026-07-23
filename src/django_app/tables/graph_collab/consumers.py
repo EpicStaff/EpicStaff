@@ -449,9 +449,6 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
     async def user_left(self, event):
         await self.send_json(event)
 
-    async def presence_state(self, event):
-        await self.send_json(event)
-
     async def presence_state_updated(self, event):
         await self.send_json(event)
 
