@@ -245,6 +245,19 @@ export class FlowBaseNodeComponent {
         }
         return '';
     }
+
+    public get hasMissingAgent(): boolean {
+        // Only agent/task nodes carry an agent assignment.
+        if (this.agentNode === null && this.taskNode === null) return false;
+        return this.assignedAgentDefinitionId == null;
+    }
+
+    public get missingAgentTooltip(): string {
+        return this.hasMissingAgent
+            ? 'This node has no agent assigned (the agent may have been deleted). Assign an agent to this node.'
+            : '';
+    }
+
     public onExpandProjectClick(): void {
         this.projectExpandToggled.emit(this.node as ProjectNodeModel);
     }
