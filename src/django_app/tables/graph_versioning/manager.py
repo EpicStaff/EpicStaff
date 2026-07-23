@@ -1,29 +1,31 @@
 import textwrap
 from copy import deepcopy
 
-from tables.import_export.enums import EntityType, NodeType
-from tables.import_export.strategies.graph import GraphStrategy
-from tables.import_export.id_mapper import IDMapper
-from tables.import_export.version_conversions.base import VersionConverter
-from tables.import_export.constants import NODE_MAPPING_KEY
-from tables.import_export.utils import ensure_unique_identifier
-
 from tables.graph_versioning.constants import (
-    _EXCLUDED_GRAPH_SCALARS,
     _DEPENDENCY_ENTITY_TYPES,
     _DEPENDENCY_MODELS,
+    _EXCLUDED_GRAPH_SCALARS,
     _GRAPH_RELATION_NAMES,
 )
 from tables.graph_versioning.handlers import HANDLER_REGISTRY, _MissingSets
+from tables.import_export.constants import NODE_MAPPING_KEY
+from tables.import_export.enums import EntityType, NodeType
+from tables.import_export.id_mapper import IDMapper
+from tables.import_export.strategies.graph import GraphStrategy
+from tables.import_export.utils import ensure_unique_identifier
+from tables.import_export.version_conversions.base import VersionConverter
 from tables.models import (
-    Graph,
     ConditionalEdge,
-    GraphOrganization,
+    Graph,
     PythonCode,
     PythonCodeTool,
     PythonNode,
     WebhookTrigger,
     WebhookTriggerNode,
+)
+from tables.models.graph_models import StartNode
+from tables.services.persistent_variables_service import (
+    PersistentVariablesService,
 )
 
 
@@ -385,7 +387,10 @@ class GraphVersioningManager:
         serializer.is_valid(raise_exception=True)
         graph = serializer.save(org_id=org_id)
 
-        GraphOrganization.objects.get_or_create(graph=graph, organization_id=org_id)
+        start_node = StartNode.objects.filter(graph=graph).first()
+        PersistentVariablesService().seed_for_copy(
+            graph, start_node.variables if start_node else {}
+        )
 
         node_mapper = self._graph_strategy.recreate_graph_children(
             graph,

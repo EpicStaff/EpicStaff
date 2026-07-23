@@ -5,7 +5,7 @@ from rest_framework.response import Response
 
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.permission_serializers import RoleResponseSerializer
-from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permissions import HasOrgPermission
 from tables.services.rbac.role_management_service import RoleManagementService
@@ -19,7 +19,7 @@ class RoleAdminViewSet(viewsets.ViewSet):
               from role.org_id; built-ins are global, customs check membership)
     """
 
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     _service = RoleManagementService()
@@ -55,7 +55,7 @@ class OrgScopedRoleAdminViewSet(viewsets.ViewSet):
     list: GET /api/admin/organizations/{org_id}/roles/
     """
 
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, HasOrgPermission]
 
     rbac_resource_type = ResourceType.ROLES

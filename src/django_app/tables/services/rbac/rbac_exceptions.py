@@ -302,3 +302,25 @@ class OrganizationContextAmbiguous(CustomAPIExeption):
         "Multiple organization memberships; please specify X-Organization-Id header."
     )
     default_code = "organization_context_ambiguous"
+
+
+class ApiKeyNotFoundError(CustomAPIExeption):
+    """Raised when an API key id does not exist in the caller's scope
+    (own keys for self-service, active-org members' keys for management).
+    404 in both cases — no cross-user/cross-org enumeration."""
+
+    status_code = 404
+    default_detail = "API key not found."
+    default_code = "api_key_not_found"
+
+
+class ApiKeyLimitExceededError(CustomAPIExeption):
+    """Raised by ApiKeyService.create_key when the caller already has the
+    maximum number of active (non-revoked, non-expired) keys."""
+
+    status_code = 400
+    default_detail = (
+        "Maximum number of active API keys reached (5). "
+        "Revoke or delete an existing key first."
+    )
+    default_code = "api_key_limit_exceeded"

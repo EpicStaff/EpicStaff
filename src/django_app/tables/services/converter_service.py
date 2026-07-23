@@ -76,7 +76,6 @@ from tables.models.graph_models import (
     EndNode,
     FileExtractorNode,
     Graph,
-    GraphOrganization,
     GraphStorageFile,
     PythonNode,
     ScheduleTriggerNode,
@@ -168,9 +167,11 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
-        graph_org = GraphOrganization.objects.filter(graph_id=graph_id).first()
-        if graph_org is not None:
-            return f"org_{graph_org.organization_id}"
+        org_id = (
+            Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
+        )
+        if org_id is not None:
+            return f"org_{org_id}"
         return None
 
     def convert_crew_to_pydantic(
@@ -581,13 +582,13 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool: PythonCodeTool,
         graph_id: int | None = None,
         session_id: int | None = None,
-    ) -> PythonCodeToolData:      
+    ) -> PythonCodeToolData:
         storage_allowed_paths = None
         storage_org_prefix = None
         if python_code_tool.use_storage and graph_id is not None:
             storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)        
-        
+            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
         variables = python_code_tool.variables or []
         user_defaults = self._get_user_input_defaults(variables)
         python_code_data = self.convert_python_code_to_pydantic(
@@ -707,7 +708,6 @@ class ConverterService(metaclass=SingletonMeta):
                 presence_penalty=config.presence_penalty,
                 frequency_penalty=config.frequency_penalty,
                 logit_bias=config.logit_bias,
-                response_format=config.response_format,
                 seed=config.seed,
                 base_url=config.model.base_url,
                 api_version=config.model.api_version,

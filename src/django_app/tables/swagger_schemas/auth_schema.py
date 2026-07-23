@@ -1,7 +1,6 @@
 from drf_spectacular.utils import OpenApiResponse, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 from tables.serializers.rbac_serializers import (
-    ApiKeyValidateResponseSerializer,
     FirstSetupStatusSerializer,
     FirstSetupRequestSerializer,
     FirstSetupResponseSerializer,
@@ -22,10 +21,27 @@ API_KEY_VALIDATE_GET = dict(
     summary="Validate the current API key",
     description=(
         "Requires an API key. Returns metadata about the calling key "
-        "including the owning user's id (null for env-seeded system keys)."
+        "including the owning user's id (null for env-seeded system keys). "
+        "Permissions come from the owning user's live RBAC role, not a "
+        "per-key scope list — the response carries no `scopes` field."
     ),
     responses={
-        200: ApiKeyValidateResponseSerializer,
+        200: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Key is active.",
+            examples=[
+                OpenApiExample(
+                    "Active key",
+                    value={
+                        "active": True,
+                        "name": "my-key",
+                        "prefix": "es-abc12345",
+                        "owner_user_id": 3,
+                    },
+                    response_only=True,
+                ),
+            ],
+        ),
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -141,6 +157,7 @@ TOKEN_INTROSPECT_POST = dict(
     description=(
         "Service-to-service JWT validator: the caller authenticates with "
         "an API key and passes a JWT in the body to get its claims back. "
+        "Requires a SYSTEM-type API key — user-owned keys are rejected. "
         "Intended for internal services / gateways that should not hold "
         "`JWT_SECRET` but still need to verify bearer tokens. "
         "See `docs/rbac/auth_endpoints.md` for full behavior."
@@ -167,12 +184,12 @@ TOKEN_INTROSPECT_POST = dict(
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Request was not authenticated with an API key.",
+            description="Request was not authenticated with a SYSTEM API key.",
             examples=[
                 OpenApiExample(
-                    "API key required",
+                    "System API key required",
                     value={
-                        "detail": "API key required",
+                        "detail": "System API key required",
                     },
                     response_only=True,
                     status_codes=["403"],
@@ -264,10 +281,11 @@ LOGOUT_POST = dict(
 RESET_USER_POST = dict(
     summary="Reset user (destructive)",
     description=(
-        "Deletes all Users and ApiKeys inside a single transaction, then "
-        "creates a new superadmin and a fresh 'realtime-default' API key. "
-        "Organizations are left intact; the new superadmin has no "
-        "automatic membership and relies on the is_superadmin bypass."
+        "Deletes all Users inside a single transaction (their API keys "
+        "cascade; the system API key survives), then creates a new "
+        "superadmin. Organizations are left intact; the new superadmin "
+        "is given a default-organization membership (the default org is "
+        "reused if one exists, otherwise created)."
     ),
     request=ResetUserRequestSerializer,
     responses={
