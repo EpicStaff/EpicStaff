@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
-import { map, Observable } from 'rxjs';
+import { inject, Injectable, signal } from '@angular/core';
+import { map, Observable, tap } from 'rxjs';
 
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
@@ -18,6 +18,9 @@ export class AgentDefinitionsApiService {
 
     private readonly httpHeaders = new HttpHeaders({ 'Content-Type': 'application/json' });
 
+    private readonly definitionsSignal = signal<AgentDefinition[]>([]);
+    public readonly definitions = this.definitionsSignal.asReadonly();
+
     private get baseUrl(): string {
         return `${this.configService.apiUrl}agent-definitions/`;
     }
@@ -25,6 +28,11 @@ export class AgentDefinitionsApiService {
     getAgentDefinitions(): Observable<AgentDefinition[]> {
         const params = new HttpParams().set('limit', '1000');
         return this.http.get<ApiGetRequest<AgentDefinition>>(this.baseUrl, { params }).pipe(map((res) => res.results));
+    }
+
+    /** Fetches agent definitions fresh and publishes them into the shared `definitions` signal. */
+    refreshDefinitions(): Observable<AgentDefinition[]> {
+        return this.getAgentDefinitions().pipe(tap((defs) => this.definitionsSignal.set(defs)));
     }
 
     getById(id: number): Observable<AgentDefinition> {

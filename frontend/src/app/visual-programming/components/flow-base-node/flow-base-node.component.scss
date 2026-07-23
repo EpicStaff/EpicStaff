@@ -181,10 +181,28 @@
                 border: 1px solid rgba(255, 107, 107, 0.6);
                 white-space: nowrap;
             }
+
+            .llm-warning-badge {
+                margin-left: auto;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 11px;
+                padding: 2px 6px;
+                border-radius: 10px;
+                background: color-mix(in srgb, var(--color-error) 15%, transparent);
+                color: var(--color-error);
+                border: 1px solid color-mix(in srgb, var(--color-error) 60%, transparent);
+                white-space: nowrap;
+            }
         }
 
         .node-details {
             margin-top: 1rem;
+        }
+
+        &.is-blocked-llm {
+            box-shadow: 0 0 0 1px var(--color-error);
         }
     }
 

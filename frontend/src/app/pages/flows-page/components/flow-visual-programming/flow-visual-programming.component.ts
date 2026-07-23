@@ -42,6 +42,7 @@ import { GraphCollaborationWsService } from 'src/app/features/flows/services/gra
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
+import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantPanelComponent } from '../../../../features/flow-assistant/components/flow-assistant-panel/flow-assistant-panel.component';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
@@ -194,6 +195,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly permissionsService: PermissionsService,
         private readonly sidePanelService: SidePanelService,
         private readonly llmConfigStorageService: LlmConfigStorageService,
+        private readonly agentDefinitionsApiService: AgentDefinitionsApiService,
         private readonly unsavedChangesRegistry: UnsavedChangesRegistry
     ) {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
@@ -957,6 +959,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     );
                 }
             });
+
+        // Fetch agent definitions fresh on every flow-page load so agent/task node
+        // "missing LLM" warnings reflect edits made on other pages (e.g. the agents page).
+        this.agentDefinitionsApiService.refreshDefinitions().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     private countBlockedSubgraphNodes(flowModel: FlowModel): number {

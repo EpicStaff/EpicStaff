@@ -90,6 +90,7 @@
 <ng-template #interactiveNode>
     <div
         class="interactive-node-body"
+        [class.is-blocked-llm]="hasMissingAgentLlm"
         appClickOrDrag
         (actualClick)="onEditClick()"
     >
@@ -131,6 +132,18 @@
                 title="Referenced subgraph was deleted"
             >
                 Missing flow
+            </div>
+            <div
+                class="llm-warning-badge"
+                *ngIf="hasMissingAgentLlm"
+                [matTooltip]="agentLlmWarningTooltip"
+                matTooltipPosition="above"
+            >
+                <app-svg-icon
+                    icon="alert-triangle"
+                    size="0.875rem"
+                ></app-svg-icon>
+                <span>No LLM</span>
             </div>
         </div>
     </div>
