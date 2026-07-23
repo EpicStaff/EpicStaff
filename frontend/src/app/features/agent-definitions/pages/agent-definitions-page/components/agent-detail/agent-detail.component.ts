@@ -56,6 +56,7 @@ export interface AgentSavePayload {
     max_tool_calls?: number | null;
     tool_timeout?: number | null;
     max_consecutive_failures?: number | null;
+    schema_max_retries?: number | null;
 }
 
 export type AgentSectionId = 'basics' | 'surfaces';
@@ -250,6 +251,7 @@ export class AgentDetailComponent implements OnInit {
             max_tool_calls: a?.max_tool_calls,
             tool_timeout: a?.tool_timeout,
             max_consecutive_failures: a?.max_consecutive_failures,
+            schema_max_retries: a?.schema_max_retries,
         });
     }
 
@@ -294,6 +296,7 @@ export class AgentDetailComponent implements OnInit {
             max_tool_calls: a.max_tool_calls,
             tool_timeout: a.tool_timeout,
             max_consecutive_failures: a.max_consecutive_failures,
+            schema_max_retries: a.schema_max_retries,
         };
         this.dialog
             .open<AgentAdditionalSettingsResult | undefined>(AgentAdditionalSettingsDialogComponent, { data })
@@ -318,6 +321,7 @@ export class AgentDetailComponent implements OnInit {
                     max_tool_calls: result.max_tool_calls,
                     tool_timeout: result.tool_timeout,
                     max_consecutive_failures: result.max_consecutive_failures,
+                    schema_max_retries: result.schema_max_retries,
                 });
             });
     }

@@ -7,6 +7,7 @@ export const AGENT_TOOL_DEFAULTS = {
     max_tool_calls: 15,
     tool_timeout: 300,
     max_consecutive_failures: 3,
+    schema_max_retries: 2,
 } as const;
 
 export interface AgentDefaultSurface {
@@ -40,6 +41,7 @@ export interface AgentDefinition {
     max_tool_calls: number | null;
     tool_timeout: number | null;
     max_consecutive_failures: number | null;
+    schema_max_retries: number | null;
 }
 
 export interface CreateAgentDefinitionRequest {
@@ -59,6 +61,7 @@ export interface CreateAgentDefinitionRequest {
     max_tool_calls?: number | null;
     tool_timeout?: number | null;
     max_consecutive_failures?: number | null;
+    schema_max_retries?: number | null;
 }
 
 export type UpdateAgentDefinitionRequest = CreateAgentDefinitionRequest;

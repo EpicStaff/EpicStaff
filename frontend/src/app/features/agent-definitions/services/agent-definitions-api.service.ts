@@ -74,6 +74,7 @@ export class AgentDefinitionsApiService {
             max_tool_calls: source.max_tool_calls,
             tool_timeout: source.tool_timeout,
             max_consecutive_failures: source.max_consecutive_failures,
+            schema_max_retries: source.schema_max_retries,
         };
         return this.create(body);
     }
