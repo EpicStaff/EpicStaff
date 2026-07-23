@@ -430,7 +430,7 @@ def test_cdt_condition_group_prompt_same_node_attached(client_a, org_a):
 
 
 @pytest.mark.django_db
-def test_cdt_condition_group_prompt_other_node_resolves_none(client_a, org_a):
+def test_cdt_condition_group_prompt_other_node_rejected(client_a, org_a):
     graph_a = _graph(org_a, "a")
     node_a = ClassificationDecisionTableNode.objects.create(
         graph=graph_a, node_name="cdt_a"
@@ -450,9 +450,94 @@ def test_cdt_condition_group_prompt_other_node_resolves_none(client_a, org_a):
         },
         format="json",
     )
-    assert resp.status_code == 200, resp.data
-    group = ClassificationConditionGroup.objects.get(
-        classification_decision_table_node=node_a
+    # A prompt from another node is not node-local -> rejected, not silently dropped.
+    assert resp.status_code == 400, resp.data
+    assert (
+        f"Prompt {foreign_prompt.id} is not found or belong to another organization."
+        in str(resp.data)
     )
-    # A prompt from another node is not node-local -> resolves to None.
-    assert group.prompt_id is None
+    assert not ClassificationConditionGroup.objects.filter(
+        classification_decision_table_node=node_a
+    ).exists()
+
+
+# ---- prompt_key link: create prompt + group + connect, all in ONE payload ----
+
+
+@pytest.mark.django_db
+def test_cdt_single_node_links_group_to_prompt_by_key_one_payload(client_a, org_a):
+    graph_a = _graph(org_a, "a")
+    resp = client_a.post(
+        CDT_URL,
+        {
+            "graph": graph_a.id,
+            "node_name": "cdt1",
+            "prompt_configs": [{"prompt_key": "p1"}],
+            "condition_groups": [{"group_name": "g1", "order": 0, "prompt_key": "p1"}],
+        },
+        format="json",
+    )
+    assert resp.status_code == 201, resp.content
+    node = ClassificationDecisionTableNode.objects.get(node_name="cdt1")
+    prompt = ClassificationDecisionTablePrompt.objects.get(cdt_node=node)
+    group = ClassificationConditionGroup.objects.get(
+        classification_decision_table_node=node
+    )
+    assert group.prompt_id == prompt.id
+
+
+@pytest.mark.django_db
+def test_cdt_bulk_links_group_to_prompt_by_key_one_payload(client_a, org_a):
+    graph_a = _graph(org_a, "a")
+    payload = {
+        "save_version": graph_a.save_version,
+        "classification_decision_table_node_list": [
+            {
+                "graph": graph_a.id,
+                "node_name": "cdt_bulk",
+                "prompt_configs": [{"prompt_key": "p1"}],
+                "condition_groups": [
+                    {"group_name": "g1", "order": 0, "prompt_key": "p1"}
+                ],
+            }
+        ],
+    }
+    resp = client_a.post(_save_url(graph_a.id), payload, format="json")
+    assert resp.status_code == 200, resp.content
+    node = ClassificationDecisionTableNode.objects.get(node_name="cdt_bulk")
+    prompt = ClassificationDecisionTablePrompt.objects.get(cdt_node=node)
+    group = ClassificationConditionGroup.objects.get(
+        classification_decision_table_node=node
+    )
+    assert group.prompt_id == prompt.id
+
+
+@pytest.mark.django_db
+def test_cdt_group_prompt_key_other_node_rejected(client_a, org_a):
+    """A prompt_key that isn't among THIS node's prompts is rejected, not
+    silently dropped."""
+    graph_a = _graph(org_a, "a")
+    node = ClassificationDecisionTableNode.objects.create(
+        graph=graph_a, node_name="cdt1"
+    )
+    resp = client_a.patch(
+        f"{CDT_URL}{node.id}/",
+        {
+            "prompt_configs": [{"prompt_key": "p1"}],
+            "condition_groups": [
+                {"group_name": "g1", "order": 0, "prompt_key": "does-not-exist"}
+            ],
+        },
+        format="json",
+    )
+    assert resp.status_code == 400, resp.data
+    assert (
+        "Prompt does-not-exist is not found or belong to another organization."
+        in str(resp.data)
+    )
+    # No leak: the rejected request rolls back the whole transaction, including
+    # the prompt_configs sync that ran before the condition_groups sync raised.
+    assert not ClassificationDecisionTablePrompt.objects.filter(cdt_node=node).exists()
+    assert not ClassificationConditionGroup.objects.filter(
+        classification_decision_table_node=node
+    ).exists()

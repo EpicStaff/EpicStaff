@@ -81,6 +81,12 @@ class ClassificationDecisionTableNodeService:
 
     @staticmethod
     def _validate_children(serializer_class, raw, request):
+        """Field-level validation only (blank group_name, org-scoped llm_config),
+        run before the node is saved; node-local prompt resolution happens later
+        in sync_classification_decision_table_children, once sibling prompts
+        actually exist. Returns None if raw is None (key absent - untouched) or
+        the validated list otherwise, including [] (remove all) - sync tells the
+        two apart."""
         if raw is None:
             return None
         child = serializer_class(

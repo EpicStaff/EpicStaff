@@ -187,18 +187,22 @@ class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
     classification_decision_table_node = serializers.PrimaryKeyRelatedField(
         read_only=True
     )
-    # A group's `prompt` is node-local (must belong to this node) and may be
-    # referenced before it has a DB id (prompt + group arrive in one payload), so
-    # it can't be validated as a standalone FK here. Accept the raw pk into the
-    # `prompt_id` column; the children sync resolves it node-locally (a foreign or
-    # not-yet-created pk resolves to None). Reads emit the pk, as a FK field would.
+    # A group's prompt is node-local (must belong to THIS node). Two write forms,
+    # both resolved node-locally in the children sync (a foreign / unknown ref
+    # resolves to None, never attaches):
+    #   - prompt_key (preferred): the prompt's stable per-node key, known even for
+    #     a prompt created in the SAME payload, so create+connect works in one save;
+    #   - prompt (numeric pk): an already-persisted prompt, kept for back-compat.
+    # On read we emit the numeric pk (`prompt`) plus the resolved `prompt_key`.
     prompt = serializers.IntegerField(
         source="prompt_id", required=False, allow_null=True
     )
-    prompt_key = serializers.SerializerMethodField()
+    prompt_key = serializers.CharField(required=False, allow_null=True, write_only=True)
 
-    def get_prompt_key(self, obj):
-        return obj.prompt.prompt_key if obj.prompt else None
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["prompt_key"] = instance.prompt.prompt_key if instance.prompt_id else None
+        return data
 
     def validate_group_name(self, value):
         if not value or not value.strip():

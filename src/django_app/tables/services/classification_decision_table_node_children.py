@@ -15,6 +15,10 @@ Keying rules:
   otherwise raise ``MultipleObjectsReturned`` or silently collapse rows.
 """
 
+from typing import Any
+
+from rest_framework import serializers
+
 from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationDecisionTablePrompt,
@@ -78,26 +82,62 @@ def _sync_prompt_configs(node, prompt_configs_data):
         )
 
 
-def _resolve_prompt(value, prompt_by_id):
-    """Normalize an incoming ``prompt`` reference to one of the node's prompts.
+def _prompt_not_found_error(
+    field: str, value: int | str
+) -> serializers.ValidationError:
+    """A prompt reference that doesn't resolve to one of THIS node's prompts —
+    whether it belongs to another org/node or doesn't exist at all is
+    indistinguishable from here, so both cases share the same message (no
+    existence leak)."""
+    return serializers.ValidationError(
+        {field: f"Prompt {value} is not found or belong to another organization."}
+    )
 
-    Callers pass either a raw int id (service/frontend payload) or an already
-    resolved ``ClassificationDecisionTablePrompt`` instance (the serializer's
-    ``PrimaryKeyRelatedField``). Both collapse to the node-local prompt, or
-    ``None`` if it doesn't belong to this node.
+
+def _resolve_group_prompt(
+    group_data: dict[str, Any],
+    prompt_by_id: dict[int, ClassificationDecisionTablePrompt],
+    prompt_by_key: dict[str, ClassificationDecisionTablePrompt],
+) -> ClassificationDecisionTablePrompt | None:
+    """Resolve a condition group's prompt to one of THIS node's prompts.
+
+    ``prompt_id`` (an already-persisted prompt) is checked first when present.
+    Only when it is absent do we fall back to ``prompt_key`` — the prompt's
+    stable per-node key, known even for a prompt created in this same payload,
+    which is what lets create+connect work in a single save.
+
+    Both maps are built from THIS node's prompts only, so a reference that
+    names a prompt belonging to another node/org is indistinguishable from one
+    that doesn't exist at all — either way the lookup misses and we raise,
+    rather than silently dropping the link. A group with neither reference
+    supplied simply has no prompt (returns ``None``, not an error).
     """
-    if value is None:
-        return None
-    if isinstance(value, ClassificationDecisionTablePrompt):
-        return prompt_by_id.get(value.id)
-    return prompt_by_id.get(value)
+    prompt_id = group_data.get("prompt_id")
+    if prompt_id is not None:
+        prompt = prompt_by_id.get(prompt_id)
+        if prompt is None:
+            raise _prompt_not_found_error(
+                field="condition_groups.prompt", value=prompt_id
+            )
+        return prompt
+
+    key = group_data.get("prompt_key")
+    if key:
+        prompt = prompt_by_key.get(key)
+        if prompt is None:
+            raise _prompt_not_found_error(
+                field="condition_groups.prompt_key", value=key
+            )
+        return prompt
+
+    return None
 
 
 def _sync_condition_groups(node, condition_groups_data):
     graph = node.graph
-    prompt_by_id = {
-        p.id: p for p in ClassificationDecisionTablePrompt.objects.filter(cdt_node=node)
-    }
+    node_prompts = list(ClassificationDecisionTablePrompt.objects.filter(cdt_node=node))
+    prompt_by_id = {p.id: p for p in node_prompts}
+    prompt_by_key = {p.prompt_key: p for p in node_prompts}
 
     # Normalize payload rows once: strip non-column keys, resolve prompt FK.
     rows = []
@@ -108,7 +148,7 @@ def _sync_condition_groups(node, condition_groups_data):
             graph=graph,
             field="condition_groups.next_node_id",
         )
-        gd["prompt"] = _resolve_prompt(group_data.get("prompt_id"), prompt_by_id)
+        gd["prompt"] = _resolve_group_prompt(group_data, prompt_by_id, prompt_by_key)
         rows.append(gd)
 
     routed = [gd for gd in rows if gd.get("route_code")]
