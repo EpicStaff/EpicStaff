@@ -249,6 +249,7 @@ export class FlowBaseNodeComponent {
     public get hasMissingAgent(): boolean {
         // Only agent/task nodes carry an agent assignment.
         if (this.agentNode === null && this.taskNode === null) return false;
+        if (this.node.backendId == null) return false;
         return this.assignedAgentDefinitionId == null;
     }
 
