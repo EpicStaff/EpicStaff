@@ -2,7 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { IconButtonComponent, TabButtonComponent } from '@shared/components';
+import { ButtonComponent, IconButtonComponent, TabButtonComponent } from '@shared/components';
 import { FullLLMConfigService } from '@shared/services';
 
 import {
@@ -24,6 +24,7 @@ export interface AgentAdditionalSettingsData {
     max_tool_calls: number | null;
     tool_timeout: number | null;
     max_consecutive_failures: number | null;
+    schema_max_retries: number | null;
 }
 
 export interface AgentAdditionalSettingsResult {
@@ -36,6 +37,7 @@ export interface AgentAdditionalSettingsResult {
     max_tool_calls: number;
     tool_timeout: number;
     max_consecutive_failures: number;
+    schema_max_retries: number;
 }
 
 @Component({
@@ -43,6 +45,7 @@ export interface AgentAdditionalSettingsResult {
     imports: [
         ReactiveFormsModule,
         IconButtonComponent,
+        ButtonComponent,
         TabButtonComponent,
         GeneralTabComponent,
         ExecutionTabComponent,
@@ -75,7 +78,11 @@ export class AgentAdditionalSettingsDialogComponent implements OnInit {
         max_iter: [this.data.max_iter ?? 10, [Validators.min(1), Validators.max(30)]],
         max_rpm: [this.data.max_rpm ?? 10, [Validators.min(1), Validators.max(30)]],
         max_execution_time: [this.data.max_execution_time ?? 60, [Validators.min(1), Validators.max(600)]],
-        max_retry_limit: [this.data.max_retry_limit ?? 3, [Validators.min(1), Validators.max(10)]],
+        max_retry_limit: [this.data.max_retry_limit ?? 3, [Validators.min(0), Validators.max(10)]],
+        schema_max_retries: [
+            this.data.schema_max_retries ?? AGENT_TOOL_DEFAULTS.schema_max_retries,
+            [Validators.min(0), Validators.max(20)],
+        ],
         max_tool_calls: [
             this.data.max_tool_calls ?? AGENT_TOOL_DEFAULTS.max_tool_calls,
             [Validators.min(1), Validators.max(100)],

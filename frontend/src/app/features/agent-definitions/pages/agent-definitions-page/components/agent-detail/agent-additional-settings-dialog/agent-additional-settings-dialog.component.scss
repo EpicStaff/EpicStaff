@@ -3,6 +3,7 @@
     flex-direction: column;
     background-color: var(--color-modals-background);
     color: var(--color-text-primary);
+    font-family: 'Inter', sans-serif;
     border-radius: 12px;
     overflow: hidden;
     width: 590px;
@@ -21,10 +22,13 @@
     border-bottom: 1px solid var(--color-divider-subtle);
 
     .dialog-title {
-        font-size: 1.125rem;
-        font-weight: 600;
         margin: 0;
         padding: 0;
+        font-size: 20px;
+        font-weight: 500;
+        line-height: 130%;
+        letter-spacing: 0;
+        color: var(--color-text-primary, #d9d9de);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -61,7 +65,7 @@
 .scrollable-content {
     flex: 1;
     overflow-y: auto;
-    padding: 1.5rem;
+    padding: 1.25rem;
     min-height: 250px;
 
     .tab-content {
@@ -83,37 +87,7 @@
     gap: 0.75rem;
     border-top: 1px solid var(--color-divider-subtle);
 
-    button {
-        padding: 0.5rem 1rem;
-        border-radius: 6px;
-        font-size: 0.875rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-
-        &.btn-cancel {
-            background-color: transparent;
-            border: 1px solid var(--accent-color);
-            color: var(--color-text-primary);
-
-            &:hover {
-                background-color: var(--color-ghost-btn-hover);
-            }
-        }
-
-        &.btn-save {
-            background-color: var(--accent-color);
-            border: 1px solid var(--accent-color);
-            color: white;
-
-            &:hover {
-                filter: brightness(1.1);
-            }
-
-            &:disabled {
-                cursor: not-allowed;
-                opacity: 0.6;
-            }
-        }
+    app-button {
+        width: auto;
     }
 }

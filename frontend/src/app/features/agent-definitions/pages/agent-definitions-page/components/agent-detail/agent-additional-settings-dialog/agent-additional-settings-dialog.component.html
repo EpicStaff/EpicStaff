@@ -46,20 +46,18 @@
     </div>
 
     <div class="actions">
-        <button
-            type="button"
-            class="btn-cancel"
+        <app-button
+            type="outline-primary"
             (click)="dialogRef.close()"
         >
             Cancel
-        </button>
-        <button
-            type="button"
-            class="btn-save"
+        </app-button>
+        <app-button
+            type="primary"
             [disabled]="form.invalid"
             (click)="save()"
         >
             Save Changes
-        </button>
+        </app-button>
     </div>
 </div>
