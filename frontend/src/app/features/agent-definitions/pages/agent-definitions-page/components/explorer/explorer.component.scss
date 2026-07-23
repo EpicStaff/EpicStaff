@@ -108,14 +108,16 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 0.5rem 0;
+    gap: 0;
+    padding: 0;
 }
 
 .explorer__section {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    flex-shrink: 0;
+    overflow: hidden;
 }
 
 .explorer__section--bottom {
@@ -128,16 +130,20 @@
 
 .explorer__section--fill {
     flex: 1 1 auto;
+    flex-shrink: 1;
     min-height: 0;
+    overflow: hidden;
 }
 
 .explorer__section-body {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    padding: 4px 0 8px;
 
     &[hidden] {
         display: none !important;
+        padding: 0;
     }
 }
 

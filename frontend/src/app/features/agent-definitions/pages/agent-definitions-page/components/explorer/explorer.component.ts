@@ -58,7 +58,7 @@ export class ExplorerComponent {
     private readonly surfaceDrag = inject(SurfaceDragService);
     private readonly el = inject(ElementRef<HTMLElement>);
     private readonly sidebarWidthService = inject(SidebarWidthService);
-    private readonly orderedSectionIds: ExplorerSectionId[] = ['agents', 'surfaces', 'storage'];
+    private readonly sectionOrder: ExplorerSectionId[] = ['agents', 'surfaces', 'storage'];
     private readonly optionalOrder: ExplorerSectionId[] = ['surfaces', 'storage'];
 
     protected readonly sidebarStorageKey = SIDEBAR_STORAGE_KEY;
@@ -163,7 +163,10 @@ export class ExplorerComponent {
     }
 
     shouldFillBody(sectionId: ExplorerSectionId): boolean {
-        return this.store.isSectionExpanded(sectionId) && this.expandedVisibleCount() > 1;
+        if (!this.store.isSectionExpanded(sectionId)) return false;
+        // Only the lowest expanded section absorbs leftover height and scrolls.
+        // Upper ones size to content so rows are never painted under the next header.
+        return this.lastExpandedVisibleSection() === sectionId;
     }
 
     isBottomSection(sectionId: ExplorerSectionId): boolean {
@@ -179,10 +182,14 @@ export class ExplorerComponent {
         return this.optionalVisibleOrder().find((id) => this.isBottomSection(id)) === sectionId;
     }
 
-    private expandedVisibleCount(): number {
-        return this.orderedSectionIds.filter(
-            (id) => this.store.isSectionVisible(id) && this.store.isSectionExpanded(id)
-        ).length;
+    private lastExpandedVisibleSection(): ExplorerSectionId | null {
+        let last: ExplorerSectionId | null = null;
+        for (const id of this.sectionOrder) {
+            if (this.store.isSectionVisible(id) && this.store.isSectionExpanded(id)) {
+                last = id;
+            }
+        }
+        return last;
     }
 
     private optionalVisibleOrder(): ExplorerSectionId[] {

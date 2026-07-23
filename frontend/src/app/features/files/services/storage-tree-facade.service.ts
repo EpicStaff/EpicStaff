@@ -412,23 +412,35 @@ export class StorageTreeFacade {
             });
     }
 
-    private handleMove(event: { item: StorageItem; targetPath?: string }): void {
-        const from = event.item.path;
+    private handleMove(event: { item: StorageItem; selectedItems?: StorageItem[]; targetPath?: string }): void {
         const to = event.targetPath;
-        if (!from || !to || from === to) return;
-        this.storageApiService
-            .move(from, to)
+        if (!to) return;
+
+        const items = (event.selectedItems?.length ? event.selectedItems : [event.item]).filter((item) => {
+            const from = item.path;
+            return Boolean(from) && from !== to;
+        });
+        if (items.length === 0) return;
+
+        const requests = items.map((item) => this.storageApiService.move(item.path, to));
+        forkJoin(requests)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => {
-                    this.toastService.success(`"${event.item.name}" moved`);
-                    if (this.selectedFile()?.path === from) {
-                        this.selectedFile.set({ ...event.item, path: to });
+                    const label = items.length === 1 ? `"${items[0].name}" moved` : `${items.length} items moved`;
+                    this.toastService.success(label);
+                    const selected = this.selectedFile();
+                    if (selected && items.some((item) => item.path === selected.path)) {
+                        this.selectedFile.set(null);
                     }
                     const destination = to === '/' ? '' : to;
                     this.reloadTreePreservingExpansion(destination ? [destination] : []);
                 },
-                error: () => this.toastService.error(`Failed to move "${event.item.name}"`),
+                error: () => {
+                    const label =
+                        items.length === 1 ? `Failed to move "${items[0].name}"` : 'Failed to move selected items';
+                    this.toastService.error(label);
+                },
             });
     }
 

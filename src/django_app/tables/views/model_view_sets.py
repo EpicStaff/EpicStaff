@@ -61,6 +61,8 @@ from tables.graph_versioning.serializers import (
     GraphVersionUpdateSerializer,
     RestoreVersionInputSerializer,
 )
+from agents.serializers.surface_serializers import SurfaceReadSerializer
+from agents.services.node_surface_service import NodeSurfaceService
 
 from tables.import_export.enums import EntityType
 
@@ -1343,6 +1345,7 @@ class TaskNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "combine": Permission.READ}
     org_filter_path = "graph__org_id"
     queryset = TaskNode.objects.select_related("inline_surface").prefetch_related(
         "surface_list",
@@ -1366,6 +1369,22 @@ class TaskNodeViewSet(
         self._assert_parent_in_active_org(serializer)
         super().perform_update(serializer)
 
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(
+                response=SurfaceReadSerializer,
+                description="Combined surface data merged from the node's "
+                "attached surfaces and inline surface.",
+            ),
+            400: OpenApiResponse(description="Conflicting RAG configs."),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="combine")
+    def combine(self, request, pk=None):
+        node = self.get_object()
+        combined = NodeSurfaceService.build_combined_surface(node)
+        return Response(combined, status=status.HTTP_200_OK)
+
 
 class AgentNodeViewSet(
     OrgScopedChildViewSetMixin,
@@ -1375,6 +1394,7 @@ class AgentNodeViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "combine": Permission.READ}
     org_filter_path = "graph__org_id"
     queryset = AgentNode.objects.select_related("inline_surface").prefetch_related(
         "surface_list",
@@ -1399,6 +1419,22 @@ class AgentNodeViewSet(
         # could move the node into another org's graph.
         self._assert_parent_in_active_org(serializer)
         super().perform_update(serializer)
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(
+                response=SurfaceReadSerializer,
+                description="Combined surface data merged from the node's "
+                "attached surfaces and inline surface.",
+            ),
+            400: OpenApiResponse(description="Conflicting RAG configs."),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="combine")
+    def combine(self, request, pk=None):
+        node = self.get_object()
+        combined = NodeSurfaceService.build_combined_surface(node)
+        return Response(combined, status=status.HTTP_200_OK)
 
 
 class AgentNodeTaskViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):

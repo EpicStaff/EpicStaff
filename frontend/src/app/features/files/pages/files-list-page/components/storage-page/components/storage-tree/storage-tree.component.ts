@@ -13,7 +13,6 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
-
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StorageItem } from '../../../../../../models/storage.models';
 import { StorageDragService } from '../../../../../../services/storage-drag.service';
@@ -67,6 +66,7 @@ export class StorageTreeComponent {
     moreMenuPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
 
     draggedItem = signal<StorageItem | null>(null);
+    draggedItems = signal<StorageItem[]>([]);
     dropTarget = signal<StorageItem | null>(null);
     dropTargetRoot = signal<boolean>(false);
     private dragExpandTimer: ReturnType<typeof setTimeout> | null = null;
@@ -321,9 +321,11 @@ export class StorageTreeComponent {
             event.preventDefault();
             return;
         }
+        const items = this.resolveDraggedItems(item);
         event.dataTransfer!.effectAllowed = 'copyMove';
-        event.dataTransfer!.setData('text/plain', item.path);
+        event.dataTransfer!.setData('text/plain', items.map((i) => i.path).join('\n'));
         this.draggedItem.set(item);
+        this.draggedItems.set(items);
         this.storageDrag.start(item);
     }
 
@@ -331,10 +333,10 @@ export class StorageTreeComponent {
         event.preventDefault();
         event.dataTransfer!.dropEffect = 'move';
 
-        const dragged = this.draggedItem();
-        if (!dragged) return;
+        const dragged = this.draggedItems();
+        if (dragged.length === 0) return;
 
-        if (node.type !== 'folder' || !this.isValidDropTarget(dragged, node)) {
+        if (node.type !== 'folder' || !this.isValidDropTargetForItems(dragged, node)) {
             if (this.dropTarget()?.path === node.path) {
                 this.dropTarget.set(null);
             }
@@ -367,13 +369,24 @@ export class StorageTreeComponent {
         event.preventDefault();
         event.stopPropagation();
 
-        const dragged = this.draggedItem();
-        if (!dragged || node.type !== 'folder' || !this.isValidDropTarget(dragged, node)) {
+        const dragged = this.draggedItems();
+        if (dragged.length === 0 || node.type !== 'folder' || !this.isValidDropTargetForItems(dragged, node)) {
             this.resetDragState();
             return;
         }
 
-        this.contextAction.emit({ action: 'move', item: dragged, targetPath: node.path });
+        const movable = this.filterMovableTo(dragged, node.path);
+        if (movable.length === 0) {
+            this.resetDragState();
+            return;
+        }
+
+        this.contextAction.emit({
+            action: 'move',
+            item: movable[0],
+            selectedItems: movable,
+            targetPath: node.path,
+        });
         this.resetDragState();
     }
 
@@ -385,8 +398,8 @@ export class StorageTreeComponent {
         event.preventDefault();
         event.dataTransfer!.dropEffect = 'move';
 
-        const dragged = this.draggedItem();
-        if (!dragged || this.getParentPath(dragged.path) === '') {
+        const dragged = this.draggedItems();
+        if (dragged.length === 0 || dragged.every((item) => this.getParentPath(item.path) === '')) {
             this.dropTargetRoot.set(false);
             return;
         }
@@ -406,18 +419,28 @@ export class StorageTreeComponent {
         event.preventDefault();
         event.stopPropagation();
 
-        const dragged = this.draggedItem();
-        if (!dragged || this.getParentPath(dragged.path) === '') {
+        const dragged = this.draggedItems();
+        const movable = this.filterMovableTo(dragged, '/');
+        if (movable.length === 0) {
             this.resetDragState();
             return;
         }
 
-        this.contextAction.emit({ action: 'move', item: dragged, targetPath: '/' });
+        this.contextAction.emit({
+            action: 'move',
+            item: movable[0],
+            selectedItems: movable,
+            targetPath: '/',
+        });
         this.resetDragState();
     }
 
     isDropTarget(node: StorageItem): boolean {
         return this.dropTarget()?.path === node.path;
+    }
+
+    isDraggingItem(node: StorageItem): boolean {
+        return this.draggedItems().some((item) => item.path === node.path);
     }
 
     trackByPath(_index: number, item: StorageItem): string {
@@ -426,6 +449,7 @@ export class StorageTreeComponent {
 
     private resetDragState(): void {
         this.draggedItem.set(null);
+        this.draggedItems.set([]);
         this.dropTarget.set(null);
         this.dropTargetRoot.set(false);
         this.storageDrag.end();
@@ -439,11 +463,31 @@ export class StorageTreeComponent {
         }
     }
 
-    private isValidDropTarget(dragged: StorageItem, target: StorageItem): boolean {
-        if (target.path === dragged.path) return false;
-        if (target.path.startsWith(dragged.path + '/')) return false;
-        if (target.path === this.getParentPath(dragged.path)) return false;
-        return true;
+    private resolveDraggedItems(grabbed: StorageItem): StorageItem[] {
+        const selected = this.selectedPaths();
+        if (!selected.has(grabbed.path) || selected.size <= 1) {
+            return [grabbed];
+        }
+        const selectedItems = this.collectVisibleNodes(this.items()).filter((node) => selected.has(node.path));
+        return this.pruneNestedItems(selectedItems);
+    }
+
+    private pruneNestedItems(items: StorageItem[]): StorageItem[] {
+        const paths = items.map((item) => item.path);
+        return items.filter((item) => !paths.some((path) => path !== item.path && item.path.startsWith(`${path}/`)));
+    }
+
+    private filterMovableTo(items: StorageItem[], targetPath: string): StorageItem[] {
+        const normalizedTarget = targetPath === '/' ? '' : targetPath;
+        return items.filter((item) => {
+            if (this.getParentPath(item.path) === normalizedTarget) return false;
+            if (normalizedTarget === item.path || normalizedTarget.startsWith(`${item.path}/`)) return false;
+            return true;
+        });
+    }
+
+    private isValidDropTargetForItems(dragged: StorageItem[], target: StorageItem): boolean {
+        return this.filterMovableTo(dragged, target.path).length > 0;
     }
 
     private getParentPath(path: string): string {
