@@ -8,11 +8,6 @@ currently have active editors, and flushes any that have unsaved changes.
 The task is started lazily (and idempotently) on the first WebSocket connect via
 ``ensure_autosave_loop_running()``.  It lives for the lifetime of the process —
 an empty pass when there are no active editors is a no-op.
-
-This replaces the per-connection autosave loops (which ran once per consumer and
-required a Redis NX lock to deduplicate flushes across connections on the same
-graph).  Because there is now a single flusher per process, no distributed lock
-is needed.
 """
 
 import asyncio
@@ -27,13 +22,7 @@ _autosave_task: asyncio.Task | None = None
 
 
 def ensure_autosave_loop_running() -> None:
-    """Start the global autosave loop if it is not already running.
-
-    Synchronous and idempotent — safe to call on every WebSocket connect.
-    There is no ``await`` between the guard check and the assignment, so in a
-    single-threaded asyncio event loop this is race-free: no two coroutines can
-    interleave between the ``if`` and the ``=``.
-    """
+    """Start the global autosave loop if it is not already running."""
     global _autosave_task
     if _autosave_task is not None and not _autosave_task.done():
         return

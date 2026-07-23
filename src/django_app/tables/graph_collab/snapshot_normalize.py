@@ -4,63 +4,6 @@ Helpers for normalising a GraphSerializer READ snapshot into the superset form
 The superset adds write-only FK id fields that the read serializer omits but
 the bulk-save serializers need.  The nested read objects are kept intact so the
 frontend late-join converter can still use them.
-
-Injected fields per node type
-==============================
-
-ALL list keys (nodes + edges)
-------------------------------
-  - graph (int)  — FK to the parent Graph row.  All node serializers and both
-    edge serializers (EdgeSerializer / ConditionalEdgeSerializer) declare
-    ``fields = "__all__"`` and therefore require ``graph`` as a writable field.
-    DB-seeded entries carry it already; WS-op–created entries do NOT (the FE
-    payloads omit it in nodeToWsPayload / connectionToWsPayload).  Injected via
-    ``setdefault`` so seeded entries are never clobbered and the function stays
-    idempotent.
-
-crew_node_list
---------------
-  - crew_id (int)  — write-only on CrewNodeSerializer (crew is read-only nested).
-    Injected from crew["id"].  Without it CrewNodeBulkSerializer fails validation
-    because crew_id has no default and is required.
-
-schedule_trigger_node_list
---------------------------
-  - schedule.end.type (str → "never")  — ScheduleTriggerNodeSerializer renders
-    end_type=None as schedule.end.type=null when the node was saved without a
-    schedule.  _ScheduleEndInputSerializer.type is a required ChoiceField; null
-    fails validation.  Coerce None → "never" (the safe default that passes
-    validation and matches the model's NEVER constant).
-
-All other node types
---------------------
-  - code_agent_node_list : llm_config is a plain PrimaryKeyRelatedField (int FK)
-    on CodeAgentNodeSerializer — emitted as-is by the read serializer.  No injection needed.
-  - subgraph_node_list : subgraph is a plain PK field — emitted as int.  No injection needed.
-  - python_node_list / webhook_trigger_node_list / conditional_edge_list :
-    python_code is a nested writable serializer that serialises both read and
-    write — emitted as a full nested object that the bulk serializer accepts.
-    No injection needed.
-  - start_node_list / end_node_list / file_extractor_node_list /
-    audio_transcription_node_list / graph_note_list /
-    telegram_trigger_node_list / decision_table_node_list :
-    All fields are either scalar, nested writable, or already have defaults.
-    No injection needed.
-  - edge_list : start_node_id and end_node_id are plain integer fields.
-    No injection needed beyond graph.
-
-reconcile_against_db()
-=======================
-Prunes a flush payload of references to node rows that no longer exist in the
-DB. This self-heals drift caused by an external CASCADE delete on a node's
-related row (e.g. deleting a ``Crew`` cascades its ``CrewNode``) that leaves
-the live Redis snapshot holding a stale node entry and/or stale edge refs to
-it. Without this, ``GraphBulkSaveInputSerializer``/``GraphBulkSaveService``
-would reject the entire flush every tick — permanently wedging autosave.
-
-Generic across every node type in ``NODE_TYPE_REGISTRY`` (not crew-specific):
-any node model with an externally-CASCADE-able FK can hit this same drift.
-Payload-only — the retained Redis snapshot is never mutated here.
 """
 
 import copy
@@ -72,8 +15,6 @@ from tables.services.graph_bulk_save_service.registry import (
 from utils.logger import logger
 
 # All snapshot list keys that require ``graph`` injection.
-# Defined here (not imported from graph_state_service) to avoid a circular
-# import: graph_state_service already imports this module.
 _ALL_LIST_KEYS: frozenset[str] = frozenset(
     [
         "crew_node_list",
@@ -156,35 +97,6 @@ def reconcile_against_db(payload: dict, graph) -> dict:
     deep-copied dict from ``inject_bulk_save_fields``, so a second copy here
     would be wasted work). Never mutates the live Redis snapshot — that is a
     separate object owned by the caller.
-
-    Two-step prune, driven by ``NODE_TYPE_REGISTRY`` so it covers every node
-    type generically (not just ``crew_node_list``):
-
-    1. For each ``<type>_node_list``, drop any entry carrying a real int ``id``
-       that no longer exists in the DB for this graph. New entries (no ``id``,
-       i.e. temp_id-only creates) are left untouched.
-    2. Compute the set of node ids that still exist in the DB for this graph
-       (across all node types) and drop any ``edge_list`` / ``conditional_edge_list``
-       entry whose real endpoint ref (``start_node_id``/``end_node_id`` on
-       edges, ``source_node_id`` on conditional edges — conditional edges have
-       no ``target_node_id`` field) points at an id no longer in that set.
-       temp_id-only refs (new, not-yet-persisted endpoints) are left untouched.
-       When a dropped entry carries a real int ``id``, that id is also queued
-       in ``payload["deleted"]["edge_ids"]`` / ``["conditional_edge_ids"]``
-       (deduped) so ``_execute_deletions`` removes the now-orphan DB row
-       instead of merely omitting it from this flush's payload — otherwise
-       the row survives and reappears on the next ``seed_from_db``.
-    3. For each ``decision_table_node_list`` / ``classification_decision_table_node_list``
-       entry, null any ``default_next_node_id`` / ``next_error_node_id`` /
-       ``condition_groups[].next_node_id`` that points at an id no longer in
-       ``surviving_node_ids`` — otherwise the flush fails validation with
-       "routing references node IDs that do not exist" for a decision-table
-       node still routing to a node that is already gone from the DB.
-    4. For each ``SINGLETON_LIST_KEYS`` list (``start_node_list`` /
-       ``end_node_list``), collapse more than one entry down to one,
-       preferring the entry with a real int ``id``. Self-heals snapshots
-       that accumulated a duplicate singleton before the op-time dedup in
-       ``graph_state_service.apply_op`` existed (see ``EST-3020``).
 
     Never silently drops without logging — every prune is summarised via
     ``logger.info`` so recovery from drift is auditable.

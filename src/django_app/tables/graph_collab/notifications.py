@@ -21,8 +21,6 @@ from tables.graph_collab.protocol import (
 
 from utils.logger import logger
 
-# TODO remove editor from GraphSavedMessage
-# Used by the global autosave loop, which has no acting user.
 _SYSTEM_EDITOR = EditorInfo(user_id=0, display_name="Autosave", avatar_url=None)
 
 
@@ -137,27 +135,8 @@ class GraphEditNotifier:
         node_ids: list[int],
         editor: EditorInfo | None = None,
     ) -> None:
-        """Broadcast nodes_deleted for a set of ``crew_node_list`` row ids.
+        """Broadcast nodes_deleted for a set of ``crew_node_list`` row ids."""
 
-        Used when a node's row was removed by a cascade external to the
-        collab flow (e.g. deleting the ``Crew`` a ``CrewNode`` points at)
-        rather than through a WS delete op — the live snapshot and any
-        connected editors need to converge on the node's removal.
-
-        Gated on the graph having a *live* snapshot in Redis
-        (``graph_state_service.get_snapshot``, cross-process) rather than
-        ``presence_service.has_editors`` (in-memory, per-process — unreliable
-        when the HTTP worker deleting the Crew differs from the ASGI worker
-        holding the sockets).
-
-        ``node_ids`` are ``CrewNode`` DB row ids — NOT crew ids.
-
-        Intentionally crew-specific (hardcodes ``list_key="crew_node_list"``).
-        Other CASCADE-able node types (e.g. ``PythonNode.python_code``) are
-        covered only by the generic ``reconcile_against_db`` flush-time safety
-        net, not by a live source-side broadcast like this one — adding that
-        for non-crew node types is left as a separate ticket.
-        """
         if async_to_sync(graph_state_service.get_snapshot)(graph_id) is None:
             logger.debug(
                 "broadcast_nodes_deleted: no live snapshot for graph {} — skipping",

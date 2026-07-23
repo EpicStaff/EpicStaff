@@ -20,7 +20,7 @@ FlushOutcome.status is always one of:
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from asgiref.sync import sync_to_async

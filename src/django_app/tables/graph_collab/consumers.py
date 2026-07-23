@@ -51,11 +51,6 @@ def _lock_timeout() -> int:
 class GraphEditConsumer(AsyncJsonWebsocketConsumer):
     """
     WebSocket consumer for graph co-editing events.
-
-    Clients connect to /ws/graphs/{graph_id}/edit/?ticket=<token>.
-    After connect they can send canvas-edit messages which are relayed
-    to all other consumers for the same graph. graph_saved events are pushed
-    from HTTP views via GraphEditNotifier.
     """
 
     async def connect(self):
@@ -159,6 +154,8 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                 # Cancel all pending lock timers before releasing locks.
                 for timer in getattr(self, "_lock_timers", {}).values():
                     timer.cancel()
+                if hasattr(self, "_lock_timers"):
+                    self._lock_timers.clear()
 
                 # Release all locks held by this channel and broadcast unlocks.
                 released_pairs = lock_service.release_all_for_channel(
@@ -218,25 +215,12 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(org_group, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
-        """
-        Fallback for messages that sended from FE
-        (not available right now, so marked as unknown)
-        """
+        """Handler for messages that sended from FE"""
         message_type = content.get("type")
 
         # Cursor messages travel via Redis pub/sub (lossy), not the channel layer.
         if message_type == "cursor_moved":
             await self._handle_cursor_moved(content)
-            return
-
-        # TODO DEPRECATED: Client→Server graph_state seed (old clients only).
-        # The server now seeds from DB on connect (seed_from_db) and does not
-        # need the client to push state.
-        if message_type == "graph_state":
-            logger.debug(
-                "Received deprecated client-side graph_state seed from graph {} — ignoring",
-                self.graph_id,
-            )
             return
 
         # Handle lock claim — arbitrated through lock_service, not blindly relayed.

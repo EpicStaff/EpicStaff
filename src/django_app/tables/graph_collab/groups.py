@@ -4,10 +4,5 @@ def graph_group_name(graph_id: int) -> str:
 
 
 def org_group_name(org_id: int) -> str:
-    """Channel-layer group for org-wide broadcasts.
-
-    Generic, reusable per-org broadcast primitive.
-    Keep it to low-frequency "something changed, refresh" signals; never
-    cursors/locks/per-node diffs.
-    """
+    """Channel-layer group for org-wide broadcasts."""
     return f"org_{org_id}"

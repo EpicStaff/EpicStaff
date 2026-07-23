@@ -23,9 +23,7 @@ AUTOSAVE_FLUSH_INTERVAL_SECONDS: float = getattr(
 # Redis pub/sub channel prefix for per-graph cursor traffic.
 CURSOR_REDIS_CHANNEL_PREFIX: str = "cursors"
 
-# cursor_moved is intentionally absent — it travels via Redis pub/sub, not the
-# channel-layer group, so it cannot flood the per-channel mailbox (capacity 100)
-# shared with critical messages.
+# cursor_moved is intentionally absent — it travels via Redis pub/sub
 _RELAY_MESSAGE_TYPES: dict[str, type[BaseModel]] = {
     "node_created": NodeCreatedMessage,
     "node_updated": NodeUpdatedMessage,
