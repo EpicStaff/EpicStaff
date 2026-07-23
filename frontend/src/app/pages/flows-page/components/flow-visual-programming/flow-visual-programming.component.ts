@@ -74,6 +74,7 @@ import { UnsavedChangesDialogService } from '../../../../shared/components/unsav
 import { NodeType } from '../../../../visual-programming/core/enums/node-type';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import {
+    AgentNodeModel,
     NodeModel,
     ScheduleTriggerNodeModel,
     TaskNodeModel,
@@ -382,16 +383,23 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onGraphSave(flowState: FlowModel): void {
         if (!this.graph?.id || this.isSaving()) return;
 
-        const taskNodeIssues = this.getInvalidTaskNodeMessages(flowState);
-        if (taskNodeIssues.length > 0) {
-            this.toastService.error(
-                `Cannot save flow — fix the following task node(s) first: ${taskNodeIssues.join('; ')}.`
-            );
-            return;
-        }
-
         this.cleanupCdtGridState(flowState);
         this.saveFlowState(flowState, true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+    }
+
+    private getBlockingNodeValidationIssues(flowState: FlowModel): string[] {
+        let issues: string[] = [];
+        try {
+            issues = [...this.getInvalidTaskNodeMessages(flowState), ...this.getInvalidAgentNodeMessages(flowState)];
+        } catch (error) {
+            console.error('Node validation crashed before save — blocking the save defensively', error);
+            return ['a node failed validation — check the console and try again'];
+        }
+
+        if (issues.length > 0) {
+            this.toastService.error(`Cannot save flow — fix the following node(s) first: ${issues.join('; ')}.`);
+        }
+        return issues;
     }
 
     private getInvalidTaskNodeMessages(flowState: FlowModel): string[] {
@@ -403,12 +411,61 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
             const missingFields: string[] = [];
             if (!taskNode.node_name?.trim()) missingFields.push('node name');
-            if (taskNode.data.agent_definition == null) missingFields.push('agent');
-            if (!taskNode.data.instructions?.trim()) missingFields.push('instructions');
+            if (taskNode.data?.agent_definition == null) missingFields.push('agent');
+            if (!taskNode.data?.instructions?.trim()) missingFields.push('instructions');
 
             if (missingFields.length === 0) return;
 
             const label = taskNode.node_name?.trim() || `Untitled task #${index + 1}`;
+            messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
+        });
+
+        return messages;
+    }
+
+    private getInvalidAgentNodeMessages(flowState: FlowModel): string[] {
+        const messages: string[] = [];
+
+        flowState.nodes.forEach((node, index) => {
+            if (node.type !== NodeType.AGENT) return;
+            const agentNode = node as AgentNodeModel;
+
+            const missingFields: string[] = [];
+            if (!agentNode.node_name?.trim()) missingFields.push('node name');
+            if (agentNode.data?.agent_definition == null) missingFields.push('agent');
+
+            const tasks = agentNode.data?.tasks ?? [];
+            if (tasks.length === 0) {
+                missingFields.push('at least one task');
+            } else {
+                const seenNames = new Set<string>();
+                let hasBlankName = false;
+                let hasDuplicateName = false;
+                let hasBlankInstructions = false;
+
+                for (const task of tasks) {
+                    const trimmedName = (task.name ?? '').trim();
+                    if (!trimmedName) {
+                        hasBlankName = true;
+                    } else if (seenNames.has(trimmedName)) {
+                        hasDuplicateName = true;
+                    } else {
+                        seenNames.add(trimmedName);
+                    }
+
+                    if (!(task.instructions ?? '').trim()) {
+                        hasBlankInstructions = true;
+                    }
+                }
+
+                if (hasBlankName) missingFields.push('a task name');
+                if (hasDuplicateName) missingFields.push('unique task names');
+                if (hasBlankInstructions) missingFields.push('a task description');
+            }
+
+            if (missingFields.length === 0) return;
+
+            const label = agentNode.node_name?.trim() || `Untitled agent #${index + 1}`;
             messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
         });
 
@@ -444,6 +501,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     private saveFlowState(flowState: FlowModel, showSuccessToast: boolean): Observable<void> {
         if (!this.graph?.id) return EMPTY;
+
+        if (this.getBlockingNodeValidationIssues(flowState).length > 0) {
+            return EMPTY;
+        }
 
         const previous = this.loadedFlowState();
         const flowToSave = clearStaleIds(previous, flowState);

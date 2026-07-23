@@ -40,6 +40,11 @@ export class AgentTasksTableComponent {
     public readonly tasks = input.required<AgentNodeTaskUi[]>();
     public readonly activeColor = input<string>('#685fff');
     public readonly selectedCell = input<{ taskIndex: number; field: 'instructions' | 'schema' } | null>(null);
+    /** Set once a save attempt has been made against an invalid task list (mirrors the
+     *  panel's `tasksValidity` form control's `touched` state) — gates the per-row blank
+     *  name/instructions highlight below so it doesn't show before the user has tried to
+     *  save. */
+    public readonly showValidation = input<boolean>(false);
     public readonly tasksChange = output<AgentNodeTaskUi[]>();
     public readonly cellSelect = output<{ taskIndex: number; field: 'instructions' | 'schema' }>();
 
@@ -125,6 +130,14 @@ export class AgentTasksTableComponent {
     isCellSelected(taskIndex: number, field: 'instructions' | 'schema'): boolean {
         const sel = this.selectedCell();
         return !!sel && sel.taskIndex === taskIndex && sel.field === field;
+    }
+
+    isNameInvalid(task: AgentNodeTaskUi): boolean {
+        return this.showValidation() && !(task.name ?? '').trim();
+    }
+
+    isInstructionsInvalid(task: AgentNodeTaskUi): boolean {
+        return this.showValidation() && !(task.instructions ?? '').trim();
     }
 
     getResolvedContext(task: AgentNodeTaskUi): ResolvedTaskRef[] {

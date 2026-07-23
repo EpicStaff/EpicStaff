@@ -96,6 +96,10 @@
         border-color: var(--accent-color);
     }
 
+    &--invalid {
+        border-color: var(--color-error);
+    }
+
     &__label {
         overflow: hidden;
         text-overflow: ellipsis;

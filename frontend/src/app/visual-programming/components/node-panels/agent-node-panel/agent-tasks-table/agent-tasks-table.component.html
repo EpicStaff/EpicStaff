@@ -50,6 +50,7 @@
                         <div class="att-cell att-cell--name">
                             <input
                                 class="att-input"
+                                [class.att-input--invalid]="isNameInvalid(task)"
                                 type="text"
                                 placeholder="Enter name..."
                                 [value]="task.name"
@@ -63,6 +64,7 @@
                         >
                             <textarea
                                 class="att-textarea"
+                                [class.att-textarea--invalid]="isInstructionsInvalid(task)"
                                 placeholder="Describe what this task should do..."
                                 [value]="task.instructions"
                                 (input)="onInstructionsInput(i, $event)"

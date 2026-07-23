@@ -196,6 +196,12 @@ $row-min-width: 40px + 256px + 256px + 256px + 200px + 28px;
     }
 }
 
+.att-input--invalid,
+.att-textarea--invalid {
+    outline: 1px solid var(--color-error);
+    border-radius: 4px;
+}
+
 .att-textarea--schema {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     font-size: 0.75rem;

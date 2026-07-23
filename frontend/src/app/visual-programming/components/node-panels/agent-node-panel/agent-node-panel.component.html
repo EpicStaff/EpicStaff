@@ -39,6 +39,7 @@
                                     type="button"
                                     appSelectDropdownTrigger
                                     class="dropdown-trigger"
+                                    [class.dropdown-trigger--invalid]="agentInvalid()"
                                 >
                                     <span
                                         class="dropdown-trigger__label"
@@ -52,6 +53,7 @@
                                     />
                                 </button>
                             </app-select-dropdown>
+                            <app-validation-errors [control]="form.get('agent_definition')!" />
                         </div>
 
                         <div class="field">
@@ -125,6 +127,7 @@
                                 [tasks]="tasks()"
                                 [activeColor]="activeColor"
                                 [selectedCell]="isExpanded() ? effectiveRightPane() : null"
+                                [showValidation]="tasksTouched()"
                                 (tasksChange)="onTasksChange($event)"
                                 (cellSelect)="onCellSelect($event)"
                             ></app-agent-tasks-table>
@@ -233,6 +236,7 @@
                                 type="button"
                                 appSelectDropdownTrigger
                                 class="dropdown-trigger"
+                                [class.dropdown-trigger--invalid]="agentInvalid()"
                             >
                                 <span
                                     class="dropdown-trigger__label"
@@ -246,6 +250,7 @@
                                 />
                             </button>
                         </app-select-dropdown>
+                        <app-validation-errors [control]="form.get('agent_definition')!" />
                     </div>
 
                     <div class="field">
@@ -319,6 +324,7 @@
                             [tasks]="tasks()"
                             [activeColor]="activeColor"
                             [selectedCell]="isExpanded() ? effectiveRightPane() : null"
+                            [showValidation]="tasksTouched()"
                             (tasksChange)="onTasksChange($event)"
                             (cellSelect)="onCellSelect($event)"
                         ></app-agent-tasks-table>

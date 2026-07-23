@@ -10,7 +10,7 @@ import {
     viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormArray, FormGroup, ReactiveFormsModule, ValidationErrors, ValidatorFn } from '@angular/forms';
+import { FormArray, FormGroup, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
 import {
     AppSvgIconComponent,
     CustomInputComponent,
@@ -36,6 +36,7 @@ import { SurfacesApiService } from '../../../../features/agent-definitions/servi
 import { AgentNodeTaskUi } from '../../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
+import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
 import { NodeType } from '../../../core/enums/node-type';
 import { AgentNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -63,6 +64,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         AppSvgIconComponent,
         JsonEditorComponent,
         AgentTasksTableComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -100,6 +102,17 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         const id = this.agentDefinitionId();
         if (id == null) return null;
         return this.agentDefinitions().find((agent) => agent.id === id)?.name ?? null;
+    });
+
+    public readonly agentInvalid = computed<boolean>(() => {
+        this.dirtyCheckTick();
+        const control = this.form?.get('agent_definition');
+        return !!control && control.invalid && control.touched;
+    });
+
+    public readonly tasksTouched = computed<boolean>(() => {
+        this.dirtyCheckTick();
+        return this.form?.get('tasksValidity')?.touched ?? false;
     });
 
     /** Whether the node currently has a task-local (`inline_surface`) surface. There is at
@@ -220,6 +233,10 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     onAgentSelectionChange(values: unknown[]): void {
         const id = (values[0] as number | undefined) ?? null;
         this.agentDefinitionId.set(id);
+        const agentControl = this.form.get('agent_definition');
+        agentControl?.setValue(id);
+        agentControl?.markAsTouched();
+        agentControl?.markAsDirty();
         this.pruneInvalidSurfaceSelection();
         this.sidePanelService.triggerAutosave();
         this.notifyExternalChange();
@@ -380,6 +397,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
+            agent_definition: [data.agent_definition ?? null, Validators.required],
             tasksValidity: [true, this.tasksValidator()],
         });
 
