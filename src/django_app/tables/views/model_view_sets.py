@@ -127,6 +127,10 @@ from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
 from tables.swagger_schemas.partial_import_schemas import (
     PARTIAL_IMPORT_SWAGGER as PARTIAL_IMPORT_SWAGGER,
 )
+from tables.swagger_schemas.tools_schemas import (
+    MCP_TOOL_BULK_DELETE_POST,
+    PYTHON_CODE_TOOL_BULK_DELETE_POST,
+)
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from rest_framework.exceptions import PermissionDenied, NotFound
 from django_filters.rest_framework import (
@@ -745,7 +749,7 @@ class PythonCodeToolViewSet(
 
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
 
@@ -762,6 +766,34 @@ class PythonCodeToolViewSet(
         if instance.built_in:
             raise BuiltInToolModificationError()
         return super().destroy(request, *args, **kwargs)
+
+    @extend_schema(**PYTHON_CODE_TOOL_BULK_DELETE_POST)
+    @action(detail=False, methods=["post"], url_path="bulk_delete")
+    def bulk_delete(self, request):
+        ids = request.data.get("ids", [])
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            return Response(
+                {"detail": "ids must be a list of integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # Built-in tools are silently excluded, never rejected — they are
+            # simply not part of the deletable queryset (org_id also filters
+            # them out since built-ins have org_id=None, but built_in=False
+            # is kept explicit for clarity/defense-in-depth).
+            tool_list = PythonCodeTool.objects.filter(
+                id__in=ids,
+                org_id=self.get_active_org_id(),
+                built_in=False,
+            )
+            deleted_count = tool_list.count()
+            for tool in tool_list:
+                tool.delete()
+
+        return Response(
+            {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
+        )
 
 
 class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
@@ -1710,7 +1742,7 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
 class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
 
@@ -1730,6 +1762,29 @@ class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewS
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
+
+    @extend_schema(**MCP_TOOL_BULK_DELETE_POST)
+    @action(detail=False, methods=["post"], url_path="bulk_delete")
+    def bulk_delete(self, request):
+        ids = request.data.get("ids", [])
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            return Response(
+                {"detail": "ids must be a list of integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # McpTool has no built-in concept — every matching id is deletable.
+            tool_list = McpTool.objects.filter(
+                id__in=ids, org_id=self.get_active_org_id()
+            )
+            deleted_count = tool_list.count()
+            for tool in tool_list:
+                tool.delete()
+
+        return Response(
+            {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
+        )
 
 
 # TODO refactor to use user_variable for persistent variables

@@ -215,6 +215,25 @@ def test_cross_org_python_tool_is_404(client_a, org_b):
 
 
 @pytest.mark.django_db
+def test_built_in_python_code_tool_is_visible_not_404(client_a):
+    # EST-3277: PythonCodeTool visibility is hybrid (built-in rows are
+    # global, org_id=None) — a built-in tool must be resolvable in the
+    # usage-detail lookup the same way it's listed in /api/tools/usage/,
+    # not 404 just because it has no org.
+    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
+    builtin_tool = PythonCodeTool.objects.create(
+        name="BuiltInTool", description="d", python_code=code, built_in=True, org=None
+    )
+
+    resp = client_a.get(
+        "/api/tools/usage-detail/",
+        {"unique_name": f"python-code-tool:{builtin_tool.id}"},
+    )
+    assert resp.status_code == 200
+    assert resp.data == {"projects": [], "staff": []}
+
+
+@pytest.mark.django_db
 def test_cross_org_mcp_tool_is_404(client_a, org_b):
     foreign_tool = McpTool.objects.create(
         name="ForeignMcp",

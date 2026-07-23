@@ -14,6 +14,7 @@ class ToolUsageSerializer(serializers.Serializer):
     unique_name = serializers.CharField()
     projects_count = serializers.IntegerField()
     staff_count = serializers.IntegerField()
+    is_built_in = serializers.BooleanField()
 
 
 class ToolUsageProjectSerializer(serializers.Serializer):

@@ -8,10 +8,13 @@ TOOLS_USAGE_GET = dict(
         "Returns raw usage counts for every tool visible to the active org, "
         "across all three tool kinds (registered/configured, python-code, mcp). "
         "For each tool: `projects_count` (distinct Graphs reached via the "
-        "tool's agents -> their crews -> crew nodes) and `staff_count` "
-        "(distinct Agents referencing the tool). Does not exclude orphaned "
-        "or built-in tools (EST-3277) and does not return reference detail "
-        "lists (EST-3270) — counts only."
+        "tool's agents -> their crews -> crew nodes), `staff_count` "
+        "(distinct Agents referencing the tool), and `is_built_in` (EST-3277) "
+        "so the FE can gate orphan-highlighting on `!is_built_in` — registered "
+        "tools are always `is_built_in=true`, MCP tools are always "
+        "`is_built_in=false`, and python-code tools reflect their own "
+        "`built_in` flag. Does not exclude built-in or orphaned rows itself "
+        "and does not return reference detail lists (EST-3270) — counts only."
     ),
     responses={
         200: OpenApiResponse(
@@ -25,16 +28,19 @@ TOOLS_USAGE_GET = dict(
                             "unique_name": "configured-tool:5",
                             "projects_count": 2,
                             "staff_count": 3,
+                            "is_built_in": True,
                         },
                         {
                             "unique_name": "python-code-tool:12",
                             "projects_count": 0,
                             "staff_count": 0,
+                            "is_built_in": False,
                         },
                         {
                             "unique_name": "mcp-tool:7",
                             "projects_count": 1,
                             "staff_count": 0,
+                            "is_built_in": False,
                         },
                     ],
                     response_only=True,

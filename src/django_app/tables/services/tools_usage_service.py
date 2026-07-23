@@ -10,6 +10,8 @@ reverse joins) and rather than a per-tool query loop.
 
 from collections import defaultdict
 
+from django.db.models import Q
+
 from tables.models import (
     Agent,
     AgentConfiguredTools,
@@ -32,15 +34,27 @@ class ToolNotFoundError(Exception):
 
 def get_tools_usage(org_id: int) -> list[dict]:
     """Return one usage row per tool (registered/python-code/mcp) visible to
-    `org_id`: `{"unique_name": str, "projects_count": int, "staff_count": int}`.
+    `org_id`: `{"unique_name": str, "projects_count": int, "staff_count": int,
+    "is_built_in": bool}`.
 
     Registered `Tool` rows are global (no org column) and are always
-    included; `PythonCodeTool`/`McpTool` are scoped to `org_id`.
+    included, and are always `is_built_in=True` (EST-3277: the registered
+    tool kind has no non-built-in variant). `McpTool` is strictly scoped to
+    `org_id` (no built-in concept, always `is_built_in=False`).
+    `PythonCodeTool` is hybrid-visible — built-in rows (`org_id=None`) plus
+    this org's own custom rows — matching the visibility rule already used by
+    `PythonCodeToolViewSet` (`OrgScopedHybridViewSetMixin`); `built_in` is
+    surfaced as-is per row. This lets the FE additionally gate
+    orphan-highlighting on `!is_built_in` without excluding built-ins from
+    the endpoint itself.
     """
     tool_ids = list(Tool.objects.values_list("id", flat=True))
-    python_tool_ids = list(
-        PythonCodeTool.objects.filter(org_id=org_id).values_list("id", flat=True)
+    python_tool_built_in = dict(
+        PythonCodeTool.objects.filter(
+            Q(built_in=True) | Q(org_id=org_id)
+        ).values_list("id", "built_in")
     )
+    python_tool_ids = list(python_tool_built_in.keys())
     mcp_tool_ids = list(
         McpTool.objects.filter(org_id=org_id).values_list("id", flat=True)
     )
@@ -55,11 +69,27 @@ def get_tools_usage(org_id: int) -> list[dict]:
     agent_graphs = _agent_graph_map(org_id, all_agent_ids)
 
     return [
-        *_build_rows("configured-tool", tool_ids, configured_agents, agent_graphs),
         *_build_rows(
-            "python-code-tool", python_tool_ids, python_agents, agent_graphs
+            "configured-tool",
+            tool_ids,
+            configured_agents,
+            agent_graphs,
+            is_built_in=lambda _tool_id: True,
         ),
-        *_build_rows("mcp-tool", mcp_tool_ids, mcp_agents, agent_graphs),
+        *_build_rows(
+            "python-code-tool",
+            python_tool_ids,
+            python_agents,
+            agent_graphs,
+            is_built_in=lambda tool_id: python_tool_built_in.get(tool_id, False),
+        ),
+        *_build_rows(
+            "mcp-tool",
+            mcp_tool_ids,
+            mcp_agents,
+            agent_graphs,
+            is_built_in=lambda _tool_id: False,
+        ),
     ]
 
 
@@ -127,12 +157,19 @@ _AGENTS_BY_TOOL_FN_PER_PREFIX = {
 
 def _tool_exists(prefix: str, tool_id: int, org_id: int) -> bool:
     """Existence + org-visibility check for a single `prefix:tool_id`.
-    Registered `Tool` rows are global (no org column); `PythonCodeTool`/
-    `McpTool` are scoped to `org_id`."""
+    Registered `Tool` rows are global (no org column); `McpTool` is strictly
+    scoped to `org_id` (no built-in concept). `PythonCodeTool` is
+    hybrid-scoped — built-in rows are global (`org_id=None`), custom rows are
+    org-scoped — matching `PythonCodeToolViewSet`'s own
+    `global_visibility_q=Q(built_in=True)` rule and the same widened
+    visibility `get_tools_usage` uses, so a tool visible in the usage list is
+    never a 404 in the usage-detail lookup."""
     if prefix == "configured-tool":
         return Tool.objects.filter(id=tool_id).exists()
     if prefix == "python-code-tool":
-        return PythonCodeTool.objects.filter(id=tool_id, org_id=org_id).exists()
+        return PythonCodeTool.objects.filter(
+            Q(built_in=True) | Q(org_id=org_id), id=tool_id
+        ).exists()
     if prefix == "mcp-tool":
         return McpTool.objects.filter(id=tool_id, org_id=org_id).exists()
     raise ValueError(f"Unknown tool prefix: {prefix}")
@@ -215,6 +252,7 @@ def _build_rows(
     tool_ids: list[int],
     agents_by_tool: dict[int, set[int]],
     agent_graphs: dict[int, set[int]],
+    is_built_in,
 ) -> list[dict]:
     rows: list[dict] = []
     for tool_id in tool_ids:
@@ -227,6 +265,7 @@ def _build_rows(
                 "unique_name": f"{prefix}:{tool_id}",
                 "projects_count": len(graph_ids),
                 "staff_count": len(agent_ids),
+                "is_built_in": bool(is_built_in(tool_id)),
             }
         )
     return rows

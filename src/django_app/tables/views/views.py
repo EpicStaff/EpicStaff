@@ -694,9 +694,11 @@ class RunPythonCodeAPIView(APIView):
 
 class ToolsUsageAPIView(OrgScopedResolverMixin, APIView):
     """GET /api/tools/usage/ — raw per-tool usage counts for the active org
-    (EST-3264). Orphan/built-in exclusion (EST-3277) is a separate, later
-    subtask. See `ToolsUsageDetailAPIView` for the per-tool reference detail
-    (EST-3270)."""
+    (EST-3264), plus an `is_built_in` flag per row (EST-3277) so the FE can
+    additionally gate orphan-highlighting on `!is_built_in` — built-in tools
+    are never flagged as orphans. This endpoint does not itself exclude
+    built-in rows; it still returns one row per tool visible to the org. See
+    `ToolsUsageDetailAPIView` for the per-tool reference detail (EST-3270)."""
 
     permission_classes = [IsAuthenticated]
 

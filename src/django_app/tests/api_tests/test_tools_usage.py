@@ -118,16 +118,19 @@ def test_used_tools_have_correct_projects_and_staff_counts(client_a, used_graph_
         "unique_name": f"configured-tool:{registered_tool.id}",
         "projects_count": 1,
         "staff_count": 1,
+        "is_built_in": True,
     }
     assert rows[f"python-code-tool:{python_tool.id}"] == {
         "unique_name": f"python-code-tool:{python_tool.id}",
         "projects_count": 1,
         "staff_count": 1,
+        "is_built_in": False,
     }
     assert rows[f"mcp-tool:{mcp_tool.id}"] == {
         "unique_name": f"mcp-tool:{mcp_tool.id}",
         "projects_count": 1,
         "staff_count": 1,
+        "is_built_in": False,
     }
 
 
@@ -142,6 +145,7 @@ def test_unused_tool_has_zero_counts(client_a, unused_python_tool):
         "unique_name": key,
         "projects_count": 0,
         "staff_count": 0,
+        "is_built_in": False,
     }
 
 
@@ -211,3 +215,55 @@ def test_requires_authentication(db):
     # this codebase (e.g. RunPythonCodeAPIView) under the same test settings.
     resp = APIClient().get("/api/tools/usage/")
     assert resp.status_code == 403
+
+
+# ---- is_built_in field (EST-3277) ----
+
+
+@pytest.mark.django_db
+def test_is_built_in_true_for_built_in_python_code_tool(client_a):
+    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
+    tool = PythonCodeTool.objects.create(
+        name="BuiltInPyTool",
+        description="d",
+        python_code=code,
+        built_in=True,
+        org=None,
+    )
+    resp = client_a.get("/api/tools/usage/")
+    assert resp.status_code == 200
+    rows = {row["unique_name"]: row for row in resp.data}
+    assert rows[f"python-code-tool:{tool.id}"]["is_built_in"] is True
+
+
+@pytest.mark.django_db
+def test_is_built_in_false_for_non_built_in_python_code_tool(
+    client_a, unused_python_tool
+):
+    resp = client_a.get("/api/tools/usage/")
+    assert resp.status_code == 200
+    rows = {row["unique_name"]: row for row in resp.data}
+    key = f"python-code-tool:{unused_python_tool.id}"
+    assert rows[key]["is_built_in"] is False
+
+
+@pytest.mark.django_db
+def test_is_built_in_true_for_registered_tool(client_a, registered_tool):
+    resp = client_a.get("/api/tools/usage/")
+    assert resp.status_code == 200
+    rows = {row["unique_name"]: row for row in resp.data}
+    assert rows[f"configured-tool:{registered_tool.id}"]["is_built_in"] is True
+
+
+@pytest.mark.django_db
+def test_is_built_in_false_for_mcp_tool(client_a, org_a):
+    mcp_tool = McpTool.objects.create(
+        name="McpToolStandalone",
+        transport="https://example.com/mcp",
+        tool_name="do_thing",
+        org=org_a,
+    )
+    resp = client_a.get("/api/tools/usage/")
+    assert resp.status_code == 200
+    rows = {row["unique_name"]: row for row in resp.data}
+    assert rows[f"mcp-tool:{mcp_tool.id}"]["is_built_in"] is False
