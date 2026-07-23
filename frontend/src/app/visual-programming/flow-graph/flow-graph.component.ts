@@ -412,6 +412,22 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
+        const allPorts = this.flowService.nodes().flatMap((n) => n.ports ?? []);
+        const sourcePort = allPorts.find((p) => p.id === pair.sourcePortId);
+        const targetPort = allPorts.find((p) => p.id === pair.targetPortId);
+        const sourceOccupied =
+            !!sourcePort &&
+            !sourcePort.multiple &&
+            currentConnections.some((conn) => conn.sourcePortId === pair.sourcePortId);
+        const targetOccupied =
+            !!targetPort &&
+            !targetPort.multiple &&
+            currentConnections.some((conn) => conn.targetPortId === pair.targetPortId);
+        if (sourceOccupied || targetOccupied) {
+            console.warn('Single-use port already connected, ignoring:', `${pair.sourcePortId}+${pair.targetPortId}`);
+            return;
+        }
+
         const sourceNodeId = pair.sourcePortId.split('_')[0];
         const targetNodeId = pair.targetPortId.split('_')[0];
 
