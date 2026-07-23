@@ -64,7 +64,11 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
         queryset = SourceCollection.objects.all()
 
         if self.action == "list" or self.action == "retrieve":
-            queryset = queryset.prefetch_related("documents")
+            queryset = queryset.prefetch_related(
+                "documents",
+                "rag_types__naive_rags",
+                "rag_types__graph_rags",
+            )
 
         return queryset
 

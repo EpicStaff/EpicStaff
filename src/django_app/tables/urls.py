@@ -124,6 +124,7 @@ from tables.views.sse_views import (
     RunSessionSSEView,
     RunSessionSSEViewSwagger,
     FilteredRunSessionSSEView,
+    CollectionIndexingSSEView,
 )
 from tables.views.flow_assistant_views import (
     FlowAssistantAuditView,
@@ -350,6 +351,11 @@ urlpatterns = [
         "run-session/subscribe/<int:session_id>/swagger/",
         RunSessionSSEViewSwagger.as_view(),
         name="run-session-subscribe-swagger",
+    ),
+    path(
+        "source-collections/subscribe/<int:collection_id>/",
+        CollectionIndexingSSEView.as_view(),
+        name="source-collection-indexing-subscribe",
     ),
     # Chunking preview endpoints
     path(

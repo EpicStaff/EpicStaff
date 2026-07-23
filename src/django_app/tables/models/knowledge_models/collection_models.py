@@ -13,6 +13,7 @@ class SourceCollection(models.Model):
         UPLOADING = "uploading"
         COMPLETED = "completed"
         WARNING = "warning"
+        FAILED = "failed"
 
     class SourceCollectionOrigin(models.TextChoices):
         """

@@ -5,6 +5,8 @@ from loguru import logger
 
 from .base_storage import BaseORMStorage
 from models.orm import (
+    BaseRagType,
+    GraphRag,
     NaiveRag,
     NaiveRagDocumentConfig,
     NaiveRagChunk,
@@ -73,6 +75,64 @@ class ORMNaiveRagStorage(BaseORMStorage):
         except Exception as e:
             logger.error(f"Failed to update NaiveRag {naive_rag_id} status: {e}")
             return False
+
+    def get_collection_status_inputs(
+        self, naive_rag_id: int
+    ) -> Optional[tuple[int, bool, List[str]]]:
+        """
+        Gather the inputs needed to derive the SourceCollection-level status
+        for the collection that owns `naive_rag_id`.
+
+        Returns:
+            Tuple of (collection_id, has_documents, rag_statuses) where
+            rag_statuses is the rag_status of every RAG implementation
+            (naive + graph) attached to the collection, or None if the
+            NaiveRag or its collection cannot be resolved (including on
+            unexpected DB errors) - callers must treat None as "status
+            unknown" and fall back to a safe terminal status.
+        """
+        try:
+            naive_rag = (
+                self.session.query(NaiveRag)
+                .options(joinedload(NaiveRag.base_rag_type))
+                .filter(NaiveRag.naive_rag_id == naive_rag_id)
+                .one_or_none()
+            )
+            if naive_rag is None:
+                logger.warning(f"NaiveRag {naive_rag_id} not found")
+                return None
+
+            collection_id = naive_rag.base_rag_type.source_collection_id
+
+            has_documents = (
+                self.session.query(DocumentMetadata.document_id)
+                .filter(DocumentMetadata.source_collection_id == collection_id)
+                .first()
+                is not None
+            )
+
+            naive_statuses = [
+                status
+                for (status,) in self.session.query(NaiveRag.rag_status)
+                .join(BaseRagType, BaseRagType.rag_type_id == NaiveRag.base_rag_type_id)
+                .filter(BaseRagType.source_collection_id == collection_id)
+                .all()
+            ]
+            graph_statuses = [
+                status
+                for (status,) in self.session.query(GraphRag.rag_status)
+                .join(BaseRagType, BaseRagType.rag_type_id == GraphRag.base_rag_type_id)
+                .filter(BaseRagType.source_collection_id == collection_id)
+                .all()
+            ]
+
+            return collection_id, has_documents, naive_statuses + graph_statuses
+
+        except Exception as e:
+            logger.error(
+                f"Failed to gather collection status inputs for NaiveRag {naive_rag_id}: {e}"
+            )
+            return None
 
     # ==================== Document Config Operations ====================
 

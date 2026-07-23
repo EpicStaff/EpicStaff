@@ -8,11 +8,14 @@ from loguru import logger
 from services.collection_processor_service import CollectionProcessorService
 from services.redis_service import RedisService
 from services.chunking_job_registry import chunking_job_registry
+from rag.naive_rag_strategy import KNOWLEDGE_INDEXING_PROGRESS_CHANNEL
 from src.shared.models import (
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
     BaseKnowledgeSearchMessage,
     ProcessRagIndexingMessage,
+    RagIndexingProgressMessage,
+    COLLECTION_STATUS_FAILED,
 )
 
 
@@ -43,8 +46,10 @@ knowledge_indexing_channel = os.getenv(
 async def execute_indexing(
     rag_id: int,
     rag_type: str,
+    collection_id: int,
     executor: ThreadPoolExecutor,
     semaphore: asyncio.Semaphore,
+    redis_service: RedisService,
 ):
     """
     Execute a single RAG indexing job (chunking + embedding).
@@ -52,8 +57,18 @@ async def execute_indexing(
     Args:
         rag_id: ID of the RAG to index
         rag_type: Type of RAG (e.g., "naive")
+        collection_id: ID of the owning SourceCollection (for the safety-net
+            progress event below)
         executor: ThreadPoolExecutor for CPU-bound work
         semaphore: Semaphore for rate limiting
+        redis_service: Redis service used for the safety-net progress event
+
+    Note: process_rag_indexing (for "naive") publishes its own
+    RagIndexingProgressMessage events, including a terminal one on every
+    handled failure path. The `except` below is a safety net for failures it
+    cannot itself report - e.g. an exception raised before its own try block
+    (embedder init, unresolved collection) or an unexpected bug - so the SSE
+    stream never dead-ends on an in-progress status.
     """
     async with semaphore:
         try:
@@ -67,6 +82,16 @@ async def execute_indexing(
             logger.info(f"RAG indexing completed: rag_type={rag_type}, rag_id={rag_id}")
         except Exception as e:
             logger.error(f"Error processing indexing: {e}")
+            await redis_service.async_publish(
+                KNOWLEDGE_INDEXING_PROGRESS_CHANNEL,
+                RagIndexingProgressMessage(
+                    collection_id=collection_id,
+                    rag_id=rag_id,
+                    rag_type=rag_type,
+                    collection_status=COLLECTION_STATUS_FAILED,
+                    error=str(e),
+                ).model_dump(),
+            )
 
 
 async def indexing(
@@ -97,8 +122,10 @@ async def indexing(
                     execute_indexing(
                         rag_id=indexing_message.rag_id,
                         rag_type=indexing_message.rag_type,
+                        collection_id=indexing_message.collection_id,
                         executor=executor,
                         semaphore=semaphore,
+                        redis_service=redis_service,
                     )
                 )
                 background_tasks.add(task)

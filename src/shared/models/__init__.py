@@ -84,6 +84,13 @@ from .knowledge import (
     ProcessRagIndexingMessage,
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
+    RagIndexingProgressMessage,
+    derive_collection_status,
+    COLLECTION_STATUS_EMPTY,
+    COLLECTION_STATUS_UPLOADING,
+    COLLECTION_STATUS_COMPLETED,
+    COLLECTION_STATUS_WARNING,
+    COLLECTION_STATUS_FAILED,
 )
 from .sessions import (
     SessionData,
@@ -214,6 +221,13 @@ __all__ = [
     "ProcessRagIndexingMessage",
     "ChunkDocumentMessage",
     "ChunkDocumentMessageResponse",
+    "RagIndexingProgressMessage",
+    "derive_collection_status",
+    "COLLECTION_STATUS_EMPTY",
+    "COLLECTION_STATUS_UPLOADING",
+    "COLLECTION_STATUS_COMPLETED",
+    "COLLECTION_STATUS_WARNING",
+    "COLLECTION_STATUS_FAILED",
     # sessions
     "SessionData",
     "GraphSessionMessageData",

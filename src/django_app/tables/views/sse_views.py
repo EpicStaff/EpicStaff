@@ -14,12 +14,19 @@ from drf_spectacular.utils import (
 from rest_framework import serializers as drf_serializers
 from asgiref.sync import sync_to_async
 
+from django.conf import settings
+
 from tables.utils.mixins import SSEMixin
 from tables.models.session_models import Session
 from tables.models.vector_models import MemoryDatabase
 from tables.models.graph_models import GraphSessionMessage
+from tables.models.knowledge_models import NaiveRag, SourceCollection
 from tables.services.redis_service import RedisService
+from tables.services.knowledge_services.collection_status_service import (
+    CollectionStatusService,
+)
 from tables.swagger_schemas.sessions_schema import RUN_SESSION_SSE_GET
+from src.shared.models import RagIndexingProgressMessage, COLLECTION_STATUS_UPLOADING
 
 
 redis_service = RedisService()
@@ -270,3 +277,121 @@ class FilteredRunSessionSSEView(RunSessionSSEView):
     Standard messages (start, finish, error) always pass through."""
 
     _sse_filter_enabled = True
+
+
+class CollectionIndexingSSEView(SSEMixin):
+    """
+    SSE stream for live NaiveRag indexing progress of one SourceCollection.
+
+    GET /api/source-collections/subscribe/<collection_id>/?ticket=...
+
+    Emits a single event type:
+        - indexing: RagIndexingProgressMessage payload (see
+          src/shared/models/knowledge.py), scoped to this collection_id.
+          `collection_status` is always one of the CollectionStatus
+          vocabulary values (empty/uploading/completed/warning/failed).
+
+    On connect, replays the collection's current derived status (if any
+    NaiveRag has ever been indexed for it) so a late subscriber immediately
+    sees state instead of waiting for the next Redis message. The stream
+    closes itself once a terminal event (collection_status != "uploading")
+    is observed, mirroring how the knowledge worker always publishes exactly
+    one terminal progress event per indexing run.
+    """
+
+    channels = [settings.KNOWLEDGE_INDEXING_PROGRESS_CHANNEL]
+
+    async def _get_current_snapshot(self, collection_id: int) -> tuple[int, str] | None:
+        """
+        Resolve (naive_rag_id, collection_status) for the "primary" NaiveRag
+        of this collection - the most recently updated one, since in
+        practice a collection has at most one NaiveRag configuration.
+
+        Returns None if the collection has no NaiveRag yet (nothing to
+        replay).
+        """
+
+        def _query():
+            try:
+                collection = SourceCollection.objects.prefetch_related(
+                    "documents", "rag_types__naive_rags", "rag_types__graph_rags"
+                ).get(collection_id=collection_id)
+            except SourceCollection.DoesNotExist:
+                return None
+
+            naive_rag = (
+                NaiveRag.objects.filter(
+                    base_rag_type__source_collection_id=collection_id
+                )
+                .order_by("-updated_at")
+                .first()
+            )
+            if naive_rag is None:
+                return None
+
+            return (
+                naive_rag.naive_rag_id,
+                CollectionStatusService.get_collection_status(collection),
+            )
+
+        return await sync_to_async(_query)()
+
+    async def get_initial_data(self):
+        collection_id = self.kwargs["collection_id"]
+        snapshot = await self._get_current_snapshot(collection_id)
+        if snapshot is None:
+            return
+
+        naive_rag_id, collection_status = snapshot
+        logger.debug(
+            f"CollectionIndexingSSEView initial snapshot: collection_id={collection_id}, "
+            f"naive_rag_id={naive_rag_id}, collection_status={collection_status}"
+        )
+        yield {
+            "event": "indexing",
+            "data": RagIndexingProgressMessage(
+                collection_id=collection_id,
+                rag_id=naive_rag_id,
+                rag_type="naive",
+                collection_status=collection_status,
+            ).model_dump(),
+        }
+
+    async def get_live_updates(self, pubsub):
+        collection_id = self.kwargs["collection_id"]
+
+        async for message in redis_service.redis_get_message(
+            channels=self.channels,
+            pubsub=pubsub,
+        ):
+            if not message:
+                await asyncio.sleep(0.05)
+                continue
+
+            if message.get("type") != "message":
+                continue
+
+            try:
+                data = json.loads(message["data"])
+            except (TypeError, json.JSONDecodeError) as e:
+                logger.warning(f"Invalid indexing progress payload: {e}")
+                continue
+
+            if str(data.get("collection_id")) != str(collection_id):
+                continue
+
+            logger.debug(f"CollectionIndexingSSEView live update: {data}")
+            yield {"event": "indexing", "data": data}
+
+            if data.get("collection_status") != COLLECTION_STATUS_UPLOADING:
+                return
+
+    async def get(self, request, *args, **kwargs):
+        """
+        SSE stream for real-time NaiveRag indexing progress of one
+        SourceCollection. Returns a single "indexing" event type.
+        """
+        logger.info(
+            f"Started collection indexing SSE for collection_id={kwargs.get('collection_id')}"
+        )
+        return await super().get(request, *args, **kwargs)

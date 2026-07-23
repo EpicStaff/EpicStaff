@@ -118,6 +118,13 @@ class SSEMixin(View, ABC):
     ping_interval = 15  # seconds
     last_ping = None
 
+    # Redis channels the mixin subscribes `pubsub` to before handing it to
+    # get_live_updates(). Defaults to the run-session channels for backward
+    # compatibility; override on subclasses that stream a different source
+    # (e.g. CollectionIndexingSSEView subscribes to the knowledge indexing
+    # progress channel instead).
+    channels: list[str] | None = None
+
     async def async_orm_generator(self, queryset):
         async for entity in queryset.aiterator(chunk_size=200):
             yield entity
@@ -196,7 +203,7 @@ class SSEMixin(View, ABC):
         self.last_ping = time.time()
         pubsub = None
         try:
-            channels = [
+            channels = self.channels or [
                 session_status_channel_name,
                 graph_messages_channel_name,
                 memory_updates_channel_name,

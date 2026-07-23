@@ -139,3 +139,92 @@ class ChunkDocumentMessageResponse(BaseModel):
     chunk_count: int | None = None
     message: str | None = None
     elapsed_time: float | None = None
+
+
+# Collection status wire-contract vocabulary.
+# Mirrors Django's SourceCollection.SourceCollectionStatus TextChoices values
+# (src/django_app/tables/models/knowledge_models/collection_models.py).
+# Kept here as plain strings (not an importable Django enum) so this module
+# stays framework-agnostic and usable from both django_app and the knowledge
+# worker.
+COLLECTION_STATUS_EMPTY = "empty"
+COLLECTION_STATUS_UPLOADING = "uploading"
+COLLECTION_STATUS_COMPLETED = "completed"
+COLLECTION_STATUS_WARNING = "warning"
+COLLECTION_STATUS_FAILED = "failed"
+
+# rag_status values (NaiveRag/GraphRag) that mean "still in flight".
+# Includes "chunked" because the knowledge worker's document-status
+# aggregation can currently surface it as an intermediate NaiveRag-level
+# rag_status (see NaiveRAGStrategy.update_naive_rag_status).
+_RAG_STATUSES_IN_PROGRESS = {"new", "processing", "chunked", "indexing", "chunking"}
+
+
+def derive_collection_status(rag_statuses: list[str], has_documents: bool) -> str:
+    """
+    Derive the SourceCollection-level status from the rag_status of every RAG
+    implementation (NaiveRag, GraphRag, ...) attached to the collection.
+
+    This is the single source of truth for the collection_status wire
+    contract. It is consumed by:
+    - The Django REST serializers (SourceCollectionListSerializer /
+      SourceCollectionDetailSerializer), via
+      tables.services.knowledge_services.collection_status_service.CollectionStatusService.
+    - The knowledge worker's SSE progress events
+      (RagIndexingProgressMessage.collection_status), via NaiveRAGStrategy.
+
+    Both call sites must feed it the same rag_status vocabulary so the wire
+    contract stays identical across layers.
+
+    Mapping:
+    - no documents -> empty
+    - any RAG still new/processing/chunked/indexing/chunking -> uploading
+    - all RAGs completed -> completed
+    - all RAGs failed -> failed
+    - mixed completed/failed, or any explicit warning -> warning
+    """
+    if not has_documents:
+        return COLLECTION_STATUS_EMPTY
+
+    statuses = set(rag_statuses)
+
+    if not statuses:
+        # Has documents, but no RAG configuration has been created yet.
+        return COLLECTION_STATUS_UPLOADING
+
+    if statuses & _RAG_STATUSES_IN_PROGRESS:
+        return COLLECTION_STATUS_UPLOADING
+
+    if statuses == {"completed"}:
+        return COLLECTION_STATUS_COMPLETED
+
+    if statuses == {"failed"}:
+        return COLLECTION_STATUS_FAILED
+
+    # Remaining terminal combinations: mixed completed/failed, or any
+    # explicit warning.
+    return COLLECTION_STATUS_WARNING
+
+
+class RagIndexingProgressMessage(BaseModel):
+    """
+    Progress event published by the knowledge worker while indexing a RAG
+    implementation (chunking + embedding), streamed to the frontend via the
+    Django SSE endpoint `source-collections/subscribe/<collection_id>/`.
+
+    Published on channel `knowledge:indexing:progress`.
+    """
+
+    collection_id: int
+    rag_id: int  # ID of specific RAG implementation (naive_rag_id, graph_rag_id, etc.)
+    rag_type: str
+    document_config_id: int | None = None
+    doc_status: str | None = None  # per-document rag-style status, if applicable
+    done: int = 0
+    total: int = 0
+    collection_status: (
+        str  # CollectionStatus vocabulary value, see derive_collection_status
+    )
+    error: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)

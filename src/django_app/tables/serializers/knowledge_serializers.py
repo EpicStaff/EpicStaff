@@ -9,6 +9,9 @@ from tables.models.knowledge_models import (
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
+from tables.services.knowledge_services.collection_status_service import (
+    CollectionStatusService,
+)
 
 
 class RagConfigurationSummarySerializer(serializers.Serializer):
@@ -184,6 +187,12 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
     """
 
     document_count = serializers.IntegerField(source="documents.count", read_only=True)
+    status = serializers.SerializerMethodField(
+        help_text=(
+            "Derived collection status (empty/uploading/completed/warning/failed), "
+            "aggregated at read time from child RAG statuses."
+        )
+    )
 
     class Meta:
         model = SourceCollection
@@ -198,6 +207,9 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_status(self, obj: SourceCollection) -> str:
+        return CollectionStatusService.get_collection_status(obj)
+
 
 class SourceCollectionDetailSerializer(serializers.ModelSerializer):
     """
@@ -206,6 +218,12 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
     """
 
     document_count = serializers.IntegerField(source="documents.count", read_only=True)
+    status = serializers.SerializerMethodField(
+        help_text=(
+            "Derived collection status (empty/uploading/completed/warning/failed), "
+            "aggregated at read time from child RAG statuses."
+        )
+    )
     rag_configurations = serializers.SerializerMethodField(
         help_text="List of RAG configurations for this collection (NaiveRag, GraphRag, etc.)"
     )
@@ -223,6 +241,9 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_status(self, obj: SourceCollection) -> str:
+        return CollectionStatusService.get_collection_status(obj)
 
     def get_rag_configurations(self, obj):
         """

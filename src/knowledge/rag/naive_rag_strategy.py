@@ -4,12 +4,17 @@ from loguru import logger
 import cachetools
 
 from services.cancellation_token import CancellationToken
+from services.redis_service import RedisService
 
 from psycopg2.errors import ForeignKeyViolation
 
 from src.shared.models import (
     NaiveRagSearchConfig,
     BaseKnowledgeSearchMessageResponse,
+    RagIndexingProgressMessage,
+    derive_collection_status,
+    COLLECTION_STATUS_FAILED,
+    COLLECTION_STATUS_UPLOADING,
 )
 from rag.base_rag_strategy import BaseRAGStrategy
 from services.chunk_document_service import ChunkDocumentService
@@ -22,6 +27,12 @@ from embedder.together_ai import TogetherAIEmbedder
 
 
 _embedder_cache = cachetools.LRUCache(maxsize=50)
+
+# Published to by NaiveRAGStrategy while indexing; read by execute_indexing
+# (main.py) so the channel name is defined in exactly one place.
+KNOWLEDGE_INDEXING_PROGRESS_CHANNEL = os.getenv(
+    "KNOWLEDGE_INDEXING_PROGRESS_CHANNEL", "knowledge:indexing:progress"
+)
 
 
 class NaiveRAGStrategy(BaseRAGStrategy):
@@ -138,6 +149,52 @@ class NaiveRAGStrategy(BaseRAGStrategy):
 
         return knowledge_query_results.model_dump()
 
+    def _publish_progress(
+        self,
+        *,
+        collection_id: int,
+        naive_rag_id: int,
+        collection_status: str,
+        document_config_id: Optional[int] = None,
+        doc_status: Optional[str] = None,
+        done: int = 0,
+        total: int = 0,
+        error: Optional[str] = None,
+    ) -> None:
+        """Publish a RagIndexingProgressMessage to KNOWLEDGE_INDEXING_PROGRESS_CHANNEL."""
+        message = RagIndexingProgressMessage(
+            collection_id=collection_id,
+            rag_id=naive_rag_id,
+            rag_type=self.RAG_TYPE,
+            document_config_id=document_config_id,
+            doc_status=doc_status,
+            done=done,
+            total=total,
+            collection_status=collection_status,
+            error=error,
+        )
+        RedisService().publish(
+            KNOWLEDGE_INDEXING_PROGRESS_CHANNEL, message.model_dump()
+        )
+
+    def _derive_collection_status_for(self, naive_rag_id: int) -> str:
+        """
+        Best-effort lookup of the current collection_status for `naive_rag_id`,
+        falling back to COLLECTION_STATUS_FAILED when the collection can't be
+        resolved so a progress event never reports a false in-progress state.
+        """
+        uow = UnitOfWork()
+        with uow.start() as uow_ctx:
+            status_inputs = uow_ctx.naive_rag_storage.get_collection_status_inputs(
+                naive_rag_id=naive_rag_id
+            )
+
+        if status_inputs is None:
+            return COLLECTION_STATUS_FAILED
+
+        _, has_documents, rag_statuses = status_inputs
+        return derive_collection_status(rag_statuses, has_documents)
+
     def process_rag_indexing(self, rag_id: int):
         """
         Process RAG indexing (chunking + embedding) for a NaiveRag.
@@ -152,11 +209,31 @@ class NaiveRAGStrategy(BaseRAGStrategy):
            - Embed all chunks
            - Update document config status
         3. Update NaiveRag status based on document config statuses
+
+        Publishes RagIndexingProgressMessage events throughout so subscribers
+        (Django's CollectionIndexingSSEView) can stream live progress. A
+        terminal event is always published, even on failure paths - see
+        `_derive_collection_status_for` and `update_naive_rag_status`.
         """
         naive_rag_id = rag_id
 
         embedder = self._get_cached_embedder(naive_rag_id=naive_rag_id)
         uow = UnitOfWork()
+
+        with uow.start() as uow_ctx:
+            status_inputs = uow_ctx.naive_rag_storage.get_collection_status_inputs(
+                naive_rag_id=naive_rag_id
+            )
+
+        if status_inputs is None:
+            # No collection_id to scope a progress event to - surface this as
+            # an exception so the execute_indexing() safety net (main.py) logs
+            # and handles it consistently with other unexpected failures.
+            raise ValueError(
+                f"Could not resolve source collection for naive_rag_id {naive_rag_id}"
+            )
+
+        collection_id, _, _ = status_inputs
 
         try:
             with uow.start() as uow_ctx:
@@ -166,6 +243,11 @@ class NaiveRAGStrategy(BaseRAGStrategy):
                     status="processing",
                 )
                 logger.info(f"Processing embeddings for naive_rag_id: {naive_rag_id}")
+                self._publish_progress(
+                    collection_id=collection_id,
+                    naive_rag_id=naive_rag_id,
+                    collection_status=COLLECTION_STATUS_UPLOADING,
+                )
 
                 # Get all document configs for this RAG with status NEW/WARNING/CHUNKED
                 document_configs = (
@@ -180,7 +262,8 @@ class NaiveRAGStrategy(BaseRAGStrategy):
                         f"NaiveRag {naive_rag_id} must contain at least 1 new document config to process"
                     )
 
-                for doc_config in document_configs:
+                total = len(document_configs)
+                for done, doc_config in enumerate(document_configs, start=1):
                     try:
                         # Extract data we need BEFORE any operations
                         config_id = doc_config.naive_rag_document_id
@@ -194,6 +277,15 @@ class NaiveRAGStrategy(BaseRAGStrategy):
                         uow_ctx.naive_rag_storage.update_document_config_status(
                             naive_rag_document_config_id=config_id,
                             status="processing",
+                        )
+                        self._publish_progress(
+                            collection_id=collection_id,
+                            naive_rag_id=naive_rag_id,
+                            document_config_id=config_id,
+                            doc_status="processing",
+                            done=done - 1,
+                            total=total,
+                            collection_status=COLLECTION_STATUS_UPLOADING,
                         )
 
                         # Chunk the document in the SAME session
@@ -212,6 +304,15 @@ class NaiveRAGStrategy(BaseRAGStrategy):
                             uow_ctx.naive_rag_storage.update_document_config_status(
                                 naive_rag_document_config_id=config_id,
                                 status="warning",
+                            )
+                            self._publish_progress(
+                                collection_id=collection_id,
+                                naive_rag_id=naive_rag_id,
+                                document_config_id=config_id,
+                                doc_status="warning",
+                                done=done,
+                                total=total,
+                                collection_status=COLLECTION_STATUS_UPLOADING,
                             )
                             continue
 
@@ -234,6 +335,16 @@ class NaiveRAGStrategy(BaseRAGStrategy):
                         logger.warning(
                             f"Document: {file_name} was deleted and will not be embedded"
                         )
+                        self._publish_progress(
+                            collection_id=collection_id,
+                            naive_rag_id=naive_rag_id,
+                            document_config_id=config_id,
+                            doc_status="warning",
+                            done=done,
+                            total=total,
+                            collection_status=COLLECTION_STATUS_UPLOADING,
+                            error="Document was deleted during indexing",
+                        )
                     except Exception as e:
                         uow_ctx.naive_rag_storage.update_document_config_status(
                             naive_rag_document_config_id=config_id,
@@ -242,27 +353,63 @@ class NaiveRAGStrategy(BaseRAGStrategy):
                         logger.error(
                             f"Error processing {file_name}, config ID: {config_id}. Error: {e}"
                         )
+                        self._publish_progress(
+                            collection_id=collection_id,
+                            naive_rag_id=naive_rag_id,
+                            document_config_id=config_id,
+                            doc_status="failed",
+                            done=done,
+                            total=total,
+                            collection_status=COLLECTION_STATUS_UPLOADING,
+                            error=str(e),
+                        )
                     else:
                         uow_ctx.naive_rag_storage.update_document_config_status(
                             naive_rag_document_config_id=config_id,
                             status="completed",
                         )
                         logger.success(f"Document: {file_name} embedded!")
+                        self._publish_progress(
+                            collection_id=collection_id,
+                            naive_rag_id=naive_rag_id,
+                            document_config_id=config_id,
+                            doc_status="completed",
+                            done=done,
+                            total=total,
+                            collection_status=COLLECTION_STATUS_UPLOADING,
+                        )
 
         except Exception as e:
+            logger.error(f"Error processing naive_rag_id {naive_rag_id}: {e}")
             with uow.start() as uow_ctx:
-                uow_ctx.naive_rag_storage.update_rag_status(
+                status_updated = uow_ctx.naive_rag_storage.update_rag_status(
                     naive_rag_id=naive_rag_id,
                     status="failed",
                 )
-            logger.error(f"Error processing naive_rag_id {naive_rag_id}: {e}")
+            if not status_updated:
+                logger.error(
+                    f"Failed to persist 'failed' status for NaiveRag {naive_rag_id}; "
+                    "publishing terminal progress event regardless."
+                )
+            # ROBUSTNESS: always publish a terminal event, even if the DB
+            # write above failed, so the live stream never dead-ends on
+            # an in-progress status.
+            self._publish_progress(
+                collection_id=collection_id,
+                naive_rag_id=naive_rag_id,
+                collection_status=self._derive_collection_status_for(naive_rag_id),
+                error=str(e),
+            )
         else:
-            self.update_naive_rag_status(naive_rag_id=naive_rag_id)
+            self.update_naive_rag_status(
+                naive_rag_id=naive_rag_id, collection_id=collection_id
+            )
             logger.info(f"Embedding finished for naive_rag_id: {naive_rag_id}")
 
-    def update_naive_rag_status(self, naive_rag_id: int):
+    def update_naive_rag_status(self, naive_rag_id: int, collection_id: int) -> None:
         """
-        Update NaiveRag status based on document config statuses.
+        Update NaiveRag status based on document config statuses, then publish
+        the resulting terminal RagIndexingProgressMessage.
         #TODO: refactor statuces
         Status Logic:
         - NEW: all configs are New OR no configs
@@ -274,6 +421,8 @@ class NaiveRAGStrategy(BaseRAGStrategy):
 
         Args:
             naive_rag_id: ID of the NaiveRag
+            collection_id: ID of the owning SourceCollection (already resolved
+                by the caller, avoiding a second lookup here)
         """
         uow = UnitOfWork()
         with uow.start() as uow_ctx:
@@ -308,10 +457,48 @@ class NaiveRAGStrategy(BaseRAGStrategy):
             current_status = "warning"
 
         with uow.start() as uow_ctx:
-            uow_ctx.naive_rag_storage.update_rag_status(
+            status_updated = uow_ctx.naive_rag_storage.update_rag_status(
                 naive_rag_id=naive_rag_id, status=current_status
             )
+            status_inputs = uow_ctx.naive_rag_storage.get_collection_status_inputs(
+                naive_rag_id=naive_rag_id
+            )
+
+        if status_updated:
             logger.info(f"Status '{current_status}' was set to NaiveRag {naive_rag_id}")
+            if status_inputs is not None:
+                _, has_documents, rag_statuses = status_inputs
+                collection_status = derive_collection_status(
+                    rag_statuses, has_documents
+                )
+            else:
+                collection_status = COLLECTION_STATUS_FAILED
+        else:
+            # ROBUSTNESS: update_rag_status swallows its own DB errors and
+            # returns False - the persisted rag_status is now stale (still
+            # whatever it was before this call), so `status_inputs` reflects
+            # that stale value too and cannot be trusted to derive
+            # collection_status from (it could still resolve to an
+            # in-progress value, e.g. "processing"). Hard-fallback to
+            # "failed" instead of deriving from unreliable data, so the
+            # stream never dead-ends on an in-progress status.
+            logger.error(
+                f"Failed to persist status '{current_status}' for NaiveRag {naive_rag_id}; "
+                "publishing 'failed' terminal progress event as a safe fallback."
+            )
+            current_status = "failed"
+            collection_status = COLLECTION_STATUS_FAILED
+
+        self._publish_progress(
+            collection_id=collection_id,
+            naive_rag_id=naive_rag_id,
+            collection_status=collection_status,
+            error=(
+                "NaiveRag indexing finished with 'failed' status"
+                if current_status == "failed"
+                else None
+            ),
+        )
 
     def _create_default_embedding_function(self):
         """Create default OpenAI embedder."""

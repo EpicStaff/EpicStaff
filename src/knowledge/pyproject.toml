@@ -38,7 +38,13 @@ dependencies = [
 [tool.poetry.group.graphrag.dependencies]
 graphrag = {path = "libraries/graphrag"}
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.2"
+pytest-mock = "^3.14.0"
+fakeredis = "^2.26.1"
 
+[tool.pytest.ini_options]
+pythonpath = [".", "../.."]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
