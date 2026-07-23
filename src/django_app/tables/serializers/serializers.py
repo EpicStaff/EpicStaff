@@ -16,6 +16,23 @@ class ToolUsageSerializer(serializers.Serializer):
     staff_count = serializers.IntegerField()
 
 
+class ToolUsageProjectSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class ToolUsageStaffSerializer(serializers.Serializer):
+    # Agent has no `name` field — `role` is its display identity
+    # (see tables.models.crew_models.Agent.__str__).
+    id = serializers.IntegerField()
+    role = serializers.CharField()
+
+
+class ToolUsageDetailSerializer(serializers.Serializer):
+    projects = ToolUsageProjectSerializer(many=True)
+    staff = ToolUsageStaffSerializer(many=True)
+
+
 class RunSessionSerializer(serializers.Serializer):
     graph_id = serializers.IntegerField(required=False)
     graph_uuid = serializers.UUIDField(required=False)

@@ -75,9 +75,15 @@ from tables.serializers.serializers import (
     RegisterTelegramTriggerSerializer,
     RunPythonCodeSerializer,
     SessionExportAllSerializer,
+    ToolUsageDetailSerializer,
     ToolUsageSerializer,
 )
-from tables.services.tools_usage_service import get_tools_usage
+from tables.services.tools_usage_service import (
+    VALID_TOOL_PREFIXES,
+    ToolNotFoundError,
+    get_tool_usage_detail,
+    get_tools_usage,
+)
 
 from tables.serializers.quickstart_serializers import (
     QuickstartSerializer,
@@ -141,7 +147,10 @@ from tables.swagger_schemas.telegram_schemas import (
 )
 from tables.swagger_schemas.webhook_schemas import REGISTER_WEBHOOKS_POST
 from tables.swagger_schemas.python_code_schemas import RUN_PYTHON_CODE_POST
-from tables.swagger_schemas.tools_usage_schemas import TOOLS_USAGE_GET
+from tables.swagger_schemas.tools_usage_schemas import (
+    TOOLS_USAGE_DETAIL_GET,
+    TOOLS_USAGE_GET,
+)
 from .default_config import *
 
 
@@ -685,8 +694,9 @@ class RunPythonCodeAPIView(APIView):
 
 class ToolsUsageAPIView(OrgScopedResolverMixin, APIView):
     """GET /api/tools/usage/ — raw per-tool usage counts for the active org
-    (EST-3264). Orphan/built-in exclusion (EST-3277) and reference-detail
-    lists (EST-3270) are separate, later subtasks."""
+    (EST-3264). Orphan/built-in exclusion (EST-3277) is a separate, later
+    subtask. See `ToolsUsageDetailAPIView` for the per-tool reference detail
+    (EST-3270)."""
 
     permission_classes = [IsAuthenticated]
 
@@ -702,6 +712,54 @@ class ToolsUsageAPIView(OrgScopedResolverMixin, APIView):
         rows = get_tools_usage(org_id)
         serializer = ToolUsageSerializer(rows, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ToolsUsageDetailAPIView(OrgScopedResolverMixin, APIView):
+    """GET /api/tools/usage-detail/?unique_name=<prefix>:<id> — the actual
+    referencing Projects (Graphs) and Staff (Agents) for a single tool
+    (EST-3270), for the "Where is this used?" modal. Counts-only aggregation
+    lives on `ToolsUsageAPIView` (EST-3264)."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(**TOOLS_USAGE_DETAIL_GET)
+    def get(self, request):
+        prefix, tool_id = self._parse_unique_name(
+            request.query_params.get("unique_name")
+        )
+        org_id = self.get_active_org_id()
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=ResourceType.TOOLS,
+            action=Permission.READ,
+        )
+        try:
+            detail = get_tool_usage_detail(prefix, tool_id, org_id)
+        except ToolNotFoundError:
+            raise NotFound(f"Tool '{prefix}:{tool_id}' not found.")
+        serializer = ToolUsageDetailSerializer(detail)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _parse_unique_name(unique_name: str | None) -> tuple[str, int]:
+        """Parse `<prefix>:<id>` and validate the prefix. Raises DRF
+        `ValidationError` (400) on anything malformed or unrecognized."""
+        if not unique_name or ":" not in unique_name:
+            raise ValidationError(
+                {"unique_name": "Required, of the form '<prefix>:<id>'."}
+            )
+        prefix, _, raw_id = unique_name.partition(":")
+        if prefix not in VALID_TOOL_PREFIXES or not raw_id.isdigit():
+            raise ValidationError(
+                {
+                    "unique_name": (
+                        f"Unknown or malformed unique_name: '{unique_name}'. "
+                        f"Expected one of {VALID_TOOL_PREFIXES} followed by ':<id>'."
+                    )
+                }
+            )
+        return prefix, int(raw_id)
 
 
 class InitRealtimeAPIView(APIView):

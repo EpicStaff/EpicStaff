@@ -1,6 +1,6 @@
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
 
-from tables.serializers.serializers import ToolUsageSerializer
+from tables.serializers.serializers import ToolUsageDetailSerializer, ToolUsageSerializer
 
 TOOLS_USAGE_GET = dict(
     summary="Tools usage aggregation",
@@ -41,5 +41,46 @@ TOOLS_USAGE_GET = dict(
                 ),
             ],
         ),
+    },
+)
+
+TOOLS_USAGE_DETAIL_GET = dict(
+    summary="Tool usage detail ('Where is this used?')",
+    description=(
+        "Returns the actual referencing Projects (Graphs) and Staff (Agents) "
+        "for a single tool, identified by `unique_name` "
+        "(`<prefix>:<id>`, prefix one of `configured-tool`, "
+        "`python-code-tool`, `mcp-tool`) — the same agent/graph traversal as "
+        "`/tools/usage/` but returning ids + names instead of counts. "
+        "Does not exclude built-in tools (EST-3277)."
+    ),
+    parameters=[
+        OpenApiParameter(
+            name="unique_name",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description="`<prefix>:<id>`, e.g. `configured-tool:5`.",
+        ),
+    ],
+    responses={
+        200: OpenApiResponse(
+            response=ToolUsageDetailSerializer(),
+            description="Projects and staff referencing the tool",
+            examples=[
+                OpenApiExample(
+                    "Usage detail",
+                    value={
+                        "projects": [{"id": 12, "name": "My Project"}],
+                        "staff": [{"id": 5, "role": "Researcher"}],
+                    },
+                    response_only=True,
+                ),
+            ],
+        ),
+        400: OpenApiResponse(
+            description="Missing/malformed `unique_name` or unknown prefix."
+        ),
+        404: OpenApiResponse(description="Tool not found (or not visible to the active org)."),
     },
 )
