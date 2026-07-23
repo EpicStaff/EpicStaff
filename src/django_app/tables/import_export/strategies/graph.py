@@ -115,7 +115,7 @@ class GraphStrategy(EntityImportExportStrategy):
         serializer.is_valid(raise_exception=True)
         graph = serializer.save()
 
-        GraphOrganization.objects.get_or_create(graph=graph, organization_id=org_id)
+        GraphOrganization.objects.get_or_create(graph=graph)
 
         self.recreate_graph_children(
             graph,

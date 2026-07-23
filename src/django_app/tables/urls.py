@@ -41,7 +41,6 @@ from tables.views.model_view_sets import (
     RealtimeModelViewSet,
     RealtimeAgentViewSet,
     RealtimeAgentChatViewSet,
-    GraphOrganizationViewSet,
     GraphOrganizationUserViewSet,
     VoiceSettingsView,
     TwilioPhoneNumbersView,
@@ -174,7 +173,6 @@ router.register(
 
 router.register(r"sessions", SessionViewSet, basename="session")
 router.register(r"mcp-tools", McpToolViewSet)
-router.register(r"graph-organizations", GraphOrganizationViewSet)
 router.register(r"graph-organization-users", GraphOrganizationUserViewSet)
 router.register(r"naive-rag-document-chunks", NaiveRagChunkViewSet)
 router.register(r"webhook-trigger-nodes", WebhookTriggerNodeViewSet)

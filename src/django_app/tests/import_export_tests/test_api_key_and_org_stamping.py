@@ -103,8 +103,11 @@ class TestImportedGraphHasOrganizationStamped:
             imported_graph = Graph.objects.get(id=graph_id)
             assert GraphOrganization.objects.filter(
                 graph=imported_graph,
-                organization=default_org,
             ).exists(), (
                 f"Graph {graph_id} ({imported_graph.name!r}) has no GraphOrganization "
                 f"for the default org"
             )
+            # Org is derived from graph.org now, so assert ownership via the graph.
+            assert (
+                imported_graph.org == default_org
+            ), f"Graph {graph_id} ({imported_graph.name!r}) is not owned by the default org"

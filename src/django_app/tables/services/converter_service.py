@@ -76,7 +76,6 @@ from tables.models.graph_models import (
     EndNode,
     FileExtractorNode,
     Graph,
-    GraphOrganization,
     GraphStorageFile,
     PythonNode,
     ScheduleTriggerNode,
@@ -168,9 +167,11 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def _resolve_org_prefix_for_graph(self, graph_id: int) -> str | None:
-        graph_org = GraphOrganization.objects.filter(graph_id=graph_id).first()
-        if graph_org is not None:
-            return f"org_{graph_org.organization_id}"
+        org_id = (
+            Graph.objects.filter(id=graph_id).values_list("org_id", flat=True).first()
+        )
+        if org_id is not None:
+            return f"org_{org_id}"
         return None
 
     def _resolve_authoritative_org_id_for_graph(self, graph_id: int) -> int | None:

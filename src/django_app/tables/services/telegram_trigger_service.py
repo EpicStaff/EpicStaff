@@ -6,7 +6,7 @@ from loguru import logger
 from requests.exceptions import ConnectionError, Timeout
 
 from tables.exceptions import RegisterTelegramTriggerError
-from tables.models.graph_models import TelegramTriggerNode, GraphOrganization
+from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import WebhookTrigger
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
@@ -123,12 +123,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(**filters)
 
         for telegram_trigger_node in telegram_trigger_node_list:
-            graph_organization = GraphOrganization.objects.filter(
-                graph=telegram_trigger_node.graph
-            ).first()
-            variables: dict = {"telegram_payload": payload}
-            if graph_organization:
-                variables.update(graph_organization.persistent_variables)
+            # Persistent-variable merging is owned by run_session.
             self.session_manager_service.run_session(
                 graph_id=telegram_trigger_node.graph.pk,
                 variables={"telegram_payload": payload},

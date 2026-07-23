@@ -183,7 +183,7 @@ By default, every session starts fresh from the start node's `variables`. When a
 
 ### How it works
 
-1. `Graph.persistent_variables = true` — opt-in flag on the flow (set when creating or patching the flow).
+1. `Graph.enable_persistent_variables` — read-only, derived automatically. It flips `true` the moment the start node declares at least one `organization` path, and back to `false` when the last one is removed. There is no manual toggle; you can't set it directly when creating or patching the flow.
 2. The start node's `variables` declares two lists under a special `persistent_variables` key:
    ```json
    {
@@ -209,11 +209,12 @@ Use `organization` for shared config (API keys overridden at runtime, shared con
 
 ### Design rules for persistent paths
 
-- **All persistent paths must live under `variables.context`** — the platform validates this. Paths outside `context` are rejected.
-- **No duplicates across scopes** — a path cannot appear in both `organization` and `user`.
-- **No array indices** — paths must navigate object properties only (e.g., `context.history` not `context.items.0`).
+- **Nest persistent paths under a domain dict (e.g. `variables.context`) — convention, not enforced.** A flat path like `variables.counter` works identically; the platform does not validate or require a `context` prefix. Nesting is recommended purely to avoid the flat-namespace collisions described in "Patterns That Break" above — don't rely on the platform to reject a flat path, it won't.
+- **No duplicates across scopes** — a path shouldn't appear in both `organization` and `user`, but this also isn't validated; it's on you to keep them disjoint.
+- **No array indices** — paths must navigate object properties only (e.g., `context.history` not `context.items.0`). Not validated either — `get_by_path`/`_set_by_path` only walk dict keys, so pointing one at a list index will misbehave silently.
 - **Declare the path in `variables.context` at session start, even as `null` or `[]`** — the persistent merge overwrites, not creates. A missing key is not created by the merge.
 - **One writer per path, still applies** — the same node that writes a persistent path in the current session becomes the source for the next session's merge.
+- **The declared path must be the exact path the node writes to.** Declaring `counter` as persistent does nothing if the node that updates it has `output_variable_path` set to `variables.context.counter` (or any other path) instead of `variables.counter`. The session runs fine and the mismatched path gets updated in-session, but the declared path never changes, so nothing is written back — no error surfaces. Double-check `input_map`/`output_variable_path` against the declared path any time you copy a node between flows with a different variable layout.
 
 ### When to use
 
