@@ -384,3 +384,17 @@ class ToolExecutionError(CustomAPIExeption):
     status_code = 500
     default_detail = "Tool execution failed."
     default_code = "flow_assistant_tool_execution_failed"
+
+
+class PromptNotFoundError(CustomAPIExeption):
+    """Raised when a prompt reference in a condition group doesn't resolve to one of THIS node's prompts."""
+
+    status_code = 400
+    default_code = "prompt_not_found"
+
+    def __init__(self, value: int | str):
+        self.value = value
+        super().__init__(
+            f"Prompt {value} doesn't exist or belong to another organization.",
+            code=self.default_code,
+        )

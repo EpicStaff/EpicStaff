@@ -17,8 +17,7 @@ Keying rules:
 
 from typing import Any
 
-from rest_framework import serializers
-
+from tables.exceptions import PromptNotFoundError
 from tables.models.graph_models import (
     ClassificationConditionGroup,
     ClassificationDecisionTablePrompt,
@@ -82,18 +81,6 @@ def _sync_prompt_configs(node, prompt_configs_data):
         )
 
 
-def _prompt_not_found_error(
-    field: str, value: int | str
-) -> serializers.ValidationError:
-    """A prompt reference that doesn't resolve to one of THIS node's prompts —
-    whether it belongs to another org/node or doesn't exist at all is
-    indistinguishable from here, so both cases share the same message (no
-    existence leak)."""
-    return serializers.ValidationError(
-        {field: f"Prompt {value} is not found or belong to another organization."}
-    )
-
-
 def _resolve_group_prompt(
     group_data: dict[str, Any],
     prompt_by_id: dict[int, ClassificationDecisionTablePrompt],
@@ -116,18 +103,14 @@ def _resolve_group_prompt(
     if prompt_id is not None:
         prompt = prompt_by_id.get(prompt_id)
         if prompt is None:
-            raise _prompt_not_found_error(
-                field="condition_groups.prompt", value=prompt_id
-            )
+            raise PromptNotFoundError(prompt_id)
         return prompt
 
     key = group_data.get("prompt_key")
     if key:
         prompt = prompt_by_key.get(key)
         if prompt is None:
-            raise _prompt_not_found_error(
-                field="condition_groups.prompt_key", value=key
-            )
+            raise PromptNotFoundError(key)
         return prompt
 
     return None
