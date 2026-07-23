@@ -75,7 +75,9 @@ from tables.serializers.serializers import (
     RegisterTelegramTriggerSerializer,
     RunPythonCodeSerializer,
     SessionExportAllSerializer,
+    ToolUsageSerializer,
 )
+from tables.services.tools_usage_service import get_tools_usage
 
 from tables.serializers.quickstart_serializers import (
     QuickstartSerializer,
@@ -89,6 +91,7 @@ from tables.import_export.enums import EntityType
 from rest_framework.permissions import IsAuthenticated
 from tables.views.mixins import (
     OrgScopedChildViewSetMixin,
+    OrgScopedResolverMixin,
     OrgScopedServiceViewSetMixin,
 )
 from tables.models.knowledge_models import NaiveRag, GraphRag
@@ -138,6 +141,7 @@ from tables.swagger_schemas.telegram_schemas import (
 )
 from tables.swagger_schemas.webhook_schemas import REGISTER_WEBHOOKS_POST
 from tables.swagger_schemas.python_code_schemas import RUN_PYTHON_CODE_POST
+from tables.swagger_schemas.tools_usage_schemas import TOOLS_USAGE_GET
 from .default_config import *
 
 
@@ -677,6 +681,27 @@ class RunPythonCodeAPIView(APIView):
             | Q(cdt_pre_nodes__graph__org_id=org_id)
             | Q(cdt_post_nodes__graph__org_id=org_id)
         )
+
+
+class ToolsUsageAPIView(OrgScopedResolverMixin, APIView):
+    """GET /api/tools/usage/ — raw per-tool usage counts for the active org
+    (EST-3264). Orphan/built-in exclusion (EST-3277) and reference-detail
+    lists (EST-3270) are separate, later subtasks."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(**TOOLS_USAGE_GET)
+    def get(self, request):
+        org_id = self.get_active_org_id()
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=ResourceType.TOOLS,
+            action=Permission.READ,
+        )
+        rows = get_tools_usage(org_id)
+        serializer = ToolUsageSerializer(rows, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class InitRealtimeAPIView(APIView):
