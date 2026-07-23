@@ -8,7 +8,7 @@ export const NODE_ICONS: Record<NodeType, string> = {
     [NodeType.PROJECT]: 'ti ti-folder',
     [NodeType.PYTHON]: 'ti ti-brand-python',
     [NodeType.EDGE]: 'ti ti-route-alt-left',
-    [NodeType.START]: 'ti ti-player-play-filled',
+    [NodeType.START]: 'ti ti-filled ti-player-play',
     [NodeType.TABLE]: 'ti ti-table',
     [NodeType.CLASSIFICATION_TABLE]: 'ti ti-table-options',
     [NodeType.NOTE]: 'ti ti-note',

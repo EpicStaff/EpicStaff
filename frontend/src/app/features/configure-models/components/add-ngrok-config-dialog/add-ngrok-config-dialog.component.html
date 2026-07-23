@@ -31,6 +31,7 @@
                 [required]="true"
                 tooltipText="Auth Token from: https://dashboard.ngrok.com/get-started/your-authtoken"
                 placeholder="e.g. 39HouLFMClthJIAw5a••••••••••••••"
+                cautionMessage="You must enter the full new auth token to change it. Partial updates aren't supported."
             />
             <app-validation-errors [control]="form.get('auth_token')!" />
         </div>

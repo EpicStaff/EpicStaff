@@ -51,13 +51,9 @@ from tables.services.knowledge_services.indexing_service import IndexingService
 
 from django_filters.rest_framework import DjangoFilterBackend
 
-from tables.enums import SessionWarningType
-
 from tables.models import (
     Session,
     # DocumentMetadata,
-    GraphOrganization,
-    GraphOrganizationUser,
     OrganizationUser,
     Graph,
     PythonCode,
@@ -455,8 +451,6 @@ class RunSession(APIView):
         files_dict = {}
         graph_id = serializer.validated_data.get("graph_id")
         graph_uuid = serializer.validated_data.get("graph_uuid")
-        graph_organization_user = None
-        warning_messages = []
 
         if graph_id:
             graph = Graph.objects.filter(id=graph_id).first()
@@ -472,9 +466,9 @@ class RunSession(APIView):
         graph_id = graph.id
 
         # Resolve the running user's membership in the flow's organization.
-        # Superadmin may run any flow without a membership row.
+        # Superadmin may run any flow without a membership row. Persistent-variable
+        # merging and write-back are owned by run_session.
         is_superadmin = getattr(request.user, "is_superadmin", False)
-        membership = None
         if not is_superadmin:
             membership = OrganizationUser.objects.filter(
                 user=request.user, org_id=graph.org_id, org__is_active=True
@@ -484,40 +478,14 @@ class RunSession(APIView):
                     {"message": "You cannot run a flow outside your organization."},
                     status=status.HTTP_403_FORBIDDEN,
                 )
-        # TODO: refactor in scope of persistant variables story
-        graph_organization = GraphOrganization.objects.filter(graph=graph).first()
-
-        if (
-            graph_organization
-            and graph_organization.user_variables
-            and membership is None
-        ):
-            warning_messages.append(SessionWarningType.USER_VARS_WITH_NO_USER.value)
-
-        if membership is not None and graph_organization is not None:
-            graph_organization_user, _ = GraphOrganizationUser.objects.get_or_create(
-                organization_user=membership,
-                graph=graph,
-                defaults={"persistent_variables": graph_organization.user_variables},
-            )
 
         variables = serializer.validated_data.get("variables", {})
         for key, file in request.FILES.items():
             files_dict[key] = self._get_file_data(file, file.content_type)
 
-        if files_dict is not None:
+        if files_dict:
             variables["files"] = files_dict
             logger.info(f"Added {len(files_dict)} files to variables.")
-        if graph_organization:
-            variables.update(graph_organization.persistent_variables)
-            logger.info(
-                f"Organization variables are used for this flow. Variables: {graph_organization.persistent_variables}"
-            )
-        if graph_organization_user:
-            variables.update(graph_organization_user.persistent_variables)
-            logger.info(
-                f"Organization user variables are used for this flow. Variables: {graph_organization_user.persistent_variables}"
-            )
 
         try:
             # Publish session to: crew, maanger
@@ -530,16 +498,11 @@ class RunSession(APIView):
                 f"Error occurred while starting session for graph_id {graph_id}"
             )
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
-        else:
-            if warning_messages:
-                SessionWarningMessage.objects.create(
-                    session_id=session_id, messages=warning_messages
-                )
 
-            return Response(
-                data={"session_id": session_id},
-                status=status.HTTP_201_CREATED,
-            )
+        return Response(
+            data={"session_id": session_id},
+            status=status.HTTP_201_CREATED,
+        )
 
     def _get_file_data(self, file, content_type):
         file_bytes = file.read()
