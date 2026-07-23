@@ -11,6 +11,7 @@ from tables.serializers.graph_rag_serializers import (
     GraphRagDetailSerializer,
     GraphRagIndexConfigUpdateSerializer,
     GraphRagDocumentIdsSerializer,
+    GraphRagDocumentListSerializer,
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.exceptions import (
@@ -330,25 +331,15 @@ class GraphRagViewSet(viewsets.GenericViewSet):
         URL: GET /graph-rag/{id}/documents/list/
         """
         try:
-            graph_rag = GraphRagService.get_graph_rag(int(pk))
             documents = GraphRagService.get_documents_for_graph_rag(int(pk))
-
-            # Use simple document serializer
-            from tables.serializers.knowledge_serializers import (
-                DocumentMetadataSerializer,
-            )
-
-            serializer = DocumentMetadataSerializer(documents, many=True)
-
+            serializer = GraphRagDocumentListSerializer(documents, many=True)
             return Response(
                 {
-                    "graph_rag_id": int(pk),
+                    "graph_rag_id": pk,
                     "total_documents": len(documents),
                     "documents": serializer.data,
-                },
-                status=status.HTTP_200_OK,
+                }
             )
-
         except GraphRagNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:

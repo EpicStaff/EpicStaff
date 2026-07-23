@@ -368,16 +368,8 @@ class GraphRagService:
             List of DocumentMetadata
         """
         graph_rag = GraphRagService.get_graph_rag(graph_rag_id)
-
-        document_ids = GraphRagDocument.objects.filter(graph_rag=graph_rag).values_list(
-            "document_id", flat=True
-        )
-
-        return list(
-            DocumentMetadata.objects.filter(document_id__in=document_ids).order_by(
-                "file_name"
-            )
-        )
+        documents = graph_rag.graph_rag_documents.select_related('document').all()
+        return list(documents)
 
     @staticmethod
     @transaction.atomic

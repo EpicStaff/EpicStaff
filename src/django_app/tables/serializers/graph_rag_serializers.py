@@ -1,3 +1,4 @@
+from django.utils import choices
 from rest_framework import serializers
 from tables.models.knowledge_models import (
     GraphRag,
@@ -371,3 +372,12 @@ class GraphSearchConfigInputSerializer(serializers.Serializer):
         required=False,
         help_text="Local search configuration",
     )
+
+
+class GraphRagDocumentListSerializer(serializers.Serializer):
+    graph_rag_document_id = serializers.IntegerField()
+    document_id = serializers.IntegerField()
+    file_name = serializers.CharField(source='document.file_name')
+    file_size = serializers.IntegerField(source='document.file_size')
+    status = serializers.CharField()
+    created_at = serializers.DateTimeField()
