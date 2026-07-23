@@ -38,6 +38,9 @@ export interface CreateClassificationConditionGroupRequest {
     group_name: string;
     order: number;
     expression: string | null;
+    // Preferred link: the prompt's per-node key (works for a prompt created in the
+    // same save). `prompt` (numeric id) is kept for back-compat; backend prefers key.
+    prompt_key?: string | null;
     prompt: number | null;
     manipulation: string | null;
     continue_flag: boolean;
