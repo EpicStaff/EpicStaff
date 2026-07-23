@@ -73,7 +73,11 @@ import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.
 import { UnsavedChangesDialogService } from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
 import { NodeType } from '../../../../visual-programming/core/enums/node-type';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
-import { NodeModel, ScheduleTriggerNodeModel } from '../../../../visual-programming/core/models/node.model';
+import {
+    NodeModel,
+    ScheduleTriggerNodeModel,
+    TaskNodeModel,
+} from '../../../../visual-programming/core/models/node.model';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
@@ -378,8 +382,37 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onGraphSave(flowState: FlowModel): void {
         if (!this.graph?.id || this.isSaving()) return;
 
+        const taskNodeIssues = this.getInvalidTaskNodeMessages(flowState);
+        if (taskNodeIssues.length > 0) {
+            this.toastService.error(
+                `Cannot save flow — fix the following task node(s) first: ${taskNodeIssues.join('; ')}.`
+            );
+            return;
+        }
+
         this.cleanupCdtGridState(flowState);
         this.saveFlowState(flowState, true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+    }
+
+    private getInvalidTaskNodeMessages(flowState: FlowModel): string[] {
+        const messages: string[] = [];
+
+        flowState.nodes.forEach((node, index) => {
+            if (node.type !== NodeType.TASK) return;
+            const taskNode = node as TaskNodeModel;
+
+            const missingFields: string[] = [];
+            if (!taskNode.node_name?.trim()) missingFields.push('node name');
+            if (taskNode.data.agent_definition == null) missingFields.push('agent');
+            if (!taskNode.data.instructions?.trim()) missingFields.push('instructions');
+
+            if (missingFields.length === 0) return;
+
+            const label = taskNode.node_name?.trim() || `Untitled task #${index + 1}`;
+            messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
+        });
+
+        return messages;
     }
 
     private cleanupCdtGridState(flowState: FlowModel): void {

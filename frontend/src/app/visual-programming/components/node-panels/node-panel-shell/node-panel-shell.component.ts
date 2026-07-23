@@ -154,7 +154,12 @@ export class NodePanelShellComponent {
 
     protected readonly isShaking = signal(false);
     protected readonly isExpanded = signal(false);
-    private panelInstance: (NodePanel & { onSaveSilently?: () => NodeModel | null }) | null = null;
+    private panelInstance:
+        | (NodePanel & {
+              onSaveSilently?: () => NodeModel | null;
+              captureForValidation?: () => NodeModel | null;
+          })
+        | null = null;
     protected readonly panelInstanceSig = signal<{
         isDirty?: Signal<boolean>;
         isSaving?: Signal<boolean>;
@@ -324,5 +329,26 @@ export class NodePanelShellComponent {
 
     public hasPanelInstance(): boolean {
         return this.panelInstance !== null;
+    }
+
+    /**
+     * Captures the open panel's current node state for a flow-wide save, even when the
+     * panel's own form is invalid. Prefers `captureForValidation()` (which always returns the
+     * in-progress node and marks fields touched so invalid ones highlight) over
+     * `captureCurrentNodeState()` (which can return `null` and hide the edit entirely from a
+     * flow-wide save when the form is invalid).
+     */
+    public captureCurrentNodeStateForSave(): NodeModel | null {
+        if (!this.panelInstance) {
+            return null;
+        }
+        if (typeof this.panelInstance.captureForValidation === 'function') {
+            try {
+                return this.panelInstance.captureForValidation();
+            } catch (error) {
+                console.error('Failed to capture node panel state for validation', error);
+            }
+        }
+        return this.captureCurrentNodeState();
     }
 }

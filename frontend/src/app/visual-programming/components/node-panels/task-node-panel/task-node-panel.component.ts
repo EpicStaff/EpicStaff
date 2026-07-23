@@ -36,6 +36,7 @@ import { AgentDefinitionsApiService } from '../../../../features/agent-definitio
 import { SurfacesApiService } from '../../../../features/agent-definitions/services/surfaces-api.service';
 import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
+import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
 import { TaskNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
@@ -60,6 +61,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         HelpTooltipComponent,
         AppSvgIconComponent,
         TooltipComponent,
+        ValidationErrorsComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -95,6 +97,18 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         const id = this.agentDefinitionId();
         if (id == null) return null;
         return this.agentDefinitions().find((agent) => agent.id === id)?.name ?? null;
+    });
+
+    public readonly agentInvalid = computed<boolean>(() => {
+        this.dirtyCheckTick();
+        const control = this.form?.get('agent_definition');
+        return !!control && control.invalid && control.touched;
+    });
+
+    public readonly instructionsInvalid = computed<boolean>(() => {
+        this.dirtyCheckTick();
+        const control = this.form?.get('instructions');
+        return !!control && control.invalid && control.touched;
     });
 
     public readonly hasLocalSurface = computed<boolean>(() => this.inlineSurface() !== null);
@@ -191,6 +205,10 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     onAgentSelectionChange(values: unknown[]): void {
         const id = (values[0] as number | undefined) ?? null;
         this.agentDefinitionId.set(id);
+        const agentControl = this.form.get('agent_definition');
+        agentControl?.setValue(id);
+        agentControl?.markAsTouched();
+        agentControl?.markAsDirty();
         this.pruneInvalidSurfaceSelection();
         this.sidePanelService.triggerAutosave();
         this.notifyExternalChange();
@@ -313,6 +331,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
             instructions: [data.instructions || '', Validators.required],
+            agent_definition: [data.agent_definition ?? null, Validators.required],
         });
 
         this.initializeInputMap(form);

@@ -39,6 +39,7 @@
                                     type="button"
                                     appSelectDropdownTrigger
                                     class="dropdown-trigger"
+                                    [class.dropdown-trigger--invalid]="agentInvalid()"
                                 >
                                     <span
                                         class="dropdown-trigger__label"
@@ -52,6 +53,7 @@
                                     />
                                 </button>
                             </app-select-dropdown>
+                            <app-validation-errors [control]="form.get('agent_definition')!" />
                         </div>
 
                         <div class="field">
@@ -170,7 +172,9 @@
                                     formControlName="instructions"
                                     placeholder="Enter task instructions..."
                                     [rows]="8"
+                                    [invalid]="instructionsInvalid()"
                                 ></app-textarea>
+                                <app-validation-errors [control]="form.get('instructions')!" />
                             </div>
                         }
                     </div>
@@ -217,7 +221,14 @@
                                     formControlName="instructions"
                                     placeholder="Enter task instructions..."
                                     [rows]="20"
+                                    [invalid]="instructionsInvalid()"
                                 ></app-textarea>
+                                @if (instructionsInvalid()) {
+                                    <app-validation-errors
+                                        class="main-editor-pane__validation"
+                                        [control]="form.get('instructions')!"
+                                    />
+                                }
                             </div>
                         } @else {
                             <app-json-editor
@@ -267,6 +278,7 @@
                                 type="button"
                                 appSelectDropdownTrigger
                                 class="dropdown-trigger"
+                                [class.dropdown-trigger--invalid]="agentInvalid()"
                             >
                                 <span
                                     class="dropdown-trigger__label"
@@ -280,6 +292,7 @@
                                 />
                             </button>
                         </app-select-dropdown>
+                        <app-validation-errors [control]="form.get('agent_definition')!" />
                     </div>
 
                     <div class="field">
@@ -346,7 +359,9 @@
                         formControlName="instructions"
                         placeholder="Enter task instructions..."
                         [rows]="5"
+                        [invalid]="instructionsInvalid()"
                     ></app-textarea>
+                    <app-validation-errors [control]="form.get('instructions')!" />
 
                     <div class="output-schema-section">
                         <button
