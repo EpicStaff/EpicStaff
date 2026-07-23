@@ -27,15 +27,7 @@ class SearchSpecification:
     required_files: Iterable[str]
     optional_files: Iterable[str] | None = None
     extra_kwargs: dict[str, Any] = field(default_factory=dict)
-    adjust: Callable[[Any, Any, dict], dict[str, Any]] | None = None
-
-
-def _drift_adjust(cfg, section, files) -> dict[str, Any]:
-    # Empty primer folds cause the primer to hallucinate from entity names if folds
-    # exceed the number of available community reports — limit folds to the report count.
-    usable_reports = min(section.drift_k_followups, len(files["community_reports"]))
-    section.primer_folds = max(1, min(section.primer_folds, usable_reports))
-    return {"community_level": cfg.community_level}
+    dynamic_kwargs: dict[str, str] = field(default_factory=dict)
 
 
 class GraphSearch(AbstractSearch):
@@ -62,7 +54,7 @@ class GraphSearch(AbstractSearch):
             ],
             optional_files=["covariates"],
             extra_kwargs={"response_type": DEFAULT_RESPONSE_TYPE},
-            adjust=lambda cfg, section, files: {"community_level": cfg.community_level},
+            dynamic_kwargs={"community_level": "community_level"},
         ),
         GraphSearchMethodEnum.GLOBAL: SearchSpecification(
             searcher=global_search,
@@ -74,9 +66,9 @@ class GraphSearch(AbstractSearch):
                 "community_reports",
             ],
             extra_kwargs={"response_type": DEFAULT_RESPONSE_TYPE},
-            adjust=lambda cfg, section, files: {
-                "community_level": cfg.dynamic_search_max_level,
-                "dynamic_community_selection": cfg.dynamic_community_selection,
+            dynamic_kwargs={
+                "community_level": "dynamic_search_max_level",
+                "dynamic_community_selection": "dynamic_community_selection",
             },
         ),
         GraphSearchMethodEnum.DRIFT: SearchSpecification(
@@ -91,7 +83,7 @@ class GraphSearch(AbstractSearch):
                 "entities",
             ],
             extra_kwargs={"response_type": DEFAULT_RESPONSE_TYPE},
-            adjust=_drift_adjust,
+            dynamic_kwargs={"community_level": "community_level"},
         ),
     }
 
@@ -120,11 +112,21 @@ class GraphSearch(AbstractSearch):
             required_files=specs.required_files,
             optional_files=specs.optional_files,
         )
-        dynamic = (
-            specs.adjust(request.search_config, method_config, files)
-            if specs.adjust
-            else {}
-        )
+
+        # Empty primer folds cause the primer to hallucinate from entity names if folds
+        # exceed the number of available community reports — limit folds to the report count.
+        if request.search_config.method is GraphSearchMethodEnum.DRIFT:
+            usable_reports = min(
+                method_config.drift_k_followups, len(files["community_reports"])
+            )
+            method_config.primer_folds = max(
+                1, min(method_config.primer_folds, usable_reports)
+            )
+
+        dynamic = {
+            kwarg: getattr(request.search_config, attr)
+            for kwarg, attr in specs.dynamic_kwargs.items()
+        }
 
         result, _ = await specs.searcher(
             query=request.query, config=config, **files, **specs.extra_kwargs, **dynamic
