@@ -54,7 +54,6 @@ from django_filters.rest_framework import DjangoFilterBackend
 from tables.models import (
     Session,
     # DocumentMetadata,
-    OrganizationUser,
     Graph,
     PythonCode,
     SessionWarningMessage,
@@ -465,19 +464,13 @@ class RunSession(APIView):
 
         graph_id = graph.id
 
-        # Resolve the running user's membership in the flow's organization.
-        # Superadmin may run any flow without a membership row. Persistent-variable
-        # merging and write-back are owned by run_session.
-        is_superadmin = getattr(request.user, "is_superadmin", False)
-        if not is_superadmin:
-            membership = OrganizationUser.objects.filter(
-                user=request.user, org_id=graph.org_id, org__is_active=True
-            ).first()
-            if membership is None:
-                return Response(
-                    {"message": "You cannot run a flow outside your organization."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+        # Running the flow requires READ on flows within its org (superadmin bypasses).
+        assert_org_permission(
+            user=request.user,
+            org_id=graph.org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.READ,
+        )
 
         variables = serializer.validated_data.get("variables", {})
         for key, file in request.FILES.items():
