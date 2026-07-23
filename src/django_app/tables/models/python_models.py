@@ -22,6 +22,9 @@ class PythonCodeTool(OrgScopedModel, models.Model):
     favorite = models.BooleanField(default=False)
     built_in = models.BooleanField(default=False)
     use_storage = models.BooleanField(default=False)
+    labels = models.ManyToManyField(
+        "Label", blank=True, related_name="python_code_tools"
+    )
 
     class Meta(OrgScopedModel.Meta):
         constraints = [

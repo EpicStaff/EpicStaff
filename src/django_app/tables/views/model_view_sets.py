@@ -1849,14 +1849,27 @@ class NgrokWebhookConfigViewSet(ModelViewSet):
         return response
 
 
-class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
+class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    """Shared behavior for the two independent label trees — Flow labels
+    (`LabelViewSet`) and Tool labels (`ToolLabelViewSet`). Each tree is a
+    disjoint subset of `Label` partitioned by `Label.scope`; concrete
+    subclasses set `label_scope` and a `queryset` pre-filtered to it.
+    """
+
     rbac_action_map = {**DEFAULT_ACTION_MAP}
-    queryset = Label.objects.all()
     serializer_class = LabelSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["name", "parent"]
+    label_scope: str = None
+
+    def perform_create(self, serializer):
+        # Never trust client-supplied scope — the URL/viewset is the only
+        # source of truth for which label tree a new row joins.
+        serializer.save(
+            org_id=self.get_active_org_id(),
+            created_by=self.request.user,
+            scope=self.label_scope,
+        )
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -1864,12 +1877,13 @@ class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
         # Build paths in memory (one extra lightweight query) to avoid N+1
         # and to correctly resolve parents that may be filtered out. Scoped to
-        # the active org (the label tree never crosses orgs).
+        # the active org and this tree's scope (the label tree never crosses
+        # orgs or Flow/Tool scopes).
         id_to_row = {
             row["id"]: row
-            for row in Label.objects.filter(org_id=self.get_active_org_id()).values(
-                "id", "parent_id", "name"
-            )
+            for row in Label.objects.filter(
+                org_id=self.get_active_org_id(), scope=self.label_scope
+            ).values("id", "parent_id", "name")
         }
 
         def full_path_key(label):
@@ -1891,6 +1905,20 @@ class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
 
         return Response(self.get_serializer(labels, many=True).data)
+
+
+class LabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    label_scope = Label.Scope.FLOW
+    queryset = Label.objects.filter(scope=Label.Scope.FLOW)
+
+
+class ToolLabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.TOOLS
+    label_scope = Label.Scope.TOOL
+    queryset = Label.objects.filter(scope=Label.Scope.TOOL)
 
 
 class VoiceSettingsView(generics.RetrieveUpdateAPIView):

@@ -4,6 +4,7 @@ from tables.exceptions import (
     BuiltInToolModificationError,
     PythonCodeToolConfigSerializerError,
 )
+from tables.models.label_models import Label
 from tables.models.python_models import (
     PythonCode,
     PythonCodeResult,
@@ -12,6 +13,7 @@ from tables.models.python_models import (
 )
 from tables.serializers.base_serializer import ContentHashWritableMixin
 from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
     OrgVisiblePrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
     OrgScopedUniqueTogetherValidator,
@@ -68,6 +70,11 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             )
         ]
     )
+    labels = OrgScopedPrimaryKeyRelatedField(
+        many=True,
+        required=False,
+        queryset=Label.objects.filter(scope=Label.Scope.TOOL),
+    )
 
     class Meta:
         model = PythonCodeTool
@@ -80,21 +87,25 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "favorite",
             "built_in",
             "use_storage",
+            "labels",
         ]
         read_only_fields = ["id", "built_in"]
 
     def create(self, validated_data):
+        labels = validated_data.pop("labels", [])
         python_code_data = validated_data.pop("python_code")
         python_code = PythonCode.objects.create(**python_code_data)
         python_code_tool = PythonCodeTool.objects.create(
             python_code=python_code, **validated_data
         )
+        python_code_tool.labels.set(labels)
         return python_code_tool
 
     def update(self, instance, validated_data):
         if instance.built_in:
             raise BuiltInToolModificationError()
 
+        labels = validated_data.pop("labels", None)
         python_code_data = validated_data.pop("python_code", None)
 
         if python_code_data:
@@ -107,6 +118,9 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             if attr != "built_in":
                 setattr(instance, attr, value)
         instance.save()
+
+        if labels is not None:
+            instance.labels.set(labels)
 
         return instance
 
