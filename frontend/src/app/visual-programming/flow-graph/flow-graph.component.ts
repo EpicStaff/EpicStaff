@@ -424,7 +424,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             !targetPort.multiple &&
             currentConnections.some((conn) => conn.targetPortId === pair.targetPortId);
         if (sourceOccupied || targetOccupied) {
-            console.warn('Single-use port already connected, ignoring:', `${pair.sourcePortId}+${pair.targetPortId}`);
+            this.toastService.warning('This port already has a connection', 4000, 'bottom-right');
             return;
         }
 
