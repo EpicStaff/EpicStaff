@@ -1986,6 +1986,32 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
     }
 
+    public resyncAfterReconnect(serverFlow: FlowModel, baseFlow: FlowModel): void {
+        if (this.currentFlowId == null) return;
+        const localFlow = this.flowService.getFlowState();
+        const myChanges = diffFlowModels(baseFlow, localFlow);
+
+        this.flowService.setFlow(serverFlow);
+
+        for (const node of myChanges.createdNodes) {
+            this.flowService.addNode(node);
+        }
+        for (const node of myChanges.updatedNodes) {
+            this.flowService.updateNode(node);
+        }
+        for (const node of myChanges.deletedNodes) {
+            this.flowService.deleteSelections({ fNodeIds: [node.id], fConnectionIds: [] });
+        }
+        for (const conn of myChanges.createdConnections) {
+            this.flowService.addConnection(conn);
+        }
+        for (const conn of myChanges.deletedConnections) {
+            this.flowService.deleteSelections({ fNodeIds: [], fConnectionIds: [conn.id] });
+        }
+
+        this.broadcastFlowDiff(myChanges);
+    }
+
     private recordAfterChange(): void {
         const before = JSON.parse(JSON.stringify(this.flowService.getFlowState())) as FlowModel;
         queueMicrotask(() => {

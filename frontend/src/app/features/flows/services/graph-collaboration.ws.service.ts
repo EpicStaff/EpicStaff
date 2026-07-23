@@ -192,11 +192,6 @@ export function nodeTypeToListKey(type: NodeType): string | null {
     }
 }
 
-// export function nodeToWsPayload(node: NodeModel): Record<string, unknown> {
-//     const { id, backendId, ...rest } = node as unknown as Record<string, unknown>;
-//     return backendId != null ? { ...rest, id: backendId } : { ...rest, temp_id: id };
-// }
-
 export function buildNodeBackendPayload(
     node: NodeModel,
     graphId: number,
@@ -518,6 +513,7 @@ export class GraphCollaborationWsService {
     public nodeCreated$ = new Subject<NodeCreatedMessage>();
     public nodeUpdated$ = new Subject<NodeUpdatedMessage>();
     public opRejected$ = new Subject<OpRejectedMessage>();
+    public reconnected$ = new Subject<void>();
     public nodesDeleted$ = new Subject<NodesDeletedMessage>();
     public connectionCreated$ = new Subject<ConnectionCreatedMessage>();
     public connectionDeleted$ = new Subject<ConnectionDeletedMessage>();
@@ -596,9 +592,12 @@ export class GraphCollaborationWsService {
         this.socket = new WebSocket(url);
 
         this.socket.onopen = () => {
+            const wasReconnect = this.reconnectAttempts > 0;
             this.reconnectAttempts = 0;
             this.connectionStatus.set('connected');
-            console.log('[WS] Connected to graph', this.currentGraphId);
+            if (wasReconnect) {
+                this.reconnected$.next();
+            }
         };
 
         this.socket.onmessage = (event: MessageEvent) => {
@@ -912,7 +911,6 @@ export class GraphCollaborationWsService {
     }
 
     private sendRaw(payload: object): void {
-        console.log('[WS OUT]', payload);
         if (this.socket?.readyState === WebSocket.OPEN) {
             this.socket.send(JSON.stringify(payload));
         }

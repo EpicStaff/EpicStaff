@@ -126,6 +126,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly graphState = signal<GraphDto | null>(null);
     private readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
     private readonly savedFlowState = signal<FlowModel>({ nodes: [], connections: [] });
+    private pendingReconnectResync = false;
     protected readonly collaborationEditors = this.wsService.editors;
     public readonly loadedFlowState = computed<FlowModel>(() => {
         const graph = this.graphState();
@@ -252,6 +253,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         });
 
         this.wsService.graphState$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const isReconnectResync = this.pendingReconnectResync;
+            this.pendingReconnectResync = false;
+
             const currentUserId = this.profileService.currentUserSignal()?.id;
             if (msg.restored_by && msg.restored_by.user_id === currentUserId) {
                 if (msg.new_save_version != null) {
@@ -264,7 +268,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             let flowModel = mapGraphDtoToFlowModel(msg.flow);
             flowModel = this.addStartNodeIfNeeded(flowModel, msg.flow.id);
             const normalizedFlow = normalizeFlowPorts(flowModel);
-            this.flowService.setFlow(normalizedFlow);
+            if (isReconnectResync && !msg.restored_by) {
+                this.flowGraphComponent?.resyncAfterReconnect(normalizedFlow, this.savedFlowState());
+                this.toastService.info('Reconnected — synced with latest');
+            } else {
+                this.flowService.setFlow(normalizedFlow);
+            }
 
             const startNode = normalizedFlow.nodes.find((n) => n.type === NodeType.START && n.backendId == null);
             if (startNode) {
@@ -278,17 +287,19 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 this.toastService.info(`Flow restored to ${versionName} by ${restoredBy}`);
             }
 
-            // Replace the full graphState (not just save_version) with the restored
-            // flow. The canvas was already rebuilt from msg.flow above via setFlow();
-            // if graphState kept the pre-restore GraphDto, loadedFlowState() and the
-            // diffing in saveFlowState() would compare the new canvas against the
-            // stale, pre-restore flow on the next save, producing spurious
-            // creations/deletions in the bulk-save payload.
             this.graphState.set({
                 ...msg.flow,
                 save_version: msg.new_save_version ?? msg.flow.save_version,
             });
         });
+
+        this.wsService.reconnected$
+            .pipe(
+                tap(() => (this.pendingReconnectResync = true)),
+                switchMap(() => timer(10000)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => (this.pendingReconnectResync = false));
 
         this.wsService.nodeCreated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
             const node = mapWsNodePayloadToModel(msg.node as Record<string, unknown>, msg.list_key);
