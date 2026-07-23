@@ -63,3 +63,20 @@ export interface GetCollectionDocumentsResponse {
     document_count: number;
     documents: Omit<CollectionDocument, 'source_collection'>[];
 }
+
+/**
+ * Wire payload of the `indexing` SSE event emitted by
+ * `GET {apiUrl}source-collections/subscribe/{collectionId}/`.
+ * Field names mirror the backend contract exactly.
+ */
+export interface CollectionIndexingEventDto {
+    collection_id: number;
+    rag_id: number;
+    rag_type: string;
+    document_config_id: number | null;
+    doc_status: string | null;
+    done: number;
+    total: number;
+    collection_status: CollectionStatus;
+    error: string | null;
+}

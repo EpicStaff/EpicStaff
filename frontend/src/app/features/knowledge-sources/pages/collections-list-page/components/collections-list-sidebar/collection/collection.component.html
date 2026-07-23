@@ -13,10 +13,23 @@
         [ngClass]="'collection__status--' + collection()?.status"
     >
         <app-svg-icon
-            [icon]="statusData.icon"
+            [icon]="statusData().icon"
             size="0.75rem"
             class="collection__status-icon"
         />
-        <span class="collection__status-text">{{ statusData.text }}</span>
+        <span class="collection__status-text">{{ statusData().text }}</span>
     </span>
+
+    @if (indexingProgress(); as progress) {
+        <div class="collection__indexing-progress">
+            <span class="collection__indexing-count">
+                {{ progress.done }} / {{ progress.total }} documents indexed
+            </span>
+            @if (progress.currentDocumentStatus) {
+                <span class="collection__indexing-current">
+                    Current document: {{ progress.currentDocumentStatus }}
+                </span>
+            }
+        </div>
+    }
 </div>

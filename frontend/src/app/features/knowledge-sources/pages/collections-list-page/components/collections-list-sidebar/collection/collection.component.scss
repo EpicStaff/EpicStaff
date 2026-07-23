@@ -75,4 +75,27 @@
         white-space: nowrap;
         text-overflow: ellipsis;
     }
+
+    &__indexing-progress {
+        margin-top: 0.375rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        font-size: 0.7rem;
+        color: var(--color-ks-transparent-text-60);
+    }
+
+    &__indexing-count {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    &__indexing-current {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
 }

@@ -39,7 +39,10 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
             })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: () => this.toast.success('Files re-indexed successfully'),
+                next: () => {
+                    this.toast.success('Files re-indexed successfully');
+                    this.startWatchingIndexing();
+                },
                 error: () => this.toast.error('Files re-indexing failed'),
             });
     }

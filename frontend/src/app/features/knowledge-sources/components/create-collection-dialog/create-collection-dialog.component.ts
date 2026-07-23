@@ -1,11 +1,20 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgComponentOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, ViewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    OnDestroy,
+    signal,
+    ViewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, StepConfig } from '@shared/components';
 import { StepperComponent } from '@shared/components';
 import { Observable, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { catchError, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -13,6 +22,7 @@ import { RagType } from '../../models/base-rag.model';
 import { CreateCollectionStep } from '../../models/collection.model';
 import { DisplayedListDocument } from '../../models/document.model';
 import { RagConfiguration } from '../../models/rag-configuration';
+import { CollectionIndexingSSEService } from '../../services/collection-indexing-sse.service';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
 import { StepSelectRagComponent } from './components/steps/step-select-rag/step-select-rag.component';
 import { StepUploadFilesComponent } from './components/steps/step-upload-files/step-upload-files.component';
@@ -33,7 +43,7 @@ import { RagStrategyFactory } from './factory/rag-creation.factory';
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CreateCollectionDialogComponent {
+export class CreateCollectionDialogComponent implements OnDestroy {
     data: { collection_id: number; forceType: RagType | undefined } = inject(DIALOG_DATA);
 
     private destroyRef = inject(DestroyRef);
@@ -41,6 +51,9 @@ export class CreateCollectionDialogComponent {
     private factory = inject(RagStrategyFactory);
     private collectionsStorageService = inject(CollectionsStorageService);
     private toastService = inject(ToastService);
+    private indexingSSEService = inject(CollectionIndexingSSEService);
+    /** Whether this wizard instance currently holds a ref for `data.collection_id`. */
+    private isWatchingIndexing = false;
 
     currentStepIndex = signal(0);
     selectedRagType = signal<RagType | null>(null);
@@ -99,6 +112,13 @@ export class CreateCollectionDialogComponent {
     @ViewChild(NgComponentOutlet, { static: false })
     private strategyComponent!: NgComponentOutlet;
 
+    ngOnDestroy(): void {
+        if (this.isWatchingIndexing) {
+            this.isWatchingIndexing = false;
+            this.indexingSSEService.unsubscribe(this.data.collection_id);
+        }
+    }
+
     prevStep() {
         this.currentStepIndex.update((i) => Math.max(i - 1, 0));
     }
@@ -153,6 +173,12 @@ export class CreateCollectionDialogComponent {
         }
 
         return strategy.startIndexing(componentData).pipe(
+            tap((success) => {
+                if (success && !this.isWatchingIndexing) {
+                    this.isWatchingIndexing = true;
+                    this.indexingSSEService.subscribe(this.data.collection_id);
+                }
+            }),
             catchError(() => {
                 this.toastService.error('Indexing failed');
                 return of(false);

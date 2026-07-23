@@ -4,6 +4,7 @@ import { catchError, delay, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
 import {
+    CollectionStatus,
     CreateCollectionDtoResponse,
     DeleteCollectionResponse,
     GetCollectionRequest,
@@ -83,6 +84,25 @@ export class CollectionsStorageService implements StorageService {
                 this.updateOrCreateCollectionInCache(updated);
             }),
             catchError((err) => throwError(() => err))
+        );
+    }
+
+    /**
+     * Patches only the `status` field of a cached collection (list + detail cache).
+     * Used by CollectionIndexingSSEService to reflect live indexing progress
+     * without waiting for a full re-fetch.
+     */
+    updateCollectionStatus(collectionId: number, status: CollectionStatus): void {
+        this.collectionsSignal.update((collections) =>
+            collections.map((collection) =>
+                collection.collection_id === collectionId ? { ...collection, status } : collection
+            )
+        );
+
+        this.fullCollectionsSignal.update((collections) =>
+            collections.map((collection) =>
+                collection.collection_id === collectionId ? { ...collection, status } : collection
+            )
         );
     }
 
