@@ -1,0 +1,17 @@
+@font-face {
+    font-family: 'tabler-icons-filled';
+    src:
+        url('../../node_modules/@tabler/icons-webfont/dist/fonts/tabler-icons-filled.woff2') format('woff2'),
+        url('../../node_modules/@tabler/icons-webfont/dist/fonts/tabler-icons-filled.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: block;
+}
+
+.ti.ti-filled {
+    font-family: 'tabler-icons-filled' !important;
+}
+
+.ti.ti-filled.ti-player-play::before {
+    content: '\f691';
+}

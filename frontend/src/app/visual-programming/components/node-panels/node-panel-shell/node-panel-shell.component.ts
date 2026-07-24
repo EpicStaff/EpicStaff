@@ -1,4 +1,4 @@
-import { NgComponentOutlet } from '@angular/common';
+import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -8,6 +8,7 @@ import {
     output,
     Signal,
     signal,
+    TemplateRef,
     viewChild,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -23,7 +24,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 @Component({
     standalone: true,
     selector: 'app-node-panel-shell',
-    imports: [NgComponentOutlet, AppSvgIconComponent, MatTooltipModule],
+    imports: [NgComponentOutlet, NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule],
     hostDirectives: [
         {
             directive: ShortcutListenerDirective,
@@ -50,6 +51,11 @@ import { SidePanelService } from '../../../services/side-panel.service';
                         <span class="title">{{ nodeNameToDisplay() }}</span>
                     </div>
                     <div class="header-actions">
+                        @if (panelInstanceSig()?.exportButtonTemplate?.()) {
+                            <ng-container
+                                [ngTemplateOutlet]="panelInstanceSig()!.exportButtonTemplate!()!"
+                            ></ng-container>
+                        }
                         @if (showSaveButton()) {
                             <button
                                 class="save-btn"
@@ -132,7 +138,12 @@ export class NodePanelShellComponent {
 
     public readonly shouldShowExpandButton = computed(() => {
         const node = this.node();
-        return node && node.type !== 'table' && node.type !== NodeType.SCHEDULE_TRIGGER && node.type !== 'classification-decision-table';
+        return (
+            node &&
+            node.type !== 'table' &&
+            node.type !== NodeType.SCHEDULE_TRIGGER &&
+            node.type !== 'classification-decision-table'
+        );
     });
 
     protected readonly outlet = viewChild(NgComponentOutlet);
@@ -155,6 +166,7 @@ export class NodePanelShellComponent {
         isSaving?: Signal<boolean>;
         form?: { invalid: boolean };
         onSaveClick?: () => void;
+        exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
     } | null>(null);
     protected readonly showSaveButton = computed(() => {
         const panel = this.panelInstanceSig();
@@ -212,6 +224,7 @@ export class NodePanelShellComponent {
                                 isSaving?: Signal<boolean>;
                                 form?: { invalid: boolean };
                                 onSaveClick?: () => void;
+                                exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
                             }
                         );
                         this.previousNodeId = node.id;

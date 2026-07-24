@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { NODE_COLORS, NODE_ICONS } from '../enums/node-config';
 import { NodeType } from '../enums/node-type';
@@ -28,7 +28,7 @@ export function convertDecisionTableToCdt(dtNode: DecisionTableNodeModel): {
     node: ClassificationDecisionTableNodeModel;
     portIdMap: Record<string, string>;
 } {
-    const newId = uuidv4();
+    const newId = generateUuid();
     const dtTable = dtNode.data.table;
 
     const slug = (s: string) => (s ?? '').toLowerCase().replace(/\s+/g, '-');

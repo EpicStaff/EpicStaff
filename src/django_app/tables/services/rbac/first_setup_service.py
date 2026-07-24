@@ -4,7 +4,6 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from tables.models.rbac_models import (
-    ApiKey,
     Organization,
     OrganizationUser,
 )
@@ -17,7 +16,6 @@ class SetupResult:
     user: "User"
     organization: Organization
     membership: OrganizationUser
-    api_key: ApiKey
 
 
 class FirstSetupService:
@@ -34,8 +32,6 @@ class FirstSetupService:
     It is not taken from the HTTP request body.
     """
 
-    DEFAULT_API_KEY_NAME = "epicstaff-apikey"
-
     _bootstrap = SuperadminBootstrap()
 
     def is_setup_required(self) -> bool:
@@ -49,12 +45,10 @@ class FirstSetupService:
         result = self._bootstrap.provision(
             email=email,
             password=password,
-            api_key_name=self.DEFAULT_API_KEY_NAME,
         )
 
         return SetupResult(
             user=result.user,
             organization=result.organization,
             membership=result.membership,
-            api_key=result.api_key,
         )

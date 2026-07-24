@@ -1,8 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 
 from rest_framework.permissions import IsAuthenticated
 
@@ -401,16 +400,12 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @swagger_auto_schema(
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={},
-            description="No body required - send empty JSON object {}",
-        ),
+    @extend_schema(
+        request=None,
         responses={
-            200: "All documents initialized",
-            404: "GraphRag not found",
-            500: "Internal server error",
+            200: OpenApiResponse(description="All documents initialized"),
+            404: OpenApiResponse(description="GraphRag not found"),
+            500: OpenApiResponse(description="Internal server error"),
         },
     )
     def initialize_documents(self, request, pk=None):

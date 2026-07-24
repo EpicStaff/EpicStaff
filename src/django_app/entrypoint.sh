@@ -63,37 +63,9 @@ else
   echo "DJANGO_AUTO_CREATE_ADMIN=False — create the first superadmin via POST /api/auth/first-setup/."
 fi
 
-# Seed + validate the system API key from env DJANGO_API_KEY. Validation
-# round-trips check_key() to prove the raw key a caller will send actually
-# authenticates against what's stored. If a row with the same prefix exists
-# but doesn't match, fail loud — env and DB are out of sync and silent auth
-# failures would follow.
-if [ -n "${DJANGO_API_KEY}" ]; then
-  python manage.py shell -c "
-import os, sys
-from tables.models.rbac_models import ApiKey
-
-raw_key = os.environ['DJANGO_API_KEY']
-name = os.environ.get('DJANGO_API_KEY_NAME', 'system')
-prefix = raw_key[:8]
-
-existing = ApiKey.objects.filter(prefix=prefix, revoked_at__isnull=True).first()
-if existing:
-    if not existing.check_key(raw_key):
-        print(f'ERROR: ApiKey with prefix {prefix!r} exists but does not match DJANGO_API_KEY.', file=sys.stderr)
-        sys.exit(1)
-    print(f'System API key {existing.name!r} already seeded and valid.')
-else:
-    key = ApiKey(name=name)
-    key.set_key(raw_key)
-    key.save()
-    fetched = ApiKey.objects.get(pk=key.pk)
-    if not fetched.check_key(raw_key):
-        print('ERROR: Seeded API key failed check_key round-trip.', file=sys.stderr)
-        sys.exit(1)
-    print(f'System API key {name!r} seeded (prefix={prefix}).')
-"
-fi
+# Seed/rotate the singleton system API key from DJANGO_API_KEY.
+echo "Seeding system API key..."
+python manage.py seed_system_api_key
 
 # Collect static files for production server
 echo "Collects static"

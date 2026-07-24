@@ -558,7 +558,6 @@ def llm_config_data(embedding_model, gpt_4o_llm):
         "presence_penalty": None,
         "frequency_penalty": None,
         "logit_bias": None,
-        "response_format": None,
         "seed": None,
         "logprobs": None,
         "top_logprobs": None,

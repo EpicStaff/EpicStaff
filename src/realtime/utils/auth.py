@@ -1,4 +1,4 @@
-import requests
+import httpx
 from loguru import logger
 
 from core.config import settings
@@ -12,7 +12,7 @@ def validate_api_key() -> bool:
     if _api_key_validated:
         return True
     try:
-        resp = requests.get(
+        resp = httpx.get(
             f"{settings.DJANGO_AUTH_URL}/api/auth/api-key/validate/",
             headers={"X-API-Key": settings.DJANGO_API_KEY},
             timeout=settings.DJANGO_AUTH_TIMEOUT,
@@ -38,7 +38,7 @@ def introspect_token(token: str) -> dict | None:
     if not validate_api_key():
         return None
     try:
-        resp = requests.post(
+        resp = httpx.post(
             f"{settings.DJANGO_AUTH_URL}/api/auth/introspect/",
             json={"token": token},
             headers={"X-API-Key": settings.DJANGO_API_KEY},

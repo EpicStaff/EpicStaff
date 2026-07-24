@@ -44,6 +44,7 @@
                     placeholder="Enter provider's API key"
                     tooltipText="Your secret API key from the provider's dashboard. It will be stored securely."
                     type="secret"
+                    cautionMessage="You must enter the full new API key to change it. Partial updates aren't supported."
                 />
                 <app-validation-errors [control]="form.get('api_key')!" />
             </div>

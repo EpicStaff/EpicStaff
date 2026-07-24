@@ -21,13 +21,13 @@ from django_app.settings import (
     REQUEST_WEBHOOK_UPDATE_CHANNEL,
 )
 from tables.models import (
-    GraphOrganization,
     GraphSessionMessage,
-    PythonCodeResult,
     Session,
     SessionStorageFile,
     StorageFile,
 )
+from tables.services.run_python_code_service import RunPythonCodeService
+from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.services.schedule_trigger_service import ScheduleTriggerService
@@ -45,6 +45,7 @@ class RedisPubSub:
         self.buffers = {GRAPH_MESSAGES_CHANNEL: deque(maxlen=1000)}
         self.redis_client = self._create_redis_client()
         self.pubsub = self.redis_client.pubsub()
+        self.persistent_variables_service = PersistentVariablesService()
 
     @staticmethod
     def _create_redis_client() -> redis.Redis:
@@ -110,7 +111,12 @@ class RedisPubSub:
                         Session.SessionStatus.END,
                         Session.SessionStatus.ERROR,
                     ]:
-                        self._save_organization_variables(session=session, data=data)
+                        self.persistent_variables_service.persist_session_results(
+                            session=session,
+                            final_variables=data.get("status_data", {}).get(
+                                "variables"
+                            ),
+                        )
                         self._save_session_storage_files(session=session)
 
         except Exception as e:
@@ -119,10 +125,12 @@ class RedisPubSub:
     def code_results_handler(self, message: dict):
         try:
             logger.debug(f"Received message from code_result_handler: {message}")
-            data = json.loads(message["data"])
-            CodeResultData.model_validate(data)
+            result = CodeResultData.model_validate_json(message["data"])
             close_old_connections()
-            PythonCodeResult.objects.create(**data)
+            if not RunPythonCodeService().save_execution_result(result):
+                logger.debug(
+                    f"No pending execution for {result.execution_id}, skipping"
+                )
         except Exception as e:
             logger.error(f"Error handling code_results message: {e}")
 
@@ -206,45 +214,6 @@ class RedisPubSub:
                 f"Error updating webhook with current webhook configurations {e}"
             )
 
-    def _save_organization_variables(self, session: Session, data: dict):
-        """
-        Save organization and organization_user variables to database.
-        Only updates values that exist in the persistent_variables structure.
-        """
-        try:
-            variables = data.get("status_data", {}).get("variables")
-            if not variables:
-                return
-            # TODO: rbac refactor
-            graph_organization = GraphOrganization.objects.filter(
-                graph=session.graph
-            ).first()
-            if graph_organization and graph_organization.persistent_variables:
-                if self._update_persistent_values(
-                    graph_organization.persistent_variables, variables
-                ):
-                    graph_organization.save(update_fields=["persistent_variables"])
-
-            if (
-                session.graph_user
-                and graph_organization
-                and graph_organization.user_variables
-                and not session.graph_user.persistent_variables
-            ):
-                session.graph_user.persistent_variables = (
-                    graph_organization.user_variables
-                )
-                session.graph_user.save()
-
-            if session.graph_user and session.graph_user.persistent_variables:
-                if self._update_persistent_values(
-                    session.graph_user.persistent_variables, variables
-                ):
-                    session.graph_user.save(update_fields=["persistent_variables"])
-
-        except Exception as e:
-            logger.error(f"Error handling organization variables message: {e}")
-
     def _save_session_storage_files(self, session: Session):
         try:
             redis_key = f"session:{session.id}:storage_mutations"
@@ -285,29 +254,6 @@ class RedisPubSub:
 
         except Exception as e:
             logger.error(f"Error saving session storage files: {e}")
-
-    def _update_persistent_values(self, persistent: dict, incoming: dict) -> bool:
-        """
-        Recursively update values in persistent dict from incoming dict.
-        Only updates keys that already exist in persistent.
-        Returns True if any values were updated.
-        """
-        updated = False
-
-        for key, persistent_value in persistent.items():
-            if key not in incoming:
-                continue
-
-            incoming_value = incoming[key]
-
-            if isinstance(persistent_value, dict) and isinstance(incoming_value, dict):
-                if self._update_persistent_values(persistent_value, incoming_value):
-                    updated = True
-            elif persistent_value != incoming_value:
-                persistent[key] = incoming_value
-                updated = True
-
-        return updated
 
     def _buffer_save(self, data, model: Type[models.Model]):
         try:
