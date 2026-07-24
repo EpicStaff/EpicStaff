@@ -53,7 +53,7 @@ function buildDecisionTableNodePayload(
                 })),
                 manipulation: group.manipulation,
                 next_node_id: resolved.backendId,
-                ...(resolved.tempId ? { next_node_temp_id: resolved.tempId } : {}),
+                next_node_temp_id: resolved.tempId,
                 order: typeof group.order === 'number' ? group.order : index + 1,
             };
         });
@@ -65,10 +65,13 @@ function buildDecisionTableNodePayload(
         graph: graphId,
         node_name: node.node_name,
         condition_groups: conditionGroups,
+        // Always emit BOTH id and temp_id (one null) so a partial node_updated diff
+        // captures nulling the counterpart — otherwise the snapshot merge accumulates
+        // both and every flush fails "Provide at most one of *_id or *_temp_id".
         default_next_node_id: defaultNext.backendId,
-        ...(defaultNext.tempId ? { default_next_node_temp_id: defaultNext.tempId } : {}),
+        default_next_node_temp_id: defaultNext.tempId,
         next_error_node_id: nextError.backendId,
-        ...(nextError.tempId ? { next_error_node_temp_id: nextError.tempId } : {}),
+        next_error_node_temp_id: nextError.tempId,
         metadata: toNodeMetadata(node),
     } satisfies CreateDecisionTableNodeRequest & Record<string, unknown>;
 }
@@ -177,7 +180,7 @@ export function buildCdtNodePayload(
                 route_code: g.route_code || null,
                 section: g.section ?? null,
                 next_node_id: resolved.backendId,
-                ...(resolved.tempId ? { next_node_temp_id: resolved.tempId } : {}),
+                next_node_temp_id: resolved.tempId,
                 dock_visible: g.dock_visible !== false,
                 field_expressions: serializeCDTFieldExpressions(g.field_expressions || {}),
                 field_manipulations: (g.field_manipulations || {}) as Record<string, string>,
@@ -240,10 +243,13 @@ export function buildCdtNodePayload(
                 }) satisfies CreatePromptConfigRequest
         ),
         default_llm_config: tableData?.default_llm_config ?? null,
-        ...(defaultRef.backendId != null ? { default_next_node_id: defaultRef.backendId } : {}),
-        ...(defaultRef.tempId != null ? { default_next_node_temp_id: defaultRef.tempId } : {}),
-        ...(errorRef.backendId != null ? { next_error_node_id: errorRef.backendId } : {}),
-        ...(errorRef.tempId != null ? { next_error_node_temp_id: errorRef.tempId } : {}),
+        // Always emit BOTH id and temp_id (one null) so a partial node_updated diff
+        // captures nulling the counterpart — otherwise the snapshot merge accumulates
+        // both and every flush fails "Provide at most one of *_id or *_temp_id".
+        default_next_node_id: defaultRef.backendId,
+        default_next_node_temp_id: defaultRef.tempId,
+        next_error_node_id: errorRef.backendId,
+        next_error_node_temp_id: errorRef.tempId,
         condition_groups: conditionGroups,
         metadata: toNodeMetadata(node),
     } satisfies CreateClassificationDecisionTableNodeRequest & Record<string, unknown>;
