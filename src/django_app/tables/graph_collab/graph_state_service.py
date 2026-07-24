@@ -449,6 +449,8 @@ class GraphLiveStateService:
                             graph_id,
                         )
 
+            await _refresh_flushed_content_hashes(snapshot)
+
             await self.seed(graph_id, snapshot)
             await self.record_resolved_temp_ids(graph_id, temp_id_map)
             logger.debug(
@@ -824,6 +826,70 @@ def _cascade_deleted_node_refs(snapshot: dict, deleted: dict, node_id: int) -> N
 def _make_empty_deleted() -> dict:
     """Return a fresh deleted accumulator with all expected keys."""
     return {delete_key: [] for delete_key in _LIST_KEY_TO_DELETE_KEY.values()}
+
+
+@sync_to_async
+def _refresh_flushed_content_hashes(snapshot: dict) -> None:
+    """Refresh each snapshot node/edge entry's content_hash — and any nested
+    python_code content_hash — from the row just written to the DB.
+
+    Runs from apply_id_remap after a successful flush. One batched query per
+    model. Only overwrites a content_hash key that is already present on an
+    entry with a real id; never adds one where the serializer doesn't expose it.
+    """
+    from tables.models.graph_models import (
+        ClassificationDecisionTableNode,
+        ConditionalEdge,
+        Edge,
+        PythonNode,
+        WebhookTriggerNode,
+    )
+    from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
+
+    model_by_list_key: dict[str, type] = {
+        config.list_key: config.model_class for config in NODE_TYPE_REGISTRY
+    }
+    # Edges live outside NODE_TYPE_REGISTRY — add explicitly.
+    model_by_list_key["edge_list"] = Edge
+    model_by_list_key["conditional_edge_list"] = ConditionalEdge
+
+    # Model -> nested PythonCode FK fields whose content_hash also needs refreshing.
+    nested_python_code_fields: dict[type, tuple[str, ...]] = {
+        PythonNode: ("python_code",),
+        WebhookTriggerNode: ("python_code",),
+        ConditionalEdge: ("python_code",),
+        ClassificationDecisionTableNode: ("pre_python_code", "post_python_code"),
+    }
+
+    for list_key, model_class in model_by_list_key.items():
+        entries = snapshot.get(list_key) or []
+        id_to_entry: dict[int, dict] = {
+            entry["id"]: entry
+            for entry in entries
+            if entry is not None and entry.get("id") is not None
+        }
+        if not id_to_entry:
+            continue
+
+        nested_fields = nested_python_code_fields.get(model_class, ())
+        queryset = model_class.objects.filter(id__in=id_to_entry.keys())
+        if nested_fields:
+            queryset = queryset.select_related(*nested_fields)
+
+        for instance in queryset:
+            entry = id_to_entry[instance.id]
+            if "content_hash" in entry:
+                entry["content_hash"] = instance.content_hash
+
+            for field_name in nested_fields:
+                nested_entry = entry.get(field_name)
+                nested_instance = getattr(instance, field_name, None)
+                if (
+                    isinstance(nested_entry, dict)
+                    and nested_instance is not None
+                    and "content_hash" in nested_entry
+                ):
+                    nested_entry["content_hash"] = nested_instance.content_hash
 
 
 @sync_to_async
