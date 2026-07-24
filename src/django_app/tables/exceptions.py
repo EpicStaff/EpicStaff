@@ -398,3 +398,20 @@ class PromptNotFoundError(CustomAPIExeption):
             f"Prompt {value} doesn't exist or belong to another organization.",
             code=self.default_code,
         )
+
+
+class ClassificationDecisionTableNodeNotFoundError(CustomAPIExeption):
+    """Raised when a CDT node id doesn't resolve within the caller's active
+    organization. Cross-org and nonexistent ids are indistinguishable (404,
+    no existence leak) — used by actions that bypass the viewset's
+    get_object()/get_queryset scoping (e.g. export, which takes a raw pk)."""
+
+    status_code = 404
+    default_code = "classification_decision_table_node_not_found"
+
+    def __init__(self, pk):
+        self.pk = pk
+        super().__init__(
+            f"Classification decision table node {pk} not found.",
+            code=self.default_code,
+        )

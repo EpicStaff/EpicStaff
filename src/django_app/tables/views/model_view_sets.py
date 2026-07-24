@@ -1611,6 +1611,7 @@ class ClassificationDecisionTableNodeModelViewSet(
 ):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "export": Permission.EXPORT}
     org_filter_path = "graph__org_id"
     queryset = ClassificationDecisionTableNode.objects.all()
     serializer_class = ClassificationDecisionTableNodeSerializer
@@ -1656,7 +1657,9 @@ class ClassificationDecisionTableNodeModelViewSet(
     @action(detail=True, methods=["get"], url_path="export")
     def export(self, request, pk=None):
         export_format = request.query_params.get("export_format", "json")
-        result = self._node_service.export(pk=pk, export_format=export_format)
+        result = self._node_service.export(
+            pk=pk, export_format=export_format, org_id=self.get_active_org_id()
+        )
         if result.errors is not None:
             return Response(
                 {"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST

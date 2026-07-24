@@ -452,10 +452,8 @@ def test_cdt_condition_group_prompt_other_node_rejected(client_a, org_a):
     )
     # A prompt from another node is not node-local -> rejected, not silently dropped.
     assert resp.status_code == 400, resp.data
-    assert (
-        f"Prompt {foreign_prompt.id} is not found or belong to another organization."
-        in str(resp.data)
-    )
+    assert resp.data["code"] == "prompt_not_found"
+    assert resp.data["message"] == f"PromptNotFoundError: {foreign_prompt.id}"
     assert not ClassificationConditionGroup.objects.filter(
         classification_decision_table_node=node_a
     ).exists()
@@ -531,13 +529,89 @@ def test_cdt_group_prompt_key_other_node_rejected(client_a, org_a):
         format="json",
     )
     assert resp.status_code == 400, resp.data
-    assert (
-        "Prompt does-not-exist is not found or belong to another organization."
-        in str(resp.data)
-    )
+    assert resp.data["code"] == "prompt_not_found"
+    assert resp.data["message"] == "PromptNotFoundError: does-not-exist"
     # No leak: the rejected request rolls back the whole transaction, including
     # the prompt_configs sync that ran before the condition_groups sync raised.
     assert not ClassificationDecisionTablePrompt.objects.filter(cdt_node=node).exists()
     assert not ClassificationConditionGroup.objects.filter(
         classification_decision_table_node=node
     ).exists()
+
+
+# ---- export action: permission gate + org-scoped fetch (bypasses get_object) ----
+
+
+def _export_url(node_id: int) -> str:
+    return f"{CDT_URL}{node_id}/export/"
+
+
+def _viewer_client(django_user_model, org, email):
+    role = Role.objects.get(name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True)
+    user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
+    OrganizationUser.objects.create(user=user, org=org, role=role)
+    c = APIClient()
+    c.force_authenticate(user=user)
+    c.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
+    return c
+
+
+@pytest.mark.django_db
+def test_cdt_export_json_allowed_for_org_admin(client_a, org_a):
+    graph_a = _graph(org_a, "a")
+    node = ClassificationDecisionTableNode.objects.create(
+        graph=graph_a, node_name="cdt1"
+    )
+    resp = client_a.get(_export_url(node.id), {"export_format": "json"})
+    assert resp.status_code == 200, resp.content
+    assert resp["Content-Type"] == "application/json"
+
+
+@pytest.mark.django_db
+def test_cdt_export_csv_allowed_for_org_admin(client_a, org_a):
+    graph_a = _graph(org_a, "a")
+    node = ClassificationDecisionTableNode.objects.create(
+        graph=graph_a, node_name="cdt1"
+    )
+    resp = client_a.get(_export_url(node.id), {"export_format": "csv"})
+    assert resp.status_code == 200, resp.content
+    assert resp["Content-Type"] == "text/csv"
+
+
+@pytest.mark.django_db
+def test_cdt_export_denied_for_viewer(db, django_user_model, org_a):
+    # Viewer's FLOWS bitmask (READ+USE) does not include EXPORT.
+    graph_a = _graph(org_a, "a")
+    node = ClassificationDecisionTableNode.objects.create(
+        graph=graph_a, node_name="cdt1"
+    )
+    viewer = _viewer_client(django_user_model, org_a, "viewer_a@example.com")
+    resp = viewer.get(_export_url(node.id), {"export_format": "json"})
+    assert resp.status_code == 403, resp.content
+
+
+@pytest.mark.django_db
+def test_cdt_export_json_cross_org_node_404(client_a, org_a, org_b):
+    # The node belongs to org_b; org_a's admin must not be able to export it,
+    # even though the export path bypasses the viewset's get_object() scoping.
+    graph_b = _graph(org_b, "b")
+    foreign_node = ClassificationDecisionTableNode.objects.create(
+        graph=graph_b, node_name="cdt_b"
+    )
+    resp = client_a.get(_export_url(foreign_node.id), {"export_format": "json"})
+    assert resp.status_code == 404, resp.content
+    assert resp.data["code"] == "classification_decision_table_node_not_found"
+    assert resp.data["message"] == (
+        f"ClassificationDecisionTableNodeNotFoundError: {foreign_node.id}"
+    )
+
+
+@pytest.mark.django_db
+def test_cdt_export_csv_cross_org_node_404(client_a, org_a, org_b):
+    graph_b = _graph(org_b, "b")
+    foreign_node = ClassificationDecisionTableNode.objects.create(
+        graph=graph_b, node_name="cdt_b"
+    )
+    resp = client_a.get(_export_url(foreign_node.id), {"export_format": "csv"})
+    assert resp.status_code == 404, resp.content
+    assert resp.data["code"] == "classification_decision_table_node_not_found"
