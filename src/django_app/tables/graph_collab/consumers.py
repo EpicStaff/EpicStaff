@@ -7,6 +7,7 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from pydantic import BaseModel
+from rest_framework.exceptions import PermissionDenied
 
 from tables.graph_collab.autosave_loop import ensure_autosave_loop_running
 from tables.graph_collab.flush_service import flush_service
@@ -36,6 +37,9 @@ from tables.graph_collab.protocol import (
     UserJoinedMessage,
     UserLeftMessage,
 )
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
+from tables.services.rbac.permission_assert import assert_org_permission
+from tables.services.rbac.rbac_exceptions import OrgMembershipRequiredError
 
 from utils.logger import logger
 
@@ -69,6 +73,14 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         org_id = await sync_to_async(self._get_graph_org_id)(self.graph_id)
         if org_id is None:
             await self.close(code=4404)
+            return
+
+        try:
+            await sync_to_async(assert_org_permission)(
+                user, org_id, ResourceType.FLOWS, Permission.UPDATE
+            )
+        except (PermissionDenied, OrgMembershipRequiredError):
+            await self.close(code=4403)
             return
 
         self.group = graph_group_name(self.graph_id)
