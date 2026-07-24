@@ -7,7 +7,6 @@ from django.db import IntegrityError, transaction
 from loguru import logger
 
 from tables.models.rbac_models import (
-    ApiKey,
     Organization,
     OrganizationUser,
     Role,
@@ -20,13 +19,11 @@ class SuperadminBootstrapResult:
     user: "User"
     organization: Organization
     membership: OrganizationUser
-    api_key: ApiKey
-    raw_key: str
     default_org_created: bool
 
 
 class SuperadminBootstrap:
-    """Provisions a superadmin + default-org membership + a system API key.
+    """Provisions a superadmin + default-org membership.
 
     Used by both FirstSetupService (initial bootstrap) and ResetUserService
     (destructive reset, Bug 1 fix). The caller is responsible for the
@@ -52,7 +49,6 @@ class SuperadminBootstrap:
         *,
         email: str,
         password: str,
-        api_key_name: str,
     ) -> SuperadminBootstrapResult:
         UserModel = get_user_model()
         user = UserModel.objects.create_superuser(email=email, password=password)
@@ -68,25 +64,20 @@ class SuperadminBootstrap:
             user=user, org=organization, role=role
         )
 
-        raw_key = ApiKey.generate_raw_key()
-        api_key = ApiKey(name=api_key_name, created_by=user)
-        api_key.set_key(raw_key)
-        api_key.save()
-
+        # API keys are never provisioned here — user keys come only from
+        # POST /api/profile/api-keys/, the system key only from
+        # seed_system_api_key.
         logger.info(
-            "SuperadminBootstrap provisioned email={email} org={org} role={role} key_prefix={prefix}",
+            "SuperadminBootstrap provisioned email={email} org={org} role={role}",
             email=user.email,
             org=organization.name,
             role=role.name,
-            prefix=api_key.prefix,
         )
 
         return SuperadminBootstrapResult(
             user=user,
             organization=organization,
             membership=membership,
-            api_key=api_key,
-            raw_key=raw_key,
             default_org_created=default_org_created,
         )
 

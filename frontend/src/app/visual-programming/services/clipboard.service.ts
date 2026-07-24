@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { ICurrentSelection } from '@foblex/flow';
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { NodeType } from '../core/enums/node-type';
 import { generateMultipleNodeDisplayNames } from '../core/helpers/generate-node-display-name.util';
@@ -95,7 +95,7 @@ export class ClipboardService {
 
         const oldToNewIdMap = new Map<string, string>();
         const newNodeIds: string[] = clipboardNodes.map((oldNode) => {
-            const newNodeId = uuidv4();
+            const newNodeId = generateUuid();
             oldToNewIdMap.set(oldNode.id, newNodeId);
             return newNodeId;
         });

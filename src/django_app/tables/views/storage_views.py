@@ -1,5 +1,5 @@
 from django.http import HttpResponse
-from drf_yasg.utils import swagger_auto_schema
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action, parser_classes
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -89,8 +89,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             )
         return cross_org
 
+    @extend_schema(**STORAGE_LIST_SWAGGER)
     @action(detail=False, methods=["get"], url_path="list")
-    @swagger_auto_schema(**STORAGE_LIST_SWAGGER)
     def list_files(self, request):
         org_id = self.get_active_org_id()
         params = StoragePathQuerySerializer(data=request.query_params)
@@ -106,8 +106,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         items = self.manager.list_(org_id, prefix)
         return Response({"path": prefix, "items": [i.to_dict() for i in items]})
 
+    @extend_schema(**STORAGE_INFO_SWAGGER)
     @action(detail=False, methods=["get"], url_path="info")
-    @swagger_auto_schema(**STORAGE_INFO_SWAGGER)
     def info(self, request):
         org_id = self.get_active_org_id()
         params = StoragePathQuerySerializer(data=request.query_params)
@@ -133,8 +133,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         )
         return Response(response)
 
+    @extend_schema(**STORAGE_DOWNLOAD_SWAGGER)
     @action(detail=False, methods=["get"], url_path="download")
-    @swagger_auto_schema(**STORAGE_DOWNLOAD_SWAGGER)
     def download(self, request):
         org_id = self.get_active_org_id()
         params = StoragePathQuerySerializer(data=request.query_params)
@@ -151,8 +151,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 
+    @extend_schema(**STORAGE_UPLOAD_SWAGGER)
     @action(detail=False, methods=["post"], url_path="upload")
-    @swagger_auto_schema(**STORAGE_UPLOAD_SWAGGER)
     @parser_classes([MultiPartParser])
     def upload(self, request):
         org_id = self.get_active_org_id()
@@ -176,8 +176,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(**STORAGE_DOWNLOAD_ZIP_SWAGGER)
     @action(detail=False, methods=["post"], url_path="download-zip")
-    @swagger_auto_schema(**STORAGE_DOWNLOAD_ZIP_SWAGGER)
     def download_zip(self, request):
         org_id = self.get_active_org_id()
         serializer = StorageDownloadZipSerializer(data=request.data)
@@ -195,8 +195,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         response["Content-Disposition"] = 'attachment; filename="download.zip"'
         return response
 
+    @extend_schema(**STORAGE_MKDIR_SWAGGER)
     @action(detail=False, methods=["post"], url_path="mkdir")
-    @swagger_auto_schema(**STORAGE_MKDIR_SWAGGER)
     def mkdir(self, request):
         org_id = self.get_active_org_id()
         serializer = StorageMkdirSerializer(data=request.data)
@@ -220,8 +220,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             raise ValidationError({"detail": str(e)})
         return Response({"path": path, "created": True}, status=status.HTTP_201_CREATED)
 
+    @extend_schema(**STORAGE_DELETE_SWAGGER)
     @action(detail=False, methods=["delete"], url_path="delete")
-    @swagger_auto_schema(**STORAGE_DELETE_SWAGGER)
     def delete_file(self, request):
         org_id = self.get_active_org_id()
         serializer = StorageBulkDeleteSerializer(data=request.data)
@@ -232,8 +232,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(**STORAGE_RENAME_SWAGGER)
     @action(detail=False, methods=["post"], url_path="rename")
-    @swagger_auto_schema(**STORAGE_RENAME_SWAGGER)
     def rename(self, request):
         org_id = self.get_active_org_id()
         serializer = StorageRenameSerializer(data=request.data)
@@ -252,8 +252,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         return Response({"from": from_path, "to": to_path, "success": True})
 
+    @extend_schema(**STORAGE_MOVE_SWAGGER)
     @action(detail=False, methods=["post"], url_path="move")
-    @swagger_auto_schema(**STORAGE_MOVE_SWAGGER)
     def move(self, request):
         org_id = self.get_active_org_id()
         serializer = StorageMoveSerializer(data=request.data)
@@ -277,8 +277,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         return Response({"from": from_path, "to": to_path, "success": True})
 
+    @extend_schema(**STORAGE_COPY_SWAGGER)
     @action(detail=False, methods=["post"], url_path="copy")
-    @swagger_auto_schema(**STORAGE_COPY_SWAGGER)
     def copy(self, request):
         org_id = self.get_active_org_id()
         serializer = StorageCopySerializer(data=request.data)
@@ -302,8 +302,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         return Response({"from": from_path, "to": to_path, "success": True})
 
+    @extend_schema(**STORAGE_ADD_TO_GRAPH_SWAGGER)
     @action(detail=False, methods=["post"], url_path="add-to-graph")
-    @swagger_auto_schema(**STORAGE_ADD_TO_GRAPH_SWAGGER)
     def add_to_graph(self, request):
         org_id = self.get_active_org_id()
         serializer = StorageAddToGraphSerializer(data=request.data)
@@ -345,8 +345,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(**STORAGE_REMOVE_FROM_GRAPH_SWAGGER)
     @action(detail=False, methods=["delete"], url_path="remove-from-graph")
-    @swagger_auto_schema(**STORAGE_REMOVE_FROM_GRAPH_SWAGGER)
     def remove_from_graph(self, request):
         org_id = self.get_active_org_id()
         serializer = StorageRemoveFromGraphSerializer(data=request.data)
@@ -365,8 +365,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         ).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(**STORAGE_TREE_SWAGGER)
     @action(detail=False, methods=["get"], url_path="tree")
-    @swagger_auto_schema(**STORAGE_TREE_SWAGGER)
     def tree(self, request):
         org_id = self.get_active_org_id()
         params = StorageTreeQuerySerializer(data=request.query_params)
@@ -388,8 +388,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             {"path": prefix, "truncated": truncated, "tree": root.to_dict()}
         )
 
+    @extend_schema(**STORAGE_GRAPH_FILES_SWAGGER)
     @action(detail=False, methods=["get"], url_path="graph-files")
-    @swagger_auto_schema(**STORAGE_GRAPH_FILES_SWAGGER)
     def graph_files(self, request):
         org_id = self.get_active_org_id()
         params = StorageGraphFilesQuerySerializer(data=request.query_params)
@@ -409,8 +409,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         )
         return Response(GraphStorageFileSerializer(qs, many=True).data)
 
+    @extend_schema(**STORAGE_SEARCH_SWAGGER)
     @action(detail=False, methods=["get"], url_path="search")
-    @swagger_auto_schema(**STORAGE_SEARCH_SWAGGER)
     def search(self, request):
         org_id = self.get_active_org_id()
         params = StorageSearchQuerySerializer(data=request.query_params)

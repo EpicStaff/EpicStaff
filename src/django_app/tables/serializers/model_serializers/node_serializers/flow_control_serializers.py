@@ -8,7 +8,6 @@ from tables.models.graph_models import (
     ConditionalEdge,
     DecisionTableNode,
     EndNode,
-    GraphOrganization,
     StartNode,
     ClassificationDecisionTableNode,
     ClassificationConditionGroup,
@@ -33,12 +32,6 @@ from tables.services.persistent_variables_service import (
 )
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
-)
-from tables.constants.variables_constants import (
-    DOMAIN_VARIABLES_KEY,
-    DOMAIN_ORGANIZATION_KEY,
-    DOMAIN_USER_KEY,
-    DOMAIN_PERSISTENT_KEY,
 )
 
 
@@ -70,45 +63,28 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
     def get_node_name(self, obj):
         return "__start__"
 
+    def validate(self, attrs):
+        PersistentVariablesService().validate_start_node_variables(
+            attrs.get("variables")
+        )
+        return super().validate(attrs)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        instance = super().create(validated_data)
+        PersistentVariablesService().sync_from_start_node(
+            instance.graph, {}, instance.variables or {}
+        )
+        return instance
+
     @transaction.atomic
     def update(self, instance, validated_data):
         old_variables = instance.variables.copy() if instance.variables else {}
-
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-
-        # TODO: rbac refactor
-        graph_organization = GraphOrganization.objects.filter(
-            graph=instance.graph
-        ).first()
-
-        if graph_organization:
-            service = PersistentVariablesService()
-            service.sync_graph_organization(
-                graph_organization, old_variables, instance.variables
-            )
-
+        instance = super().update(instance, validated_data)
+        PersistentVariablesService().sync_from_start_node(
+            instance.graph, old_variables, instance.variables or {}
+        )
         return instance
-
-    # TODO: refactor, persistant variables story
-    def validate(self, attrs):
-        variables = attrs.get("variables")
-        actual_variables = variables.get(DOMAIN_VARIABLES_KEY, {})
-
-        persistent_variables = variables.get(DOMAIN_PERSISTENT_KEY, {})
-        organization_variables = persistent_variables.get(DOMAIN_ORGANIZATION_KEY, [])
-        user_variables = persistent_variables.get(DOMAIN_USER_KEY, [])
-
-        service = PersistentVariablesService()
-        for path in organization_variables + user_variables:
-            value = service.get_by_path(actual_variables, path)
-            if value is None:
-                raise serializers.ValidationError(
-                    f"Path {path} in {DOMAIN_PERSISTENT_KEY} does not exist in {DOMAIN_VARIABLES_KEY}."
-                )
-
-        return super().validate(attrs)
 
 
 class EndNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):

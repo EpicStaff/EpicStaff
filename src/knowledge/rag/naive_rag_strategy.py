@@ -1,7 +1,7 @@
 import os
+from collections import OrderedDict
 from typing import Optional
 from loguru import logger
-import cachetools
 
 from services.cancellation_token import CancellationToken
 
@@ -21,7 +21,34 @@ from embedder.mistral import MistralEmbedder
 from embedder.together_ai import TogetherAIEmbedder
 
 
-_embedder_cache = cachetools.LRUCache(maxsize=50)
+class _LRUCache(OrderedDict):
+    """
+    Minimal LRU cache mirroring the subset of cachetools.LRUCache behavior
+    used in this module: bounded size with least-recently-used eviction.
+
+    Note: `__contains__` does NOT refresh recency, but `__getitem__` does
+    (matching cachetools.LRUCache semantics). No TTL, no locking.
+    """
+
+    def __init__(self, maxsize: int):
+        super().__init__()
+        self.maxsize = maxsize
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        self.move_to_end(key)
+        return value
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        super().__setitem__(key, value)
+        if len(self) > self.maxsize:
+            oldest_key = next(iter(self))
+            del self[oldest_key]
+
+
+_embedder_cache = _LRUCache(maxsize=50)
 
 
 class NaiveRAGStrategy(BaseRAGStrategy):
