@@ -48,37 +48,4 @@
     >
         <span class="cell-text">{{ row['members'] }}</span>
     </ng-template>
-
-    <!-- ACTIONS -->
-    <ng-template
-        appTableCell="actions"
-        let-row
-    >
-        <div class="actions-cell">
-            <button
-                class="action-btn"
-                type="button"
-                matTooltip="View role"
-                (click)="onViewRole(row)"
-            >
-                <app-svg-icon
-                    icon="eye"
-                    size="16px"
-                />
-            </button>
-            @if (!row['isBuiltIn']) {
-                <button
-                    class="action-btn danger"
-                    type="button"
-                    matTooltip="Delete role"
-                    (click)="onDeleteRole(row)"
-                >
-                    <app-svg-icon
-                        icon="trash"
-                        size="16px"
-                    />
-                </button>
-            }
-        </div>
-    </ng-template>
 </app-table>

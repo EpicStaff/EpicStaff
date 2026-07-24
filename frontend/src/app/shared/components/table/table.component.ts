@@ -10,17 +10,27 @@ import {
     signal,
     untracked,
 } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { CheckboxComponent } from '../checkbox/checkbox.component';
 import { MultiSelectComponent } from '../multi-select/multi-select.component';
-import { AppTableColumnDef, TableRow } from './table.model';
+import { MultiSelectTriggerDirective } from '../multi-select/multi-select-trigger.directive';
+import { AppTableActionVariant, AppTableColumnDef, AppTableRowAction, TableRow } from './table.model';
 import { AppTableCellDirective } from './table-cell.directive';
 
 @Component({
     selector: 'app-table',
     templateUrl: './table.component.html',
     styleUrls: ['./table.component.scss'],
-    imports: [NgTemplateOutlet, CheckboxComponent, MultiSelectComponent],
+    imports: [
+        NgTemplateOutlet,
+        CheckboxComponent,
+        MultiSelectComponent,
+        MultiSelectTriggerDirective,
+        AppSvgIconComponent,
+        MatTooltip,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppTableComponent {
@@ -142,5 +152,11 @@ export class AppTableComponent {
             key,
             values: values.filter((v): v is string => typeof v === 'string'),
         });
+    }
+
+    resolveActionVariant(action: AppTableRowAction, row: TableRow): AppTableActionVariant {
+        const variant = action.variant;
+        if (typeof variant === 'function') return variant(row);
+        return variant ?? 'default';
     }
 }

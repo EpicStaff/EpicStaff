@@ -152,44 +152,9 @@
             }
         </ng-template>
 
-        <!-- ACTIONS -->
-        <ng-template
-            appTableCell="actions"
-            let-row
-        >
-            <div class="actions-cell">
-                <!--                <button-->
-                <!--                    class="action-btn"-->
-                <!--                    type="button"-->
-                <!--                    title="View"-->
-                <!--                >-->
-                <!--                    <app-svg-icon-->
-                <!--                        icon="eye"-->
-                <!--                        size="16px"-->
-                <!--                    />-->
-                <!--                </button>-->
-                <button
-                    class="action-btn"
-                    type="button"
-                    matTooltip="Edit user"
-                    (click)="onEditUser(row['id'])"
-                >
-                    <app-svg-icon
-                        icon="edit"
-                        size="16px"
-                    />
-                </button>
-                <!--                <button-->
-                <!--                    class="action-btn action-btn&#45;&#45;danger"-->
-                <!--                    type="button"-->
-                <!--                    title="Delete"-->
-                <!--                >-->
-                <!--                    <app-svg-icon-->
-                <!--                        icon="trash"-->
-                <!--                        size="16px"-->
-                <!--                    />-->
-                <!--                </button>-->
-            </div>
-        </ng-template>
+        <div tableEmpty>
+            <h4 class="empty-title">No users yet</h4>
+            <p class="empty-subtitle">Create a user account to grant access to this organization.</p>
+        </div>
     </app-table>
 }

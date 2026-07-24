@@ -71,50 +71,5 @@
                 [icon]="row['status'] === 'deactivated' ? 'clock' : null"
             />
         </ng-template>
-
-        <!-- ACTIONS -->
-        <ng-template
-            appTableCell="actions"
-            let-row
-        >
-            <div class="actions-cell">
-                <button
-                    class="action-btn"
-                    type="button"
-                    matTooltip="Edit organization"
-                    (click)="onEditOrganization(row)"
-                >
-                    <app-svg-icon
-                        icon="edit"
-                        size="16px"
-                    />
-                </button>
-                @if (row['status'] === 'active') {
-                    <button
-                        class="action-btn danger"
-                        type="button"
-                        matTooltip="Deactivate organization"
-                        (click)="onDeactivateOrganization(row)"
-                    >
-                        <app-svg-icon
-                            icon="stop"
-                            size="16px"
-                        />
-                    </button>
-                } @else {
-                    <button
-                        class="action-btn action-btn--muted"
-                        type="button"
-                        matTooltip="Activate organization"
-                        (click)="onReactivateOrganization(row)"
-                    >
-                        <app-svg-icon
-                            icon="play"
-                            size="16px"
-                        />
-                    </button>
-                }
-            </div>
-        </ng-template>
     </app-table>
 }
