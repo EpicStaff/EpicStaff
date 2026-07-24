@@ -252,6 +252,7 @@ export function buildNodeBackendPayload(
                 node_name: cn.node_name,
                 graph: graphId,
                 crew_id: cn.data.id,
+                crew: cn.data,
                 input_map: cn.input_map || {},
                 output_variable_path: cn.output_variable_path || null,
                 stream_config: cn.stream_config ?? {},
