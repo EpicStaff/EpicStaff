@@ -14,7 +14,6 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-crewai-tools = "0.33.0"
 pandas = "2.2.3"
 ollama = "0.4.7"
 google-generativeai = "0.8.6"
