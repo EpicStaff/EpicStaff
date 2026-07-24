@@ -890,7 +890,19 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             });
         } else if (node.type === NodeType.START) {
             const startNode = node as StartNodeModel;
+
+            const lock = this.wsService.lockedNodeFields().get(node.id)?.get('initialState');
+            if (lock && lock.user_id !== this.profileService.currentUserSignal()?.id) {
+                this.toastService.warning(
+                    `Domain variables are being edited by ${lock.display_name ?? 'another user'}`,
+                    4000,
+                    'bottom-right'
+                );
+                return;
+            }
+
             const startNodeInitialState = startNode.data?.initialState || {};
+            this.wsService.sendNodeLocked(node.id, 'initialState');
 
             const dialogRef = this.dialog.open(DomainDialogComponent, {
                 disableClose: true,
@@ -906,6 +918,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             });
 
             dialogRef.closed.subscribe((result: unknown) => {
+                this.wsService.sendNodeUnlocked(node.id, 'initialState');
                 if (result !== null && typeof result === 'object' && result !== undefined) {
                     this.updateStartNodeInitialState(result as Record<string, unknown>);
                 }
