@@ -1,5 +1,7 @@
 import litellm
 
+import json
+import os
 from src.shared.models import LLMData
 from src.crew.utils.llm_wrapper import PatchedLLM, _NO_TEMPERATURE_PATTERNS
 
@@ -27,6 +29,15 @@ def parse_llm(llm: LLMData, **kwargs):
     llm_config = {**llm.config.model_dump()}
     llm_config.update(kwargs)
     llm_config["model"] = _qualify_model(llm.provider, llm_config.get("model"))
+
+    # EpicFLow Patch
+    raw_headers = os.environ.get("LLM_HEADERS")
+    if raw_headers:
+        extra_headers = json.loads(raw_headers)
+        existing = llm_config.get("extra_headers") or {}
+        existing.update(extra_headers)
+        llm_config["extra_headers"] = existing
+
     return PatchedLLM(**llm_config)
 
 

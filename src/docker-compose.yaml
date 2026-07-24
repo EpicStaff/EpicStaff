@@ -237,6 +237,7 @@ services:
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT}
       GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT}
+      LLM_HEADERS: ${LLM_HEADERS:-}
     volumes:
       - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
       - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
@@ -324,7 +325,9 @@ services:
       KNOWLEDGE_SOURCES_CHANNEL: knowledge_sources
       DB_KNOWLEDGE_USER: ${DB_KNOWLEDGE_USER}
       DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
+      EMBEDDING_HEADERS: ${EMBEDDING_HEADERS:-}
       GRAPH_DATA_DIR: /home/user/root/app/graph_data
+
     volumes:
       - graph_data:/home/user/root/app/graph_data
     networks:
