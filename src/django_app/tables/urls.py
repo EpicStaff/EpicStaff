@@ -130,7 +130,9 @@ router.register(r"agents", AgentViewSet)
 router.register(r"crews", CrewReadWriteViewSet)
 router.register(r"tasks", TaskReadWriteViewSet)
 router.register(r"python-code-tool", PythonCodeToolViewSet)
-router.register(r"python-code-result", PythonCodeResultReadViewSet)
+router.register(
+    r"python-code-result", PythonCodeResultReadViewSet, basename="python-code-result"
+)
 router.register(
     r"source-collections", SourceCollectionViewSet, basename="sourcecollection"
 )

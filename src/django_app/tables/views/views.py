@@ -639,7 +639,7 @@ class RunPythonCodeAPIView(APIView):
             user=request.user,
             org_id=org_id,
             resource_type=ResourceType.FLOWS,
-            action=Permission.UPDATE,
+            action=Permission.READ,
         )
         if not PythonCode.objects.filter(
             self._python_code_visible_q(org_id), pk=python_code.pk
@@ -652,7 +652,12 @@ class RunPythonCodeAPIView(APIView):
                 }
             )
 
-        execution_id = run_python_code_service.run_code(python_code.id, variables)
+        execution_id = run_python_code_service.run_code(
+            python_code_id=python_code.id,
+            varaibles=variables,
+            organization_id=org_id,
+            user=request.user,
+        )
         return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
 
     @staticmethod

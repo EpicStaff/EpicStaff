@@ -22,11 +22,11 @@ from django_app.settings import (
 )
 from tables.models import (
     GraphSessionMessage,
-    PythonCodeResult,
     Session,
     SessionStorageFile,
     StorageFile,
 )
+from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
@@ -125,10 +125,12 @@ class RedisPubSub:
     def code_results_handler(self, message: dict):
         try:
             logger.debug(f"Received message from code_result_handler: {message}")
-            data = json.loads(message["data"])
-            CodeResultData.model_validate(data)
+            result = CodeResultData.model_validate_json(message["data"])
             close_old_connections()
-            PythonCodeResult.objects.create(**data)
+            if not RunPythonCodeService().save_execution_result(result):
+                logger.debug(
+                    f"No pending execution for {result.execution_id}, skipping"
+                )
         except Exception as e:
             logger.error(f"Error handling code_results message: {e}")
 
