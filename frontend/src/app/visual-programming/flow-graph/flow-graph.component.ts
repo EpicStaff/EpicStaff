@@ -50,6 +50,7 @@ import {
 } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
+import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
@@ -290,6 +291,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly cd = inject(ChangeDetectorRef);
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
+    private readonly profileService = inject(ProfileService);
     private readonly importExportService = inject(ImportExportService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly injector = inject(Injector);
@@ -842,6 +844,16 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
         if (node.type === NodeType.NOTE) {
             const noteNode = node as GraphNoteModel;
+
+            const lock = this.wsService.lockedNodeFields().get(node.id)?.get('content');
+            if (lock && lock.user_id !== this.profileService.currentUserSignal()?.id) {
+                this.toastService.warning(
+                    `Note is being edited by ${lock.display_name ?? 'another user'}`,
+                    4000,
+                    'bottom-right'
+                );
+                return;
+            }
 
             const dialogRef = this.dialog.open(NoteEditDialogComponent, {
                 data: { node: noteNode },
