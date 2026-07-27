@@ -180,7 +180,10 @@ class GraphSerializer(serializers.ModelSerializer):
         many=True, read_only=True
     )
     label_ids = OrgScopedPrimaryKeyRelatedField(
-        many=True, source="labels", queryset=Label.objects.all(), required=False
+        many=True,
+        source="labels",
+        queryset=Label.objects.filter(scope=Label.Scope.FLOW),
+        required=False,
     )
     graph_note_list = GraphNoteSerializer(many=True, read_only=True)
     save_version = serializers.IntegerField(required=True)
