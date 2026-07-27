@@ -21,6 +21,11 @@ from tables.models import (
     Crew,
     McpTool,
     PythonCodeTool,
+    Task,
+    TaskConfiguredTools,
+    TaskMcpTools,
+    TaskPythonCodeTools,
+    TaskPythonCodeToolConfigs,
     Tool,
 )
 
@@ -62,32 +67,39 @@ def get_tools_usage(org_id: int) -> list[dict]:
     configured_agents, python_agents, mcp_agents = _agents_by_tool_per_kind(
         org_id, tool_ids, python_tool_ids, mcp_tool_ids
     )
-    all_agent_ids: set[int] = set()
-    for agents_by_tool in (configured_agents, python_agents, mcp_agents):
-        for agent_ids in agents_by_tool.values():
-            all_agent_ids.update(agent_ids)
-    agent_crews = _agent_crew_map(org_id, all_agent_ids)
+
+    configured_tasks, python_tasks, mcp_tasks = _tasks_by_tool_per_kind(
+        org_id, tool_ids, python_tool_ids, mcp_tool_ids
+    )
+    all_task_ids: set[int] = set()
+    for tasks_by_tool in (configured_tasks, python_tasks, mcp_tasks):
+        for task_ids in tasks_by_tool.values():
+            all_task_ids.update(task_ids)
+    task_crews = _task_crew_map(org_id, all_task_ids)
 
     return [
         *_build_rows(
             "configured-tool",
             tool_ids,
             configured_agents,
-            agent_crews,
+            configured_tasks,
+            task_crews,
             is_built_in=lambda _tool_id: True,
         ),
         *_build_rows(
             "python-code-tool",
             python_tool_ids,
             python_agents,
-            agent_crews,
+            python_tasks,
+            task_crews,
             is_built_in=lambda tool_id: python_tool_built_in.get(tool_id, False),
         ),
         *_build_rows(
             "mcp-tool",
             mcp_tool_ids,
             mcp_agents,
-            agent_crews,
+            mcp_tasks,
+            task_crews,
             is_built_in=lambda _tool_id: False,
         ),
     ]
@@ -112,7 +124,7 @@ def _agents_by_tool_per_kind(
 def _configured_tool_agents_by_tool(
     org_id: int, tool_ids: list[int]
 ) -> dict[int, set[int]]:
-    return _agents_by_tool(
+    return _pairs_by_tool(
         AgentConfiguredTools.objects.filter(
             agent__org_id=org_id, toolconfig__tool_id__in=tool_ids
         ).values_list("toolconfig__tool_id", "agent_id")
@@ -123,12 +135,12 @@ def _python_tool_agents_by_tool(
     org_id: int, tool_ids: list[int]
 ) -> dict[int, set[int]]:
     """Python-code tools merge two join paths (direct + via config)."""
-    python_agents = _agents_by_tool(
+    python_agents = _pairs_by_tool(
         AgentPythonCodeTools.objects.filter(
             agent__org_id=org_id, pythoncodetool_id__in=tool_ids
         ).values_list("pythoncodetool_id", "agent_id")
     )
-    _merge_agents_by_tool(
+    _merge_pairs_by_tool(
         python_agents,
         AgentPythonCodeToolConfigs.objects.filter(
             agent__org_id=org_id,
@@ -141,7 +153,7 @@ def _python_tool_agents_by_tool(
 def _mcp_tool_agents_by_tool(
     org_id: int, tool_ids: list[int]
 ) -> dict[int, set[int]]:
-    return _agents_by_tool(
+    return _pairs_by_tool(
         AgentMcpTools.objects.filter(
             agent__org_id=org_id, mcptool_id__in=tool_ids
         ).values_list("mcptool_id", "agent_id")
@@ -152,6 +164,70 @@ _AGENTS_BY_TOOL_FN_PER_PREFIX = {
     "configured-tool": _configured_tool_agents_by_tool,
     "python-code-tool": _python_tool_agents_by_tool,
     "mcp-tool": _mcp_tool_agents_by_tool,
+}
+
+
+def _tasks_by_tool_per_kind(
+    org_id: int,
+    tool_ids: list[int],
+    python_tool_ids: list[int],
+    mcp_tool_ids: list[int],
+) -> tuple[dict[int, set[int]], dict[int, set[int]], dict[int, set[int]]]:
+    """Task-side counterpart of `_agents_by_tool_per_kind`: builds the
+    `tool_id -> {task_id, ...}` map for each of the 3 tool kinds. Project
+    (Crew) usage is derived from Task-level tool usage, not Agent-level — see
+    module docstring / EST-3207 design fix."""
+    return (
+        _configured_tool_tasks_by_tool(org_id, tool_ids),
+        _python_tool_tasks_by_tool(org_id, python_tool_ids),
+        _mcp_tool_tasks_by_tool(org_id, mcp_tool_ids),
+    )
+
+
+def _configured_tool_tasks_by_tool(
+    org_id: int, tool_ids: list[int]
+) -> dict[int, set[int]]:
+    return _pairs_by_tool(
+        TaskConfiguredTools.objects.filter(
+            task__crew__org_id=org_id, tool__tool_id__in=tool_ids
+        ).values_list("tool__tool_id", "task_id")
+    )
+
+
+def _python_tool_tasks_by_tool(
+    org_id: int, tool_ids: list[int]
+) -> dict[int, set[int]]:
+    """Python-code tools merge two join paths (direct + via config), mirroring
+    `_python_tool_agents_by_tool`."""
+    python_tasks = _pairs_by_tool(
+        TaskPythonCodeTools.objects.filter(
+            task__crew__org_id=org_id, tool_id__in=tool_ids
+        ).values_list("tool_id", "task_id")
+    )
+    _merge_pairs_by_tool(
+        python_tasks,
+        TaskPythonCodeToolConfigs.objects.filter(
+            task__crew__org_id=org_id,
+            tool__tool_id__in=tool_ids,
+        ).values_list("tool__tool_id", "task_id"),
+    )
+    return python_tasks
+
+
+def _mcp_tool_tasks_by_tool(
+    org_id: int, tool_ids: list[int]
+) -> dict[int, set[int]]:
+    return _pairs_by_tool(
+        TaskMcpTools.objects.filter(
+            task__crew__org_id=org_id, tool_id__in=tool_ids
+        ).values_list("tool_id", "task_id")
+    )
+
+
+_TASKS_BY_TOOL_FN_PER_PREFIX = {
+    "configured-tool": _configured_tool_tasks_by_tool,
+    "python-code-tool": _python_tool_tasks_by_tool,
+    "mcp-tool": _mcp_tool_tasks_by_tool,
 }
 
 
@@ -192,74 +268,91 @@ def get_agent_ids_for_tool(prefix: str, tool_id: int, org_id: int) -> set[int]:
     return agents_by_tool.get(tool_id, set())
 
 
+def get_task_ids_for_tool(prefix: str, tool_id: int, org_id: int) -> set[int]:
+    """Task-side counterpart of `get_agent_ids_for_tool`: validate that
+    `prefix:tool_id` exists and is visible to `org_id`, then return the set
+    of Task ids referencing it — used to derive `projects` (Crew usage) from
+    Task-level tool usage rather than Agent-level (EST-3207 design fix).
+
+    Raises `ToolNotFoundError` if the tool doesn't exist / isn't visible to
+    `org_id`. Assumes `prefix` has already been validated against
+    `VALID_TOOL_PREFIXES` by the caller.
+    """
+    if not _tool_exists(prefix, tool_id, org_id):
+        raise ToolNotFoundError(f"{prefix}:{tool_id} not found")
+
+    tasks_by_tool_fn = _TASKS_BY_TOOL_FN_PER_PREFIX[prefix]
+    tasks_by_tool = tasks_by_tool_fn(org_id, [tool_id])
+    return tasks_by_tool.get(tool_id, set())
+
+
 def get_tool_usage_detail(prefix: str, tool_id: int, org_id: int) -> dict:
     """Return the "Where is this used?" detail for `prefix:tool_id`:
     `{"projects": [{"id", "name"}, ...], "staff": [{"id", "role"}, ...]}`.
 
+    `staff` are the Agents referencing the tool directly (Agent-level join).
     `projects` are the distinct Crews (the FE "Project") reached from the
-    tool's agents via Crew membership (same traversal as `get_tools_usage`);
-    `staff` are the Agents themselves. Raises `ToolNotFoundError` if the tool
-    doesn't exist / isn't visible to `org_id`.
+    tool's *Tasks* (Task-level join, via each Task's direct `crew` FK) — NOT
+    derived from Agent/Crew membership, since that would make `projects`
+    trivially correlated with `staff` (EST-3207 design fix; see module
+    docstring). Raises `ToolNotFoundError` if the tool doesn't exist / isn't
+    visible to `org_id`.
     """
     agent_ids = get_agent_ids_for_tool(prefix, tool_id, org_id)
-    agent_crews = _agent_crew_map(org_id, agent_ids)
-
-    crew_ids: set[int] = set()
-    for crews in agent_crews.values():
-        crew_ids.update(crews)
-
     staff = list(Agent.objects.filter(id__in=agent_ids).values("id", "role"))
+
+    task_ids = get_task_ids_for_tool(prefix, tool_id, org_id)
+    task_crews = _task_crew_map(org_id, task_ids)
+    crew_ids: set[int] = set(task_crews.values())
+
     projects = list(Crew.objects.filter(id__in=crew_ids).values("id", "name"))
     return {"projects": projects, "staff": staff}
 
 
-def _agents_by_tool(pairs) -> dict[int, set[int]]:
-    agents_by_tool: dict[int, set[int]] = defaultdict(set)
-    for tool_id, agent_id in pairs:
-        agents_by_tool[tool_id].add(agent_id)
-    return agents_by_tool
+def _pairs_by_tool(pairs) -> dict[int, set[int]]:
+    by_tool: dict[int, set[int]] = defaultdict(set)
+    for tool_id, value_id in pairs:
+        by_tool[tool_id].add(value_id)
+    return by_tool
 
 
-def _merge_agents_by_tool(agents_by_tool: dict[int, set[int]], pairs) -> None:
-    for tool_id, agent_id in pairs:
-        agents_by_tool.setdefault(tool_id, set()).add(agent_id)
+def _merge_pairs_by_tool(by_tool: dict[int, set[int]], pairs) -> None:
+    for tool_id, value_id in pairs:
+        by_tool.setdefault(tool_id, set()).add(value_id)
 
 
-def _agent_crew_map(org_id: int, agent_ids: set[int]) -> dict[int, set[int]]:
-    """Map each relevant agent id to the set of Crew ids it belongs to (the
-    FE "Project" — see `wiki/topics/projects-crews-agents.md`), scoped to
-    `org_id`."""
-    if not agent_ids:
+def _task_crew_map(org_id: int, task_ids: set[int]) -> dict[int, int]:
+    """Map each relevant task id to its (single) Crew id, scoped to
+    `org_id`. `Task.crew` is a direct, single-valued FK (unlike
+    Agent<->Crew, which is many-valued), so this is a plain
+    `{task_id: crew_id}` dict, not a dict of sets."""
+    if not task_ids:
         return {}
 
-    # Agent -> Crew is the reverse of Crew.agents (M2M, no related_name ->
-    # reverse query name "crew"). It's a many-valued relation, so this is an
-    # (agent_id, crew_id) pair per Crew the agent belongs to, not a single FK.
-    pairs = Agent.objects.filter(
-        id__in=agent_ids,
-        org_id=org_id,
-        crew__org_id=org_id,
-    ).values_list("id", "crew__id")
-
-    agent_crews: dict[int, set[int]] = defaultdict(set)
-    for agent_id, crew_id in pairs:
-        agent_crews[agent_id].add(crew_id)
-    return agent_crews
+    return dict(
+        Task.objects.filter(
+            id__in=task_ids, crew__org_id=org_id
+        ).values_list("id", "crew_id")
+    )
 
 
 def _build_rows(
     prefix: str,
     tool_ids: list[int],
     agents_by_tool: dict[int, set[int]],
-    agent_crews: dict[int, set[int]],
+    tasks_by_tool: dict[int, set[int]],
+    task_crews: dict[int, int],
     is_built_in,
 ) -> list[dict]:
     rows: list[dict] = []
     for tool_id in tool_ids:
         agent_ids = agents_by_tool.get(tool_id, set())
-        crew_ids: set[int] = set()
-        for agent_id in agent_ids:
-            crew_ids.update(agent_crews.get(agent_id, set()))
+        task_ids = tasks_by_tool.get(tool_id, set())
+        crew_ids = {
+            task_crews[task_id]
+            for task_id in task_ids
+            if task_id in task_crews
+        }
         rows.append(
             {
                 "unique_name": f"{prefix}:{tool_id}",

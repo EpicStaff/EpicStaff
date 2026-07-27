@@ -8,6 +8,11 @@ from tables.models.crew_models import (
     AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
     Crew,
+    Task,
+    TaskConfiguredTools,
+    TaskMcpTools,
+    TaskPythonCodeToolConfigs,
+    TaskPythonCodeTools,
     Tool,
     ToolConfig,
 )
@@ -91,6 +96,20 @@ def used_graph_setup(org_a, registered_tool):
 
     crew = Crew.objects.create(name="My Project", org=org_a)
     crew.agents.set([agent])
+
+    # Project/crew usage detail is derived from Task-level tool usage, not
+    # Agent membership (EST-3207 design fix) — wire a Task per tool kind into
+    # the Crew with the matching Task-tool join row.
+    task = Task.objects.create(
+        name="task1",
+        crew=crew,
+        instructions="do the thing",
+        expected_output="result",
+        order=1,
+    )
+    TaskConfiguredTools.objects.create(task=task, tool=tool_config)
+    TaskPythonCodeTools.objects.create(task=task, tool=python_tool)
+    TaskMcpTools.objects.create(task=task, tool=mcp_tool)
 
     graph = Graph.objects.create(name="graph1", org=org_a)
     CrewNode.objects.create(crew=crew, graph=graph, node_name="crew_node1")
@@ -273,9 +292,11 @@ def test_python_tool_agent_reachable_only_via_config_path_is_counted(
     client_a, org_a, unused_python_tool
 ):
     """An agent reachable only via `PythonCodeToolConfig` (no direct
-    `AgentPythonCodeTools` row) must appear in the usage-detail staff/projects
-    lists — exercising the indirect join path in
-    `_python_tool_agents_by_tool`."""
+    `AgentPythonCodeTools` row) must appear in `staff` — exercising the
+    indirect join path in `_python_tool_agents_by_tool`. A Task on the same
+    Crew, reachable only via the equivalent `TaskPythonCodeToolConfigs` path,
+    must likewise surface the Crew in `projects`
+    (`_python_tool_tasks_by_tool`)."""
     tool_config = PythonCodeToolConfig.objects.create(
         name="cfg1", tool=unused_python_tool, org=org_a
     )
@@ -288,6 +309,15 @@ def test_python_tool_agent_reachable_only_via_config_path_is_counted(
 
     crew = Crew.objects.create(name="crew-config-only", org=org_a)
     crew.agents.set([agent])
+
+    task = Task.objects.create(
+        name="task-config-only",
+        crew=crew,
+        instructions="do it",
+        expected_output="result",
+        order=1,
+    )
+    TaskPythonCodeToolConfigs.objects.create(task=task, tool=tool_config)
 
     resp = client_a.get(
         "/api/tools/usage-detail/",
@@ -304,7 +334,10 @@ def test_python_tool_agent_reachable_via_both_paths_not_double_counted(
 ):
     """An agent reachable via BOTH the direct `AgentPythonCodeTools` row AND
     a `PythonCodeToolConfig` for the same tool must be listed exactly once —
-    `_merge_agents_by_tool` must dedupe by agent id, not double-count."""
+    `_merge_pairs_by_tool` must dedupe by agent id, not double-count. A Task
+    on the same Crew reachable via both the direct `TaskPythonCodeTools` row
+    AND `TaskPythonCodeToolConfigs` for the same tool must likewise surface
+    the Crew exactly once in `projects`."""
     tool_config = PythonCodeToolConfig.objects.create(
         name="cfg1", tool=unused_python_tool, org=org_a
     )
@@ -321,6 +354,16 @@ def test_python_tool_agent_reachable_via_both_paths_not_double_counted(
     crew = Crew.objects.create(name="crew-both-paths", org=org_a)
     crew.agents.set([agent])
 
+    task = Task.objects.create(
+        name="task-both-paths",
+        crew=crew,
+        instructions="do it",
+        expected_output="result",
+        order=1,
+    )
+    TaskPythonCodeTools.objects.create(task=task, tool=unused_python_tool)
+    TaskPythonCodeToolConfigs.objects.create(task=task, tool=tool_config)
+
     resp = client_a.get(
         "/api/tools/usage-detail/",
         {"unique_name": f"python-code-tool:{unused_python_tool.id}"},
@@ -331,19 +374,23 @@ def test_python_tool_agent_reachable_via_both_paths_not_double_counted(
 
 
 @pytest.mark.django_db
-def test_project_counted_via_crew_membership_without_any_graph(
+def test_project_counted_via_task_without_any_graph(
     client_a, org_a, unused_python_tool
 ):
-    """A Crew never wired into any Graph (no CrewNode) must still surface as
-    a "project" in the usage-detail — "projects" means Crew membership only,
-    the lower Graph orchestration layer is irrelevant (EST-3207 follow-up)."""
-    agent = Agent.objects.create(
-        role="GraphlessAgent", goal="goal", backstory="story", org=org_a
-    )
-    AgentPythonCodeTools.objects.create(agent=agent, pythoncodetool=unused_python_tool)
-
+    """A Crew never wired into any Graph (no CrewNode), reached via a Task
+    that uses the tool, must still surface as a "project" in the
+    usage-detail — Task-level tool usage within a Crew is what "projects"
+    means (not Agent membership, and not the lower Graph orchestration
+    layer, EST-3207 follow-up)."""
     crew = Crew.objects.create(name="crew-no-graph", org=org_a)
-    crew.agents.set([agent])
+    task = Task.objects.create(
+        name="task-no-graph",
+        crew=crew,
+        instructions="do it",
+        expected_output="result",
+        order=1,
+    )
+    TaskPythonCodeTools.objects.create(task=task, tool=unused_python_tool)
 
     resp = client_a.get(
         "/api/tools/usage-detail/",
@@ -351,4 +398,43 @@ def test_project_counted_via_crew_membership_without_any_graph(
     )
     assert resp.status_code == 200
     assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
+    assert resp.data["staff"] == []
+
+
+# ---- projects no longer follows from Agent/Crew membership alone
+# (EST-3207 design fix — the bug this change fixes) ----
+
+
+@pytest.mark.django_db
+def test_agent_in_crew_using_tool_does_not_surface_project_without_task_usage(
+    client_a, org_a, unused_python_tool
+):
+    """An agent IS a member of a Crew and DOES use the tool directly, but NO
+    Task in that Crew uses the tool. `staff` must still reflect the agent
+    (Agent-level join, unchanged), but `projects` must be empty — project/
+    crew usage is derived from Task-level tool usage, not from Agent
+    membership."""
+    agent = Agent.objects.create(
+        role="MemberOnlyAgent", goal="goal", backstory="story", org=org_a
+    )
+    AgentPythonCodeTools.objects.create(agent=agent, pythoncodetool=unused_python_tool)
+
+    crew = Crew.objects.create(name="crew-member-only", org=org_a)
+    crew.agents.set([agent])
+
+    # A Task exists on the Crew, but it does NOT reference the tool at all.
+    Task.objects.create(
+        name="unrelated-task",
+        crew=crew,
+        instructions="do something else",
+        expected_output="result",
+        order=1,
+    )
+
+    resp = client_a.get(
+        "/api/tools/usage-detail/",
+        {"unique_name": f"python-code-tool:{unused_python_tool.id}"},
+    )
+    assert resp.status_code == 200
+    assert resp.data["projects"] == []
     assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
