@@ -13,6 +13,7 @@ class Label(OrgScopedModel, MetadataMixin):
         max_length=10,
         choices=Scope.choices,
         default=Scope.FLOW,
+        db_index=True,
         help_text="Which independent label tree this label belongs to (Flow labels "
         "and Tool labels never share instances, even with the same name/parent).",
     )

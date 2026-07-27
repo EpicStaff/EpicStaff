@@ -1952,14 +1952,18 @@ class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
                 current_id = row["parent_id"]
             return "/".join(reversed(parts))
 
-        labels.sort(key=lambda label: natural_sort_key(full_path_key(label)))
+        full_paths = {label.id: full_path_key(label) for label in labels}
+        labels.sort(key=lambda label: natural_sort_key(full_paths[label.id]))
+
+        context = self.get_serializer_context()
+        context["full_paths"] = full_paths
 
         page = self.paginate_queryset(labels)
         if page is not None:
-            serializer = self.get_serializer(page, many=True)
+            serializer = self.get_serializer(page, many=True, context=context)
             return self.get_paginated_response(serializer.data)
 
-        return Response(self.get_serializer(labels, many=True).data)
+        return Response(self.get_serializer(labels, many=True, context=context).data)
 
 
 class LabelViewSet(BaseLabelViewSet):

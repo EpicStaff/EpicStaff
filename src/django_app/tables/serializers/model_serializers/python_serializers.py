@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 
 from tables.exceptions import (
@@ -94,11 +95,12 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         labels = validated_data.pop("labels", [])
         python_code_data = validated_data.pop("python_code")
-        python_code = PythonCode.objects.create(**python_code_data)
-        python_code_tool = PythonCodeTool.objects.create(
-            python_code=python_code, **validated_data
-        )
-        python_code_tool.labels.set(labels)
+        with transaction.atomic():
+            python_code = PythonCode.objects.create(**python_code_data)
+            python_code_tool = PythonCodeTool.objects.create(
+                python_code=python_code, **validated_data
+            )
+            python_code_tool.labels.set(labels)
         return python_code_tool
 
     def update(self, instance, validated_data):
@@ -108,19 +110,20 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
         labels = validated_data.pop("labels", None)
         python_code_data = validated_data.pop("python_code", None)
 
-        if python_code_data:
-            python_code = instance.python_code
-            for attr, value in python_code_data.items():
-                setattr(python_code, attr, value)
-            python_code.save()
+        with transaction.atomic():
+            if python_code_data:
+                python_code = instance.python_code
+                for attr, value in python_code_data.items():
+                    setattr(python_code, attr, value)
+                python_code.save()
 
-        for attr, value in validated_data.items():
-            if attr != "built_in":
-                setattr(instance, attr, value)
-        instance.save()
+            for attr, value in validated_data.items():
+                if attr != "built_in":
+                    setattr(instance, attr, value)
+            instance.save()
 
-        if labels is not None:
-            instance.labels.set(labels)
+            if labels is not None:
+                instance.labels.set(labels)
 
         return instance
 

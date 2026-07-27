@@ -8,7 +8,7 @@ from tables.serializers.org_scoped_fields import (
 
 
 class LabelSerializer(serializers.ModelSerializer):
-    full_path = serializers.CharField(read_only=True)
+    full_path = serializers.SerializerMethodField()
     # A label may only be parented under another label in the active org.
     parent = OrgScopedPrimaryKeyRelatedField(
         queryset=Label.objects.all(), required=False, allow_null=True
@@ -22,27 +22,25 @@ class LabelSerializer(serializers.ModelSerializer):
             "name": {"validators": []},
         }
 
+    def get_full_path(self, obj):
+        full_paths = self.context.get("full_paths")
+        if full_paths is not None and obj.id in full_paths:
+            return full_paths[obj.id]
+        return obj.full_path
+
     def validate(self, attrs):
-        # Flow labels and Tool labels are independent trees (Label.scope) —
-        # both the parent-tree check below and the name-uniqueness check
-        # further down must stay within the tree the owning viewset serves.
-        # `label_scope` is a fixed attribute on both LabelViewSet and
-        # ToolLabelViewSet; fall back to the instance's own scope on update if
-        # the serializer is ever used outside a view with that attribute.
         view = self.context.get("view")
         scope = getattr(view, "label_scope", None)
         if scope is None and self.instance is not None:
             scope = self.instance.scope
 
-        # A label may only be parented under a label of its own scope —
-        # otherwise a Flow label could be parented under a Tool label (or vice
-        # versa), silently merging the two independent trees (full_path would
-        # then walk across scopes, and no DB constraint catches it).
         if "parent" in attrs:
             parent = attrs["parent"]
             if parent is not None and parent.scope != scope:
                 raise serializers.ValidationError(
-                    {"parent": "Parent label must belong to the same label tree (scope)."}
+                    {
+                        "parent": "Parent label must belong to the same label tree (scope)."
+                    }
                 )
 
         name = attrs.get("name")
