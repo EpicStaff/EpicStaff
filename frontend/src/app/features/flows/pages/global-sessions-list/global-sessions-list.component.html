@@ -1,13 +1,19 @@
 <div class="global-sessions-wrapper">
     <div class="global-sessions-header">
         <div class="flows-prefix">
-            <app-svg-icon
-                icon="arrow-left"
-                size="20px"
-                class="back-arrow"
-            />
-            <span routerLink="/flows">Flows</span>
-            <span class="slash">/All sessions</span>
+            <span
+                class="flows-back"
+                routerLink="/flows"
+            >
+                <app-svg-icon
+                    icon="arrow-left"
+                    size="20px"
+                    class="back-arrow"
+                />
+                <span>Flows</span>
+            </span>
+            <span class="slash">/</span>
+            <span class="current">All sessions</span>
         </div>
     </div>
     <div
@@ -28,6 +34,7 @@
                     <app-action-dropdown-button
                         *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                         [label]="'Export (' + (selectedIds().size === 0 ? totalCount() : selectedIds().size) + ')'"
+                        [buttonWidth]="null"
                         [items]="exportItems"
                         [disabled]="isDeleting() || isExporting() || (selectedIds().size === 0 && totalCount() === 0)"
                         (mainClick)="onExport('json')"
@@ -70,15 +77,6 @@
             </div>
 
             <div class="pagination-container">
-                @if (isLoaded() && totalCount() > pageSize()) {
-                    <app-pagination-controls
-                        [pageSize]="pageSize()"
-                        [totalCount]="totalCount()"
-                        [currentPage]="currentPage()"
-                        [maxPagesToShow]="5"
-                        (pageChange)="onPageChange($event)"
-                    ></app-pagination-controls>
-                }
                 <label class="page-size-selector">
                     <span>Sessions per page</span>
                     <app-select
@@ -88,6 +86,15 @@
                         (changed)="onPageSizeChange($any($event))"
                     />
                 </label>
+                @if (isLoaded() && totalCount() > pageSize()) {
+                    <app-pagination-controls
+                        [pageSize]="pageSize()"
+                        [totalCount]="totalCount()"
+                        [currentPage]="currentPage()"
+                        [maxPagesToShow]="5"
+                        (pageChange)="onPageChange($event)"
+                    ></app-pagination-controls>
+                }
             </div>
         </div>
 
@@ -102,8 +109,8 @@
                 [title]="isPanelOpen() ? 'Close panel' : 'Open panel'"
             >
                 <app-svg-icon
-                    [icon]="isPanelOpen() ? 'arrow-right' : 'arrow-left'"
-                    size="12px"
+                    [icon]="isPanelOpen() ? 'chevron-right' : 'chevron-left'"
+                    size="16px"
                 >
                 </app-svg-icon>
             </button>

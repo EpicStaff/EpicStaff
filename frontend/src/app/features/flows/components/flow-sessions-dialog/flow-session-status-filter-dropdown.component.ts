@@ -36,31 +36,10 @@ interface StatusOption {
             >
                 <span class="selected-icons">
                     @if (selectedValues().length === 0) {
-                        <app-svg-icon
-                            class="status-icon"
-                            [icon]="options[0].icon"
-                            size="16px"
-                        ></app-svg-icon>
                         {{ options[0].label }}
                     } @else if (selectedValues().length === 1) {
-                        <app-svg-icon
-                            class="status-icon"
-                            [icon]="selectedOptions()[0].icon"
-                            size="16px"
-                            [style.color]="selectedOptions()[0].color"
-                        ></app-svg-icon>
                         {{ selectedOptions()[0].label }}
                     } @else {
-                        <span class="icon-multi">
-                            @for (opt of selectedOptions(); track opt.value) {
-                                <app-svg-icon
-                                    class="status-icon"
-                                    [icon]="opt.icon"
-                                    size="16px"
-                                    [style.color]="opt.color"
-                                ></app-svg-icon>
-                            }
-                        </span>
                         Mixed ({{ selectedValues().length }})
                     }
                 </span>

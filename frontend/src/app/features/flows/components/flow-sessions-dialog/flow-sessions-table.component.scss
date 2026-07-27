@@ -36,6 +36,19 @@
     min-height: 300px;
 }
 
+.sessions-table-wrapper.has-flow-name table {
+    th:nth-child(4),
+    td:nth-child(4) {
+        width: auto;
+    }
+
+    th:nth-child(5),
+    td:nth-child(5) {
+        width: 300px;
+        min-width: 300px;
+    }
+}
+
 table {
     width: 100%;
     min-width: 860px;
@@ -52,8 +65,10 @@ table {
 
     th:nth-child(1),
     td:nth-child(1) {
-        width: 40px;
-        min-width: 40px;
+        width: 48px;
+        min-width: 48px;
+        padding-left: 12px;
+        padding-right: 12px;
     }
 
     th:nth-child(2),
@@ -92,8 +107,8 @@ table {
 
     th:nth-child(7),
     td:nth-child(7) {
-        min-width: 140px;
-        width: 140px;
+        min-width: 165px;
+        width: 165px;
         text-align: center;
         padding: 12px 8px;
     }
@@ -171,10 +186,32 @@ table {
 
         .flow-link {
             cursor: pointer;
-            display: block;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 100%;
+            padding: 4px 10px;
+            border: 1px solid var(--color-divider-subtle);
+            border-radius: 6px;
+            color: var(--color-text-primary);
+            transition:
+                border-color 0.15s,
+                background 0.15s;
+
+            &:hover {
+                border-color: var(--color-divider-regular);
+            }
+
+            .flow-link-icon {
+                flex-shrink: 0;
+                color: var(--color-text-secondary);
+            }
+
+            .flow-link-name {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
         }
     }
 
@@ -187,7 +224,7 @@ table {
         gap: 8px;
         flex-shrink: 0;
         flex-wrap: nowrap;
-        justify-content: flex-end;
+        justify-content: flex-start;
     }
 
     .icon-img-btn {
@@ -222,6 +259,11 @@ table {
 .view-btn {
     background: var(--accent-color);
     color: #fff;
+    width: 88px;
+    min-width: 88px;
+    max-width: 88px;
+    margin-right: 0;
+    text-align: center;
 }
 .view-btn:hover {
     background: var(--accent-color-hover);
@@ -315,7 +357,7 @@ table {
 }
 
 app-icon-button {
-    margin-left: 10px;
+    margin-left: 0;
 }
 
 tr.row-expanded td {

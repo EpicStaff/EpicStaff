@@ -27,7 +27,7 @@ input[type='checkbox']:checked::after {
     left: 50%;
     width: 5px;
     height: 9px;
-    border: solid var(--color-text-primary);
+    border: solid #fff;
     border-width: 0 2px 2px 0;
     transform: rotate(45deg) translate(-100%, -25%);
 }
@@ -45,7 +45,7 @@ input[type='checkbox']:indeterminate::after {
     transform: translate(-50%, -50%);
     width: 8px;
     height: 1px;
-    background: var(--color-text-primary);
+    background: #fff;
     border-radius: 1px;
 }
 

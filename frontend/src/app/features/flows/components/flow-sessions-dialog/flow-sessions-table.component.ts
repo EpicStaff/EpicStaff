@@ -18,6 +18,7 @@ import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GraphDto } from '../../models/graph.model';
 import {
     DurationFilter,
@@ -44,9 +45,13 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
         DurationFilterDropdownComponent,
         HasPermissionDirective,
         MatTooltipModule,
+        AppSvgIconComponent,
     ],
     template: `
-        <div class="sessions-table-wrapper">
+        <div
+            class="sessions-table-wrapper"
+            [class.has-flow-name]="showFlowName"
+        >
             <table>
                 <thead>
                     <tr>
@@ -149,7 +154,12 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                         class="flow-link"
                                         (click)="navigateToFlow(session.graph_id)"
                                     >
-                                        {{ session.graph_name }}
+                                        <app-svg-icon
+                                            icon="flow"
+                                            size="14px"
+                                            class="flow-link-icon"
+                                        ></app-svg-icon>
+                                        <span class="flow-link-name">{{ session.graph_name }}</span>
                                     </a>
                                 </td>
 

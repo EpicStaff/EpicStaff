@@ -11,7 +11,6 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
 
 interface FlowOption {
@@ -22,7 +21,7 @@ interface FlowOption {
 @Component({
     selector: 'app-flow-name-filter-dropdown',
     standalone: true,
-    imports: [CommonModule, FormsModule, ClickOutsideDirective, AppSvgIconComponent],
+    imports: [CommonModule, FormsModule, ClickOutsideDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     styles: [
         `
@@ -52,11 +51,7 @@ interface FlowOption {
                 (click)="toggleDropdown($event)"
             >
                 <span class="selected-label">
-                    <app-svg-icon
-                        icon="list-numbers"
-                        size="16px"
-                    ></app-svg-icon>
-                    {{ value ?? 'Filter by Flow' }}
+                    {{ value ?? 'Flow name' }}
                 </span>
                 <span class="dropdown-arrow-wrapper">
                     <svg
