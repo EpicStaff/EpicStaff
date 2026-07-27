@@ -401,10 +401,7 @@ class PromptNotFoundError(CustomAPIExeption):
 
 
 class ClassificationDecisionTableNodeNotFoundError(CustomAPIExeption):
-    """Raised when a CDT node id doesn't resolve within the caller's active
-    organization. Cross-org and nonexistent ids are indistinguishable (404,
-    no existence leak) — used by actions that bypass the viewset's
-    get_object()/get_queryset scoping (e.g. export, which takes a raw pk)."""
+    """Raised when a CDT node id doesn't resolve within the caller's org (cross-org and nonexistent ids are indistinguishable)."""
 
     status_code = 404
     default_code = "classification_decision_table_node_not_found"

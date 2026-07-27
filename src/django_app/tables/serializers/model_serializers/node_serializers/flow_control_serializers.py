@@ -163,13 +163,8 @@ class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
     classification_decision_table_node = serializers.PrimaryKeyRelatedField(
         read_only=True
     )
-    # A group's prompt is node-local (must belong to THIS node). Two write forms,
-    # both resolved node-locally in the children sync (a foreign / unknown ref
-    # resolves to None, never attaches):
-    #   - prompt_key (preferred): the prompt's stable per-node key, known even for
-    #     a prompt created in the SAME payload, so create+connect works in one save;
-    #   - prompt (numeric pk): an already-persisted prompt, kept for back-compat.
-    # On read we emit the numeric pk (`prompt`) plus the resolved `prompt_key`.
+    # prompt_key (preferred) links a same-payload prompt by its per-node key;
+    # prompt (pk) is back-compat. Both resolve node-locally.
     prompt = serializers.IntegerField(
         source="prompt_id", required=False, allow_null=True
     )

@@ -39,10 +39,7 @@ _GROUP_UPDATE_FIELDS = [
     "section",
 ]
 
-# Validated keys that must not be written to the group as-is. `prompt_id` is
-# stripped here and re-added only as a node-local instance via `_resolve_prompt`,
-# so a foreign prompt can't attach directly. The rest guard against a raw
-# non-column key ever forcing a PK or colliding with the explicit node kwarg.
+# Keys never written as-is; `prompt_id` is resolved node-locally instead.
 _GROUP_EXCLUDED_INPUT = {
     "id",
     "classification_decision_table_node",
@@ -86,18 +83,12 @@ def _resolve_group_prompt(
     prompt_by_id: dict[int, ClassificationDecisionTablePrompt],
     prompt_by_key: dict[str, ClassificationDecisionTablePrompt],
 ) -> ClassificationDecisionTablePrompt | None:
-    """Resolve a condition group's prompt to one of THIS node's prompts.
+    """Resolve a condition group's prompt among this node's prompts.
 
-    ``prompt_id`` (an already-persisted prompt) is checked first when present.
-    Only when it is absent do we fall back to ``prompt_key`` — the prompt's
-    stable per-node key, known even for a prompt created in this same payload,
-    which is what lets create+connect work in a single save.
-
-    Both maps are built from THIS node's prompts only, so a reference that
-    names a prompt belonging to another node/org is indistinguishable from one
-    that doesn't exist at all — either way the lookup misses and we raise,
-    rather than silently dropping the link. A group with neither reference
-    supplied simply has no prompt (returns ``None``, not an error).
+    Checks ``prompt_id`` first, falling back to ``prompt_key`` (needed to
+    link a prompt created in the same payload). Raises
+    ``PromptNotFoundError`` if a reference is given but not found; returns
+    ``None`` if neither is given.
     """
     prompt_id = group_data.get("prompt_id")
     if prompt_id is not None:

@@ -82,12 +82,9 @@ class ClassificationDecisionTableNodeService:
 
     @staticmethod
     def _validate_children(serializer_class, raw, request):
-        """Field-level validation only (blank group_name, org-scoped llm_config),
-        run before the node is saved; node-local prompt resolution happens later
-        in sync_classification_decision_table_children, once sibling prompts
-        actually exist. Returns None if raw is None (key absent - untouched) or
-        the validated list otherwise, including [] (remove all) - sync tells the
-        two apart."""
+        """Field-level validation only; prompt resolution happens later in sync.
+        Returns None if raw is None (untouched), else the validated list
+        (including [] to remove all)."""
         if raw is None:
             return None
         child = serializer_class(
@@ -98,9 +95,8 @@ class ClassificationDecisionTableNodeService:
 
     @staticmethod
     def _get_node_or_404(pk, org_id: int, *, select_related: str | None = None):
-        """Fetch the node scoped to org_id — this action bypasses the viewset's
-        get_object()/get_queryset scoping (it takes a raw pk), so the org check
-        has to happen here. Cross-org and nonexistent ids both 404 (no leak)."""
+        """Fetch the node scoped to org_id (bypasses viewset scoping). Cross-org
+        and nonexistent ids both 404 (no leak)."""
         qs = ClassificationDecisionTableNode.objects.filter(pk=pk, graph__org_id=org_id)
         if select_related:
             qs = qs.select_related(select_related)
