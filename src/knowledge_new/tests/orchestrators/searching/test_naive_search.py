@@ -83,8 +83,8 @@ async def test_search_success_returns_response_with_found_chunks(monkeypatch):
 
     response = await NaiveSearch(uow).execute(request)
 
-    assert response == SearchResponse(request=request, chunks=found_chunks)
-    assert response.chunks == found_chunks
+    assert response == SearchResponse(request=request, result=found_chunks)
+    assert response.result == found_chunks
     assert embedder.embedded == ["find me"]  # the query was embedded
     assert repo.search_calls == [
         {
@@ -110,7 +110,7 @@ async def test_search_success_returns_empty_response_when_no_chunks_match(monkey
 
     response = await NaiveSearch(uow).execute(request)
 
-    assert response == SearchResponse(request=request, chunks=[])
-    assert response.chunks == []
+    assert response == SearchResponse(request=request, result=[])
+    assert response.result == []
     assert embedder.embedded == ["no matches here"]  # flow still ran end-to-end
     assert len(repo.search_calls) == 1  # search was performed, just matched nothing

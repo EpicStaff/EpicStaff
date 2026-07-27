@@ -3,7 +3,6 @@ import asyncio
 import pytest
 from enums import (
     ChunkStrategyEnum,
-    DocumentErrorCode,
     DocumentStatusEnum,
     EmbedderProviderEnum,
     IndexStatusEnum,
@@ -185,6 +184,7 @@ async def test_index_success_full_flow_sets_document_and_rag_statuses(monkeypatc
     await NaiveIndexer(uow).execute(request)
 
     assert repo.doc_status_log == [
+        DocumentStatusEnum.PROCESSING,
         DocumentStatusEnum.CHUNKING,
         DocumentStatusEnum.CHUNKED,
         DocumentStatusEnum.INDEXING,
@@ -254,8 +254,12 @@ async def test_index_success_skips_chunking_when_preview_chunks_exist(monkeypatc
 
     await NaiveIndexer(uow).execute(request)
 
-    # chunking stage skipped — straight to INDEXING → COMPLETED, no CHUNKING/CHUNKED
-    assert repo.doc_status_log == [DocumentStatusEnum.INDEXING, DocumentStatusEnum.COMPLETED]
+    # chunking stage skipped — PROCESSING then straight to INDEXING → COMPLETED, no CHUNKING/CHUNKED
+    assert repo.doc_status_log == [
+        DocumentStatusEnum.PROCESSING,
+        DocumentStatusEnum.INDEXING,
+        DocumentStatusEnum.COMPLETED,
+    ]
     assert document.status == DocumentStatusEnum.COMPLETED
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.COMPLETED]
     # existing preview chunks embedded as-is
@@ -302,6 +306,7 @@ async def test_index_rechunks_when_config_changed_despite_existing_preview_chunk
 
     # config changed → full re-chunk even though preview chunks already existed
     assert repo.doc_status_log == [
+        DocumentStatusEnum.PROCESSING,
         DocumentStatusEnum.CHUNKING,
         DocumentStatusEnum.CHUNKED,
         DocumentStatusEnum.INDEXING,
@@ -309,10 +314,9 @@ async def test_index_rechunks_when_config_changed_despite_existing_preview_chunk
     ]
     assert document.status == DocumentStatusEnum.COMPLETED
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.COMPLETED]
-    # stale preview chunks replaced; the NEW ones embedded (not "stale")
-    new_preview = [PreviewChunk(text="alpha"), PreviewChunk(text="beta")]
-    assert document.preview_chunks == new_preview
-    assert embedder.embedded == ["alpha", "beta"]
+    # stale preview chunks replaced by the re-chunked ones; mark_as_completed clears preview_chunks
+    assert document.preview_chunks == []
+    assert embedder.embedded == ["alpha", "beta"]  # new chunks embedded, not "stale"
     expected_indexed = [
         IndexedChunk(text="alpha", vector=[0.1, 0.2]),
         IndexedChunk(text="beta", vector=[0.1, 0.2]),
@@ -354,9 +358,9 @@ async def test_index_rechunks_when_config_changed_despite_existing_preview_chunk
         (
             None,
             None,
-            [None, asyncio.CancelledError(), None],
+            [None, None, asyncio.CancelledError(), None],
             [IndexStatusEnum.PROCESSING, IndexStatusEnum.CANCELLED],
-            [DocumentStatusEnum.INDEXING],
+            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.INDEXING],
         ),
     ],
     ids=["rag_fetch", "preparation", "processing_update", "document_update"],
@@ -402,9 +406,9 @@ async def test_cancellation_marks_rag_cancelled(
 
 
 @pytest.mark.parametrize(
-    "doc_kwargs,embed_raises,expected_error_code,expected_doc_log",
+    "doc_kwargs,embed_raises,expected_doc_log",
     [
-        # extractor fails on invalid UTF-8 (.csv) → CHUNKING_FAILED
+        # extractor fails on invalid UTF-8 (.csv) → FAILED
         (
             {
                 "name": "doc.csv",
@@ -417,10 +421,9 @@ async def test_cancellation_marks_rag_cancelled(
                 ),
             },
             None,
-            DocumentErrorCode.CHUNKING_FAILED,
-            [DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED],
+            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED],
         ),
-        # chunker fails on invalid regex → CHUNKING_FAILED
+        # chunker fails on invalid regex → FAILED
         (
             {
                 "name": "doc.txt",
@@ -434,10 +437,9 @@ async def test_cancellation_marks_rag_cancelled(
                 ),
             },
             None,
-            DocumentErrorCode.CHUNKING_FAILED,
-            [DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED],
+            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED],
         ),
-        # chunker yields nothing → NoPreviewChunksProducedError → UNKNOWN
+        # chunker yields nothing → NoPreviewChunksProducedError → FAILED
         (
             {
                 "name": "doc.txt",
@@ -451,10 +453,9 @@ async def test_cancellation_marks_rag_cancelled(
                 ),
             },
             None,
-            DocumentErrorCode.CHUNKING_FAILED,
-            [DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED],
+            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED],
         ),
-        # embedder fails on an already-chunked doc → EMBEDDING_FAILED
+        # embedder fails on an already-chunked doc → FAILED
         (
             {
                 "name": "doc.txt",
@@ -469,14 +470,13 @@ async def test_cancellation_marks_rag_cancelled(
                 "preview_chunks": [PreviewChunk(text="alpha"), PreviewChunk(text="beta")],
             },
             EmbeddingError(embedder="FakeEmbedder"),
-            DocumentErrorCode.EMBEDDING_FAILED,
-            [DocumentStatusEnum.INDEXING, DocumentStatusEnum.FAILED],
+            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.INDEXING, DocumentStatusEnum.FAILED],
         ),
     ],
     ids=["extraction_failure", "chunking_failure", "no_chunks_produced", "embedding_failure"],
 )
 async def test_document_error_marks_document_failed_and_rag_failed(
-    monkeypatch, doc_kwargs, embed_raises, expected_error_code, expected_doc_log
+    monkeypatch, doc_kwargs, embed_raises, expected_doc_log
 ):
     document = Document(id=7, **doc_kwargs)
     rag = _new_rag()
@@ -490,8 +490,7 @@ async def test_document_error_marks_document_failed_and_rag_failed(
     await NaiveIndexer(uow).execute(request)
 
     assert document.status == DocumentStatusEnum.FAILED
-    assert document.error_code == expected_error_code
-    assert document.error_message  # populated via classify → format_error_message
+    assert document.error_message  # populated by mark_as_failed(error)
     assert repo.doc_status_log == expected_doc_log
     # no document completed → rag ends FAILED
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.FAILED]
@@ -536,11 +535,12 @@ async def test_index_warning_when_one_document_succeeds_and_one_fails(monkeypatc
     # per-document outcomes
     assert good_doc.status == DocumentStatusEnum.COMPLETED
     assert bad_doc.status == DocumentStatusEnum.FAILED
-    assert bad_doc.error_code == DocumentErrorCode.CHUNKING_FAILED
     # processing order across both documents
     assert repo.doc_status_log == [
+        DocumentStatusEnum.PROCESSING,
         DocumentStatusEnum.INDEXING,
         DocumentStatusEnum.COMPLETED,
+        DocumentStatusEnum.PROCESSING,
         DocumentStatusEnum.CHUNKING,
         DocumentStatusEnum.FAILED,
     ]
