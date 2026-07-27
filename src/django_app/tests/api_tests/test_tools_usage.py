@@ -5,6 +5,7 @@ from tables.models.crew_models import (
     Agent,
     AgentConfiguredTools,
     AgentMcpTools,
+    AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
     Crew,
     Tool,
@@ -12,7 +13,11 @@ from tables.models.crew_models import (
 )
 from tables.models.graph_models import CrewNode, Graph
 from tables.models.mcp_models import McpTool
-from tables.models.python_models import PythonCode, PythonCodeTool
+from tables.models.python_models import (
+    PythonCode,
+    PythonCodeTool,
+    PythonCodeToolConfig,
+)
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 
 
@@ -58,7 +63,10 @@ def registered_tool() -> Tool:
 
 @pytest.fixture
 def used_graph_setup(org_a, registered_tool):
-    """One agent using all 3 tool kinds, wired into a graph via a crew node."""
+    """One agent using all 3 tool kinds, member of a Crew (the FE "Project").
+    The Crew is also wired into a Graph via a CrewNode to make sure the lower
+    Graph orchestration layer has no bearing on `projects_count` (EST-3207
+    follow-up: "projects" means Crew, not Graph)."""
     tool_config = ToolConfig.objects.create(name="cfg1", tool=registered_tool)
 
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
@@ -267,3 +275,123 @@ def test_is_built_in_false_for_mcp_tool(client_a, org_a):
     assert resp.status_code == 200
     rows = {row["unique_name"]: row for row in resp.data}
     assert rows[f"mcp-tool:{mcp_tool.id}"]["is_built_in"] is False
+
+
+# ---- python-code-tool config join path (Major #3) ----
+
+
+@pytest.mark.django_db
+def test_python_tool_agent_reachable_only_via_config_path_is_counted(
+    client_a, org_a, unused_python_tool
+):
+    """An agent that only holds a `PythonCodeToolConfig` for the tool (no
+    direct `AgentPythonCodeTools` row) must still be counted — exercising the
+    `AgentPythonCodeToolConfigs -> PythonCodeToolConfig.tool` indirect join
+    path in `_python_tool_agents_by_tool`."""
+    tool_config = PythonCodeToolConfig.objects.create(
+        name="cfg1", tool=unused_python_tool, org=org_a
+    )
+    agent = Agent.objects.create(
+        role="ConfigOnlyAgent", goal="goal", backstory="story", org=org_a
+    )
+    AgentPythonCodeToolConfigs.objects.create(
+        agent=agent, pythoncodetoolconfig=tool_config
+    )
+
+    crew = Crew.objects.create(name="crew-config-only", org=org_a)
+    crew.agents.set([agent])
+    graph = Graph.objects.create(name="graph-config-only", org=org_a)
+    CrewNode.objects.create(crew=crew, graph=graph, node_name="crew_node1")
+
+    resp = client_a.get("/api/tools/usage/")
+    assert resp.status_code == 200
+    rows = {row["unique_name"]: row for row in resp.data}
+    key = f"python-code-tool:{unused_python_tool.id}"
+    assert rows[key]["staff_count"] == 1
+    assert rows[key]["projects_count"] == 1
+
+
+@pytest.mark.django_db
+def test_python_tool_agent_reachable_via_both_paths_not_double_counted(
+    client_a, org_a, unused_python_tool
+):
+    """An agent reachable via BOTH the direct `AgentPythonCodeTools` row AND
+    a `PythonCodeToolConfig` for the same tool must be counted exactly once —
+    `_merge_agents_by_tool` must dedupe by agent id, not double-count."""
+    tool_config = PythonCodeToolConfig.objects.create(
+        name="cfg1", tool=unused_python_tool, org=org_a
+    )
+    agent = Agent.objects.create(
+        role="BothPathsAgent", goal="goal", backstory="story", org=org_a
+    )
+    AgentPythonCodeTools.objects.create(
+        agent=agent, pythoncodetool=unused_python_tool
+    )
+    AgentPythonCodeToolConfigs.objects.create(
+        agent=agent, pythoncodetoolconfig=tool_config
+    )
+
+    crew = Crew.objects.create(name="crew-both-paths", org=org_a)
+    crew.agents.set([agent])
+    graph = Graph.objects.create(name="graph-both-paths", org=org_a)
+    CrewNode.objects.create(crew=crew, graph=graph, node_name="crew_node1")
+
+    resp = client_a.get("/api/tools/usage/")
+    assert resp.status_code == 200
+    rows = {row["unique_name"]: row for row in resp.data}
+    key = f"python-code-tool:{unused_python_tool.id}"
+    assert rows[key]["staff_count"] == 1
+    assert rows[key]["projects_count"] == 1
+
+
+# ---- "projects" means Crew, not Graph (EST-3207 follow-up) ----
+
+
+@pytest.mark.django_db
+def test_project_counted_via_crew_membership_without_any_graph(
+    client_a, org_a, unused_python_tool
+):
+    """A Crew never wired into any Graph (no CrewNode) must still count as a
+    "project" — Crew membership alone is what "projects_count" means, the
+    lower Graph orchestration layer is irrelevant."""
+    agent = Agent.objects.create(
+        role="GraphlessAgent", goal="goal", backstory="story", org=org_a
+    )
+    AgentPythonCodeTools.objects.create(agent=agent, pythoncodetool=unused_python_tool)
+
+    crew = Crew.objects.create(name="crew-no-graph", org=org_a)
+    crew.agents.set([agent])
+
+    resp = client_a.get("/api/tools/usage/")
+    assert resp.status_code == 200
+    rows = {row["unique_name"]: row for row in resp.data}
+    key = f"python-code-tool:{unused_python_tool.id}"
+    assert rows[key]["staff_count"] == 1
+    assert rows[key]["projects_count"] == 1
+
+
+@pytest.mark.django_db
+def test_projects_count_reflects_crews_not_graphs(
+    client_a, org_a, unused_python_tool
+):
+    """One Crew wired into TWO Graphs (two CrewNodes) must still count as
+    ONE project — before the fix, counting distinct Graph ids here would
+    have (incorrectly) reported 2."""
+    agent = Agent.objects.create(
+        role="MultiGraphAgent", goal="goal", backstory="story", org=org_a
+    )
+    AgentPythonCodeTools.objects.create(agent=agent, pythoncodetool=unused_python_tool)
+
+    crew = Crew.objects.create(name="crew-multi-graph", org=org_a)
+    crew.agents.set([agent])
+    graph1 = Graph.objects.create(name="graph1", org=org_a)
+    graph2 = Graph.objects.create(name="graph2", org=org_a)
+    CrewNode.objects.create(crew=crew, graph=graph1, node_name="crew_node1")
+    CrewNode.objects.create(crew=crew, graph=graph2, node_name="crew_node2")
+
+    resp = client_a.get("/api/tools/usage/")
+    assert resp.status_code == 200
+    rows = {row["unique_name"]: row for row in resp.data}
+    key = f"python-code-tool:{unused_python_tool.id}"
+    assert rows[key]["staff_count"] == 1
+    assert rows[key]["projects_count"] == 1

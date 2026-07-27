@@ -18,7 +18,7 @@ from tables.models import (
     AgentMcpTools,
     AgentPythonCodeTools,
     AgentPythonCodeToolConfigs,
-    Graph,
+    Crew,
     McpTool,
     PythonCodeTool,
     Tool,
@@ -66,28 +66,28 @@ def get_tools_usage(org_id: int) -> list[dict]:
     for agents_by_tool in (configured_agents, python_agents, mcp_agents):
         for agent_ids in agents_by_tool.values():
             all_agent_ids.update(agent_ids)
-    agent_graphs = _agent_graph_map(org_id, all_agent_ids)
+    agent_crews = _agent_crew_map(org_id, all_agent_ids)
 
     return [
         *_build_rows(
             "configured-tool",
             tool_ids,
             configured_agents,
-            agent_graphs,
+            agent_crews,
             is_built_in=lambda _tool_id: True,
         ),
         *_build_rows(
             "python-code-tool",
             python_tool_ids,
             python_agents,
-            agent_graphs,
+            agent_crews,
             is_built_in=lambda tool_id: python_tool_built_in.get(tool_id, False),
         ),
         *_build_rows(
             "mcp-tool",
             mcp_tool_ids,
             mcp_agents,
-            agent_graphs,
+            agent_crews,
             is_built_in=lambda _tool_id: False,
         ),
     ]
@@ -196,20 +196,20 @@ def get_tool_usage_detail(prefix: str, tool_id: int, org_id: int) -> dict:
     """Return the "Where is this used?" detail for `prefix:tool_id`:
     `{"projects": [{"id", "name"}, ...], "staff": [{"id", "role"}, ...]}`.
 
-    `projects` are the distinct Graphs reached from the tool's agents (same
-    Crew -> CrewNode -> Graph traversal as `get_tools_usage`); `staff` are
-    the Agents themselves. Raises `ToolNotFoundError` if the tool doesn't
-    exist / isn't visible to `org_id`.
+    `projects` are the distinct Crews (the FE "Project") reached from the
+    tool's agents via Crew membership (same traversal as `get_tools_usage`);
+    `staff` are the Agents themselves. Raises `ToolNotFoundError` if the tool
+    doesn't exist / isn't visible to `org_id`.
     """
     agent_ids = get_agent_ids_for_tool(prefix, tool_id, org_id)
-    agent_graphs = _agent_graph_map(org_id, agent_ids)
+    agent_crews = _agent_crew_map(org_id, agent_ids)
 
-    graph_ids: set[int] = set()
-    for graphs in agent_graphs.values():
-        graph_ids.update(graphs)
+    crew_ids: set[int] = set()
+    for crews in agent_crews.values():
+        crew_ids.update(crews)
 
     staff = list(Agent.objects.filter(id__in=agent_ids).values("id", "role"))
-    projects = list(Graph.objects.filter(id__in=graph_ids).values("id", "name"))
+    projects = list(Crew.objects.filter(id__in=crew_ids).values("id", "name"))
     return {"projects": projects, "staff": staff}
 
 
@@ -225,45 +225,45 @@ def _merge_agents_by_tool(agents_by_tool: dict[int, set[int]], pairs) -> None:
         agents_by_tool.setdefault(tool_id, set()).add(agent_id)
 
 
-def _agent_graph_map(org_id: int, agent_ids: set[int]) -> dict[int, set[int]]:
-    """Map each relevant agent id to the set of Graph ids it reaches via
-    Crew membership -> CrewNode -> Graph (all scoped to `org_id`)."""
+def _agent_crew_map(org_id: int, agent_ids: set[int]) -> dict[int, set[int]]:
+    """Map each relevant agent id to the set of Crew ids it belongs to (the
+    FE "Project" — see `wiki/topics/projects-crews-agents.md`), scoped to
+    `org_id`."""
     if not agent_ids:
         return {}
 
-    # Agent -> Crew is the reverse of Crew.agents (no related_name -> "crew").
-    # Crew -> CrewNode is the reverse of CrewNode.crew (no related_name ->
-    # "crewnode"); CrewNode.graph is the one with related_name="crew_node_list".
+    # Agent -> Crew is the reverse of Crew.agents (M2M, no related_name ->
+    # reverse query name "crew"). It's a many-valued relation, so this is an
+    # (agent_id, crew_id) pair per Crew the agent belongs to, not a single FK.
     pairs = Agent.objects.filter(
         id__in=agent_ids,
         org_id=org_id,
         crew__org_id=org_id,
-        crew__crewnode__graph__org_id=org_id,
-    ).values_list("id", "crew__crewnode__graph_id")
+    ).values_list("id", "crew__id")
 
-    agent_graphs: dict[int, set[int]] = defaultdict(set)
-    for agent_id, graph_id in pairs:
-        agent_graphs[agent_id].add(graph_id)
-    return agent_graphs
+    agent_crews: dict[int, set[int]] = defaultdict(set)
+    for agent_id, crew_id in pairs:
+        agent_crews[agent_id].add(crew_id)
+    return agent_crews
 
 
 def _build_rows(
     prefix: str,
     tool_ids: list[int],
     agents_by_tool: dict[int, set[int]],
-    agent_graphs: dict[int, set[int]],
+    agent_crews: dict[int, set[int]],
     is_built_in,
 ) -> list[dict]:
     rows: list[dict] = []
     for tool_id in tool_ids:
         agent_ids = agents_by_tool.get(tool_id, set())
-        graph_ids: set[int] = set()
+        crew_ids: set[int] = set()
         for agent_id in agent_ids:
-            graph_ids.update(agent_graphs.get(agent_id, set()))
+            crew_ids.update(agent_crews.get(agent_id, set()))
         rows.append(
             {
                 "unique_name": f"{prefix}:{tool_id}",
-                "projects_count": len(graph_ids),
+                "projects_count": len(crew_ids),
                 "staff_count": len(agent_ids),
                 "is_built_in": bool(is_built_in(tool_id)),
             }

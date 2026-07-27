@@ -5,6 +5,7 @@ from tables.models.crew_models import (
     Agent,
     AgentConfiguredTools,
     AgentMcpTools,
+    AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
     Crew,
     Tool,
@@ -12,7 +13,11 @@ from tables.models.crew_models import (
 )
 from tables.models.graph_models import CrewNode, Graph
 from tables.models.mcp_models import McpTool
-from tables.models.python_models import PythonCode, PythonCodeTool
+from tables.models.python_models import (
+    PythonCode,
+    PythonCodeTool,
+    PythonCodeToolConfig,
+)
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 
 
@@ -58,8 +63,11 @@ def registered_tool() -> Tool:
 
 @pytest.fixture
 def used_graph_setup(org_a, registered_tool):
-    """One agent using all 3 tool kinds, wired into a named graph via a
-    named crew, so project/staff detail can be asserted by name."""
+    """One agent using all 3 tool kinds, member of a named Crew (the FE
+    "Project"), so project/staff detail can be asserted by name. The Crew is
+    also wired into a Graph via a CrewNode to make sure the lower Graph
+    orchestration layer has no bearing on the "projects" detail (EST-3207
+    follow-up: "projects" means Crew, not Graph)."""
     tool_config = ToolConfig.objects.create(name="cfg1", tool=registered_tool)
 
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
@@ -81,10 +89,10 @@ def used_graph_setup(org_a, registered_tool):
     AgentPythonCodeTools.objects.create(agent=agent, pythoncodetool=python_tool)
     AgentMcpTools.objects.create(agent=agent, mcptool=mcp_tool)
 
-    crew = Crew.objects.create(name="crew1", org=org_a)
+    crew = Crew.objects.create(name="My Project", org=org_a)
     crew.agents.set([agent])
 
-    graph = Graph.objects.create(name="My Project", org=org_a)
+    graph = Graph.objects.create(name="graph1", org=org_a)
     CrewNode.objects.create(crew=crew, graph=graph, node_name="crew_node1")
 
     return {
@@ -92,7 +100,7 @@ def used_graph_setup(org_a, registered_tool):
         "python_tool": python_tool,
         "mcp_tool": mcp_tool,
         "agent": agent,
-        "graph": graph,
+        "crew": crew,
     }
 
 
@@ -111,14 +119,14 @@ def unused_python_tool(org_a) -> PythonCodeTool:
 def test_configured_tool_detail_returns_project_and_staff(client_a, used_graph_setup):
     registered_tool = used_graph_setup["registered_tool"]
     agent = used_graph_setup["agent"]
-    graph = used_graph_setup["graph"]
+    crew = used_graph_setup["crew"]
 
     resp = client_a.get(
         "/api/tools/usage-detail/",
         {"unique_name": f"configured-tool:{registered_tool.id}"},
     )
     assert resp.status_code == 200
-    assert resp.data["projects"] == [{"id": graph.id, "name": graph.name}]
+    assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
     assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
 
 
@@ -126,14 +134,14 @@ def test_configured_tool_detail_returns_project_and_staff(client_a, used_graph_s
 def test_python_code_tool_detail_returns_project_and_staff(client_a, used_graph_setup):
     python_tool = used_graph_setup["python_tool"]
     agent = used_graph_setup["agent"]
-    graph = used_graph_setup["graph"]
+    crew = used_graph_setup["crew"]
 
     resp = client_a.get(
         "/api/tools/usage-detail/",
         {"unique_name": f"python-code-tool:{python_tool.id}"},
     )
     assert resp.status_code == 200
-    assert resp.data["projects"] == [{"id": graph.id, "name": graph.name}]
+    assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
     assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
 
 
@@ -141,14 +149,14 @@ def test_python_code_tool_detail_returns_project_and_staff(client_a, used_graph_
 def test_mcp_tool_detail_returns_project_and_staff(client_a, used_graph_setup):
     mcp_tool = used_graph_setup["mcp_tool"]
     agent = used_graph_setup["agent"]
-    graph = used_graph_setup["graph"]
+    crew = used_graph_setup["crew"]
 
     resp = client_a.get(
         "/api/tools/usage-detail/",
         {"unique_name": f"mcp-tool:{mcp_tool.id}"},
     )
     assert resp.status_code == 200
-    assert resp.data["projects"] == [{"id": graph.id, "name": graph.name}]
+    assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
     assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
 
 
@@ -255,3 +263,92 @@ def test_requires_authentication(db):
         "/api/tools/usage-detail/", {"unique_name": "configured-tool:1"}
     )
     assert resp.status_code == 403
+
+
+# ---- python-code-tool config join path (Major #3) ----
+
+
+@pytest.mark.django_db
+def test_python_tool_agent_reachable_only_via_config_path_is_counted(
+    client_a, org_a, unused_python_tool
+):
+    """An agent reachable only via `PythonCodeToolConfig` (no direct
+    `AgentPythonCodeTools` row) must appear in the usage-detail staff/projects
+    lists — exercising the indirect join path in
+    `_python_tool_agents_by_tool`."""
+    tool_config = PythonCodeToolConfig.objects.create(
+        name="cfg1", tool=unused_python_tool, org=org_a
+    )
+    agent = Agent.objects.create(
+        role="ConfigOnlyAgent", goal="goal", backstory="story", org=org_a
+    )
+    AgentPythonCodeToolConfigs.objects.create(
+        agent=agent, pythoncodetoolconfig=tool_config
+    )
+
+    crew = Crew.objects.create(name="crew-config-only", org=org_a)
+    crew.agents.set([agent])
+
+    resp = client_a.get(
+        "/api/tools/usage-detail/",
+        {"unique_name": f"python-code-tool:{unused_python_tool.id}"},
+    )
+    assert resp.status_code == 200
+    assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
+    assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
+
+
+@pytest.mark.django_db
+def test_python_tool_agent_reachable_via_both_paths_not_double_counted(
+    client_a, org_a, unused_python_tool
+):
+    """An agent reachable via BOTH the direct `AgentPythonCodeTools` row AND
+    a `PythonCodeToolConfig` for the same tool must be listed exactly once —
+    `_merge_agents_by_tool` must dedupe by agent id, not double-count."""
+    tool_config = PythonCodeToolConfig.objects.create(
+        name="cfg1", tool=unused_python_tool, org=org_a
+    )
+    agent = Agent.objects.create(
+        role="BothPathsAgent", goal="goal", backstory="story", org=org_a
+    )
+    AgentPythonCodeTools.objects.create(
+        agent=agent, pythoncodetool=unused_python_tool
+    )
+    AgentPythonCodeToolConfigs.objects.create(
+        agent=agent, pythoncodetoolconfig=tool_config
+    )
+
+    crew = Crew.objects.create(name="crew-both-paths", org=org_a)
+    crew.agents.set([agent])
+
+    resp = client_a.get(
+        "/api/tools/usage-detail/",
+        {"unique_name": f"python-code-tool:{unused_python_tool.id}"},
+    )
+    assert resp.status_code == 200
+    assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
+    assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
+
+
+@pytest.mark.django_db
+def test_project_counted_via_crew_membership_without_any_graph(
+    client_a, org_a, unused_python_tool
+):
+    """A Crew never wired into any Graph (no CrewNode) must still surface as
+    a "project" in the usage-detail — "projects" means Crew membership only,
+    the lower Graph orchestration layer is irrelevant (EST-3207 follow-up)."""
+    agent = Agent.objects.create(
+        role="GraphlessAgent", goal="goal", backstory="story", org=org_a
+    )
+    AgentPythonCodeTools.objects.create(agent=agent, pythoncodetool=unused_python_tool)
+
+    crew = Crew.objects.create(name="crew-no-graph", org=org_a)
+    crew.agents.set([agent])
+
+    resp = client_a.get(
+        "/api/tools/usage-detail/",
+        {"unique_name": f"python-code-tool:{unused_python_tool.id}"},
+    )
+    assert resp.status_code == 200
+    assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
+    assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
