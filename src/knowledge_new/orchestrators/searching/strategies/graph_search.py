@@ -19,6 +19,9 @@ from orchestrators.searching import AbstractSearch
 from pydantic import BaseModel as PydanticModel
 
 
+DEFAULT_RESPONSE_TYPE = "Multiple Paragraphs"
+
+
 @dataclass(frozen=True)
 class SearchSpecification:
     searcher: Callable
@@ -26,13 +29,25 @@ class SearchSpecification:
     config_model: type[PydanticModel]
     required_files: Iterable[str]
     optional_files: Iterable[str] | None = None
-    extra_kwargs: dict[str, Any] = field(default_factory=dict)
-    dynamic_kwargs: dict[str, str] = field(default_factory=dict)
+    extra_kwargs: Callable[..., dict[str, Any]] | dict[str, Any] = field(
+        default_factory=dict
+    )
+
+
+def _drift_extra_kwargs(search_config, method_config, files) -> dict[str, Any]:
+    # Empty primer folds cause the primer to hallucinate from entity names if folds
+    # exceed the number of available community reports — limit folds to the report count.
+    usable_reports = min(
+        search_config.drift_k_followups, len(files["community_reports"])
+    )
+    method_config.primer_folds = max(1, min(method_config.primer_folds, usable_reports))
+    return {
+        "response_type": DEFAULT_RESPONSE_TYPE,
+        "community_level": search_config.community_level,
+    }
 
 
 class GraphSearch(AbstractSearch):
-    DEFAULT_RESPONSE_TYPE = "Multiple Paragraphs"
-
     _SEARCH_MAP: ClassVar[dict[GraphSearchMethodEnum, SearchSpecification]] = {
         GraphSearchMethodEnum.BASIC: SearchSpecification(
             searcher=basic_search,
@@ -53,8 +68,10 @@ class GraphSearch(AbstractSearch):
                 "entities",
             ],
             optional_files=["covariates"],
-            extra_kwargs={"response_type": DEFAULT_RESPONSE_TYPE},
-            dynamic_kwargs={"community_level": "community_level"},
+            extra_kwargs=lambda search_config, method_config, files: {
+                "response_type": DEFAULT_RESPONSE_TYPE,
+                "community_level": search_config.community_level,
+            },
         ),
         GraphSearchMethodEnum.GLOBAL: SearchSpecification(
             searcher=global_search,
@@ -65,10 +82,10 @@ class GraphSearch(AbstractSearch):
                 "communities",
                 "community_reports",
             ],
-            extra_kwargs={"response_type": DEFAULT_RESPONSE_TYPE},
-            dynamic_kwargs={
-                "community_level": "dynamic_search_max_level",
-                "dynamic_community_selection": "dynamic_community_selection",
+            extra_kwargs=lambda search_config, method_config, files: {
+                "response_type": DEFAULT_RESPONSE_TYPE,
+                "community_level": search_config.dynamic_search_max_level,
+                "dynamic_community_selection": search_config.dynamic_community_selection,
             },
         ),
         GraphSearchMethodEnum.DRIFT: SearchSpecification(
@@ -82,8 +99,7 @@ class GraphSearch(AbstractSearch):
                 "relationships",
                 "entities",
             ],
-            extra_kwargs={"response_type": DEFAULT_RESPONSE_TYPE},
-            dynamic_kwargs={"community_level": "community_level"},
+            extra_kwargs=_drift_extra_kwargs,
         ),
     }
 
@@ -113,23 +129,12 @@ class GraphSearch(AbstractSearch):
             optional_files=specs.optional_files,
         )
 
-        # Empty primer folds cause the primer to hallucinate from entity names if folds
-        # exceed the number of available community reports — limit folds to the report count.
-        if request.search_config.method is GraphSearchMethodEnum.DRIFT:
-            usable_reports = min(
-                method_config.drift_k_followups, len(files["community_reports"])
-            )
-            method_config.primer_folds = max(
-                1, min(method_config.primer_folds, usable_reports)
-            )
-
-        dynamic = {
-            kwarg: getattr(request.search_config, attr)
-            for kwarg, attr in specs.dynamic_kwargs.items()
-        }
+        extra_kwargs = specs.extra_kwargs
+        if callable(extra_kwargs):
+            extra_kwargs = extra_kwargs(request.search_config, method_config, files)
 
         result, _ = await specs.searcher(
-            query=request.query, config=config, **files, **specs.extra_kwargs, **dynamic
+            query=request.query, config=config, **files, **extra_kwargs
         )
 
         return SearchResponse(request=request, result=result)
