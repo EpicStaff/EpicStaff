@@ -306,6 +306,7 @@ class GraphRagService:
         has_document_in_rag = rag.graph_rag_documents.exists()
         if not has_document_in_rag and rag.require_reindex():
             rag.reindex_reason.clear()
+            rag.rag_status = rag.GraphRagStatus.NEW
         elif has_document_in_rag and has_indexed_link:
             rag.add_reindex_reason(
                 code='indexed_documents_deleted',
@@ -345,6 +346,7 @@ class GraphRagService:
         has_document_in_rag = rag.graph_rag_documents.exists()
         if not has_document_in_rag and rag.require_reindex():
             rag.reindex_reason.clear()
+            rag.rag_status = rag.GraphRagStatus.NEW
         elif has_document_in_rag and document.status == GraphRagDocument.Status.INDEXED:
             rag.add_reindex_reason(
                 code='indexed_documents_deleted',
