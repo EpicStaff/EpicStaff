@@ -22,7 +22,7 @@ from graphrag_vectors.vector_store_config import VectorStoreConfig
 from models import Rag
 from services.file_text_extractors import build_file_text_extractor
 from settings import settings
-from sqlalchemy import select, update
+from sqlalchemy import select, update, exists
 from sqlalchemy.orm import joinedload
 
 
@@ -78,7 +78,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
                     text=text,
                     title=document.file_name,
                     creation_date=row.created_at.isoformat(),
-                    raw_data=None,
+                    raw_data={'status': row.status},
                 )
             )
         return documents
@@ -97,6 +97,17 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
             )
             .values(status=status)
         )
+
+    async def has_indexed_document(self, rag_id: int) -> bool:
+        result = await self._session.execute(
+            select(
+                exists().where(
+                    GraphRagDocument.graph_rag_id == rag_id,
+                    GraphRagDocument.status == 'indexed',
+                )
+            )
+        )
+        return result.scalar_one()
 
     async def get_config(self, rag_id: int) -> GraphRagConfig | None:
         result = await self._session.execute(

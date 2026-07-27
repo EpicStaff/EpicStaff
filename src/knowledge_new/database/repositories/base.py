@@ -193,3 +193,11 @@ class AbstractGraphRagRepository(RepositoryErrorWrapper, abc.ABC):
             ids: Primary keys of the documents to retrieve.
             status: Status of document.
         """
+
+    @abc.abstractmethod
+    async def has_indexed_document(self, rag_id: int) -> bool:
+        """Return whether the RAG collection `rag_id` has at least one indexed document.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
+        """

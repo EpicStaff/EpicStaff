@@ -16,6 +16,10 @@ class GraphIndexer(AbstractIndexer):
             rag = await self._get_rag_under_uow(request.rag_id)
             config = await self._get_config_under_uow(rag.id)
             documents = await self._get_documents_under_uow(rag.id, request.document_ids)
+            has_indexed_document_in_db = await self._has_indexed_document_under_uow(rag.id)
+
+        has_indexed_document_in_request = any(d.raw_data['status'] == 'indexed' for d in documents)
+        is_update_run = has_indexed_document_in_db and not has_indexed_document_in_request
 
         rag.mark_as_processing(request.document_ids)
         await self._update_rag(rag)
@@ -24,6 +28,7 @@ class GraphIndexer(AbstractIndexer):
             config=config,
             input_documents=pandas.DataFrame(data=[asdict(d) for d in documents]),
             verbose=True,
+            is_update_run=is_update_run,
         )
 
         errors = {r.workflow: r.error for r in results if r.error is not None}
@@ -92,3 +97,6 @@ class GraphIndexer(AbstractIndexer):
                 status=status,
             )
             await self.uow.commit()
+
+    async def _has_indexed_document_under_uow(self, rag_id: int) -> bool:
+        return await self.uow.graph_rag_repo.has_indexed_document(rag_id=rag_id)
