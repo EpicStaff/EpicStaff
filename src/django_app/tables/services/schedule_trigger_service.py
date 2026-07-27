@@ -54,9 +54,7 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
         if not node.is_active:
             logger.info(f"[ScheduleTriggerService] Node {node_id} already inactive")
             return
-        node.is_active = False
-        node.next_run_date_time = None
-        node.save(update_fields=["is_active", "next_run_date_time", "updated_at"])
+        self._persist_deactivation(node)
         logger.info(f"[ScheduleTriggerService] Node {node_id} deactivated")
 
     def update_node(
@@ -173,10 +171,32 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
         node.refresh_from_db()
 
     def _deactivate(self, node: ScheduleTriggerNode, reason: str) -> None:
+        self._persist_deactivation(node)
+        logger.info(f"[ScheduleTriggerService] Node {node.id}: {reason}, deactivated.")
+
+    def _persist_deactivation(self, node: ScheduleTriggerNode) -> None:
+        """Flip is_active=False via .save() (unconditional, DB stays
+        authoritative), then notify any live collaborative session so its
+        Redis snapshot's content_hash doesn't fall out of sync with the row
+        this write just produced.
+
+        Uses ``transaction.on_commit`` rather than notifying immediately:
+        both call sites persist inside a transaction (``handle_schedule_trigger``
+        is ``@transaction.atomic``), and the notified consumer refreshes
+        content_hash by reading this row from the DB — notifying before
+        commit could race a still-uncommitted write
+        """
         node.is_active = False
         node.next_run_date_time = None
         node.save(update_fields=["is_active", "next_run_date_time", "updated_at"])
-        logger.info(f"[ScheduleTriggerService] Node {node.id}: {reason}, deactivated.")
+
+        from tables.graph_collab.notifications import GraphEditNotifier
+
+        transaction.on_commit(
+            lambda: GraphEditNotifier.notify_schedule_node_deactivated(
+                node.graph_id, node.id
+            )
+        )
 
     @staticmethod
     def _compute_next_run_date_time(

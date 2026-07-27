@@ -13,7 +13,7 @@ from tables.graph_collab.autosave_loop import ensure_autosave_loop_running
 from tables.graph_collab.flush_service import flush_service
 from tables.graph_collab.graph_state_service import graph_state_service
 from tables.graph_collab.groups import graph_group_name, org_group_name
-from tables.graph_collab.notifications import anotify_graph_saved
+from tables.graph_collab.notifications import _SYSTEM_EDITOR, anotify_graph_saved
 from tables.services.redis_service import RedisService
 from tables.graph_collab.lock_service import lock_service
 from tables.graph_collab.utils import build_editor_info
@@ -32,6 +32,7 @@ from tables.graph_collab.protocol import (
     LockStateMessage,
     NodeLockedMessage,
     NodeUnlockedMessage,
+    NodeUpdatedMessage,
     OpRejectedMessage,
     PresenceStateMessage,
     UserJoinedMessage,
@@ -443,6 +444,26 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
     async def node_unlocked(self, event):
         await self._relay(event)
+
+    async def schedule_node_deactivated(self, event):
+        """Mirror a scheduler-driven ScheduleTriggerNode deactivation into the
+        live snapshot (lock-serialised, idempotent), then push a display-only
+        node_updated so connected browsers flip the toggle live.
+        """
+        await graph_state_service.apply_scheduler_deactivation(
+            event["graph_id"], event["node_id"], event["list_key"]
+        )
+        message = NodeUpdatedMessage(
+            node={
+                "id": event["node_id"],
+                "is_active": False,
+                "next_run_date_time": None,
+            },
+            list_key=event["list_key"],
+            changed_fields=["is_active", "next_run_date_time"],
+            editor=_SYSTEM_EDITOR,
+        )
+        await self.send_json(message.model_dump())
 
     # --- Channel layer handlers: presence + notifications ---
 

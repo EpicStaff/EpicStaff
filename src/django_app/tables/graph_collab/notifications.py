@@ -155,6 +155,32 @@ class GraphEditNotifier:
         GraphEditNotifier._send(graph_id, message.model_dump())
 
     @staticmethod
+    def notify_schedule_node_deactivated(graph_id: int, node_id: int) -> None:
+        """Notify a live collaborative session that the scheduler flipped a
+        ScheduleTriggerNode's ``is_active`` to False directly in the DB.
+
+        Gated on a live session existing at all — the common case (nobody connected) is a
+        no-op.
+        """
+        if async_to_sync(graph_state_service.get_snapshot)(graph_id) is None:
+            logger.debug(
+                "notify_schedule_node_deactivated: no live snapshot for graph "
+                "{} — skipping",
+                graph_id,
+            )
+            return
+
+        GraphEditNotifier._send(
+            graph_id,
+            {
+                "type": "schedule_node_deactivated",
+                "graph_id": graph_id,
+                "node_id": node_id,
+                "list_key": "schedule_trigger_node_list",
+            },
+        )
+
+    @staticmethod
     def notify_graph_files_changed(graph_id: int, user=None) -> None:
         """Broadcast graph_files_changed after a graph's attached-files list
         changes

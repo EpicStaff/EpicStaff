@@ -460,6 +460,86 @@ class GraphLiveStateService:
                 new_save_version,
             )
 
+    async def apply_scheduler_deactivation(
+        self,
+        graph_id: int,
+        node_id: int,
+        list_key: str = "schedule_trigger_node_list",
+    ) -> bool:
+        """Mirror a scheduler-driven ``is_active=False`` / ``next_run_date_time=None``
+        write into the live snapshot, scoped to the single touched node.
+
+        The scheduler (`ScheduleTriggerService`) writes directly to the DB via
+        a plain ``.save()``, bypassing the content_hash CAS channel collab
+        autosave relies on. ``is_active`` is part of the node's content_hash,
+        so an unmirrored write shifts the DB row's hash out from under any
+        live snapshot, and the next autosave flush hits a real
+        ``ContentHashConflictError`` — wedging the whole graph's autosave in
+        an infinite poison-retry.
+
+        This method only touches the snapshot when a live collaborative
+        session actually exists for *graph_id* — the common case (nobody
+        connected) is untouched, DB stays sole authority. It never bumps the
+        revision/dirty counters: the DB is already correct, forcing a flush
+        here would be redundant and could race the next real edit.
+
+        Idempotent by design — safe to call once per connected client for the
+        same deactivation event. Returns True if the snapshot was mutated,
+        False otherwise (no live session, node absent, or already inactive).
+
+        Cross-process safety note: this relies on ``self._get_lock(graph_id)``
+        serialising against concurrent ``apply_op``/``apply_id_remap`` calls
+        in THIS asyncio event loop. It assumes the single-ASGI-worker
+        deployment already documented for the rest of this service — a
+        second worker process would have its own unshared lock instance.
+        """
+        async with self._get_lock(graph_id):
+            snapshot = await self.get_snapshot(graph_id)
+            if snapshot is None:
+                logger.debug(
+                    "apply_scheduler_deactivation: no live snapshot for graph "
+                    "{} — skipping",
+                    graph_id,
+                )
+                return False
+
+            entries: list[dict] = snapshot.get(list_key, [])
+            entry = next((e for e in entries if e.get("id") == node_id), None)
+            if entry is None:
+                logger.debug(
+                    "apply_scheduler_deactivation: node {} not found in {} "
+                    "for graph {} — skipping",
+                    node_id,
+                    list_key,
+                    graph_id,
+                )
+                return False
+
+            if entry.get("is_active") is False:
+                logger.debug(
+                    "apply_scheduler_deactivation: node {} already inactive "
+                    "in live snapshot for graph {} — skipping",
+                    node_id,
+                    graph_id,
+                )
+                return False
+
+            entry["is_active"] = False
+            entry["next_run_date_time"] = None
+            if "content_hash" in entry:
+                refreshed_hash = await _refresh_schedule_node_content_hash(node_id)
+                if refreshed_hash is not None:
+                    entry["content_hash"] = refreshed_hash
+
+            await self.seed(graph_id, snapshot)
+            logger.debug(
+                "apply_scheduler_deactivation: node {} deactivated in live "
+                "snapshot for graph {}",
+                node_id,
+                graph_id,
+            )
+            return True
+
     def _apply_node_upsert(
         self, snapshot: dict, deleted: dict, message, graph_id: int
     ) -> OpResult | None:
@@ -890,6 +970,25 @@ def _refresh_flushed_content_hashes(snapshot: dict) -> None:
                     and "content_hash" in nested_entry
                 ):
                     nested_entry["content_hash"] = nested_instance.content_hash
+
+
+@sync_to_async
+def _refresh_schedule_node_content_hash(node_id: int) -> str | None:
+    """Return the current DB-computed content_hash for a single
+    ``ScheduleTriggerNode``, or None if the row no longer exists.
+
+    Focused sibling of ``_refresh_flushed_content_hashes`` — scoped to the
+    one node the scheduler just deactivated rather than a whole-snapshot
+    batch refresh, since ``apply_scheduler_deactivation`` only ever touches
+    one row.
+    """
+    from tables.models.graph_models import ScheduleTriggerNode
+
+    try:
+        node = ScheduleTriggerNode.objects.get(pk=node_id)
+    except ScheduleTriggerNode.DoesNotExist:
+        return None
+    return node.content_hash
 
 
 @sync_to_async
