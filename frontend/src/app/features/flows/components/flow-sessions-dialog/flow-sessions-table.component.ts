@@ -55,7 +55,10 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
             <table>
                 <thead>
                     <tr>
-                        <th *appHasPermission="[ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]]">
+                        <th
+                            class="col-select"
+                            *appHasPermission="[ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]]"
+                        >
                             <app-checkbox
                                 [checked]="areAllSelected()"
                                 [disabled]="isLoading || sessions.length === 0"
@@ -63,15 +66,18 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 id="select-all-checkbox"
                             ></app-checkbox>
                         </th>
-                        <th>ID</th>
-                        <th>
+                        <th class="col-id">ID</th>
+                        <th class="col-status">
                             <app-flow-session-status-filter-dropdown
                                 [value]="statusFilter"
                                 (valueChange)="statusFilterChange.emit($event)"
                             >
                             </app-flow-session-status-filter-dropdown>
                         </th>
-                        <th *ngIf="showFlowName">
+                        <th
+                            class="col-flow"
+                            *ngIf="showFlowName"
+                        >
                             <app-flow-name-filter-dropdown
                                 [flows]="flows"
                                 [value]="flowNameFilter"
@@ -79,6 +85,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                             ></app-flow-name-filter-dropdown>
                         </th>
                         <th
+                            class="col-created"
                             [class.sortable]="sortable"
                             (click)="sortable && toggleSort()"
                         >
@@ -87,7 +94,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 <span class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
                             }
                         </th>
-                        <th>
+                        <th class="col-finished">
                             @if (showDuration) {
                                 <app-duration-filter-dropdown
                                     [value]="durationFilter"
@@ -99,7 +106,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                         </th>
                         <th
                             style="text-align: center"
-                            class="actions"
+                            class="actions col-actions"
                         >
                             Actions
                         </th>
@@ -109,7 +116,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                     @if (isLoading) {
                         <tr>
                             <td
-                                [attr.colspan]="showFlowName ? 7 : 6"
+                                [attr.colspan]="7"
                                 style="text-align: center; padding: 40px;"
                             >
                                 <app-loading-spinner
@@ -121,7 +128,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                     } @else if (showEmptyState) {
                         <tr>
                             <td
-                                [attr.colspan]="showFlowName ? 7 : 6"
+                                [attr.colspan]="7"
                                 style="text-align: center; padding: 40px;"
                             >
                                 <div class="no-sessions-message">
@@ -133,22 +140,25 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                     } @else {
                         <ng-container *ngFor="let session of sessions; trackBy: trackById">
                             <tr [class.row-expanded]="!externalPreview && expandedSessionId() === session.id">
-                                <td *appHasPermission="[ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]]">
+                                <td
+                                    class="col-select"
+                                    *appHasPermission="[ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]]"
+                                >
                                     <app-checkbox
                                         [checked]="isSelected(session.id)"
                                         (changed)="toggleSelection(session.id, $event)"
                                         [id]="'session-checkbox-' + session.id"
                                     ></app-checkbox>
                                 </td>
-                                <td>{{ session.id }}</td>
-                                <td>
+                                <td class="col-id">{{ session.id }}</td>
+                                <td class="col-status">
                                     <app-flow-session-status-badge
                                         [status]="session.status"
                                     ></app-flow-session-status-badge>
                                 </td>
                                 <td
                                     *ngIf="showFlowName"
-                                    class="flow-link-td"
+                                    class="flow-link-td col-flow"
                                 >
                                     <a
                                         class="flow-link"
@@ -163,15 +173,15 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                     </a>
                                 </td>
 
-                                <td>{{ session.created_at | date: 'medium' }}</td>
-                                <td>
+                                <td class="col-created">{{ session.created_at | date: 'medium' }}</td>
+                                <td class="col-finished">
                                     @if (showDuration) {
                                         {{ getDuration(session) }}
                                     } @else {
                                         {{ session.finished_at ? (session.finished_at | date: 'medium') : 'Active' }}
                                     }
                                 </td>
-                                <td>
+                                <td class="col-actions">
                                     <div class="actions-container">
                                         <button
                                             class="view-btn"
@@ -226,7 +236,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 class="preview-row"
                             >
                                 <td
-                                    [attr.colspan]="showFlowName ? 7 : 6"
+                                    [attr.colspan]="7"
                                     class="preview-cell"
                                 >
                                     <div class="preview-content">
