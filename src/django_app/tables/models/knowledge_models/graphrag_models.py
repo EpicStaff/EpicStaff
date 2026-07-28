@@ -235,7 +235,27 @@ class GraphRagIndexConfig(models.Model):
         )
 
 
-class GraphRagBasicSearchConfig(models.Model):
+class GraphRagBasicSearchConfigBase(models.Model):
+    prompt = models.TextField(
+        null=True,
+        blank=True,
+        help_text="The basic search prompt to use.",
+        default=None,
+    )
+    k = models.IntegerField(
+        default=10,
+        help_text="The number of text units to include in search context.",
+    )
+    max_context_tokens = models.IntegerField(
+        default=12000,
+        help_text="The maximum tokens.",
+    )
+
+    class Meta:
+        abstract = True
+
+
+class GraphRagBasicSearchConfig(GraphRagBasicSearchConfigBase):
     """
     The default configuration section for Basic Search.
     Linked to Agent via OneToOneField (same pattern as NaiveRagSearchConfig).
@@ -248,23 +268,6 @@ class GraphRagBasicSearchConfig(models.Model):
         help_text="Agent this basic search configuration belongs to",
     )
 
-    prompt = models.TextField(
-        null=True,
-        blank=True,
-        help_text="The basic search prompt to use.",
-        default=None,
-    )
-
-    k = models.IntegerField(
-        default=10,
-        help_text="The number of text units to include in search context.",
-    )
-
-    max_context_tokens = models.IntegerField(
-        default=12000,
-        help_text="The maximum tokens.",
-    )
-
     class Meta:
         db_table = "graph_rag_basic_search_config"
 
@@ -272,19 +275,7 @@ class GraphRagBasicSearchConfig(models.Model):
         return f"GraphRagBasicSearchConfig({self.pk})"
 
 
-class GraphRagLocalSearchConfig(models.Model):
-    """
-    The default configuration section for Local Search.
-    Linked to Agent via OneToOneField (same pattern as NaiveRagSearchConfig).
-    """
-
-    agent = models.OneToOneField(
-        Agent,
-        on_delete=models.CASCADE,
-        related_name="graph_local_search_config",
-        help_text="Agent this local search configuration belongs to",
-    )
-
+class GraphRagLocalSearchConfigBase(models.Model):
     prompt = models.TextField(
         null=True,
         blank=True,
@@ -323,6 +314,44 @@ class GraphRagLocalSearchConfig(models.Model):
     )
 
     class Meta:
+        abstract = True
+
+
+class GraphRagLocalSearchConfig(GraphRagLocalSearchConfigBase):
+    """
+    The default configuration section for Local Search.
+    Linked to Agent via OneToOneField (same pattern as NaiveRagSearchConfig).
+    """
+
+    agent = models.OneToOneField(
+        Agent,
+        on_delete=models.CASCADE,
+        related_name="graph_local_search_config",
+        help_text="Agent this local search configuration belongs to",
+    )
+
+    class Meta:
+        class NaiveRagSearchConfig(models.Model):
+            agent = models.OneToOneField(
+                "Agent",
+                on_delete=models.CASCADE,
+                related_name="naive_search_config",  # Access via: agent.naive_search_config
+                help_text="Agent this search configuration belongs to",
+            )
+
+            search_limit = models.PositiveIntegerField(
+                default=3,
+                blank=True,
+                help_text="Integer between 0 and 1000 for knowledge",
+            )
+            similarity_threshold = models.DecimalField(
+                max_digits=3,
+                decimal_places=2,
+                default=0.2,
+                blank=True,
+                help_text="Float between 0.00 and 1.00 for knowledge",
+            )
+
         db_table = "graph_rag_local_search_config"
 
     def __str__(self):

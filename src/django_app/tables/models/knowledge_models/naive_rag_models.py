@@ -298,14 +298,7 @@ class AgentNaiveRag(models.Model):
         return [error for error in errors if error.id != "fields.W342"]
 
 
-class NaiveRagSearchConfig(models.Model):
-    agent = models.OneToOneField(
-        "Agent",
-        on_delete=models.CASCADE,
-        related_name="naive_search_config",  # Access via: agent.naive_search_config
-        help_text="Agent this search configuration belongs to",
-    )
-
+class NaiveRagSearchConfigBase(models.Model):
     search_limit = models.PositiveIntegerField(
         default=3, blank=True, help_text="Integer between 0 and 1000 for knowledge"
     )
@@ -316,6 +309,21 @@ class NaiveRagSearchConfig(models.Model):
         blank=True,
         help_text="Float between 0.00 and 1.00 for knowledge",
     )
+
+    class Meta:
+        abstract = True
+
+
+class NaiveRagSearchConfig(NaiveRagSearchConfigBase):
+    agent = models.OneToOneField(
+        "Agent",
+        on_delete=models.CASCADE,
+        related_name="naive_search_config",  # Access via: agent.naive_search_config
+        help_text="Agent this search configuration belongs to",
+    )
+
+    class Meta:
+        db_table = "tables_naiveragsearchconfig"  # pin
 
 
 class NaiveRagPreviewChunk(models.Model):
