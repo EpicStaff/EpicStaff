@@ -104,6 +104,7 @@ table {
         padding: 12px 8px;
     }
 
+    td[colspan='6'],
     td[colspan='7'],
     td[colspan='8'] {
         border-bottom: none;
@@ -142,6 +143,7 @@ table {
         display: table-row;
     }
 
+    td[colspan='6'],
     td[colspan='7'],
     td[colspan='8'] {
         padding: 40px;

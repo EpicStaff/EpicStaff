@@ -18,6 +18,7 @@ import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GraphDto } from '../../models/graph.model';
 import {
@@ -127,7 +128,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                     @if (isLoading) {
                         <tr>
                             <td
-                                [attr.colspan]="7"
+                                [attr.colspan]="colspan"
                                 style="text-align: center; padding: 40px;"
                             >
                                 <app-loading-spinner
@@ -139,7 +140,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                     } @else if (showEmptyState) {
                         <tr>
                             <td
-                                [attr.colspan]="7"
+                                [attr.colspan]="colspan"
                                 style="text-align: center; padding: 40px;"
                             >
                                 <div class="no-sessions-message">
@@ -247,7 +248,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 class="preview-row"
                             >
                                 <td
-                                    [attr.colspan]="7"
+                                    [attr.colspan]="colspan"
                                     class="preview-cell"
                                 >
                                     <div class="preview-content">
@@ -308,8 +309,14 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     constructor(
         private readonly cdr: ChangeDetectorRef,
-        private router: Router
+        private router: Router,
+        private perms: PermissionsService
     ) {}
+
+    public get colspan(): number {
+        const canSelect = this.perms.canAny(ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]);
+        return 5 + (this.showFlowName ? 1 : 0) + (canSelect ? 1 : 0);
+    }
 
     public ngOnChanges(changes: SimpleChanges): void {
         if (changes['sessions'] || changes['showDuration']) {
