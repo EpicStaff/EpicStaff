@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
             model_name="graphragdocument",
             name="status",
             field=models.CharField(
-                choices=[("new", "New"), ("indexed", "Indexed")], default="new", max_length=20
+                choices=[("new", "New"), ("completed", "Completed")], default="new", max_length=20
             ),
         ),
     ]
