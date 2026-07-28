@@ -12,6 +12,7 @@ from django.test import override_settings
 from django.urls import re_path
 
 from tables.models import Graph
+from tables.models.rbac_models import OrganizationUser
 
 from tables.graph_collab import graph_state_service as _gss_module
 from tables.graph_collab import lock_service as _ls_module
@@ -80,33 +81,42 @@ def channel_layer_settings():
 
 
 @pytest.fixture
-def test_graph(db):
-    return Graph.objects.create(name="test-graph-collab")
+def test_graph(default_org):
+    return Graph.objects.create(name="test-graph-collab", org=default_org)
 
 
 @pytest.fixture
-def test_user(db):
+def test_user(db, default_org, org_admin_role):
+    """A member of `default_org` with Org Admin rights (flows UPDATE), so the
+    consumer's org-membership + FLOWS.UPDATE gate in connect() lets it in on
+    `test_graph`/`second_graph`, both seeded in `default_org`."""
     User = get_user_model()
-    return User.objects.create_user(
+    user = User.objects.create_user(
         email="collab@example.com",
         password="TestPass123!",
         display_name="Collab User",
     )
+    OrganizationUser.objects.create(user=user, org=default_org, role=org_admin_role)
+    return user
 
 
 @pytest.fixture
-def second_user(db):
+def second_user(db, default_org, org_admin_role):
+    """A second member of `default_org` with Org Admin rights, mirroring
+    `test_user` — used by multi-connection tests on the same graph."""
     User = get_user_model()
-    return User.objects.create_user(
+    user = User.objects.create_user(
         email="collab2@example.com",
         password="TestPass123!",
         display_name="Second User",
     )
+    OrganizationUser.objects.create(user=user, org=default_org, role=org_admin_role)
+    return user
 
 
 @pytest.fixture
-def second_graph(db):
-    return Graph.objects.create(name="test-graph-collab-2")
+def second_graph(default_org):
+    return Graph.objects.create(name="test-graph-collab-2", org=default_org)
 
 
 @pytest.fixture
@@ -161,7 +171,7 @@ def patch_graph_state_redis(fake_async_redis, monkeypatch):
 
 
 @pytest.fixture
-def auth_client(api_client, regular_user):
+def auth_client(api_client, regular_user, default_org):
     """
     Override the global auth_client for graph_collab tests.
     GraphViewSet does not declare authentication_classes, so it inherits the
@@ -169,8 +179,17 @@ def auth_client(api_client, regular_user):
     credentials() headers are never processed and request.user stays
     AnonymousUser. force_authenticate bypasses the auth middleware entirely
     and sets request.user directly, which is what these tests need.
+
+    Also sends the active-org header: GraphViewSet is org-scoped and
+    resolves the active org via OrgContextService, which requires either a
+    URL org_id kwarg or the X-Organization-Id header — omitting it fails
+    org-scoped requests (e.g. PUT/PATCH in test_graph_saved_notifications.py)
+    with 400 org_context_required. regular_user is an Org Admin member of
+    default_org, matching the shared `graph` fixture (tests/fixtures.py) and
+    this file's own `test_graph`/`second_graph`, both created in default_org.
     """
     api_client.force_authenticate(user=regular_user)
+    api_client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
     return api_client
 
 

@@ -125,3 +125,23 @@ def password_zip():
 @pytest.fixture
 def api_client():
     return APIClient()
+
+
+@pytest.fixture
+def auth_client(api_client, regular_user, default_org) -> APIClient:
+    """Override the global `auth_client` for storage tests.
+
+    `StorageAPIView` declares no `authentication_classes` of its own, and
+    test settings clear `DEFAULT_AUTHENTICATION_CLASSES` — so a Bearer token
+    is never processed and `request.user` stays `AnonymousUser` (same gap
+    `tests/graph_collab/conftest.py` documents and works around for its own
+    `auth_client`). `force_authenticate` bypasses authentication entirely.
+
+    Uses the shared `regular_user`/`default_org` (not this module's own
+    `org`/`org_user`, which back the lower-level backend/manager unit tests)
+    because `test_storage_views.py` looks up the seeded "Default
+    Organization" by name and creates graphs against it.
+    """
+    api_client.force_authenticate(user=regular_user)
+    api_client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+    return api_client
