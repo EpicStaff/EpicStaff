@@ -149,15 +149,24 @@ def auth_client(api_client, regular_user, default_org) -> APIClient:
 
 @pytest.fixture
 def superadmin_auth_client(api_client, superadmin_user, default_org) -> APIClient:
-    """Authenticated client for the cross-org transfer path (superadmin-only).
+    """Authenticated client for paths that require superadmin privileges.
 
     Same `force_authenticate` workaround as `auth_client` above — `StorageAPIView`
     has no `authentication_classes` of its own, and test settings clear
     `DEFAULT_AUTHENTICATION_CLASSES`, so a Bearer token is never processed and
-    `request.user` stays `AnonymousUser`. On top of that, `_assert_cross_org_superadmin`
-    (`tables/views/storage_views.py:79`) gates cross-org move/copy behind
-    `request.user.is_superadmin`, so tests exercising that path need the shared
-    `superadmin_user` fixture rather than `regular_user`.
+    `request.user` stays `AnonymousUser`. `force_authenticate` bypasses
+    authentication entirely by setting `request.user` directly.
+
+    Two independent reasons tests need superadmin here rather than `regular_user`:
+
+    - `_assert_cross_org_superadmin` (`tables/views/storage_views.py:79`) gates
+      cross-org move/copy behind `request.user.is_superadmin`.
+    - `StorageAPIView` also requires FILES resource permission via
+      `HasOrgPermission`, but FILES is not yet part of the built-in role
+      permission seed (pre-existing gap, out of scope here; see
+      `test_storage_views.py`'s pre-existing failures). Superadmin bypasses
+      that permission check while the active-org header still drives
+      `get_active_org_id()`.
     """
     api_client.force_authenticate(user=superadmin_user)
     api_client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
