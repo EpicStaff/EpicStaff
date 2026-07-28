@@ -39,6 +39,7 @@ DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes", "on")
 SECRET_KEY = os.getenv("SECRET_KEY") or (
     "321567143216717121" if DEBUG else get_random_secret_key()
 )
+SECRET_KEY_IS_EXPLICIT = bool(os.getenv("SECRET_KEY"))
 
 ALLOWED_HOSTS = [
     "*",  # host.strip() for host in os.getenv("ALLOWED_HOSTS", "0.0.0.0, 127.0.0.1").split(",")

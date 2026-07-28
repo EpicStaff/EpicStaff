@@ -31,7 +31,7 @@ drf-spectacular = "^0.29.0"
 apscheduler = "^3.10.4"
 channels = "^4.1"
 channels-redis = "^4.3.0"
-
+cryptography = "^46.0.3"
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
