@@ -3,14 +3,12 @@ from domain.ports.i_chat_mode_controller import IChatModeController
 from domain.ports.i_redis_messaging_service import IRedisMessagingService
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
 from src.shared.models import (
-    ConfiguredToolData,
     PythonCodeToolData,
     RealtimeAgentChatData,
 )
 from tool_executors.stop_agent_tool_executor import StopAgentToolExecutor
 from utils.singleton_meta import SingletonMeta
 from tool_executors import (
-    ConfiguredToolExecutor,
     PythonCodeToolExecutor,
     KnowledgeSearchToolExecutor,
     BaseToolExecutor,
@@ -76,14 +74,7 @@ class ToolManagerService(metaclass=SingletonMeta):
 
         for base_tool_data in realtime_agent_chat_data.tools:
             tool_data = base_tool_data.data
-            if isinstance(tool_data, ConfiguredToolData):
-                tool_executor = ConfiguredToolExecutor(
-                    configured_tool_data=tool_data,
-                    host=self.manager_host,
-                    port=self.manager_port,
-                )
-
-            elif isinstance(tool_data, PythonCodeToolData):
+            if isinstance(tool_data, PythonCodeToolData):
                 tool_executor = PythonCodeToolExecutor(
                     python_code_tool_data=tool_data,
                     python_code_executor_service=self.python_code_executor_service,
