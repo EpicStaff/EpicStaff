@@ -6,8 +6,7 @@
             [(searchTerm)]="searchTerm"
         />
         <span class="count-label"
-            >{{ keys().length }} of {{ this.totalApiKeysCount }}
-            {{ this.totalApiKeysCount === 1 ? 'key' : 'keys' }}</span
+            >{{ keys().length }} of {{ totalApiKeysCount() }} {{ totalApiKeysCount() === 1 ? 'key' : 'keys' }}</span
         >
     </div>
 

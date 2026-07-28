@@ -123,8 +123,8 @@ export class ProfileService {
         return this.http.get<GetMyApiKeyResponse[]>(`${this.baseUrl}api-keys/`);
     }
 
-    revokeApiKey(id: number): Observable<GetMyApiKeyResponse[]> {
-        return this.http.post<GetMyApiKeyResponse[]>(`${this.baseUrl}api-keys/${id}/revoke/`, {});
+    revokeApiKey(id: number): Observable<GetMyApiKeyResponse> {
+        return this.http.post<GetMyApiKeyResponse>(`${this.baseUrl}api-keys/${id}/revoke/`, {});
     }
 
     deleteApiKey(id: number): Observable<void> {

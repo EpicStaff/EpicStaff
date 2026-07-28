@@ -119,8 +119,9 @@ export class ProfileApiKeysTabComponent implements OnInit {
 
     onRevokeKey(row: TableRow): void {
         const id = row['id'] as number;
+        const name = row['name'] as string;
         this.confirmation
-            .confirm(getProfileRevokeConfirmationData(row['name'] as string))
+            .confirm(getProfileRevokeConfirmationData(name))
             .pipe(
                 switchMap((confirmed) => (confirmed === true ? this.currentUserService.revokeApiKey(id) : EMPTY)),
                 takeUntilDestroyed(this.destroyRef)

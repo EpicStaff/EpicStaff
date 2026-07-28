@@ -24,12 +24,12 @@
         }
         <app-button
             type="outline-secondary"
-            [leftIcon]="isCopied ? 'check' : 'copy'"
+            [leftIcon]="isCopied() ? 'check' : 'copy'"
             iconSize="12px"
             mod="small"
             (click)="onCopy()"
         >
-            {{ isCopied ? 'Copied' : 'Copy' }}
+            {{ isCopied() ? 'Copied' : 'Copy' }}
         </app-button>
     </div>
 </div>

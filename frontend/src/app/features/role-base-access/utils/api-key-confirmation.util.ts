@@ -6,15 +6,19 @@ export interface BulkApiKeyItem {
     status: ApiKeyStatus;
 }
 
+function escapeHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function keyListHtml(items: BulkApiKeyItem[]): string {
-    return `<ul>${items.map((k) => `<li>• ${k.name}</li>`).join('')}</ul>`;
+    return `<ul>${items.map((k) => `<li>• ${escapeHtml(k.name)}</li>`).join('')}</ul>`;
 }
 
 /** Single-key revoke — admin view (cross-org messaging). */
 export function getAdminRevokeConfirmationData(keyName: string): ConfirmationDialogData {
     return {
         title: 'Revoke key',
-        message: `The key <strong>${keyName}</strong> will stop working immediately across <strong>all organizations</strong>. The record will remain in the list for audit purposes.`,
+        message: `The key <strong>${escapeHtml(keyName)}</strong> will stop working immediately across <strong>all organizations</strong>. The record will remain in the list for audit purposes.`,
         type: 'danger',
         confirmText: 'Revoke',
         cancelText: 'Cancel',
@@ -25,7 +29,7 @@ export function getAdminRevokeConfirmationData(keyName: string): ConfirmationDia
 export function getAdminDeleteConfirmationData(ownerName: string): ConfirmationDialogData {
     return {
         title: 'Delete key',
-        message: `This key belongs to <strong>${ownerName}</strong>. Deleting it will immediately disable it in <strong>all organizations</strong> this user belongs to.`,
+        message: `This key belongs to <strong>${escapeHtml(ownerName)}</strong>. Deleting it will immediately disable it in <strong>all organizations</strong> this user belongs to.`,
         type: 'danger',
         confirmText: 'Delete',
         cancelText: 'Cancel',
@@ -36,7 +40,7 @@ export function getAdminDeleteConfirmationData(ownerName: string): ConfirmationD
 export function getProfileRevokeConfirmationData(keyName: string): ConfirmationDialogData {
     return {
         title: 'Revoke this API key?',
-        message: `The "${keyName}" API key will be revoked immediately and can no longer be used to authenticate.`,
+        message: `The "${escapeHtml(keyName)}" API key will be revoked immediately and can no longer be used to authenticate.`,
         caution: 'Any client or integration currently using this key will lose access.',
         type: 'danger',
         confirmText: 'Revoke',
@@ -48,7 +52,7 @@ export function getProfileRevokeConfirmationData(keyName: string): ConfirmationD
 export function getProfileDeleteConfirmationData(keyName: string, isActive: boolean): ConfirmationDialogData {
     return {
         title: 'Delete this API key?',
-        message: `The "${keyName}" API key will be permanently deleted. This action cannot be undone.`,
+        message: `The "${escapeHtml(keyName)}" API key will be permanently deleted. This action cannot be undone.`,
         caution: isActive ? 'This key is still active — any client currently using it will lose access.' : undefined,
         type: isActive ? 'danger' : 'info',
         confirmText: 'Delete',

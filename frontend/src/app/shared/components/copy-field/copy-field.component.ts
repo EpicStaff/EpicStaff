@@ -25,7 +25,7 @@ export class CopyFieldComponent {
     readonly hidden = input<boolean>(false);
 
     readonly onCopied = output<void>();
-    protected isCopied = false;
+    protected readonly isCopied = signal(false);
 
     protected readonly isMasked = signal(false);
 
@@ -51,7 +51,7 @@ export class CopyFieldComponent {
         }
         navigator.clipboard.writeText(value).then(
             () => {
-                this.isCopied = true;
+                this.isCopied.set(true);
                 this.toast.info('Copied to clipboard');
                 this.onCopied.emit();
             },
