@@ -17,7 +17,7 @@ import {
 } from '@shared/components';
 import { ApiKeyStatus, GetApiKeyWithOwnerResponse } from '@shared/models';
 import { getRelativeTime } from '@shared/utils';
-import { combineLatest, debounceTime, distinctUntilChanged, EMPTY, forkJoin, switchMap } from 'rxjs';
+import { combineLatest, debounceTime, distinctUntilChanged, EMPTY, forkJoin, map, of, switchMap } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
@@ -252,18 +252,25 @@ export class ApiKeysTabComponent {
                 switchMap((confirmed) => {
                     if (confirmed !== true) return EMPTY;
                     this.isBulkLoading.set(true);
-                    return forkJoin(activeRows.map((r) => this.apiKeysService.revokeApiKey(r['id'] as number)));
+                    return forkJoin(
+                        activeRows.map((r) =>
+                            this.apiKeysService.revokeApiKey(r['id'] as number).pipe(
+                                map(() => true),
+                                catchError(() => of(false))
+                            )
+                        )
+                    );
                 }),
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => this.isBulkLoading.set(false))
             )
-            .subscribe({
-                next: () => {
-                    if (isSomeRevoked) this.toast.info('Some selected keys were already revoked');
-                    this.toast.success(`${count} ${count === 1 ? 'key' : 'keys'} revoked`);
-                    this.loadApiKeys();
-                },
-                error: (err) => this.toast.error(err.error?.message ?? 'Failed to revoke keys'),
+            .subscribe((results) => {
+                const failed = results.filter((ok) => !ok).length;
+                const succeeded = count - failed;
+                if (isSomeRevoked) this.toast.info('Some selected keys were already revoked');
+                if (succeeded > 0) this.toast.success(`${succeeded} ${succeeded === 1 ? 'key' : 'keys'} revoked`);
+                if (failed > 0) this.toast.error(`${failed} ${failed === 1 ? 'key' : 'keys'} failed to revoke`);
+                this.loadApiKeys();
             });
     }
 
@@ -280,17 +287,24 @@ export class ApiKeysTabComponent {
                 switchMap((confirmed) => {
                     if (confirmed !== true) return EMPTY;
                     this.isBulkLoading.set(true);
-                    return forkJoin(rows.map((r) => this.apiKeysService.deleteApiKey(r['id'] as number)));
+                    return forkJoin(
+                        rows.map((r) =>
+                            this.apiKeysService.deleteApiKey(r['id'] as number).pipe(
+                                map(() => true),
+                                catchError(() => of(false))
+                            )
+                        )
+                    );
                 }),
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => this.isBulkLoading.set(false))
             )
-            .subscribe({
-                next: () => {
-                    this.toast.success(`${count} ${count === 1 ? 'key' : 'keys'} deleted`);
-                    this.loadApiKeys();
-                },
-                error: (err) => this.toast.error(err.error?.message ?? 'Failed to delete keys'),
+            .subscribe((results) => {
+                const failed = results.filter((ok) => !ok).length;
+                const succeeded = count - failed;
+                if (succeeded > 0) this.toast.success(`${succeeded} ${succeeded === 1 ? 'key' : 'keys'} deleted`);
+                if (failed > 0) this.toast.error(`${failed} ${failed === 1 ? 'key' : 'keys'} failed to delete`);
+                this.loadApiKeys();
             });
     }
 
