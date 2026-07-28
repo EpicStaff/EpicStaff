@@ -12,6 +12,7 @@ from .naive_rag_models import (
     NaiveRagEmbedding,
     AgentNaiveRag,
     NaiveRagSearchConfig,
+    KnowledgeNodeNaiveRagSearchConfig,
     NaiveRagPreviewChunk,
 )
 
@@ -23,6 +24,8 @@ from .graphrag_models import (
     GraphRagChunkStrategyType,
     GraphRagIndexConfig,
     GraphRagBasicSearchConfig,
+    KnowledgeNodeGraphRagBasicSearchConfig,
+    KnowledgeNodeGraphRagLocalSearchConfig,
     GraphRagLocalSearchConfig,
 )
 
@@ -39,6 +42,7 @@ __all__ = [
     "NaiveRagEmbedding",
     "AgentNaiveRag",
     "NaiveRagSearchConfig",
+    "KnowledgeNodeNaiveRagSearchConfig",
     "NaiveRagPreviewChunk",
     # Graph RAG models
     "GraphRag",
@@ -49,4 +53,6 @@ __all__ = [
     "GraphRagIndexConfig",
     "GraphRagBasicSearchConfig",
     "GraphRagLocalSearchConfig",
+    "KnowledgeNodeGraphRagLocalSearchConfig",
+    "KnowledgeNodeGraphRagBasicSearchConfig",
 ]

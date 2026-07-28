@@ -322,8 +322,14 @@ class NaiveRagSearchConfig(NaiveRagSearchConfigBase):
         help_text="Agent this search configuration belongs to",
     )
 
+
+class KnowledgeNodeNaiveRagSearchConfig(NaiveRagSearchConfigBase):
+    knowledge_node = models.OneToOneField(
+        "KnowledgeNode", on_delete=models.CASCADE, related_name="naive_search_config"
+    )
+
     class Meta:
-        db_table = "tables_naiveragsearchconfig"  # pin
+        db_table = "knowledge_node_naive_search_config"
 
 
 class NaiveRagPreviewChunk(models.Model):

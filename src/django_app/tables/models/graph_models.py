@@ -18,6 +18,7 @@ from tables.models.base_models import (
 from tables.models.label_models import Label
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 from tables.exceptions import GraphSaveVersionConflictError
+from tables.models.knowledge_models.graphrag_models import AgentGraphRag
 
 
 class GraphManager(models.Manager):
@@ -157,6 +158,26 @@ class PythonNode(BaseNode):
 
         data_string = json.dumps(data, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(data_string).hexdigest()
+
+
+class KnowledgeNode(BaseNode):
+    graph = models.ForeignKey(
+        "Graph", on_delete=models.CASCADE, related_name="knowledge_node_list"
+    )
+    source_collection = models.ForeignKey(
+        "SourceCollection", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    rag_type = models.ForeignKey(
+        "BaseRagType", on_delete=models.SET_NULL, null=True, blank=True
+    )
+    query = models.TextField(blank=True, default="")
+    search_method = models.CharField(
+        max_length=10,
+        choices=AgentGraphRag.SearchMethod.choices,
+        null=True,
+        blank=True,
+        default=None,
+    )
 
 
 class FileExtractorNode(BaseNode):

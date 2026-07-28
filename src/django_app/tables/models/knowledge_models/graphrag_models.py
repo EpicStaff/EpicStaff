@@ -331,31 +331,32 @@ class GraphRagLocalSearchConfig(GraphRagLocalSearchConfigBase):
     )
 
     class Meta:
-        class NaiveRagSearchConfig(models.Model):
-            agent = models.OneToOneField(
-                "Agent",
-                on_delete=models.CASCADE,
-                related_name="naive_search_config",  # Access via: agent.naive_search_config
-                help_text="Agent this search configuration belongs to",
-            )
-
-            search_limit = models.PositiveIntegerField(
-                default=3,
-                blank=True,
-                help_text="Integer between 0 and 1000 for knowledge",
-            )
-            similarity_threshold = models.DecimalField(
-                max_digits=3,
-                decimal_places=2,
-                default=0.2,
-                blank=True,
-                help_text="Float between 0.00 and 1.00 for knowledge",
-            )
-
         db_table = "graph_rag_local_search_config"
 
     def __str__(self):
         return f"GraphRagLocalSearchConfig({self.pk})"
+
+
+class KnowledgeNodeGraphRagBasicSearchConfig(GraphRagBasicSearchConfigBase):
+    knowledge_node = models.OneToOneField(
+        "KnowledgeNode",
+        on_delete=models.CASCADE,
+        related_name="graph_basic_search_config",
+    )
+
+    class Meta:
+        db_table = "knowledge_node_graph_basic_search_config"
+
+
+class KnowledgeNodeGraphRagLocalSearchConfig(GraphRagLocalSearchConfigBase):
+    knowledge_node = models.OneToOneField(
+        "KnowledgeNode",
+        on_delete=models.CASCADE,
+        related_name="graph_local_search_config",
+    )
+
+    class Meta:
+        db_table = "knowledge_node_graph_local_search_config"
 
 
 # class GraphRagGlobalSearchConfig(models.Model):
