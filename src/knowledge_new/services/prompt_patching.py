@@ -4,7 +4,7 @@ import graphrag.query.structured_search.drift_search.drift_context as _drift
 import graphrag.query.structured_search.global_search.search as _global
 import graphrag.query.structured_search.local_search.search as _local
 
-_GROUNDING = """
+GROUNDING_PROMPT_PATCH = """
 
 ---Data Grounding Rules---
 
@@ -18,7 +18,7 @@ that the available documents do not cover this topic.
 
 ---End of Data Grounding Rules---"""
 
-_DRIFT_LENGTH_OVERRIDE = """
+DRIFT_LENGTH_LIMIT_PROMPT_PATCH = """
 
 ---Response Length Override---
 
@@ -27,23 +27,25 @@ Make it as complete as the available data allows; do not truncate or pad to a fi
 
 ---End of Response Length Override---"""
 
-_applied = False
+_is_patched = False
 
 
-def apply_prompt_grounding() -> None:
-    global _applied
-    if _applied:
+def patch_graphrag_prompts() -> None:
+    global _is_patched
+    if _is_patched:
         return
-    _applied = True
+    _is_patched = True
 
-    _basic.BASIC_SEARCH_SYSTEM_PROMPT += _GROUNDING
-    _local.LOCAL_SEARCH_SYSTEM_PROMPT += _GROUNDING
-    _global.MAP_SYSTEM_PROMPT += _GROUNDING
-    _global.REDUCE_SYSTEM_PROMPT += _GROUNDING
-    _drift.DRIFT_LOCAL_SYSTEM_PROMPT += _GROUNDING + _DRIFT_LENGTH_OVERRIDE
-    _drift.DRIFT_REDUCE_PROMPT += _GROUNDING
+    _basic.BASIC_SEARCH_SYSTEM_PROMPT += GROUNDING_PROMPT_PATCH
+    _local.LOCAL_SEARCH_SYSTEM_PROMPT += GROUNDING_PROMPT_PATCH
+    _global.MAP_SYSTEM_PROMPT += GROUNDING_PROMPT_PATCH
+    _global.REDUCE_SYSTEM_PROMPT += GROUNDING_PROMPT_PATCH
+    _drift.DRIFT_LOCAL_SYSTEM_PROMPT += (
+        GROUNDING_PROMPT_PATCH + DRIFT_LENGTH_LIMIT_PROMPT_PATCH
+    )
+    _drift.DRIFT_REDUCE_PROMPT += GROUNDING_PROMPT_PATCH
 
     def _load_search_prompt(prompt_config: str | None) -> str | None:
-        return (prompt_config + _GROUNDING) if prompt_config else None
+        return (prompt_config + GROUNDING_PROMPT_PATCH) if prompt_config else None
 
     _query.load_search_prompt = _load_search_prompt
