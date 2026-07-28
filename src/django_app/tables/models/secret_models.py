@@ -8,9 +8,9 @@ from .base_models import MetadataMixin, TimestampMixin
 class Secret(OrgScopedModel, TimestampMixin, MetadataMixin):
     """A named, reversibly-encrypted credential owned by one organization.
 
-    `value` holds a Fernet ciphertext, never plaintext. Plaintext is produced
-    only by SecretCipher.open() (tables/services/secrets/cipher.py) — this
-    model stores data only.
+    `value` holds a Fernet encryptedtext, never the plain text. The plain text
+    is produced only by SecretEncryption.decrypt() (tables/services/secrets/
+    encryption.py) — this model stores data only.
     """
 
     name = models.CharField(max_length=128)

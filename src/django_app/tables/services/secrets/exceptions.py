@@ -2,9 +2,9 @@ from tables.exceptions import CustomAPIExeption
 
 
 class SecretDecryptionError(CustomAPIExeption):
-    """Raised by SecretCipher.open() when a ciphertext cannot be decrypted
-    under the current key: tampered, truncated, or sealed under a different
-    key than the one currently derived from SECRET_KEY."""
+    """Raised by SecretEncryption.decrypt() when an encryptedtext cannot be
+    decrypted under the current key: tampered, truncated, or encrypted under a
+    different key than the one currently derived from SECRET_KEY."""
 
     status_code = 500
     default_detail = "Secret value could not be decrypted."
@@ -12,7 +12,7 @@ class SecretDecryptionError(CustomAPIExeption):
 
 
 class SecretTooLargeError(CustomAPIExeption):
-    """Raised by SecretCipher.seal() when the plaintext exceeds MAX_PLAINTEXT_BYTES."""
+    """Raised by SecretEncryption.encrypt() when the text exceeds MAX_TEXT_BYTES."""
 
     status_code = 400
     default_detail = "Secret value is too large."

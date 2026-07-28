@@ -3,7 +3,7 @@ from django.db import IntegrityError, transaction
 
 from tables.models import Secret
 from tables.models.rbac_models import Organization
-from tables.services.secrets import secret_cipher
+from tables.services.secrets import secret_encryption
 
 
 @pytest.mark.django_db
@@ -55,11 +55,11 @@ def test_metadata_defaults_to_empty_dict(default_org):
 
 @pytest.mark.django_db
 def test_seal_and_persist_round_trips_through_the_database(default_org):
-    plaintext = "sk-live-51H8xJ2eZvKYlo2C0X9F3q7R"
+    text = "sk-live-51H8xJ2eZvKYlo2C0X9F3q7R"
     secret = Secret(name="ROUND_TRIP", org=default_org)
-    secret_cipher.seal(plaintext=plaintext).write_to(secret)
+    secret_encryption.encrypt(text=text).write_to(secret)
     secret.save()
 
     reloaded = Secret.objects.get(pk=secret.pk)
-    assert secret_cipher.open(ciphertext=reloaded.value) == plaintext
-    assert reloaded.tail == plaintext[-4:]
+    assert secret_encryption.decrypt(encryptedtext=reloaded.value) == text
+    assert reloaded.tail == text[-4:]

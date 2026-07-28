@@ -1,8 +1,8 @@
-from tables.services.secrets.cipher import (
-    MAX_PLAINTEXT_BYTES,
+from tables.services.secrets.encryption import (
+    MAX_TEXT_BYTES,
     SealedValue,
-    SecretCipher,
-    secret_cipher,
+    SecretEncryption,
+    secret_encryption,
 )
 from tables.services.secrets.exceptions import (
     SecretDecryptionError,
@@ -10,10 +10,10 @@ from tables.services.secrets.exceptions import (
 )
 
 __all__ = [
-    "MAX_PLAINTEXT_BYTES",
+    "MAX_TEXT_BYTES",
     "SealedValue",
-    "SecretCipher",
-    "secret_cipher",
+    "SecretEncryption",
+    "secret_encryption",
     "SecretDecryptionError",
     "SecretTooLargeError",
 ]
