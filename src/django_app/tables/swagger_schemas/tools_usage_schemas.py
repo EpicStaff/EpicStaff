@@ -6,16 +6,16 @@ TOOLS_USAGE_GET = dict(
     summary="Tools usage aggregation",
     description=(
         "Returns raw usage counts for every tool visible to the active org, "
-        "across all three tool kinds (registered/configured, python-code, mcp). "
+        "across both tool kinds (python-code, mcp). "
         "For each tool: `projects_count` (distinct Crews/Projects with a "
         "Task using the tool — derived from Task-level tool usage, not "
         "Agent membership), `staff_count` "
         "(distinct Agents referencing the tool), and `is_built_in` (EST-3277) "
-        "so the FE can gate orphan-highlighting on `!is_built_in` — registered "
-        "tools are always `is_built_in=true`, MCP tools are always "
-        "`is_built_in=false`, and python-code tools reflect their own "
-        "`built_in` flag. Does not exclude built-in or orphaned rows itself "
-        "and does not return reference detail lists (EST-3270) — counts only."
+        "so the FE can gate orphan-highlighting on `!is_built_in` — MCP tools "
+        "are always `is_built_in=false`, and python-code tools reflect their "
+        "own `built_in` flag. Does not exclude built-in or orphaned rows "
+        "itself and does not return reference detail lists (EST-3270) — "
+        "counts only."
     ),
     parameters=[
         OpenApiParameter(
@@ -25,7 +25,7 @@ TOOLS_USAGE_GET = dict(
             required=False,
             description=(
                 "Optional comma-separated list of `unique_name`s "
-                "(`<prefix>:<id>`, e.g. `configured-tool:5,mcp-tool:7`) to "
+                "(`<prefix>:<id>`, e.g. `python-code-tool:12,mcp-tool:7`) to "
                 "scope the response to only those tools, e.g. after the FE "
                 "paginates its own tools list. Omitted returns all rows for "
                 "the active org (default, backward-compatible behavior). "
@@ -41,12 +41,6 @@ TOOLS_USAGE_GET = dict(
                 OpenApiExample(
                     "Usage counts",
                     value=[
-                        {
-                            "unique_name": "configured-tool:5",
-                            "projects_count": 2,
-                            "staff_count": 3,
-                            "is_built_in": True,
-                        },
                         {
                             "unique_name": "python-code-tool:12",
                             "projects_count": 0,
@@ -78,7 +72,7 @@ TOOLS_USAGE_DETAIL_GET = dict(
     description=(
         "Returns the actual referencing Projects (Graphs) and Staff (Agents) "
         "for a single tool, identified by `unique_name` "
-        "(`<prefix>:<id>`, prefix one of `configured-tool`, "
+        "(`<prefix>:<id>`, prefix one of "
         "`python-code-tool`, `mcp-tool`) — the same agent/graph traversal as "
         "`/tools/usage/` but returning ids + names instead of counts. "
         "Does not exclude built-in tools (EST-3277)."
@@ -89,7 +83,7 @@ TOOLS_USAGE_DETAIL_GET = dict(
             type=str,
             location=OpenApiParameter.QUERY,
             required=True,
-            description="`<prefix>:<id>`, e.g. `configured-tool:5`.",
+            description="`<prefix>:<id>`, e.g. `mcp-tool:5`.",
         ),
     ],
     responses={

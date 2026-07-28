@@ -3,18 +3,14 @@ from rest_framework.test import APIClient
 
 from tables.models.crew_models import (
     Agent,
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
     Crew,
     Task,
-    TaskConfiguredTools,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
     TaskPythonCodeTools,
-    Tool,
-    ToolConfig,
 )
 from tables.models.graph_models import CrewNode, Graph
 from tables.models.mcp_models import McpTool
@@ -62,18 +58,11 @@ def client_a(member_a, org_a):
 
 
 @pytest.fixture
-def registered_tool() -> Tool:
-    return Tool.objects.create(name="Wikipedia", name_alias="wikipedia", description="d")
-
-
-@pytest.fixture
-def used_graph_setup(org_a, registered_tool):
-    """One agent using all 3 tool kinds, member of a Crew (the FE "Project").
+def used_graph_setup(org_a):
+    """One agent using both tool kinds, member of a Crew (the FE "Project").
     The Crew is also wired into a Graph via a CrewNode to make sure the lower
     Graph orchestration layer has no bearing on `projects_count` (EST-3207
     follow-up: "projects" means Crew, not Graph)."""
-    tool_config = ToolConfig.objects.create(name="cfg1", tool=registered_tool)
-
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     python_tool = PythonCodeTool.objects.create(
         name="PyTool", description="d", python_code=code, org=org_a
@@ -89,7 +78,6 @@ def used_graph_setup(org_a, registered_tool):
     agent = Agent.objects.create(
         role="agent", goal="goal", backstory="story", org=org_a
     )
-    AgentConfiguredTools.objects.create(agent=agent, toolconfig=tool_config)
     AgentPythonCodeTools.objects.create(agent=agent, pythoncodetool=python_tool)
     AgentMcpTools.objects.create(agent=agent, mcptool=mcp_tool)
 
@@ -106,7 +94,6 @@ def used_graph_setup(org_a, registered_tool):
         expected_output="result",
         order=1,
     )
-    TaskConfiguredTools.objects.create(task=task, tool=tool_config)
     TaskPythonCodeTools.objects.create(task=task, tool=python_tool)
     TaskMcpTools.objects.create(task=task, tool=mcp_tool)
 
@@ -114,7 +101,6 @@ def used_graph_setup(org_a, registered_tool):
     CrewNode.objects.create(crew=crew, graph=graph, node_name="crew_node1")
 
     return {
-        "registered_tool": registered_tool,
         "python_tool": python_tool,
         "mcp_tool": mcp_tool,
     }
@@ -137,16 +123,9 @@ def test_used_tools_have_correct_projects_and_staff_counts(client_a, used_graph_
     assert resp.status_code == 200
     rows = {row["unique_name"]: row for row in resp.data}
 
-    registered_tool = used_graph_setup["registered_tool"]
     python_tool = used_graph_setup["python_tool"]
     mcp_tool = used_graph_setup["mcp_tool"]
 
-    assert rows[f"configured-tool:{registered_tool.id}"] == {
-        "unique_name": f"configured-tool:{registered_tool.id}",
-        "projects_count": 1,
-        "staff_count": 1,
-        "is_built_in": True,
-    }
     assert rows[f"python-code-tool:{python_tool.id}"] == {
         "unique_name": f"python-code-tool:{python_tool.id}",
         "projects_count": 1,
@@ -177,16 +156,6 @@ def test_unused_tool_has_zero_counts(client_a, unused_python_tool):
 
 
 @pytest.mark.django_db
-def test_registered_tool_always_included_even_with_no_org_scope(
-    client_a, registered_tool
-):
-    resp = client_a.get("/api/tools/usage/")
-    assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
-    assert f"configured-tool:{registered_tool.id}" in rows
-
-
-@pytest.mark.django_db
 def test_cross_org_python_tool_not_visible(client_a, org_b):
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     foreign_tool = PythonCodeTool.objects.create(
@@ -212,36 +181,6 @@ def test_cross_org_mcp_tool_not_visible(client_a, org_b):
     assert resp.status_code == 200
     unique_names = {row["unique_name"] for row in resp.data}
     assert f"mcp-tool:{foreign_tool.id}" not in unique_names
-
-
-@pytest.mark.django_db
-def test_cross_org_agent_usage_not_counted_for_shared_registered_tool(
-    client_a, org_b, registered_tool
-):
-    """A registered Tool is global, but an org_b agent using it must not
-    inflate org_a's staff count, and an org_b Task using it must not inflate
-    org_a's projects count."""
-    tool_config = ToolConfig.objects.create(name="cfg-b", tool=registered_tool)
-    foreign_agent = Agent.objects.create(
-        role="agent", goal="goal", backstory="story", org=org_b
-    )
-    AgentConfiguredTools.objects.create(agent=foreign_agent, toolconfig=tool_config)
-
-    foreign_crew = Crew.objects.create(name="crew-b", org=org_b)
-    foreign_task = Task.objects.create(
-        name="task-b",
-        crew=foreign_crew,
-        instructions="do it",
-        expected_output="result",
-        order=1,
-    )
-    TaskConfiguredTools.objects.create(task=foreign_task, tool=tool_config)
-
-    resp = client_a.get("/api/tools/usage/")
-    assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
-    assert rows[f"configured-tool:{registered_tool.id}"]["staff_count"] == 0
-    assert rows[f"configured-tool:{registered_tool.id}"]["projects_count"] == 0
 
 
 @pytest.mark.django_db
@@ -283,14 +222,6 @@ def test_is_built_in_false_for_non_built_in_python_code_tool(
     rows = {row["unique_name"]: row for row in resp.data}
     key = f"python-code-tool:{unused_python_tool.id}"
     assert rows[key]["is_built_in"] is False
-
-
-@pytest.mark.django_db
-def test_is_built_in_true_for_registered_tool(client_a, registered_tool):
-    resp = client_a.get("/api/tools/usage/")
-    assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
-    assert rows[f"configured-tool:{registered_tool.id}"]["is_built_in"] is True
 
 
 @pytest.mark.django_db
@@ -461,23 +392,22 @@ def test_projects_count_reflects_crews_not_graphs(
 # (EST-3207 design fix — the bug this change fixes) ----
 
 
-
 # ---- `ids` query-param filter (EST-3207) ----
 
 
 @pytest.mark.django_db
 def test_ids_filter_returns_only_requested_rows(client_a, used_graph_setup):
-    registered_tool = used_graph_setup["registered_tool"]
+    python_tool = used_graph_setup["python_tool"]
     mcp_tool = used_graph_setup["mcp_tool"]
 
     resp = client_a.get(
         "/api/tools/usage/",
-        {"ids": f"configured-tool:{registered_tool.id},mcp-tool:{mcp_tool.id}"},
+        {"ids": f"python-code-tool:{python_tool.id},mcp-tool:{mcp_tool.id}"},
     )
     assert resp.status_code == 200
     unique_names = {row["unique_name"] for row in resp.data}
     assert unique_names == {
-        f"configured-tool:{registered_tool.id}",
+        f"python-code-tool:{python_tool.id}",
         f"mcp-tool:{mcp_tool.id}",
     }
 
@@ -491,13 +421,13 @@ def test_ids_omitted_preserves_full_list_behavior(client_a, used_graph_setup):
     assert {r["unique_name"] for r in resp_no_ids.data} == {
         r["unique_name"] for r in resp_with_ids_omitted.data
     }
-    # sanity: more than one row present (all 3 kinds), not accidentally scoped
-    assert len(resp_no_ids.data) >= 3
+    # sanity: more than one row present (both kinds), not accidentally scoped
+    assert len(resp_no_ids.data) >= 2
 
 
 @pytest.mark.django_db
 def test_ids_over_max_count_returns_400(client_a):
-    too_many = ",".join(f"configured-tool:{i}" for i in range(1, 202))
+    too_many = ",".join(f"mcp-tool:{i}" for i in range(1, 202))
     resp = client_a.get("/api/tools/usage/", {"ids": too_many})
     assert resp.status_code == 400
     assert "maximum 200 allowed, got 201" in str(resp.data)
@@ -505,19 +435,19 @@ def test_ids_over_max_count_returns_400(client_a):
 
 @pytest.mark.django_db
 def test_ids_malformed_missing_colon_returns_400(client_a):
-    resp = client_a.get("/api/tools/usage/", {"ids": "configured-tool5"})
+    resp = client_a.get("/api/tools/usage/", {"ids": "mcp-tool5"})
     assert resp.status_code == 400
 
 
 @pytest.mark.django_db
 def test_ids_malformed_empty_fragment_returns_400(client_a):
-    resp = client_a.get("/api/tools/usage/", {"ids": "configured-tool:5,,mcp-tool:1"})
+    resp = client_a.get("/api/tools/usage/", {"ids": "mcp-tool:5,,mcp-tool:1"})
     assert resp.status_code == 400
 
 
 @pytest.mark.django_db
 def test_ids_malformed_non_numeric_id_returns_400(client_a):
-    resp = client_a.get("/api/tools/usage/", {"ids": "configured-tool:abc"})
+    resp = client_a.get("/api/tools/usage/", {"ids": "mcp-tool:abc"})
     assert resp.status_code == 400
 
 

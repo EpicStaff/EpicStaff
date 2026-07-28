@@ -90,16 +90,11 @@ from tables.models import (
     SubGraphNode,
     Task,
     TaskContext,
-    TemplateAgent,
-    ToolConfig,
-    ToolConfigField,
 )
 from tables.models.crew_models import (
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeTools,
     AgentPythonCodeToolConfigs,
-    TaskConfiguredTools,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
     TaskPythonCodeTools,
@@ -453,19 +448,6 @@ class AgentViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
             to_attr="prefetched_python_code_tool_configs",
         ),
         Prefetch(
-            "configured_tools",
-            queryset=AgentConfiguredTools.objects.select_related(
-                "toolconfig__tool"
-            ).prefetch_related(
-                Prefetch(
-                    "toolconfig__tool__tool_fields",
-                    queryset=ToolConfigField.objects.all(),
-                    to_attr="prefetched_config_fields",
-                )
-            ),
-            to_attr="prefetched_configured_tools",
-        ),
-        Prefetch(
             "mcp_tools",
             queryset=AgentMcpTools.objects.select_related("mcptool"),
             to_attr="prefetched_mcp_tools",
@@ -655,10 +637,6 @@ class TaskReadWriteViewSet(OrgScopedChildViewSetMixin, ModelViewSet):
         Prefetch(
             "task_context_list",
             queryset=TaskContext.objects.select_related("context"),
-        ),
-        Prefetch(
-            "task_configured_tool_list",
-            queryset=TaskConfiguredTools.objects.select_related("tool__tool"),
         ),
         Prefetch(
             "task_mcp_tool_list",

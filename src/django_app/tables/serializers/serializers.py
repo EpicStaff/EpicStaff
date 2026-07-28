@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from tables.models.mcp_models import McpTool
-from tables.models.crew_models import ToolConfig
 from tables.models.python_models import PythonCodeTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models import PythonCode
@@ -75,7 +74,6 @@ class BaseToolSerializer(serializers.Serializer):
         from tables.serializers.model_serializers import (
             PythonCodeToolSerializer,
             McpToolSerializer,
-            ToolConfigSerializer,
             PythonCodeToolConfigSerializer,
         )
 
@@ -83,9 +81,6 @@ class BaseToolSerializer(serializers.Serializer):
         if isinstance(instance, PythonCodeTool):
             repr["unique_name"] = f"python-code-tool:{instance.pk}"
             repr["data"] = PythonCodeToolSerializer(instance).data
-        elif isinstance(instance, ToolConfig):
-            repr["unique_name"] = f"configured-tool:{instance.pk}"
-            repr["data"] = ToolConfigSerializer(instance).data
         elif isinstance(instance, McpTool):
             repr["unique_name"] = f"mcp-tool:{instance.pk}"
             repr["data"] = McpToolSerializer(instance).data

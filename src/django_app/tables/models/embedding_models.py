@@ -46,17 +46,6 @@ class EmbeddingConfig(OrgScopedModel, models.Model):
             ),
         ]
 
-    def delete(self, *args, **kwargs):
-        from tables.models import set_field_value_null_in_tool_configs
-        from tables.models import ToolConfigField
-
-        embedding_config_id = self.pk
-        super().delete(*args, **kwargs)
-        set_field_value_null_in_tool_configs(
-            field_type=ToolConfigField.FieldType.EMBEDDING_CONFIG,
-            value=embedding_config_id,
-        )
-
 
 class DefaultEmbeddingConfig(DefaultBaseModel):
     model = models.ForeignKey("EmbeddingModel", on_delete=models.SET_NULL, null=True)

@@ -1,8 +1,5 @@
 from django.db.models import Prefetch
 
-from tables.serializers.model_serializers.crew_serializers import (
-    ToolConfigSerializer,
-)
 from src.shared.models import (
     AgentData,
     AudioTranscriptionNodeData,
@@ -12,7 +9,6 @@ from src.shared.models import (
     ConditionalEdgeData,
     ConditionData,
     ConditionGroupData,
-    ConfiguredToolData,
     CrewData,
     CrewNodeData,
     DecisionTableNodeData,
@@ -38,7 +34,6 @@ from src.shared.models import (
     TaskData,
     TelegramTriggerNodeData,
     TelegramTriggerNodeFieldData,
-    ToolConfigData,
     WebhookTriggerNodeData,
 )
 
@@ -50,14 +45,11 @@ from tables.models import (
     PythonCode,
     PythonCodeTool,
     Task,
-    ToolConfig,
 )
 from tables.models.crew_models import (
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
-    TaskConfiguredTools,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
     TaskPythonCodeTools,
@@ -94,20 +86,12 @@ from tables.models.realtime_models import RealtimeAgentChat
 from tables.models.webhook_models import NgrokWebhookConfig
 from tables.validators.crew_memory_validator import CrewMemoryValidator
 from tables.validators.task_validator import TaskValidator
-from tables.validators.tool_config_validator import (
-    ToolConfigValidator,
-    validate_tool_configs,
-)
 from utils.graph_utils import (
     SINGLE_LOOKUP_RESOLVER,
     NodeNameResolver,
 )
 from utils.singleton_meta import SingletonMeta
 from tables.services.rag_assignment_service import SearchConfigService
-
-tool_config_serializer = ToolConfigSerializer(
-    ToolConfigValidator(validate_missing_reqired_fields=True, validate_null_fields=True)
-)
 from tables.models.embedding_models import EmbeddingConfig
 
 
@@ -208,10 +192,6 @@ class ConverterService(metaclass=SingletonMeta):
             .select_related("agent")
             .prefetch_related(
                 Prefetch(
-                    "task_configured_tool_list",
-                    queryset=TaskConfiguredTools.objects.select_related("tool__tool"),
-                ),
-                Prefetch(
                     "task_python_code_tool_list",
                     queryset=TaskPythonCodeTools.objects.select_related(
                         "tool__python_code"
@@ -287,12 +267,6 @@ class ConverterService(metaclass=SingletonMeta):
                     "python_code_tool_configs",
                     queryset=AgentPythonCodeToolConfigs.objects.select_related(
                         "pythoncodetoolconfig__tool__python_code"
-                    ),
-                ),
-                Prefetch(
-                    "configured_tools",
-                    queryset=AgentConfiguredTools.objects.select_related(
-                        "toolconfig__tool"
                     ),
                 ),
                 Prefetch(
@@ -390,10 +364,9 @@ class ConverterService(metaclass=SingletonMeta):
         python_tool_configs = [
             entry.pythoncodetoolconfig for entry in agent.python_code_tool_configs.all()
         ]
-        configured_tools = [entry.toolconfig for entry in agent.configured_tools.all()]
         mcp_tools = [entry.mcptool for entry in agent.mcp_tools.all()]
 
-        all_tools = python_tools + python_tool_configs + configured_tools + mcp_tools
+        all_tools = python_tools + python_tool_configs + mcp_tools
         return [
             self.convert_tool_to_base_tool_pydantic(
                 tool, graph_id=graph_id, session_id=session_id
@@ -408,8 +381,7 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
     ) -> list[BaseToolData]:
         tools = (
-            [entry.tool for entry in task.task_configured_tool_list.all()]
-            + [entry.tool for entry in task.task_python_code_tool_list.all()]
+            [entry.tool for entry in task.task_python_code_tool_list.all()]
             + [entry.tool for entry in task.task_python_code_tool_config_list.all()]
             + [entry.tool for entry in task.task_mcp_tool_list.all()]
         )
@@ -422,7 +394,7 @@ class ConverterService(metaclass=SingletonMeta):
 
     def convert_tool_to_base_tool_pydantic(
         self,
-        tool: PythonCodeTool | ToolConfig | McpTool | PythonCodeToolConfig,
+        tool: PythonCodeTool | McpTool | PythonCodeToolConfig,
         graph_id: int | None = None,
         session_id: int | None = None,
     ) -> BaseToolData:
@@ -436,9 +408,6 @@ class ConverterService(metaclass=SingletonMeta):
             data = self.convert_python_code_tool_config_to_pydantic(
                 tool, graph_id=graph_id, session_id=session_id
             )
-        elif isinstance(tool, ToolConfig):
-            unique_name = f"configured-tool:{tool.pk}"
-            data = self.convert_configured_tool_to_pydantic(tool)
         elif isinstance(tool, McpTool):
             unique_name = f"mcp-tool:{tool.pk}"
             data = self.convert_mcp_tool_to_pydantic(tool)
@@ -650,39 +619,6 @@ class ConverterService(metaclass=SingletonMeta):
             python_code=python_code_data,
         )
 
-    def convert_configured_tool_to_pydantic(
-        self, tool_config: ToolConfig
-    ) -> ConfiguredToolData:
-        data: dict = tool_config_serializer.to_representation(
-            tool_config, format="pydantic"
-        )
-        configuration = data["configuration"]
-
-        tool_llm_config_id = configuration.pop("llm_config", None)
-        llm_config = None
-        if tool_llm_config_id:
-            llm_config = LLMConfig.objects.get(
-                pk=tool_llm_config_id
-            ).fill_with_defaults()
-
-        tool_embedding_config_id = configuration.pop("embedding_config", None)
-
-        embedding_config = None
-        if tool_embedding_config_id:
-            embedding_config = EmbeddingConfig.objects.get(pk=tool_embedding_config_id)
-
-        tool_config_data = ToolConfigData(
-            id=tool_config.pk,
-            llm=self.convert_llm_config_to_pydantic(llm_config),
-            embedder=self.convert_embedding_config_to_pydantic(embedding_config),
-            tool_init_configuration=configuration,
-        )
-
-        return ConfiguredToolData(
-            name_alias=tool_config.tool.name_alias,
-            tool_config=tool_config_data,
-        )
-
     def convert_mcp_tool_to_pydantic(self, mcp_tool: McpTool) -> McpToolData:
         return McpToolData(
             transport=mcp_tool.transport,
@@ -891,7 +827,6 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
     ) -> CrewNodeData:
         crew: Crew = crew_node.crew
-        validate_tool_configs(crew)
         crew_data = self.convert_crew_to_pydantic(
             crew_id=crew.pk, graph_id=graph_id, session_id=session_id
         )

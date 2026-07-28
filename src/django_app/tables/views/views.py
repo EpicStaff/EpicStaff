@@ -11,7 +11,6 @@ from tables.models.graph_models import (
 )
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.utils.telegram_fields import load_telegram_trigger_fields
-from tables.models import Tool
 from tables.models import Crew
 from tables.models import Agent
 from tables.services.realtime_service import RealtimeService

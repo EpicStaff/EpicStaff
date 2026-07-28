@@ -3,18 +3,14 @@ from rest_framework.test import APIClient
 
 from tables.models.crew_models import (
     Agent,
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
     Crew,
     Task,
-    TaskConfiguredTools,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
     TaskPythonCodeTools,
-    Tool,
-    ToolConfig,
 )
 from tables.models.graph_models import CrewNode, Graph
 from tables.models.mcp_models import McpTool
@@ -62,19 +58,12 @@ def client_a(member_a, org_a):
 
 
 @pytest.fixture
-def registered_tool() -> Tool:
-    return Tool.objects.create(name="Wikipedia", name_alias="wikipedia", description="d")
-
-
-@pytest.fixture
-def used_graph_setup(org_a, registered_tool):
-    """One agent using all 3 tool kinds, member of a named Crew (the FE
+def used_graph_setup(org_a):
+    """One agent using both tool kinds, member of a named Crew (the FE
     "Project"), so project/staff detail can be asserted by name. The Crew is
     also wired into a Graph via a CrewNode to make sure the lower Graph
     orchestration layer has no bearing on the "projects" detail (EST-3207
     follow-up: "projects" means Crew, not Graph)."""
-    tool_config = ToolConfig.objects.create(name="cfg1", tool=registered_tool)
-
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     python_tool = PythonCodeTool.objects.create(
         name="PyTool", description="d", python_code=code, org=org_a
@@ -90,7 +79,6 @@ def used_graph_setup(org_a, registered_tool):
     agent = Agent.objects.create(
         role="Researcher", goal="goal", backstory="story", org=org_a
     )
-    AgentConfiguredTools.objects.create(agent=agent, toolconfig=tool_config)
     AgentPythonCodeTools.objects.create(agent=agent, pythoncodetool=python_tool)
     AgentMcpTools.objects.create(agent=agent, mcptool=mcp_tool)
 
@@ -107,7 +95,6 @@ def used_graph_setup(org_a, registered_tool):
         expected_output="result",
         order=1,
     )
-    TaskConfiguredTools.objects.create(task=task, tool=tool_config)
     TaskPythonCodeTools.objects.create(task=task, tool=python_tool)
     TaskMcpTools.objects.create(task=task, tool=mcp_tool)
 
@@ -115,7 +102,6 @@ def used_graph_setup(org_a, registered_tool):
     CrewNode.objects.create(crew=crew, graph=graph, node_name="crew_node1")
 
     return {
-        "registered_tool": registered_tool,
         "python_tool": python_tool,
         "mcp_tool": mcp_tool,
         "agent": agent,
@@ -132,21 +118,6 @@ def unused_python_tool(org_a) -> PythonCodeTool:
 
 
 # ---- tests ----
-
-
-@pytest.mark.django_db
-def test_configured_tool_detail_returns_project_and_staff(client_a, used_graph_setup):
-    registered_tool = used_graph_setup["registered_tool"]
-    agent = used_graph_setup["agent"]
-    crew = used_graph_setup["crew"]
-
-    resp = client_a.get(
-        "/api/tools/usage-detail/",
-        {"unique_name": f"configured-tool:{registered_tool.id}"},
-    )
-    assert resp.status_code == 200
-    assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
-    assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
 
 
 @pytest.mark.django_db
@@ -206,7 +177,7 @@ def test_malformed_unique_name_is_400(client_a):
 @pytest.mark.django_db
 def test_non_numeric_id_is_400(client_a):
     resp = client_a.get(
-        "/api/tools/usage-detail/", {"unique_name": "configured-tool:abc"}
+        "/api/tools/usage-detail/", {"unique_name": "mcp-tool:abc"}
     )
     assert resp.status_code == 400
 
@@ -220,9 +191,9 @@ def test_unknown_prefix_is_400(client_a):
 
 
 @pytest.mark.django_db
-def test_nonexistent_registered_tool_is_404(client_a):
+def test_nonexistent_python_code_tool_is_404(client_a):
     resp = client_a.get(
-        "/api/tools/usage-detail/", {"unique_name": "configured-tool:999999"}
+        "/api/tools/usage-detail/", {"unique_name": "python-code-tool:999999"}
     )
     assert resp.status_code == 404
 
@@ -279,7 +250,7 @@ def test_cross_org_mcp_tool_is_404(client_a, org_b):
 @pytest.mark.django_db
 def test_requires_authentication(db):
     resp = APIClient().get(
-        "/api/tools/usage-detail/", {"unique_name": "configured-tool:1"}
+        "/api/tools/usage-detail/", {"unique_name": "mcp-tool:1"}
     )
     assert resp.status_code == 403
 

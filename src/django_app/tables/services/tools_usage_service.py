@@ -14,7 +14,6 @@ from django.db.models import Q
 
 from tables.models import (
     Agent,
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeTools,
     AgentPythonCodeToolConfigs,
@@ -22,14 +21,12 @@ from tables.models import (
     McpTool,
     PythonCodeTool,
     Task,
-    TaskConfiguredTools,
     TaskMcpTools,
     TaskPythonCodeTools,
     TaskPythonCodeToolConfigs,
-    Tool,
 )
 
-VALID_TOOL_PREFIXES = ("configured-tool", "python-code-tool", "mcp-tool")
+VALID_TOOL_PREFIXES = ("python-code-tool", "mcp-tool")
 
 
 class ToolNotFoundError(Exception):
@@ -40,20 +37,17 @@ class ToolNotFoundError(Exception):
 def get_tools_usage(
     org_id: int, id_filter: dict[str, set[int]] | None = None
 ) -> list[dict]:
-    """Return one usage row per tool (registered/python-code/mcp) visible to
+    """Return one usage row per tool (python-code/mcp) visible to
     `org_id`: `{"unique_name": str, "projects_count": int, "staff_count": int,
     "is_built_in": bool}`.
 
-    Registered `Tool` rows are global (no org column) and are always
-    included, and are always `is_built_in=True` (EST-3277: the registered
-    tool kind has no non-built-in variant). `McpTool` is strictly scoped to
-    `org_id` (no built-in concept, always `is_built_in=False`).
-    `PythonCodeTool` is hybrid-visible — built-in rows (`org_id=None`) plus
-    this org's own custom rows — matching the visibility rule already used by
-    `PythonCodeToolViewSet` (`OrgScopedHybridViewSetMixin`); `built_in` is
-    surfaced as-is per row. This lets the FE additionally gate
-    orphan-highlighting on `!is_built_in` without excluding built-ins from
-    the endpoint itself.
+    `McpTool` is strictly scoped to `org_id` (no built-in concept, always
+    `is_built_in=False`). `PythonCodeTool` is hybrid-visible — built-in rows
+    (`org_id=None`) plus this org's own custom rows — matching the
+    visibility rule already used by `PythonCodeToolViewSet`
+    (`OrgScopedHybridViewSetMixin`); `built_in` is surfaced as-is per row.
+    This lets the FE additionally gate orphan-highlighting on `!is_built_in`
+    without excluding built-ins from the endpoint itself.
 
     `id_filter` (EST-3207 `ids` query-param support), when given, is a
     `{prefix: {tool_id, ...}}` map (prefix one of `VALID_TOOL_PREFIXES`)
@@ -65,17 +59,12 @@ def get_tools_usage(
     as any other tool the caller can't see — this endpoint has never errored
     per-row, unlike the single-tool usage-detail lookup.
     """
-    tool_id_q = {}
     python_tool_id_q = {}
     mcp_tool_id_q = {}
     if id_filter is not None:
-        tool_id_q = {"id__in": id_filter.get("configured-tool", set())}
         python_tool_id_q = {"id__in": id_filter.get("python-code-tool", set())}
         mcp_tool_id_q = {"id__in": id_filter.get("mcp-tool", set())}
 
-    tool_ids = list(
-        Tool.objects.filter(**tool_id_q).values_list("id", flat=True)
-    )
     python_tool_built_in = dict(
         PythonCodeTool.objects.filter(
             Q(built_in=True) | Q(org_id=org_id), **python_tool_id_q
@@ -88,28 +77,20 @@ def get_tools_usage(
         )
     )
 
-    configured_agents, python_agents, mcp_agents = _agents_by_tool_per_kind(
-        org_id, tool_ids, python_tool_ids, mcp_tool_ids
+    python_agents, mcp_agents = _agents_by_tool_per_kind(
+        org_id, python_tool_ids, mcp_tool_ids
     )
 
-    configured_tasks, python_tasks, mcp_tasks = _tasks_by_tool_per_kind(
-        org_id, tool_ids, python_tool_ids, mcp_tool_ids
+    python_tasks, mcp_tasks = _tasks_by_tool_per_kind(
+        org_id, python_tool_ids, mcp_tool_ids
     )
     all_task_ids: set[int] = set()
-    for tasks_by_tool in (configured_tasks, python_tasks, mcp_tasks):
+    for tasks_by_tool in (python_tasks, mcp_tasks):
         for task_ids in tasks_by_tool.values():
             all_task_ids.update(task_ids)
     task_crews = _task_crew_map(org_id, all_task_ids)
 
     return [
-        *_build_rows(
-            "configured-tool",
-            tool_ids,
-            configured_agents,
-            configured_tasks,
-            task_crews,
-            is_built_in=lambda _tool_id: True,
-        ),
         *_build_rows(
             "python-code-tool",
             python_tool_ids,
@@ -131,27 +112,15 @@ def get_tools_usage(
 
 def _agents_by_tool_per_kind(
     org_id: int,
-    tool_ids: list[int],
     python_tool_ids: list[int],
     mcp_tool_ids: list[int],
-) -> tuple[dict[int, set[int]], dict[int, set[int]], dict[int, set[int]]]:
-    """Build the `tool_id -> {agent_id, ...}` map for each of the 3 tool
+) -> tuple[dict[int, set[int]], dict[int, set[int]]]:
+    """Build the `tool_id -> {agent_id, ...}` map for each of the 2 tool
     kinds, via the shared per-kind helpers (also used by the single-tool
     detail lookup below)."""
     return (
-        _configured_tool_agents_by_tool(org_id, tool_ids),
         _python_tool_agents_by_tool(org_id, python_tool_ids),
         _mcp_tool_agents_by_tool(org_id, mcp_tool_ids),
-    )
-
-
-def _configured_tool_agents_by_tool(
-    org_id: int, tool_ids: list[int]
-) -> dict[int, set[int]]:
-    return _pairs_by_tool(
-        AgentConfiguredTools.objects.filter(
-            agent__org_id=org_id, toolconfig__tool_id__in=tool_ids
-        ).values_list("toolconfig__tool_id", "agent_id")
     )
 
 
@@ -185,7 +154,6 @@ def _mcp_tool_agents_by_tool(
 
 
 _AGENTS_BY_TOOL_FN_PER_PREFIX = {
-    "configured-tool": _configured_tool_agents_by_tool,
     "python-code-tool": _python_tool_agents_by_tool,
     "mcp-tool": _mcp_tool_agents_by_tool,
 }
@@ -193,28 +161,16 @@ _AGENTS_BY_TOOL_FN_PER_PREFIX = {
 
 def _tasks_by_tool_per_kind(
     org_id: int,
-    tool_ids: list[int],
     python_tool_ids: list[int],
     mcp_tool_ids: list[int],
-) -> tuple[dict[int, set[int]], dict[int, set[int]], dict[int, set[int]]]:
+) -> tuple[dict[int, set[int]], dict[int, set[int]]]:
     """Task-side counterpart of `_agents_by_tool_per_kind`: builds the
-    `tool_id -> {task_id, ...}` map for each of the 3 tool kinds. Project
+    `tool_id -> {task_id, ...}` map for each of the 2 tool kinds. Project
     (Crew) usage is derived from Task-level tool usage, not Agent-level — see
     module docstring / EST-3207 design fix."""
     return (
-        _configured_tool_tasks_by_tool(org_id, tool_ids),
         _python_tool_tasks_by_tool(org_id, python_tool_ids),
         _mcp_tool_tasks_by_tool(org_id, mcp_tool_ids),
-    )
-
-
-def _configured_tool_tasks_by_tool(
-    org_id: int, tool_ids: list[int]
-) -> dict[int, set[int]]:
-    return _pairs_by_tool(
-        TaskConfiguredTools.objects.filter(
-            task__crew__org_id=org_id, tool__tool_id__in=tool_ids
-        ).values_list("tool__tool_id", "task_id")
     )
 
 
@@ -249,7 +205,6 @@ def _mcp_tool_tasks_by_tool(
 
 
 _TASKS_BY_TOOL_FN_PER_PREFIX = {
-    "configured-tool": _configured_tool_tasks_by_tool,
     "python-code-tool": _python_tool_tasks_by_tool,
     "mcp-tool": _mcp_tool_tasks_by_tool,
 }
@@ -257,15 +212,12 @@ _TASKS_BY_TOOL_FN_PER_PREFIX = {
 
 def _tool_exists(prefix: str, tool_id: int, org_id: int) -> bool:
     """Existence + org-visibility check for a single `prefix:tool_id`.
-    Registered `Tool` rows are global (no org column); `McpTool` is strictly
-    scoped to `org_id` (no built-in concept). `PythonCodeTool` is
-    hybrid-scoped — built-in rows are global (`org_id=None`), custom rows are
-    org-scoped — matching `PythonCodeToolViewSet`'s own
-    `global_visibility_q=Q(built_in=True)` rule and the same widened
-    visibility `get_tools_usage` uses, so a tool visible in the usage list is
-    never a 404 in the usage-detail lookup."""
-    if prefix == "configured-tool":
-        return Tool.objects.filter(id=tool_id).exists()
+    `McpTool` is strictly scoped to `org_id` (no built-in concept).
+    `PythonCodeTool` is hybrid-scoped — built-in rows are global
+    (`org_id=None`), custom rows are org-scoped — matching
+    `PythonCodeToolViewSet`'s own `global_visibility_q=Q(built_in=True)` rule
+    and the same widened visibility `get_tools_usage` uses, so a tool visible
+    in the usage list is never a 404 in the usage-detail lookup."""
     if prefix == "python-code-tool":
         return PythonCodeTool.objects.filter(
             Q(built_in=True) | Q(org_id=org_id), id=tool_id
