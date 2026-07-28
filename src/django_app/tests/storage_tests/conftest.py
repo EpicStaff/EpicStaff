@@ -145,3 +145,20 @@ def auth_client(api_client, regular_user, default_org) -> APIClient:
     api_client.force_authenticate(user=regular_user)
     api_client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
     return api_client
+
+
+@pytest.fixture
+def superadmin_auth_client(api_client, superadmin_user, default_org) -> APIClient:
+    """Authenticated client for the cross-org transfer path (superadmin-only).
+
+    Same `force_authenticate` workaround as `auth_client` above — `StorageAPIView`
+    has no `authentication_classes` of its own, and test settings clear
+    `DEFAULT_AUTHENTICATION_CLASSES`, so a Bearer token is never processed and
+    `request.user` stays `AnonymousUser`. On top of that, `_assert_cross_org_superadmin`
+    (`tables/views/storage_views.py:79`) gates cross-org move/copy behind
+    `request.user.is_superadmin`, so tests exercising that path need the shared
+    `superadmin_user` fixture rather than `regular_user`.
+    """
+    api_client.force_authenticate(user=superadmin_user)
+    api_client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+    return api_client
