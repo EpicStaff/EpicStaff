@@ -149,7 +149,7 @@ class GraphRagDocument(models.Model):
 
     class Status(models.TextChoices):
         NEW = 'new'
-        INDEXED = 'indexed'
+        COMPLETED = 'completed'
 
     graph_rag_document_id = models.AutoField(primary_key=True)
     graph_rag = models.ForeignKey(

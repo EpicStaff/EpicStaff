@@ -298,7 +298,7 @@ class GraphRagService:
         ids = []
         for document in documents:
             ids.append(document.document_id)
-            if document.status == GraphRagDocument.Status.INDEXED:
+            if document.status == GraphRagDocument.Status.COMPLETED:
                 has_indexed_link = True
 
         documents.delete()
@@ -347,7 +347,7 @@ class GraphRagService:
         if not has_document_in_rag and rag.require_reindex():
             rag.reindex_reason.clear()
             rag.rag_status = rag.GraphRagStatus.NEW
-        elif has_document_in_rag and document.status == GraphRagDocument.Status.INDEXED:
+        elif has_document_in_rag and document.status == GraphRagDocument.Status.COMPLETED:
             rag.add_reindex_reason(
                 code='indexed_documents_deleted',
                 detail='Indexed documents were deleted.',
