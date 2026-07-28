@@ -1,4 +1,4 @@
-@if (data().length) {
+@if (data().length || hasAnyFilter()) {
     <div class="table-wrapper">
         <!-- HEADER ROW -->
         <div
@@ -21,7 +21,30 @@
                     [class.center]="col.align === 'center'"
                     [class.end]="col.align === 'end'"
                 >
-                    @if (col.filterItems?.length) {
+                    @if (col.filterItems?.length && col.filterKind === 'single') {
+                        <app-select
+                            #sel
+                            variant="boxed"
+                            [hideTrigger]="true"
+                            [items]="col.filterItems!"
+                            [selectedValue]="firstSingleFilterValue(col.key)"
+                            [showSearch]="!!col.filterSearchable"
+                            [searchPlaceholder]="'Search ' + (col.label ?? '').toLowerCase() + '...'"
+                            (changed)="onSingleFilterChange(col.key, $event)"
+                        >
+                            <button
+                                type="button"
+                                class="col-label col-label--filter"
+                                [appSelectTrigger]="sel"
+                            >
+                                {{ col.label }}
+                                <app-svg-icon
+                                    icon="filter-rows"
+                                    size="1rem"
+                                />
+                            </button>
+                        </app-select>
+                    } @else if (col.filterItems?.length) {
                         <app-multi-select
                             #ms
                             [hideTrigger]="true"
@@ -48,66 +71,74 @@
             }
         </div>
 
-        <!-- DATA ROWS -->
-        <div class="table-body">
-            @for (item of filteredData(); track getRowId(item); let i = $index) {
-                <div
-                    class="table-row"
-                    [class.selected]="isSelected(item)"
-                    [class.selectable]="selectable()"
-                    [style.grid-template-columns]="gridTemplateColumns()"
-                    (click)="onRowClick(item)"
-                >
-                    @if (selectable()) {
-                        <div
-                            class="table-cell checkbox"
-                            (click)="$event.stopPropagation()"
-                        >
-                            <app-checkbox
-                                color="secondary"
-                                [checked]="isSelected(item)"
-                                (changed)="toggleRow(item)"
-                            />
-                        </div>
-                    }
-                    @for (col of columns(); track col.key) {
-                        <div class="table-cell">
-                            @if (getCellTemplate(col.key); as tmpl) {
-                                <ng-container *ngTemplateOutlet="tmpl; context: { $implicit: item, index: i }" />
-                            } @else if (col.actions?.length) {
-                                <div
-                                    class="actions-cell"
-                                    (click)="$event.stopPropagation()"
-                                >
-                                    @for (action of col.actions!; track $index) {
-                                        @if (!action.hidden?.(item)) {
-                                            @let variant = resolveActionVariant(action, item);
-                                            <button
-                                                type="button"
-                                                class="action-btn"
-                                                [class.danger]="variant === 'danger'"
-                                                [class.warning]="variant === 'warning'"
-                                                [class.action-btn--muted]="variant === 'muted'"
-                                                [attr.disabled]="action.disabled?.(item) ? '' : null"
-                                                [matTooltip]="action.tooltip ?? ''"
-                                                (click)="action.onClick(item)"
-                                            >
-                                                <app-svg-icon
-                                                    [icon]="action.icon"
-                                                    size="14px"
-                                                />
-                                            </button>
+        <!-- DATA ROWS or "no results" state (header stays visible so the user can clear filters) -->
+        @if (filteredData().length) {
+            <div class="table-body">
+                @for (item of filteredData(); track getRowId(item); let i = $index) {
+                    <div
+                        class="table-row"
+                        [class.selected]="isSelected(item)"
+                        [class.selectable]="selectable()"
+                        [style.grid-template-columns]="gridTemplateColumns()"
+                        (click)="onRowClick(item)"
+                    >
+                        @if (selectable()) {
+                            <div
+                                class="table-cell checkbox"
+                                (click)="$event.stopPropagation()"
+                            >
+                                <app-checkbox
+                                    color="secondary"
+                                    [checked]="isSelected(item)"
+                                    (changed)="toggleRow(item)"
+                                />
+                            </div>
+                        }
+                        @for (col of columns(); track col.key) {
+                            <div class="table-cell">
+                                @if (getCellTemplate(col.key); as tmpl) {
+                                    <ng-container *ngTemplateOutlet="tmpl; context: { $implicit: item, index: i }" />
+                                } @else if (col.actions?.length) {
+                                    <div
+                                        class="actions-cell"
+                                        (click)="$event.stopPropagation()"
+                                    >
+                                        @for (action of col.actions!; track $index) {
+                                            @if (!action.hidden?.(item)) {
+                                                @let variant = resolveActionVariant(action, item);
+                                                <button
+                                                    type="button"
+                                                    class="action-btn"
+                                                    [class.danger]="variant === 'danger'"
+                                                    [class.warning]="variant === 'warning'"
+                                                    [class.action-btn--muted]="variant === 'muted'"
+                                                    [attr.disabled]="action.disabled?.(item) ? '' : null"
+                                                    [matTooltip]="action.tooltip ?? ''"
+                                                    (click)="action.onClick(item)"
+                                                >
+                                                    <app-svg-icon
+                                                        [icon]="action.icon"
+                                                        size="14px"
+                                                    />
+                                                </button>
+                                            }
                                         }
-                                    }
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-            }
-        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        } @else {
+            <div class="table-no-results">
+                <ng-content select="[tableNoResults]">
+                    <span class="table-no-results-default">No results match the current filters.</span>
+                </ng-content>
+            </div>
+        }
     </div>
 } @else {
-    <!-- Empty state -->
+    <!-- True empty state — no data has ever existed / no filters applied. -->
     <ng-content select="[tableEmpty]" />
 }

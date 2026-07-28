@@ -48,4 +48,13 @@
     >
         <span class="cell-text">{{ row['members'] }}</span>
     </ng-template>
+
+    <div tableEmpty>
+        @if (isLoading()) {
+            <app-loading-spinner size="sm" />
+        } @else {
+            <h4 class="empty-title">No roles yet</h4>
+            <p class="empty-subtitle">Roles define the permissions available to organization members.</p>
+        }
+    </div>
 </app-table>

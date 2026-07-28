@@ -42,9 +42,52 @@
         cursor: pointer;
         transition: all 0.3s ease;
 
-        &:hover {
+        &:hover:not(:disabled):not(.open) {
             color: var(--accent-color);
             border-color: var(--accent-color);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        &.active {
+            color: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        &.open {
+            background: var(--purple-primary);
+            border-color: var(--purple-primary);
+            color: #fff;
+        }
+    }
+
+    .settings-dropdown {
+        background: var(--color-input-background);
+        border: 1px solid var(--color-input-border);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+        overflow: hidden;
+        min-width: 120px;
+    }
+
+    .settings-dropdown-item {
+        width: 100%;
+        padding: 10px 16px;
+        background: transparent;
+        font-size: 0.875rem;
+        color: var(--text);
+        cursor: pointer;
+        transition: background 0.15s ease;
+
+        &:not(:last-child) {
+            border-bottom: 1px solid var(--color-input-border);
+        }
+
+        &:hover {
+            background: var(--transparent-white-8);
         }
     }
 

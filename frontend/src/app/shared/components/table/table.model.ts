@@ -26,8 +26,22 @@ export interface AppTableColumnDef {
     label?: string;
     /** CSS grid column width, e.g. '1fr', '200px', 'auto', '2rem' */
     width?: string;
-    /** If provided, renders a multi-select filter icon in the header */
+    /** If provided, renders a filter icon in the header opening a dropdown of these items. */
     filterItems?: SelectItem[];
+    /**
+     * Filter selection mode when `filterItems` is set.
+     *  - `multi` (default): user can pick multiple values; `filterChange` emits the full array.
+     *  - `single`: user picks a single value; `filterChange` emits an array with 0 or 1 items.
+     */
+    filterKind?: 'single' | 'multi';
+    /** Show a search input inside the filter dropdown. Applies to `filterKind: 'single'` only. */
+    filterSearchable?: boolean;
+    /**
+     * When `true`, the table emits `filterChange` but does NOT apply a client-side filter on this column —
+     * the consumer is expected to refetch (or otherwise resolve) filtered data itself.
+     * Defaults to `false` (built-in client-side filtering).
+     */
+    filterServerSide?: boolean;
     /** Alignment of header label. Defaults to 'start' */
     align?: 'start' | 'center' | 'end';
     /**

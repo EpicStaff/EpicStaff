@@ -1,3 +1,9 @@
+export enum ApiKeyStatus {
+    ACTIVE = 'active',
+    EXPIRED = 'expired',
+    REVOKED = 'revoked',
+}
+
 export interface CreateApiKeyRequest {
     name: string;
     expires_in_days: number | null;
@@ -18,4 +24,12 @@ export interface CreateApiKeyResponse extends GetMyApiKeyResponse {
     api_key: string;
 }
 
-export type ApiKeyStatus = 'active' | 'expired' | 'revoked';
+export interface ApiKeyOwner {
+    id: number;
+    email: string;
+    display_name: string;
+}
+
+export interface GetApiKeyWithOwnerResponse extends GetMyApiKeyResponse {
+    owner: ApiKeyOwner;
+}

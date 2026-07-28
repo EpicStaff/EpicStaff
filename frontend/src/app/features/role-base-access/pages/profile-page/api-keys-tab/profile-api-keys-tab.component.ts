@@ -13,14 +13,23 @@ import {
     ConfirmationDialogService,
     TableRow,
 } from '@shared/components';
-import { GetMyApiKeyResponse } from '@shared/models';
-import { daysUntil, getRelativeTime } from '@shared/utils';
+import { ApiKeyStatus, GetMyApiKeyResponse } from '@shared/models';
+import { getRelativeTime } from '@shared/utils';
 import { EMPTY, switchMap } from 'rxjs';
 
 import { ProfileService } from '../../../../../services/auth/profile.service';
 import { ToastService } from '../../../../../services/notifications';
 import { CreateApiKeyDialogComponent } from '../../../components/create-api-key-dialog/create-api-key-dialog.component';
 import { StatusBadgeComponent } from '../../../components/status-badge/status-badge.component';
+import {
+    API_KEY_STATUS_ORDER,
+    apiKeyExpiresLabel,
+    apiKeyExpiryUrgency,
+    apiKeyStatusIcon,
+    apiKeyStatusLabel,
+    getProfileDeleteConfirmationData,
+    getProfileRevokeConfirmationData,
+} from '../../../utils';
 
 @Component({
     selector: 'app-profile-api-keys-tab',
@@ -51,13 +60,13 @@ export class ProfileApiKeysTabComponent implements OnInit {
             icon: 'x',
             tooltip: 'Revoke key',
             variant: 'warning',
-            hidden: (row) => row['status'] !== 'active',
+            hidden: (row) => row['status'] !== ApiKeyStatus.ACTIVE,
             onClick: (row) => this.onRevokeKey(row),
         },
         {
             icon: 'trash',
             tooltip: 'Delete key',
-            variant: (row) => (row['status'] === 'active' ? 'danger' : 'default'),
+            variant: (row) => (row['status'] === ApiKeyStatus.ACTIVE ? 'danger' : 'default'),
             onClick: (row) => this.onDeleteKey(row),
         },
     ];
@@ -74,7 +83,7 @@ export class ProfileApiKeysTabComponent implements OnInit {
 
     private readonly keys = signal<GetMyApiKeyResponse[]>([]);
 
-    protected readonly activeCount = computed(() => this.keys().filter((k) => k.status === 'active').length);
+    protected readonly activeCount = computed(() => this.keys().filter((k) => k.status === ApiKeyStatus.ACTIVE).length);
 
     protected readonly tableData = computed<TableRow[]>(() => {
         const items = this.keys().map((k) => ({
@@ -83,19 +92,13 @@ export class ProfileApiKeysTabComponent implements OnInit {
             key: k.prefix + '...',
             created: k.created_at,
             expiresAt: k.expires_at,
-            expiresLabel: this.expiresLabel(k),
-            expiryUrgency: this.keyExpiryUrgency(k),
+            expiresLabel: apiKeyExpiresLabel(k),
+            expiryUrgency: apiKeyExpiryUrgency(k),
             lastUsedLabel: getRelativeTime(k.last_used_at),
             status: k.status,
         }));
 
-        const statusOrder = new Map([
-            ['active', 0],
-            ['expired', 1],
-            ['revoked', 2],
-        ]);
-
-        return items.sort((a, b) => statusOrder.get(a.status)! - statusOrder.get(b.status)!);
+        return items.sort((a, b) => API_KEY_STATUS_ORDER.get(a.status)! - API_KEY_STATUS_ORDER.get(b.status)!);
     });
 
     protected readonly maxCountReached = computed(() => this.activeCount() >= this.MAX_PERSONAL_KEYS);
@@ -114,28 +117,10 @@ export class ProfileApiKeysTabComponent implements OnInit {
         });
     }
 
-    statusLabel(status: string): string {
-        const labels: Record<string, string> = { active: 'Active', expired: 'Expired', revoked: 'Revoked' };
-        return labels[status] ?? status;
-    }
-
-    statusIcon(status: string): string | null {
-        const icons: Record<string, string> = { expired: 'expired', revoked: 'x' };
-        return icons[status] ?? null;
-    }
-
     onRevokeKey(row: TableRow): void {
         const id = row['id'] as number;
-        const name = row['name'] as string;
         this.confirmation
-            .confirm({
-                title: 'Revoke this API key?',
-                message: `The "${name}" API key will be revoked immediately and can no longer be used to authenticate.`,
-                caution: 'Any client or integration currently using this key will lose access.',
-                type: 'danger',
-                confirmText: 'Revoke',
-                cancelText: 'Cancel',
-            })
+            .confirm(getProfileRevokeConfirmationData(row['name'] as string))
             .pipe(
                 switchMap((confirmed) => (confirmed === true ? this.currentUserService.revokeApiKey(id) : EMPTY)),
                 takeUntilDestroyed(this.destroyRef)
@@ -152,18 +137,9 @@ export class ProfileApiKeysTabComponent implements OnInit {
     onDeleteKey(row: TableRow): void {
         const id = row['id'] as number;
         const name = row['name'] as string;
-        const isActive = row['status'] === 'active';
+        const isActive = row['status'] === ApiKeyStatus.ACTIVE;
         this.confirmation
-            .confirm({
-                title: 'Delete this API key?',
-                message: `The "${name}" API key will be permanently deleted. This action cannot be undone.`,
-                caution: isActive
-                    ? 'This key is still active — any client currently using it will lose access.'
-                    : undefined,
-                type: isActive ? 'danger' : 'info',
-                confirmText: 'Delete',
-                cancelText: 'Cancel',
-            })
+            .confirm(getProfileDeleteConfirmationData(name, isActive))
             .pipe(
                 switchMap((confirmed) => (confirmed === true ? this.currentUserService.deleteApiKey(id) : EMPTY)),
                 takeUntilDestroyed(this.destroyRef)
@@ -187,23 +163,7 @@ export class ProfileApiKeysTabComponent implements OnInit {
             });
     }
 
-    private expiresLabel(key: GetMyApiKeyResponse): string {
-        if (key.status === 'expired') return 'Expired';
-        if (!key.expires_at) return 'Never';
-        const days = daysUntil(key.expires_at);
-        if (days <= 0) return 'Expired';
-        return `in ${days} ${days === 1 ? 'day' : 'days'}`;
-    }
-
-    private keyExpiryUrgency(key: GetMyApiKeyResponse) {
-        if (key.status !== 'active' || !key.expires_at) return 'default';
-        return this.expiryUrgency(daysUntil(key.expires_at));
-    }
-
-    private expiryUrgency(daysLeft: number | null): 'default' | 'orange' | 'red' {
-        if (daysLeft === null || daysLeft <= 0) return 'default';
-        if (daysLeft <= 3) return 'red';
-        if (daysLeft <= 7) return 'orange';
-        return 'default';
-    }
+    protected readonly ApiKeyStatus = ApiKeyStatus;
+    protected readonly statusLabel = apiKeyStatusLabel;
+    protected readonly statusIcon = apiKeyStatusIcon;
 }

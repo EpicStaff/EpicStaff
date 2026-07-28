@@ -181,6 +181,16 @@
         }
     }
 
+    .table-no-results {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        color: var(--text-secondary-60);
+        font-size: 14px;
+        text-align: center;
+    }
+
     [tableEmpty] {
         display: flex;
         flex-direction: column;

@@ -7,6 +7,7 @@ import {
     AppTableComponent,
     AppTableRowAction,
     ConfirmationDialogService,
+    LoadingSpinnerComponent,
     SearchComponent,
     TableRow,
 } from '@shared/components';
@@ -21,7 +22,7 @@ import { RolesService } from '../../../services/admin/roles.service';
     templateUrl: './roles-tab.component.html',
     styleUrls: ['./roles-tab.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AppTableComponent, AppTableCellDirective, SearchComponent],
+    imports: [AppTableComponent, AppTableCellDirective, SearchComponent, LoadingSpinnerComponent],
 })
 export class RolesTabComponent implements OnInit {
     private dialog = inject(Dialog);
@@ -31,7 +32,7 @@ export class RolesTabComponent implements OnInit {
     protected rolesService = inject(RolesService);
 
     readonly searchTerm = signal('');
-    readonly isLoading = signal(false);
+    readonly isLoading = signal(true);
     readonly roles = this.rolesService.roles;
 
     ngOnInit(): void {

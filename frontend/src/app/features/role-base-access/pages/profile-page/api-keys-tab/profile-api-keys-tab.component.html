@@ -38,7 +38,7 @@
     >
         <span
             class="key-name"
-            [class.inactive]="row['status'] !== 'active'"
+            [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
             [matTooltip]="row['name']"
             matTooltipPosition="above"
             >{{ row['name'] }}</span
@@ -52,7 +52,7 @@
     >
         <span
             class="key-value"
-            [class.inactive]="row['status'] !== 'active'"
+            [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
             >{{ row['key'] }}</span
         >
     </ng-template>
@@ -74,7 +74,7 @@
             class="expires-value"
             [class.warning]="row['expiryUrgency'] === 'orange'"
             [class.danger]="row['expiryUrgency'] === 'red'"
-            [class.inactive]="row['status'] !== 'active'"
+            [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
             >{{ row['expiresLabel'] }}</span
         >
     </ng-template>

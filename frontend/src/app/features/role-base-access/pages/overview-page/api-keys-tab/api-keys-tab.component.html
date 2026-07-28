@@ -1,0 +1,179 @@
+<div class="toolbar">
+    <div class="toolbar-actions">
+        <app-search
+            placeholder="Search by key name or owner..."
+            [width]="'260px'"
+            [(searchTerm)]="searchTerm"
+        />
+        <span class="count-label"
+            >{{ keys().length }} of {{ this.totalApiKeysCount }}
+            {{ this.totalApiKeysCount === 1 ? 'key' : 'keys' }}</span
+        >
+    </div>
+
+    <div class="toolbar-actions">
+        @if (canFilterByOrg) {
+            <app-select
+                class="org-filter"
+                variant="boxed"
+                placeholder="All Organizations"
+                searchPlaceholder="Search organization"
+                [showSearch]="true"
+                [items]="orgsSelectItems()"
+                (changed)="onOrgFilterChange($event)"
+            />
+        }
+
+        <button
+            type="button"
+            class="settings-btn"
+            [class.active]="selectedItems().length > 0"
+            [class.open]="isBulkMenuOpen()"
+            [disabled]="selectedItems().length === 0 || isBulkLoading()"
+            cdkOverlayOrigin
+            #bulkOrigin="cdkOverlayOrigin"
+            (click)="toggleBulkMenu()"
+        >
+            <app-svg-icon
+                icon="settings"
+                size="18px"
+            />
+        </button>
+
+        <ng-template
+            cdkConnectedOverlay
+            [cdkConnectedOverlayOrigin]="bulkOrigin"
+            [cdkConnectedOverlayOpen]="isBulkMenuOpen()"
+            [cdkConnectedOverlayWidth]="120"
+            [cdkConnectedOverlayPositions]="[
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 6 },
+            ]"
+            (overlayOutsideClick)="closeBulkMenu()"
+            (detach)="closeBulkMenu()"
+        >
+            <div class="settings-dropdown">
+                <div
+                    class="settings-dropdown-item"
+                    (click)="onBulkRevoke()"
+                >
+                    Revoke
+                </div>
+                <div
+                    class="settings-dropdown-item"
+                    (click)="onBulkDelete()"
+                >
+                    Delete
+                </div>
+            </div>
+        </ng-template>
+    </div>
+</div>
+
+<app-table
+    [columns]="columns()"
+    [data]="tableData()"
+    [selectable]="true"
+    [hasExternalFilter]="!!searchTerm()"
+    rowId="id"
+    (filterChange)="onFilterChange($event)"
+    (selectionChange)="onSelectionChange($event)"
+>
+    <!-- OWNER -->
+    <ng-template
+        appTableCell="owner"
+        let-row
+    >
+        <div class="owner-cell">
+            <app-user-avatar [name]="row['ownerName']" />
+            <div class="owner-info">
+                <span
+                    class="owner-name"
+                    [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
+                    >{{ row['ownerName'] }}</span
+                >
+                <span class="owner-email">{{ row['ownerEmail'] }}</span>
+            </div>
+        </div>
+    </ng-template>
+
+    <!-- NAME -->
+    <ng-template
+        appTableCell="name"
+        let-row
+    >
+        <span
+            class="key-name"
+            [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
+            >{{ row['name'] }}</span
+        >
+    </ng-template>
+
+    <!-- KEY -->
+    <ng-template
+        appTableCell="key"
+        let-row
+    >
+        <span
+            class="key-value"
+            [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
+            >{{ row['key'] }}</span
+        >
+    </ng-template>
+
+    <!-- CREATED -->
+    <ng-template
+        appTableCell="created"
+        let-row
+    >
+        <span class="cell-text">{{ row['created'] | date: 'mediumDate' }}</span>
+    </ng-template>
+
+    <!-- EXPIRES -->
+    <ng-template
+        appTableCell="expires"
+        let-row
+    >
+        <span
+            class="expires-value"
+            [class.warning]="row['expiryUrgency'] === 'orange'"
+            [class.danger]="row['expiryUrgency'] === 'red'"
+            [class.inactive]="row['status'] !== ApiKeyStatus.ACTIVE"
+            >{{ row['expiresLabel'] }}</span
+        >
+    </ng-template>
+
+    <!-- LAST USED -->
+    <ng-template
+        appTableCell="lastUsed"
+        let-row
+    >
+        <span class="cell-text">{{ row['lastUsedLabel'] }}</span>
+    </ng-template>
+
+    <!-- STATUS -->
+    <ng-template
+        appTableCell="status"
+        let-row
+    >
+        @if (row['status']) {
+            <app-status-badge
+                [modifier]="row['status']"
+                [label]="statusLabel(row['status'])"
+                [icon]="statusIcon(row['status'])"
+            />
+        } @else {
+            <span class="empty-value">-</span>
+        }
+    </ng-template>
+
+    <div tableEmpty>
+        @if (isLoading()) {
+            <app-loading-spinner size="sm" />
+        } @else {
+            <h4 class="empty-title">No API keys</h4>
+            <p class="empty-subtitle">Personal API keys issued by users will appear here.</p>
+        }
+    </div>
+
+    <span tableNoResults>No keys match the current filters.</span>
+</app-table>

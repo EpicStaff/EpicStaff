@@ -17,59 +17,63 @@
         >
     </div>
 </div>
-@if (isLoading()) {
-    <app-loading-spinner size="sm" />
-} @else {
-    <app-table
-        [columns]="columns"
-        [data]="filteredOrgs()"
-        rowId="id"
+<app-table
+    [columns]="columns"
+    [data]="filteredOrgs()"
+    rowId="id"
+>
+    <!-- ORGANIZATION -->
+    <ng-template
+        appTableCell="organization"
+        let-row
     >
-        <!-- ORGANIZATION -->
-        <ng-template
-            appTableCell="organization"
-            let-row
-        >
-            <div class="org-cell">
-                <app-org-avatar [name]="row['name']" />
-                <span class="org-name">{{ row['name'] }}</span>
-            </div>
-        </ng-template>
+        <div class="org-cell">
+            <app-org-avatar [name]="row['name']" />
+            <span class="org-name">{{ row['name'] }}</span>
+        </div>
+    </ng-template>
 
-        <!-- ADMIN -->
-        <ng-template
-            appTableCell="admin"
-            let-row
-        >
-            <app-admins-cell [admins]="row['admins'] ?? []" />
-        </ng-template>
+    <!-- ADMIN -->
+    <ng-template
+        appTableCell="admin"
+        let-row
+    >
+        <app-admins-cell [admins]="row['admins'] ?? []" />
+    </ng-template>
 
-        <!-- MEMBERS -->
-        <ng-template
-            appTableCell="members"
-            let-row
-        >
-            <span class="cell-text">{{ row['members'] }}</span>
-        </ng-template>
+    <!-- MEMBERS -->
+    <ng-template
+        appTableCell="members"
+        let-row
+    >
+        <span class="cell-text">{{ row['members'] }}</span>
+    </ng-template>
 
-        <!-- CREATED -->
-        <ng-template
-            appTableCell="created"
-            let-row
-        >
-            <span class="cell-text">{{ row['created'] | date: 'mediumDate' }}</span>
-        </ng-template>
+    <!-- CREATED -->
+    <ng-template
+        appTableCell="created"
+        let-row
+    >
+        <span class="cell-text">{{ row['created'] | date: 'mediumDate' }}</span>
+    </ng-template>
 
-        <!-- STATUS -->
-        <ng-template
-            appTableCell="status"
-            let-row
-        >
-            <app-status-badge
-                [modifier]="row['status']"
-                [label]="row['status'] === 'active' ? 'Active' : 'Deactivated'"
-                [icon]="row['status'] === 'deactivated' ? 'clock' : null"
-            />
-        </ng-template>
-    </app-table>
-}
+    <!-- STATUS -->
+    <ng-template
+        appTableCell="status"
+        let-row
+    >
+        <app-status-badge
+            [modifier]="row['status']"
+            [label]="row['status'] === 'active' ? 'Active' : 'Deactivated'"
+            [icon]="row['status'] === 'deactivated' ? 'clock' : null"
+        />
+    </ng-template>
+    <div tableEmpty>
+        @if (isLoading()) {
+            <app-loading-spinner size="sm" />
+        } @else {
+            <h4 class="empty-title">No organizations yet</h4>
+            <p class="empty-subtitle">Create an organization to get started.</p>
+        }
+    </div>
+</app-table>

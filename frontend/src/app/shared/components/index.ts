@@ -46,6 +46,7 @@ export * from './round-button/round-button.component';
 export * from './route-tabs';
 export * from './search/search.component';
 export * from './select/select.component';
+export * from './select/select-trigger.directive';
 export * from './slider-with-stepper/slider-with-stepper.component';
 export * from './spinner/spinner.component';
 export * from './spinner-type2/spinner.component';
