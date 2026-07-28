@@ -86,6 +86,7 @@ from tables.models import (
     PythonCodeTool,
     PythonNode,
     RealtimeModel,
+    Secret,
     StartNode,
     SubGraphNode,
     Task,
@@ -196,7 +197,11 @@ from tables.views.mixins import (
     SuperadminWriteMixin,
 )
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
+from tables.services.rbac.permissions import (
+    DenyApiKeyAuth,
+    HasOrgPermission,
+    IsSuperadmin,
+)
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
@@ -235,6 +240,7 @@ from tables.serializers.model_serializers import (
     RealtimeAgentChatSerializer,
     RealtimeAgentSerializer,
     RealtimeSessionItemSerializer,
+    SecretSerializer,
     StartNodeSerializer,
     SubGraphNodeSerializer,
     TaskReadSerializer,
@@ -1910,6 +1916,14 @@ class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
 
         return Response(self.get_serializer(labels, many=True).data)
+
+
+class SecretViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
+    rbac_resource_type = ResourceType.SECRETS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    queryset = Secret.objects.all()
+    serializer_class = SecretSerializer
 
 
 class VoiceSettingsView(generics.RetrieveUpdateAPIView):
