@@ -109,7 +109,7 @@ export class ProfilePageComponent implements OnInit {
             .logout()
             .pipe(
                 catchError(() => {
-                    this.authService.removeTokensAndNavToLogin();
+                    this.authService.removeTokenAndNavToLogin();
                     return EMPTY;
                 })
             )

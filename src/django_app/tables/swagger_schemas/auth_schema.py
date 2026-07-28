@@ -5,8 +5,8 @@ from tables.serializers.rbac_serializers import (
     FirstSetupRequestSerializer,
     FirstSetupResponseSerializer,
     LoginResponseSerializer,
-    LogoutRequestSerializer,
     LogoutResponseSerializer,
+    RefreshResponseSerializer,
     ResetUserRequestSerializer,
     ResetUserResponseSerializer,
     TicketResponseSerializer,
@@ -203,11 +203,13 @@ LOGIN_POST = dict(
     summary="Log in and obtain JWT tokens",
     description=(
         "Accepts `email` and `password`. Validates both fields are present "
-        "and non-blank before delegating to simplejwt. Returns a refresh token "
-        "and a short-lived access token. Wrong-credential errors are returned "
-        "as a flat 401 (no per-field detail) to avoid user-enumeration leaks. "
-        "Throttled to 5 attempts per minute per IP+email combination; the 6th "
-        "attempt returns 429 with a `Retry-After` header."
+        "and non-blank before delegating to simplejwt. Returns a short-lived "
+        "access token in the response body. The refresh token is set as an "
+        "HttpOnly cookie (`auth.refresh`, Path=/api/auth/, SameSite=Lax). "
+        "Wrong-credential errors are returned as a flat 401 (no per-field "
+        "detail) to avoid user-enumeration leaks. Throttled to 5 attempts "
+        "per minute per IP+email combination; the 6th attempt returns 429 "
+        "with a `Retry-After` header."
     ),
     responses={
         200: LoginResponseSerializer,
@@ -250,17 +252,18 @@ LOGIN_POST = dict(
 LOGOUT_POST = dict(
     summary="Log out (blacklist refresh token)",
     description=(
-        "Blacklists the caller's refresh token so it can no longer be used "
-        "to obtain new access tokens. The short-lived access token continues "
-        "to work until its own expiry. Ownership is verified — a leaked "
-        "refresh token cannot be used to log out a different user."
+        "Reads the refresh token from the HttpOnly `auth.refresh` cookie, "
+        "blacklists it so it can no longer be used to obtain new access "
+        "tokens, and clears the cookie. The short-lived access token "
+        "continues to work until its own expiry. Ownership is verified — "
+        "a leaked refresh token cannot be used to log out a different user. "
+        "No request body is required."
     ),
-    request=LogoutRequestSerializer,
     responses={
         205: LogoutResponseSerializer,
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Refresh token is missing, malformed, expired, already blacklisted, or belongs to a different user.",
+            description="Refresh token is malformed, expired, already blacklisted, or belongs to a different user.",
             examples=[
                 OpenApiExample(
                     "Invalid or expired refresh token",
@@ -275,6 +278,37 @@ LOGOUT_POST = dict(
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
+    },
+)
+
+REFRESH_POST = dict(
+    summary="Refresh access token",
+    description=(
+        "Reads the refresh token from the HttpOnly `auth.refresh` cookie. "
+        "Returns a fresh short-lived access token in the response body. "
+        "When token rotation is enabled, the rotated refresh token is set "
+        "as a new HttpOnly cookie. No request body is required."
+    ),
+    responses={
+        200: RefreshResponseSerializer,
+        401: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Refresh cookie missing, token expired, or already blacklisted.",
+            examples=[
+                OpenApiExample(
+                    "No refresh token",
+                    value={"detail": "No refresh token."},
+                    response_only=True,
+                    status_codes=["401"],
+                ),
+                OpenApiExample(
+                    "Token expired",
+                    value={"detail": "Token is invalid or expired."},
+                    response_only=True,
+                    status_codes=["401"],
+                ),
+            ],
+        ),
     },
 )
 

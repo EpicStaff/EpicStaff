@@ -16,6 +16,7 @@ from tables.serializers.user_profile_serializers import (
 )
 from tables.graph_collab.notifications import GraphEditNotifier
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
+from tables.services.rbac.utils.refresh_cookie import set_refresh_cookie
 from tables.services.rbac.user_profile_service import UserProfileService
 from tables.services.rbac.user_validation_service import UserValidationService
 from tables.throttles import LoginThrottle
@@ -179,4 +180,6 @@ class PasswordChangeConfirmView(APIView):
         tokens = self._service.password_change_confirm(
             request.user, cleaned["ticket"], cleaned["new_password"]
         )
-        return Response({"access": tokens.access, "refresh": tokens.refresh})
+        response = Response({"access": tokens.access})
+        set_refresh_cookie(response, tokens.refresh)
+        return response
