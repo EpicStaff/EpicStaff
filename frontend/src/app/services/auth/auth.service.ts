@@ -1,6 +1,5 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
-import { inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import {
     AccessToken,
@@ -66,7 +65,7 @@ export class AuthService {
         return this.http
             .post<FirstSetupResponse>(`${this.baseUrl}first-setup/`, payload, { withCredentials: true })
             .pipe(
-                tap(() => {
+                tap((resp) => {
                     this.defaultOrgId.set(resp.organization.id);
                     this.statusCache$ = null;
                 })
