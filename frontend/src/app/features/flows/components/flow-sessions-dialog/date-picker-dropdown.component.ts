@@ -46,7 +46,7 @@ export class DatePickerDropdownComponent implements OnChanges {
         }
     }
 
-    @HostListener('document:click', ['$event'])
+    @HostListener('document:mousedown', ['$event'])
     public onDocumentClick(event: MouseEvent): void {
         if (!this.open) return;
         const target = event.target as HTMLElement;

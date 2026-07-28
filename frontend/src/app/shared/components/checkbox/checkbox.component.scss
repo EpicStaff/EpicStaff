@@ -13,11 +13,18 @@ input[type='checkbox'] {
     cursor: pointer;
     display: inline-block;
     position: relative;
+    transition:
+        border-color 0.15s,
+        background 0.15s;
+}
+
+input[type='checkbox']:hover:not(:checked):not(:indeterminate):not(:disabled) {
+    border-color: var(--color-text-primary);
 }
 
 input[type='checkbox']:checked {
-    background: var(--accent-color);
-    border-color: var(--accent-color);
+    background: #fff;
+    border-color: #fff;
 }
 
 input[type='checkbox']:checked::after {
@@ -27,14 +34,14 @@ input[type='checkbox']:checked::after {
     left: 50%;
     width: 5px;
     height: 9px;
-    border: solid #fff;
+    border: solid #000;
     border-width: 0 2px 2px 0;
     transform: rotate(45deg) translate(-100%, -25%);
 }
 
 input[type='checkbox']:indeterminate {
-    background: var(--accent-color);
-    border-color: var(--accent-color);
+    background: #fff;
+    border-color: #fff;
 }
 
 input[type='checkbox']:indeterminate::after {
@@ -45,7 +52,7 @@ input[type='checkbox']:indeterminate::after {
     transform: translate(-50%, -50%);
     width: 8px;
     height: 1px;
-    background: #fff;
+    background: #000;
     border-radius: 1px;
 }
 
