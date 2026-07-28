@@ -21,11 +21,13 @@ import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/g
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GraphDto } from '../../models/graph.model';
 import {
+    DateRangeFilter,
     DurationFilter,
     GraphSessionLight,
     GraphSessionStatus,
     isTerminalSessionStatus,
 } from '../../services/flows-sessions.service';
+import { DatePickerDropdownComponent } from './date-picker-dropdown.component';
 import { DurationFilterDropdownComponent } from './duration-filter-dropdown.component';
 import { FlowNameFilterDropdownComponent } from './flow-name-filter-dropdown.component';
 import { FlowSessionStatusBadgeComponent } from './flow-session-status-badge.component';
@@ -46,6 +48,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
         HasPermissionDirective,
         MatTooltipModule,
         AppSvgIconComponent,
+        DatePickerDropdownComponent,
     ],
     template: `
         <div
@@ -89,10 +92,18 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                             [class.sortable]="sortable"
                             (click)="sortable && toggleSort()"
                         >
-                            Created At
-                            @if (sortable) {
-                                <span class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
-                            }
+                            <span class="col-created-header">
+                                <span class="col-created-label">Created At</span>
+                                @if (sortable) {
+                                    <span class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                                }
+                                @if (showDateFilter) {
+                                    <app-created-at-filter-dropdown
+                                        [value]="dateFilter"
+                                        (valueChange)="dateFilterChange.emit($event)"
+                                    ></app-created-at-filter-dropdown>
+                                }
+                            </span>
                         </th>
                         <th class="col-finished">
                             @if (showDuration) {
@@ -275,6 +286,8 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     @Input() externalPreview: boolean = false;
     @Input() activePreviewId: number | null = null;
+    @Input() showDateFilter: boolean = false;
+    @Input() dateFilter: DateRangeFilter | null = null;
 
     @Output() deleteSelected = new EventEmitter<number[]>();
     @Output() viewSession = new EventEmitter<number>();
@@ -285,6 +298,7 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
     @Output() durationFilterChange = new EventEmitter<DurationFilter | null>();
     @Output() selectedIdsChange = new EventEmitter<Set<number>>();
     @Output() previewSession = new EventEmitter<number | null>();
+    @Output() dateFilterChange = new EventEmitter<DateRangeFilter | null>();
 
     public expandedSessionId = signal<number | null>(null);
 

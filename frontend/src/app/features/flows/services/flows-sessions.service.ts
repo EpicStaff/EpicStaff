@@ -62,29 +62,12 @@ export interface DurationFilter {
     value2?: number;
 }
 
-// export type SessionStatusesCounts = {
-//     run: number;
-//     wait_for_user: number;
-//     error: number;
-//     pending: number;
-//     stop: number;
-// };
+export interface DateRangeFilter {
+    after: string | null;
+    before: string | null;
+}
 
 export type DurationOperator = 'lessThan' | 'greaterThan' | 'equal' | 'between';
-
-// export type GraphSessionStatusesCounts = {
-//     [graph_id: string]: SessionStatusesCounts;
-// };
-
-// export type SessionStatusesCountsMap = Map<string, SessionStatusesCounts>;
-
-// export const defaultSessionStatusesCounts = (): SessionStatusesCounts => ({
-//     run: 0,
-//     wait_for_user: 0,
-//     error: 0,
-//     pending: 0,
-//     stop: 0,
-// });
 
 @Injectable({
     providedIn: 'root',
@@ -101,31 +84,6 @@ export class GraphSessionService {
     private get apiUrl(): string {
         return this.configService.apiUrl + 'sessions/';
     }
-
-    // getAllSessions(): Observable<GraphSession[]> {
-    //     return this.http.get<ApiGetRequest<GraphSession>>(this.apiUrl).pipe(
-    //         map((response) => {
-    //             return response.results.sort((a, b) => b.id - a.id);
-    //         })
-    //     );
-    // }
-
-    // getSessionStatuses(graphId?: string): Observable<SessionStatusesCountsMap> {
-    //     const params = new HttpParams().set('graph_id', graphId!.toString());
-    //     return this.http.get<GraphSessionStatusesCounts>(this.apiUrl + 'statuses/', { params }).pipe(
-    //         map((response) => {
-    //             const outerMap: SessionStatusesCountsMap = new Map();
-    //             Object.entries(response).forEach(([graphId, statuses]) => {
-    //                 const normalizedStatuses: SessionStatusesCounts = {
-    //                     ...defaultSessionStatusesCounts(),
-    //                     ...statuses,
-    //                 };
-    //                 outerMap.set(graphId, normalizedStatuses);
-    //             });
-    //             return outerMap;
-    //         })
-    //     );
-    // }
 
     getSessionById(sessionId: number): Observable<GraphSession> {
         return this.http.get<GraphSession>(`${this.apiUrl}${sessionId}/`);
@@ -185,14 +143,6 @@ export class GraphSessionService {
         }
     }
 
-    // deleteSessionById(sessionId: number): Observable<void> {
-    //     return this.http.delete<void>(`${this.apiUrl}${sessionId}/`).pipe(
-    //         map(() => {
-    //             this._sessionsChanged$.next();
-    //         })
-    //     );
-    // }
-
     bulkDeleteSessions(ids: number[]): Observable<void> {
         return this.http.post<void>(`${this.apiUrl}bulk_delete/`, { ids }).pipe(
             map(() => {
@@ -234,7 +184,8 @@ export class GraphSessionService {
         ordering?: string,
         graphName?: string | null,
         isErrorCause?: boolean,
-        durationFilter?: DurationFilter | null
+        durationFilter?: DurationFilter | null,
+        dateFilter?: DateRangeFilter | null
     ): Observable<ApiGetRequest<GraphSessionLight>> {
         let params = new HttpParams();
         params = params.set('detailed', 'false');
@@ -245,8 +196,15 @@ export class GraphSessionService {
         if (graphName) params = params.set('graph_name', graphName);
         if (isErrorCause) params = params.set('is_error_cause', 'true');
         if (durationFilter) params = this.applyDurationParams(params, durationFilter);
+        if (dateFilter) params = this.applyDateParams(params, dateFilter);
 
         return this.http.get<ApiGetRequest<GraphSessionLight>>(this.apiUrl, { params });
+    }
+
+    private applyDateParams(params: HttpParams, filter: DateRangeFilter): HttpParams {
+        if (filter.after) params = params.set('created_at_after', filter.after);
+        if (filter.before) params = params.set('created_at_before', filter.before);
+        return params;
     }
 
     private applyDurationParams(params: HttpParams, filter: DurationFilter): HttpParams {

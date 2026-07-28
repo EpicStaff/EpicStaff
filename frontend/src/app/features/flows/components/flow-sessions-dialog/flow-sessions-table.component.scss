@@ -378,3 +378,9 @@ tr.preview-row td.preview-cell {
     background-color: transparent;
     border: 1px solid rgba(104, 95, 255, 1);
 }
+
+.col-created-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}

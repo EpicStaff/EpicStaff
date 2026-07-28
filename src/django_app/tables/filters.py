@@ -70,6 +70,7 @@ class SessionFilter(filters.FilterSet):
     graph_name = filters.CharFilter(field_name="graph__name", lookup_expr="iexact")
     is_error_cause = filters.BooleanFilter(method="filter_by_error_cause")
 
+    created_at = filters.DateTimeFromToRangeFilter(field_name="created_at")
     # duration filters
     duration_lt = filters.NumberFilter(method="filter_duration_lt")
     duration_gt = filters.NumberFilter(method="filter_duration_gt")
