@@ -154,6 +154,12 @@ table {
         background-color: var(--color-sidenav-background);
         color: var(--color-text-primary);
         font-weight: 600;
+    }
+
+    .col-created-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
 
         &.sortable {
             cursor: pointer;
@@ -163,14 +169,13 @@ table {
             &:hover {
                 color: var(--accent-color);
             }
+        }
 
-            .sort-icon {
-                margin-left: 4px;
-                font-size: 0.85em;
-                opacity: 0.8;
-                position: relative;
-                top: -2px;
-            }
+        .sort-icon {
+            font-size: 0.85em;
+            opacity: 0.8;
+            position: relative;
+            top: -2px;
         }
     }
 

@@ -88,16 +88,18 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 (valueChange)="flowNameFilterChange.emit($event)"
                             ></app-flow-name-filter-dropdown>
                         </th>
-                        <th
-                            class="col-created"
-                            [class.sortable]="sortable"
-                            (click)="sortable && toggleSort()"
-                        >
+                        <th class="col-created">
                             <span class="col-created-header">
-                                <span class="col-created-label">Created At</span>
-                                @if (sortable) {
-                                    <span class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
-                                }
+                                <span
+                                    class="col-created-label"
+                                    [class.sortable]="sortable"
+                                    (click)="sortable && toggleSort()"
+                                >
+                                    Created At
+                                    @if (sortable) {
+                                        <span class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                                    }
+                                </span>
                                 @if (showDateFilter) {
                                     <app-created-at-filter-dropdown
                                         [value]="dateFilter"
