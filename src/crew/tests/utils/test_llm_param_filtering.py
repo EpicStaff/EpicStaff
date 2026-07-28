@@ -79,7 +79,7 @@ def test_gpt_4o_preserves_stop(capture_completion):
 
 def test_claude_4x_preserves_stop(capture_completion):
     """Claude 4.x drops temperature but MUST keep stop words."""
-    _call("claude-opus-4-8", stop=["\nObservation"])
+    _call("anthropic/claude-opus-4-8", stop=["\nObservation"])
     assert "stop" in capture_completion
     assert "\nObservation" in capture_completion["stop"]
 
@@ -91,7 +91,7 @@ def test_supports_stop_words_false_for_o_series(model):
 
 
 def test_supports_stop_words_true_for_claude_4x():
-    llm = PatchedLLM(model="claude-opus-4-8", api_key="test-key")
+    llm = PatchedLLM(model="anthropic/claude-opus-4-8", api_key="test-key")
     assert llm.supports_stop_words() is True
 
 

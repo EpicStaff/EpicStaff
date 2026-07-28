@@ -193,7 +193,6 @@ export class RealtimeClient extends RealtimeEventHandler {
    */
   constructor({ url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug } = {}) {
     super();
-    console.log("RealtimeClient constructor", url);
 
     this.defaultSessionConfig = {
       modalities: ["text", "audio"],
@@ -237,7 +236,6 @@ export class RealtimeClient extends RealtimeEventHandler {
    * @returns {true}
    */
   _resetConfig() {
-    console.log("realtime", JSON.stringify(this.realtime));
     this.sessionCreated = false;
     this.tools = {};
     this.sessionConfig = JSON.parse(JSON.stringify(this.defaultSessionConfig));

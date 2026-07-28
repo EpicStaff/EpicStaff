@@ -1,6 +1,7 @@
 import { ConnectionModel } from '../../core/models/connection.model';
 import {
     AudioToTextNodeModel,
+    ClassificationDecisionTableNodeModel,
     CodeAgentNodeModel,
     DecisionTableNodeModel,
     EndNodeModel,
@@ -37,6 +38,7 @@ export interface NodeDiffByType {
     decisionTableNodes: NodeDiff<DecisionTableNodeModel>;
     noteNodes: NodeDiff<GraphNoteModel>;
     codeAgentNodes: NodeDiff<CodeAgentNodeModel>;
+    classificationDecisionTableNodes: NodeDiff<ClassificationDecisionTableNodeModel>;
 }
 
 export interface ConnectionDiff {

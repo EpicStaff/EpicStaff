@@ -121,33 +121,39 @@ $transition-default: all 0.2s ease;
 
 .menu-header {
     display: flex;
-    justify-content: flex-start;
+    justify-content: space-between;
     padding: 0;
     margin-bottom: 8px; // Match LLM popup spacing
     border-bottom: 1px solid $border-color;
     gap: 10px;
 
-    button {
-        background: transparent;
-        border: none;
-        color: $text-secondary;
-        font-size: 13px;
-        padding: 8px 16px;
-        cursor: pointer;
-        position: relative;
-        transition: color 0.2s;
-        font-weight: 500;
-        border-bottom: 2px solid transparent;
-        border-radius: 4px 4px 0 0;
-        margin-bottom: -1px;
+    .menu-tabs {
+        display: flex;
+        justify-content: flex-start;
+        gap: 10px;
 
-        &:hover {
-            color: $text-primary;
-        }
+        button {
+            background: transparent;
+            border: none;
+            color: $text-secondary;
+            font-size: 13px;
+            padding: 8px 16px;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+            font-weight: 500;
+            border-bottom: 2px solid transparent;
+            border-radius: 4px 4px 0 0;
+            margin-bottom: -1px;
 
-        &.active {
-            color: $accent-blue;
-            border-bottom: 2px solid $accent-blue;
+            &:hover {
+                color: $text-primary;
+            }
+
+            &.active {
+                color: $accent-blue;
+                border-bottom: 2px solid $accent-blue;
+            }
         }
     }
 }
@@ -256,57 +262,10 @@ $transition-default: all 0.2s ease;
     animation: fadeIn 0.3s ease;
 }
 
-.add-tool-button-container {
-    display: flex;
-    justify-content: center;
-    padding: 12px 0;
-    margin-top: 8px;
-
-    .add-tool-btn {
-        width: 100%;
-        max-width: 200px;
-    }
-}
-
 .footer {
     display: flex;
     justify-content: flex-end;
     padding: 12px;
     border-top: 1px solid $border-color;
     gap: 8px;
-    .save-btn {
-        background-color: $accent-blue;
-        color: white;
-        padding: 7px 16px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 500;
-        transition: $transition-default;
-        border: none;
-
-        &:hover {
-            background-color: $accent-hover;
-        }
-
-        &:active {
-            transform: translateY(0px);
-            box-shadow: none;
-        }
-    }
-    .cancel-button {
-        padding: 7px 14px;
-        background-color: transparent;
-        border: none;
-        color: $text-secondary;
-        font-size: 13px;
-        border-radius: 4px;
-        cursor: pointer;
-        transition: $transition-default;
-
-        &:hover {
-            color: $text-primary;
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-    }
 }

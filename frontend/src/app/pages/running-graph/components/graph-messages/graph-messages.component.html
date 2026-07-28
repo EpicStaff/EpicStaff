@@ -78,6 +78,15 @@
                     @case ('task') {
                         <app-task-message [message]="entry.message"></app-task-message>
                     }
+                    @case ('condition_group') {
+                        <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
+                    }
+                    @case ('classification_prompt') {
+                        <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
+                    }
+                    @case ('condition_group_manipulation') {
+                        <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
+                    }
                     @case ('finish') {
                         <app-finish-message
                             [message]="entry.message"
@@ -197,6 +206,7 @@
                                             [message]="drillEntry.message"
                                             [subgraphName]="drillEntry.subgraphName"
                                             [showViewNestedMessages]="drillEntry.hasNestedMessages"
+                                            [nestedMessagesCount]="drillEntry.nestedMessagesCount"
                                             [isNestedMessagesOpen]="drillEntry.isNestedMessagesOpen"
                                             (viewNestedMessages)="onViewNestedMessages(drillEntry.message)"
                                         ></app-subgraph-start-message>
@@ -256,6 +266,21 @@
                                                         [message]="nestedEntry.message"
                                                     ></app-task-message>
                                                 }
+                                                @case ('condition_group') {
+                                                    <app-classification-dt-message
+                                                        [message]="nestedEntry.message"
+                                                    ></app-classification-dt-message>
+                                                }
+                                                @case ('classification_prompt') {
+                                                    <app-classification-dt-message
+                                                        [message]="nestedEntry.message"
+                                                    ></app-classification-dt-message>
+                                                }
+                                                @case ('condition_group_manipulation') {
+                                                    <app-classification-dt-message
+                                                        [message]="nestedEntry.message"
+                                                    ></app-classification-dt-message>
+                                                }
                                                 @case ('finish') {
                                                     <app-finish-message
                                                         [message]="nestedEntry.message"
@@ -273,6 +298,7 @@
                                                         [message]="nestedEntry.message"
                                                         [subgraphName]="nestedEntry.subgraphName"
                                                         [showViewNestedMessages]="nestedEntry.hasNestedMessages"
+                                                        [nestedMessagesCount]="nestedEntry.nestedMessagesCount"
                                                         [isNestedMessagesOpen]="nestedEntry.isNestedMessagesOpen"
                                                         (viewNestedMessages)="onViewNestedMessages(nestedEntry.message)"
                                                     ></app-subgraph-start-message>
@@ -294,6 +320,7 @@
                                 [message]="entry.message"
                                 [subgraphName]="entry.subgraphName"
                                 [showViewNestedMessages]="entry.hasNestedMessages"
+                                [nestedMessagesCount]="entry.nestedMessagesCount"
                                 [isNestedMessagesOpen]="entry.isNestedMessagesOpen"
                                 (viewNestedMessages)="onViewNestedMessages(entry.message)"
                             ></app-subgraph-start-message>

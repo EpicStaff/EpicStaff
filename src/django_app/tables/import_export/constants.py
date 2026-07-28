@@ -1,6 +1,6 @@
 from tables.import_export.enums import EntityType
 
-IMPORT_VERSION = 1
+IMPORT_VERSION = 2
 
 MAIN_ENTITY_KEY = "main_entity"
 NODE_MAPPING_KEY = "node"
@@ -28,4 +28,18 @@ DEPENDENCY_ORDER = (
     EntityType.CREW,
     EntityType.WEBHOOK_TRIGGER,
     EntityType.GRAPH,
+    EntityType.START_NODE,
+    EntityType.CREW_NODE,
+    EntityType.PYTHON_NODE,
+    EntityType.AUDIO_TRANSCRIPTION_NODE,
+    EntityType.FILE_EXTRACTOR_NODE,
+    EntityType.TELEGRAM_TRIGGER_NODE,
+    EntityType.WEBHOOK_TRIGGER_NODE,
+    EntityType.DECISION_TABLE_NODE,
+    EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
+    EntityType.SUBGRAPH_NODE,
+    EntityType.END_NODE,
+    EntityType.NOTE_NODE,
+    EntityType.CODE_AGENT_NODE,
+    EntityType.SCHEDULE_TRIGGER_NODE,
 )

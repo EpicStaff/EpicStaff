@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { SelectComponent, SelectItem } from '@shared/components';
 import {
     CreateTranscriptionConfigRequest,
@@ -22,7 +23,7 @@ export interface AddTranscriptionConfigDialogData {
 @Component({
     selector: 'app-add-transcription-config-dialog',
     standalone: true,
-    imports: [CommonModule, ReactiveFormsModule, SelectComponent],
+    imports: [CommonModule, ReactiveFormsModule, SelectComponent, MatTooltip],
     templateUrl: './add-transcription-config-dialog.component.html',
     styleUrls: ['./add-transcription-config-dialog.component.scss'],
 })
@@ -30,6 +31,21 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
     transcriptionForm!: FormGroup;
     showApiKey = false;
     models: GetRealtimeTranscriptionModelRequest[] = [];
+
+    private readonly supportsTextSecurity: boolean =
+        typeof CSS !== 'undefined' &&
+        typeof CSS.supports === 'function' &&
+        CSS.supports('-webkit-text-security', 'disc');
+
+    get apiKeyInputType(): string {
+        if (this.showApiKey) return 'text';
+        return this.supportsTextSecurity ? 'text' : 'password';
+    }
+
+    get apiKeyMasked(): boolean {
+        return !this.showApiKey && this.supportsTextSecurity;
+    }
+
     submitting = false;
     private lastAutoCustomName: string | null = null;
     private destroyRef = inject(DestroyRef);

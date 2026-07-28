@@ -1,139 +1,142 @@
 <div class="llm-list-container">
-    <div class="list-header">
-        <input
-            #searchInput
-            type="text"
-            [(ngModel)]="searchTerm"
-            placeholder="Search models..."
-        />
-        <!-- Commented out filter button -->
-        <!-- <button class="filter-button">
-      <i class="ti ti-filter"></i>
-      Filter
-    </button> -->
+    <!-- Header -->
+    <div class="header">
+        <div class="list-header">
+            <input
+                #searchInput
+                type="text"
+                [ngModel]="searchTerm()"
+                (ngModelChange)="searchTerm.set($event)"
+                placeholder="Search models..."
+            />
+        </div>
+
+        <div class="menu-header">
+            <div class="menu-tabs">
+                <button
+                    [class.active]="activeTab() === 'llm'"
+                    (click)="setActiveTab('llm')"
+                >
+                    LLM Models
+                </button>
+                <button
+                    [class.active]="activeTab() === 'realtime'"
+                    (click)="setActiveTab('realtime')"
+                >
+                    Realtime Models
+                </button>
+            </div>
+
+            @if (activeTab() === 'llm') {
+                <app-button
+                    type="primary"
+                    mod="small"
+                    iconSize="0.9rem"
+                    [leftIcon]="'plus'"
+                    (click)="onCreateLlmModel()"
+                >
+                    Add LLM model
+                </app-button>
+            } @else if (activeTab() === 'realtime') {
+                <app-button
+                    type="primary"
+                    mod="small"
+                    iconSize="0.9rem"
+                    [leftIcon]="'plus'"
+                    (click)="onCreateRealtimeModel()"
+                >
+                    Add Realtime model
+                </app-button>
+            }
+        </div>
     </div>
 
-    <div class="tabs-header">
-        <div
-            class="tab"
-            [ngClass]="{ active: activeTab === 'llm' }"
-            (click)="setActiveTab('llm')"
-        >
-            LLM Models
-        </div>
-        <div
-            class="tab"
-            [ngClass]="{ active: activeTab === 'realtime' }"
-            (click)="setActiveTab('realtime')"
-        >
-            Realtime Models
-        </div>
-    </div>
-
+    <!-- Body -->
     <div class="body">
         <!-- LLM Models Tab -->
-        <div
-            class="llm-list-wrapper"
-            *ngIf="activeTab === 'llm'"
-        >
-            <!-- Loading Spinner -->
-            <div
-                *ngIf="loading"
-                class="loading-spinner"
-            >
-                <div class="dots">
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                </div>
-            </div>
-
-            <ul
-                class="llms-list"
-                *ngIf="!loading"
-            >
-                <app-llm-item
-                    *ngFor="let item of filteredLLMs"
-                    [item]="item"
-                    [isSelected]="selectedLLMId === item.id"
-                    itemType="llm"
-                    (itemSelected)="onSelectLLM($event)"
-                >
-                </app-llm-item>
-
-                <li
-                    class="no-results"
-                    *ngIf="filteredLLMs.length === 0"
-                >
-                    <div class="empty-state">
-                        <app-svg-icon
-                            icon="search-off"
-                            size="1.5rem"
-                        />
-                        <p>No matching LLM configurations found</p>
+        @if (activeTab() === 'llm') {
+            <div class="llm-list-wrapper">
+                @if (loading()) {
+                    <div class="loading-spinner">
+                        <div class="dots">
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                        </div>
                     </div>
-                </li>
-            </ul>
-        </div>
+                } @else {
+                    <ul class="llms-list">
+                        @for (item of filteredLLMs(); track item.id) {
+                            <app-llm-item
+                                [item]="item"
+                                [isSelected]="selectedLLMId() === item.id"
+                                itemType="llm"
+                                (itemSelected)="onSelectLLM($event)"
+                            />
+                        }
+
+                        @if (filteredLLMs().length === 0) {
+                            <li class="no-results">
+                                <div class="empty-state">
+                                    <app-svg-icon
+                                        icon="search-off"
+                                        size="1.5rem"
+                                    />
+                                    <p>No matching LLM configurations found</p>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        }
 
         <!-- Realtime Models Tab -->
-        <div
-            class="llm-list-wrapper"
-            *ngIf="activeTab === 'realtime'"
-        >
-            <!-- Loading Spinner -->
-            <div
-                *ngIf="loading"
-                class="loading-spinner"
-            >
-                <div class="dots">
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                </div>
-            </div>
-
-            <ul
-                class="llms-list"
-                *ngIf="!loading"
-            >
-                <app-llm-item
-                    *ngFor="let item of filteredRealtimeModels"
-                    [item]="item"
-                    [isSelected]="selectedRealtimeId === item.id"
-                    itemType="realtime"
-                    (itemSelected)="onSelectRealtime($event)"
-                >
-                </app-llm-item>
-
-                <li
-                    class="no-results"
-                    *ngIf="filteredRealtimeModels.length === 0"
-                >
-                    <div class="empty-state">
-                        <app-svg-icon
-                            icon="search-off"
-                            size="1.5rem"
-                        />
-                        <p>No matching Realtime configurations found</p>
+        @if (activeTab() === 'realtime') {
+            <div class="llm-list-wrapper">
+                @if (loading()) {
+                    <div class="loading-spinner">
+                        <div class="dots">
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                        </div>
                     </div>
-                </li>
-            </ul>
-        </div>
+                } @else {
+                    <ul class="llms-list">
+                        @for (item of filteredRealtimeModels(); track item.id) {
+                            <app-llm-item
+                                [item]="item"
+                                [isSelected]="selectedRealtimeId() === item.id"
+                                itemType="realtime"
+                                (itemSelected)="onSelectRealtime($event)"
+                            />
+                        }
+
+                        @if (filteredRealtimeModels().length === 0) {
+                            <li class="no-results">
+                                <div class="empty-state">
+                                    <app-svg-icon
+                                        icon="search-off"
+                                        size="1.5rem"
+                                    />
+                                    <p>No matching Realtime configurations found</p>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        }
     </div>
 
-    <div class="controls-footer">
-        <button
-            class="cancel-button"
+    <div class="footer">
+        <app-button
+            type="ghost"
             (click)="onCancel()"
         >
             Cancel
-        </button>
-        <button
-            class="save-button"
-            (click)="onSave()"
-        >
-            Save
-        </button>
+        </app-button>
+        <app-button (click)="onSave()"> Save </app-button>
     </div>
 </div>

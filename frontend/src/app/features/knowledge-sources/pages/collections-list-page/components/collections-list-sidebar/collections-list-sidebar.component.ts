@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, model, output } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { ButtonComponent, SelectComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { FilesSearchService } from '../../../../../../features/files/services/files-search.service';
 import { GetCollectionRequest } from '../../../../models/collection.model';
@@ -10,7 +12,14 @@ import { CollectionComponent } from './collection/collection.component';
     selector: 'app-collections-list-sidebar',
     templateUrl: './collections-list-sidebar.component.html',
     styleUrls: ['./collections-list-sidebar.component.scss'],
-    imports: [ButtonComponent, ReactiveFormsModule, FormsModule, CollectionComponent, SelectComponent],
+    imports: [
+        ButtonComponent,
+        ReactiveFormsModule,
+        FormsModule,
+        CollectionComponent,
+        SelectComponent,
+        HasPermissionDirective,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionsListItemSidebarComponent {
@@ -26,4 +35,6 @@ export class CollectionsListItemSidebarComponent {
     selectedCollectionId = model<number | null>();
 
     onCreateCollection = output();
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

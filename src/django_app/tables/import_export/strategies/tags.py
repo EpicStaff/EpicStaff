@@ -45,13 +45,17 @@ class BaseTagStrategy(EntityImportExportStrategy):
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data
 
-    def find_existing(self, data, id_mapper):
+    def find_existing(self, data, id_mapper, org_id: int = None):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
 
         filters, null_filters = create_filters(data_copy)
 
-        return self.model_class.objects.filter(**filters, **null_filters).first()
+        return (
+            self.model_class.objects.filter(**filters, **null_filters)
+            .filter(self.get_org_scope_q(org_id))
+            .first()
+        )
 
 
 class AgentTagStrategy(BaseTagStrategy):

@@ -8,7 +8,7 @@ from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.permissions import IsSuperadmin
 from tables.models.rbac_models import ApiKey
 from tables.serializers.rbac_serializers import (
@@ -26,7 +26,7 @@ from tables.services.rbac.first_setup_service import FirstSetupService
 from tables.services.rbac.password_recovery_service import PasswordRecoveryService
 from tables.services.rbac.rbac_exceptions import InvalidRefreshTokenError
 from tables.services.rbac.reset_user_service import ResetUserService
-from tables.services.rbac.sse_ticket_service import SseTicketService
+from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
 from tables.services.rbac.utils.refresh_cookie import (
     clear_refresh_cookie,
     get_refresh_from_cookie,
@@ -43,6 +43,7 @@ from tables.swagger_schemas.auth_schema import (
     SSE_TICKET_POST,
     SWAGGER_TOKEN_POST,
     TOKEN_INTROSPECT_POST,
+    WS_TICKET_POST,
 )
 from tables.throttles import LoginThrottle, PasswordResetRequestThrottle
 
@@ -68,7 +69,7 @@ class LoginView(TokenObtainPairView):
 
 
 class LogoutView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(**LOGOUT_POST)
@@ -94,10 +95,8 @@ class LogoutView(APIView):
 
 
 class SseTicketView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
-
-    _service = SseTicketService()
 
     @extend_schema(**SSE_TICKET_POST)
     def post(self, request):
@@ -108,7 +107,30 @@ class SseTicketView(APIView):
                 {"detail": "This endpoint requires a user context."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        ticket, ttl = self._service.issue(request.user)
+        ticket, ttl = sse_ticket_service.issue(request.user)
+        return Response({"ticket": ticket, "expires_in": ttl})
+
+
+class WsTicketView(APIView):
+    """
+    Issue a single-use WebSocket ticket bound to the calling user.
+    The client appends `?ticket=<value>` when opening the WS connection
+    because WebSocket connections cannot carry an Authorization header.
+    """
+
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(**WS_TICKET_POST)
+    def post(self, request):
+        if not getattr(request.user, "is_authenticated", False) or not hasattr(
+            request.user, "email"
+        ):
+            return Response(
+                {"detail": "This endpoint requires a user context."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        ticket, ttl = ws_ticket_service.issue(request.user)
         return Response({"ticket": ticket, "expires_in": ttl})
 
 
@@ -155,14 +177,17 @@ class FirstSetupView(APIView):
 
 
 class TokenIntrospectView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(**TOKEN_INTROSPECT_POST)
     def post(self, request):
-        if not isinstance(request.auth, ApiKey):
+        if (
+            not isinstance(request.auth, ApiKey)
+            or request.auth.key_type != ApiKey.KeyType.SYSTEM
+        ):
             return Response(
-                {"detail": "API key required"},
+                {"detail": "System API key required"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -187,7 +212,7 @@ class TokenIntrospectView(APIView):
 
 
 class ApiKeyValidateView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(**API_KEY_VALIDATE_GET)
@@ -203,7 +228,6 @@ class ApiKeyValidateView(APIView):
                 "active": True,
                 "name": key.name,
                 "prefix": key.prefix,
-                "scopes": key.scopes or [],
                 "owner_user_id": key.created_by_id,
             },
             status=status.HTTP_200_OK,
@@ -305,7 +329,7 @@ class AdminPasswordResetView(APIView):
     `PasswordRecoveryService.admin_reset` stays as a redundant safety net.
     """
 
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, IsSuperadmin]
 
     _validator = AuthValidationService()
@@ -367,7 +391,7 @@ class CookieTokenRefreshView(APIView):
 
 
 class ResetUserView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, IsSuperadmin]
 
     _service = ResetUserService()
@@ -377,7 +401,7 @@ class ResetUserView(APIView):
     def post(self, request):
         cleaned = self._validator.validate_reset_user(request.data)
 
-        user, raw_key = self._service.reset(
+        user = self._service.reset(
             email=cleaned["email"],
             password=cleaned["password"],
         )

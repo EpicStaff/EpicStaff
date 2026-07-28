@@ -12,6 +12,7 @@
             </div>
             <div class="header-actions">
                 <app-button
+                    *appHasPermission="[ResourceCode.Projects, ActionCode.Create]"
                     type="primary"
                     class="btn-primary create-btn"
                     [leftIcon]="'plus'"
@@ -35,9 +36,6 @@
                 }
             </div>
             <div class="tabs-right">
-                <!-- <app-project-tags-filter (change)="onProjectTagsChange($event)">
-                </app-project-tags-filter> -->
-
                 <div class="search-container">
                     <app-svg-icon
                         icon="search"
@@ -55,7 +53,8 @@
                         <button
                             type="button"
                             class="clear-btn"
-                            aria-label="Clear"
+                            aria-label="Clear search"
+                            matTooltip="Clear search"
                             (click)="clearSearch()"
                         >
                             <app-svg-icon

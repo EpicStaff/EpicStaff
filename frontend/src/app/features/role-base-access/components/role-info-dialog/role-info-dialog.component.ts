@@ -1,5 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent } from '@shared/components';
 import { CatalogResponse, GetRoleResponse } from '@shared/models';
 import { rolePermissionsToSet } from '@shared/utils';
@@ -15,8 +16,9 @@ import { UserAvatarComponent } from '../user-avatar/user-avatar.component';
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [AppSvgIconComponent, PermissionsTableComponent, UserAvatarComponent],
 })
-export class RoleInfoDialogComponent {
+export class RoleInfoDialogComponent implements OnInit {
     private dialogRef = inject(DialogRef);
+    private destroyRef = inject(DestroyRef);
     private rolesCatalogService = inject(PermissionsService);
 
     readonly role = inject<GetRoleResponse>(DIALOG_DATA);
@@ -35,6 +37,10 @@ export class RoleInfoDialogComponent {
         }
         return rolePermissionsToSet(this.role.permissions);
     });
+
+    ngOnInit() {
+        this.rolesCatalogService.loadCatalog().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+    }
 
     onClose(): void {
         this.dialogRef.close();

@@ -50,17 +50,6 @@ class TokenIntrospectResponseSerializer(serializers.Serializer):
     scopes = serializers.ListField(child=serializers.CharField(), required=False)
 
 
-# ---- API-key validate ----
-
-
-class ApiKeyValidateResponseSerializer(serializers.Serializer):
-    active = serializers.BooleanField()
-    name = serializers.CharField()
-    prefix = serializers.CharField()
-    scopes = serializers.ListField(child=serializers.CharField())
-    owner_user_id = serializers.IntegerField(allow_null=True)
-
-
 # ---- Reset user ----
 
 
@@ -87,10 +76,8 @@ class LogoutResponseSerializer(serializers.Serializer):
     detail = serializers.CharField()
 
 
-# ---- SSE ticket ----
-
-
-class SseTicketResponseSerializer(serializers.Serializer):
+# ---- Ticket ----
+class TicketResponseSerializer(serializers.Serializer):
     ticket = serializers.CharField()
     expires_in = serializers.IntegerField()
 

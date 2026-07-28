@@ -13,8 +13,18 @@ import {
     Signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AppSvgIconComponent, SelectComponent, SelectItem } from '@shared/components';
-import { ModelTypes } from '@shared/models';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import {
+    AppSvgIconComponent,
+    EmbeddingModelConfigDialogComponent,
+    LlmModelConfigDialogComponent,
+    SelectComponent,
+    SelectItem,
+    TranscriptionModelConfigDialogComponent,
+    VoiceModelConfigDialogComponent,
+} from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ModelTypes, ResourceCode } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
@@ -23,11 +33,8 @@ import {
 } from '@shared/services';
 import { Observable } from 'rxjs';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { DefaultLlmsCard } from '../../interfaces/default-llms-card.interface';
-import { EmbeddingModelConfigDialogComponent } from '../embedding-model-config-dialog/embedding-model-config-dialog.component';
-import { LlmModelConfigDialogComponent } from '../llm-model-config-dialog/llm-model-config-dialog.component';
-import { TranscriptionModelConfigDialogComponent } from '../transcription-model-config-dialog/transcription-model-config-dialog.component';
-import { VoiceModelConfigDialogComponent } from '../voice-config-model/voice-model-config-dialog.component';
 
 type DialogComponentType =
     | EmbeddingModelConfigDialogComponent
@@ -37,7 +44,7 @@ type DialogComponentType =
 
 @Component({
     selector: 'app-default-llms-card',
-    imports: [CommonModule, AppSvgIconComponent, SelectComponent],
+    imports: [CommonModule, AppSvgIconComponent, SelectComponent, MatTooltipModule, HasPermissionDirective],
     templateUrl: './default-llms-card.component.html',
     styleUrls: ['./default-llms-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -47,6 +54,7 @@ export class DefaultLlmsCardComponent implements OnInit {
     private readonly embeddingConfigStorage = inject(EmbeddingConfigStorageService);
     private readonly realtimeConfigStorage = inject(RealtimeConfigStorageService);
     private readonly transcriptionConfigStorage = inject(TranscriptionConfigStorageService);
+    protected readonly permissionService = inject(PermissionsService);
 
     private readonly destroyRef = inject(DestroyRef);
     private dialog = inject(Dialog);
@@ -106,4 +114,7 @@ export class DefaultLlmsCardComponent implements OnInit {
     private getDialogComponent(): ComponentType<DialogComponentType> {
         return this.dialogComponents[this.card().configType];
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

@@ -1,7 +1,6 @@
 from drf_spectacular.utils import OpenApiResponse, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 from tables.serializers.rbac_serializers import (
-    ApiKeyValidateResponseSerializer,
     FirstSetupStatusSerializer,
     FirstSetupRequestSerializer,
     FirstSetupResponseSerializer,
@@ -10,7 +9,7 @@ from tables.serializers.rbac_serializers import (
     RefreshResponseSerializer,
     ResetUserRequestSerializer,
     ResetUserResponseSerializer,
-    SseTicketResponseSerializer,
+    TicketResponseSerializer,
     SwaggerTokenRequestSerializer,
     SwaggerTokenResponseSerializer,
     TokenIntrospectRequestSerializer,
@@ -22,10 +21,27 @@ API_KEY_VALIDATE_GET = dict(
     summary="Validate the current API key",
     description=(
         "Requires an API key. Returns metadata about the calling key "
-        "including the owning user's id (null for env-seeded system keys)."
+        "including the owning user's id (null for env-seeded system keys). "
+        "Permissions come from the owning user's live RBAC role, not a "
+        "per-key scope list — the response carries no `scopes` field."
     ),
     responses={
-        200: ApiKeyValidateResponseSerializer,
+        200: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Key is active.",
+            examples=[
+                OpenApiExample(
+                    "Active key",
+                    value={
+                        "active": True,
+                        "name": "my-key",
+                        "prefix": "es-abc12345",
+                        "owner_user_id": 3,
+                    },
+                    response_only=True,
+                ),
+            ],
+        ),
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -141,6 +157,7 @@ TOKEN_INTROSPECT_POST = dict(
     description=(
         "Service-to-service JWT validator: the caller authenticates with "
         "an API key and passes a JWT in the body to get its claims back. "
+        "Requires a SYSTEM-type API key — user-owned keys are rejected. "
         "Intended for internal services / gateways that should not hold "
         "`JWT_SECRET` but still need to verify bearer tokens. "
         "See `docs/rbac/auth_endpoints.md` for full behavior."
@@ -167,12 +184,12 @@ TOKEN_INTROSPECT_POST = dict(
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Request was not authenticated with an API key.",
+            description="Request was not authenticated with a SYSTEM API key.",
             examples=[
                 OpenApiExample(
-                    "API key required",
+                    "System API key required",
                     value={
-                        "detail": "API key required",
+                        "detail": "System API key required",
                     },
                     response_only=True,
                     status_codes=["403"],
@@ -298,10 +315,11 @@ REFRESH_POST = dict(
 RESET_USER_POST = dict(
     summary="Reset user (destructive)",
     description=(
-        "Deletes all Users and ApiKeys inside a single transaction, then "
-        "creates a new superadmin and a fresh 'realtime-default' API key. "
-        "Organizations are left intact; the new superadmin has no "
-        "automatic membership and relies on the is_superadmin bypass."
+        "Deletes all Users inside a single transaction (their API keys "
+        "cascade; the system API key survives), then creates a new "
+        "superadmin. Organizations are left intact; the new superadmin "
+        "is given a default-organization membership (the default org is "
+        "reused if one exists, otherwise created)."
     ),
     request=ResetUserRequestSerializer,
     responses={
@@ -347,7 +365,7 @@ SSE_TICKET_POST = dict(
         "on first read, so reconnects require a fresh ticket."
     ),
     responses={
-        200: SseTicketResponseSerializer,
+        200: TicketResponseSerializer,
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -397,6 +415,49 @@ SWAGGER_TOKEN_POST = dict(
                         "code": "authentication_failed",
                         "message": "AuthenticationFailed: No active account found with the given credentials",
                     },
+                    response_only=True,
+                    status_codes=["403"],
+                ),
+            ],
+        ),
+    },
+)
+
+WS_TICKET_POST = dict(
+    summary="Issue a short-lived single-use WebSocket ticket",
+    description=(
+        "Issues a single-use ticket bound to the calling JWT user. The ticket is passed "
+        "as a `?ticket=...` query param when opening a WebSocket connection because the "
+        "WebSocket handshake cannot carry an `Authorization` header. "
+        "The ticket is consumed on first use (Redis GETDEL), so it cannot be replayed — "
+        "each reconnect requires a fresh ticket issued by a new call to this endpoint. "
+        "TTL is governed by the `GRAPH_WS_TICKET_TTL_SECONDS` setting and is returned "
+        "as `expires_in` in the response."
+    ),
+    responses={
+        200: OpenApiResponse(
+            response=TicketResponseSerializer,
+            description="Ticket issued successfully.",
+            examples=[
+                OpenApiExample(
+                    "Ticket issued",
+                    value={
+                        "ticket": "kPx3mN8vQzR1uYwT6aJcXdLsEoFbHgIi",
+                        "expires_in": 30,
+                    },
+                    response_only=True,
+                    status_codes=["200"],
+                ),
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Caller authenticated via an API key that has no owning user.",
+            examples=[
+                OpenApiExample(
+                    "No user context",
+                    value={"detail": "This endpoint requires a user context."},
                     response_only=True,
                     status_codes=["403"],
                 ),

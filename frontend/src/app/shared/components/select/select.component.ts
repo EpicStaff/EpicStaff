@@ -18,7 +18,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
-import { isEqual } from 'lodash-es';
+import { deepEqual } from '@shared/utils';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -55,16 +55,18 @@ export class SelectComponent implements ControlValueAccessor {
     items = input<SelectItem[]>([]);
     placeholder = input<string>('Select option');
     invalid = input<boolean>(false);
+    disabled = input<boolean>(false);
 
     open = signal(false);
-    isDisabled = signal(false);
+    private controlDisabled = signal(false);
+    isDisabled = computed(() => this.disabled() || this.controlDisabled());
 
     selectedValue = model<unknown | null>(null);
     selectedItem = computed(() => {
         const value = this.selectedValue();
         if (value === undefined || value === null) return null;
 
-        return this.items().find((i) => isEqual(i.value, value)) ?? null;
+        return this.items().find((i) => deepEqual(i.value, value)) ?? null;
     });
 
     changed = output<unknown>();
@@ -83,6 +85,7 @@ export class SelectComponent implements ControlValueAccessor {
     private destroyRef = inject(DestroyRef);
 
     toggle() {
+        if (this.isDisabled()) return;
         this.open() ? this.close() : this.openDropdown();
     }
 
@@ -158,6 +161,6 @@ export class SelectComponent implements ControlValueAccessor {
     }
 
     setDisabledState(isDisabled: boolean): void {
-        this.isDisabled.set(isDisabled);
+        this.controlDisabled.set(isDisabled);
     }
 }

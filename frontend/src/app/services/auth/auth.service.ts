@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import {
     AccessToken,
@@ -38,6 +39,9 @@ export class AuthService {
     private refreshInProgress$: Observable<string | null> | null = null;
     private statusCache$: Observable<FirstSetupStatus> | null = null;
 
+    // ID of the organization created during initial superadmin setup
+    defaultOrgId = signal<number | null>(null);
+
     private readonly accessTokenSignal = signal<string | null>(this.getCookie(this.accessKey));
     public readonly accessToken = this.accessTokenSignal.asReadonly();
 
@@ -63,6 +67,7 @@ export class AuthService {
             .post<FirstSetupResponse>(`${this.baseUrl}first-setup/`, payload, { withCredentials: true })
             .pipe(
                 tap(() => {
+                    this.defaultOrgId.set(resp.organization.id);
                     this.statusCache$ = null;
                 })
             );

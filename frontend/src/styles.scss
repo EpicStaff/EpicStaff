@@ -1,3 +1,9 @@
+@use '@fontsource/inter/300.css' as inter-300;
+@use '@fontsource/inter/400.css' as inter-400;
+@use '@fontsource/inter/500.css' as inter-500;
+@use '@fontsource/roboto/300.css' as roboto-300;
+@use '@fontsource/roboto/400.css' as roboto-400;
+@use '@fontsource/roboto/500.css' as roboto-500;
 @use './styles/_reset.scss';
 @use './styles/json-viewer.scss';
 @use './styles/_variables';
@@ -5,7 +11,9 @@
 @use './styles/markdown.scss';
 @use './styles/_material.scss';
 @use './styles/_overlays';
+@use './styles/_prompt-tooltip';
 @use './styles/_action-dropdown-overlay';
+@use './styles/_tabler-icons-filled.scss';
 
 .waypoint-tooltip {
     display: none;

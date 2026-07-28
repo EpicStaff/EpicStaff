@@ -20,6 +20,8 @@ export const DEFAULT_PROJECT_NODE_PORTS: BasePort[] = [
             'telegram-trigger-out',
             'schedule-trigger-out',
             'code-agent-out',
+            'decision-default',
+            'decision-error',
         ],
         position: 'left',
         color: '#5672cd',

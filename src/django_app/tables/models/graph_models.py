@@ -16,6 +16,7 @@ from tables.models.base_models import (
     SoftDeleteMixin,
 )
 from tables.models.label_models import Label
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 from tables.exceptions import GraphSaveVersionConflictError
 
 
@@ -45,20 +46,20 @@ class GraphManager(models.Manager):
         return self.filter(id__in=subgraph_ids).prefetch_related("tags")
 
 
-class Graph(TimestampMixin, models.Model):
+class Graph(OrgScopedModel, TimestampMixin):
     objects = GraphManager()
 
     tags = models.ManyToManyField(to="GraphTag", blank=True, default=[])
     labels = models.ManyToManyField(Label, blank=True, related_name="flows")
 
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
-    name = models.CharField(max_length=255, blank=False, unique=True)
+    name = models.CharField(max_length=255, blank=False)
     description = models.TextField(blank=True)
     metadata = models.JSONField(default=dict)
     time_to_live = models.IntegerField(
         default=3600, help_text="Session lifitime duration in seconds."
     )
-    persistent_variables = models.BooleanField(
+    enable_persistent_variables = models.BooleanField(
         default=False, help_text="If 'True' -> use variables from last session."
     )
     epicchat_enabled = models.BooleanField(
@@ -83,6 +84,14 @@ class Graph(TimestampMixin, models.Model):
             )
             raise GraphSaveVersionConflictError(current_version=current)
         return expected + 1
+
+    class Meta(OrgScopedModel.Meta):
+        abstract = False
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name"], name="unique_graph_name_per_org"
+            ),
+        ]
 
 
 class BaseNode(BaseGraphEntity, BaseGlobalNode):
@@ -242,15 +251,17 @@ class Edge(BaseGraphEntity, models.Model):
         ]
 
     def clean(self):
-        # Using the unified class method to find any node type by ID
+        # Start/end nodes must exist AND belong to this edge's graph (which also
+        # keeps them in the same org). A node in another graph/org is treated as
+        # not found.
         start_node = BaseGlobalNode.find_globally(self.start_node_id)
-        if not start_node:
+        if not start_node or start_node.graph_id != self.graph_id:
             raise ObjectDoesNotExist(
                 f"Start node with ID {self.start_node_id} not found."
             )
 
         end_node = BaseGlobalNode.find_globally(self.end_node_id)
-        if not end_node:
+        if not end_node or end_node.graph_id != self.graph_id:
             raise ObjectDoesNotExist(f"End node with ID {self.end_node_id} not found.")
 
 
@@ -360,7 +371,7 @@ class DecisionTableNode(BaseGraphEntity, BaseGlobalNode):
 
         if self.default_next_node_id:
             default_next_node = BaseGlobalNode.find_globally(self.default_next_node_id)
-            if not default_next_node:
+            if not default_next_node or default_next_node.graph_id != self.graph_id:
                 raise ValidationError(
                     {
                         "default_next_node_id": f"Default next node with ID '{self.default_next_node_id}' not found."
@@ -369,7 +380,7 @@ class DecisionTableNode(BaseGraphEntity, BaseGlobalNode):
 
         if self.next_error_node_id:
             next_error_node = BaseGlobalNode.find_globally(self.next_error_node_id)
-            if not next_error_node:
+            if not next_error_node or next_error_node.graph_id != self.graph_id:
                 raise ValidationError(
                     {
                         "next_error_node_id": f"Error node with ID '{self.next_error_node_id}' not found."
@@ -416,7 +427,9 @@ class ConditionGroup(ContentHashMixin, models.Model):
 
         if self.next_node_id:
             next_node = BaseGlobalNode.find_globally(self.next_node_id)
-            if not next_node:
+            # Same graph as the owning decision table (⇒ same org).
+            owner_graph_id = getattr(self.decision_table_node, "graph_id", None)
+            if not next_node or next_node.graph_id != owner_graph_id:
                 raise ValidationError(
                     {
                         "next_node_id": f"Next node with ID '{self.next_node_id}' not found."
@@ -448,7 +461,7 @@ class Condition(ContentHashMixin, models.Model):
 # GraphOrganizationUser below now hold per-flow persistent variables scoped to
 # those RBAC entities.
 #
-# - GraphOrganization(graph, organization)          -> org-level persistent vars
+# - GraphOrganization(graph)                         -> org-level persistent vars
 #   .user_variables                                 -> seed template for new
 #                                                      GraphOrganizationUser rows
 # - GraphOrganizationUser(graph, organization_user) -> per-membership persistent
@@ -467,11 +480,9 @@ class BasePersistentEntity(models.Model):
 
 
 class GraphOrganization(BasePersistentEntity):
-    organization = models.ForeignKey(
-        "Organization",
-        on_delete=models.CASCADE,
-        related_name="graph_persistent_states",
-    )
+    # Org is derived from graph.org (a flow has exactly one owning org), so this
+    # row is a 1:1 extension of Graph holding org-level persistent variables.
+    # TODO refactor to use user_variable for persistent variables
     user_variables = models.JSONField(
         default=dict,
         help_text="Seed template of variables copied into each user's GraphOrganizationUser row",
@@ -480,8 +491,8 @@ class GraphOrganization(BasePersistentEntity):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["graph", "organization"],
-                name="unique_organization_per_flow",
+                fields=["graph"],
+                name="unique_persistent_state_per_flow",
             )
         ]
 
@@ -489,6 +500,7 @@ class GraphOrganization(BasePersistentEntity):
 class GraphOrganizationUser(BasePersistentEntity):
     # FK points at RBAC OrganizationUser (User x Org membership), so per-user
     # persistent state is scoped per-org as well
+    # TODO refactor to use user_variable for persistent variables
     organization_user = models.ForeignKey(
         "OrganizationUser",
         on_delete=models.CASCADE,
@@ -650,6 +662,147 @@ class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode):
         }
         data_string = json.dumps(data, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(data_string).hexdigest()
+
+
+class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode):
+    graph = models.ForeignKey(
+        "Graph",
+        on_delete=models.CASCADE,
+        related_name="classification_decision_table_node_list",
+    )
+    node_name = models.CharField(max_length=255, blank=True)
+    pre_python_code = models.ForeignKey(
+        "PythonCode",
+        on_delete=models.CASCADE,
+        null=True,
+        default=None,
+        related_name="cdt_pre_nodes",
+    )
+    pre_input_map = models.JSONField(default=dict, blank=True)
+    pre_output_variable_path = models.CharField(
+        max_length=512, null=True, default=None, blank=True
+    )
+    post_python_code = models.ForeignKey(
+        "PythonCode",
+        on_delete=models.CASCADE,
+        null=True,
+        default=None,
+        related_name="cdt_post_nodes",
+    )
+    post_input_map = models.JSONField(default=dict, blank=True)
+    post_output_variable_path = models.CharField(
+        max_length=512, null=True, default=None, blank=True
+    )
+    prompts = models.JSONField(default=dict, blank=True)
+    default_llm_config = models.ForeignKey(
+        "LLMConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cdt_nodes_as_default",
+    )
+    default_next_node_id = models.BigIntegerField(null=True, default=None)
+    next_error_node_id = models.BigIntegerField(null=True, default=None)
+
+    def clean(self):
+        super().clean()
+
+        if self.default_next_node_id:
+            default_next_node = BaseGlobalNode.find_globally(self.default_next_node_id)
+            if not default_next_node:
+                raise ValidationError(
+                    {
+                        "default_next_node_id": f"Default next node with ID '{self.default_next_node_id}' not found."
+                    }
+                )
+
+        if self.next_error_node_id:
+            next_error_node = BaseGlobalNode.find_globally(self.next_error_node_id)
+            if not next_error_node:
+                raise ValidationError(
+                    {
+                        "next_error_node_id": f"Error node with ID '{self.next_error_node_id}' not found."
+                    }
+                )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["graph", "node_name"],
+                name="unique_graph_node_name_for_classification_dt_node",
+            )
+        ]
+
+
+class ClassificationDecisionTablePrompt(TimestampMixin, models.Model):
+    cdt_node = models.ForeignKey(
+        "ClassificationDecisionTableNode",
+        on_delete=models.CASCADE,
+        related_name="prompt_configs",
+    )
+    prompt_key = models.CharField(max_length=255)
+    prompt_text = models.TextField(blank=True, default="")
+    llm_config = models.ForeignKey(
+        "LLMConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cdt_prompts",
+    )
+    output_schema = models.JSONField(default=dict, blank=True)
+    result_variable = models.CharField(max_length=255, default="prompt_result")
+    variable_mappings = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        unique_together = ("cdt_node", "prompt_key")
+
+
+class ClassificationConditionGroup(BaseGraphEntity, models.Model):
+    classification_decision_table_node = models.ForeignKey(
+        "ClassificationDecisionTableNode",
+        on_delete=models.CASCADE,
+        related_name="condition_groups",
+    )
+    group_name = models.CharField(max_length=255, blank=False)
+    order = models.PositiveIntegerField(blank=False, default=0)
+    expression = models.TextField(null=True, default=None, blank=True)
+    prompt = models.ForeignKey(
+        "ClassificationDecisionTablePrompt",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="condition_groups",
+    )
+    manipulation = models.TextField(null=True, default=None, blank=True)
+    continue_flag = models.BooleanField(default=False)
+    next_node_id = models.BigIntegerField(null=True, default=None)
+    dock_visible = models.BooleanField(default=True)
+    field_expressions = models.JSONField(default=dict, blank=True)
+    field_manipulations = models.JSONField(default=dict, blank=True)
+    route_code = models.CharField(max_length=128, null=True, default=None, blank=True)
+    section = models.CharField(max_length=128, null=True, default=None, blank=True)
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["classification_decision_table_node", "route_code"],
+                condition=models.Q(route_code__isnull=False),
+                name="unique_route_code_per_cdt_node",
+            )
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if self.next_node_id is not None:
+            next_node = BaseGlobalNode.find_globally(self.next_node_id)
+            if not next_node:
+                raise ValidationError(
+                    {
+                        "next_node_id": f"Error node with ID '{self.next_node_id}' not found."
+                    }
+                )
 
 
 class GraphNote(BaseGraphEntity, BaseGlobalNode):

@@ -22,7 +22,6 @@ from tables.models.crew_models import (
     DefaultAgentConfig,
     DefaultCrewConfig,
 )
-from tables.services.config_service import YamlConfigService
 from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
 from tables.models import (
@@ -45,6 +44,7 @@ from tables.models import (
     PythonCodeTool,
     PythonCode,
     RealtimeAgent,
+    Organization,
 )
 
 from tests.helpers import data_to_json_file
@@ -84,12 +84,13 @@ def gpt_35_llm(openai_provider: Provider) -> LLMModel:
 
 
 @pytest.fixture
-def llm_config(gpt_4o_llm) -> LLMConfig:
+def llm_config(gpt_4o_llm, default_org) -> LLMConfig:
     llm_config = LLMConfig(
         custom_name="MyGPT-4o",
         model=gpt_4o_llm,
         temperature=0.5,
         is_visible=True,
+        org=default_org,
     )
     llm_config.save()
     return llm_config
@@ -117,9 +118,13 @@ def default_crew_config(llm_config) -> DefaultCrewConfig:
 
 
 @pytest.fixture
-def new_llm_config(gpt_4o_llm):
+def new_llm_config(gpt_4o_llm, default_org):
     llm_config = LLMConfig(
-        model=gpt_4o_llm, temperature=0.9, num_ctx=1024, is_visible=True
+        model=gpt_4o_llm,
+        temperature=0.9,
+        num_ctx=1024,
+        is_visible=True,
+        org=default_org,
     )
     llm_config.save()
     return llm_config
@@ -145,7 +150,10 @@ def wikipedia_tool_config(wikipedia_tool) -> ToolConfig:
 
 @pytest.fixture
 def wikipedia_agent(
-    gpt_4o_llm: LLMModel, llm_config: LLMConfig, wikipedia_tool_config: ToolConfig
+    gpt_4o_llm: LLMModel,
+    llm_config: LLMConfig,
+    wikipedia_tool_config: ToolConfig,
+    default_org: Organization,
 ) -> Agent:
     agent = Agent(
         role="Wikipedia searcher",
@@ -156,6 +164,7 @@ def wikipedia_agent(
         max_iter=25,
         llm_config=llm_config,
         fcm_llm_config=llm_config,
+        org=default_org,
     )
     agent.save()
 
@@ -176,10 +185,12 @@ def embedding_model(openai_provider: Provider) -> EmbeddingModel:
 
 
 @pytest.fixture
-def embedding_config(embedding_model: EmbeddingModel) -> EmbeddingConfig:
+def embedding_config(embedding_model: EmbeddingModel, default_org) -> EmbeddingConfig:
     embedding_config = EmbeddingConfig(
+        custom_name="MyEmbedder",
         model=embedding_model,
         task_type="retrieval_document",
+        org=default_org,
     )
     embedding_config.save()
     return embedding_config
@@ -204,6 +215,7 @@ def crew(
     embedding_config: EmbeddingConfig,
     llm_config: LLMConfig,
     test_task: Task,
+    default_org: Organization,
 ) -> Crew:
     crew = Crew(
         name="Test Crew",
@@ -213,6 +225,7 @@ def crew(
         embedding_config=embedding_config,
         manager_llm_config=llm_config,
         memory_llm_config=llm_config,
+        org=default_org,
     )
 
     crew.save()
@@ -225,8 +238,8 @@ def crew(
 
 
 @pytest.fixture
-def graph() -> Graph:
-    return Graph.objects.create(name="test")
+def graph(default_org: Organization) -> Graph:
+    return Graph.objects.create(name="test", org=default_org)
 
 
 @pytest.fixture
@@ -283,18 +296,6 @@ def mock_redis_service_async():
         mock.async_publish = AsyncMock()
         mock.listen_to_channel = AsyncMock(return_value=None)
         yield mock
-
-
-@pytest.fixture
-def yaml_config_service_patched_config_path(
-    tmp_path: Path,
-) -> Generator[MagicMock, None, None]:
-    tmp_path.mkdir(exist_ok=True)
-    config_path: Path = tmp_path / "config.yaml"
-    with patch.object(YamlConfigService, "_CONFIG_PATH", config_path):
-        yield config_path
-
-    shutil.rmtree(tmp_path)
 
 
 @pytest.fixture
@@ -417,10 +418,13 @@ def openai_realtime_model(openai_provider):
 
 
 @pytest.fixture
-def openai_realtime_model_config(openai_realtime_model):
+def openai_realtime_model_config(openai_realtime_model, default_org):
     # Create and return the `RealtimeModelConfig` instance
     config = RealtimeConfig.objects.create(
-        custom_name="test", api_key="test", realtime_model=openai_realtime_model
+        custom_name="test",
+        api_key="test",
+        realtime_model=openai_realtime_model,
+        org=default_org,
     )
     return config
 
@@ -433,11 +437,12 @@ def realtime_transcription_model(openai_provider):
 
 
 @pytest.fixture
-def realtime_transcription_config(realtime_transcription_model):
+def realtime_transcription_config(realtime_transcription_model, default_org):
     return RealtimeTranscriptionConfig.objects.create(
         custom_name="test_realtime_transcription_config",
         realtime_transcription_model=realtime_transcription_model,
         api_key="mock key",
+        org=default_org,
     )
 
 
@@ -464,8 +469,22 @@ def seeded_db(wikipedia_tool):
         description="description",
         python_code=code,
         variables=[
-            {"name": "arg1", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
-            {"name": "arg2", "type": "string", "description": "", "default_value": None, "input_type": "agent_input", "required": True},
+            {
+                "name": "arg1",
+                "type": "string",
+                "description": "",
+                "default_value": None,
+                "input_type": "agent_input",
+                "required": True,
+            },
+            {
+                "name": "arg2",
+                "type": "string",
+                "description": "",
+                "default_value": None,
+                "input_type": "agent_input",
+                "required": True,
+            },
         ],
     )
 
@@ -514,7 +533,14 @@ def python_tool_data():
         "name": "python tool1",
         "description": "Get user name from id",
         "variables": [
-            {"name": "user_id", "type": "integer", "description": "id of user", "input_type": "agent_input", "required": True, "default_value": None},
+            {
+                "name": "user_id",
+                "type": "integer",
+                "description": "id of user",
+                "input_type": "agent_input",
+                "required": True,
+                "default_value": None,
+            },
         ],
     }
 
@@ -532,7 +558,6 @@ def llm_config_data(embedding_model, gpt_4o_llm):
         "presence_penalty": None,
         "frequency_penalty": None,
         "logit_bias": None,
-        "response_format": None,
         "seed": None,
         "logprobs": None,
         "top_logprobs": None,

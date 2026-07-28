@@ -8,12 +8,16 @@
                 size="1.5rem"
                 class="dialog__action"
                 (click)="onCancel()"
+                matTooltip="Close"
+                matTooltipPosition="above"
             />
             <app-svg-icon
                 icon="check"
                 size="1.5rem"
                 class="dialog__action dialog__action--save"
                 (click)="onSave()"
+                matTooltip="Confirm"
+                matTooltipPosition="above"
             />
         </div>
     </div>

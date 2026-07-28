@@ -14,7 +14,8 @@ from tables.serializers.user_profile_serializers import (
     ProfilePatchRequestSerializer,
     ProfileResponseSerializer,
 )
-from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
+from tables.graph_collab.notifications import GraphEditNotifier
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.utils.refresh_cookie import set_refresh_cookie
 from tables.services.rbac.user_profile_service import UserProfileService
 from tables.services.rbac.user_validation_service import UserValidationService
@@ -22,7 +23,8 @@ from tables.throttles import LoginThrottle
 
 
 def _require_user_context(request):
-    """Reject env-seeded API keys (created_by=None → AnonymousUser).
+    """Reject principals without a user identity (system API keys →
+    SystemServicePrincipal has no email).
     The profile surface is meaningless without a user identity.
     Inlined per design decision D19 (matches the auth_views.py pattern)."""
     if not getattr(request.user, "is_authenticated", False) or not hasattr(
@@ -32,7 +34,7 @@ def _require_user_context(request):
 
 
 class ProfileView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     _service = UserProfileService()
@@ -75,6 +77,8 @@ class ProfileView(APIView):
         if "display_name" in cleaned:
             user = self._service.update_display_name(user, cleaned["display_name"])
         user = self._service.get_profile(user)
+        if "display_name" in cleaned:
+            GraphEditNotifier.notify_profile_updated(user)
         return Response(
             ProfileResponseSerializer(user, context={"request": request}).data
         )
@@ -82,7 +86,7 @@ class ProfileView(APIView):
 
 class ProfileAvatarView(APIView):
     parser_classes = [MultiPartParser, FormParser]
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     _service = UserProfileService()
@@ -112,6 +116,7 @@ class ProfileAvatarView(APIView):
         uploaded = self._validator.validate_avatar_upload(request.data)
         user = self._service.update_avatar(request.user, uploaded)
         user = self._service.get_profile(user)
+        GraphEditNotifier.notify_profile_updated(user)
         return Response(
             ProfileResponseSerializer(user, context={"request": request}).data
         )
@@ -123,11 +128,13 @@ class ProfileAvatarView(APIView):
     def delete(self, request):
         _require_user_context(request)
         self._service.clear_avatar(request.user)
+        user = self._service.get_profile(request.user)
+        GraphEditNotifier.notify_profile_updated(user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class PasswordChangeRequestView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [LoginThrottle]
 
@@ -153,7 +160,7 @@ class PasswordChangeRequestView(APIView):
 
 
 class PasswordChangeConfirmView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     _service = UserProfileService()

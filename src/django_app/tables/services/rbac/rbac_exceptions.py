@@ -276,3 +276,51 @@ class OrgMembershipRequiredError(CustomAPIExeption):
     status_code = 403
     default_detail = "You are not a member of this organization."
     default_code = "org_membership_required"
+
+
+class OrganizationMembershipNotFound(CustomAPIExeption):
+    """Raised when the X-Organization-Id header names an org the user is not a member of."""
+
+    status_code = 403
+    default_detail = "You are not a member of the specified organization."
+    default_code = "organization_membership_not_found"
+
+
+class UserHasNoOrganizationMembership(CustomAPIExeption):
+    """Raised when the user belongs to no organization at all."""
+
+    status_code = 400
+    default_detail = "Your account is not a member of any organization."
+    default_code = "no_organization_membership"
+
+
+class OrganizationContextAmbiguous(CustomAPIExeption):
+    """Raised when the user belongs to multiple orgs and no X-Organization-Id header is set."""
+
+    status_code = 400
+    default_detail = (
+        "Multiple organization memberships; please specify X-Organization-Id header."
+    )
+    default_code = "organization_context_ambiguous"
+
+
+class ApiKeyNotFoundError(CustomAPIExeption):
+    """Raised when an API key id does not exist in the caller's scope
+    (own keys for self-service, active-org members' keys for management).
+    404 in both cases — no cross-user/cross-org enumeration."""
+
+    status_code = 404
+    default_detail = "API key not found."
+    default_code = "api_key_not_found"
+
+
+class ApiKeyLimitExceededError(CustomAPIExeption):
+    """Raised by ApiKeyService.create_key when the caller already has the
+    maximum number of active (non-revoked, non-expired) keys."""
+
+    status_code = 400
+    default_detail = (
+        "Maximum number of active API keys reached (5). "
+        "Revoke or delete an existing key first."
+    )
+    default_code = "api_key_limit_exceeded"

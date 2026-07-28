@@ -22,6 +22,14 @@ _NO_PREFILL_PATTERNS = (
     "claude-sonnet-4",
     "claude-haiku-4",
 )
+_REASONING_PATTERNS = ("gpt-5", "o1", "o3", "o4")
+_REASONING_UNSUPPORTED_PARAMS = (
+    "logit_bias",
+    "presence_penalty",
+    "frequency_penalty",
+    "logprobs",
+    "top_logprobs",
+)
 
 
 def _model_drops_temperature(model: str | None) -> bool:
@@ -37,6 +45,11 @@ def _model_drops_stop(model: str | None) -> bool:
 def _model_drops_prefill(model: str | None) -> bool:
     model = (model or "").lower()
     return any(p in model for p in _NO_PREFILL_PATTERNS)
+
+
+def _model_drops_reasoning_params(model: str | None) -> bool:
+    model = (model or "").lower()
+    return any(p in model for p in _REASONING_PATTERNS)
 
 
 def _strip_trailing_assistant(messages: list) -> list:
@@ -64,6 +77,9 @@ class PatchedLLM(LLM):
         if _model_drops_temperature(self.model):
             self.temperature = None
             self.top_p = None
+        if _model_drops_reasoning_params(self.model):
+            for param in _REASONING_UNSUPPORTED_PARAMS:
+                setattr(self, param, None)
 
     def call(
         self,

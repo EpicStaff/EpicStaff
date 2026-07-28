@@ -3,7 +3,11 @@ import { DialogModule } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
+import { EditorInfo } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { FlowRenameDialogComponent } from '../../../../../../features/flows/components/flow-rename-dialog/flow-rename-dialog.component';
 import { GraphDto } from '../../../../../../features/flows/models/graph.model';
@@ -12,6 +16,7 @@ import { GraphDto } from '../../../../../../features/flows/models/graph.model';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { Spinner2Component } from '../../../../../../shared/components/spinner-type2/spinner.component';
 import { CollapseOnOverflowDirective } from '../../../../../../shared/directives/collapse-on-overflow.directive';
+import { GraphPresenceIndicatorsComponent } from './presence-indicator/graph-presence-indicators.component';
 import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
 
 @Component({
@@ -26,6 +31,9 @@ import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
         OverlayModule,
         CollapseOnOverflowDirective,
         SaveDropdownComponent,
+        GraphPresenceIndicatorsComponent,
+        MatTooltipModule,
+        HasPermissionDirective,
     ],
     templateUrl: './flow-header.component.html',
     styleUrls: ['./flow-header.component.scss'],
@@ -34,17 +42,20 @@ import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
 export class FlowHeaderComponent {
     @Input() graphName?: string;
     @Input() graphId?: number;
+    @Input() isAssistantOpen = false;
     @Input() isEpicChatEnabled = false;
     @Input() graph?: GraphDto;
     @Input() isSaving = false;
     @Input() isRunning = false;
     @Input() hasUnsavedChanges = false;
+    @Input() editors: EditorInfo[] = [];
     @Output() save = new EventEmitter<void>();
     @Output() back = new EventEmitter<void>();
     @Output() viewSessions = new EventEmitter<void>();
     @Output() run = new EventEmitter<void>();
     @Output() getCurl = new EventEmitter<void>();
     @Output() connectChat = new EventEmitter<void>();
+    @Output() toggleAssistant = new EventEmitter<void>();
     @Output() flowEdited = new EventEmitter<GraphDto>();
     @Output() saveVersion = new EventEmitter<void>();
     @Output() viewVersionHistory = new EventEmitter<void>();
@@ -88,6 +99,10 @@ export class FlowHeaderComponent {
         this.connectChat.emit();
     }
 
+    onToggleAssistant() {
+        this.toggleAssistant.emit();
+    }
+
     openRenameDialog(): void {
         if (!this.graph) return;
         const dialogRef = this.dialog.open<GraphDto>(FlowRenameDialogComponent, {
@@ -110,4 +125,7 @@ export class FlowHeaderComponent {
             }
         });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

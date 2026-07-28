@@ -7,6 +7,7 @@ import {
     ReactiveFormsModule,
     ValidationErrors,
 } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ValidationErrorsComponent } from '../app-validation-errors/validation-errors.component';
@@ -26,6 +27,7 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
         ValidationErrorsComponent,
         AppSvgIconComponent,
         CheckboxComponent,
+        MatTooltipModule,
     ],
     providers: [
         {
@@ -46,6 +48,7 @@ export class ChipsInputComponent implements ControlValueAccessor {
     maxItemLength = input<number | null>(null);
     showSeparatorToggle = input(false);
     separatorLabel = input('Split by comma');
+    addButtonTooltip = input('Add');
 
     private onChange: (value: string[]) => void = () => {};
     private onTouched: () => void = () => {};

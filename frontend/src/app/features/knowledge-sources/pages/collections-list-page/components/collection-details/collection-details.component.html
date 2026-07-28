@@ -26,6 +26,7 @@
                     Collection Name
                 </label>
                 <input
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                     [formControl]="collectionName"
                     type="text"
                     id="collection-name"
@@ -35,9 +36,12 @@
                 <app-validation-errors [control]="collectionName" />
             </div>
             <app-svg-icon
+                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
                 icon="trash"
                 class="details__action details__action--large"
                 size="1.5rem"
+                matTooltip="Delete collection"
+                matTooltipPosition="left"
                 (click)="onCollectionDelete()"
             />
         </div>
@@ -46,6 +50,7 @@
             <app-drag-drop-area
                 (filesDropped)="onFilesDropped($event)"
                 [allowedTypes]="FILE_TYPES"
+                [permissionResource]="ResourceCode.KnowledgeSources"
                 class="details__main-wrapper"
             >
                 <div class="details__main-content">
@@ -93,7 +98,12 @@
                                         size="0.75rem"
                                     />
 
-                                    <label (click)="fileInput.click()">
+                                    <label
+                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                                        matTooltip="Add file"
+                                        matTooltipPosition="above"
+                                        (click)="fileInput.click()"
+                                    >
                                         <app-svg-icon
                                             icon="plus"
                                             class="details__action details__action--medium"
@@ -109,7 +119,9 @@
                                     />
                                 </div>
                             </div>
-                            <app-collection-details-files [(documents)]="documents" />
+                            <div class="details__files-wrap">
+                                <app-collection-details-files [(documents)]="documents" />
+                            </div>
                         </div>
                     }
                 </div>

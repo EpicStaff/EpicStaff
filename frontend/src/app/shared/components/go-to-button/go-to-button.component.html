@@ -6,6 +6,8 @@
     [attr.href]="href"
     [attr.target]="target"
     rel="noopener noreferrer"
+    [matTooltip]="variant === 'icon' ? label : ''"
+    matTooltipPosition="above"
 >
     @if (variant === 'full') {
         <span class="go-to-button__text">{{ label }}</span>

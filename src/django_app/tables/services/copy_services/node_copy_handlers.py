@@ -1,21 +1,18 @@
 from typing import Callable
 
-from tables.constants.variables_constants import (
-    DOMAIN_ORGANIZATION_KEY,
-    DOMAIN_USER_KEY,
-)
 from tables.import_export.enums import NodeType
 from tables.models import Graph
 from tables.models.graph_models import (
     AudioTranscriptionNode,
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
     ConditionGroup,
     Condition,
     CrewNode,
     DecisionTableNode,
     EndNode,
     FileExtractorNode,
-    GraphOrganization,
-    GraphOrganizationUser,
     GraphNote,
     PythonNode,
     ScheduleTriggerNode,
@@ -27,35 +24,14 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 from tables.services.copy_services.helpers import copy_python_code, get_base_node_fields
-from tables.services.persistent_variables_service import PersistentVariablesService
 
 
 def copy_start_node(graph: Graph, node: StartNode) -> StartNode:
-    new_node = StartNode.objects.create(
+    return StartNode.objects.create(
         graph=graph,
         variables=node.variables,
         metadata=node.metadata,
     )
-
-    source_org = GraphOrganization.objects.filter(graph=node.graph).first()
-    if source_org:
-        service = PersistentVariablesService()
-        GraphOrganization.objects.create(
-            graph=graph,
-            organization=source_org.organization,
-            persistent_variables=service.extract(
-                node.variables, DOMAIN_ORGANIZATION_KEY
-            ),
-            user_variables=service.extract(node.variables, DOMAIN_USER_KEY),
-        )
-        for org_user in GraphOrganizationUser.objects.filter(graph=node.graph):
-            GraphOrganizationUser.objects.create(
-                graph=graph,
-                organization_user=org_user.organization_user,
-                persistent_variables=service.extract(node.variables, DOMAIN_USER_KEY),
-            )
-
-    return new_node
 
 
 def copy_end_node(graph: Graph, node: EndNode) -> EndNode:
@@ -223,6 +199,66 @@ def copy_decision_table_node(
     return new_node
 
 
+def copy_classification_decision_table_node(
+    graph: Graph, node: ClassificationDecisionTableNode
+) -> ClassificationDecisionTableNode:
+    new_pre_code = (
+        copy_python_code(node.pre_python_code) if node.pre_python_code else None
+    )
+    new_post_code = (
+        copy_python_code(node.post_python_code) if node.post_python_code else None
+    )
+
+    new_node = ClassificationDecisionTableNode.objects.create(
+        graph=graph,
+        node_name=node.node_name,
+        pre_python_code=new_pre_code,
+        pre_input_map=node.pre_input_map,
+        pre_output_variable_path=node.pre_output_variable_path,
+        post_python_code=new_post_code,
+        post_input_map=node.post_input_map,
+        post_output_variable_path=node.post_output_variable_path,
+        default_llm_config=node.default_llm_config,
+        default_next_node_id=node.default_next_node_id,
+        next_error_node_id=node.next_error_node_id,
+        metadata=node.metadata,
+    )
+
+    new_prompts = ClassificationDecisionTablePrompt.objects.bulk_create(
+        [
+            ClassificationDecisionTablePrompt(
+                cdt_node=new_node,
+                prompt_key=pc.prompt_key,
+                prompt_text=pc.prompt_text,
+                llm_config=pc.llm_config,
+                output_schema=pc.output_schema,
+                result_variable=pc.result_variable,
+                variable_mappings=pc.variable_mappings,
+            )
+            for pc in node.prompt_configs.all()
+        ]
+    )
+    new_prompt_map = {p.prompt_key: p for p in new_prompts}
+
+    for group in node.condition_groups.all():
+        ClassificationConditionGroup.objects.create(
+            classification_decision_table_node=new_node,
+            group_name=group.group_name,
+            order=group.order,
+            expression=group.expression,
+            prompt=new_prompt_map.get(group.prompt.prompt_key)
+            if group.prompt
+            else None,
+            manipulation=group.manipulation,
+            continue_flag=group.continue_flag,
+            dock_visible=group.dock_visible,
+            field_expressions=group.field_expressions,
+            field_manipulations=group.field_manipulations,
+        )
+
+    return new_node
+
+
 # Maps each NodeType to (relation_name, handler_function).
 # relation_name is the Graph reverse accessor used to iterate existing nodes.
 # To add a new node type: write a copy_<name> function above and add one entry here.
@@ -256,6 +292,10 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
     NodeType.DECISION_TABLE_NODE: (
         "decision_table_node_list",
         copy_decision_table_node,
+    ),
+    NodeType.CLASSIFICATION_DECISION_TABLE_NODE: (
+        "classification_decision_table_node_list",
+        copy_classification_decision_table_node,
     ),
     NodeType.CODE_AGENT_NODE: (
         "code_agent_node_list",

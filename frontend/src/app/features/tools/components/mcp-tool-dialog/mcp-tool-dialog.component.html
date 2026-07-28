@@ -8,6 +8,7 @@
             icon="x"
             ariaLabel="Close dialog"
             size="2rem"
+            tooltip="Close"
             (onClick)="onCancel()"
         ></app-icon-button>
     </div>
@@ -77,6 +78,8 @@
                     placeholder="Bearer token or OAuth string (optional)"
                     tooltipText="Authorization token, API key, or OAuth string for authenticating with the MCP server"
                     formControlName="auth"
+                    type="secret"
+                    cautionMessage="You must enter the full new API key to change it. Partial updates aren't supported."
                 />
                 <app-validation-errors [control]="form.get('auth')!" />
             </div>
@@ -101,12 +104,24 @@
             (click)="onCancel()"
             >Cancel</app-button
         >
-        <app-button
-            type="primary"
-            [disabled]="form.invalid || form.pending"
-            (click)="onSave()"
-        >
-            {{ isEditMode ? 'Update' : 'Create' }}
-        </app-button>
+        @if (isEditMode) {
+            <app-button
+                *appHasPermission="[ResourceCode.Tools, ActionCode.Update]"
+                type="primary"
+                [disabled]="form.invalid || form.pending"
+                (click)="onSave()"
+            >
+                Update
+            </app-button>
+        } @else {
+            <app-button
+                *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+                type="primary"
+                [disabled]="form.invalid || form.pending"
+                (click)="onSave()"
+            >
+                Create
+            </app-button>
+        }
     </div>
 </div>

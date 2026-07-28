@@ -1,10 +1,12 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     afterNextRender,
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
     computed,
+    effect,
     ElementRef,
     EventEmitter,
     inject,
@@ -20,6 +22,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { IPoint, PointExtensions } from '@foblex/2d';
 import {
     EFMarkerType,
@@ -27,12 +30,8 @@ import {
     EFZoomDirection,
     F_CONNECTION_BUILDERS,
     FCanvasComponent,
-    FConnectionContent,
-    FConnectionGradient,
-    FConnectionWaypoints,
     FCreateConnectionEvent,
     FCreateNodeEvent,
-    FDragNodeStartEventData,
     FDragStartedEvent,
     FFlowComponent,
     FFlowModule,
@@ -42,15 +41,18 @@ import {
 } from '@foblex/flow';
 import { Subject } from 'rxjs';
 
+import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { ToastService } from '../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
 import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';
+import { FlowExportImportButtonComponent } from '../components/flow-export-import-button/flow-export-import-button.component';
 import { FlowFilesButtonComponent } from '../components/flow-files-button/flow-files-button.component';
 import { FlowGraphContextMenuComponent } from '../components/flow-graph-context-menu/flow-graph-context-menu.component';
 import { FlowSettingsPanelComponent } from '../components/flow-settings-panel/flow-settings-panel.component';
 import { FlowShortcutsButtonComponent } from '../components/flow-shortcuts-button/flow-shortcuts-button.component';
+import { CdtExportImportService } from '../components/node-panels/classification-decision-table-node-panel/cdt-export-import.service';
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edit-dialog.component';
@@ -124,11 +126,10 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
         NodePanelShellComponent,
         FlowShortcutsButtonComponent,
         AppSvgIconComponent,
-        FConnectionGradient,
-        FConnectionContent,
-        FConnectionWaypoints,
         WaypointTooltipDirective,
+        FlowExportImportButtonComponent,
         FlowFilesButtonComponent,
+        MatTooltipModule,
     ],
 })
 export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
@@ -136,9 +137,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Input() currentFlowId: number | null = null;
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
+    @Input() isSaving: boolean = false;
+    @Input() hasUnsavedChanges: boolean = false;
 
     @Output() save = new EventEmitter<FlowModel>();
+    @Output() requestReload = new EventEmitter<void>();
     readonly openShortcuts = output<DOMRect>();
+    readonly importComplete = output<void>();
 
     @ViewChild(FFlowComponent, { static: false })
     private fFlowComponent!: FFlowComponent;
@@ -170,6 +175,38 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     protected readonly hasUnarrangedChanges = signal(true);
     protected readonly isArranging = signal<boolean>(false);
     protected readonly flowSettings = inject(FlowSettingsService);
+    public smartRoutingEnabled = signal<boolean>(false);
+
+    private _dragStartClientX: number | null = null;
+    private _dragStartClientY: number | null = null;
+    private _dragEndClientX: number | null = null;
+    private _dragEndClientY: number | null = null;
+    private _isReselecting = false;
+
+    public multiSelectActive = signal<boolean>(false);
+    private selectedNodeIds = signal<string[]>([]);
+    public selectedNodeCount = computed(() => {
+        const nodes = this.flowService.nodes();
+        return this.selectedNodeIds().filter((id) => {
+            const t = nodes.find((n) => n.id === id)?.type;
+            return t !== NodeType.START && t !== NodeType.END;
+        }).length;
+    });
+    public allSelectedAreCdt = computed(() => {
+        const ids = this.selectedNodeIds();
+        if (ids.length === 0) return false;
+        const nodes = this.flowService.nodes();
+        return ids.every((id) => nodes.find((n) => n.id === id)?.type === NodeType.CLASSIFICATION_TABLE);
+    });
+
+    readonly multiSelectTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
+        this.multiSelectActive() || (event instanceof MouseEvent && event.shiftKey);
+
+    readonly selectionAreaTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
+        this.multiSelectActive() || (event instanceof MouseEvent && event.shiftKey);
+
+    readonly canvasMoveTrigger = (event: MouseEvent | TouchEvent | WheelEvent): boolean =>
+        !this.multiSelectActive() && !(event instanceof MouseEvent && event.shiftKey);
 
     protected readonly nodeColorMap = computed<Map<string, string>>(() => {
         const map = new Map<string, string>();
@@ -216,6 +253,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return Math.max(2, 500 - Math.floor(Math.max(0, node.position?.y ?? 0) / 10));
     }
 
+    private fitAfterNextFlowChange = false;
+    private _preImportBackendIds: Set<number> | null = null;
+    private _importPositionSnapshot: Map<number, { x: number; y: number }> | null = null;
+
     private readonly destroy$ = new Subject<void>();
     private readonly userAdjustedConnectionIds = new Set<string>();
     private readonly previousBackwardConnectionIds = new Set<string>();
@@ -233,9 +274,21 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly cd = inject(ChangeDetectorRef);
     private readonly dialog = inject(Dialog);
     private readonly toastService = inject(ToastService);
+    private readonly importExportService = inject(ImportExportService);
+    private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly injector = inject(Injector);
 
-    constructor() {}
+    private lastSeenFullSaveRequest = 0;
+
+    constructor() {
+        effect(() => {
+            const requestCount = this.sidePanelService.fullSaveRequest();
+            if (requestCount > this.lastSeenFullSaveRequest) {
+                this.lastSeenFullSaveRequest = requestCount;
+                this.emitSave();
+            }
+        });
+    }
 
     public ngOnInit(): void {
         this.applyIncomingFlowState(this.flowState);
@@ -246,10 +299,23 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public ngOnChanges(changes: SimpleChanges): void {
         if (changes['flowState'] && !changes['flowState'].firstChange) {
-            this.applyIncomingFlowState(this.flowState);
+            const stateToApply = this._preImportBackendIds
+                ? this._shiftImportedNodes(this.flowState, this._preImportBackendIds)
+                : this.flowState;
+            this._preImportBackendIds = null;
+            this.applyIncomingFlowState(stateToApply);
+            if (this.fitAfterNextFlowChange) {
+                this.fitAfterNextFlowChange = false;
+                setTimeout(() => {
+                    this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false);
+                }, 0);
+            }
         }
         if (changes['initialNodeId'] && changes['initialNodeId'].currentValue) {
             this.openNodePanel(changes['initialNodeId'].currentValue);
+        }
+        if (changes['isSaving'] && changes['isSaving'].currentValue === true) {
+            this.onCloseContextMenu();
         }
     }
 
@@ -266,6 +332,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         setTimeout(() => {
             this.rerouteSegmentConnections();
             this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false);
+            if (this.flowService.nodes().length === 1) {
+                this.fCanvasComponent.setScale(0.1);
+            }
             this.cd.detectChanges();
         }, 0);
     }
@@ -343,6 +412,22 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             return;
         }
 
+        const allPorts = this.flowService.nodes().flatMap((n) => n.ports ?? []);
+        const sourcePort = allPorts.find((p) => p.id === pair.sourcePortId);
+        const targetPort = allPorts.find((p) => p.id === pair.targetPortId);
+        const sourceOccupied =
+            !!sourcePort &&
+            !sourcePort.multiple &&
+            currentConnections.some((conn) => conn.sourcePortId === pair.sourcePortId);
+        const targetOccupied =
+            !!targetPort &&
+            !targetPort.multiple &&
+            currentConnections.some((conn) => conn.targetPortId === pair.targetPortId);
+        if (sourceOccupied || targetOccupied) {
+            this.toastService.warning('This port already has a connection', 4000, 'bottom-right');
+            return;
+        }
+
         const sourceNodeId = pair.sourcePortId.split('_')[0];
         const targetNodeId = pair.targetPortId.split('_')[0];
 
@@ -384,7 +469,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onPaste(): void {
         this.hasUnarrangedChanges.set(true);
-        if (this.isDialogOpen()) {
+        if (this.isEditingLocked()) {
             return;
         }
 
@@ -417,7 +502,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onUndo(): void {
-        if (this.isDialogOpen()) {
+        if (this.isEditingLocked()) {
             return;
         }
 
@@ -426,7 +511,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onRedo(): void {
-        if (this.isDialogOpen()) {
+        if (this.isEditingLocked()) {
             return;
         }
 
@@ -436,7 +521,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public onDelete(): void {
         this.hasUnarrangedChanges.set(true);
-        if (this.isDialogOpen()) {
+        if (this.isEditingLocked()) {
             return;
         }
 
@@ -552,6 +637,17 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onOpenNodePanel(node: NodeModel): void {
+        if (this.multiSelectActive()) {
+            const current = this.fFlowComponent.getSelection();
+            const alreadySelected = current.fNodeIds.includes(node.id);
+            const newNodeIds = alreadySelected
+                ? current.fNodeIds.filter((id) => id !== node.id)
+                : [...current.fNodeIds, node.id];
+            this.selectedNodeIds.set(newNodeIds);
+            this.fFlowComponent.select(newNodeIds, current.fConnectionIds);
+            return;
+        }
+
         if (this.sidePanelService.selectedNodeId() === node.id) {
             return;
         }
@@ -667,7 +763,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             if (updatedNode === null) {
                 return;
             }
-            this.flowService.updateNode(updatedNode);
+            // Skip the writeback if the captured node was removed from the flow
+            // (e.g. during DT→CDT conversion the old panel instance lingers briefly
+            //  before the outlet swaps to the newly-selected node's panel).
+            if (this.flowService.nodes().some((n) => n.id === updatedNode.id)) {
+                this.flowService.updateNode(updatedNode);
+            }
         }
         this.save.emit(this.flowService.getFlowState());
     }
@@ -690,7 +791,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.isDragging = true;
         this.draggingElements.clear();
 
-        const dragData = event.data as FDragNodeStartEventData | undefined;
+        const dragData = event.fData as { fNodeIds?: string[] } | undefined;
         if (dragData?.fNodeIds) {
             dragData.fNodeIds.forEach((id: string) => this.draggingElements.add(id));
         }
@@ -883,6 +984,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.fZoomDirective.setZoom(position, 1, EFZoomDirection.ZOOM_IN, true);
     }
 
+    public onSmartRoutingToggle(value: boolean): void {
+        this.smartRoutingEnabled.set(value);
+    }
+
     protected openSettings(): void {
         this.dialog.open(FlowSettingsPanelComponent, {
             width: '480px',
@@ -1070,6 +1175,322 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         dialogRef.closed.subscribe(() => {});
     }
 
+    public onFlowPointerDown(event: PointerEvent): void {
+        this._dragStartClientX = event.clientX;
+        this._dragStartClientY = event.clientY;
+        this._dragEndClientX = null;
+        this._dragEndClientY = null;
+    }
+
+    public onFlowPointerUp(event: PointerEvent): void {
+        this._dragEndClientX = event.clientX;
+        this._dragEndClientY = event.clientY;
+    }
+
+    public onFlowClick(event: MouseEvent): void {
+        this.showContextMenu.set(false);
+        if (this.multiSelectActive() && !this.isDragging && !(event.target as Element).closest('app-flow-base-node')) {
+            this.multiSelectActive.set(false);
+            this.selectedNodeIds.set([]);
+            this.fFlowComponent.select([], []);
+        }
+    }
+
+    public onEscapeKey(): void {
+        if (this.multiSelectActive()) {
+            this.multiSelectActive.set(false);
+            this.selectedNodeIds.set([]);
+            this.fFlowComponent.select([], []);
+        }
+    }
+
+    public onToggleMultiSelect(): void {
+        const wasActive = this.multiSelectActive();
+        this.multiSelectActive.update((v) => !v);
+        if (wasActive) {
+            this.selectedNodeIds.set([]);
+            this.fFlowComponent.select([], []);
+        }
+    }
+
+    public onSelectionChange(event: { nodeIds: string[] }): void {
+        if (this._isReselecting) {
+            this._isReselecting = false;
+            return;
+        }
+
+        const nodeIds = event.nodeIds;
+
+        // In multiselect mode, ignore automatic empty-selection events (e.g. from CDK overlay interactions)
+        if (this.multiSelectActive() && nodeIds.length === 0) {
+            return;
+        }
+
+        const endX = this._dragEndClientX ?? this.mouseCursorPosition.x;
+        const endY = this._dragEndClientY ?? this.mouseCursorPosition.y;
+
+        const isLeftToRight =
+            nodeIds.length > 0 && this._dragStartClientX !== null && endX - this._dragStartClientX > 10;
+
+        if (isLeftToRight) {
+            const selStart = this.fFlowComponent.getPositionInFlow(
+                PointExtensions.initialize(this._dragStartClientX!, this._dragStartClientY!)
+            );
+            const selEnd = this.fFlowComponent.getPositionInFlow(PointExtensions.initialize(endX, endY));
+            const selLeft = Math.min(selStart.x, selEnd.x);
+            const selRight = Math.max(selStart.x, selEnd.x);
+            const selTop = Math.min(selStart.y, selEnd.y);
+            const selBottom = Math.max(selStart.y, selEnd.y);
+
+            const allNodes = this.flowService.nodes();
+            const containedIds = nodeIds.filter((id) => {
+                const node = allNodes.find((n) => n.id === id);
+                if (!node) return false;
+                return (
+                    node.position.x >= selLeft &&
+                    node.position.x + (node.size?.width ?? 0) <= selRight &&
+                    node.position.y >= selTop &&
+                    node.position.y + (node.size?.height ?? 0) <= selBottom
+                );
+            });
+
+            if (containedIds.length !== nodeIds.length) {
+                this._isReselecting = true;
+                this.selectedNodeIds.set(containedIds);
+                this.fFlowComponent.select(containedIds, []);
+                return;
+            }
+        }
+
+        this.selectedNodeIds.set(nodeIds);
+    }
+
+    public onExportSelectedAsJson(): void {
+        const selectedIds = this.selectedNodeIds();
+        const nodes = this.flowService.nodes();
+        const hasUnsaved = selectedIds.some((id) => nodes.find((n) => n.id === id)?.backendId === null);
+        if (hasUnsaved) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        this.triggerPartialExport(selectedIds);
+    }
+
+    public onExportSelectedAsCsv(): void {
+        const selectedIds = this.selectedNodeIds();
+        const nodes = this.flowService.nodes();
+
+        for (const id of selectedIds) {
+            const node = nodes.find((n) => n.id === id);
+
+            if (!node) {
+                continue;
+            }
+
+            if (node.backendId === null) {
+                this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+                continue;
+            }
+
+            this.importExportService.cdtExport(node.backendId, 'json').subscribe({
+                next: (blob) => {
+                    blob.text().then((text) => {
+                        const parsed = JSON.parse(text) as Record<string, unknown>;
+                        const exportData = this.cdtExportImportService.partialExportNodeToCdtExportData(parsed);
+                        const csv = this.cdtExportImportService.exportToCsv(exportData);
+                        this.cdtExportImportService.downloadFile(
+                            csv,
+                            node.node_name + '.csv',
+                            'text/csv;charset=utf-8;'
+                        );
+                    });
+                },
+                error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
+            });
+        }
+    }
+
+    public onExportAllAsJson(): void {
+        const exportable = this.flowService.nodes().filter((n) => n.type !== NodeType.START && n.type !== NodeType.END);
+        if (exportable.length === 0) {
+            this.toastService.warning('No nodes to export', 3000, 'bottom-right');
+            return;
+        }
+        if (this.flowService.nodes().some((n) => n.backendId === null)) {
+            this.toastService.warning('Save the flow before exporting', 3000, 'bottom-right');
+            return;
+        }
+        this.triggerPartialExport([]);
+    }
+
+    public onImportNodes(): void {
+        if (!this.currentFlowId) return;
+        if (this.hasUnsavedChanges) {
+            this.toastService.warning('Save the flow before importing', 3000, 'bottom-right');
+            return;
+        }
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.value = '';
+        input.onchange = (e: Event) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (!file || !this.currentFlowId) return;
+            this.doPartialImport(file);
+        };
+        input.click();
+    }
+
+    private doPartialImport(file: File): void {
+        if (!this.currentFlowId) return;
+        this.importExportService.partialImport(this.currentFlowId, file).subscribe({
+            next: () => {
+                this.toastService.success('Import successful', 3000, 'bottom-right');
+                const currentNodes = this.flowService.nodes();
+                this._preImportBackendIds = new Set(
+                    currentNodes.map((n) => n.backendId).filter((id): id is number => id !== null)
+                );
+                this._importPositionSnapshot = new Map(
+                    currentNodes
+                        .filter((n): n is typeof n & { backendId: number } => n.backendId !== null)
+                        .map((n) => [n.backendId, { x: n.position.x, y: n.position.y }])
+                );
+                this.fitAfterNextFlowChange = true;
+                this.importComplete.emit();
+            },
+            error: (err: HttpErrorResponse) => {
+                const body = typeof err.error === 'string' ? err.error : JSON.stringify(err.error ?? '');
+                const rawMessage =
+                    (err.error as Record<string, string>)?.['message'] ??
+                    (err.error as Record<string, string>)?.['detail'] ??
+                    null;
+                if (body.includes('node_name must make a unique set')) {
+                    this.toastService.error(
+                        'Import failed: a Classification Decision Table node with this name already exists in this flow. This is a backend issue — delete the duplicate CDT nodes and try again.',
+                        6000,
+                        'bottom-right'
+                    );
+                } else {
+                    this.toastService.error(rawMessage ?? 'Import failed', 3000, 'bottom-right');
+                }
+            },
+        });
+    }
+
+    private triggerPartialExport(nodeIds: string[]): void {
+        if (!this.currentFlowId) return;
+        const body = this.buildPartialExportBody(nodeIds);
+        const filename = nodeIds.length > 0 ? 'selected-nodes.json' : 'all-nodes.json';
+        this.importExportService.partialExport(this.currentFlowId, body).subscribe({
+            next: (blob) => {
+                this.downloadBlob(blob, filename);
+                const count = Object.entries(body)
+                    .filter(([key]) => key !== 'edge_list')
+                    .reduce((sum, [, list]) => sum + (list as number[]).length, 0);
+                const isExportAll = nodeIds.length === 0;
+                const hasStartOrEnd =
+                    !isExportAll &&
+                    this.flowService
+                        .nodes()
+                        .some((n) => nodeIds.includes(n.id) && (n.type === NodeType.START || n.type === NodeType.END));
+                const suffix = isExportAll || hasStartOrEnd ? ' (Start and End nodes excluded)' : '';
+                this.toastService.success(`${count} nodes exported as JSON${suffix}`, 3000, 'bottom-right');
+            },
+            error: () => this.toastService.error('Export failed', 3000, 'bottom-right'),
+        });
+    }
+
+    private buildPartialExportBody(selectedIds: string[]): PartialExportRequest {
+        const allNodes = this.flowService.nodes();
+        const nodes = selectedIds.length > 0 ? allNodes.filter((n) => selectedIds.includes(n.id)) : allNodes;
+        const selectedIdSet = new Set(
+            nodes.filter((n) => n.type !== NodeType.START && n.type !== NodeType.END).map((n) => n.id)
+        );
+
+        const body: PartialExportRequest = {
+            start_node_list: [],
+            crew_node_list: [],
+            python_node_list: [],
+            audio_transcription_node_list: [],
+            file_extractor_node_list: [],
+            end_node_list: [],
+            subgraph_node_list: [],
+            webhook_trigger_node_list: [],
+            telegram_trigger_node_list: [],
+            decision_table_node_list: [],
+            classification_decision_table_node_list: [],
+            graph_note_list: [],
+            code_agent_node_list: [],
+            schedule_trigger_node_list: [],
+            edge_list: [],
+        };
+
+        for (const node of nodes) {
+            if (node.backendId === null) continue;
+            if (node.type === NodeType.START || node.type === NodeType.END) continue;
+            const id = node.backendId;
+            switch (node.type) {
+                case NodeType.AGENT:
+                case NodeType.TASK:
+                case NodeType.TOOL:
+                case NodeType.PROJECT:
+                case NodeType.LLM:
+                    body.crew_node_list.push(id);
+                    break;
+                case NodeType.PYTHON:
+                    body.python_node_list.push(id);
+                    break;
+                case NodeType.AUDIO_TO_TEXT:
+                    body.audio_transcription_node_list.push(id);
+                    break;
+                case NodeType.FILE_EXTRACTOR:
+                    body.file_extractor_node_list.push(id);
+                    break;
+                case NodeType.SUBGRAPH:
+                    body.subgraph_node_list.push(id);
+                    break;
+                case NodeType.WEBHOOK_TRIGGER:
+                    body.webhook_trigger_node_list.push(id);
+                    break;
+                case NodeType.TELEGRAM_TRIGGER:
+                    body.telegram_trigger_node_list.push(id);
+                    break;
+                case NodeType.TABLE:
+                    body.decision_table_node_list.push(id);
+                    break;
+                case NodeType.CLASSIFICATION_TABLE:
+                    body.classification_decision_table_node_list.push(id);
+                    break;
+                case NodeType.NOTE:
+                    body.graph_note_list.push(id);
+                    break;
+                case NodeType.CODE_AGENT:
+                    body.code_agent_node_list.push(id);
+                    break;
+                case NodeType.SCHEDULE_TRIGGER:
+                    body.schedule_trigger_node_list.push(id);
+                    break;
+            }
+        }
+
+        for (const conn of this.flowService.connections()) {
+            if (selectedIdSet.has(conn.sourceNodeId) && selectedIdSet.has(conn.targetNodeId) && conn.data?.id != null) {
+                body.edge_list.push(conn.data.id);
+            }
+        }
+
+        return body;
+    }
+
+    private downloadBlob(blob: Blob, filename: string): void {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
     public onOpenShortcuts(anchorEl: HTMLElement): void {
         this.openShortcuts.emit(anchorEl.getBoundingClientRect());
     }
@@ -1086,8 +1507,46 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
     }
 
+    private _shiftImportedNodes(flowState: FlowModel, preImportIds: Set<number>): FlowModel {
+        const newNodes = flowState.nodes.filter((n) => n.backendId !== null && !preImportIds.has(n.backendId));
+
+        if (!newNodes.length) return flowState;
+
+        const snapshot = this._importPositionSnapshot;
+        this._importPositionSnapshot = null;
+
+        // maxRightX uses snapshot positions so previous imports' shifts are respected
+        const maxRightX = flowState.nodes
+            .filter((n) => n.backendId !== null && preImportIds.has(n.backendId))
+            .reduce((max, n) => {
+                const pos = snapshot?.get(n.backendId!) ?? n.position;
+                return Math.max(max, pos.x + n.size.width);
+            }, 0);
+
+        const minNewX = newNodes.reduce((min, n) => Math.min(min, n.position.x), Infinity);
+        const offsetX = maxRightX + 400 - minNewX;
+        if (offsetX <= 0) return flowState;
+
+        return {
+            ...flowState,
+            nodes: flowState.nodes.map((n) => {
+                if (n.backendId !== null && preImportIds.has(n.backendId)) {
+                    const snapshotPos = snapshot?.get(n.backendId);
+                    return snapshotPos ? { ...n, position: snapshotPos } : n;
+                }
+                return { ...n, position: { ...n.position, x: n.position.x + offsetX } };
+            }),
+        };
+    }
+
     private isDialogOpen(): boolean {
         return this.dialog.openDialogs.length > 0;
+    }
+
+    // Editing is locked while a dialog is open OR a full graph save is in flight.
+    // (Saving lock fixes edits made mid-save being discarded when the response is applied.)
+    private isEditingLocked(): boolean {
+        return this.isDialogOpen() || this.isSaving;
     }
 
     private updateStartNodeInitialState(newState: Record<string, unknown>): void {
@@ -1136,6 +1595,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             fNodeIds: nodeIdsToDelete,
             fConnectionIds: selections.fConnectionIds,
         });
+
+        if (selections.fNodeIds.length > 0) {
+            this.selectedNodeIds.set([]);
+            this.fFlowComponent.select([], []);
+        }
     }
 
     private resolveTableOverlaps(node: NodeModel): string[] {

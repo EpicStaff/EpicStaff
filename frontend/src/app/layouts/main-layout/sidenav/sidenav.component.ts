@@ -5,6 +5,7 @@ import {
     ChangeDetectionStrategy,
     Component,
     CUSTOM_ELEMENTS_SCHEMA,
+    DestroyRef,
     ElementRef,
     inject,
     signal,
@@ -12,7 +13,7 @@ import {
 } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { ClickOutsideDirective } from '@shared/directives';
-import { environment } from 'src/environments/environment';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { ConfigureModelsDialogService } from '../../../features/configure-models/services/configure-models-dialog.service';
 import { EpicChatService } from '../../../features/epic-chat/epic-chat.service';
@@ -20,6 +21,7 @@ import { UserAvatarComponent } from '../../../features/role-base-access/componen
 import { UserMenuComponent } from '../../../features/role-base-access/components/user-sidebar-menu/user-menu.component';
 import { ActiveOrgService } from '../../../services/auth/active-org.service';
 import { AuthService } from '../../../services/auth/auth.service';
+import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ConfigService } from '../../../services/config/config.service';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -31,6 +33,7 @@ interface NavItem {
     icon?: string;
     label: string;
     showTooltip: boolean;
+    isPermitted: boolean;
     action?: () => void;
     customClass?: string;
 }
@@ -56,12 +59,14 @@ interface NavItem {
 })
 export class LeftSidebarComponent implements AfterViewInit {
     private currentUserService = inject(ProfileService);
+    private destroyRef = inject(DestroyRef);
 
     public topNavItems: NavItem[];
     public bottomNavItems: NavItem[];
     public isEpicChatEnabled: boolean;
     public apiBaseUrl: string;
     public showLogoTooltip = false;
+    public showProfileTooltip = false;
     public readonly epicChatThemeConfig = {
         semantic: {
             surface: 'var(--color-background-body)',
@@ -123,6 +128,7 @@ export class LeftSidebarComponent implements AfterViewInit {
 
     public user = this.currentUserService.currentUserSignal;
     public isUserMenuOpen = signal<boolean>(false);
+    public showAccountTooltip = false;
 
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;
@@ -132,7 +138,8 @@ export class LeftSidebarComponent implements AfterViewInit {
         public activeOrgService: ActiveOrgService,
         private configService: ConfigService,
         private configureModelsDialogService: ConfigureModelsDialogService,
-        public authService: AuthService
+        private authService: AuthService,
+        private permissionService: PermissionsService
     ) {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
         // COMMIT_COMMENTS: Derive apiBaseUrl from browser origin so the EpicChat widget's
@@ -142,13 +149,15 @@ export class LeftSidebarComponent implements AfterViewInit {
 
         // Bad approach to use window.location because ui and backend can be on different domains
         // fixed localhost vs 127.0.0.1 problem in widget code
-        this.apiBaseUrl = environment.apiUrl;
+        this.apiBaseUrl = this.configService.apiUrl;
+        this.accessToken = this.authService.getAccessToken() ?? '';
         this.topNavItems = [
             {
                 id: 'projects',
                 routeLink: 'projects',
                 icon: 'project',
                 label: 'Projects',
+                isPermitted: this.permissionService.can(ResourceCode.Projects, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -156,6 +165,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'staff',
                 icon: 'agent',
                 label: 'Staff',
+                isPermitted: this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -163,6 +173,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'tools',
                 icon: 'tools',
                 label: 'Tools',
+                isPermitted: this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -170,6 +181,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'flows',
                 icon: 'flows',
                 label: 'Flows',
+                isPermitted: this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -177,12 +189,16 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'files',
                 icon: 'sources',
                 label: 'Files',
+                isPermitted:
+                    this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read) ||
+                    this.permissionService.can(ResourceCode.Files, ActionCode.Read),
                 showTooltip: false,
             },
             {
                 id: 'chats',
                 routeLink: 'chats',
                 icon: 'chats',
+                isPermitted: true,
                 label: 'Chats',
                 showTooltip: false,
             },
@@ -193,6 +209,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             id: 'settings',
             icon: 'settings',
             label: 'Settings',
+            isPermitted: this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
             showTooltip: false,
             action: () => this.onSettingsClick(),
             customClass: 'settings-tooltip',

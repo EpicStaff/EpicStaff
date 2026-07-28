@@ -2,9 +2,11 @@ import { GraphDto } from '../../../features/flows/models/graph.model';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import { NodeModel } from '../../core/models/node.model';
+import { mapClassificationDecisionTableToConnections } from './connections/classification-decision-table-connections.mapper';
 import { mapDecisionTableToConnections } from './connections/decision-table-connections.mapper';
 import { mapEdgesToConnections } from './connections/plain-edge.mapper';
 import { mapAudioToTextNodeToModel } from './nodes/audio-to-text-node.mapper';
+import { mapClassificationDecisionTableNodeToModel } from './nodes/classification-decision-table-node.mapper';
 import { mapCodeAgentNodeToModel } from './nodes/code-agent-node.mapper';
 import { mapCrewNodeToModel } from './nodes/crew-node.mapper';
 import { mapDecisionTableNodeToModel } from './nodes/decision-table-node.mapper';
@@ -18,7 +20,27 @@ import { mapStartNodeToModel } from './nodes/start-node.mapper';
 import { mapSubGraphNodeToModel } from './nodes/subgraph-node.mapper';
 import { mapTelegramTriggerNodeToModel } from './nodes/telegram-trigger-node.mapper';
 import { mapWebhookTriggerNodeToModel } from './nodes/webhook-trigger-node.mapper';
+import { resolveClassificationDecisionTableNodeRefs } from './ref-resolvers/classification-decision-table-refs';
 import { resolveDecisionTableNodeRefs } from './ref-resolvers/decision-table-refs';
+
+/**
+ * Reassigns colliding/missing nodeNumbers to the next free integers.
+ * BE-imported nodes keep their source graph's nodeNumber, which can duplicate
+ * existing ones — this guarantees a unique #N badge per node after load.
+ */
+function deduplicateNodeNumbers(nodes: NodeModel[]): NodeModel[] {
+    const seen = new Set<number>();
+    let next = Math.max(0, ...nodes.map((n) => n.nodeNumber ?? 0)) + 1;
+    return nodes.map((n) => {
+        if (n.nodeNumber == null || seen.has(n.nodeNumber)) {
+            const num = next++;
+            seen.add(num);
+            return { ...n, nodeNumber: num };
+        }
+        seen.add(n.nodeNumber);
+        return n;
+    });
+}
 
 export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     // ── 1. Map each backend node list to UI node models ──────────────────
@@ -36,6 +58,9 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     const endNodes = (graph.end_node_list ?? []).map((n) => mapEndNodeToModel(n));
     const codeAgentNodes = (graph.code_agent_node_list ?? []).map((n) => mapCodeAgentNodeToModel(n));
     const decisionTableNodes = (graph.decision_table_node_list ?? []).map((n) => mapDecisionTableNodeToModel(n));
+    const classificationDecisionTableNodes = (graph.classification_decision_table_node_list ?? []).map((n) =>
+        mapClassificationDecisionTableNodeToModel(n)
+    );
 
     // ── 2. Combine into one flat node list ───────────────────────────────
     const allNodes: NodeModel[] = [
@@ -53,6 +78,7 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         ...endNodes,
         ...codeAgentNodes,
         ...decisionTableNodes,
+        ...classificationDecisionTableNodes,
     ];
 
     // ── 3. Build backendId ↔ UUID lookup maps ────────────────────────────
@@ -75,6 +101,19 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     // ── 4. Patch DT node data: replace backend integer refs with UUIDs ───
     resolveDecisionTableNodeRefs(decisionTableNodes, graph.decision_table_node_list ?? [], backendIdToUuid);
 
+    // ── 4b. Resolve CDT refs (default/error nodes + condition group next_node) ──
+    resolveClassificationDecisionTableNodeRefs(
+        classificationDecisionTableNodes,
+        graph.classification_decision_table_node_list ?? [],
+        backendIdToUuid
+    );
+
+    // ── 4c. Build nodeByUuid map for CDT connections ─────────────────────
+    const nodeByUuid = new Map<string, NodeModel>();
+    for (const n of allNodes) {
+        nodeByUuid.set(n.id, n);
+    }
+
     // ── 5. Map all edge lists to canvas connections ──────────────────────
     const allConnections: ConnectionModel[] = [
         ...mapEdgesToConnections(graph.edge_list ?? [], backendIdToUuid, nodeByBackendId),
@@ -84,6 +123,7 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
             nodeByBackendId,
             graph.decision_table_node_list ?? []
         ),
+        ...mapClassificationDecisionTableToConnections(classificationDecisionTableNodes, nodeByUuid),
     ];
 
     const duplicateConnectionIds = allConnections
@@ -95,5 +135,5 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         );
     }
 
-    return { nodes: allNodes, connections: allConnections };
+    return { nodes: deduplicateNodeNumbers(allNodes), connections: allConnections };
 }

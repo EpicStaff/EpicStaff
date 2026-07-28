@@ -336,13 +336,9 @@
 }
 
 .label-item {
-    ::ng-deep .label-icon svg path {
-        fill: var(--label-color, var(--color-ks-text));
-        transition: fill 0.15s ease;
-    }
-
-    &:hover ::ng-deep .label-icon svg path {
-        fill: var(--label-color, var(--color-ks-text));
+    ::ng-deep .label-icon {
+        color: var(--label-color, var(--color-ks-text));
+        transition: color 0.15s ease;
     }
 }
 

@@ -1,3 +1,4 @@
+from tables.serializers.utils.secret_fields import SecretCharField
 from loguru import logger
 from rest_framework import serializers
 
@@ -9,6 +10,7 @@ from tables.models.webhook_models import (
 
 
 class NgrokWebhookConfigModelSerializer(serializers.ModelSerializer):
+    auth_token = SecretCharField()
     webhook_full_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -21,6 +23,13 @@ class NgrokWebhookConfigModelSerializer(serializers.ModelSerializer):
             "region",
             "webhook_full_url",
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is None:
+            self.fields["auth_token"].required = True
+            self.fields["auth_token"].allow_null = False
+            self.fields["auth_token"].allow_blank = False
 
     def get_webhook_full_url(self, instance: NgrokWebhookConfig):
         from tables.services.webhook_trigger_service import WebhookTriggerService
@@ -37,8 +46,26 @@ class WebhookTriggerSerializer(serializers.ModelSerializer):
         model = WebhookTrigger
         fields = "__all__"
 
+    def validate(self, attrs):
+        # ngrok_webhook_config is global platform infrastructure managed by
+        # superadmins (the /api/ngrok-config/ endpoint is superadmin-only).
+        # Non-superadmins may not assign it — drop it from their input so a
+        # caller can't bind a webhook trigger to an arbitrary config by id (and
+        # can't probe which config ids exist).
+        #
+        # TODO: TECH DEBT (per-org ngrok): NgrokWebhookConfig has no `org` column, so
+        # this is a superadmin gate rather than org scoping. To make webhook
+        # tunnels per-organization, add an `org` FK to NgrokWebhookConfig, scope
+        # it, and replace this gate with OrgScopedPrimaryKeyRelatedField.
+        request = self.context.get("request")
+        is_superadmin = getattr(getattr(request, "user", None), "is_superadmin", False)
+        if not is_superadmin:
+            attrs.pop("ngrok_webhook_config", None)
+        return attrs
+
 
 class VoiceSettingsSerializer(serializers.ModelSerializer):
+    twilio_auth_token = SecretCharField()
     voice_stream_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:

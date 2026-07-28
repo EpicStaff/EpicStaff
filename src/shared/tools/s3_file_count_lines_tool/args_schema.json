@@ -1,0 +1,11 @@
+{
+  "title": "S3FileCountLinesArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "S3 file path to count lines in."
+    }
+  },
+  "required": ["file_path"]
+}

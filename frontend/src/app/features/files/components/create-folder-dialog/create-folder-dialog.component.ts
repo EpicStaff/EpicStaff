@@ -4,7 +4,6 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, HostListener, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { FileUploaderComponent } from '@shared/components';
 
@@ -50,7 +49,6 @@ export interface FolderNode {
         FormsModule,
         AppSvgIconComponent,
         Spinner2Component,
-        MatIconModule,
         MatTooltipModule,
         OverlayModule,
         FileUploaderComponent,

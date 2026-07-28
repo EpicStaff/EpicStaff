@@ -8,6 +8,7 @@ import { debounceTime } from 'rxjs/operators';
 import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
+import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -41,6 +42,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
         PythonTerminalComponent,
         NodeStorageSectionComponent,
         AppSvgIconComponent,
+        HelpTooltipComponent,
     ],
     animations: [expandCollapseAnimation],
     template: `
@@ -111,6 +113,10 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                             [style.accent-color]="activeColor"
                                         />
                                         <span>Execution status</span>
+                                        <app-help-tooltip
+                                            size="18px"
+                                            text="When enabled, this node's execution status updates (started, finished, errored) are streamed to EpicChat."
+                                        />
                                     </label>
                                 </div>
                             </div>
@@ -437,7 +443,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         if (this.testRunning()) return 'processing';
         if (this.testError()) return 'error';
         const r = this.testResult();
-        if (r) return r.returncode === 0 ? 'done' : 'error';
+        if (r) return r.status === 'completed' ? 'done' : 'error';
         return 'idle';
     });
 
@@ -746,7 +752,9 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             .subscribe({
                 next: (event: PollEvent) => {
                     if (event.type === 'polling') {
-                        this.addLog('polling', 'Processing...');
+                        if (event.attempt === 1) {
+                            this.addLog('polling', 'Processing...');
+                        }
                     } else if (event.type === 'result') {
                         const result = event.data;
                         this.testResult.set(result);
@@ -758,7 +766,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                         if (result.stderr) {
                             this.addLog('stderr', result.stderr);
                         }
-                        if (result.returncode === 0) {
+                        if (result.status === 'completed') {
                             this.addLog('result', result.result_data || '(empty result)');
                         } else {
                             this.addLog('error', `Execution failed (return code: ${result.returncode})`);

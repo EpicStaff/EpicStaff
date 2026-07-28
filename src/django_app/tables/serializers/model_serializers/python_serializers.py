@@ -11,6 +11,11 @@ from tables.models.python_models import (
     PythonCodeToolConfig,
 )
 from tables.serializers.base_serializer import ContentHashWritableMixin
+from tables.serializers.org_scoped_fields import (
+    OrgVisiblePrimaryKeyRelatedField,
+    OrgScopedUniqueValidator,
+    OrgScopedUniqueTogetherValidator,
+)
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
@@ -54,6 +59,15 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
 class PythonCodeToolSerializer(serializers.ModelSerializer):
     python_code = PythonCodeSerializer()
     built_in = serializers.ReadOnlyField()
+    # Per-org unique name → clean 400 instead of a DB IntegrityError (500).
+    name = serializers.CharField(
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=PythonCodeTool.objects.all(),
+                message="A tool with this name already exists.",
+            )
+        ]
+    )
 
     class Meta:
         model = PythonCodeTool
@@ -65,6 +79,7 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "python_code",
             "favorite",
             "built_in",
+            "use_storage",
         ]
         read_only_fields = ["id", "built_in"]
 
@@ -97,6 +112,9 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
 
 
 class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
+    # Org isolation (hybrid): built-in tools OR the caller's active-org custom ones.
+    tool = OrgVisiblePrimaryKeyRelatedField(queryset=PythonCodeTool.objects.all())
+
     def __init__(self, *args, tool_config_validator=None, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -111,6 +129,15 @@ class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = PythonCodeToolConfig
         fields = "__all__"
+        read_only_fields = ["org", "created_by"]
+        # Per-org unique (tool, name) → clean 400 instead of a DB IntegrityError.
+        validators = [
+            OrgScopedUniqueTogetherValidator(
+                queryset=PythonCodeToolConfig.objects.all(),
+                fields=["tool", "name"],
+                message="A config with this name already exists for this tool.",
+            )
+        ]
 
     def validate(self, data: dict):
         name = data.get("name")
@@ -142,4 +169,13 @@ class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
 class PythonCodeResultSerializer(serializers.ModelSerializer):
     class Meta:
         model = PythonCodeResult
-        fields = "__all__"
+        fields = [
+            "execution_id",
+            "status",
+            "result_data",
+            "stderr",
+            "stdout",
+            "returncode",
+            "created_at",
+            "finished_at",
+        ]

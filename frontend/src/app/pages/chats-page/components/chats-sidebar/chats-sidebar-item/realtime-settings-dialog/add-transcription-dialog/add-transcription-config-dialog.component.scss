@@ -64,6 +64,10 @@
                 outline: none;
                 border-color: #685fff;
             }
+
+            &.masked {
+                -webkit-text-security: disc;
+            }
         }
 
         .input-with-icon {

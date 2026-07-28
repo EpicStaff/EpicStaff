@@ -3,9 +3,11 @@
         <span class="llm-card__model">{{ model().customName }}</span>
         <div class="llm-card__actions">
             <button
+                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Update]"
                 type="button"
                 class="llm-card__action"
-                title="Edit"
+                matTooltip="Edit"
+                matTooltipPosition="above"
                 (click)="onEdit()"
             >
                 <i
@@ -14,9 +16,11 @@
                 ></i>
             </button>
             <button
+                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
                 type="button"
                 class="llm-card__action llm-card__action--delete"
-                title="Delete"
+                matTooltip="Delete"
+                matTooltipPosition="above"
                 (click)="onDelete()"
             >
                 <i
