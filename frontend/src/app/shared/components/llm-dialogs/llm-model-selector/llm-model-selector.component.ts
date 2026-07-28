@@ -130,6 +130,11 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
         return null;
     });
 
+    isSelectedModelDeprecated = computed<boolean>(() => {
+        const model = this.selectedModelInfo()?.model;
+        return model?.predefined === true && model?.is_visible === false;
+    });
+
     filteredProviders = computed(() => {
         const query = this.searchQuery().toLowerCase().trim();
         const providers = this.sortedProvidersWithModels();

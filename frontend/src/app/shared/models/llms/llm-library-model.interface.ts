@@ -9,4 +9,5 @@ export interface LlmLibraryModel {
     temperature: number;
     usedByCount: number | null; // null = "Ready to be used"
     configType: ModelTypes;
+    isDeprecated: boolean;
 }
