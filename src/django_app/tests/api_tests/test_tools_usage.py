@@ -461,6 +461,89 @@ def test_projects_count_reflects_crews_not_graphs(
 # (EST-3207 design fix — the bug this change fixes) ----
 
 
+
+# ---- `ids` query-param filter (EST-3207) ----
+
+
+@pytest.mark.django_db
+def test_ids_filter_returns_only_requested_rows(client_a, used_graph_setup):
+    registered_tool = used_graph_setup["registered_tool"]
+    mcp_tool = used_graph_setup["mcp_tool"]
+
+    resp = client_a.get(
+        "/api/tools/usage/",
+        {"ids": f"configured-tool:{registered_tool.id},mcp-tool:{mcp_tool.id}"},
+    )
+    assert resp.status_code == 200
+    unique_names = {row["unique_name"] for row in resp.data}
+    assert unique_names == {
+        f"configured-tool:{registered_tool.id}",
+        f"mcp-tool:{mcp_tool.id}",
+    }
+
+
+@pytest.mark.django_db
+def test_ids_omitted_preserves_full_list_behavior(client_a, used_graph_setup):
+    resp_no_ids = client_a.get("/api/tools/usage/")
+    resp_with_ids_omitted = client_a.get("/api/tools/usage/", {})
+    assert resp_no_ids.status_code == 200
+    assert resp_with_ids_omitted.status_code == 200
+    assert {r["unique_name"] for r in resp_no_ids.data} == {
+        r["unique_name"] for r in resp_with_ids_omitted.data
+    }
+    # sanity: more than one row present (all 3 kinds), not accidentally scoped
+    assert len(resp_no_ids.data) >= 3
+
+
+@pytest.mark.django_db
+def test_ids_over_max_count_returns_400(client_a):
+    too_many = ",".join(f"configured-tool:{i}" for i in range(1, 202))
+    resp = client_a.get("/api/tools/usage/", {"ids": too_many})
+    assert resp.status_code == 400
+    assert "maximum 200 allowed, got 201" in str(resp.data)
+
+
+@pytest.mark.django_db
+def test_ids_malformed_missing_colon_returns_400(client_a):
+    resp = client_a.get("/api/tools/usage/", {"ids": "configured-tool5"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_ids_malformed_empty_fragment_returns_400(client_a):
+    resp = client_a.get("/api/tools/usage/", {"ids": "configured-tool:5,,mcp-tool:1"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_ids_malformed_non_numeric_id_returns_400(client_a):
+    resp = client_a.get("/api/tools/usage/", {"ids": "configured-tool:abc"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_ids_malformed_unknown_prefix_returns_400(client_a):
+    resp = client_a.get("/api/tools/usage/", {"ids": "not-a-real-prefix:5"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db
+def test_ids_for_foreign_org_tool_does_not_leak(client_a, org_b):
+    """Requesting an `ids` entry for a tool from another org must not leak
+    it — the row is simply absent from the response, same org-scoping as
+    the unscoped list."""
+    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
+    foreign_tool = PythonCodeTool.objects.create(
+        name="ForeignTool", description="d", python_code=code, org=org_b
+    )
+
+    resp = client_a.get(
+        "/api/tools/usage/", {"ids": f"python-code-tool:{foreign_tool.id}"}
+    )
+    assert resp.status_code == 200
+    assert resp.data == []
+
+
 @pytest.mark.django_db
 def test_agent_in_crew_using_tool_does_not_count_project_without_task_usage(
     client_a, org_a, unused_python_tool

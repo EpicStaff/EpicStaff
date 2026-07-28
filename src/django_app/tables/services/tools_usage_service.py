@@ -37,7 +37,9 @@ class ToolNotFoundError(Exception):
     `prefix:tool_id` doesn't exist or isn't visible to `org_id`."""
 
 
-def get_tools_usage(org_id: int) -> list[dict]:
+def get_tools_usage(
+    org_id: int, id_filter: dict[str, set[int]] | None = None
+) -> list[dict]:
     """Return one usage row per tool (registered/python-code/mcp) visible to
     `org_id`: `{"unique_name": str, "projects_count": int, "staff_count": int,
     "is_built_in": bool}`.
@@ -52,16 +54,38 @@ def get_tools_usage(org_id: int) -> list[dict]:
     surfaced as-is per row. This lets the FE additionally gate
     orphan-highlighting on `!is_built_in` without excluding built-ins from
     the endpoint itself.
+
+    `id_filter` (EST-3207 `ids` query-param support), when given, is a
+    `{prefix: {tool_id, ...}}` map (prefix one of `VALID_TOOL_PREFIXES`)
+    scoping which tools are computed/returned — pushed down into the initial
+    per-kind id queries (rather than computed in full then filtered in
+    Python) so a caller asking for a handful of ids doesn't pay for the full
+    per-org aggregation. Ids absent from the org's visible set (wrong org,
+    wrong kind, or nonexistent) are silently omitted from the result, same
+    as any other tool the caller can't see — this endpoint has never errored
+    per-row, unlike the single-tool usage-detail lookup.
     """
-    tool_ids = list(Tool.objects.values_list("id", flat=True))
+    tool_id_q = {}
+    python_tool_id_q = {}
+    mcp_tool_id_q = {}
+    if id_filter is not None:
+        tool_id_q = {"id__in": id_filter.get("configured-tool", set())}
+        python_tool_id_q = {"id__in": id_filter.get("python-code-tool", set())}
+        mcp_tool_id_q = {"id__in": id_filter.get("mcp-tool", set())}
+
+    tool_ids = list(
+        Tool.objects.filter(**tool_id_q).values_list("id", flat=True)
+    )
     python_tool_built_in = dict(
         PythonCodeTool.objects.filter(
-            Q(built_in=True) | Q(org_id=org_id)
+            Q(built_in=True) | Q(org_id=org_id), **python_tool_id_q
         ).values_list("id", "built_in")
     )
     python_tool_ids = list(python_tool_built_in.keys())
     mcp_tool_ids = list(
-        McpTool.objects.filter(org_id=org_id).values_list("id", flat=True)
+        McpTool.objects.filter(org_id=org_id, **mcp_tool_id_q).values_list(
+            "id", flat=True
+        )
     )
 
     configured_agents, python_agents, mcp_agents = _agents_by_tool_per_kind(

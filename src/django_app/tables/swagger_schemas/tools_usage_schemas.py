@@ -7,8 +7,9 @@ TOOLS_USAGE_GET = dict(
     description=(
         "Returns raw usage counts for every tool visible to the active org, "
         "across all three tool kinds (registered/configured, python-code, mcp). "
-        "For each tool: `projects_count` (distinct Graphs reached via the "
-        "tool's agents -> their crews -> crew nodes), `staff_count` "
+        "For each tool: `projects_count` (distinct Crews/Projects with a "
+        "Task using the tool — derived from Task-level tool usage, not "
+        "Agent membership), `staff_count` "
         "(distinct Agents referencing the tool), and `is_built_in` (EST-3277) "
         "so the FE can gate orphan-highlighting on `!is_built_in` — registered "
         "tools are always `is_built_in=true`, MCP tools are always "
@@ -16,6 +17,22 @@ TOOLS_USAGE_GET = dict(
         "`built_in` flag. Does not exclude built-in or orphaned rows itself "
         "and does not return reference detail lists (EST-3270) — counts only."
     ),
+    parameters=[
+        OpenApiParameter(
+            name="ids",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description=(
+                "Optional comma-separated list of `unique_name`s "
+                "(`<prefix>:<id>`, e.g. `configured-tool:5,mcp-tool:7`) to "
+                "scope the response to only those tools, e.g. after the FE "
+                "paginates its own tools list. Omitted returns all rows for "
+                "the active org (default, backward-compatible behavior). "
+                "Max 200 ids per request."
+            ),
+        ),
+    ],
     responses={
         200: OpenApiResponse(
             response=ToolUsageSerializer(many=True),
@@ -46,6 +63,12 @@ TOOLS_USAGE_GET = dict(
                     response_only=True,
                 ),
             ],
+        ),
+        400: OpenApiResponse(
+            description=(
+                "Malformed `ids` (empty fragment, missing ':<id>', unknown "
+                "prefix, non-numeric id) or more than 200 ids given."
+            )
         ),
     },
 )

@@ -698,9 +698,17 @@ class ToolsUsageAPIView(OrgScopedResolverMixin, APIView):
     additionally gate orphan-highlighting on `!is_built_in` — built-in tools
     are never flagged as orphans. This endpoint does not itself exclude
     built-in rows; it still returns one row per tool visible to the org. See
-    `ToolsUsageDetailAPIView` for the per-tool reference detail (EST-3270)."""
+    `ToolsUsageDetailAPIView` for the per-tool reference detail (EST-3270).
+
+    Optional `ids` query param (EST-3207): comma-separated `unique_name`s
+    (`<prefix>:<id>`, same keying as each row's own `unique_name` /
+    `usage-detail`'s lookup key) to scope the response to only those tools,
+    e.g. after the FE paginates its own tools list. Omitted -> full,
+    backward-compatible behavior (all rows for the org)."""
 
     permission_classes = [IsAuthenticated]
+
+    MAX_IDS = 200
 
     @extend_schema(**TOOLS_USAGE_GET)
     def get(self, request):
@@ -711,9 +719,47 @@ class ToolsUsageAPIView(OrgScopedResolverMixin, APIView):
             resource_type=ResourceType.TOOLS,
             action=Permission.READ,
         )
-        rows = get_tools_usage(org_id)
+        id_filter = self._parse_ids_param(request.query_params.get("ids"))
+        rows = get_tools_usage(org_id, id_filter=id_filter)
         serializer = ToolUsageSerializer(rows, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @classmethod
+    def _parse_ids_param(cls, raw: str | None) -> dict[str, set[int]] | None:
+        """Parse the optional `ids` query param into a `{prefix: {tool_id,
+        ...}}` map for `get_tools_usage`, or `None` if omitted (full-list
+        behavior preserved). Raises DRF `ValidationError` (400) if the count
+        exceeds `MAX_IDS` or any fragment is malformed (empty, missing
+        `:<id>`, unknown prefix, non-numeric id)."""
+        if not raw:
+            return None
+
+        parts = raw.split(",")
+        if len(parts) > cls.MAX_IDS:
+            raise ValidationError(
+                {"ids": f"maximum {cls.MAX_IDS} allowed, got {len(parts)}"}
+            )
+
+        id_filter: dict[str, set[int]] = defaultdict(set)
+        for part in parts:
+            part = part.strip()
+            prefix, sep, raw_id = part.partition(":")
+            if (
+                not sep
+                or prefix not in VALID_TOOL_PREFIXES
+                or not raw_id.isdigit()
+            ):
+                raise ValidationError(
+                    {
+                        "ids": (
+                            f"Malformed id: '{part}'. Expected one of "
+                            f"{VALID_TOOL_PREFIXES} followed by ':<id>'."
+                        )
+                    }
+                )
+            id_filter[prefix].add(int(raw_id))
+
+        return dict(id_filter)
 
 
 class ToolsUsageDetailAPIView(OrgScopedResolverMixin, APIView):
