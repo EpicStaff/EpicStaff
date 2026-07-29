@@ -129,7 +129,7 @@ export class LLMLibraryService {
                 (m) => m.llm_provider,
                 (c) => c.temperature ?? 0,
                 (c) => c.tags,
-                (m) => m.predefined === true && m.is_visible === false
+                (m) => m.predefined && !m.is_visible
             ),
             ...this.buildProviderGroups(
                 this.embeddingConfigStorage.configs(),

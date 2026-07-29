@@ -124,18 +124,18 @@
                                         [class.model-selector__model--selected]="isModelSelected(model.id)"
                                         [class.model-selector__model--not-visible]="model.is_visible === false"
                                         [class.model-selector__model--deprecated]="
-                                            model.predefined === true && model.is_visible === false
+                                            model.predefined && !model.is_visible
                                         "
                                     >
                                         <button
                                             type="button"
                                             class="model-selector__model-select"
-                                            [disabled]="model.predefined === true && model.is_visible === false"
+                                            [disabled]="model.predefined && !model.is_visible"
                                             (click)="selectModel(model, providerData.provider)"
                                         >
                                             <span class="model-selector__model-name">{{ model.name }}</span>
                                         </button>
-                                        @if (model.predefined === true && model.is_visible === false) {
+                                        @if (model.predefined && !model.is_visible) {
                                             <span class="model-selector__model-deprecated">Deprecated</span>
                                         }
                                         @if (model.predefined === false || model.is_custom) {

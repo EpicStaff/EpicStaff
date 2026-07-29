@@ -132,7 +132,7 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
 
     isSelectedModelDeprecated = computed<boolean>(() => {
         const model = this.selectedModelInfo()?.model;
-        return model?.predefined === true && model?.is_visible === false;
+        return !!model?.predefined && !model?.is_visible;
     });
 
     filteredProviders = computed(() => {
