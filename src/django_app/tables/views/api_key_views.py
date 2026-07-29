@@ -136,12 +136,16 @@ class ApiKeyManagementViewSet(viewsets.ViewSet):
             status_value=status_value,
             search=request.query_params.get("search"),
         )
-        return Response(ApiKeyAdminSerializer(keys, many=True).data)
+        return Response(
+            ApiKeyAdminSerializer(keys, many=True, context={"request": request}).data
+        )
 
     @extend_schema(**API_KEYS_MANAGEMENT_REVOKE_POST)
     def revoke(self, request, pk=None):
         key = self._service.revoke_key(org_id=self._resolve_org_id(request), key_id=pk)
-        return Response(ApiKeyAdminSerializer(key).data)
+        return Response(
+            ApiKeyAdminSerializer(key, context={"request": request}).data
+        )
 
     @extend_schema(**API_KEYS_MANAGEMENT_DELETE)
     def destroy(self, request, pk=None):

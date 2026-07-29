@@ -125,7 +125,6 @@ export class CreateApiKeyDialogComponent {
     }
 
     onClose(): void {
-        // Update keys list if new key was created
-        this.dialogRef.close(!!this.apiKey);
+        this.dialogRef.close();
     }
 }

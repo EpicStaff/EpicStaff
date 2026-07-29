@@ -16,6 +16,7 @@ import {
 import { ApiKeyStatus, GetMyApiKeyResponse } from '@shared/models';
 import { getRelativeTime } from '@shared/utils';
 import { EMPTY, switchMap } from 'rxjs';
+import { finalize } from 'rxjs/operators';
 
 import { ProfileService } from '../../../../../services/auth/profile.service';
 import { ToastService } from '../../../../../services/notifications';
@@ -112,9 +113,12 @@ export class ProfileApiKeysTabComponent implements OnInit {
             width: '560px',
         });
 
-        dialogRef.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
-            if (result) this.fetchApiKeys();
-        });
+        dialogRef.closed
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                finalize(() => this.fetchApiKeys())
+            )
+            .subscribe();
     }
 
     onRevokeKey(row: TableRow): void {
@@ -127,11 +131,9 @@ export class ProfileApiKeysTabComponent implements OnInit {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => {
-                    this.toast.success(`"${name}" was revoked`);
-                    this.fetchApiKeys();
-                },
+                next: () => this.toast.success(`"${name}" was revoked`),
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to revoke API key'),
+                complete: () => this.fetchApiKeys(),
             });
     }
 
@@ -146,11 +148,9 @@ export class ProfileApiKeysTabComponent implements OnInit {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => {
-                    this.toast.success(`"${name}" was deleted`);
-                    this.fetchApiKeys();
-                },
+                next: () => this.toast.success(`"${name}" was deleted`),
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to delete API key'),
+                complete: () => this.fetchApiKeys(),
             });
     }
 

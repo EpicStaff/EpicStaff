@@ -1,7 +1,7 @@
 <div class="toolbar">
     <div class="toolbar-actions">
         <app-search
-            placeholder="Search by key name or owner..."
+            placeholder="Search by key name..."
             [width]="'260px'"
             [(searchTerm)]="searchTerm"
         />
@@ -83,7 +83,10 @@
         let-row
     >
         <div class="owner-cell">
-            <app-user-avatar [name]="row['ownerName']" />
+            <app-user-avatar
+                [avatarUrl]="row['ownerAvatar']"
+                [name]="row['ownerName']"
+            />
             <div class="owner-info">
                 <span
                     class="owner-name"

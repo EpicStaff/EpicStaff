@@ -28,6 +28,7 @@ export interface ApiKeyOwner {
     id: number;
     email: string;
     display_name: string;
+    avatar_url: string | null;
 }
 
 export interface GetApiKeyWithOwnerResponse extends GetMyApiKeyResponse {

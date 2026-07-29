@@ -160,6 +160,7 @@ export class ApiKeysTabComponent {
                 lastUsedLabel: getRelativeTime(k.last_used_at),
                 status: k.status,
                 ownerId: k.owner.id,
+                ownerAvatar: k.owner.avatar_url,
                 ownerName: k.owner.display_name || k.owner.email,
                 ownerEmail: k.owner.email,
             }))
@@ -270,7 +271,7 @@ export class ApiKeysTabComponent {
                 if (isSomeRevoked) this.toast.info('Some selected keys were already revoked');
                 if (succeeded > 0) this.toast.success(`${succeeded} ${succeeded === 1 ? 'key' : 'keys'} revoked`);
                 if (failed > 0) this.toast.error(`${failed} ${failed === 1 ? 'key' : 'keys'} failed to revoke`);
-                this.loadApiKeys();
+                this.resetFiltersAndReload();
             });
     }
 
@@ -304,7 +305,7 @@ export class ApiKeysTabComponent {
                 const succeeded = count - failed;
                 if (succeeded > 0) this.toast.success(`${succeeded} ${succeeded === 1 ? 'key' : 'keys'} deleted`);
                 if (failed > 0) this.toast.error(`${failed} ${failed === 1 ? 'key' : 'keys'} failed to delete`);
-                this.loadApiKeys();
+                this.resetFiltersAndReload();
             });
     }
 
@@ -319,7 +320,7 @@ export class ApiKeysTabComponent {
             .subscribe({
                 next: () => {
                     this.toast.success(`"${row['name']}" was revoked`);
-                    this.loadApiKeys();
+                    this.resetFiltersAndReload();
                 },
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to revoke API key'),
             });
@@ -336,7 +337,7 @@ export class ApiKeysTabComponent {
             .subscribe({
                 next: () => {
                     this.toast.success(`"${row['name']}" was deleted`);
-                    this.loadApiKeys();
+                    this.resetFiltersAndReload();
                 },
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to delete API key'),
             });
@@ -346,6 +347,19 @@ export class ApiKeysTabComponent {
      *  to emit and automatically cancels any prior in-flight request. */
     private loadApiKeys(): void {
         this.refreshTrigger.update((v) => v + 1);
+    }
+
+    /** Clears all active filters and forces a re-fetch so `totalApiKeysCount` can be recalculated
+     *  from the unfiltered response. Used after mutations (delete/revoke) to keep the counter accurate. */
+    private resetFiltersAndReload(): void {
+        this.totalApiKeysCount.set(null);
+        this.searchTerm.set('');
+        this.ownerFilterId.set(null);
+        this.statusFilter.set(null);
+        if (this.canFilterByOrg) {
+            this.orgFilterValue.set(null);
+        }
+        this.loadApiKeys();
     }
 
     /** Merges any newly-seen owners into the cache used by the owner filter dropdown. */
