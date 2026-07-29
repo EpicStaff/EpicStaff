@@ -78,11 +78,11 @@
                                 <span class="channel-card__meta-value">{{ channel.twilio!.phone_number }}</span>
                             </div>
                         }
-                        @if (channel.twilio?.ngrok_config && ngrokMap().has(channel.twilio!.ngrok_config!)) {
+                        @if (channel.twilio?.webhook_trigger?.live_url) {
                             <div class="channel-card__meta-item">
                                 <span class="channel-card__meta-label">Tunnel</span>
                                 <span class="channel-card__meta-value">{{
-                                    ngrokMap().get(channel.twilio!.ngrok_config!)
+                                    channel.twilio!.webhook_trigger!.live_url
                                 }}</span>
                             </div>
                         }

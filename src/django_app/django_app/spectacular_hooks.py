@@ -93,7 +93,6 @@ TAG_MAP = [
     ("api/register-webhooks", "Register Webhooks"),
     # Telegram
     ("api/telegram-trigger-available-fields", "Telegram Trigger Fields"),
-    ("api/telegram-trigger-node-fields", "Telegram Trigger Fields"),
     ("api/telegram-trigger-nodes", "Telegram Trigger Nodes"),
     ("api/register-telegram-trigger", "Register Telegram"),
     # Organizations (non-admin)

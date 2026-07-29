@@ -59,14 +59,14 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                 f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: no webhook_trigger configured."
             )
             return
-        if webhook_trigger.ngrok_webhook_config is None:
+        if webhook_trigger.provider_type is None:
             logger.warning(
-                f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: webhook_trigger has no ngrok_webhook_config."
+                f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: webhook_trigger has no tunnel config."
             )
             return
         try:
-            webhook_tunnel_url = self.webhook_trigger_service.get_tunnel_url(
-                ngrok_webhook_config=webhook_trigger.ngrok_webhook_config
+            webhook_tunnel_url = (
+                self.webhook_trigger_service.get_tunnel_url_for_trigger(webhook_trigger)
             )
         except Exception as e:
             raise RegisterTelegramTriggerError(

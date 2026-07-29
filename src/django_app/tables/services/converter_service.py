@@ -829,7 +829,7 @@ class ConverterService(metaclass=SingletonMeta):
             ClassificationConditionGroupData(
                 group_name=cg.group_name,
                 expression=cg.expression,
-                prompt_id=cg.prompt_id,
+                prompt_id=cg.prompt.prompt_key if cg.prompt else None,
                 manipulation=cg.manipulation,
                 continue_flag=cg.continue_flag,
                 next_node=resolver(cg.next_node_id) if cg.next_node_id else None,
@@ -1033,7 +1033,7 @@ class ConverterService(metaclass=SingletonMeta):
         self, ngrok_webhook_config: NgrokWebhookConfig
     ) -> NgrokConfigData:
         return NgrokConfigData(
-            name=ngrok_webhook_config.name,
+            name=ngrok_webhook_config.trigger.path,
             auth_token=ngrok_webhook_config.auth_token,
             domain=ngrok_webhook_config.domain,
             region=ngrok_webhook_config.region,
@@ -1043,6 +1043,6 @@ class ConverterService(metaclass=SingletonMeta):
         self, localhost_webhook_config: LocalhostWebhookConfig
     ) -> LocalhostConfigData:
         return LocalhostConfigData(
-            name=localhost_webhook_config.name,
+            name=localhost_webhook_config.trigger.path,
             domain=localhost_webhook_config.domain,
         )

@@ -60,13 +60,20 @@
         />
         <p *ngIf="phoneLoadError()" class="dialog__field-error">{{ phoneLoadError() }}</p>
 
-        <app-select
-            label="Webhook Tunnel"
-            formControlName="ngrok_config"
-            [items]="ngrokItems()"
-            placeholder="Select a tunnel"
-            tooltipText="Ngrok tunnel that exposes the voice endpoint to Twilio"
-        />
+        <div class="dialog__section-divider">
+            <span class="dialog__section-label">Webhook Tunnel</span>
+        </div>
+
+        <app-webhook-trigger-field
+            formControlName="webhook_trigger"
+            [pathRequired]="false"
+            [allowLocalhost]="false"
+            (triggerResolved)="onTriggerResolved($event)"
+        ></app-webhook-trigger-field>
+
+        @if (liveUrl()) {
+            <p class="dialog__field-hint">Live URL: {{ liveUrl() }}</p>
+        }
     </form>
 
     <div class="dialog__actions">

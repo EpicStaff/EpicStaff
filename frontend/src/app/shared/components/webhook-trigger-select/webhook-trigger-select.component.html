@@ -1,0 +1,76 @@
+<div class="wts">
+    @if (label()) {
+        <app-tooltip
+            [required]="required()"
+            [tooltipText]="tooltipText()"
+            [label]="label()"
+            [icon]="icon()"
+        />
+    }
+
+    <button
+        #triggerBtn
+        type="button"
+        class="wts__trigger"
+        [class.wts__trigger--open]="open()"
+        [class.wts__trigger--placeholder]="!selectedTrigger()"
+        [disabled]="controlDisabled()"
+        (click)="toggle()"
+    >
+        <span class="wts__trigger-value">
+            {{ selectedTrigger() ? displayLabel(selectedTrigger()!) : placeholder() }}
+        </span>
+        <svg
+            class="wts__chevron"
+            [class.wts__chevron--open]="open()"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+        >
+            <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                stroke-linecap="round"
+            />
+        </svg>
+    </button>
+</div>
+
+<ng-template #dropdownTemplate>
+    <div class="wts__dropdown">
+        <div class="wts__search-row">
+            <input
+                type="text"
+                class="wts__search-input"
+                placeholder="Search a trigger..."
+                [ngModel]="searchTerm()"
+                (ngModelChange)="onSearchInput($event)"
+                (click)="$event.stopPropagation()"
+            />
+            <button
+                type="button"
+                class="wts__add-btn"
+                aria-label="Create webhook trigger"
+                (click)="onCreate()"
+            >
+                +
+            </button>
+        </div>
+
+        <ul class="wts__list">
+            @for (t of filteredTriggers(); track t.id) {
+                <li
+                    class="wts__item"
+                    [class.wts__item--selected]="t.id === selectedId()"
+                    (click)="onSelect(t)"
+                >
+                    {{ displayLabel(t) }}
+                </li>
+            } @empty {
+                <li class="wts__empty">No triggers found.</li>
+            }
+        </ul>
+    </div>
+</ng-template>

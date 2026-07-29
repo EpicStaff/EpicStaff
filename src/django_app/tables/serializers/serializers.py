@@ -5,6 +5,9 @@ from tables.models.python_models import PythonCodeTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models import PythonCode
 from tables.models.session_models import Session
+from tables.import_export.services.partial_export_service import (
+    LIST_KEY_TO_ENTITY_TYPE,
+)
 
 
 class RunSessionSerializer(serializers.Serializer):
@@ -14,7 +17,6 @@ class RunSessionSerializer(serializers.Serializer):
     files = serializers.DictField(
         child=serializers.CharField(), required=False, allow_null=True, default=dict
     )
-    username = serializers.CharField(required=False)
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
@@ -34,10 +36,6 @@ class AnswerToLLMSerializer(serializers.Serializer):
     execution_order = serializers.IntegerField(required=True)
     name = serializers.CharField()
     answer = serializers.CharField()
-
-
-class EnvironmentConfigSerializer(serializers.Serializer):
-    data = serializers.DictField(required=True)
 
 
 class InitRealtimeSerializer(serializers.Serializer):
@@ -106,6 +104,53 @@ class BulkExportSerializer(serializers.Serializer):
         allow_empty=False,
         help_text="List of entity IDs",
     )
+
+
+class GraphNodesPartialExportSerializer(serializers.Serializer):
+    crew_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    python_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    audio_transcription_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    file_extractor_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    subgraph_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    webhook_trigger_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    telegram_trigger_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    decision_table_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    classification_decision_table_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    graph_note_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    code_agent_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    schedule_trigger_node_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+    edge_list = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False, default=list
+    )
+
+    def validate(self, attrs):
+        if not any(attrs.get(key) for key in LIST_KEY_TO_ENTITY_TYPE):
+            raise serializers.ValidationError("At least one node must be provided.")
+        return attrs
 
 
 class SessionExportAllSerializer(serializers.Serializer):

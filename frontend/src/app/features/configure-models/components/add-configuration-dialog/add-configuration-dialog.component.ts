@@ -18,11 +18,11 @@ import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
+import { LlmModelSelectorComponent } from '../../../../shared/components/llm-dialogs/llm-model-selector/llm-model-selector.component';
 import { LlmConfigStorageService } from '../../../../shared/services/llms/llm-config-storage.service';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
 import { OpenAIRealtimeConfigStorageService } from '../../services/llms/openai-realtime-config-storage.service';
-import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selector.component';
 import { RealtimeProvider } from '../realtime-config-dialog/realtime-config-dialog.component';
 
 export type ConfigTab = 'llm' | 'realtime';

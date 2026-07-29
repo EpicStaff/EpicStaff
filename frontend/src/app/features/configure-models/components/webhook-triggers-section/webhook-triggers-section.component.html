@@ -1,0 +1,75 @@
+<div class="tab">
+    <div class="tab__header">
+        <div class="tab__header-left">
+            <h3 class="tab__title">Webhook Triggers</h3>
+            <p class="tab__subtitle">Create and manage webhook triggers reused by trigger nodes and channels.</p>
+        </div>
+        <app-button
+            type="primary"
+            (click)="onAdd()"
+            >Add Trigger</app-button
+        >
+    </div>
+
+    @if (status() === 'loading') {
+        <div class="tab__loading-state">
+            <app-loading-spinner />
+        </div>
+    } @else if (status() === 'error') {
+        <div class="tab__loading-state tab__loading-state--error">
+            <p>Failed to load webhook triggers.</p>
+        </div>
+    } @else if (triggers().length === 0) {
+        <div class="tab__empty-state">
+            <p>No webhook triggers yet. Click <strong>Add Trigger</strong> to create one.</p>
+        </div>
+    } @else {
+        <div class="trigger-list">
+            @for (trigger of triggers(); track trigger.id) {
+                <div class="trigger-card">
+                    <div class="trigger-card__header">
+                        <div class="trigger-card__name-row">
+                            <span class="trigger-card__name">{{ trigger.path }}</span>
+                            @if (trigger.provider_type) {
+                                <span class="trigger-card__badge">{{ trigger.provider_type }}</span>
+                            }
+                        </div>
+                        <div class="trigger-card__actions">
+                            <button
+                                type="button"
+                                class="trigger-card__action"
+                                title="Edit"
+                                (click)="onEdit(trigger)"
+                            >
+                                <i
+                                    class="ti ti-pencil"
+                                    aria-hidden="true"
+                                ></i>
+                            </button>
+                            <button
+                                type="button"
+                                class="trigger-card__action trigger-card__action--delete"
+                                title="Delete"
+                                (click)="onDelete(trigger)"
+                            >
+                                <i
+                                    class="ti ti-x"
+                                    aria-hidden="true"
+                                ></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    @if (trigger.live_url) {
+                        <div class="trigger-card__meta">
+                            <div class="trigger-card__meta-item">
+                                <span class="trigger-card__meta-label">Live URL</span>
+                                <span class="trigger-card__meta-value">{{ trigger.live_url }}</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>

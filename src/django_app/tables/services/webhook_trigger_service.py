@@ -10,6 +10,7 @@ from tables.models.graph_models import GraphOrganization, WebhookTriggerNode
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
+    TunnelConfig,
     WebhookTrigger,
 )
 from src.shared.models import WebhookConfigData
@@ -36,18 +37,17 @@ class WebhookTriggerService(metaclass=SingletonMeta):
 
         if config_id:
             if ":" in config_id:
-                provider, config_name = config_id.split(":", 1)
+                provider, trigger_path = config_id.split(":", 1)
+                if provider in ("ngrok", "localhost"):
+                    filters["webhook_trigger__path"] = trigger_path
+                    filters["webhook_trigger__provider_type"] = provider
+                else:
+                    logger.warning(
+                        f"Unknown tunnel provider '{provider}' for config '{config_id}'"
+                    )
             else:
-                provider, config_name = "ngrok", config_id
-
-            if provider == "ngrok":
-                filters["webhook_trigger__ngrok_webhook_config__name"] = config_name
-            elif provider == "localhost":
-                filters["webhook_trigger__localhost_webhook_config__name"] = config_name
-            else:
-                logger.warning(
-                    f"Unknown tunnel provider '{provider}' for config '{config_name}'"
-                )
+                # No provider prefix — filter by path only, accept any provider
+                filters["webhook_trigger__path"] = config_id
 
         return filters
 
@@ -58,6 +58,7 @@ class WebhookTriggerService(metaclass=SingletonMeta):
 
         webhook_trigger_node_list = WebhookTriggerNode.objects.filter(**filters)
 
+        # TODO: rbac refactor
         for webhook_trigger_node in webhook_trigger_node_list:
             graph_organization = GraphOrganization.objects.filter(
                 graph=webhook_trigger_node.graph
@@ -78,13 +79,15 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         data = WebhookConfigData(
             ngrok_configs=[
                 self.converter_service.convert_ngrok_webhook_config_to_pydantic(config)
-                for config in NgrokWebhookConfig.objects.all()
+                for config in NgrokWebhookConfig.objects.select_related("trigger").all()
             ],
             localhost_configs=[
                 self.converter_service.convert_localhost_webhook_config_to_pydantic(
                     config
                 )
-                for config in LocalhostWebhookConfig.objects.all()
+                for config in LocalhostWebhookConfig.objects.select_related(
+                    "trigger"
+                ).all()
             ],
         )
 
@@ -94,34 +97,39 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         )
         return delivered_n > 0
 
-    def _get_tunnel_url(
-        self, config: NgrokWebhookConfig | LocalhostWebhookConfig, prefix: str
-    ) -> str | None:
+    def _get_tunnel_url(self, config: "TunnelConfig") -> str | None:
         """Read the tunnel URL written by the webhook service directly from Redis."""
-        unique_id = f"{prefix}:{config.name}"
+        unique_id = config.get_redis_key()
         url = self.redis_service.redis_client.hget(TUNNEL_URLS_HASH_KEY, unique_id)
         if isinstance(url, bytes):
             url = url.decode("utf-8")
         return url
 
-    def get_tunnel_url(self, ngrok_webhook_config: NgrokWebhookConfig) -> str | None:
-        return self._get_tunnel_url(ngrok_webhook_config, "ngrok")
+    def get_tunnel_url(self, webhook_trigger: "WebhookTrigger") -> str | None:
+        return self._get_tunnel_url(webhook_trigger.ngrok)
 
-    def get_localhost_tunnel_url(
-        self, localhost_webhook_config: LocalhostWebhookConfig
+    def get_localhost_tunnel_url(self, webhook_trigger: "WebhookTrigger") -> str | None:
+        return self._get_tunnel_url(webhook_trigger.localhost)
+
+    def get_tunnel_url_for_trigger(
+        self, webhook_trigger: "WebhookTrigger"
     ) -> str | None:
-        return self._get_tunnel_url(localhost_webhook_config, "localhost")
+        """Provider-agnostic: resolves the active config via get_active_config()."""
+        config = webhook_trigger.get_active_config()
+        if config is None:
+            return None
+        return self._get_tunnel_url(config)
 
     def wait_for_tunnel_url(
         self,
-        ngrok_webhook_config: NgrokWebhookConfig,
+        webhook_trigger: "WebhookTrigger",
         timeout: float = 10.0,
         interval: float = 0.1,
     ) -> str | None:
         """Poll Redis until the ngrok tunnel URL is available or timeout is reached."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            url = self.get_tunnel_url(ngrok_webhook_config)
+            url = self.get_tunnel_url(webhook_trigger)
             if url:
                 return url
             time.sleep(interval)
@@ -129,14 +137,14 @@ class WebhookTriggerService(metaclass=SingletonMeta):
 
     def wait_for_localhost_tunnel_url(
         self,
-        localhost_webhook_config: LocalhostWebhookConfig,
+        webhook_trigger: "WebhookTrigger",
         timeout: float = 3.0,
         interval: float = 0.1,
     ) -> str | None:
         """Poll Redis until the localhost tunnel URL is available or timeout is reached."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            url = self.get_localhost_tunnel_url(localhost_webhook_config)
+            url = self.get_localhost_tunnel_url(webhook_trigger)
             if url:
                 return url
             time.sleep(interval)

@@ -57,7 +57,7 @@ RESOURCE_TYPE_METADATA = [
         "label": "Agents",
         "group": "workspace",
         "description": "AI agent configurations",
-        "applicable_actions": ["create", "read", "update", "delete"],
+        "applicable_actions": ["create", "read", "update", "delete", "export"],
     },
     {
         "code": ResourceType.TOOLS.value,
@@ -85,7 +85,7 @@ RESOURCE_TYPE_METADATA = [
         "label": "Projects",
         "group": "workspace",
         "description": "Organize AI agents and tasks",
-        "applicable_actions": ["create", "read", "update", "delete"],
+        "applicable_actions": ["create", "read", "update", "delete", "export"],
     },
     {
         "code": ResourceType.LLM_CONFIGS.value,
@@ -101,6 +101,13 @@ RESOURCE_TYPE_METADATA = [
         "description": "Provider API keys, credentials, sensitive config",
         "applicable_actions": ["create", "read", "update", "delete"],
     },
+    {
+        "code": ResourceType.VOICE.value,
+        "label": "Voice",
+        "group": "config",
+        "description": "Voice model configurations and settings",
+        "applicable_actions": ["create", "read", "update", "delete"],
+    }
 ]
 
 

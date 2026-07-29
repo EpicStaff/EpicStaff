@@ -1148,6 +1148,21 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 cellStyle: {
                     fontSize: '14px',
                 },
+                cellEditorParams: {
+                    maxLength: 1000000,
+                    cellEditorValidator: (value: string) => {
+                        if (!value || value.trim() === '') {
+                            return {
+                                valid: false,
+                                message: 'Condition Name cannot be empty (cell will not be saved).',
+                            };
+                        }
+                        return { valid: true };
+                    },
+                },
+                cellClassRules: {
+                    'cell-required-invalid': (p) => String(p.value ?? '').trim().length === 0,
+                },
             },
         ];
 

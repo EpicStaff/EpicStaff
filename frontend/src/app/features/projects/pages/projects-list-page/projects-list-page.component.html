@@ -12,6 +12,7 @@
             </div>
             <div class="header-actions">
                 <app-button
+                    *appHasPermission="[ResourceCode.Projects, ActionCode.Create]"
                     type="primary"
                     class="btn-primary create-btn"
                     [leftIcon]="'plus'"
@@ -52,7 +53,8 @@
                         <button
                             type="button"
                             class="clear-btn"
-                            aria-label="Clear"
+                            aria-label="Clear search"
+                            matTooltip="Clear search"
                             (click)="clearSearch()"
                         >
                             <app-svg-icon

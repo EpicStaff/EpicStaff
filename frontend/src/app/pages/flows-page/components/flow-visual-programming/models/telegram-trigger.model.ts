@@ -1,4 +1,7 @@
-import { WebhookTriggerModel } from '../../../../../visual-programming/core/models/webhook-trigger.model';
+import {
+    WebhookTriggerModel,
+    WebhookTriggerWrite,
+} from '../../../../../visual-programming/core/models/webhook-trigger.model';
 
 export interface TelegramTriggerField {
     field_name: string;
@@ -28,7 +31,7 @@ export interface CreateTelegramTriggerNodeRequest {
     node_name: string;
     graph: number;
     telegram_bot_api_key: string;
-    webhook_trigger: WebhookTriggerModel | null;
+    webhook_trigger: WebhookTriggerWrite | null;
     fields: CreateTelegramTriggerNodeField[];
     metadata?: Record<string, unknown>;
 }

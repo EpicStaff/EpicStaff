@@ -1,13 +1,23 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, forwardRef, Input, Output } from '@angular/core';
+import {
+    AfterViewInit,
+    Component,
+    ElementRef,
+    EventEmitter,
+    forwardRef,
+    Input,
+    Output,
+    ViewChild,
+} from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
 
 @Component({
     selector: 'app-custom-input',
     standalone: true,
-    imports: [CommonModule, FormsModule, HelpTooltipComponent],
+    imports: [CommonModule, FormsModule, HelpTooltipComponent, MatTooltipModule],
     template: `
         <div class="form-group">
             @if (label) {
@@ -29,6 +39,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
             }
             <div class="input-wrapper">
                 <input
+                    #inputEl
                     [type]="effectiveType"
                     [id]="id"
                     [name]="name"
@@ -40,14 +51,15 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     [class.has-toggle]="hasToggle"
                     [class.masked]="isMasked"
                     [class.error]="errorMessage"
-                    [disabled]="disabled"
-                    [autofocus]="autofocus"
+                    [disabled]="isDisabled"
                     [style.--active-color]="activeColor"
                 />
                 @if (hasToggle) {
                     <button
                         type="button"
                         class="toggle-visibility"
+                        [matTooltip]="passwordVisible ? 'Hide' : 'Show'"
+                        matTooltipPosition="above"
                         (click)="togglePasswordVisibility()"
                         tabindex="-1"
                     >
@@ -168,7 +180,9 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
         },
     ],
 })
-export class CustomInputComponent implements ControlValueAccessor {
+export class CustomInputComponent implements ControlValueAccessor, AfterViewInit {
+    @ViewChild('inputEl') inputEl!: ElementRef<HTMLInputElement>;
+
     @Input() label: string = '';
     @Input() placeholder: string = '';
     @Input() type: string = 'text';
@@ -193,6 +207,7 @@ export class CustomInputComponent implements ControlValueAccessor {
 
     private _value: string = '';
     private _disabled: boolean = false;
+    private _controlDisabled: boolean = false;
 
     onChange: (value: string) => void = () => {};
     onTouched: () => void = () => {};
@@ -213,6 +228,10 @@ export class CustomInputComponent implements ControlValueAccessor {
 
     set disabled(val: boolean) {
         this._disabled = val;
+    }
+
+    get isDisabled(): boolean {
+        return this._disabled || this._controlDisabled;
     }
 
     get isSecret(): boolean {
@@ -264,6 +283,12 @@ export class CustomInputComponent implements ControlValueAccessor {
     }
 
     setDisabledState(isDisabled: boolean): void {
-        this._disabled = isDisabled;
+        this._controlDisabled = isDisabled;
+    }
+
+    ngAfterViewInit(): void {
+        if (this.autofocus) {
+            queueMicrotask(() => this.inputEl?.nativeElement.focus());
+        }
     }
 }

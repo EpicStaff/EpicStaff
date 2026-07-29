@@ -53,12 +53,20 @@ RUN pip install --upgrade pip poetry
 # Copy built app from builder
 COPY --from=builder /app /app
 
-# Add virtualenv to PATH
+# Add virtualenv to PATH.
+# MEM0_TELEMETRY=False: hard default so mem0's posthog telemetry (upstream
+# default is "True" if unset) stays disabled in every deploy target, not just
+# the reference docker-compose.yaml (EST-3245 action item 4).
+# LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
+# raw.githubusercontent.com on every `import litellm` (confirmed by runtime
+# trace, see docs/backend-runtime-fetch-audit.md item 7).
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    VIRTUAL_ENV=/app/src/.venv
+    VIRTUAL_ENV=/app/src/.venv \
+    MEM0_TELEMETRY=False \
+    LITELLM_LOCAL_MODEL_COST_MAP=True
 
 WORKDIR /app/src/crew
 

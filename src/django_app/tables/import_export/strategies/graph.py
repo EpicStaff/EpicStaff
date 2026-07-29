@@ -1,14 +1,18 @@
+import re
 import uuid
 from copy import deepcopy
 
-from tables.models import Graph, Crew, Organization, GraphOrganization
+from tables.models import Graph, Crew, GraphOrganization
 from tables.models.label_models import Label
 from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.serializers.model_serializers import CrewSerializer
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 
 from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.strategies.node_handlers import NODE_HANDLERS
+from tables.import_export.strategies.nodes.node_maps import (
+    NODE_RELATIONS,
+    NODE_TYPE_TO_ENTITY_TYPE,
+)
+from tables.import_export.registry import entity_registry
 from tables.import_export.serializers.graph import (
     GraphImportSerializer,
     EdgeImportSerializer,
@@ -78,13 +82,16 @@ class GraphStrategy(EntityImportExportStrategy):
         preserve_uuids = kwargs.get("preserve_uuids", False)
         replace_existing = kwargs.get("replace_existing", False)
         import_labels = kwargs.get("import_labels", True)
+        org_id = kwargs.get("org_id")
         import_data = data.copy()
         import_data["metadata"] = self.update_metadata(
             import_data["metadata"], id_mapper
         )
 
         if "name" in import_data:
-            existing_names = Graph.objects.values_list("name", flat=True)
+            existing_names = Graph.objects.filter(org_id=org_id).values_list(
+                "name", flat=True
+            )
             import_data["name"] = ensure_unique_identifier(
                 base_name=data["name"],
                 existing_names=existing_names,
@@ -103,12 +110,12 @@ class GraphStrategy(EntityImportExportStrategy):
         conditional_edges_data = import_data.pop("conditional_edge_list", [])
         labels_data = import_data.pop("labels", [])
 
+        import_data["org"] = org_id
         serializer = self.serializer_class(data=import_data)
         serializer.is_valid(raise_exception=True)
         graph = serializer.save()
 
-        organization = Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
-        GraphOrganization.objects.get_or_create(graph=graph, organization=organization)
+        GraphOrganization.objects.get_or_create(graph=graph, organization_id=org_id)
 
         self.recreate_graph_children(
             graph,
@@ -126,7 +133,7 @@ class GraphStrategy(EntityImportExportStrategy):
         return graph
 
     def recreate_graph_children(
-        self, graph: Graph, data: dict, id_mapper: IDMapper
+        self, graph: Graph, data: dict, id_mapper: IDMapper, is_partial: bool = False
     ) -> IDMapper:
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
@@ -143,7 +150,15 @@ class GraphStrategy(EntityImportExportStrategy):
         self._create_conditional_edges(conditional_edges_data, graph, node_mapper)
         self._remap_decision_table_references(graph, node_mapper)
         self._remap_classification_decision_table_references(graph, node_mapper)
-        self._update_metadata_node_ids(graph, node_mapper)
+
+        # Metadata remapping is only correct for full-graph imports/versioning,
+        # where graph.metadata was rebuilt from the import and its node ids are
+        # old export ids. In a partial import the metadata belongs to the
+        # pre-existing graph; its node ids are real, current ids that collide
+        # with the old export ids in node_mapper, so remapping them would
+        # silently re-point existing nodes at the freshly imported duplicates.
+        if not is_partial:
+            self._update_metadata_node_ids(graph, node_mapper)
 
         # need only for versioning system
         return node_mapper
@@ -151,14 +166,14 @@ class GraphStrategy(EntityImportExportStrategy):
     def _export_nodes(self, instance: Graph) -> list:
         nodes = []
 
-        for node_type, config in NODE_HANDLERS.items():
-            relation_name = config["relation"]
-            serializer_class = config["serializer"]
+        for node_type, relation_name in NODE_RELATIONS.items():
+            entity_type = NODE_TYPE_TO_ENTITY_TYPE[node_type]
+            strategy = entity_registry.get_strategy(entity_type)
 
             node_queryset = getattr(instance, relation_name).all()
 
             for node in node_queryset:
-                node_data = serializer_class(node).data
+                node_data = strategy.export_entity(node)
                 node_data["node_type"] = node_type
                 nodes.append(node_data)
 
@@ -167,6 +182,13 @@ class GraphStrategy(EntityImportExportStrategy):
     def _create_nodes(
         self, nodes_data: list, graph: Graph, node_mapper: IDMapper, id_mapper: IDMapper
     ) -> None:
+        # Mirror the frontend's node numbering: a single graph-wide counter that
+        # starts above the highest metadata["nodeNumber"] already present in the
+        # graph, so imported nodes count up from the top instead of filling gaps
+        # (which could reuse an existing number). Each numbered node also gets its
+        # assigned number written back into metadata["nodeNumber"].
+        counter = self._max_node_number(graph)
+
         for node_data in nodes_data:
             node_type = node_data.pop("node_type")
             # Backwards compat: old exports used "NoteNode"
@@ -174,19 +196,68 @@ class GraphStrategy(EntityImportExportStrategy):
                 node_type = "GraphNote"
             old_id = node_data.get("id")
 
-            config = NODE_HANDLERS[node_type]
+            if node_data.get("node_name"):
+                counter += 1
+                node_data["node_name"] = self._with_node_number(
+                    node_data["node_name"], counter
+                )
+                metadata = node_data.get("metadata") or {}
+                metadata["nodeNumber"] = counter
+                node_data["metadata"] = metadata
 
-            if "import_hook" in config:
-                node = config["import_hook"](graph, node_data, id_mapper)
-            else:
-                node = self._default_import_node(graph, node_data, config)
+            # Node strategies resolve their parent graph via
+            # id_mapper.get_or_none(GRAPH, node_data["graph"]). The exported node
+            # carries no "graph" key (it's write-only on the serializer), and the
+            # parent graph's id mapping isn't registered yet (the import service
+            # records it only after this method returns). Stamp the real graph id
+            # onto the node and register an identity mapping for it, so the
+            # strategy resolves the graph to this freshly-created instance.
+            # Guard against overwriting a real GRAPH mapping (e.g. an imported
+            # subgraph whose exported id happens to equal this graph's new id).
+            node_data["graph"] = graph.id
+            if not id_mapper.has_mapping(EntityType.GRAPH, graph.id):
+                id_mapper.map(EntityType.GRAPH, graph.id, graph.id, was_created=False)
+
+            entity_type = NODE_TYPE_TO_ENTITY_TYPE[node_type]
+            strategy = entity_registry.get_strategy(entity_type)
+            node = strategy.create_entity(node_data, id_mapper)
 
             if old_id and node:
                 node_mapper.map(NODE_MAPPING_KEY, old_id, node.id)
 
+    def _with_node_number(self, name: str, number: int) -> str:
+        """Strip any trailing "#N" / "# N" suffix and append " #{number}"."""
+        base = re.sub(r"\s*#\s*\d+$", "", name).strip()
+        return f"{base} #{number}"
+
+    def _max_node_number(self, graph: Graph) -> int:
+        """Return the highest ``metadata["nodeNumber"]`` across all of the
+        graph's nodes (0 if none)."""
+        max_num = 0
+        for relation in NODE_RELATIONS.values():
+            if not hasattr(graph, relation):
+                continue
+            qs = getattr(graph, relation)
+            if not hasattr(qs, "values_list"):
+                continue
+            model = qs.model
+            if not any(
+                f.name == "metadata"
+                for f in model._meta.get_fields()
+                if hasattr(f, "column")
+            ):
+                continue
+            for metadata in qs.values_list("metadata", flat=True):
+                if isinstance(metadata, dict):
+                    number = metadata.get("nodeNumber")
+                    # Exact type match: excludes bool (a subclass of int) without
+                    # a separate isinstance(number, bool) guard.
+                    if type(number) is int:
+                        max_num = max(max_num, number)
+        return max_num
+
     def _create_edges(self, edges_data: list, graph: Graph, id_mapper: IDMapper):
         for edge_data in edges_data:
-            edge_data["graph"] = graph.id
             edge_data["start_node_id"] = id_mapper.get(
                 NODE_MAPPING_KEY, edge_data["start_node_id"]
             )
@@ -196,7 +267,7 @@ class GraphStrategy(EntityImportExportStrategy):
 
             serializer = EdgeImportSerializer(data=edge_data)
             serializer.is_valid(raise_exception=True)
-            serializer.save()
+            serializer.save(graph=graph)
 
     def _create_conditional_edges(
         self, conditional_edges_data: list, graph: Graph, id_mapper: IDMapper
@@ -219,71 +290,65 @@ class GraphStrategy(EntityImportExportStrategy):
             serializer.is_valid(raise_exception=True)
             serializer.save()
 
-    def _remap_decision_table_references(self, graph: Graph, id_mapper: IDMapper):
-        for dt_node in graph.decision_table_node_list.all():
-            updated = False
+    def _remap_node_reference(self, old_node_id, node_mapper: IDMapper):
+        """
+        Resolve a stored node-id reference to its freshly-imported counterpart.
 
-            if dt_node.default_next_node_id:
-                new_id = id_mapper.get_or_none(
-                    NODE_MAPPING_KEY, dt_node.default_next_node_id
-                )
-                if new_id:
-                    dt_node.default_next_node_id = new_id
-                    updated = True
+        Returns the remapped id when the referenced node was part of this import,
+        otherwise ``None`` so the connection is dropped. Clearing is required for
+        partial imports: a node imported on its own carries topology references
+        (``default_next_node_id`` / ``next_error_node_id`` / group ``next_node_id``)
+        that point to nodes outside the import scope. Keeping the raw id would
+        silently wire the new node to an unrelated node in the target graph that
+        happens to share that id.
+        """
+        if not old_node_id:
+            return None
+        return node_mapper.get_or_none(NODE_MAPPING_KEY, old_node_id)
 
-            if dt_node.next_error_node_id:
-                new_id = id_mapper.get_or_none(
-                    NODE_MAPPING_KEY, dt_node.next_error_node_id
-                )
-                if new_id:
-                    dt_node.next_error_node_id = new_id
-                    updated = True
+    def _remap_decision_table_references(self, graph: Graph, node_mapper: IDMapper):
+        # Only nodes created in this import — never touch pre-existing graph nodes,
+        # whose references are valid as-is and must not be rewired.
+        new_node_ids = set(node_mapper.get_new_ids(NODE_MAPPING_KEY))
+        nodes = graph.decision_table_node_list.filter(id__in=new_node_ids)
 
-            if updated:
-                dt_node.save(
-                    update_fields=["default_next_node_id", "next_error_node_id"]
-                )
+        for dt_node in nodes:
+            dt_node.default_next_node_id = self._remap_node_reference(
+                dt_node.default_next_node_id, node_mapper
+            )
+            dt_node.next_error_node_id = self._remap_node_reference(
+                dt_node.next_error_node_id, node_mapper
+            )
+            dt_node.save(update_fields=["default_next_node_id", "next_error_node_id"])
 
             for group in dt_node.condition_groups.all():
-                if group.next_node_id:
-                    new_id = id_mapper.get_or_none(NODE_MAPPING_KEY, group.next_node_id)
-                    if new_id:
-                        group.next_node_id = new_id
-                        group.save(update_fields=["next_node_id"])
+                new_id = self._remap_node_reference(group.next_node_id, node_mapper)
+                if new_id != group.next_node_id:
+                    group.next_node_id = new_id
+                    group.save(update_fields=["next_node_id"])
 
     def _remap_classification_decision_table_references(
-        self, graph: Graph, id_mapper: IDMapper
+        self, graph: Graph, node_mapper: IDMapper
     ):
-        for cdt_node in graph.classification_decision_table_node_list.all():
-            updated = False
+        new_node_ids = set(node_mapper.get_new_ids(NODE_MAPPING_KEY))
+        nodes = graph.classification_decision_table_node_list.filter(
+            id__in=new_node_ids
+        )
 
-            if cdt_node.default_next_node_id:
-                new_id = id_mapper.get_or_none(
-                    NODE_MAPPING_KEY, cdt_node.default_next_node_id
-                )
-                if new_id:
-                    cdt_node.default_next_node_id = new_id
-                    updated = True
-
-            if cdt_node.next_error_node_id:
-                new_id = id_mapper.get_or_none(
-                    NODE_MAPPING_KEY, cdt_node.next_error_node_id
-                )
-                if new_id:
-                    cdt_node.next_error_node_id = new_id
-                    updated = True
-
-            if updated:
-                cdt_node.save(
-                    update_fields=["default_next_node_id", "next_error_node_id"]
-                )
+        for cdt_node in nodes:
+            cdt_node.default_next_node_id = self._remap_node_reference(
+                cdt_node.default_next_node_id, node_mapper
+            )
+            cdt_node.next_error_node_id = self._remap_node_reference(
+                cdt_node.next_error_node_id, node_mapper
+            )
+            cdt_node.save(update_fields=["default_next_node_id", "next_error_node_id"])
 
             for group in cdt_node.condition_groups.all():
-                if group.next_node_id:
-                    new_id = id_mapper.get_or_none(NODE_MAPPING_KEY, group.next_node_id)
-                    if new_id:
-                        group.next_node_id = new_id
-                        group.save(update_fields=["next_node_id"])
+                new_id = self._remap_node_reference(group.next_node_id, node_mapper)
+                if new_id != group.next_node_id:
+                    group.next_node_id = new_id
+                    group.save(update_fields=["next_node_id"])
 
     def _update_metadata_node_ids(self, graph: Graph, id_mapper: IDMapper):
         metadata = graph.metadata
@@ -314,15 +379,6 @@ class GraphStrategy(EntityImportExportStrategy):
         ]
         if new_label_ids:
             graph.labels.add(*Label.objects.filter(id__in=new_label_ids))
-
-    def _default_import_node(self, graph: Graph, node_data: dict, config: dict):
-        """Default import logic for simple nodes"""
-        serializer_class = config["serializer"]
-        node_data["graph"] = graph.id
-
-        serializer = serializer_class(data=node_data)
-        serializer.is_valid(raise_exception=True)
-        return serializer.save()
 
     def update_metadata(self, metadata: dict, id_mapper: IDMapper) -> dict:
         # TODO: Remove metadata when save functionality reworked

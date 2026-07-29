@@ -13,6 +13,7 @@
             <div class="header-actions">
                 <!-- <app-button type="ghost" [leftIcon]="'ui/upload'"> Import </app-button> -->
                 <app-button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
                     type="primary"
                     class="btn-primary create-btn"
                     [leftIcon]="createButtonIcon"
@@ -54,6 +55,8 @@
                             type="button"
                             class="clear-btn"
                             aria-label="Clear"
+                            matTooltip="Clear search"
+                            matTooltipPosition="above"
                             (click)="clearSearch()"
                         >
                             <app-svg-icon

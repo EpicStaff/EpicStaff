@@ -7,7 +7,7 @@ authors = [
 ]
 license = {text = "MIT"}
 readme = "README.md"
-requires-python = ">=3.12.10"
+requires-python = ">=3.12.10,<4.0"
 dependencies = [
     "fastmcp (>=2.12.3,<3.0.0)"
 ]

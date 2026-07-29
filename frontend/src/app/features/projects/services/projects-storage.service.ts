@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { StorageService } from '@shared/services';
-import { catchError, delay, Observable, of, tap } from 'rxjs';
+import { catchError, delay, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
 import { SearchFilterChange } from '../../../shared/components/filters-list/filters-list.component';
@@ -128,7 +128,7 @@ export class ProjectsStorageService implements StorageService {
             return of(cachedProject);
         }
 
-        return this.projectsApiService.getProjectById(id).pipe(catchError(() => of(undefined)));
+        return this.projectsApiService.getProjectById(id).pipe(catchError((err) => throwError(() => err)));
     }
 
     // --- Data Manipulation Methods (CRUD Operations) ---

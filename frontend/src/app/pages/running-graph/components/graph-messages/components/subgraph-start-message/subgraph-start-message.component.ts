@@ -45,6 +45,7 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                     (click)="onViewNestedMessages($event)"
                     [class.show-nested-btn--open]="isNestedMessagesOpen"
                 >
+                    {{ nestedMessagesCount }} messages
                     <div
                         class="play-nested-arrow"
                         [class.play-nested-arrow--open]="isNestedMessagesOpen"
@@ -54,22 +55,6 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                             size="1rem"
                         />
                     </div>
-                    <svg
-                        class="view-nested-icon"
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 2341 1024"
-                        [class.view-nested-icon--open]="isNestedMessagesOpen"
-                    >
-                        <path
-                            d="M87.771 0h2165.029c48.475 0 87.771 39.297 87.771 87.771v117.029c0 48.475-39.297 87.771-87.771 87.771h-2165.029c-48.475 0-87.771-39.297-87.771-87.771v-117.029c0-48.475 39.297-87.771 87.771-87.771z"
-                        ></path>
-                        <path
-                            d="M438.857 438.857h1828.571c40.396 0 73.143 32.747 73.143 73.143v73.143c0 40.396-32.747 73.143-73.143 73.143h-1828.571c-40.396 0-73.143-32.747-73.143-73.143v-73.143c0-40.396 32.747-73.143 73.143-73.143z"
-                        ></path>
-                        <path
-                            d="M438.857 804.571h1828.571c40.396 0 73.143 32.747 73.143 73.143v73.143c0 40.396-32.747 73.143-73.143 73.143h-1828.571c-40.396 0-73.143-32.747-73.143-73.143v-73.143c0-40.396 32.747-73.143 73.143-73.143z"
-                        ></path>
-                    </svg>
                 </button>
             </div>
 
@@ -341,6 +326,8 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 align-items: center;
                 justify-content: center;
                 gap: 0.5rem;
+                white-space: nowrap;
+                flex-shrink: 0;
                 cursor: pointer;
                 transition:
                     background-color 0.2s ease,
@@ -372,19 +359,6 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                 transform: rotate(90deg);
                 color: rgb(0, 191, 165);
             }
-
-            .view-nested-icon {
-                transition:
-                    transform 0.2s ease,
-                    fill 0.2s ease;
-                height: 1.1rem;
-                display: block;
-                fill: white;
-            }
-
-            .view-nested-icon--open {
-                fill: rgb(0, 191, 165);
-            }
         `,
     ],
 })
@@ -393,6 +367,7 @@ export class SubgraphStartMessageComponent {
     @Input() subgraphName: string | null = null;
     @Input() showViewNestedMessages = true;
     @Input() isNestedMessagesOpen = false;
+    @Input() nestedMessagesCount: number = 0;
     @Output() viewNestedMessages = new EventEmitter<void>();
     isMessageExpanded = false;
     isInputsExpanded = true;

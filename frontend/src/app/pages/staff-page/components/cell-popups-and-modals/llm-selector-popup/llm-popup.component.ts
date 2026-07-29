@@ -1,74 +1,133 @@
-import { NgFor, NgIf } from '@angular/common';
+import { Dialog } from '@angular/cdk/dialog';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
-    ChangeDetectorRef,
     Component,
+    computed,
+    effect,
     ElementRef,
-    EventEmitter,
-    Input,
-    OnChanges,
+    inject,
+    input,
     OnDestroy,
     OnInit,
-    Output,
-    SimpleChanges,
-    ViewChild,
+    output,
+    signal,
+    viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { AppSvgIconComponent } from '@shared/components';
-import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import {
+    AppSvgIconComponent,
+    ButtonComponent,
+    LlmModelConfigDialogComponent,
+    VoiceModelConfigDialogComponent,
+} from '@shared/components';
+import { FullLLMConfig, FullLLMConfigService, FullRealtimeConfig, FullRealtimeConfigService } from '@shared/services';
+import { forkJoin, Subject } from 'rxjs';
+import { finalize, takeUntil } from 'rxjs/operators';
 
 import { MergedConfig } from '../../../../../features/staff/services/full-agent.service';
 import { LlmItemComponent } from './llm-item/llm-item.component';
 
 @Component({
     selector: 'app-llm-popup',
-    imports: [NgFor, FormsModule, NgIf, LlmItemComponent, AppSvgIconComponent],
+    imports: [FormsModule, LlmItemComponent, AppSvgIconComponent, ButtonComponent],
     templateUrl: './llm-popup.component.html',
     styleUrls: ['./llm-popup.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LLMPopupComponent implements OnInit, OnChanges, OnDestroy, AfterViewInit {
-    @Input() public cellValue: MergedConfig[] = [];
-    @Output() public configsSelected = new EventEmitter<MergedConfig[]>();
-    @Output() public cancel = new EventEmitter<void>();
+export class LLMPopupComponent implements OnInit, OnDestroy, AfterViewInit {
+    public readonly cellValue = input<MergedConfig[]>([]);
 
-    @ViewChild('searchInput') private searchInput!: ElementRef;
+    public readonly configsSelected = output<MergedConfig[]>();
+    public readonly cancel = output<void>();
 
-    public searchTerm: string = '';
-    public loading: boolean = true;
+    private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
-    public llmConfigs: FullLLMConfig[] = [];
-    public selectedLLMId: number | null = null;
-    public selectedLLM: FullLLMConfig | null = null;
+    private readonly fullLLMConfigService = inject(FullLLMConfigService);
+    private readonly fullRealtimeConfigService = inject(FullRealtimeConfigService);
+    private readonly dialog = inject(Dialog);
 
-    private _filteredLLMs: MergedConfig[] = [];
-    private _lastSearchTerm: string = '';
+    public readonly searchTerm = signal<string>('');
+    public readonly activeTab = signal<'llm' | 'realtime'>('llm');
+    public readonly loading = signal<boolean>(true);
+
+    public readonly llmConfigs = this.fullLLMConfigService.fullLLMConfigs;
+    public readonly realtimeConfigs = this.fullRealtimeConfigService.fullRealtimeConfigs;
+
+    public readonly selectedLLMId = signal<number | null>(null);
+    public readonly selectedRealtimeId = signal<number | null>(null);
+
+    public readonly selectedLLM = computed<FullLLMConfig | null>(() => {
+        const id = this.selectedLLMId();
+        if (id == null) return null;
+        return this.llmConfigs().find((c) => c.id === id) ?? null;
+    });
+
+    public readonly selectedRealtime = computed<FullRealtimeConfig | null>(() => {
+        const id = this.selectedRealtimeId();
+        if (id == null) return null;
+        return this.realtimeConfigs().find((c) => c.id === id) ?? null;
+    });
+
+    public readonly filteredLLMs = computed<MergedConfig[]>(() => {
+        const configs: MergedConfig[] = this.llmConfigs().map((config) => ({
+            id: config.id,
+            custom_name: config.custom_name,
+            model_name: config.modelDetails?.name || 'Unknown Model',
+            type: 'llm',
+            provider_id: config.modelDetails?.llm_provider,
+            provider_name: config.providerDetails?.name || 'Unknown Provider',
+        }));
+        const term = this.searchTerm().toLowerCase();
+        if (!term) return configs;
+        return configs.filter(
+            (c) => c.model_name.toLowerCase().includes(term) || (c.custom_name ?? '').toLowerCase().includes(term)
+        );
+    });
+
+    public readonly filteredRealtimeModels = computed<MergedConfig[]>(() => {
+        const configs: MergedConfig[] = this.realtimeConfigs().map((config) => ({
+            id: config.id,
+            custom_name: config.custom_name,
+            model_name: config.modelDetails?.name || 'Unknown Model',
+            type: 'realtime',
+            provider_id: config.modelDetails?.provider,
+            provider_name: config.providerDetails?.name || 'Unknown Provider',
+        }));
+        const term = this.searchTerm().toLowerCase();
+        if (!term) return configs;
+        return configs.filter(
+            (c) => c.model_name.toLowerCase().includes(term) || (c.custom_name ?? '').toLowerCase().includes(term)
+        );
+    });
 
     private readonly destroyed$ = new Subject<void>();
 
-    constructor(
-        private readonly fullLLMConfigService: FullLLMConfigService,
-        private readonly cdr: ChangeDetectorRef
-    ) {}
+    constructor() {
+        effect(() => {
+            const cell = this.cellValue();
+            const llmConfigs = this.llmConfigs();
+            const realtimeConfigs = this.realtimeConfigs();
+            if (!cell || cell.length === 0) return;
+
+            const llmMatch = cell.find((c) => c.type === 'llm');
+            if (llmMatch && llmConfigs.some((c) => c.id === llmMatch.id)) {
+                this.selectedLLMId.set(llmMatch.id);
+            }
+
+            const realtimeMatch = cell.find((c) => c.type === 'realtime');
+            if (realtimeMatch && realtimeConfigs.some((c) => c.id === realtimeMatch.id)) {
+                this.selectedRealtimeId.set(realtimeMatch.id);
+            }
+        });
+    }
 
     public ngOnInit(): void {
         this.loadConfigs();
     }
 
-    public ngOnChanges(changes: SimpleChanges): void {
-        if (changes['cellValue']) {
-            this.preSelectConfigs();
-        }
-    }
-
     public ngAfterViewInit(): void {
-        if (this.searchInput) {
-            this.searchInput.nativeElement.focus();
-        }
-        setTimeout(() => this.cdr.detectChanges(), 0);
+        this.searchInput()?.nativeElement.focus();
     }
 
     public ngOnDestroy(): void {
@@ -77,100 +136,76 @@ export class LLMPopupComponent implements OnInit, OnChanges, OnDestroy, AfterVie
     }
 
     private loadConfigs(): void {
-        this.loading = true;
-        this.cdr.markForCheck();
+        this.loading.set(true);
 
-        this.fullLLMConfigService
-            .getFullLLMConfigs()
-            .pipe(takeUntil(this.destroyed$))
-            .subscribe({
-                next: (llmConfigs) => {
-                    this.llmConfigs = llmConfigs;
-                    this._filteredLLMs = [];
-                    this.preSelectConfigs();
-                    this.loading = false;
-                    this.cdr.markForCheck();
-                },
-                error: (err) => {
-                    console.error('Error fetching LLM configurations:', err);
-                    this.loading = false;
-                    this.cdr.markForCheck();
-                },
-            });
+        forkJoin({
+            llmConfigs: this.fullLLMConfigService.getFullLLMConfigs(),
+            realtimeConfigs: this.fullRealtimeConfigService.getFullRealtimeConfigs(),
+        })
+            .pipe(
+                takeUntil(this.destroyed$),
+                finalize(() => this.loading.set(false))
+            )
+            .subscribe();
     }
 
-    private preSelectConfigs(): void {
-        if (!this.cellValue?.length) return;
-        const llmConfig = this.cellValue.find((c) => c.type === 'llm');
-        if (llmConfig) {
-            const matched = this.llmConfigs.find((c) => c.id === llmConfig.id);
-            if (matched) {
-                this.selectedLLMId = matched.id;
-                this.selectedLLM = matched;
-            }
-        }
-        this.cdr.markForCheck();
-    }
-
-    public get filteredLLMs(): MergedConfig[] {
-        if (this._lastSearchTerm !== this.searchTerm || this._filteredLLMs.length === 0) {
-            this._lastSearchTerm = this.searchTerm;
-
-            if (!this.llmConfigs?.length) {
-                this._filteredLLMs = [];
-                return this._filteredLLMs;
-            }
-
-            const configs: MergedConfig[] = this.llmConfigs.map((config) => ({
-                id: config.id,
-                custom_name: config.custom_name,
-                model_name: config.modelDetails?.name || 'Unknown Model',
-                type: 'llm' as const,
-                provider_id: config.modelDetails?.llm_provider,
-                provider_name: config.providerDetails?.name || 'Unknown Provider',
-            }));
-
-            if (!this.searchTerm) {
-                this._filteredLLMs = configs;
-            } else {
-                const search = this.searchTerm.toLowerCase();
-                this._filteredLLMs = configs.filter(
-                    (c) =>
-                        c.model_name.toLowerCase().includes(search) ||
-                        (c.custom_name || '').toLowerCase().includes(search)
-                );
-            }
-        }
-        return this._filteredLLMs;
+    public setActiveTab(tab: 'llm' | 'realtime'): void {
+        this.activeTab.set(tab);
     }
 
     public onSelectLLM(item: MergedConfig): void {
-        if (this.selectedLLMId === item.id) {
-            this.selectedLLMId = null;
-            this.selectedLLM = null;
-        } else {
-            this.selectedLLMId = item.id;
-            this.selectedLLM = this.llmConfigs.find((c) => c.id === item.id) ?? null;
-        }
-        this.cdr.detectChanges();
+        this.selectedLLMId.update((current) => (current === item.id ? null : item.id));
+    }
+
+    public onSelectRealtime(item: MergedConfig): void {
+        this.selectedRealtimeId.update((current) => (current === item.id ? null : item.id));
     }
 
     public onSave(): void {
         const selectedConfigs: MergedConfig[] = [];
-        if (this.selectedLLM) {
+
+        const llm = this.selectedLLM();
+        if (llm) {
             selectedConfigs.push({
-                id: this.selectedLLM.id,
-                custom_name: this.selectedLLM.custom_name,
-                model_name: this.selectedLLM.modelDetails?.name || 'Unknown Model',
+                id: llm.id,
+                custom_name: llm.custom_name,
+                model_name: llm.modelDetails?.name || 'Unknown Model',
                 type: 'llm',
-                provider_id: this.selectedLLM.modelDetails?.llm_provider,
-                provider_name: this.selectedLLM.providerDetails?.name || 'Unknown Provider',
+                provider_id: llm.modelDetails?.llm_provider,
+                provider_name: llm.providerDetails?.name || 'Unknown Provider',
             });
         }
+
+        const rt = this.selectedRealtime();
+        if (rt) {
+            selectedConfigs.push({
+                id: rt.id,
+                custom_name: rt.custom_name,
+                model_name: rt.modelDetails?.name || 'Unknown Model',
+                type: 'realtime',
+                provider_id: rt.modelDetails?.provider,
+                provider_name: rt.providerDetails?.name || 'Unknown Provider',
+            });
+        }
+
         this.configsSelected.emit(selectedConfigs);
     }
 
     public onCancel(): void {
         this.cancel.emit();
+    }
+
+    public onCreateLlmModel(): void {
+        this.dialog.open(LlmModelConfigDialogComponent, {
+            height: '90vh',
+            width: '600px',
+        });
+    }
+
+    public onCreateRealtimeModel(): void {
+        this.dialog.open(VoiceModelConfigDialogComponent, {
+            height: '90vh',
+            width: '600px',
+        });
     }
 }

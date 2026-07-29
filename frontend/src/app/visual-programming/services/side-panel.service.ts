@@ -21,6 +21,9 @@ export class SidePanelService {
     private readonly graphSavedSubject = new Subject<void>();
     public readonly graphSaved$: Observable<void> = this.graphSavedSubject.asObservable();
 
+    private readonly reloadRequestedSubject = new Subject<void>();
+    public readonly reloadRequested$: Observable<void> = this.reloadRequestedSubject.asObservable();
+
     private readonly savingNodeIdSignal = signal<string | null>(null);
     public readonly savingNodeId: Signal<string | null> = this.savingNodeIdSignal.asReadonly();
 
@@ -93,6 +96,10 @@ export class SidePanelService {
 
     public notifyGraphSaved(): void {
         this.graphSavedSubject.next();
+    }
+
+    public requestReload(): void {
+        this.reloadRequestedSubject.next();
     }
 
     public markNodeSaving(nodeId: string): void {

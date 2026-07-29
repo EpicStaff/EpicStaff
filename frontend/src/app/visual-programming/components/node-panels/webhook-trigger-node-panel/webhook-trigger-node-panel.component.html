@@ -20,53 +20,34 @@
                         [errorMessage]="getNodeNameErrorMessage()"
                     ></app-custom-input>
 
-                    <app-custom-input
-                        label="Webhook trigger path"
-                        tooltipText="Only enter the webhook name. The base URL is shown below."
-                        formControlName="webhook_trigger_path"
-                        placeholder="Enter webhook path"
-                        [required]="true"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getWebhookNameErrorMessage()"
-                    ></app-custom-input>
+                    <app-webhook-trigger-select
+                        formControlName="webhook_trigger"
+                        (triggerResolved)="onTriggerResolved($event)"
+                    ></app-webhook-trigger-select>
 
-                    <div>
-                        <app-select
-                            [loading]="ngrokConfigsLoading()"
-                            label="Select Ngrok config"
-                            tooltipText="Select the ngrok config. Full URL is shown below."
-                            formControlName="ngrok_webhook_config"
-                            [items]="ngrokConfigSelectItems()"
-                            (changed)="onNgrokConfigChanged($event)"
-                        />
+                    @if (liveUrl(); as url) {
                         <div class="webhook-url-display">
-                            @if (webhookUrlDisplay(); as url) {
+                            <span
+                                class="webhook-url-text"
+                                [style.color]="activeColor"
+                            >
+                                {{ url }}
+                            </span>
+                            <button
+                                type="button"
+                                class="copy-button"
+                                (click)="copyWebhookUrl()"
+                                [disabled]="!url"
+                                aria-label="Copy webhook URL"
+                            >
                                 <span
-                                    class="webhook-url-text"
-                                    [style.color]="activeColor"
-                                >
-                                    {{ url }}
-                                </span>
-                                <button
-                                    type="button"
-                                    class="copy-button"
-                                    (click)="copyWebhookUrl()"
-                                    [disabled]="!url"
-                                    aria-label="Copy webhook URL"
-                                >
-                                    <span
-                                        class="copy-icon"
-                                        aria-hidden="true"
-                                    ></span>
-                                    <span>Copy</span>
-                                </button>
-                            } @else if (loadingTunnel()) {
-                                <div class="webhook-url-placeholder">Fetching tunnel URL...</div>
-                            } @else {
-                                <div class="webhook-url-error">Ngrok config or path is empty</div>
-                            }
+                                    class="copy-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span>Copy</span>
+                            </button>
                         </div>
-                    </div>
+                    }
 
                     <app-custom-input
                         label="Libraries"
@@ -81,8 +62,10 @@
                         <button
                             type="button"
                             class="toggle-icon-button"
-                            (click)="toggleCodeEditorFullWidth()"
+                            [matTooltip]="isCodeEditorFullWidth() ? 'Collapse editor' : 'Expand editor'"
+                            matTooltipPosition="right"
                             [attr.aria-label]="isCodeEditorFullWidth() ? 'Collapse code editor' : 'Expand code editor'"
+                            (click)="toggleCodeEditorFullWidth()"
                         >
                             <svg
                                 width="9"

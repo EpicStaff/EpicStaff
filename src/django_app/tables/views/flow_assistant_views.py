@@ -37,7 +37,7 @@ from tables.services.flow_assistant.helpers import request_cancel
 from tables.services.flow_assistant.stream_serializer import serialize_stream_event
 from tables.services.rbac.organization_resolution import resolve_organization_user
 from tables.services.rbac.permissions import IsSuperadmin
-from tables.services.rbac.sse_ticket_service import SseTicketService
+from tables.services.rbac.ticket_service import sse_ticket_service
 from tables.utils.mixins import SSEMixin
 
 
@@ -66,12 +66,16 @@ def _get_conversation_or_404(
     from rest_framework.exceptions import PermissionDenied
 
     try:
-        conv = FlowAssistantConversation.objects.select_related(
-            "flow_assistant__graph",
-            "flow_assistant__llm_config__model__llm_provider",
-        ).prefetch_related("message_rows").get(
-            pk=conversation_id,
-            flow_assistant__graph_id=graph_id,
+        conv = (
+            FlowAssistantConversation.objects.select_related(
+                "flow_assistant__graph",
+                "flow_assistant__llm_config__model__llm_provider",
+            )
+            .prefetch_related("message_rows")
+            .get(
+                pk=conversation_id,
+                flow_assistant__graph_id=graph_id,
+            )
         )
     except FlowAssistantConversation.DoesNotExist:
         raise Http404(f"Conversation {conversation_id} not found.")
@@ -215,7 +219,7 @@ class FlowAssistantSendMessageView(APIView):
         service.append_user_message(conversation, message)
         service.apply_title_if_missing(conversation, message)
 
-        ticket, _ttl = SseTicketService().issue(request.user)
+        ticket, _ttl = sse_ticket_service.issue(request.user)
         stream_url = request.build_absolute_uri(
             f"/api/flow-assistants/{graph_id}/conversations/{conversation_id}/stream/"
             f"?ticket={ticket}"
@@ -283,9 +287,11 @@ class FlowAssistantStreamView(SSEMixin):
 
         # Find the last user message to use as the prompt for this turn.
         last_user_row = await sync_to_async(
-            lambda: conversation.message_rows.filter(role="user")
-            .order_by("-message_index")
-            .first()
+            lambda: (
+                conversation.message_rows.filter(role="user")
+                .order_by("-message_index")
+                .first()
+            )
         )()
         last_user_message = last_user_row.content if last_user_row else ""
 

@@ -61,6 +61,16 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    location ~ ^/ws/ {
+        proxy_pass http://backend_server;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400;
+    }
+
     location ~ ^/(api|admin|ht|swagger)(/|$) {
         proxy_pass http://backend_server;
         proxy_set_header Authorization $http_authorization;

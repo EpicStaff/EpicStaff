@@ -28,6 +28,7 @@ export class InputNumberComponent implements ControlValueAccessor {
     mod = input<'default' | 'small'>('default');
     placeholder = input<string>('Type here');
     invalid = input<boolean>(false);
+    disabled = input<boolean>(false);
     min = input<number | null>(null);
     max = input<number | null>(null);
     stepSize = input<number>(1);
@@ -54,7 +55,8 @@ export class InputNumberComponent implements ControlValueAccessor {
 
     onChange: (value: number | null) => void = () => {};
     onTouched: () => void = () => {};
-    isDisabled = signal(false);
+    private controlDisabled = signal(false);
+    isDisabled = computed(() => this.disabled() || this.controlDisabled());
 
     onInputChange(value: number) {
         if (value === null || value === undefined) {
@@ -69,6 +71,7 @@ export class InputNumberComponent implements ControlValueAccessor {
     }
 
     onStep(direction: 1 | -1 = 1) {
+        if (this.isDisabled()) return;
         const current = Number(this.value()) || 0;
         let next = current + this.stepSize() * direction;
 
@@ -125,6 +128,6 @@ export class InputNumberComponent implements ControlValueAccessor {
     }
 
     setDisabledState(isDisabled: boolean): void {
-        this.isDisabled.set(isDisabled);
+        this.controlDisabled.set(isDisabled);
     }
 }

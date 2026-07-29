@@ -86,7 +86,7 @@ export class LoginPageComponent implements OnInit {
             )
             .subscribe({
                 next: () => {
-                    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') || '/projects';
+                    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') || '/';
                     void this.router.navigateByUrl(returnUrl);
                 },
                 error: (err: HttpErrorResponse) => {

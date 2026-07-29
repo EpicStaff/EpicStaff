@@ -46,6 +46,7 @@ import { ClickOutsideDirective } from '../../../shared/directives/click-outside.
 import { buildToolIdsArray } from '../../../shared/utils/tool-ids-builder.util';
 import { FullTaskService } from '../../services/full-task.service';
 import { ProjectStateService } from '../../services/project-state.service';
+import { ActionCellRendererComponent } from './action-cell-renderer/action-cell-renderer.component';
 import {
     AdvancedTaskSettingsData,
     AdvancedTaskSettingsDialogComponent,
@@ -590,9 +591,7 @@ export class TasksTableComponent implements OnChanges {
         {
             headerName: '',
             field: 'actions',
-            cellRenderer: () => {
-                return `<i class="ti ti-settings action-icon"></i>`;
-            },
+            cellRenderer: ActionCellRendererComponent,
             width: 40,
             cellClass: 'action-cell',
 

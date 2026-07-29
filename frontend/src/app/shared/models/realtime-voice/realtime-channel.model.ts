@@ -1,9 +1,11 @@
+import { WebhookTriggerModel } from '../../../visual-programming/core/models/webhook-trigger.model';
+
 export interface TwilioChannel {
     channel: number;
     account_sid: string;
     auth_token: string;
     phone_number: string | null;
-    ngrok_config: number | null;
+    webhook_trigger: WebhookTriggerModel | null;
 }
 
 export interface RealtimeChannel {
@@ -35,7 +37,7 @@ export interface CreateTwilioChannelRequest {
     account_sid: string;
     auth_token: string;
     phone_number?: string | null;
-    ngrok_config?: number | null;
+    webhook_trigger?: number | null;
 }
 
 export interface UpdateTwilioChannelRequest {
@@ -43,5 +45,5 @@ export interface UpdateTwilioChannelRequest {
     account_sid?: string;
     auth_token?: string;
     phone_number?: string | null;
-    ngrok_config?: number | null;
+    webhook_trigger?: number | null;
 }

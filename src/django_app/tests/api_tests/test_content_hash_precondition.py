@@ -9,7 +9,11 @@ from tables.exceptions import ContentHashConflictError
 from tables.models import CrewNode, Graph, StartNode
 from tables.models.graph_models import ConditionalEdge, WebhookTriggerNode
 from tables.models.python_models import PythonCode
-from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
+from tables.models.webhook_models import (
+    NgrokWebhookConfig,
+    ProviderType,
+    WebhookTrigger,
+)
 from tests.fixtures import *
 
 
@@ -229,10 +233,15 @@ def conditional_edge(graph, python_code):
 
 @pytest.fixture
 def ngrok_config():
+    trigger = WebhookTrigger.objects.create(
+        path="ngrokConfigFixturePath",
+        provider_type=ProviderType.NGROK,
+    )
     return NgrokWebhookConfig.objects.create(
         name="test_ngrok",
         auth_token="test_token_123",
         region="eu",
+        trigger=trigger,
     )
 
 
@@ -309,14 +318,10 @@ class TestWebhookNodeNestedHashValidation:
         webhook_node.refresh_from_db()
         assert webhook_node.content_hash != original_node_hash
 
-    def test_hash_changes_when_ngrok_config_set(
-        self, auth_client, webhook_node, ngrok_config
-    ):
-        """Changing webhook_trigger.ngrok_webhook_config must change the node hash."""
-        # Create initial trigger with no ngrok
-        trigger = WebhookTrigger.objects.create(
-            path="mypath", ngrok_webhook_config=None
-        )
+    def test_hash_changes_when_ngrok_config_set(self, auth_client, webhook_node):
+        """Changing webhook_trigger to include an ngrok config must change the node hash."""
+        # Create initial trigger with no provider
+        trigger = WebhookTrigger.objects.create(path="mypath", provider_type=None)
         webhook_node.webhook_trigger = trigger
         webhook_node.save()
         hash_before = webhook_node.content_hash
@@ -327,7 +332,12 @@ class TestWebhookNodeNestedHashValidation:
             {
                 "webhook_trigger": {
                     "path": "mypath",
-                    "ngrok_webhook_config": ngrok_config.id,
+                    "provider_type": "ngrok",
+                    "ngrok_config": {
+                        "name": "test",
+                        "auth_token": "tok",
+                        "domain": None,
+                    },
                 },
             },
             format="json",

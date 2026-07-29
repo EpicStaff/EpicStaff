@@ -1,8 +1,11 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { ButtonComponent, TabButtonComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { tap } from 'rxjs/operators';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -26,6 +29,8 @@ import { ToolsSearchService } from '../../services/tools-search.service';
         FormsModule,
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
+        MatTooltipModule,
+        HasPermissionDirective,
     ],
     templateUrl: './tools-list-page.component.html',
     styleUrls: ['./tools-list-page.component.scss'],
@@ -125,4 +130,7 @@ export class ToolsListPageComponent implements OnDestroy {
             )
             .subscribe();
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

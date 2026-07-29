@@ -21,7 +21,6 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { MATERIAL_FORMS } from '@shared/material-forms';
 import { LLMProvider, ModelTypes } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
@@ -48,7 +47,6 @@ import { QuickstartService } from '../../services/quickstart.service';
     imports: [
         CommonModule,
         ReactiveFormsModule,
-        MATERIAL_FORMS,
         CustomInputComponent,
         ButtonComponent,
         HelpTooltipComponent,

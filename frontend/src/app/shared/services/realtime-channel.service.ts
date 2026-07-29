@@ -78,12 +78,8 @@ export class RealtimeChannelService {
     }
 
     private normalizeTwilio(twilio: TwilioChannel): TwilioChannel {
-        const raw = twilio.ngrok_config as unknown;
-        const ngrokId =
-            raw && typeof raw === 'object' && 'id' in raw
-                ? ((raw as { id: number }).id ?? null)
-                : (raw as number | null);
-        return { ...twilio, ngrok_config: ngrokId };
+        // The backend expands `webhook_trigger` as a nested object on read; keep it as-is.
+        return twilio;
     }
 
     getPhoneNumbers(accountSid: string, authToken: string): Observable<TwilioPhoneNumber[]> {

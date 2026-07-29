@@ -1,10 +1,13 @@
 from rest_framework import serializers
 
 from tables.models.webhook_models import (
-    NgrokWebhookConfig,
+    LOCAL_ONLY_PROVIDERS,
     RealtimeChannel,
     TwilioChannel,
+    WebhookTrigger,
 )
+from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
+from tables.models.llm_models import RealtimeConfig, RealtimeTranscriptionConfig
 from tables.models.realtime_models import (
     ConversationRecording,
     ElevenLabsRealtimeConfig,
@@ -14,9 +17,20 @@ from tables.models.realtime_models import (
     RealtimeAgentChat,
     RealtimeSessionItem,
 )
+from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
 
 
 class RealtimeAgentSerializer(serializers.ModelSerializer):
+    # Org isolation: only configs from the caller's active org may be referenced.
+    realtime_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=RealtimeConfig.objects.all(), required=False, allow_null=True
+    )
+    realtime_transcription_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=RealtimeTranscriptionConfig.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+
     class Meta:
         model = RealtimeAgent
         exclude = ["agent"]
@@ -53,31 +67,34 @@ class GeminiRealtimeConfigSerializer(serializers.ModelSerializer):
 
 
 class TwilioChannelSerializer(serializers.ModelSerializer):
+    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    )
+
     class Meta:
         model = TwilioChannel
         fields = "__all__"
 
+    def validate(self, attrs):
+        wt = attrs.get("webhook_trigger")
+        provider_type = wt.provider_type if wt else None
 
-class _NgrokConfigMinimalSerializer(serializers.ModelSerializer):
-    live_url = serializers.SerializerMethodField()
-
-    class Meta:
-        model = NgrokWebhookConfig
-        fields = ["id", "domain", "live_url"]
-
-    def get_live_url(self, instance: NgrokWebhookConfig):
-        from tables.services.webhook_trigger_service import WebhookTriggerService
-
-        try:
-            return WebhookTriggerService().get_tunnel_url(ngrok_webhook_config=instance)
-        except Exception:
-            return None
+        if provider_type and provider_type in LOCAL_ONLY_PROVIDERS:
+            raise serializers.ValidationError(
+                {
+                    "webhook_trigger": (
+                        "Localhost webhook provider is not reachable by Twilio. "
+                        "Use ngrok or a publicly accessible provider."
+                    )
+                }
+            )
+        return attrs
 
 
 class _TwilioChannelReadSerializer(serializers.ModelSerializer):
-    """Read-only variant that expands ngrok_config so downstream consumers get the domain."""
+    """Read-only variant that expands webhook_trigger so downstream consumers get live_url."""
 
-    ngrok_config = _NgrokConfigMinimalSerializer(read_only=True)
+    webhook_trigger = WebhookTriggerNestedSerializer(read_only=True)
 
     class Meta:
         model = TwilioChannel
@@ -90,6 +107,7 @@ class RealtimeChannelSerializer(serializers.ModelSerializer):
     class Meta:
         model = RealtimeChannel
         fields = "__all__"
+        read_only_fields = ["org", "created_by"]
 
 
 class ConversationRecordingSerializer(serializers.ModelSerializer):

@@ -2,10 +2,11 @@ from typing import Optional, Tuple
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models.functions import Lower
 from loguru import logger
 
-from tables.models.rbac_models import Organization, OrganizationUser
+from tables.models.rbac_models import Organization, OrganizationUser, Role
+from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.auth_service import TokenPair
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.rbac.rbac_exceptions import (
@@ -52,25 +53,18 @@ class UserProfileService:
     # ---- read ----
 
     def get_profile(self, user, active_org_id: Optional[int] = None):
-        """Refetch the user with memberships prefetched (active orgs only).
-        If `active_org_id` is provided AND the caller has membership (or is
-        superadmin), attach `_active_organization_id` and `_active_permissions`
-        to the returned User instance for the serializer to render. Soft-fail:
+        """Refetch the user and attach the memberships list.
+
+        `_profile_memberships` is the caller's own active memberships, or —
+        for a superadmin — every active organization with the built-in
+        Superadmin role. If `active_org_id` is provided AND the caller has
+        membership (or is superadmin), also attach `_active_organization_id`
+        and `_active_permissions` for the serializer to render. Soft-fail:
         invalid `active_org_id` results in both attributes being None (NOT 403).
         """
         User = get_user_model()
-        user = (
-            User.objects.filter(pk=user.pk)
-            .prefetch_related(
-                Prefetch(
-                    "organization_memberships",
-                    queryset=OrganizationUser.objects.filter(org__is_active=True)
-                    .select_related("org", "role")
-                    .order_by("joined_at"),
-                )
-            )
-            .get()
-        )
+        user = User.objects.get(pk=user.pk)
+        user._profile_memberships = self._get_memberships(user)
 
         user._active_organization_id = None
         user._active_permissions = None
@@ -95,6 +89,29 @@ class UserProfileService:
                 "permissions": effective.to_action_codes(),
             }
         return user
+
+    def _get_memberships(self, user):
+        """Membership rows to render in the profile.
+
+        Normal user: their real active memberships (with their real role),
+        ordered by joined_at. Superadmin: every active organization with the
+        built-in Superadmin role, ordered by name.
+        """
+        if getattr(user, "is_superadmin", False):
+            superadmin_role = Role.objects.get(
+                name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True
+            )
+            return [
+                {"id": None, "org": org, "role": superadmin_role, "joined_at": None}
+                for org in Organization.objects.filter(is_active=True).order_by(
+                    Lower("name")
+                )
+            ]
+        return (
+            OrganizationUser.objects.filter(user=user, org__is_active=True)
+            .select_related("org", "role")
+            .order_by("joined_at")
+        )
 
     # ---- profile field updates ----
 

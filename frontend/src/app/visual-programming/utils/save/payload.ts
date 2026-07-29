@@ -171,7 +171,7 @@ function buildCdtNodePayload(
                 group_name: g.group_name,
                 order: typeof g.order === 'number' ? g.order : idx + 1,
                 expression: g.expression || null,
-                prompt_id: g.prompt_id || null,
+                prompt: (tableData?.prompts?.[g.prompt_id ?? ''] as PromptConfig | undefined)?.backendId ?? null,
                 manipulation: g.manipulation || null,
                 continue_flag: !!(g.continue_flag ?? g.continue),
                 route_code: g.route_code || null,

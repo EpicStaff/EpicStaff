@@ -1,0 +1,78 @@
+@if (allowPickExisting()) {
+    <app-select
+        label="Webhook Trigger"
+        tooltipText="Reuse an existing webhook trigger, or create a new one inline."
+        [items]="modeItems"
+        [selectedValue]="mode()"
+        (changed)="onModeChanged($event)"
+    />
+}
+
+@if (mode() === 'existing') {
+    <app-select
+        label="Existing Trigger"
+        placeholder="Select a trigger"
+        [items]="existingItems()"
+        [selectedValue]="selectedExistingId()"
+        (opened)="onExistingOpened()"
+        (changed)="onExistingChanged($event)"
+    />
+    @if (selectedExistingTrigger()?.live_url) {
+        <p class="wt-hint">Live URL: {{ selectedExistingTrigger()!.live_url }}</p>
+    }
+} @else {
+    <form
+        [formGroup]="form"
+        class="wt-fields"
+    >
+        <app-custom-input
+            label="Webhook Path"
+            formControlName="path"
+            placeholder="e.g. my-webhook"
+            [activeColor]="activeColor()"
+        ></app-custom-input>
+
+        <app-select
+            label="Provider"
+            tooltipText="Tunnel provider that exposes this webhook."
+            formControlName="provider_type"
+            [items]="providerItems()"
+        />
+
+        @if (providerType() === 'ngrok') {
+            <app-custom-input
+                label="Tunnel Name"
+                formControlName="ngrok_name"
+                placeholder="e.g. my-tunnel"
+                [activeColor]="activeColor()"
+            ></app-custom-input>
+            <app-custom-input
+                type="password"
+                label="Ngrok Auth Token"
+                formControlName="ngrok_auth_token"
+                placeholder="From dashboard.ngrok.com"
+                [activeColor]="activeColor()"
+            ></app-custom-input>
+            <app-custom-input
+                label="Custom Domain"
+                formControlName="ngrok_domain"
+                placeholder="(optional) myapp.ngrok.io"
+                [activeColor]="activeColor()"
+            ></app-custom-input>
+            <app-select
+                label="Region"
+                formControlName="ngrok_region"
+                [items]="regionItems"
+            />
+        }
+
+        @if (providerType() === 'localhost') {
+            <app-custom-input
+                label="Name"
+                formControlName="localhost_name"
+                placeholder="e.g. local"
+                [activeColor]="activeColor()"
+            ></app-custom-input>
+        }
+    </form>
+}

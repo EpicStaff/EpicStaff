@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, EventEmitter, inject, I
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { FFlowModule } from '@foblex/flow';
+import { MATERIAL_FORMS } from '@shared/material-forms';
 import { LlmConfigStorageService } from '@shared/services';
 
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
@@ -16,7 +17,7 @@ import { FlowService } from '../../../services/flow.service';
     templateUrl: './classification-decision-table-node.component.html',
     styleUrls: ['./classification-decision-table-node.component.scss'],
     standalone: true,
-    imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle],
+    imports: [CommonModule, FormsModule, ClickOrDragDirective, FFlowModule, NgStyle, MATERIAL_FORMS],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ClassificationDecisionTableNodeComponent {
@@ -103,6 +104,27 @@ export class ClassificationDecisionTableNodeComponent {
             return undefined;
         }
         return this.node.ports?.find((p) => p.role === `decision-route-${key}`);
+    }
+
+    get hasEmptyConditionName(): boolean {
+        const groups: ConditionGroup[] = this.node.data.table?.condition_groups ?? [];
+        return groups.some((g: ConditionGroup) => !g.group_name || g.group_name.trim() === '');
+    }
+
+    get errorMessages(): string[] {
+        const errors: string[] = [];
+        if (this.hasMissingLlmConfig) errors.push('LLM config is missing or was deleted');
+        if (this.hasEmptyConditionName) errors.push('One or more condition groups have an empty Condition Name');
+        return errors;
+    }
+
+    get errorsTooltip(): string {
+        return this.errorMessages.map((m, i) => `${i + 1}. ${m}.`).join(' ');
+    }
+
+    get errorsBadgeLabel(): string {
+        const n = this.errorMessages.length;
+        return n === 1 ? '1 issue' : `${n} issues`;
     }
 
     get hasMissingLlmConfig(): boolean {

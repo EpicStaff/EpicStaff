@@ -2,8 +2,6 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
-import { GetNgrokConfigResponse } from '@shared/models';
-import { NgrokConfigStorageService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
@@ -26,7 +24,6 @@ import {
 export class VoiceSettingsSectionComponent implements OnInit {
     private channelService = inject(RealtimeChannelService);
     private agentsService = inject(AgentsService);
-    private ngrokStorage = inject(NgrokConfigStorageService);
     private dialog = inject(Dialog);
     private confirmationDialogService = inject(ConfirmationDialogService);
     private toastService = inject(ToastService);
@@ -36,19 +33,8 @@ export class VoiceSettingsSectionComponent implements OnInit {
 
     channels = signal<RealtimeChannel[]>([]);
     private agents = signal<GetAgentRequest[]>([]);
-    private ngrokConfigs = signal<GetNgrokConfigResponse[]>([]);
 
     agentMap = computed<Map<number, string>>(() => new Map(this.agents().map((a) => [a.id, a.role])));
-
-    ngrokMap = computed<Map<number, string>>(
-        () =>
-            new Map(
-                this.ngrokConfigs().map((c) => [
-                    c.id,
-                    c.webhook_full_url ? c.webhook_full_url.replace(/^https?:\/\//, '').replace(/\/$/, '') : c.name,
-                ])
-            )
-    );
 
     ngOnInit(): void {
         this.loadAll();
@@ -76,19 +62,13 @@ export class VoiceSettingsSectionComponent implements OnInit {
             .getAgentsWithRealtimeConfig()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({ next: (agents) => this.agents.set(agents), error: () => {} });
-
-        this.ngrokStorage
-            .getConfigs()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({ next: (configs) => this.ngrokConfigs.set(configs), error: () => {} });
     }
 
     getStreamUrl(channel: RealtimeChannel): string | null {
-        const twilio = channel.twilio;
-        if (!twilio?.ngrok_config) return null;
-        const ngrokDomain = this.ngrokMap().get(twilio.ngrok_config);
-        if (!ngrokDomain) return null;
-        return `wss://${ngrokDomain}/voice/${channel.token}/stream`;
+        const liveUrl = channel.twilio?.webhook_trigger?.live_url;
+        if (!liveUrl) return null;
+        const base = liveUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        return `wss://${base}/voice/${channel.token}/stream`;
     }
 
     onAddChannel(): void {
