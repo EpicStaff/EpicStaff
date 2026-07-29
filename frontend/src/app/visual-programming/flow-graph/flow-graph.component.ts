@@ -889,40 +889,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 }
             });
         } else if (node.type === NodeType.START) {
-            const startNode = node as StartNodeModel;
-
-            const lock = this.wsService.lockedNodeFields().get(node.id)?.get('initialState');
-            if (lock && lock.user_id !== this.profileService.currentUserSignal()?.id) {
-                this.toastService.warning(
-                    `Domain variables are being edited by ${lock.display_name ?? 'another user'}`,
-                    4000,
-                    'bottom-right'
-                );
-                return;
-            }
-
-            const startNodeInitialState = startNode.data?.initialState || {};
-            this.wsService.sendNodeLocked(node.id, 'initialState');
-
-            const dialogRef = this.dialog.open(DomainDialogComponent, {
-                disableClose: true,
-                width: '1000px',
-                height: '800px',
-                maxWidth: '90vw',
-                maxHeight: '90vh',
-                panelClass: 'domain-dialog-panel',
-                backdropClass: 'domain-dialog-backdrop',
-                data: {
-                    initialData: startNodeInitialState,
-                },
-            });
-
-            dialogRef.closed.subscribe((result: unknown) => {
-                this.wsService.sendNodeUnlocked(node.id, 'initialState');
-                if (result !== null && typeof result === 'object' && result !== undefined) {
-                    this.updateStartNodeInitialState(result as Record<string, unknown>);
-                }
-            });
+            this.openDomainDialogForStartNode(node as StartNodeModel);
         } else {
             void this.sidePanelService.trySelectNode(node);
         }
@@ -1470,9 +1437,34 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onDomainClick(): void {
-        const startNodeInitialState = this.flowService.startNodeInitialState();
+        const startNode = this.flowService.nodes().find((node) => node.type === NodeType.START) as
+            | StartNodeModel
+            | undefined;
+
+        if (!startNode) {
+            this.toastService.error('Start node not found');
+            return;
+        }
+
+        this.openDomainDialogForStartNode(startNode);
+    }
+
+    private openDomainDialogForStartNode(startNode: StartNodeModel): void {
+        const lock = this.wsService.lockedNodeFields().get(startNode.id)?.get('initialState');
+        if (lock && lock.user_id !== this.profileService.currentUserSignal()?.id) {
+            this.toastService.warning(
+                `Domain variables are being edited by ${lock.display_name ?? 'another user'}`,
+                4000,
+                'bottom-right'
+            );
+            return;
+        }
+
+        const startNodeInitialState = startNode.data?.initialState || {};
+        this.wsService.sendNodeLocked(startNode.id, 'initialState');
 
         const dialogRef = this.dialog.open(DomainDialogComponent, {
+            disableClose: true,
             width: '1000px',
             height: '800px',
             maxWidth: '90vw',
@@ -1485,6 +1477,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
 
         dialogRef.closed.subscribe((result: unknown) => {
+            this.wsService.sendNodeUnlocked(startNode.id, 'initialState');
             if (result !== null && typeof result === 'object' && result !== undefined) {
                 this.updateStartNodeInitialState(result as Record<string, unknown>);
             }
