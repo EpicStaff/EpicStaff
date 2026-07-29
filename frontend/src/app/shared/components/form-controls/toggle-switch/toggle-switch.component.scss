@@ -19,6 +19,13 @@
         border-radius: 6px;
         transition: background 0.2s;
     }
+    &--disabled {
+        opacity: 0.6;
+
+        .slider {
+            cursor: not-allowed;
+        }
+    }
     input:checked + .slider {
         background-color: var(--accent-color);
     }

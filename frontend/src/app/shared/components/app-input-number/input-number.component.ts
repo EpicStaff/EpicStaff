@@ -30,6 +30,9 @@ export class InputNumberComponent implements ControlValueAccessor {
     invalid = input<boolean>(false);
     min = input<number | null>(null);
     max = input<number | null>(null);
+    warningMax = input<number | null>(null);
+    warningMessage = input<string>('');
+    errorMessage = input<string>('');
     stepSize = input<number>(1);
     value = model<number | null>(null);
     changed = output<number | null>();
@@ -52,6 +55,15 @@ export class InputNumberComponent implements ControlValueAccessor {
         return this.invalid() || this.isOutOfRange();
     });
 
+    isAboveWarning = computed(() => {
+        const value = this.value();
+        const warning = this.warningMax();
+        if (value === null || warning === null) return false;
+        if (value <= warning) return false;
+        if (this.isInvalid()) return false;
+        return true;
+    });
+
     onChange: (value: number | null) => void = () => {};
     onTouched: () => void = () => {};
     isDisabled = signal(false);
@@ -69,6 +81,7 @@ export class InputNumberComponent implements ControlValueAccessor {
     }
 
     onStep(direction: 1 | -1 = 1) {
+        if (this.isDisabled()) return;
         const current = Number(this.value()) || 0;
         let next = current + this.stepSize() * direction;
 

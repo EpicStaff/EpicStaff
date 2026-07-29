@@ -2,12 +2,14 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    computed,
     EventEmitter,
     forwardRef,
     inject,
     Input,
     input,
     Output,
+    signal,
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
@@ -33,6 +35,7 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     label = input<string>('');
     required = input<boolean>(false);
     tooltipText = input<string>('');
+    disabled = input<boolean>(false);
 
     @Input() checked = false;
     @Output() checkedChange = new EventEmitter<boolean>();
@@ -41,14 +44,18 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
 
     private onChange: (value: boolean) => void = () => {};
     private onTouched = () => {};
-    private isDisabled = false;
+    private formDisabled = signal(false);
+
+    isDisabled = computed(() => this.disabled() || this.formDisabled());
 
     onToggle() {
-        if (this.isDisabled) return;
+        if (this.isDisabled()) return;
         const next = !this.checked;
+        this.checked = next;
         this.checkedChange.emit(next);
         this.onChange(next);
         this.onTouched();
+        this.cdr.markForCheck();
     }
 
     writeValue(value: boolean): void {
@@ -65,6 +72,6 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     }
 
     setDisabledState(isDisabled: boolean): void {
-        this.isDisabled = isDisabled;
+        this.formDisabled.set(isDisabled);
     }
 }

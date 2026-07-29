@@ -31,3 +31,129 @@
         margin-bottom: 0;
     }
 }
+
+.lock-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    background: var(--color-input-background);
+    color: var(--color-text-secondary, var(--color-text-primary));
+    font-size: 0.875rem;
+}
+
+.metadata-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    background: var(--color-input-background);
+    font-size: 0.875rem;
+
+    &--error {
+        color: var(--color-ks-status-failed);
+    }
+
+    &__spinner {
+        display: inline-block;
+        width: 1rem;
+        height: 1rem;
+        flex-shrink: 0;
+        border-radius: 50%;
+        border: 2px solid var(--color-divider-subtle);
+        border-top-color: var(--accent-color);
+        animation: rag-tab-spin 0.8s linear infinite;
+    }
+
+    &__retry {
+        margin-left: auto;
+        border: none;
+        background: transparent;
+        color: var(--accent-color);
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 600;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+}
+
+@keyframes rag-tab-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.suggested-params-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+
+    .suggest-status {
+        &.error {
+            color: var(--color-ks-status-failed);
+        }
+    }
+}
+
+.advanced-settings {
+    margin-bottom: 1rem;
+
+    &__summary {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        width: 100%;
+        border: none;
+        background: none;
+        padding: 0;
+        cursor: pointer;
+        color: var(--color-text-primary);
+        font-size: 1rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        text-align: left;
+        margin-bottom: 1rem;
+
+        .chevron {
+            transform: rotate(-90deg);
+            transition: transform 0.2s ease;
+        }
+    }
+
+    &--open &__summary .chevron {
+        transform: rotate(0deg);
+    }
+
+    &__content-wrapper {
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 0.25s ease;
+    }
+
+    &--open &__content-wrapper {
+        grid-template-rows: 1fr;
+    }
+
+    &__content {
+        overflow: hidden;
+        min-height: 0;
+
+        > .form-group,
+        > .form-group-container {
+            margin-bottom: 1.5rem;
+        }
+
+        // Nested fields inside a row container must not add their own
+        // margin-bottom on top of the row's — flex containers don't collapse
+        // child margins, so it would otherwise stack on every multi-field row.
+        > .form-group-container > .form-group {
+            margin-bottom: 0;
+        }
+    }
+}
