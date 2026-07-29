@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from tables.models import Secret
 from tables.serializers.org_scoped_fields import OrgScopedUniqueTogetherValidator
-from tables.services.secrets import secret_encryption
+from tables.services.secrets import secret_service
 
 
 class SecretSerializer(serializers.ModelSerializer):
@@ -46,16 +46,8 @@ class SecretSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         text = validated_data.pop("value")
-        secret = Secret(**validated_data)
-        secret_encryption.encrypt(text=text).write_to(secret)
-        secret.save()
-        return secret
+        return secret_service.create(text=text, **validated_data)
 
     def update(self, instance, validated_data):
         text = validated_data.pop("value", None)
-        for attr, val in validated_data.items():
-            setattr(instance, attr, val)
-        if text is not None:
-            secret_encryption.encrypt(text=text).write_to(instance)
-        instance.save()
-        return instance
+        return secret_service.update(instance=instance, text=text, **validated_data)

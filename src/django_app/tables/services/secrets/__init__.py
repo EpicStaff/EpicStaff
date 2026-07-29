@@ -8,6 +8,7 @@ from tables.services.secrets.exceptions import (
     SecretDecryptionError,
     SecretTooLargeError,
 )
+from tables.services.secrets.secret_service import SecretService, secret_service
 
 __all__ = [
     "MAX_TEXT_BYTES",
@@ -16,4 +17,6 @@ __all__ = [
     "secret_encryption",
     "SecretDecryptionError",
     "SecretTooLargeError",
+    "SecretService",
+    "secret_service",
 ]
