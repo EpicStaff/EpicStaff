@@ -1,6 +1,6 @@
 import { inject, Injectable, Signal } from '@angular/core';
 import { forkJoin, Observable, of, Subscription, timer } from 'rxjs';
-import { catchError, filter, repeat, switchMap, tap } from 'rxjs/operators';
+import { catchError, filter, repeat, switchMap, takeUntil, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../services/notifications';
 import { NaiveRagDocumentConfig } from '../models/naive-rag-document.model';
@@ -28,12 +28,16 @@ export class KnowledgeSourcesPollingService {
     private trackedProcessing = new Map<number, { processedAt: string | null; failedAt: string | null }>();
 
     // timer + repeat: the next 5s countdown starts only after the previous refresh fully finished.
+    // takeUntil(collectionDeleted$): if a collection is deleted during an in-flight tick, drop the
+    // tick entirely so its stale taps can't re-add the just-deleted collection to the cache.
     startPagePolling(selectedCollectionId: Signal<number | null>): void {
         this.stopPagePolling();
         this.pagePollingSub = timer(POLL_INTERVAL_MS)
             .pipe(
                 filter(() => document.visibilityState === 'visible'),
-                switchMap(() => this.refreshAll(selectedCollectionId())),
+                switchMap(() =>
+                    this.refreshAll(selectedCollectionId()).pipe(takeUntil(this.collectionsStorage.collectionDeleted$))
+                ),
                 repeat()
             )
             .subscribe();

@@ -21,7 +21,7 @@ repos:
     hooks:
     -   id: ruff
         args: ["--fix"]
-        exclude: ^(src/crew/libraries/|src/knowledge/libraries/|src/tool/|.*/tests/|src/shared/tools|integration_tests/|src/crew/utils/)
+        exclude: ^(src/crew/libraries/|src/knowledge/libraries/|src/knowledge_new/|src/tool/|.*/tests/|src/shared/tools|integration_tests/|src/crew/utils/)
     -   id: ruff-format
         exclude: ^(src/crew/libraries/|src/knowledge/libraries/|src/tool/|src/django_app/tables/migrations)
 

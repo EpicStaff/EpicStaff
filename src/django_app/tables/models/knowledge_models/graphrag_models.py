@@ -60,6 +60,7 @@ class GraphRag(models.Model):
         choices=GraphRagStatus.choices,
         default=GraphRagStatus.NEW,
     )
+    reindex_reason = models.JSONField(default=dict, blank=True)
     error_message = models.TextField(null=True, blank=True)
 
     indexing_document_config_ids = ArrayField(
@@ -74,6 +75,12 @@ class GraphRag(models.Model):
 
     class Meta:
         db_table = "graph_rag"
+
+    def add_reindex_reason(self, code: str, detail: str):
+        self.reindex_reason.setdefault(code, detail)
+
+    def require_reindex(self) -> bool:
+        return bool(self.reindex_reason)
 
     def update_rag_status(self: "GraphRag"):
         """Update status based on document states."""
@@ -142,6 +149,10 @@ class GraphRagDocument(models.Model):
     - Allows adding/removing documents from GraphRag independently
     """
 
+    class Status(models.TextChoices):
+        NEW = "new"
+        COMPLETED = "completed"
+
     graph_rag_document_id = models.AutoField(primary_key=True)
     graph_rag = models.ForeignKey(
         GraphRag,
@@ -152,6 +163,11 @@ class GraphRagDocument(models.Model):
         DocumentMetadata,
         on_delete=models.CASCADE,
         related_name="graph_rag_links",
+    )
+    status = models.CharField(
+        default=Status.NEW,
+        choices=Status.choices,
+        max_length=20,
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

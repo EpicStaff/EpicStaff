@@ -1,3 +1,4 @@
+from django.utils import choices
 from rest_framework import serializers
 from tables.models.knowledge_models import (
     GraphRag,
@@ -235,6 +236,14 @@ class GraphRagIndexConfigUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "At least one field must be provided for update"
             )
+
+        chunk_size = attrs.get("chunk_size")
+        chunk_overlap = attrs.get("chunk_overlap")
+        if chunk_size and chunk_overlap and chunk_overlap >= chunk_size:
+            raise serializers.ValidationError(
+                {"chunk_overlap": ['Must be less than "chunk_size".']}
+            )
+
         return attrs
 
 
@@ -471,3 +480,12 @@ class GraphSearchConfigInputSerializer(serializers.Serializer):
         fields = super().get_fields()
         fields["global"] = fields.pop("global_")
         return fields
+
+
+class GraphRagDocumentListSerializer(serializers.Serializer):
+    graph_rag_document_id = serializers.IntegerField()
+    document_id = serializers.IntegerField()
+    file_name = serializers.CharField(source="document.file_name")
+    file_size = serializers.IntegerField(source="document.file_size")
+    status = serializers.CharField()
+    created_at = serializers.DateTimeField()

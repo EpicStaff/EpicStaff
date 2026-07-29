@@ -1,6 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { StorageService } from '@shared/services';
-import { catchError, delay, Observable, of, tap, throwError } from 'rxjs';
+import { catchError, delay, Observable, of, Subject, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
 import {
@@ -32,11 +32,12 @@ export class CollectionsStorageService implements StorageService {
     private processingConfigIdsSignal = signal<Set<number>>(new Set());
     public readonly processingConfigIds = this.processingConfigIdsSignal.asReadonly();
 
+    readonly collectionDeleted$ = new Subject<number>();
+
     markConfigsAsProcessing(configIds: number[]): void {
         this.processingConfigIdsSignal.update((ids) => new Set([...ids, ...configIds]));
     }
 
-    // TODO update it when gra
     // Optimistically sets the given rag's status to 'processing' in the fullCollections cache.
     // Polling will overwrite on next tick.
     markRagAsProcessing(ragId: number): void {
@@ -190,6 +191,8 @@ export class CollectionsStorageService implements StorageService {
     }
 
     private deleteCollectionFromCache(id: number) {
+        this.collectionDeleted$.next(id);
+
         const currentCollections = this.collectionsSignal();
         const updatedCollections = currentCollections.filter((p) => p.collection_id !== id);
         this.collectionsSignal.set(updatedCollections);

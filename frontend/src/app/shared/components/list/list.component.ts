@@ -13,10 +13,13 @@ export class ListComponent<T> {
     width = input<string | null>(null);
     emptyTitle = input<string | null>(null);
     emptyDescription = input<string | null>(null);
+    trackBy = input<(index: number, item: T) => unknown>((index) => index);
 
     @ContentChild(TemplateRef)
     rowTemplate!: TemplateRef<{
         $implicit: T;
         index: number;
     }>;
+
+    protected trackItem = (index: number, item: T): unknown => this.trackBy()(index, item);
 }

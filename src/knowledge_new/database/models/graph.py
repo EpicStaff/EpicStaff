@@ -79,7 +79,9 @@ class GraphRagIndexConfig(BaseModel):
     chunk_size = Column(Integer, default=1200)
     chunk_overlap = Column(Integer, default=100)
     chunk_strategy = Column(String(20), default="tokens")
-    entity_types = Column(JSON, default=lambda: ["organization", "person", "geo", "event"])
+    entity_types = Column(
+        JSON, default=lambda: ["organization", "person", "geo", "event"]
+    )
     max_gleanings = Column(Integer, default=1)
     max_cluster_size = Column(Integer, default=10)
 
@@ -100,15 +102,24 @@ class GraphRag(BaseModel):
     graph_rag_id = Column(Integer, primary_key=True, autoincrement=True)
     rag_status = Column(String(20), default="new")
     error_message = Column(Text, nullable=True)
-    indexing_document_config_ids = Column(ARRAY(Integer), nullable=False, server_default="{}")
+    indexing_document_config_ids = Column(
+        ARRAY(Integer), nullable=False, server_default="{}"
+    )
+    reindex_reason = Column(JSON, default=dict)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     indexed_at = Column(DateTime, nullable=True)
 
-    base_rag_type_id = Column(Integer, ForeignKey("tables_baseragtype.rag_type_id"), nullable=False)
-    embedder_id = Column(Integer, ForeignKey("tables_embeddingconfig.id"), nullable=True)
+    base_rag_type_id = Column(
+        Integer, ForeignKey("tables_baseragtype.rag_type_id"), nullable=False
+    )
+    embedder_id = Column(
+        Integer, ForeignKey("tables_embeddingconfig.id"), nullable=True
+    )
     llm_id = Column(Integer, ForeignKey("tables_llmconfig.id"), nullable=True)
-    index_config_id = Column(Integer, ForeignKey("graph_rag_index_config.id"), nullable=True)
+    index_config_id = Column(
+        Integer, ForeignKey("graph_rag_index_config.id"), nullable=True
+    )
 
     base_rag_type = relationship("BaseRagType")
     embedder = relationship("EmbeddingConfig")
@@ -131,16 +142,21 @@ class GraphRagDocument(BaseModel):
 
     graph_rag_document_id = Column(Integer, primary_key=True, autoincrement=True)
     created_at = Column(DateTime, default=utcnow)
+    status = Column(String, default="new")
 
     graph_rag_id = Column(Integer, ForeignKey("graph_rag.graph_rag_id"), nullable=False)
-    document_id = Column(Integer, ForeignKey("tables_documentmetadata.document_id"), nullable=False)
+    document_id = Column(
+        Integer, ForeignKey("tables_documentmetadata.document_id"), nullable=False
+    )
 
     graph_rag = relationship("GraphRag", back_populates="graph_rag_documents")
     document = relationship("DocumentMetadata")
 
     __tablename__ = "graph_rag_document"
     __table_args__ = (
-        UniqueConstraint("graph_rag_id", "document_id", name="unique_graph_rag_document"),
+        UniqueConstraint(
+            "graph_rag_id", "document_id", name="unique_graph_rag_document"
+        ),
         Index("ix_graphragdocument_graph_rag", "graph_rag_id"),
         Index("ix_graphragdocument_document", "document_id"),
     )

@@ -481,6 +481,8 @@ class CollectionManagementService:
             "rag_id": graph_rag.graph_rag_id,
             "rag_type": "graph",
             "status": graph_rag.rag_status,
+            "require_reindex": graph_rag.require_reindex(),
+            "reindex_reason": graph_rag.reindex_reason,
             "is_ready_for_indexing": is_ready_for_indexing,
             "embedder_name": (
                 graph_rag.embedder.custom_name if graph_rag.embedder else None

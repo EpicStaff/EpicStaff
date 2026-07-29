@@ -2,11 +2,19 @@ import abc
 import functools
 import inspect
 from collections.abc import Awaitable, Callable
+from typing import Literal
 
 from errors import RepositoryError
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
-from models import Document, EmbeddingConfig, FoundChunk, IndexedChunk, PreviewChunk, Rag
+from models import (
+    Document,
+    EmbeddingConfig,
+    FoundChunk,
+    IndexedChunk,
+    PreviewChunk,
+    Rag,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -162,7 +170,9 @@ class AbstractGraphRagRepository(RepositoryErrorWrapper, abc.ABC):
         """
 
     @abc.abstractmethod
-    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[TextDocument]:
+    async def get_documents(
+        self, rag_id: int, ids: frozenset[int]
+    ) -> list[TextDocument]:
         """Return `TextDocument` objects for the given `ids` within `rag_id`, with text extracted from raw content.
 
         Args:
@@ -173,6 +183,29 @@ class AbstractGraphRagRepository(RepositoryErrorWrapper, abc.ABC):
     @abc.abstractmethod
     async def get_config(self, rag_id: int) -> GraphRagConfig:
         """Return a fully-populated `GraphRagConfig` assembled from the DB records for `rag_id`.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
+        """
+
+    @abc.abstractmethod
+    async def update_status_of_documents(
+        self,
+        rag_id: int,
+        ids: frozenset[int],
+        status: Literal["new", "indexed"],
+    ):
+        """Persist status of `documents` within the RAG collection `rag_id`.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
+            ids: Primary keys of the documents to retrieve.
+            status: Status of document.
+        """
+
+    @abc.abstractmethod
+    async def has_indexed_document(self, rag_id: int) -> bool:
+        """Return whether the RAG collection `rag_id` has at least one indexed document.
 
         Args:
             rag_id: Primary key of the GraphRAG collection.

@@ -161,6 +161,8 @@ class InvalidFileTypeException(DocumentUploadException):
 class CollectionNotFoundException(DocumentUploadException):
     """Raised when source collection is not found."""
 
+    status_code = 404
+
     def __init__(self, collection_id):
         self.collection_id = collection_id
         super().__init__(f"Source collection with id {collection_id} not found")

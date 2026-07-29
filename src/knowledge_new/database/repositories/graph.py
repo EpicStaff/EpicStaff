@@ -1,3 +1,5 @@
+from typing import Literal
+
 from database.models import (
     DocumentMetadata,
     EmbeddingConfig,
@@ -8,7 +10,10 @@ from database.models import (
     LLMConfig,
     LLMModel,
 )
-from database.repositories.base import AbstractGraphRagRepository, BaseSQLAlchemyRepository
+from database.repositories.base import (
+    AbstractGraphRagRepository,
+    BaseSQLAlchemyRepository,
+)
 from graphrag.config.models.cluster_graph_config import ClusterGraphConfig
 from graphrag.config.models.extract_graph_config import ExtractGraphConfig
 from graphrag.config.models.graph_rag_config import GraphRagConfig
@@ -20,11 +25,13 @@ from graphrag_vectors.vector_store_config import VectorStoreConfig
 from models import Rag
 from services.file_text_extractors import build_file_text_extractor
 from settings import settings
-from sqlalchemy import select, update
+from sqlalchemy import select, update, exists
 from sqlalchemy.orm import joinedload
 
 
-class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRepository):
+class GraphRagSQLAlchemyRepository(
+    BaseSQLAlchemyRepository, AbstractGraphRagRepository
+):
     async def get_rag(self, rag_id: int) -> Rag | None:
         result = await self._session.execute(
             select(GraphRag).where(GraphRag.graph_rag_id == rag_id)
@@ -35,6 +42,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
                 status=data.rag_status,
                 indexing_document_ids=data.indexing_document_config_ids,
                 error_message=data.error_message,
+                reindex_reason=data.reindex_reason,
             )
         return None
 
@@ -46,10 +54,13 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
                 rag_status=rag.status,
                 indexing_document_config_ids=list(rag.indexing_document_ids),
                 error_message=rag.error_message,
+                reindex_reason=rag.reindex_reason,
             )
         )
 
-    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[TextDocument]:
+    async def get_documents(
+        self, rag_id: int, ids: frozenset[int]
+    ) -> list[TextDocument]:
         result = await self._session.execute(
             select(GraphRagDocument)
             .where(
@@ -57,7 +68,9 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
                 GraphRagDocument.graph_rag_document_id.in_(ids),
             )
             .options(
-                joinedload(GraphRagDocument.document).joinedload(DocumentMetadata.document_content)
+                joinedload(GraphRagDocument.document).joinedload(
+                    DocumentMetadata.document_content
+                )
             )
         )
         rows = result.scalars().all()
@@ -74,10 +87,36 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
                     text=text,
                     title=document.file_name,
                     creation_date=row.created_at.isoformat(),
-                    raw_data=None,
+                    raw_data={"status": row.status},
                 )
             )
         return documents
+
+    async def update_status_of_documents(
+        self,
+        rag_id: int,
+        ids: frozenset[int],
+        status: Literal["new", "indexed"],
+    ):
+        await self._session.execute(
+            update(GraphRagDocument)
+            .where(
+                GraphRagDocument.graph_rag_id == rag_id,
+                GraphRagDocument.graph_rag_document_id.in_(ids),
+            )
+            .values(status=status)
+        )
+
+    async def has_indexed_document(self, rag_id: int) -> bool:
+        result = await self._session.execute(
+            select(
+                exists().where(
+                    GraphRagDocument.graph_rag_id == rag_id,
+                    GraphRagDocument.status == "indexed",
+                )
+            )
+        )
+        return result.scalar_one()
 
     async def get_config(self, rag_id: int) -> GraphRagConfig | None:
         result = await self._session.execute(
@@ -114,7 +153,9 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
             cluster_graph=self._build_cluster_graph_config(index_config),
             input_storage=StorageConfig(base_dir=str(graph_root / "input")),
             output_storage=StorageConfig(base_dir=str(graph_root / "output")),
-            update_output_storage=StorageConfig(base_dir=str(graph_root / "update_output")),
+            update_output_storage=StorageConfig(
+                base_dir=str(graph_root / "update_output")
+            ),
             vector_store=VectorStoreConfig(
                 vector_size=1536,
                 db_uri=str(graph_root / "lancedb"),
@@ -161,12 +202,16 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
         )
 
     @staticmethod
-    def _build_extract_graph_config(index_config: GraphRagIndexConfig) -> ExtractGraphConfig:
+    def _build_extract_graph_config(
+        index_config: GraphRagIndexConfig,
+    ) -> ExtractGraphConfig:
         return ExtractGraphConfig(
             entity_types=index_config.entity_types,
             max_gleanings=index_config.max_gleanings,
         )
 
     @staticmethod
-    def _build_cluster_graph_config(index_config: GraphRagIndexConfig) -> ClusterGraphConfig:
+    def _build_cluster_graph_config(
+        index_config: GraphRagIndexConfig,
+    ) -> ClusterGraphConfig:
         return ClusterGraphConfig(max_cluster_size=index_config.max_cluster_size)

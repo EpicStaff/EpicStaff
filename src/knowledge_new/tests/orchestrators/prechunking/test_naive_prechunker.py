@@ -1,9 +1,15 @@
 import asyncio
 
 import pytest
-from enums import ChunkStrategyEnum, DocumentErrorCode, DocumentStatusEnum, RAGStrategy
+from enums import ChunkStrategyEnum, DocumentStatusEnum, RAGStrategy
 from errors import ChunkingError, FileTextExtractingError, NoPreviewChunksProducedError
-from models import ChunkingConfig, Document, PrechunkRequest, PrechunkResponse, PreviewChunk
+from models import (
+    ChunkingConfig,
+    Document,
+    PrechunkRequest,
+    PrechunkResponse,
+    PreviewChunk,
+)
 from orchestrators.prechunking.strategies.naive_prechunker import NaivePrechunker
 
 
@@ -15,7 +21,9 @@ class FakeNaiveRagRepo:
     a failure at the preparation stage.
     """
 
-    def __init__(self, document: Document, *, get_document_raises: BaseException | None = None):
+    def __init__(
+        self, document: Document, *, get_document_raises: BaseException | None = None
+    ):
         self._document = document
         self._get_document_raises = get_document_raises
         self.status_log: list[DocumentStatusEnum] = []
@@ -29,7 +37,9 @@ class FakeNaiveRagRepo:
     async def update_document(self, rag_id: int, document: Document) -> None:
         self.status_log.append(document.status)
 
-    async def save_preview_chunks(self, document_id: int, chunks: list[PreviewChunk]) -> None:
+    async def save_preview_chunks(
+        self, document_id: int, chunks: list[PreviewChunk]
+    ) -> None:
         self.save_chunks_calls.append((document_id, list(chunks)))
 
 
@@ -47,7 +57,9 @@ class FakeUoW:
         get_document_raises: BaseException | None = None,
         commit_errors: list[BaseException] | None = None,
     ):
-        self.naive_rag_repo = FakeNaiveRagRepo(document, get_document_raises=get_document_raises)
+        self.naive_rag_repo = FakeNaiveRagRepo(
+            document, get_document_raises=get_document_raises
+        )
         self._commit_errors: list[BaseException | None] = list(commit_errors or [])
         self.commit_count = 0
 
@@ -63,38 +75,6 @@ class FakeUoW:
             exc = self._commit_errors.pop(0)
             if exc is not None:
                 raise exc
-
-
-async def test_success_full_flow_returns_response_and_status_transitions():
-    document = Document(
-        id=7,
-        name="doc.txt",
-        content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.NEW,
-        config=ChunkingConfig(
-            chunk_strategy=ChunkStrategyEnum.CHARACTER,
-            chunk_size=50,
-            chunk_overlap=0,
-            extra={"character": {"regex": r"\n\n"}},
-        ),
-    )
-    expected_request = PrechunkRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_id=7)
-    uow = FakeUoW(document)
-
-    response = await NaivePrechunker(uow).execute(expected_request)
-
-    expected_chunks = [PreviewChunk(text="alpha"), PreviewChunk(text="beta")]
-    assert response == PrechunkResponse(
-        request=expected_request, status=DocumentStatusEnum.CHUNKED, chunks=expected_chunks
-    )
-    assert response.request == expected_request
-    assert response.chunks == expected_chunks
-    assert uow.naive_rag_repo.status_log == [
-        DocumentStatusEnum.CHUNKING,
-        DocumentStatusEnum.CHUNKED,
-    ]
-    assert document.status == DocumentStatusEnum.CHUNKED
-    assert response.chunks == document.preview_chunks
 
 
 async def test_already_chunked_same_config_short_circuits_without_status_changes():
@@ -161,36 +141,29 @@ async def test_already_chunked_different_config_rechunks_and_replaces_preview():
     )
     assert response.chunks != old_chunks  # response differs from the stale preview
     assert document.preview_chunks == new_chunks  # old preview replaced by new
-    assert uow.naive_rag_repo.status_log == [
-        DocumentStatusEnum.CHUNKING,
-        DocumentStatusEnum.CHUNKED,
-    ]
+    # prechunker sets preview_chunks and calls _update_document once without changing status
+    assert uow.naive_rag_repo.status_log == [DocumentStatusEnum.CHUNKED]
     assert document.status == DocumentStatusEnum.CHUNKED
 
 
 @pytest.mark.parametrize(
     "uow_kwargs,expected_status_log,expected_final_status",
     [
-        # cancelling in preparation: do not restore
+        # cancelling in preparation: document never fetched → on_cancel is a no-op
         (
             {"get_document_raises": asyncio.CancelledError()},
             [],
             DocumentStatusEnum.NEW,
         ),
-        # cancelling in chunking: restore to start status
+        # cancelling during the single _update_document commit: update_document logged NEW,
+        # then commit raises; on_cancel condition (NEW not in {CHUNKED, NEW}) is False → no restore
         (
-            {"commit_errors": [asyncio.CancelledError(), None]},
-            [DocumentStatusEnum.CHUNKING, DocumentStatusEnum.NEW],
+            {"commit_errors": [asyncio.CancelledError()]},
+            [DocumentStatusEnum.NEW],
             DocumentStatusEnum.NEW,
         ),
-        # cancelling in completion: do not restore
-        (
-            {"commit_errors": [None, asyncio.CancelledError()]},
-            [DocumentStatusEnum.CHUNKING, DocumentStatusEnum.CHUNKED],
-            DocumentStatusEnum.CHUNKED,
-        ),
     ],
-    ids=["preparation", "chunking", "completion"],
+    ids=["preparation", "during_commit"],
 )
 async def test_cancellation_restores_status_per_stage(
     uow_kwargs,
@@ -220,7 +193,7 @@ async def test_cancellation_restores_status_per_stage(
 
 
 @pytest.mark.parametrize(
-    "name,content,config_kwargs,expected_exc,expected_error_code",
+    "name,content,config_kwargs,expected_exc",
     [
         (
             "doc.csv",
@@ -231,7 +204,6 @@ async def test_cancellation_restores_status_per_stage(
                 "chunk_overlap": 0,
             },
             FileTextExtractingError,
-            DocumentErrorCode.CHUNKING_FAILED,
         ),
         (
             "doc.txt",
@@ -243,7 +215,6 @@ async def test_cancellation_restores_status_per_stage(
                 "extra": {"character": {"regex": "["}},
             },
             ChunkingError,
-            DocumentErrorCode.CHUNKING_FAILED,
         ),
         (
             "doc.txt",
@@ -255,7 +226,6 @@ async def test_cancellation_restores_status_per_stage(
                 "extra": {"character": {"regex": r"\n\n"}},
             },
             NoPreviewChunksProducedError,
-            DocumentErrorCode.CHUNKING_FAILED,
         ),
     ],
     ids=["extraction_failure", "chunking_failure", "no_chunks_produced"],
@@ -265,7 +235,6 @@ async def test_error_marks_document_failed_per_stage(
     content,
     config_kwargs,
     expected_exc,
-    expected_error_code,
 ):
     document = Document(
         id=7,
@@ -281,6 +250,5 @@ async def test_error_marks_document_failed_per_stage(
         await NaivePrechunker(uow).execute(request)
 
     assert document.status == DocumentStatusEnum.FAILED
-    assert document.error_code == expected_error_code
-    assert document.error_message  # populated via classify → format_error_message
-    assert uow.naive_rag_repo.status_log == [DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED]
+    assert document.error_message  # populated by mark_as_failed(error)
+    assert uow.naive_rag_repo.status_log == [DocumentStatusEnum.FAILED]

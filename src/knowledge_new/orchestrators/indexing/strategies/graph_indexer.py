@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from typing import Literal
 
 import pandas
 from errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
@@ -14,7 +15,19 @@ class GraphIndexer(AbstractIndexer):
         async with self.uow:
             rag = await self._get_rag_under_uow(request.rag_id)
             config = await self._get_config_under_uow(rag.id)
-            documents = await self._get_documents_under_uow(rag.id, request.document_ids)
+            documents = await self._get_documents_under_uow(
+                rag.id, request.document_ids
+            )
+            has_indexed_document_in_db = await self._has_indexed_document_under_uow(
+                rag.id
+            )
+
+        has_indexed_document_in_request = any(
+            d.raw_data["status"] == "indexed" for d in documents
+        )
+        is_update_run = (
+            has_indexed_document_in_db and not has_indexed_document_in_request
+        )
 
         rag.mark_as_processing(request.document_ids)
         await self._update_rag(rag)
@@ -23,6 +36,7 @@ class GraphIndexer(AbstractIndexer):
             config=config,
             input_documents=pandas.DataFrame(data=[asdict(d) for d in documents]),
             verbose=True,
+            is_update_run=is_update_run,
         )
 
         errors = {r.workflow: r.error for r in results if r.error is not None}
@@ -33,10 +47,15 @@ class GraphIndexer(AbstractIndexer):
                 list(errors.values()),
             )
 
+        await self._update_status_of_documents(
+            rag.id, request.document_ids, status="indexed"
+        )
         rag.mark_as_completed()
         await self._update_rag(rag)
 
-        logger.info("Finished indexing in RAG(id={}, status={}).", rag.id, rag.status.value)
+        logger.info(
+            "Finished indexing in RAG(id={}, status={}).", rag.id, rag.status.value
+        )
 
     async def on_cancel(self, request: IndexRequest):
         if (rag := self.state.get("rag")) is not None:
@@ -51,7 +70,7 @@ class GraphIndexer(AbstractIndexer):
             await self._update_rag(rag)
 
     async def _get_rag_under_uow(self, rag_id: int) -> Rag:
-        rag = await self.uow.naive_rag_repo.get_rag(rag_id=rag_id)
+        rag = await self.uow.graph_rag_repo.get_rag(rag_id=rag_id)
         if rag is None:
             raise RagNotFoundError(rag_id=rag_id)
         self.state["rag"] = rag
@@ -66,7 +85,7 @@ class GraphIndexer(AbstractIndexer):
     async def _get_documents_under_uow(
         self, rag_id: int, ids: frozenset[int]
     ) -> list[TextDocument]:
-        documents = await self.uow.naive_rag_repo.get_documents(rag_id=rag_id, ids=ids)
+        documents = await self.uow.graph_rag_repo.get_documents(rag_id=rag_id, ids=ids)
 
         if not documents:
             raise DocumentNotFoundError(f"No Document found for RAG(id={rag_id}).")
@@ -76,3 +95,20 @@ class GraphIndexer(AbstractIndexer):
         async with self.uow:
             await self.uow.graph_rag_repo.update_rag(rag)
             await self.uow.commit()
+
+    async def _update_status_of_documents(
+        self,
+        rag_id: int,
+        ids: frozenset[int],
+        status: Literal["new", "indexed"],
+    ):
+        async with self.uow:
+            await self.uow.graph_rag_repo.update_status_of_documents(
+                rag_id=rag_id,
+                ids=ids,
+                status=status,
+            )
+            await self.uow.commit()
+
+    async def _has_indexed_document_under_uow(self, rag_id: int) -> bool:
+        return await self.uow.graph_rag_repo.has_indexed_document(rag_id=rag_id)

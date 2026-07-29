@@ -1,5 +1,11 @@
 from enums import EmbedderProviderEnum
-from models import EmbeddingConfig, FoundChunk, NaiveSearchConfig, SearchRequest, SearchResponse
+from models import (
+    EmbeddingConfig,
+    FoundChunk,
+    NaiveSearchConfig,
+    SearchRequest,
+    SearchResponse,
+)
 from orchestrators.searching.strategies import naive_search
 from orchestrators.searching.strategies.naive_search import NaiveSearch
 
@@ -11,7 +17,12 @@ class FakeNaiveRagRepo:
     the search config were wired through correctly.
     """
 
-    def __init__(self, *, embedding_config: EmbeddingConfig | None, found_chunks: list[FoundChunk]):
+    def __init__(
+        self,
+        *,
+        embedding_config: EmbeddingConfig | None,
+        found_chunks: list[FoundChunk],
+    ):
         self._embedding_config = embedding_config
         self._found_chunks = found_chunks
         self.search_calls: list[dict] = []
@@ -70,10 +81,14 @@ async def test_search_success_returns_response_with_found_chunks(monkeypatch):
         FoundChunk(order=0, similarity=0.91, text="first hit", source="doc-a"),
         FoundChunk(order=1, similarity=0.84, text="second hit", source="doc-b"),
     ]
-    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=found_chunks)
+    repo = FakeNaiveRagRepo(
+        embedding_config=_EMBEDDING_CONFIG, found_chunks=found_chunks
+    )
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2, 0.3])
-    monkeypatch.setattr(naive_search, "build_embedder", lambda provider, config: embedder)
+    monkeypatch.setattr(
+        naive_search, "build_embedder", lambda provider, config: embedder
+    )
 
     request = SearchRequest(
         rag_id=1,
@@ -83,8 +98,8 @@ async def test_search_success_returns_response_with_found_chunks(monkeypatch):
 
     response = await NaiveSearch(uow).execute(request)
 
-    assert response == SearchResponse(request=request, chunks=found_chunks)
-    assert response.chunks == found_chunks
+    assert response == SearchResponse(request=request, result=found_chunks)
+    assert response.result == found_chunks
     assert embedder.embedded == ["find me"]  # the query was embedded
     assert repo.search_calls == [
         {
@@ -100,7 +115,9 @@ async def test_search_success_returns_empty_response_when_no_chunks_match(monkey
     repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2, 0.3])
-    monkeypatch.setattr(naive_search, "build_embedder", lambda provider, config: embedder)
+    monkeypatch.setattr(
+        naive_search, "build_embedder", lambda provider, config: embedder
+    )
 
     request = SearchRequest(
         rag_id=1,
@@ -110,7 +127,7 @@ async def test_search_success_returns_empty_response_when_no_chunks_match(monkey
 
     response = await NaiveSearch(uow).execute(request)
 
-    assert response == SearchResponse(request=request, chunks=[])
-    assert response.chunks == []
+    assert response == SearchResponse(request=request, result=[])
+    assert response.result == []
     assert embedder.embedded == ["no matches here"]  # flow still ran end-to-end
     assert len(repo.search_calls) == 1  # search was performed, just matched nothing
