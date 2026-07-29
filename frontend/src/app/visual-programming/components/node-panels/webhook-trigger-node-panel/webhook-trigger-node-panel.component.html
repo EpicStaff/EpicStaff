@@ -20,10 +20,10 @@
                         [errorMessage]="getNodeNameErrorMessage()"
                     ></app-custom-input>
 
-                    <app-webhook-trigger-field
+                    <app-webhook-trigger-select
                         formControlName="webhook_trigger"
-                        [activeColor]="activeColor"
-                    ></app-webhook-trigger-field>
+                        (triggerResolved)="onTriggerResolved($event)"
+                    ></app-webhook-trigger-select>
 
                     @if (liveUrl(); as url) {
                         <div class="webhook-url-display">

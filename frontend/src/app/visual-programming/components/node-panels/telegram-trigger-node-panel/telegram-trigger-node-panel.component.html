@@ -27,21 +27,10 @@
                             [activeColor]="activeColor"
                             [errorMessage]="getTelegramKeyErrorMessage()"
                         ></app-custom-input>
-
-                        <app-webhook-trigger-field
-                            formControlName="webhook_trigger"
-                            [activeColor]="activeColor"
-                        ></app-webhook-trigger-field>
                     </div>
 
                     <div class="webhook-section">
-                        <div class="webhook-section__label-container">
-                            <label>Webhook</label>
-                            <app-help-tooltip
-                                text="Ngrok tunnel"
-                                position="right"
-                            />
-                        </div>
+                        <app-webhook-trigger-select formControlName="webhook_trigger"></app-webhook-trigger-select>
 
                         <div class="webhook-status__container">
                             @switch (webhookStatusDisplay()) {

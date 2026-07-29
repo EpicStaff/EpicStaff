@@ -1,13 +1,14 @@
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { CustomInputComponent, WebhookTriggerFieldComponent } from '@shared/components';
+import { CustomInputComponent, WebhookTriggerSelectComponent } from '@shared/components';
 
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { WebhookTriggerModel } from '../../../core/models/webhook-trigger.model';
 
 @Component({
     standalone: true,
@@ -19,7 +20,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
         CommonModule,
         ClipboardModule,
         MatTooltipModule,
-        WebhookTriggerFieldComponent,
+        WebhookTriggerSelectComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -36,11 +37,11 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
 
-    /** Live URL is only present when the node holds an inline trigger object (after saving). */
-    liveUrl = computed<string | null>(() => {
-        const wt = this.node().data.webhook_trigger;
-        return wt && typeof wt === 'object' ? (wt.live_url ?? null) : null;
-    });
+    liveUrl = signal<string | null>(null);
+
+    onTriggerResolved(trigger: WebhookTriggerModel | null): void {
+        this.liveUrl.set(trigger?.live_url ?? null);
+    }
 
     constructor() {
         super();

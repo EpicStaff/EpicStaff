@@ -1,16 +1,18 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
+import {
+    ButtonComponent,
+    ConfirmationDialogService,
+    LoadingSpinnerComponent,
+    WebhookTriggerDialogComponent,
+    WebhookTriggerDialogData,
+} from '@shared/components';
 import { WebhookTriggerService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
 import { WebhookTriggerModel } from '../../../../visual-programming/core/models/webhook-trigger.model';
-import {
-    WebhookTriggerDialogComponent,
-    WebhookTriggerDialogData,
-} from './webhook-trigger-dialog/webhook-trigger-dialog.component';
 
 @Component({
     selector: 'app-webhook-triggers-section',
@@ -65,7 +67,7 @@ export class WebhookTriggersSectionComponent implements OnInit {
 
     private openDialog(trigger: WebhookTriggerModel | null): void {
         this.dialog
-            .open<boolean, WebhookTriggerDialogData>(WebhookTriggerDialogComponent, {
+            .open<WebhookTriggerModel | null, WebhookTriggerDialogData>(WebhookTriggerDialogComponent, {
                 disableClose: true,
                 data: { trigger },
             })

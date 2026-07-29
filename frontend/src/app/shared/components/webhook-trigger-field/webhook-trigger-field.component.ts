@@ -1,4 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed,DestroyRef, forwardRef, inject, input, OnInit, output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    forwardRef,
+    inject,
+    input,
+    OnInit,
+    output,
+    signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
     ControlValueAccessor,
@@ -22,7 +33,6 @@ import { SelectComponent, SelectItem } from '../select/select.component';
 export const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
 
 export const WEBHOOK_PROVIDER_ITEMS: SelectItem[] = [
-    { name: '— None —', value: null },
     { name: 'Ngrok', value: 'ngrok' },
     { name: 'Localhost', value: 'localhost' },
 ];
@@ -88,7 +98,6 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         ngrok_domain: [''],
         ngrok_region: ['eu'],
         localhost_name: [''],
-        localhost_domain: [''],
     });
 
     existingItems = computed<SelectItem[]>(() => {
@@ -186,10 +195,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
                           region: (v.ngrok_region as 'us' | 'eu' | 'ap') || 'eu',
                       }
                     : null,
-            localhost_config:
-                provider === 'localhost'
-                    ? { name: v.localhost_name ?? '', domain: v.localhost_domain || null }
-                    : null,
+            localhost_config: provider === 'localhost' ? { name: v.localhost_name ?? '' } : null,
         };
     }
 
@@ -219,7 +225,6 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
                     ngrok_domain: value.ngrok_config?.domain ?? '',
                     ngrok_region: value.ngrok_config?.region ?? 'eu',
                     localhost_name: value.localhost_config?.name ?? '',
-                    localhost_domain: value.localhost_config?.domain ?? '',
                 },
                 { emitEvent: false }
             );
@@ -253,6 +258,9 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         if (this.mode() === 'new') {
             const path = (this.form.value.path ?? '').trim();
             if (path && !WEBHOOK_NAME_PATTERN.test(path)) return { pattern: true };
+            if ((this.pathRequired() || path) && !this.form.value.provider_type) {
+                return { providerRequired: true };
+            }
         }
         return null;
     }

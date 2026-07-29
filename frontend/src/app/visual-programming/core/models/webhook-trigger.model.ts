@@ -9,7 +9,7 @@ export interface NgrokConfigInline {
 
 export interface LocalhostConfigInline {
     name: string;
-    domain: string | null;
+    domain?: string | null;
 }
 
 export interface WebhookTriggerModel {

@@ -3,10 +3,11 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { ButtonComponent, WebhookTriggerFieldComponent } from '@shared/components';
-import { WebhookTriggerService } from '@shared/services';
 
-import { WebhookTriggerModel } from '../../../../../visual-programming/core/models/webhook-trigger.model';
+import { WebhookTriggerModel } from '../../../visual-programming/core/models/webhook-trigger.model';
+import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
+import { ButtonComponent } from '../buttons';
+import { WebhookTriggerFieldComponent } from '../webhook-trigger-field/webhook-trigger-field.component';
 
 export interface WebhookTriggerDialogData {
     trigger: WebhookTriggerModel | null;
@@ -21,7 +22,7 @@ export interface WebhookTriggerDialogData {
 })
 export class WebhookTriggerDialogComponent implements OnInit {
     private fb = inject(FormBuilder);
-    private dialogRef = inject(DialogRef);
+    private dialogRef = inject(DialogRef<WebhookTriggerModel | null>);
     private service = inject(WebhookTriggerService);
     private destroyRef = inject(DestroyRef);
 
@@ -55,12 +56,10 @@ export class WebhookTriggerDialogComponent implements OnInit {
         this.isSubmitting.set(true);
         this.errorMessage.set(null);
 
-        const request$ = trigger.id
-            ? this.service.update(trigger.id, trigger)
-            : this.service.create(trigger);
+        const request$ = trigger.id ? this.service.update(trigger.id, trigger) : this.service.create(trigger);
 
         request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-            next: () => this.dialogRef.close(true),
+            next: (saved) => this.dialogRef.close(saved),
             error: (err: HttpErrorResponse) => {
                 this.errorMessage.set(this.formatBackendError(err) ?? 'Failed to save webhook trigger.');
                 this.isSubmitting.set(false);

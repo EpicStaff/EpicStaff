@@ -6,9 +6,8 @@ import {
     ButtonComponent,
     CustomInputComponent,
     JsonEditorComponent,
-    WebhookTriggerFieldComponent,
+    WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { MATERIAL_FORMS } from '@shared/material-forms';
 import { startWith } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
@@ -21,7 +20,6 @@ import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { WebhookTriggerWrite } from '../../../core/models/webhook-trigger.model';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
 import { WebhookStatus } from './webhook-status.model';
 
@@ -35,9 +33,8 @@ import { WebhookStatus } from './webhook-status.model';
         ButtonComponent,
         HelpTooltipComponent,
         AppSvgIconComponent,
-        MATERIAL_FORMS,
         JsonEditorComponent,
-        WebhookTriggerFieldComponent,
+        WebhookTriggerSelectComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -85,10 +82,8 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
         this.webhookConfigured.set(this.isConfigured(this.node().data.webhook_trigger));
     }
 
-    private isConfigured(value: WebhookTriggerWrite | null): boolean {
-        if (value == null) return false;
-        if (typeof value === 'number') return true;
-        return !!value.path && !!value.provider_type;
+    private isConfigured(value: unknown): boolean {
+        return typeof value === 'number';
     }
 
     private setSelectedFields(nodeFields: TelegramTriggerNodeField[]): void {
@@ -119,7 +114,7 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
                 startWith(form.get('webhook_trigger')?.value ?? null),
                 takeUntilDestroyed(this.destroyRef)
             )
-            .subscribe((value) => this.webhookConfigured.set(this.isConfigured(value as WebhookTriggerWrite | null)));
+            .subscribe((value) => this.webhookConfigured.set(this.isConfigured(value)));
 
         return form;
     }
