@@ -360,6 +360,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 .filter((id): id is string => id !== null);
             if (fNodeIds.length > 0) {
                 this.flowService.deleteSelections({ fNodeIds, fConnectionIds: [] });
+                this.closeDialogsForDeletedNodes(new Set(fNodeIds));
             }
         });
 
@@ -1011,6 +1012,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
      * canvas and rebuild the table's outgoing connections so co-editors see
      * routing changes live.
      */
+    private closeDialogsForDeletedNodes(deletedNodeIds: Set<string>): void {
+        for (const ref of [...this.dialog.openDialogs]) {
+            const data = ref.config?.data as { nodeId?: string; node?: { id?: string } } | undefined;
+            const nodeId = data?.nodeId ?? data?.node?.id;
+            if (nodeId && deletedNodeIds.has(nodeId)) {
+                ref.close();
+            }
+        }
+    }
+
     private applyRemoteTableRouting(canvasNodeId: string, payload: Record<string, unknown>, listKey: string): void {
         if (listKey !== 'decision_table_node_list' && listKey !== 'classification_decision_table_node_list') return;
         const nodes = this.flowService.nodes();
