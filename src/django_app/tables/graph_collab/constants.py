@@ -23,6 +23,13 @@ AUTOSAVE_FLUSH_INTERVAL_SECONDS: float = getattr(
 # Redis pub/sub channel prefix for per-graph cursor traffic.
 CURSOR_REDIS_CHANNEL_PREFIX: str = "cursors"
 
+# Seconds between each periodic backstop re-check of the connected user's
+# org edit permission (catches revocations missed by the event-driven
+# permission_changed broadcast — e.g. a group_send dropped by an infra hiccup).
+PERMISSION_RECHECK_INTERVAL_SECONDS: float = getattr(
+    settings, "PERMISSION_RECHECK_INTERVAL_SECONDS", 45.0
+)
+
 # cursor_moved is intentionally absent — it travels via Redis pub/sub
 _RELAY_MESSAGE_TYPES: dict[str, type[BaseModel]] = {
     "node_created": NodeCreatedMessage,

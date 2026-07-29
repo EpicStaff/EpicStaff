@@ -21,6 +21,7 @@ from tables.graph_collab.presence_service import presence_service
 from tables.graph_collab.constants import (
     CURSOR_FLUSH_INTERVAL_SECONDS,
     CURSOR_REDIS_CHANNEL_PREFIX,
+    PERMISSION_RECHECK_INTERVAL_SECONDS,
     _RELAY_MESSAGE_TYPES,
     _STATE_OP_TYPES,
 )
@@ -61,29 +62,37 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         user = self.scope.get("user")
         if not user or isinstance(user, AnonymousUser):
-            await self.close(code=4401)
+            await self.close(code=4401, reason="Authentication required.")
             return
 
         graph_id_str = self.scope["url_route"]["kwargs"]["graph_id"]
         try:
             self.graph_id = int(graph_id_str)
         except (ValueError, TypeError):
-            await self.close(code=4400)
+            await self.close(code=4400, reason="Invalid graph id.")
             return
 
         org_id = await sync_to_async(self._get_graph_org_id)(self.graph_id)
         if org_id is None:
-            await self.close(code=4404)
+            await self.close(code=4404, reason="Graph not found.")
             return
 
         try:
             await sync_to_async(assert_org_permission)(
                 user, org_id, ResourceType.FLOWS, Permission.UPDATE
             )
-        except (PermissionDenied, OrgMembershipRequiredError):
-            await self.close(code=4403)
+        except OrgMembershipRequiredError:
+            await self.close(
+                code=4403, reason="You are not a member of this organization."
+            )
+            return
+        except PermissionDenied:
+            await self.close(
+                code=4403, reason="You don't have permission to edit this flow."
+            )
             return
 
+        self.org_id = org_id
         self.group = graph_group_name(self.graph_id)
         self.org_group = org_group_name(org_id)
 
@@ -97,6 +106,9 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         self._cursor_pubsub = None
         self._cursor_reader_task: asyncio.Task | None = None
         self._cursor_flush_task: asyncio.Task | None = None
+
+        # Periodic backstop task re-checking edit permission; started below.
+        self._permission_recheck_task: asyncio.Task | None = None
 
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.channel_layer.group_add(self.org_group, self.channel_name)
@@ -152,12 +164,19 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         # Start cursor pub/sub reader and flush tasks.
         await self._start_cursor_tasks()
 
+        # Periodic backstop: re-checks this connection's edit permission even if
+        # the event-driven permission_changed broadcast is missed.
+        self._permission_recheck_task = asyncio.ensure_future(
+            self._permission_recheck_loop()
+        )
+
         # Ensure the global autosave loop is running (idempotent — no-op if already alive).
         ensure_autosave_loop_running()
 
     async def disconnect(self, code):
         # Cancel cursor background tasks before doing anything else.
         await self._stop_cursor_tasks()
+        await self._stop_permission_recheck_task()
 
         group = getattr(self, "group", None)
         if group:
@@ -488,6 +507,53 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
     async def graph_files_changed(self, event):
         await self.send_json(event)
 
+    async def permission_changed(self, event: dict) -> None:
+        """Org-wide broadcast fired after a role change, membership removal,
+        or superadmin revocation that may have downgraded a connected user's
+        edit access. Filters on user_id — only the affected user's own
+        connections re-check and potentially close.
+
+        Re-fetches the user row from the DB rather than reusing
+        ``self.scope["user"]`` — that object was resolved once by the auth
+        middleware at connect() time and never refreshed, so its
+        ``is_superadmin`` attribute (checked directly, not re-queried, by
+        ``PermissionResolver``) would otherwise still read as stale/True
+        for the rest of the connection's lifetime after a superadmin
+        revocation.
+        """
+        scope_user = self.scope["user"]
+        if event["user_id"] != scope_user.id:
+            return
+        await self._recheck_permission_or_close(scope_user.id)
+
+    async def _recheck_permission_or_close(self, user_id: int) -> None:
+        """Re-fetch *user_id* fresh from the DB and re-run the edit-permission
+        check that gates connect(). Closes with 4403 if the user no longer
+        exists or no longer qualifies.
+        """
+        fresh_user = await sync_to_async(self._get_user_by_id)(user_id)
+        if fresh_user is None:
+            await self.close(
+                code=4403,
+                reason="Your access to this flow has changed. Please reconnect.",
+            )
+            return
+        try:
+            await sync_to_async(assert_org_permission)(
+                fresh_user, self.org_id, ResourceType.FLOWS, Permission.UPDATE
+            )
+        except (PermissionDenied, OrgMembershipRequiredError):
+            await self.close(
+                code=4403,
+                reason="Your access to this flow has changed. Please reconnect.",
+            )
+
+    @staticmethod
+    def _get_user_by_id(user_id: int):
+        from django.contrib.auth import get_user_model
+
+        return get_user_model().objects.filter(pk=user_id).first()
+
     # --- Cursor pub/sub (Redis, lossy) ---
 
     async def _handle_cursor_moved(self, content: dict) -> None:
@@ -613,6 +679,38 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             raise
         except Exception as exc:
             logger.error("Cursor flush loop error for graph {}: {}", self.graph_id, exc)
+
+    # --- Periodic permission-recheck backstop ---
+
+    async def _permission_recheck_loop(self) -> None:
+        """Backstop for the event-driven ``permission_changed`` broadcast.
+
+        Re-runs the same org-permission check that gates ``connect()`` on a
+        fixed interval, closing the socket if the user's access has been
+        revoked or downgraded since connecting. Covers the case where a
+        `permission_changed` group_send is missed (e.g. transient channel
+        layer/Redis hiccup).
+        """
+        user_id = self.scope["user"].id
+        try:
+            while True:
+                await asyncio.sleep(PERMISSION_RECHECK_INTERVAL_SECONDS)
+                await self._recheck_permission_or_close(user_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error(
+                "Permission recheck loop error for graph {}: {}", self.graph_id, exc
+            )
+
+    async def _stop_permission_recheck_task(self) -> None:
+        task = getattr(self, "_permission_recheck_task", None)
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     @staticmethod
     def _get_graph_org_id(graph_id: int) -> int | None:

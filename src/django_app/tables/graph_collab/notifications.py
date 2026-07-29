@@ -202,6 +202,19 @@ class GraphEditNotifier:
         GraphEditNotifier._send_to_org(org_id, message.model_dump())
 
     @staticmethod
+    def notify_permission_changed(user_id: int, org_id: int) -> None:
+        """Broadcast permission_changed org-wide after a mutation that may have
+        revoked or downgraded a user's access to that org (role change,
+        membership removal, or global superadmin revocation).
+
+        Every consumer connected to org_id's group receives this event and
+        re-checks its own permission (see GraphEditConsumer.permission_changed),
+        filtering on user_id so only the affected user's connections react.
+        """
+        message = {"type": "permission_changed", "user_id": user_id}
+        GraphEditNotifier._send_to_org(org_id, message)
+
+    @staticmethod
     def notify_profile_updated(user) -> None:
         editor = build_editor_info(user)
         affected = presence_service.update_editor_for_user(user.pk, editor)
