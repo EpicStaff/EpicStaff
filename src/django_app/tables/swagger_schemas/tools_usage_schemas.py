@@ -1,109 +1,115 @@
-from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiResponse,
+    inline_serializer,
+)
+from rest_framework import serializers as drf_serializers
+from rest_framework.settings import api_settings
 
-from tables.serializers.serializers import ToolUsageDetailSerializer, ToolUsageSerializer
+from tables.serializers.serializers import (
+    ToolUsageDetailSerializer,
+    ToolUsageSerializer,
+)
 
-TOOLS_USAGE_GET = dict(
-    summary="Tools usage aggregation",
-    description=(
-        "Returns raw usage counts for every tool visible to the active org, "
-        "across both tool kinds (python-code, mcp). "
-        "For each tool: `projects_count` (distinct Crews/Projects with a "
-        "Task using the tool — derived from Task-level tool usage, not "
-        "Agent membership), `staff_count` "
-        "(distinct Agents referencing the tool), and `is_built_in` (EST-3277) "
-        "so the FE can gate orphan-highlighting on `!is_built_in` — MCP tools "
-        "are always `is_built_in=false`, and python-code tools reflect their "
-        "own `built_in` flag. Does not exclude built-in or orphaned rows "
-        "itself and does not return reference detail lists (EST-3270) — "
-        "counts only."
-    ),
-    parameters=[
-        OpenApiParameter(
-            name="ids",
-            type=str,
-            location=OpenApiParameter.QUERY,
-            required=False,
-            description=(
-                "Optional comma-separated list of `unique_name`s "
-                "(`<prefix>:<id>`, e.g. `python-code-tool:12,mcp-tool:7`) to "
-                "scope the response to only those tools, e.g. after the FE "
-                "paginates its own tools list. Omitted returns all rows for "
-                "the active org (default, backward-compatible behavior). "
-                "Max 200 ids per request."
+_USAGE_REQUEST = inline_serializer(
+    name="ToolUsageRequest",
+    fields={
+        "ids": drf_serializers.ListField(
+            child=drf_serializers.IntegerField(), required=False
+        ),
+    },
+)
+
+
+def _usage_post_schema(*, tool_kind: str, model_name: str, example_id: int) -> dict:
+    return dict(
+        summary=f"{model_name} usage aggregation",
+        description=(
+            f"Returns raw usage counts for `{model_name}` rows visible to the "
+            "active org. For each tool: `projects_count` (distinct "
+            "Crews/Projects with a Task using the tool — derived from "
+            "Task-level tool usage, not Agent membership), `staff_count` "
+            "(distinct Agents referencing the tool), and `is_built_in` so "
+            "the FE can gate orphan-highlighting on `!is_built_in`. Does not "
+            "exclude built-in or orphaned rows itself and does not return "
+            "reference detail lists — counts only.\n\n"
+            "Optional `ids` in the request body: a list of numeric ids to "
+            "scope the response to only those tools, e.g. after the FE "
+            "paginates its own tools list. Omitted or empty returns all rows "
+            "for the active org (default, backward-compatible behavior). "
+            f"Maximum number of ids is {api_settings.PAGE_SIZE}."
+        ),
+        request=_USAGE_REQUEST,
+        responses={
+            200: OpenApiResponse(
+                response=ToolUsageSerializer(many=True),
+                description="Per-tool usage counts",
+                examples=[
+                    OpenApiExample(
+                        "Usage counts",
+                        value=[
+                            {
+                                "id": example_id,
+                                "projects_count": 1,
+                                "staff_count": 0,
+                                "is_built_in": False,
+                            },
+                        ],
+                        response_only=True,
+                    ),
+                ],
             ),
-        ),
-    ],
-    responses={
-        200: OpenApiResponse(
-            response=ToolUsageSerializer(many=True),
-            description="Per-tool usage counts",
-            examples=[
-                OpenApiExample(
-                    "Usage counts",
-                    value=[
-                        {
-                            "unique_name": "python-code-tool:12",
-                            "projects_count": 0,
-                            "staff_count": 0,
-                            "is_built_in": False,
-                        },
-                        {
-                            "unique_name": "mcp-tool:7",
-                            "projects_count": 1,
-                            "staff_count": 0,
-                            "is_built_in": False,
-                        },
-                    ],
-                    response_only=True,
+            400: OpenApiResponse(
+                response=OpenApiTypes.STR,
+                description=(
+                    f"`ids` is not a list of integers, or more than {api_settings.PAGE_SIZE} ids given."
                 ),
-            ],
+            ),
+        },
+    )
+
+
+def _usage_detail_get_schema(*, model_name: str) -> dict:
+    return dict(
+        summary=f"{model_name} usage detail ('Where is this used?')",
+        description=(
+            f"Returns the actual referencing Projects (Crews) and Staff "
+            f"(Agents) for a single `{model_name}`, identified by its id in "
+            "the URL — the same agent/task traversal as the usage "
+            "aggregation endpoint but returning ids + names instead of "
+            "counts. Does not exclude built-in tools."
         ),
-        400: OpenApiResponse(
-            description=(
-                "Malformed `ids` (empty fragment, missing ':<id>', unknown "
-                "prefix, non-numeric id) or more than 200 ids given."
-            )
-        ),
-    },
+        responses={
+            200: OpenApiResponse(
+                response=ToolUsageDetailSerializer(),
+                description="Projects and staff referencing the tool",
+                examples=[
+                    OpenApiExample(
+                        "Usage detail",
+                        value={
+                            "projects": [{"id": 12, "name": "My Project"}],
+                            "staff": [{"id": 5, "role": "Researcher"}],
+                        },
+                        response_only=True,
+                    ),
+                ],
+            ),
+            404: OpenApiResponse(
+                description="Tool not found (or not visible to the active org)."
+            ),
+        },
+    )
+
+
+PYTHON_CODE_TOOL_USAGE_POST = _usage_post_schema(
+    tool_kind="python-code-tool", model_name="PythonCodeTool", example_id=12
+)
+PYTHON_CODE_TOOL_USAGE_DETAIL_GET = _usage_detail_get_schema(
+    model_name="PythonCodeTool"
 )
 
-TOOLS_USAGE_DETAIL_GET = dict(
-    summary="Tool usage detail ('Where is this used?')",
-    description=(
-        "Returns the actual referencing Projects (Graphs) and Staff (Agents) "
-        "for a single tool, identified by `unique_name` "
-        "(`<prefix>:<id>`, prefix one of "
-        "`python-code-tool`, `mcp-tool`) — the same agent/graph traversal as "
-        "`/tools/usage/` but returning ids + names instead of counts. "
-        "Does not exclude built-in tools (EST-3277)."
-    ),
-    parameters=[
-        OpenApiParameter(
-            name="unique_name",
-            type=str,
-            location=OpenApiParameter.QUERY,
-            required=True,
-            description="`<prefix>:<id>`, e.g. `mcp-tool:5`.",
-        ),
-    ],
-    responses={
-        200: OpenApiResponse(
-            response=ToolUsageDetailSerializer(),
-            description="Projects and staff referencing the tool",
-            examples=[
-                OpenApiExample(
-                    "Usage detail",
-                    value={
-                        "projects": [{"id": 12, "name": "My Project"}],
-                        "staff": [{"id": 5, "role": "Researcher"}],
-                    },
-                    response_only=True,
-                ),
-            ],
-        ),
-        400: OpenApiResponse(
-            description="Missing/malformed `unique_name` or unknown prefix."
-        ),
-        404: OpenApiResponse(description="Tool not found (or not visible to the active org)."),
-    },
+MCP_TOOL_USAGE_POST = _usage_post_schema(
+    tool_kind="mcp-tool", model_name="McpTool", example_id=7
 )
+MCP_TOOL_USAGE_DETAIL_GET = _usage_detail_get_schema(model_name="McpTool")

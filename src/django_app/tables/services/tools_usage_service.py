@@ -6,6 +6,11 @@ Deliberately query-shaped as a small, fixed number of bulk queries + Python
 set merging (rather than annotate()-ing multiple Count(distinct=True)
 aggregates in one query, which silently multiplies rows across independent
 reverse joins) and rather than a per-tool query loop.
+
+Split per tool kind (python-code-tool / mcp-tool) rather than dispatched
+through a shared `unique_name` prefix — each kind now has its own
+usage/usage-detail actions on its own ViewSet (EST-3207 follow-up: Tools
+Redesign), scoped to plain numeric ids instead of `<prefix>:<id>` strings.
 """
 
 from collections import defaultdict
@@ -26,101 +31,74 @@ from tables.models import (
     TaskPythonCodeToolConfigs,
 )
 
-VALID_TOOL_PREFIXES = ("python-code-tool", "mcp-tool")
-
 
 class ToolNotFoundError(Exception):
-    """Raised by `get_tool_usage_detail`/`get_agent_ids_for_tool` when
-    `prefix:tool_id` doesn't exist or isn't visible to `org_id`."""
+    """Raised by `get_python_code_tool_usage_detail`/`get_mcp_tool_usage_detail`
+    when the given tool id doesn't exist or isn't visible to `org_id`."""
 
 
 def get_tools_usage(
-    org_id: int, id_filter: dict[str, set[int]] | None = None
+    org_id: int, tool_class: type, ids: set[int] | None = None
 ) -> list[dict]:
-    """Return one usage row per tool (python-code/mcp) visible to
-    `org_id`: `{"unique_name": str, "projects_count": int, "staff_count": int,
-    "is_built_in": bool}`.
+    id_q = {"id__in": ids} if ids is not None else {}
 
-    `McpTool` is strictly scoped to `org_id` (no built-in concept, always
-    `is_built_in=False`). `PythonCodeTool` is hybrid-visible — built-in rows
-    (`org_id=None`) plus this org's own custom rows — matching the
-    visibility rule already used by `PythonCodeToolViewSet`
-    (`OrgScopedHybridViewSetMixin`); `built_in` is surfaced as-is per row.
-    This lets the FE additionally gate orphan-highlighting on `!is_built_in`
-    without excluding built-ins from the endpoint itself.
+    if tool_class is PythonCodeTool:
+        return _get_python_code_tool_usage(org_id, id_q)
+    elif tool_class is McpTool:
+        return _get_mcp_tool_usage(org_id, id_q)
+    else:
+        raise ValueError(f"Unsupported tool_class: {tool_class}")
 
-    `id_filter` (EST-3207 `ids` query-param support), when given, is a
-    `{prefix: {tool_id, ...}}` map (prefix one of `VALID_TOOL_PREFIXES`)
-    scoping which tools are computed/returned — pushed down into the initial
-    per-kind id queries (rather than computed in full then filtered in
-    Python) so a caller asking for a handful of ids doesn't pay for the full
-    per-org aggregation. Ids absent from the org's visible set (wrong org,
-    wrong kind, or nonexistent) are silently omitted from the result, same
-    as any other tool the caller can't see — this endpoint has never errored
-    per-row, unlike the single-tool usage-detail lookup.
-    """
-    python_tool_id_q = {}
-    mcp_tool_id_q = {}
-    if id_filter is not None:
-        python_tool_id_q = {"id__in": id_filter.get("python-code-tool", set())}
-        mcp_tool_id_q = {"id__in": id_filter.get("mcp-tool", set())}
 
-    python_tool_built_in = dict(
+def _get_python_code_tool_usage(org_id: int, id_q: dict) -> list[dict]:
+    tool_built_in = dict(
         PythonCodeTool.objects.filter(
-            Q(built_in=True) | Q(org_id=org_id), **python_tool_id_q
+            Q(built_in=True) | Q(org_id=org_id), **id_q
         ).values_list("id", "built_in")
     )
-    python_tool_ids = list(python_tool_built_in.keys())
-    mcp_tool_ids = list(
-        McpTool.objects.filter(org_id=org_id, **mcp_tool_id_q).values_list(
-            "id", flat=True
-        )
+    return _get_tool_usage(
+        org_id,
+        tool_built_in=tool_built_in,
+        agents_by_tool_fn=_python_tool_agents_by_tool,
+        tasks_by_tool_fn=_python_tool_tasks_by_tool,
     )
 
-    python_agents, mcp_agents = _agents_by_tool_per_kind(
-        org_id, python_tool_ids, mcp_tool_ids
+
+def _get_mcp_tool_usage(org_id: int, id_q: dict) -> list[dict]:
+    tool_built_in = dict.fromkeys(
+        McpTool.objects.filter(org_id=org_id, **id_q).values_list("id", flat=True),
+        False,
+    )
+    return _get_tool_usage(
+        org_id,
+        tool_built_in=tool_built_in,
+        agents_by_tool_fn=_mcp_tool_agents_by_tool,
+        tasks_by_tool_fn=_mcp_tool_tasks_by_tool,
     )
 
-    python_tasks, mcp_tasks = _tasks_by_tool_per_kind(
-        org_id, python_tool_ids, mcp_tool_ids
-    )
-    all_task_ids: set[int] = set()
-    for tasks_by_tool in (python_tasks, mcp_tasks):
-        for task_ids in tasks_by_tool.values():
-            all_task_ids.update(task_ids)
-    task_crews = _task_crew_map(org_id, all_task_ids)
 
-    return [
-        *_build_rows(
-            "python-code-tool",
-            python_tool_ids,
-            python_agents,
-            python_tasks,
-            task_crews,
-            is_built_in=lambda tool_id: python_tool_built_in.get(tool_id, False),
-        ),
-        *_build_rows(
-            "mcp-tool",
-            mcp_tool_ids,
-            mcp_agents,
-            mcp_tasks,
-            task_crews,
-            is_built_in=lambda _tool_id: False,
-        ),
-    ]
-
-
-def _agents_by_tool_per_kind(
+def _get_tool_usage(
     org_id: int,
-    python_tool_ids: list[int],
-    mcp_tool_ids: list[int],
-) -> tuple[dict[int, set[int]], dict[int, set[int]]]:
-    """Build the `tool_id -> {agent_id, ...}` map for each of the 2 tool
-    kinds, via the shared per-kind helpers (also used by the single-tool
-    detail lookup below)."""
-    return (
-        _python_tool_agents_by_tool(org_id, python_tool_ids),
-        _mcp_tool_agents_by_tool(org_id, mcp_tool_ids),
+    tool_built_in: dict[int, bool],
+    agents_by_tool_fn,
+    tasks_by_tool_fn,
+) -> list[dict]:
+    """Shared aggregation body for `_get_python_code_tool_usage`/
+    `_get_mcp_tool_usage`: given the per-kind `{tool_id: is_built_in}` map
+    (already scoped/filtered by the caller) and the kind's own
+    agents-by-tool/tasks-by-tool join functions, builds the usage rows."""
+    tool_ids = list(tool_built_in.keys())
+
+    agents_by_tool = agents_by_tool_fn(org_id, tool_ids)
+    tasks_by_tool = tasks_by_tool_fn(org_id, tool_ids)
+    task_crews = _task_crew_map(org_id, _all_task_ids(tasks_by_tool))
+
+    return _build_rows(
+        tool_ids,
+        agents_by_tool,
+        tasks_by_tool,
+        task_crews,
+        is_built_in=lambda tool_id: tool_built_in.get(tool_id, False),
     )
 
 
@@ -143,9 +121,7 @@ def _python_tool_agents_by_tool(
     return python_agents
 
 
-def _mcp_tool_agents_by_tool(
-    org_id: int, tool_ids: list[int]
-) -> dict[int, set[int]]:
+def _mcp_tool_agents_by_tool(org_id: int, tool_ids: list[int]) -> dict[int, set[int]]:
     return _pairs_by_tool(
         AgentMcpTools.objects.filter(
             agent__org_id=org_id, mcptool_id__in=tool_ids
@@ -153,30 +129,7 @@ def _mcp_tool_agents_by_tool(
     )
 
 
-_AGENTS_BY_TOOL_FN_PER_PREFIX = {
-    "python-code-tool": _python_tool_agents_by_tool,
-    "mcp-tool": _mcp_tool_agents_by_tool,
-}
-
-
-def _tasks_by_tool_per_kind(
-    org_id: int,
-    python_tool_ids: list[int],
-    mcp_tool_ids: list[int],
-) -> tuple[dict[int, set[int]], dict[int, set[int]]]:
-    """Task-side counterpart of `_agents_by_tool_per_kind`: builds the
-    `tool_id -> {task_id, ...}` map for each of the 2 tool kinds. Project
-    (Crew) usage is derived from Task-level tool usage, not Agent-level — see
-    module docstring / EST-3207 design fix."""
-    return (
-        _python_tool_tasks_by_tool(org_id, python_tool_ids),
-        _mcp_tool_tasks_by_tool(org_id, mcp_tool_ids),
-    )
-
-
-def _python_tool_tasks_by_tool(
-    org_id: int, tool_ids: list[int]
-) -> dict[int, set[int]]:
+def _python_tool_tasks_by_tool(org_id: int, tool_ids: list[int]) -> dict[int, set[int]]:
     """Python-code tools merge two join paths (direct + via config), mirroring
     `_python_tool_agents_by_tool`."""
     python_tasks = _pairs_by_tool(
@@ -194,9 +147,7 @@ def _python_tool_tasks_by_tool(
     return python_tasks
 
 
-def _mcp_tool_tasks_by_tool(
-    org_id: int, tool_ids: list[int]
-) -> dict[int, set[int]]:
+def _mcp_tool_tasks_by_tool(org_id: int, tool_ids: list[int]) -> dict[int, set[int]]:
     return _pairs_by_tool(
         TaskMcpTools.objects.filter(
             task__crew__org_id=org_id, tool_id__in=tool_ids
@@ -204,66 +155,34 @@ def _mcp_tool_tasks_by_tool(
     )
 
 
-_TASKS_BY_TOOL_FN_PER_PREFIX = {
-    "python-code-tool": _python_tool_tasks_by_tool,
-    "mcp-tool": _mcp_tool_tasks_by_tool,
-}
+def _all_task_ids(tasks_by_tool: dict[int, set[int]]) -> set[int]:
+    all_task_ids: set[int] = set()
+    for task_ids in tasks_by_tool.values():
+        all_task_ids.update(task_ids)
+    return all_task_ids
 
 
-def _tool_exists(prefix: str, tool_id: int, org_id: int) -> bool:
-    """Existence + org-visibility check for a single `prefix:tool_id`.
-    `McpTool` is strictly scoped to `org_id` (no built-in concept).
-    `PythonCodeTool` is hybrid-scoped — built-in rows are global
-    (`org_id=None`), custom rows are org-scoped — matching
-    `PythonCodeToolViewSet`'s own `global_visibility_q=Q(built_in=True)` rule
-    and the same widened visibility `get_tools_usage` uses, so a tool visible
-    in the usage list is never a 404 in the usage-detail lookup."""
-    if prefix == "python-code-tool":
-        return PythonCodeTool.objects.filter(
-            Q(built_in=True) | Q(org_id=org_id), id=tool_id
-        ).exists()
-    if prefix == "mcp-tool":
-        return McpTool.objects.filter(id=tool_id, org_id=org_id).exists()
-    raise ValueError(f"Unknown tool prefix: {prefix}")
+def _python_tool_exists(tool_id: int, org_id: int) -> bool:
+    """Existence + org-visibility check for a single PythonCodeTool id.
+    Hybrid-scoped — built-in rows are global (`org_id=None`), custom rows are
+    org-scoped — matching `PythonCodeToolViewSet`'s own
+    `global_visibility_q=Q(built_in=True)` rule and the same widened
+    visibility `get_python_code_tool_usage` uses, so a tool visible in the
+    usage list is never a 404 in the usage-detail lookup."""
+    return _tool_exists(PythonCodeTool, tool_id, Q(built_in=True) | Q(org_id=org_id))
 
 
-def get_agent_ids_for_tool(prefix: str, tool_id: int, org_id: int) -> set[int]:
-    """Validate that `prefix:tool_id` exists and is visible to `org_id`, then
-    return the set of Agent ids referencing it — the same per-kind join
-    logic `get_tools_usage` uses, reused via the shared per-kind helpers.
-
-    Raises `ToolNotFoundError` if the tool doesn't exist / isn't visible to
-    `org_id`. Assumes `prefix` has already been validated against
-    `VALID_TOOL_PREFIXES` by the caller.
-    """
-    if not _tool_exists(prefix, tool_id, org_id):
-        raise ToolNotFoundError(f"{prefix}:{tool_id} not found")
-
-    agents_by_tool_fn = _AGENTS_BY_TOOL_FN_PER_PREFIX[prefix]
-    agents_by_tool = agents_by_tool_fn(org_id, [tool_id])
-    return agents_by_tool.get(tool_id, set())
+def _mcp_tool_exists(tool_id: int, org_id: int) -> bool:
+    """`McpTool` is strictly scoped to `org_id` (no built-in concept)."""
+    return _tool_exists(McpTool, tool_id, Q(org_id=org_id))
 
 
-def get_task_ids_for_tool(prefix: str, tool_id: int, org_id: int) -> set[int]:
-    """Task-side counterpart of `get_agent_ids_for_tool`: validate that
-    `prefix:tool_id` exists and is visible to `org_id`, then return the set
-    of Task ids referencing it — used to derive `projects` (Crew usage) from
-    Task-level tool usage rather than Agent-level (EST-3207 design fix).
-
-    Raises `ToolNotFoundError` if the tool doesn't exist / isn't visible to
-    `org_id`. Assumes `prefix` has already been validated against
-    `VALID_TOOL_PREFIXES` by the caller.
-    """
-    if not _tool_exists(prefix, tool_id, org_id):
-        raise ToolNotFoundError(f"{prefix}:{tool_id} not found")
-
-    tasks_by_tool_fn = _TASKS_BY_TOOL_FN_PER_PREFIX[prefix]
-    tasks_by_tool = tasks_by_tool_fn(org_id, [tool_id])
-    return tasks_by_tool.get(tool_id, set())
+def _tool_exists(model: type, tool_id: int, visibility_q: Q) -> bool:
+    return model.objects.filter(visibility_q, id=tool_id).exists()
 
 
-def get_tool_usage_detail(prefix: str, tool_id: int, org_id: int) -> dict:
-    """Return the "Where is this used?" detail for `prefix:tool_id`:
+def get_python_code_tool_usage_detail(tool_id: int, org_id: int) -> dict:
+    """Return the "Where is this used?" detail for a single `PythonCodeTool`:
     `{"projects": [{"id", "name"}, ...], "staff": [{"id", "role"}, ...]}`.
 
     `staff` are the Agents referencing the tool directly (Agent-level join).
@@ -274,14 +193,53 @@ def get_tool_usage_detail(prefix: str, tool_id: int, org_id: int) -> dict:
     docstring). Raises `ToolNotFoundError` if the tool doesn't exist / isn't
     visible to `org_id`.
     """
-    agent_ids = get_agent_ids_for_tool(prefix, tool_id, org_id)
+    return _get_tool_usage_detail(
+        tool_id,
+        org_id,
+        exists_fn=_python_tool_exists,
+        agents_by_tool_fn=_python_tool_agents_by_tool,
+        tasks_by_tool_fn=_python_tool_tasks_by_tool,
+        not_found_message=f"python-code-tool:{tool_id} not found",
+    )
+
+
+def get_mcp_tool_usage_detail(tool_id: int, org_id: int) -> dict:
+    """MCP-tool counterpart of `get_python_code_tool_usage_detail`. See its
+    docstring for the `projects`/`staff` semantics (unchanged for MCP tools).
+    """
+    return _get_tool_usage_detail(
+        tool_id,
+        org_id,
+        exists_fn=_mcp_tool_exists,
+        agents_by_tool_fn=_mcp_tool_agents_by_tool,
+        tasks_by_tool_fn=_mcp_tool_tasks_by_tool,
+        not_found_message=f"mcp-tool:{tool_id} not found",
+    )
+
+
+def _get_tool_usage_detail(
+    tool_id: int,
+    org_id: int,
+    exists_fn,
+    agents_by_tool_fn,
+    tasks_by_tool_fn,
+    not_found_message: str,
+) -> dict:
+    """Shared body for `get_python_code_tool_usage_detail`/
+    `get_mcp_tool_usage_detail`: existence check + agent/task join lookups +
+    projects/staff shaping, parameterized on the kind's own exists-check and
+    agents-by-tool/tasks-by-tool functions."""
+    if not exists_fn(tool_id, org_id):
+        raise ToolNotFoundError(not_found_message)
+
+    agent_ids = agents_by_tool_fn(org_id, [tool_id]).get(tool_id, set())
     staff = list(Agent.objects.filter(id__in=agent_ids).values("id", "role"))
 
-    task_ids = get_task_ids_for_tool(prefix, tool_id, org_id)
+    task_ids = tasks_by_tool_fn(org_id, [tool_id]).get(tool_id, set())
     task_crews = _task_crew_map(org_id, task_ids)
-    crew_ids: set[int] = set(task_crews.values())
-
-    projects = list(Crew.objects.filter(id__in=crew_ids).values("id", "name"))
+    projects = list(
+        Crew.objects.filter(id__in=set(task_crews.values())).values("id", "name")
+    )
     return {"projects": projects, "staff": staff}
 
 
@@ -306,14 +264,13 @@ def _task_crew_map(org_id: int, task_ids: set[int]) -> dict[int, int]:
         return {}
 
     return dict(
-        Task.objects.filter(
-            id__in=task_ids, crew__org_id=org_id
-        ).values_list("id", "crew_id")
+        Task.objects.filter(id__in=task_ids, crew__org_id=org_id).values_list(
+            "id", "crew_id"
+        )
     )
 
 
 def _build_rows(
-    prefix: str,
     tool_ids: list[int],
     agents_by_tool: dict[int, set[int]],
     tasks_by_tool: dict[int, set[int]],
@@ -325,13 +282,11 @@ def _build_rows(
         agent_ids = agents_by_tool.get(tool_id, set())
         task_ids = tasks_by_tool.get(tool_id, set())
         crew_ids = {
-            task_crews[task_id]
-            for task_id in task_ids
-            if task_id in task_crews
+            task_crews[task_id] for task_id in task_ids if task_id in task_crews
         }
         rows.append(
             {
-                "unique_name": f"{prefix}:{tool_id}",
+                "id": tool_id,
                 "projects_count": len(crew_ids),
                 "staff_count": len(agent_ids),
                 "is_built_in": bool(is_built_in(tool_id)),

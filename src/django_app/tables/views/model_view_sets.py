@@ -25,10 +25,10 @@ from rest_framework.exceptions import (
     PermissionDenied,
     ValidationError as DRFValidationError,
 )
-from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.settings import api_settings
 
 from tables.serializers.model_serializers.embedding_serializers import (
     EmbeddingConfigSerializer,
@@ -50,7 +50,6 @@ from tables.exceptions import (
     BuiltInToolModificationError,
     BulkSaveValidationError,
     TaskSerializerError,
-    GraphSaveVersionConflictError,
 )
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
@@ -113,7 +112,6 @@ from drf_spectacular.utils import (
     extend_schema_view,
     inline_serializer,
     OpenApiParameter,
-    OpenApiResponse,
 )
 from drf_spectacular.types import OpenApiTypes
 from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
@@ -125,6 +123,16 @@ from tables.swagger_schemas.partial_import_schemas import (
 from tables.swagger_schemas.tools_schemas import (
     MCP_TOOL_BULK_DELETE_POST,
     PYTHON_CODE_TOOL_BULK_DELETE_POST,
+)
+from tables.swagger_schemas.tools_usage_schemas import (
+    MCP_TOOL_USAGE_DETAIL_GET,
+    MCP_TOOL_USAGE_POST,
+    PYTHON_CODE_TOOL_USAGE_DETAIL_GET,
+    PYTHON_CODE_TOOL_USAGE_POST,
+)
+from tables.services.tools_usage_service import (
+    get_mcp_tool_usage_detail,
+    get_python_code_tool_usage_detail,
 )
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from rest_framework.exceptions import PermissionDenied, NotFound
@@ -193,6 +201,7 @@ from tables.views.mixins import (
     OrgScopedQuerysetMixin,
     OrgScopedViewSetMixin,
     SuperadminWriteMixin,
+    ToolUsageActionsMixin,
 )
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
@@ -717,7 +726,7 @@ class ContentHashPreconditionMixin:
 
 
 class PythonCodeToolViewSet(
-    OrgScopedHybridViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
+    OrgScopedHybridViewSetMixin, CopyActionMixin, ToolUsageActionsMixin, viewsets.ModelViewSet
 ):
     """
     A viewset for viewing and editing PythonCodeTool instances.
@@ -727,7 +736,12 @@ class PythonCodeToolViewSet(
 
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "bulk_delete": Permission.DELETE,
+        "usage": Permission.READ,
+        "usage_detail": Permission.READ,
+    }
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
 
@@ -771,6 +785,18 @@ class PythonCodeToolViewSet(
 
         return Response(
             {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_USAGE_POST)
+    @action(detail=False, methods=["post"], url_path="usage")
+    def usage(self, request):
+        return self._usage_response(request, PythonCodeTool)
+
+    @extend_schema(**PYTHON_CODE_TOOL_USAGE_DETAIL_GET)
+    @action(detail=True, methods=["get"], url_path="usage-detail")
+    def usage_detail(self, request, pk=None):
+        return self._usage_detail_response(
+            pk, get_python_code_tool_usage_detail, "PythonCodeTool"
         )
 
 
@@ -1717,10 +1743,17 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
         return response
 
 
-class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):
+class McpToolViewSet(
+    OrgScopedViewSetMixin, CopyActionMixin, ToolUsageActionsMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "bulk_delete": Permission.DELETE,
+        "usage": Permission.READ,
+        "usage_detail": Permission.READ,
+    }
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
 
@@ -1762,6 +1795,18 @@ class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewS
 
         return Response(
             {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(**MCP_TOOL_USAGE_POST)
+    @action(detail=False, methods=["post"], url_path="usage")
+    def usage(self, request):
+        return self._usage_response(request, McpTool)
+
+    @extend_schema(**MCP_TOOL_USAGE_DETAIL_GET)
+    @action(detail=True, methods=["get"], url_path="usage-detail")
+    def usage_detail(self, request, pk=None):
+        return self._usage_detail_response(
+            pk, get_mcp_tool_usage_detail, "McpTool"
         )
 
 

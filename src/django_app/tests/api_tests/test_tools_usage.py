@@ -21,6 +21,9 @@ from tables.models.python_models import (
 )
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 
+PYTHON_USAGE_URL = "/api/python-code-tool/usage/"
+MCP_USAGE_URL = "/api/mcp-tools/usage/"
+
 
 # ---- fixtures ----
 
@@ -114,26 +117,37 @@ def unused_python_tool(org_a) -> PythonCodeTool:
     )
 
 
-# ---- tests ----
+# ---- tests: python-code-tool usage ----
 
 
 @pytest.mark.django_db
-def test_used_tools_have_correct_projects_and_staff_counts(client_a, used_graph_setup):
-    resp = client_a.get("/api/tools/usage/")
+def test_used_python_tool_has_correct_projects_and_staff_counts(
+    client_a, used_graph_setup
+):
+    resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
+    rows = {row["id"]: row for row in resp.data}
 
     python_tool = used_graph_setup["python_tool"]
-    mcp_tool = used_graph_setup["mcp_tool"]
-
-    assert rows[f"python-code-tool:{python_tool.id}"] == {
-        "unique_name": f"python-code-tool:{python_tool.id}",
+    assert rows[python_tool.id] == {
+        "id": python_tool.id,
         "projects_count": 1,
         "staff_count": 1,
         "is_built_in": False,
     }
-    assert rows[f"mcp-tool:{mcp_tool.id}"] == {
-        "unique_name": f"mcp-tool:{mcp_tool.id}",
+
+
+@pytest.mark.django_db
+def test_used_mcp_tool_has_correct_projects_and_staff_counts(
+    client_a, used_graph_setup
+):
+    resp = client_a.post(MCP_USAGE_URL)
+    assert resp.status_code == 200
+    rows = {row["id"]: row for row in resp.data}
+
+    mcp_tool = used_graph_setup["mcp_tool"]
+    assert rows[mcp_tool.id] == {
+        "id": mcp_tool.id,
         "projects_count": 1,
         "staff_count": 1,
         "is_built_in": False,
@@ -142,13 +156,12 @@ def test_used_tools_have_correct_projects_and_staff_counts(client_a, used_graph_
 
 @pytest.mark.django_db
 def test_unused_tool_has_zero_counts(client_a, unused_python_tool):
-    resp = client_a.get("/api/tools/usage/")
+    resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
+    rows = {row["id"]: row for row in resp.data}
 
-    key = f"python-code-tool:{unused_python_tool.id}"
-    assert rows[key] == {
-        "unique_name": key,
+    assert rows[unused_python_tool.id] == {
+        "id": unused_python_tool.id,
         "projects_count": 0,
         "staff_count": 0,
         "is_built_in": False,
@@ -162,10 +175,10 @@ def test_cross_org_python_tool_not_visible(client_a, org_b):
         name="ForeignTool", description="d", python_code=code, org=org_b
     )
 
-    resp = client_a.get("/api/tools/usage/")
+    resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
-    unique_names = {row["unique_name"] for row in resp.data}
-    assert f"python-code-tool:{foreign_tool.id}" not in unique_names
+    ids = {row["id"] for row in resp.data}
+    assert foreign_tool.id not in ids
 
 
 @pytest.mark.django_db
@@ -177,10 +190,10 @@ def test_cross_org_mcp_tool_not_visible(client_a, org_b):
         org=org_b,
     )
 
-    resp = client_a.get("/api/tools/usage/")
+    resp = client_a.post(MCP_USAGE_URL)
     assert resp.status_code == 200
-    unique_names = {row["unique_name"] for row in resp.data}
-    assert f"mcp-tool:{foreign_tool.id}" not in unique_names
+    ids = {row["id"] for row in resp.data}
+    assert foreign_tool.id not in ids
 
 
 @pytest.mark.django_db
@@ -190,7 +203,7 @@ def test_requires_authentication(db):
     # IsAuthenticated denies via PermissionDenied (403) rather than
     # NotAuthenticated (401) — matches the other plain-APIView endpoints in
     # this codebase (e.g. RunPythonCodeAPIView) under the same test settings.
-    resp = APIClient().get("/api/tools/usage/")
+    resp = APIClient().post(PYTHON_USAGE_URL)
     assert resp.status_code == 403
 
 
@@ -207,21 +220,20 @@ def test_is_built_in_true_for_built_in_python_code_tool(client_a):
         built_in=True,
         org=None,
     )
-    resp = client_a.get("/api/tools/usage/")
+    resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
-    assert rows[f"python-code-tool:{tool.id}"]["is_built_in"] is True
+    rows = {row["id"]: row for row in resp.data}
+    assert rows[tool.id]["is_built_in"] is True
 
 
 @pytest.mark.django_db
 def test_is_built_in_false_for_non_built_in_python_code_tool(
     client_a, unused_python_tool
 ):
-    resp = client_a.get("/api/tools/usage/")
+    resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
-    key = f"python-code-tool:{unused_python_tool.id}"
-    assert rows[key]["is_built_in"] is False
+    rows = {row["id"]: row for row in resp.data}
+    assert rows[unused_python_tool.id]["is_built_in"] is False
 
 
 @pytest.mark.django_db
@@ -232,10 +244,10 @@ def test_is_built_in_false_for_mcp_tool(client_a, org_a):
         tool_name="do_thing",
         org=org_a,
     )
-    resp = client_a.get("/api/tools/usage/")
+    resp = client_a.post(MCP_USAGE_URL)
     assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
-    assert rows[f"mcp-tool:{mcp_tool.id}"]["is_built_in"] is False
+    rows = {row["id"]: row for row in resp.data}
+    assert rows[mcp_tool.id]["is_built_in"] is False
 
 
 # ---- python-code-tool config join path (Major #3) ----
@@ -275,12 +287,12 @@ def test_python_tool_agent_reachable_only_via_config_path_is_counted(
     )
     TaskPythonCodeToolConfigs.objects.create(task=task, tool=tool_config)
 
-    resp = client_a.get("/api/tools/usage/")
+    resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
-    key = f"python-code-tool:{unused_python_tool.id}"
-    assert rows[key]["staff_count"] == 1
-    assert rows[key]["projects_count"] == 1
+    rows = {row["id"]: row for row in resp.data}
+    row = rows[unused_python_tool.id]
+    assert row["staff_count"] == 1
+    assert row["projects_count"] == 1
 
 
 @pytest.mark.django_db
@@ -321,12 +333,12 @@ def test_python_tool_agent_reachable_via_both_paths_not_double_counted(
     TaskPythonCodeTools.objects.create(task=task, tool=unused_python_tool)
     TaskPythonCodeToolConfigs.objects.create(task=task, tool=tool_config)
 
-    resp = client_a.get("/api/tools/usage/")
+    resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
-    key = f"python-code-tool:{unused_python_tool.id}"
-    assert rows[key]["staff_count"] == 1
-    assert rows[key]["projects_count"] == 1
+    rows = {row["id"]: row for row in resp.data}
+    row = rows[unused_python_tool.id]
+    assert row["staff_count"] == 1
+    assert row["projects_count"] == 1
 
 
 # ---- "projects" means Crew (reached via Task), not Graph (EST-3207 follow-up) ----
@@ -350,12 +362,12 @@ def test_project_counted_via_task_without_any_graph(
     )
     TaskPythonCodeTools.objects.create(task=task, tool=unused_python_tool)
 
-    resp = client_a.get("/api/tools/usage/")
+    resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
-    key = f"python-code-tool:{unused_python_tool.id}"
-    assert rows[key]["staff_count"] == 0
-    assert rows[key]["projects_count"] == 1
+    rows = {row["id"]: row for row in resp.data}
+    row = rows[unused_python_tool.id]
+    assert row["staff_count"] == 0
+    assert row["projects_count"] == 1
 
 
 @pytest.mark.django_db
@@ -380,80 +392,69 @@ def test_projects_count_reflects_crews_not_graphs(
     CrewNode.objects.create(crew=crew, graph=graph1, node_name="crew_node1")
     CrewNode.objects.create(crew=crew, graph=graph2, node_name="crew_node2")
 
-    resp = client_a.get("/api/tools/usage/")
+    resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
-    key = f"python-code-tool:{unused_python_tool.id}"
-    assert rows[key]["staff_count"] == 0
-    assert rows[key]["projects_count"] == 1
+    rows = {row["id"]: row for row in resp.data}
+    row = rows[unused_python_tool.id]
+    assert row["staff_count"] == 0
+    assert row["projects_count"] == 1
 
 
 # ---- projects_count no longer follows from Agent/Crew membership alone
 # (EST-3207 design fix — the bug this change fixes) ----
 
 
-# ---- `ids` query-param filter (EST-3207) ----
+# ---- `ids` request-body filter (EST-3207 follow-up: scoped per tool kind) ----
 
 
 @pytest.mark.django_db
 def test_ids_filter_returns_only_requested_rows(client_a, used_graph_setup):
     python_tool = used_graph_setup["python_tool"]
-    mcp_tool = used_graph_setup["mcp_tool"]
 
-    resp = client_a.get(
-        "/api/tools/usage/",
-        {"ids": f"python-code-tool:{python_tool.id},mcp-tool:{mcp_tool.id}"},
+    resp = client_a.post(
+        PYTHON_USAGE_URL, {"ids": [python_tool.id]}, format="json"
     )
     assert resp.status_code == 200
-    unique_names = {row["unique_name"] for row in resp.data}
-    assert unique_names == {
-        f"python-code-tool:{python_tool.id}",
-        f"mcp-tool:{mcp_tool.id}",
-    }
+    ids = {row["id"] for row in resp.data}
+    assert ids == {python_tool.id}
 
 
 @pytest.mark.django_db
 def test_ids_omitted_preserves_full_list_behavior(client_a, used_graph_setup):
-    resp_no_ids = client_a.get("/api/tools/usage/")
-    resp_with_ids_omitted = client_a.get("/api/tools/usage/", {})
+    resp_no_ids = client_a.post(PYTHON_USAGE_URL)
+    resp_with_ids_omitted = client_a.post(PYTHON_USAGE_URL, {}, format="json")
     assert resp_no_ids.status_code == 200
     assert resp_with_ids_omitted.status_code == 200
-    assert {r["unique_name"] for r in resp_no_ids.data} == {
-        r["unique_name"] for r in resp_with_ids_omitted.data
+    assert {r["id"] for r in resp_no_ids.data} == {
+        r["id"] for r in resp_with_ids_omitted.data
     }
-    # sanity: more than one row present (both kinds), not accidentally scoped
-    assert len(resp_no_ids.data) >= 2
+    # sanity: at least one row present, not accidentally scoped
+    assert len(resp_no_ids.data) >= 1
 
 
 @pytest.mark.django_db
-def test_ids_over_max_count_returns_400(client_a):
-    too_many = ",".join(f"mcp-tool:{i}" for i in range(1, 202))
-    resp = client_a.get("/api/tools/usage/", {"ids": too_many})
+def test_ids_over_max_count_returns_400(client_a, monkeypatch):
+    # MAX_USAGE_IDS is intentionally tied to api_settings.PAGE_SIZE (currently
+    # 500000) — patch the mixin's class attribute directly rather than
+    # building a request body with hundreds of thousands of ids.
+    from tables.views.mixins import ToolUsageActionsMixin
+
+    monkeypatch.setattr(ToolUsageActionsMixin, "MAX_USAGE_IDS", 200)
+    too_many = list(range(1, 202))
+    resp = client_a.post(MCP_USAGE_URL, {"ids": too_many}, format="json")
     assert resp.status_code == 400
     assert "maximum 200 allowed, got 201" in str(resp.data)
 
 
 @pytest.mark.django_db
-def test_ids_malformed_missing_colon_returns_400(client_a):
-    resp = client_a.get("/api/tools/usage/", {"ids": "mcp-tool5"})
+def test_ids_non_list_returns_400(client_a):
+    resp = client_a.post(MCP_USAGE_URL, {"ids": "not-a-list"}, format="json")
     assert resp.status_code == 400
 
 
 @pytest.mark.django_db
-def test_ids_malformed_empty_fragment_returns_400(client_a):
-    resp = client_a.get("/api/tools/usage/", {"ids": "mcp-tool:5,,mcp-tool:1"})
-    assert resp.status_code == 400
-
-
-@pytest.mark.django_db
-def test_ids_malformed_non_numeric_id_returns_400(client_a):
-    resp = client_a.get("/api/tools/usage/", {"ids": "mcp-tool:abc"})
-    assert resp.status_code == 400
-
-
-@pytest.mark.django_db
-def test_ids_malformed_unknown_prefix_returns_400(client_a):
-    resp = client_a.get("/api/tools/usage/", {"ids": "not-a-real-prefix:5"})
+def test_ids_non_integer_entries_returns_400(client_a):
+    resp = client_a.post(MCP_USAGE_URL, {"ids": ["abc"]}, format="json")
     assert resp.status_code == 400
 
 
@@ -467,8 +468,8 @@ def test_ids_for_foreign_org_tool_does_not_leak(client_a, org_b):
         name="ForeignTool", description="d", python_code=code, org=org_b
     )
 
-    resp = client_a.get(
-        "/api/tools/usage/", {"ids": f"python-code-tool:{foreign_tool.id}"}
+    resp = client_a.post(
+        PYTHON_USAGE_URL, {"ids": [foreign_tool.id]}, format="json"
     )
     assert resp.status_code == 200
     assert resp.data == []
@@ -502,9 +503,9 @@ def test_agent_in_crew_using_tool_does_not_count_project_without_task_usage(
         order=1,
     )
 
-    resp = client_a.get("/api/tools/usage/")
+    resp = client_a.post(PYTHON_USAGE_URL)
     assert resp.status_code == 200
-    rows = {row["unique_name"]: row for row in resp.data}
-    key = f"python-code-tool:{unused_python_tool.id}"
-    assert rows[key]["staff_count"] == 1
-    assert rows[key]["projects_count"] == 0
+    rows = {row["id"]: row for row in resp.data}
+    row = rows[unused_python_tool.id]
+    assert row["staff_count"] == 1
+    assert row["projects_count"] == 0

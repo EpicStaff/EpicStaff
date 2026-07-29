@@ -67,8 +67,6 @@ from tables.views.views import (
     QuickstartView,
     QuickstartApplyView,
     PythonNodeLastTestInputView,
-    ToolsUsageAPIView,
-    ToolsUsageDetailAPIView,
 )
 
 from tables.views.default_config import (
@@ -238,16 +236,6 @@ urlpatterns = [
         "run-python-code/",
         RunPythonCodeAPIView.as_view(),
         name="run-python-code",
-    ),
-    path(
-        "tools/usage/",
-        ToolsUsageAPIView.as_view(),
-        name="tools-usage",
-    ),
-    path(
-        "tools/usage-detail/",
-        ToolsUsageDetailAPIView.as_view(),
-        name="tools-usage-detail",
     ),
     path(
         "pythonnodes/<int:pk>/last-session-input/",

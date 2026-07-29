@@ -22,6 +22,14 @@ from tables.models.python_models import (
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 
 
+def python_usage_detail_url(tool_id) -> str:
+    return f"/api/python-code-tool/{tool_id}/usage-detail/"
+
+
+def mcp_usage_detail_url(tool_id) -> str:
+    return f"/api/mcp-tools/{tool_id}/usage-detail/"
+
+
 # ---- fixtures ----
 
 
@@ -126,10 +134,7 @@ def test_python_code_tool_detail_returns_project_and_staff(client_a, used_graph_
     agent = used_graph_setup["agent"]
     crew = used_graph_setup["crew"]
 
-    resp = client_a.get(
-        "/api/tools/usage-detail/",
-        {"unique_name": f"python-code-tool:{python_tool.id}"},
-    )
+    resp = client_a.get(python_usage_detail_url(python_tool.id))
     assert resp.status_code == 200
     assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
     assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
@@ -141,10 +146,7 @@ def test_mcp_tool_detail_returns_project_and_staff(client_a, used_graph_setup):
     agent = used_graph_setup["agent"]
     crew = used_graph_setup["crew"]
 
-    resp = client_a.get(
-        "/api/tools/usage-detail/",
-        {"unique_name": f"mcp-tool:{mcp_tool.id}"},
-    )
+    resp = client_a.get(mcp_usage_detail_url(mcp_tool.id))
     assert resp.status_code == 200
     assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
     assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
@@ -152,49 +154,26 @@ def test_mcp_tool_detail_returns_project_and_staff(client_a, used_graph_setup):
 
 @pytest.mark.django_db
 def test_unused_tool_returns_empty_lists(client_a, unused_python_tool):
-    resp = client_a.get(
-        "/api/tools/usage-detail/",
-        {"unique_name": f"python-code-tool:{unused_python_tool.id}"},
-    )
+    resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
     assert resp.status_code == 200
     assert resp.data == {"projects": [], "staff": []}
 
 
 @pytest.mark.django_db
-def test_missing_unique_name_is_400(client_a):
-    resp = client_a.get("/api/tools/usage-detail/")
-    assert resp.status_code == 400
-
-
-@pytest.mark.django_db
-def test_malformed_unique_name_is_400(client_a):
-    resp = client_a.get(
-        "/api/tools/usage-detail/", {"unique_name": "not-a-valid-name"}
-    )
-    assert resp.status_code == 400
-
-
-@pytest.mark.django_db
-def test_non_numeric_id_is_400(client_a):
-    resp = client_a.get(
-        "/api/tools/usage-detail/", {"unique_name": "mcp-tool:abc"}
-    )
-    assert resp.status_code == 400
-
-
-@pytest.mark.django_db
-def test_unknown_prefix_is_400(client_a):
-    resp = client_a.get(
-        "/api/tools/usage-detail/", {"unique_name": "some-other-tool:1"}
-    )
-    assert resp.status_code == 400
-
-
-@pytest.mark.django_db
 def test_nonexistent_python_code_tool_is_404(client_a):
-    resp = client_a.get(
-        "/api/tools/usage-detail/", {"unique_name": "python-code-tool:999999"}
-    )
+    resp = client_a.get(python_usage_detail_url(999999))
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_nonexistent_mcp_tool_is_404(client_a):
+    resp = client_a.get(mcp_usage_detail_url(999999))
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_non_numeric_python_code_tool_pk_is_404(client_a):
+    resp = client_a.get(python_usage_detail_url("abc"))
     assert resp.status_code == 404
 
 
@@ -205,10 +184,7 @@ def test_cross_org_python_tool_is_404(client_a, org_b):
         name="ForeignTool", description="d", python_code=code, org=org_b
     )
 
-    resp = client_a.get(
-        "/api/tools/usage-detail/",
-        {"unique_name": f"python-code-tool:{foreign_tool.id}"},
-    )
+    resp = client_a.get(python_usage_detail_url(foreign_tool.id))
     assert resp.status_code == 404
 
 
@@ -216,17 +192,14 @@ def test_cross_org_python_tool_is_404(client_a, org_b):
 def test_built_in_python_code_tool_is_visible_not_404(client_a):
     # EST-3277: PythonCodeTool visibility is hybrid (built-in rows are
     # global, org_id=None) — a built-in tool must be resolvable in the
-    # usage-detail lookup the same way it's listed in /api/tools/usage/,
+    # usage-detail lookup the same way it's listed in the usage endpoint,
     # not 404 just because it has no org.
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     builtin_tool = PythonCodeTool.objects.create(
         name="BuiltInTool", description="d", python_code=code, built_in=True, org=None
     )
 
-    resp = client_a.get(
-        "/api/tools/usage-detail/",
-        {"unique_name": f"python-code-tool:{builtin_tool.id}"},
-    )
+    resp = client_a.get(python_usage_detail_url(builtin_tool.id))
     assert resp.status_code == 200
     assert resp.data == {"projects": [], "staff": []}
 
@@ -240,18 +213,19 @@ def test_cross_org_mcp_tool_is_404(client_a, org_b):
         org=org_b,
     )
 
-    resp = client_a.get(
-        "/api/tools/usage-detail/",
-        {"unique_name": f"mcp-tool:{foreign_tool.id}"},
-    )
+    resp = client_a.get(mcp_usage_detail_url(foreign_tool.id))
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_non_numeric_mcp_tool_pk_is_404(client_a):
+    resp = client_a.get(mcp_usage_detail_url("abc"))
     assert resp.status_code == 404
 
 
 @pytest.mark.django_db
 def test_requires_authentication(db):
-    resp = APIClient().get(
-        "/api/tools/usage-detail/", {"unique_name": "mcp-tool:1"}
-    )
+    resp = APIClient().get(python_usage_detail_url(1))
     assert resp.status_code == 403
 
 
@@ -290,10 +264,7 @@ def test_python_tool_agent_reachable_only_via_config_path_is_counted(
     )
     TaskPythonCodeToolConfigs.objects.create(task=task, tool=tool_config)
 
-    resp = client_a.get(
-        "/api/tools/usage-detail/",
-        {"unique_name": f"python-code-tool:{unused_python_tool.id}"},
-    )
+    resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
     assert resp.status_code == 200
     assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
     assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
@@ -335,10 +306,7 @@ def test_python_tool_agent_reachable_via_both_paths_not_double_counted(
     TaskPythonCodeTools.objects.create(task=task, tool=unused_python_tool)
     TaskPythonCodeToolConfigs.objects.create(task=task, tool=tool_config)
 
-    resp = client_a.get(
-        "/api/tools/usage-detail/",
-        {"unique_name": f"python-code-tool:{unused_python_tool.id}"},
-    )
+    resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
     assert resp.status_code == 200
     assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
     assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]
@@ -363,10 +331,7 @@ def test_project_counted_via_task_without_any_graph(
     )
     TaskPythonCodeTools.objects.create(task=task, tool=unused_python_tool)
 
-    resp = client_a.get(
-        "/api/tools/usage-detail/",
-        {"unique_name": f"python-code-tool:{unused_python_tool.id}"},
-    )
+    resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
     assert resp.status_code == 200
     assert resp.data["projects"] == [{"id": crew.id, "name": crew.name}]
     assert resp.data["staff"] == []
@@ -402,10 +367,7 @@ def test_agent_in_crew_using_tool_does_not_surface_project_without_task_usage(
         order=1,
     )
 
-    resp = client_a.get(
-        "/api/tools/usage-detail/",
-        {"unique_name": f"python-code-tool:{unused_python_tool.id}"},
-    )
+    resp = client_a.get(python_usage_detail_url(unused_python_tool.id))
     assert resp.status_code == 200
     assert resp.data["projects"] == []
     assert resp.data["staff"] == [{"id": agent.id, "role": agent.role}]

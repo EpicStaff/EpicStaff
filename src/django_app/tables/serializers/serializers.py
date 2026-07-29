@@ -10,7 +10,7 @@ from tables.import_export.services.partial_export_service import (
 
 
 class ToolUsageSerializer(serializers.Serializer):
-    unique_name = serializers.CharField()
+    id = serializers.IntegerField()
     projects_count = serializers.IntegerField()
     staff_count = serializers.IntegerField()
     is_built_in = serializers.BooleanField()

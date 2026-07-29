@@ -74,14 +74,6 @@ from tables.serializers.serializers import (
     RegisterTelegramTriggerSerializer,
     RunPythonCodeSerializer,
     SessionExportAllSerializer,
-    ToolUsageDetailSerializer,
-    ToolUsageSerializer,
-)
-from tables.services.tools_usage_service import (
-    VALID_TOOL_PREFIXES,
-    ToolNotFoundError,
-    get_tool_usage_detail,
-    get_tools_usage,
 )
 
 from tables.serializers.quickstart_serializers import (
@@ -96,7 +88,6 @@ from tables.import_export.enums import EntityType
 from rest_framework.permissions import IsAuthenticated
 from tables.views.mixins import (
     OrgScopedChildViewSetMixin,
-    OrgScopedResolverMixin,
     OrgScopedServiceViewSetMixin,
 )
 from tables.models.knowledge_models import NaiveRag, GraphRag
@@ -146,10 +137,6 @@ from tables.swagger_schemas.telegram_schemas import (
 )
 from tables.swagger_schemas.webhook_schemas import REGISTER_WEBHOOKS_POST
 from tables.swagger_schemas.python_code_schemas import RUN_PYTHON_CODE_POST
-from tables.swagger_schemas.tools_usage_schemas import (
-    TOOLS_USAGE_DETAIL_GET,
-    TOOLS_USAGE_GET,
-)
 from .default_config import *
 
 
@@ -689,124 +676,6 @@ class RunPythonCodeAPIView(APIView):
             | Q(cdt_pre_nodes__graph__org_id=org_id)
             | Q(cdt_post_nodes__graph__org_id=org_id)
         )
-
-
-class ToolsUsageAPIView(OrgScopedResolverMixin, APIView):
-    """GET /api/tools/usage/ — raw per-tool usage counts for the active org
-    (EST-3264), plus an `is_built_in` flag per row (EST-3277) so the FE can
-    additionally gate orphan-highlighting on `!is_built_in` — built-in tools
-    are never flagged as orphans. This endpoint does not itself exclude
-    built-in rows; it still returns one row per tool visible to the org. See
-    `ToolsUsageDetailAPIView` for the per-tool reference detail (EST-3270).
-
-    Optional `ids` query param (EST-3207): comma-separated `unique_name`s
-    (`<prefix>:<id>`, same keying as each row's own `unique_name` /
-    `usage-detail`'s lookup key) to scope the response to only those tools,
-    e.g. after the FE paginates its own tools list. Omitted -> full,
-    backward-compatible behavior (all rows for the org)."""
-
-    permission_classes = [IsAuthenticated]
-
-    MAX_IDS = 200
-
-    @extend_schema(**TOOLS_USAGE_GET)
-    def get(self, request):
-        org_id = self.get_active_org_id()
-        assert_org_permission(
-            user=request.user,
-            org_id=org_id,
-            resource_type=ResourceType.TOOLS,
-            action=Permission.READ,
-        )
-        id_filter = self._parse_ids_param(request.query_params.get("ids"))
-        rows = get_tools_usage(org_id, id_filter=id_filter)
-        serializer = ToolUsageSerializer(rows, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    @classmethod
-    def _parse_ids_param(cls, raw: str | None) -> dict[str, set[int]] | None:
-        """Parse the optional `ids` query param into a `{prefix: {tool_id,
-        ...}}` map for `get_tools_usage`, or `None` if omitted (full-list
-        behavior preserved). Raises DRF `ValidationError` (400) if the count
-        exceeds `MAX_IDS` or any fragment is malformed (empty, missing
-        `:<id>`, unknown prefix, non-numeric id)."""
-        if not raw:
-            return None
-
-        parts = raw.split(",")
-        if len(parts) > cls.MAX_IDS:
-            raise ValidationError(
-                {"ids": f"maximum {cls.MAX_IDS} allowed, got {len(parts)}"}
-            )
-
-        id_filter: dict[str, set[int]] = defaultdict(set)
-        for part in parts:
-            part = part.strip()
-            prefix, sep, raw_id = part.partition(":")
-            if (
-                not sep
-                or prefix not in VALID_TOOL_PREFIXES
-                or not raw_id.isdigit()
-            ):
-                raise ValidationError(
-                    {
-                        "ids": (
-                            f"Malformed id: '{part}'. Expected one of "
-                            f"{VALID_TOOL_PREFIXES} followed by ':<id>'."
-                        )
-                    }
-                )
-            id_filter[prefix].add(int(raw_id))
-
-        return dict(id_filter)
-
-
-class ToolsUsageDetailAPIView(OrgScopedResolverMixin, APIView):
-    """GET /api/tools/usage-detail/?unique_name=<prefix>:<id> — the actual
-    referencing Projects (Graphs) and Staff (Agents) for a single tool
-    (EST-3270), for the "Where is this used?" modal. Counts-only aggregation
-    lives on `ToolsUsageAPIView` (EST-3264)."""
-
-    permission_classes = [IsAuthenticated]
-
-    @extend_schema(**TOOLS_USAGE_DETAIL_GET)
-    def get(self, request):
-        prefix, tool_id = self._parse_unique_name(
-            request.query_params.get("unique_name")
-        )
-        org_id = self.get_active_org_id()
-        assert_org_permission(
-            user=request.user,
-            org_id=org_id,
-            resource_type=ResourceType.TOOLS,
-            action=Permission.READ,
-        )
-        try:
-            detail = get_tool_usage_detail(prefix, tool_id, org_id)
-        except ToolNotFoundError:
-            raise NotFound(f"Tool '{prefix}:{tool_id}' not found.")
-        serializer = ToolUsageDetailSerializer(detail)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    @staticmethod
-    def _parse_unique_name(unique_name: str | None) -> tuple[str, int]:
-        """Parse `<prefix>:<id>` and validate the prefix. Raises DRF
-        `ValidationError` (400) on anything malformed or unrecognized."""
-        if not unique_name or ":" not in unique_name:
-            raise ValidationError(
-                {"unique_name": "Required, of the form '<prefix>:<id>'."}
-            )
-        prefix, _, raw_id = unique_name.partition(":")
-        if prefix not in VALID_TOOL_PREFIXES or not raw_id.isdigit():
-            raise ValidationError(
-                {
-                    "unique_name": (
-                        f"Unknown or malformed unique_name: '{unique_name}'. "
-                        f"Expected one of {VALID_TOOL_PREFIXES} followed by ':<id>'."
-                    )
-                }
-            )
-        return prefix, int(raw_id)
 
 
 class InitRealtimeAPIView(APIView):
