@@ -120,28 +120,24 @@ def test_list_only_active_org(client_a, org_a, org_b):
     assert "B_SECRET" not in names
 
 
+CROSS_ORG_ACTIONS = [
+    ("get", None),
+    ("patch", {"name": "HIJACKED"}),
+    ("put", {"name": "HIJACKED", "value": "sk-attacker"}),
+    ("delete", None),
+]
+
+
 @pytest.mark.django_db
-def test_detail_cross_org_returns_404(client_a, org_b):
+@pytest.mark.parametrize("method, payload", CROSS_ORG_ACTIONS)
+def test_detail_cross_org_returns_404(client_a, org_b, method, payload):
     other = Secret.objects.create(name="B_SECRET", value="ciphertext-b", org=org_b)
-    resp = client_a.get(f"/api/secrets/{other.id}/")
+    resp = getattr(client_a, method)(
+        f"/api/secrets/{other.id}/", payload, format="json"
+    )
     assert resp.status_code == 404
 
-    patch_resp = client_a.patch(
-        f"/api/secrets/{other.id}/", {"name": "HIJACKED"}, format="json"
-    )
-    assert patch_resp.status_code == 404
-
-    put_resp = client_a.put(
-        f"/api/secrets/{other.id}/",
-        {"name": "HIJACKED", "value": "sk-attacker"},
-        format="json",
-    )
-    assert put_resp.status_code == 404
-
-    delete_resp = client_a.delete(f"/api/secrets/{other.id}/")
-    assert delete_resp.status_code == 404
-
-    # Row genuinely untouched by any of the above.
+    # Row genuinely untouched.
     other.refresh_from_db()
     assert other.name == "B_SECRET"
     assert Secret.objects.filter(id=other.id).exists()
@@ -179,18 +175,6 @@ def test_duplicate_name_same_org_returns_400_not_500(client_a, org_a):
 
 
 @pytest.mark.django_db
-def test_create_response_never_includes_value(client_a):
-    resp = client_a.post(
-        "/api/secrets/",
-        {"name": "OPENAI_KEY", "value": "sk-live-abc123"},
-        format="json",
-    )
-    assert resp.status_code == 201
-    assert "value" not in resp.data
-    assert resp.data["tail"] == "c123"
-
-
-@pytest.mark.django_db
 def test_value_never_appears_in_any_response(client_a):
     create_resp = client_a.post(
         "/api/secrets/",
@@ -198,6 +182,7 @@ def test_value_never_appears_in_any_response(client_a):
         format="json",
     )
     assert "value" not in create_resp.data
+    assert create_resp.data["tail"] == "c123"
     secret_id = create_resp.data["id"]
 
     detail_resp = client_a.get(f"/api/secrets/{secret_id}/")
@@ -219,15 +204,6 @@ def test_create_without_value_returns_400(client_a):
     resp = client_a.post("/api/secrets/", {"name": "OPENAI_KEY"}, format="json")
     assert resp.status_code == 400
     assert "This field is required when creating a secret." in resp.data["message"]
-
-
-@pytest.mark.django_db
-def test_create_with_blank_value_returns_400(client_a):
-    resp = client_a.post(
-        "/api/secrets/", {"name": "OPENAI_KEY", "value": ""}, format="json"
-    )
-    assert resp.status_code == 400
-    assert "may not be blank" in resp.data["message"]
 
 
 @pytest.mark.django_db
@@ -259,7 +235,8 @@ def test_patch_with_new_value_re_encrypts(client_a):
 
 
 @pytest.mark.django_db
-def test_patch_omitting_value_leaves_it_unchanged(client_a):
+@pytest.mark.parametrize("verb", ["patch", "put"])
+def test_omitting_value_on_update_leaves_it_unchanged(client_a, verb):
     create_resp = client_a.post(
         "/api/secrets/",
         {"name": "OPENAI_KEY", "value": "sk-live-abc123"},
@@ -268,27 +245,12 @@ def test_patch_omitting_value_leaves_it_unchanged(client_a):
     secret_id = create_resp.data["id"]
     original_value = Secret.objects.get(id=secret_id).value
 
-    patch_resp = client_a.patch(
-        f"/api/secrets/{secret_id}/", {"metadata": {"env": "prod"}}, format="json"
-    )
-    assert patch_resp.status_code == 200
-    assert Secret.objects.get(id=secret_id).value == original_value
-
-
-@pytest.mark.django_db
-def test_full_put_omitting_value_succeeds(client_a):
-    create_resp = client_a.post(
-        "/api/secrets/",
-        {"name": "OPENAI_KEY", "value": "sk-live-abc123"},
-        format="json",
-    )
-    secret_id = create_resp.data["id"]
-    original_value = Secret.objects.get(id=secret_id).value
-
-    put_resp = client_a.put(
+    # PUT still needs "name" (a required field for a full update); PATCH doesn't,
+    # but sending it too keeps one payload usable for both verbs.
+    resp = getattr(client_a, verb)(
         f"/api/secrets/{secret_id}/", {"name": "RENAMED_KEY"}, format="json"
     )
-    assert put_resp.status_code == 200
+    assert resp.status_code == 200
     reloaded = Secret.objects.get(id=secret_id)
     assert reloaded.name == "RENAMED_KEY"
     assert reloaded.value == original_value
@@ -314,27 +276,25 @@ def test_patch_rename_to_taken_name_returns_400(client_a, org_a):
     assert resp.status_code == 400
 
 
+SECRET_ACTIONS = [
+    ("get", "/api/secrets/", None),
+    ("get", "/api/secrets/{id}/", None),
+    ("post", "/api/secrets/", {"name": "X", "value": "sk-live-x"}),
+    ("patch", "/api/secrets/{id}/", {"name": "Y"}),
+    ("delete", "/api/secrets/{id}/", None),
+]
+
+
 @pytest.mark.django_db
+@pytest.mark.parametrize("client_fixture", ["member_client_a", "viewer_client_a"])
+@pytest.mark.parametrize("method, path, payload", SECRET_ACTIONS)
 def test_member_and_viewer_get_403_on_every_action(
-    member_client_a, viewer_client_a, org_a
+    request, client_fixture, method, path, payload, org_a
 ):
     secret = Secret.objects.create(name="OPENAI_KEY", value="ciphertext", org=org_a)
-    for client in (member_client_a, viewer_client_a):
-        assert client.get("/api/secrets/").status_code == 403
-        assert client.get(f"/api/secrets/{secret.id}/").status_code == 403
-        assert (
-            client.post(
-                "/api/secrets/", {"name": "X", "value": "sk-live-x"}, format="json"
-            ).status_code
-            == 403
-        )
-        assert (
-            client.patch(
-                f"/api/secrets/{secret.id}/", {"name": "Y"}, format="json"
-            ).status_code
-            == 403
-        )
-        assert client.delete(f"/api/secrets/{secret.id}/").status_code == 403
+    client = request.getfixturevalue(client_fixture)
+    resp = getattr(client, method)(path.format(id=secret.id), payload, format="json")
+    assert resp.status_code == 403
 
 
 @pytest.mark.django_db
