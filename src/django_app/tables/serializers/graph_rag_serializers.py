@@ -137,9 +137,6 @@ class GraphRagDetailSerializer(serializers.ModelSerializer):
         source="base_rag_type.source_collection.collection_name", read_only=True
     )
     index_config = GraphRagIndexConfigSerializer(read_only=True)
-    documents = GraphRagDocumentSerializer(
-        source="graph_rag_documents", many=True, read_only=True
-    )
     total_documents_in_collection = serializers.SerializerMethodField()
     documents_in_graph_rag = serializers.SerializerMethodField()
 
@@ -158,7 +155,6 @@ class GraphRagDetailSerializer(serializers.ModelSerializer):
             "index_config",
             "total_documents_in_collection",
             "documents_in_graph_rag",
-            "documents",
             "error_message",
             "created_at",
             "updated_at",
