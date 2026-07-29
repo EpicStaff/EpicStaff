@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Subject, switchMap } from 'rxjs';
+import { Observable, of, Subject, switchMap, throwError } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
@@ -752,6 +752,16 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         }
     }
 
+    private resolvePythonCodeId(): Observable<number | null> {
+        const known = this.node().python_code_id;
+        if (known != null) return of(known);
+
+        const backendId = this.node().backendId;
+        if (backendId == null) return of(null);
+
+        return this.pythonCodeRunService.getPythonCodeId(backendId);
+    }
+
     onRunTest(variables: Record<string, string>): void {
         this.testRunning.set(true);
         this.testResult.set(null);
@@ -771,19 +781,25 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             Object.entries(variables).map(([k, v]) => [k, this.parseVariableValue(v)])
         );
 
-        const payload: RunPythonCodeRequest = {
-            python_code_id: this.node().python_code_id ?? null,
-            code: this.pythonCode,
-            entrypoint: 'main',
-            libraries,
-            variables: parsedVariables,
-        };
-
         this.addLog('info', `Parameters: ${JSON.stringify(parsedVariables)}`);
 
-        this.pythonCodeRunService
-            .runPythonCode(payload)
+        this.resolvePythonCodeId()
             .pipe(
+                switchMap((pythonCodeId) => {
+                    if (pythonCodeId == null) {
+                        return throwError(
+                            () => new Error('Python code is not saved yet. Please wait for autosave and try again.')
+                        );
+                    }
+                    const payload: RunPythonCodeRequest = {
+                        python_code_id: pythonCodeId,
+                        code: this.pythonCode,
+                        entrypoint: 'main',
+                        libraries,
+                        variables: parsedVariables,
+                    };
+                    return this.pythonCodeRunService.runPythonCode(payload);
+                }),
                 switchMap(({ execution_id }) => this.pythonCodeRunService.pollResultWithEvents(execution_id)),
                 takeUntilDestroyed(this.destroyRef)
             )

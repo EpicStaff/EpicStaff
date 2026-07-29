@@ -67,6 +67,12 @@ export class PythonCodeRunService {
         );
     }
 
+    getPythonCodeId(pythonNodeId: number): Observable<number | null> {
+        return this.http
+            .get<{ python_code?: { id?: number } | null }>(`${this.apiUrl}pythonnodes/${pythonNodeId}/`)
+            .pipe(map((node) => node.python_code?.id ?? null));
+    }
+
     pollResultWithEvents(executionId: string): Observable<PollEvent> {
         let attempt = 0;
         return timer(1000, 2000).pipe(
