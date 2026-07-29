@@ -14,9 +14,11 @@ from tables.models.graph_models import (
     Edge,
     FileExtractorNode,
     Graph,
+    KnowledgeNode,
     PythonNode,
     SubGraphNode,
 )
+from tables.models.knowledge_models import SourceCollection
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
@@ -84,6 +86,17 @@ class FileExtractorNodeSerializer(
 
     class Meta:
         model = FileExtractorNode
+        fields = "__all__"
+
+
+class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
+    source_collection = OrgScopedPrimaryKeyRelatedField(
+        queryset=SourceCollection.objects.all(), required=False, allow_null=True
+    )
+
+    class Meta:
+        model = KnowledgeNode
         fields = "__all__"
 
 

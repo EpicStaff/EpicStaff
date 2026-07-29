@@ -98,6 +98,10 @@ class GraphNoteBulkSerializer(BulkSaveEntityMixin, GraphNoteSerializer):
     pass
 
 
+class KnowledgeNodeBulkSerializer(BulkSaveEntityMixin, KnowledgeNodeSerializer):
+    pass
+
+
 class WebhookTriggerNodeBulkSerializer(
     BulkSaveEntityMixin, WebhookTriggerNodeSerializer
 ):

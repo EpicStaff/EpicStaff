@@ -18,6 +18,7 @@ from tables.views.model_view_sets import (
     PythonCodeToolConfigViewSet,
     PythonNodeViewSet,
     FileExtractorNodeViewSet,
+    KnowledgeNodeViewSet,
     AudioTranscriptionNodeViewSet,
     CodeAgentNodeViewSet,
     StartNodeModelViewSet,
@@ -145,6 +146,7 @@ router.register(r"graphs", GraphViewSet, basename="graphs")
 router.register(r"crewnodes", CrewNodeViewSet)
 router.register(r"pythonnodes", PythonNodeViewSet)
 router.register(r"file-extractor-nodes", FileExtractorNodeViewSet)
+router.register(r"knowledge-nodes", KnowledgeNodeViewSet)
 router.register(r"audio-transcription-nodes", AudioTranscriptionNodeViewSet)
 router.register(r"startnodes", StartNodeModelViewSet)
 router.register(r"endnodes", EndNodeModelViewSet)

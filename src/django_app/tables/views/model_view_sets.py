@@ -146,6 +146,7 @@ from tables.models.graph_models import (
     ConditionGroup,
     DecisionTableNode,
     EndNode,
+    KnowledgeNode,
     GraphOrganization,
     GraphOrganizationUser,
     GraphNote,
@@ -223,6 +224,7 @@ from tables.serializers.model_serializers import (
     GraphOrganizationUserSerializer,
     GraphSerializer,
     GraphSessionMessageSerializer,
+    KnowledgeNodeSerializer,
     LabelSerializer,
     McpToolSerializer,
     MemorySerializer,
@@ -1276,6 +1278,19 @@ class FileExtractorNodeViewSet(
     org_filter_path = "graph__org_id"
     queryset = FileExtractorNode.objects.all()
     serializer_class = FileExtractorNodeSerializer
+
+
+class KnowledgeNodeViewSet(
+    OrgScopedChildViewSetMixin,
+    IdempotentNodeCreateMixin,
+    ContentHashPreconditionMixin,
+    viewsets.ModelViewSet,
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
+    queryset = KnowledgeNode.objects.all()
+    serializer_class = KnowledgeNodeSerializer
 
 
 class AudioTranscriptionNodeViewSet(
