@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -44,7 +46,7 @@ from tables.serializers.naive_rag_serializers import (
     ChunkSearchResponseSerializer,
     ChunkSearchRequestSerializer,
     PreviewChunksByIdsRequestSerializer,
-    PreviewChunksByIdsResponseSerializer,
+    PreviewChunksByIdsResponseSerializer, ChunkingConfigSerializer,
 )
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 
@@ -536,14 +538,17 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST)
     def post(self, request, naive_rag_id: int, document_config_id: int):
-        # Validate document config exists and belongs to naive_rag
+        serializer = ChunkingConfigSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         try:
-            config = NaiveRagDocumentConfig.objects.select_related(
-                "naive_rag", "document"
-            ).get(
-                naive_rag_document_id=document_config_id,
-                naive_rag_id=naive_rag_id,
-            )
+            config = (
+                NaiveRagDocumentConfig.objects
+                .select_related("naive_rag", "document")
+                .get(
+                    naive_rag_document_id=document_config_id,
+                    naive_rag_id=naive_rag_id,
+                )
+            )  # fmt: off
         except NaiveRagDocumentConfig.DoesNotExist:
             return Response(
                 {
@@ -554,14 +559,17 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
             )
 
         prechunk_request = PrechunkRequest(
-            rag_id=naive_rag_id,
             rag_strategy="naive",
-            document_id=config.document_id,
+            rag_id=naive_rag_id,
+            document_id=document_config_id,
+            document_extension=Path(config.document.file_name).suffix,
+            content=bytes(config.document.document_content.content),
+            **serializer.validated_data,
         )
 
         producer.send(
             settings.KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL,
-            Message(payload=prechunk_request.model_dump()),
+            Message(payload=prechunk_request.model_dump(mode="json")),
         )
         logger.info(
             "Sent prechunk request rag_id=%s document_id=%s",
@@ -590,7 +598,7 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
             {
                 "naive_rag_id": naive_rag_id,
                 "document_config_id": document_config_id,
-                "status": response.status,
+                "status": 'chunked',
                 "chunk_count": len(response.chunks),
                 "chunks": [chunk.model_dump() for chunk in response.chunks],
             },

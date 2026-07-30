@@ -461,3 +461,10 @@ class PreviewChunksByIdsResponseSerializer(serializers.Serializer):
     document_config_id = serializers.IntegerField()
     total = serializers.IntegerField()
     chunks = NaiveRagPreviewChunkSerializer(many=True)
+
+
+class ChunkingConfigSerializer(serializers.Serializer):
+    chunk_strategy = serializers.ChoiceField(choices=NaiveRagDocumentConfig.ChunkStrategy.choices)
+    chunk_size = serializers.IntegerField(min_value=0)
+    chunk_overlap = serializers.IntegerField(min_value=0)
+    additional_params = serializers.JSONField(default=dict)
