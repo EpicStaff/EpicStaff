@@ -28,6 +28,41 @@ class LabelSerializer(serializers.ModelSerializer):
             return full_paths[obj.id]
         return obj.full_path
 
+    def _validate_no_parent_cycle(self, parent):
+        """Reject a `parent` that is self, or a descendant of self — either
+        would create a cycle that `Label.full_path` (and any other
+        parent-chain walk) could loop or recurse on forever.
+
+        Walks up from `parent` via `.parent_id`, using a `visited` set so a
+        chain already corrupted in stored data (e.g. rows written before this
+        validation existed) can't hang this walk either.
+        """
+        self_pk = self.instance.pk
+        if parent.pk == self_pk:
+            raise serializers.ValidationError(
+                {"parent": "A label cannot be its own parent."}
+            )
+
+        visited = set()
+        current_id = parent.parent_id
+        while current_id is not None:
+            if current_id == self_pk:
+                raise serializers.ValidationError(
+                    {
+                        "parent": "This parent is a descendant of the label being "
+                        "updated — assigning it would create a parent loop."
+                    }
+                )
+            if current_id in visited:
+                # Pre-existing corrupt cycle in stored data unrelated to self —
+                # stop walking rather than loop forever.
+                break
+            visited.add(current_id)
+            row = Label.objects.filter(pk=current_id).values_list(
+                "parent_id", flat=True
+            ).first()
+            current_id = row
+
     def validate(self, attrs):
         view = self.context.get("view")
         scope = getattr(view, "label_scope", None)
@@ -42,6 +77,8 @@ class LabelSerializer(serializers.ModelSerializer):
                         "parent": "Parent label must belong to the same label tree (scope)."
                     }
                 )
+            if parent is not None and self.instance is not None:
+                self._validate_no_parent_cycle(parent)
 
         name = attrs.get("name")
         if name is None:  # partial update not touching the name

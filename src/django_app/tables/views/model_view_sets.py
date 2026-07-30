@@ -1966,8 +1966,14 @@ class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
         def full_path_key(label):
             parts = []
+            visited = set()
             current_id = label.id
             while current_id is not None:
+                if current_id in visited:
+                    # Stored cycle (self-parent or parent loop) — stop
+                    # walking rather than looping forever.
+                    break
+                visited.add(current_id)
                 row = id_to_row.get(current_id)
                 if row is None:
                     break
