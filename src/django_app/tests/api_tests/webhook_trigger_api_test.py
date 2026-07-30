@@ -718,3 +718,94 @@ class TestWebhookTriggerTwilioOnlyVisibility:
         assert flow_owned_trigger.id in ids
         assert twilio_only_trigger.id in ids
 
+
+@pytest.mark.django_db
+class TestWebhookTriggerDuplicatePathValidation:
+    """EST-3620: PUT/PATCH to /api/webhook-triggers/<id>/ with a (path,
+    provider_type) pair that collides with another existing WebhookTrigger
+    must fail cleanly with a serializer ValidationError (-> 400), not blow
+    up with a raw IntegrityError from the DB's unique_together constraint at
+    save time."""
+
+    def test_full_update_colliding_path_and_provider_is_rejected(self, default_org):
+        """Full PUT-style call (all fields present) with a path that
+        collides with another trigger's (path, provider_type) is rejected
+        by validate() before hitting the DB."""
+        WebhookTrigger.objects.create(
+            path="taken-path", provider_type=ProviderType.NGROK, org=default_org
+        )
+        other_trigger = WebhookTrigger.objects.create(
+            path="my-own-path", provider_type=ProviderType.NGROK, org=default_org
+        )
+
+        serializer = WebhookTriggerNestedSerializer(
+            instance=other_trigger,
+            data={
+                "path": "taken-path",
+                "provider_type": "ngrok",
+                "ngrok_config": {
+                    "name": "ng",
+                    "auth_token": "tok",
+                    "domain": None,
+                },
+            },
+        )
+
+        assert not serializer.is_valid()
+        assert "non_field_errors" in serializer.errors
+        assert (
+            "already exists" in str(serializer.errors["non_field_errors"][0]).lower()
+        )
+        # nothing was mutated at the DB level
+        other_trigger.refresh_from_db()
+        assert other_trigger.path == "my-own-path"
+
+    def test_partial_update_omitting_provider_type_still_detects_collision(
+        self, default_org
+    ):
+        """The actual bug repro (EST-3620): a PATCH-style partial update
+        supplies only `path` and omits `provider_type` from the payload.
+        The fallback to self.instance.provider_type must still catch a
+        collision with another trigger sharing that provider_type — before
+        the fix, data.get("provider_type") returned None here and the
+        duplicate check silently no-opped."""
+        WebhookTrigger.objects.create(
+            path="taken-ngrok-path", provider_type=ProviderType.NGROK, org=default_org
+        )
+        other_trigger = WebhookTrigger.objects.create(
+            path="my-ngrok-path", provider_type=ProviderType.NGROK, org=default_org
+        )
+
+        serializer = WebhookTriggerNestedSerializer(
+            instance=other_trigger,
+            data={"path": "taken-ngrok-path"},
+            partial=True,
+        )
+
+        assert not serializer.is_valid()
+        assert "non_field_errors" in serializer.errors
+        assert (
+            "already exists" in str(serializer.errors["non_field_errors"][0]).lower()
+        )
+        other_trigger.refresh_from_db()
+        assert other_trigger.path == "my-ngrok-path"
+
+    def test_partial_update_to_new_non_colliding_path_succeeds(self, default_org):
+        """Sanity check: renaming a trigger's path to something new and
+        non-colliding must still succeed (no false positive from the
+        duplicate check)."""
+        trigger = WebhookTrigger.objects.create(
+            path="original-path", provider_type=ProviderType.NGROK, org=default_org
+        )
+        NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token="tok")
+
+        serializer = WebhookTriggerNestedSerializer(
+            instance=trigger,
+            data={"path": "brand-new-unique-path"},
+            partial=True,
+        )
+
+        assert serializer.is_valid(), serializer.errors
+        updated = serializer.save()
+        assert updated.path == "brand-new-unique-path"
+

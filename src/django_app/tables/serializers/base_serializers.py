@@ -106,6 +106,21 @@ class WebhookTriggerNestedSerializer(WebhookCreationMixin, serializers.ModelSeri
         ngrok = data.get("ngrok_config")
         localhost = data.get("localhost_config")
 
+        path = data.get("path", self.instance.path if self.instance else None)
+        lookup_provider_type = data.get(
+            "provider_type",
+            self.instance.provider_type if self.instance else None,
+        )
+        queryset = WebhookTrigger.objects.filter(
+            path=path, provider_type=lookup_provider_type
+        )
+        if self.instance:
+            queryset = queryset.exclude(id=self.instance.id)
+        if queryset.exists():
+            raise serializers.ValidationError(
+                "A WebhookTrigger with this path and provider type already exists."
+            )
+
         if ngrok and localhost:
             raise serializers.ValidationError(
                 "A WebhookTrigger can only be linked to one config: either ngrok or localhost, not both."
