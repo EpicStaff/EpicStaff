@@ -53,19 +53,16 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
             )
         )
 
-    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[TextDocument]:
+    async def _get_documents(self, rag_id: int, *conditions) -> list[TextDocument]:
         result = await self._session.execute(
             select(GraphRagDocument)
-            .where(
-                GraphRagDocument.graph_rag_id == rag_id,
-                GraphRagDocument.graph_rag_document_id.in_(ids),
-            )
+            .where(GraphRagDocument.graph_rag == rag_id, *conditions)
             .options(
-                joinedload(GraphRagDocument.document).joinedload(DocumentMetadata.document_content)
+                joinedload(GraphRagDocument.document)
+                .joinedload(DocumentMetadata.document_content)
             )
         )
         rows = result.scalars().all()
-
         documents = []
         for row in rows:
             document = row.document
@@ -83,11 +80,23 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
             )
         return documents
 
+    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[TextDocument]:
+        return await self._get_documents(
+            rag_id,
+            GraphRagDocument.graph_rag_document_id.in_(ids),
+        )
+
+    async def get_indexed_documents_excluding(
+        self, rag_id: int, ids: frozenset[int]
+    ) -> list[TextDocument]:
+        return await self._get_documents(
+            rag_id,
+            GraphRagDocument.graph_rag_document_id.not_in(ids),
+            GraphRagDocument.status == 'completed',
+        )
+
     async def update_status_of_documents(
-        self,
-        rag_id: int,
-        ids: frozenset[int],
-        status: Literal['new', 'indexed'],
+        self, rag_id: int, ids: frozenset[int], status: Literal['new', 'completed']
     ):
         await self._session.execute(
             update(GraphRagDocument)
@@ -103,7 +112,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
             select(
                 exists().where(
                     GraphRagDocument.graph_rag_id == rag_id,
-                    GraphRagDocument.status == 'indexed',
+                    GraphRagDocument.status == 'completed',
                 )
             )
         )
