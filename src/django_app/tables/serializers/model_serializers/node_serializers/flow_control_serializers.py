@@ -20,7 +20,9 @@ from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
 )
-from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+)
 from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
@@ -161,22 +163,52 @@ class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
     classification_decision_table_node = serializers.PrimaryKeyRelatedField(
         read_only=True
     )
-    prompt = serializers.PrimaryKeyRelatedField(
-        queryset=ClassificationDecisionTablePrompt.objects.all(),
-        required=False,
-        allow_null=True,
+    # prompt_key (preferred) links a same-payload prompt by its per-node key;
+    # prompt (pk) is back-compat. Both resolve node-locally.
+    prompt = serializers.IntegerField(
+        source="prompt_id", required=False, allow_null=True
     )
-    prompt_key = serializers.SerializerMethodField()
+    prompt_key = serializers.CharField(required=False, allow_null=True, write_only=True)
 
-    def get_prompt_key(self, obj):
-        return obj.prompt.prompt_key if obj.prompt else None
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["prompt_key"] = instance.prompt.prompt_key if instance.prompt_id else None
+        return data
+
+    def validate_group_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("group_name may not be blank.")
+        return value
 
     class Meta:
         model = ClassificationConditionGroup
-        fields = "__all__"
+        fields = [
+            "id",
+            "classification_decision_table_node",
+            "prompt",
+            "prompt_key",
+            "created_at",
+            "updated_at",
+            "metadata",
+            "group_name",
+            "order",
+            "expression",
+            "manipulation",
+            "continue_flag",
+            "next_node_id",
+            "dock_visible",
+            "field_expressions",
+            "field_manipulations",
+            "route_code",
+            "section",
+        ]
 
 
 class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
+    llm_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=LLMConfig.objects.all(), required=False, allow_null=True
+    )
+
     class Meta:
         model = ClassificationDecisionTablePrompt
         fields = [
@@ -195,9 +227,10 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
     prompt_configs = ClassificationDecisionTablePromptSerializer(
         many=True, required=False
     )
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     pre_python_code = PythonCodeSerializer(required=False, allow_null=True)
     post_python_code = PythonCodeSerializer(required=False, allow_null=True)
-    default_llm_config = serializers.PrimaryKeyRelatedField(
+    default_llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(), required=False, allow_null=True
     )
 
@@ -222,6 +255,13 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
             "condition_groups",
             "prompt_configs",
         ]
+
+    def validate(self, attrs):
+        graph = attrs.get("graph") or getattr(self.instance, "graph", None)
+        for field in ("default_next_node_id", "next_error_node_id"):
+            node_id = attrs.get(field, getattr(self.instance, field, None))
+            assert_node_ref_in_graph(node_id=node_id, graph=graph, field=field)
+        return attrs
 
     def create(self, validated_data):
         condition_groups_data = validated_data.pop("condition_groups", None)

@@ -54,7 +54,6 @@ from django_filters.rest_framework import DjangoFilterBackend
 from tables.models import (
     Session,
     # DocumentMetadata,
-    OrganizationUser,
     Graph,
     PythonCode,
     SessionWarningMessage,
@@ -469,45 +468,13 @@ class RunSession(APIView):
 
         graph_id = graph.id
 
-        # Optional: reject cross-organization session chaining before we do
-        # any further org-membership work below. Uses the same org boundary
-        # (Graph.org_id) that the membership check enforces, so a parent
-        # session belonging to a different org can never be linked in.
-        parent_session_id = serializer.validated_data.get("parent_session_id")
-        if parent_session_id is not None:
-            parent_session = Session.objects.filter(id=parent_session_id).first()
-            if parent_session is None:
-                return Response(
-                    {"message": f"Parent session {parent_session_id} not found."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            parent_graph = Graph.objects.filter(id=parent_session.graph_id).first()
-            parent_org_id = parent_graph.org_id if parent_graph else None
-            if parent_org_id != graph.org_id:
-                return Response(
-                    {
-                        "message": (
-                            "Parent session does not belong to the same "
-                            "organization as the target graph."
-                        )
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        # Resolve the running user's membership in the flow's organization.
-        # Superadmin may run any flow without a membership row. Persistent-variable
-        # merging and write-back are owned by run_session.
-        is_superadmin = getattr(request.user, "is_superadmin", False)
-        if not is_superadmin:
-            membership = OrganizationUser.objects.filter(
-                user=request.user, org_id=graph.org_id, org__is_active=True
-            ).first()
-            if membership is None:
-                return Response(
-                    {"message": "You cannot run a flow outside your organization."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+        # Running the flow requires READ on flows within its org (superadmin bypasses).
+        assert_org_permission(
+            user=request.user,
+            org_id=graph.org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.READ,
+        )
 
         variables = serializer.validated_data.get("variables", {})
         for key, file in request.FILES.items():
@@ -718,7 +685,7 @@ class RunPythonCodeAPIView(APIView):
             user=request.user,
             org_id=org_id,
             resource_type=ResourceType.FLOWS,
-            action=Permission.UPDATE,
+            action=Permission.READ,
         )
         if not PythonCode.objects.filter(
             self._python_code_visible_q(org_id), pk=python_code.pk
@@ -731,7 +698,12 @@ class RunPythonCodeAPIView(APIView):
                 }
             )
 
-        execution_id = run_python_code_service.run_code(python_code.id, variables)
+        execution_id = run_python_code_service.run_code(
+            python_code_id=python_code.id,
+            varaibles=variables,
+            organization_id=org_id,
+            user=request.user,
+        )
         return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
 
     @staticmethod
