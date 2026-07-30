@@ -26,8 +26,10 @@ import {
     TelegramTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../../visual-programming/core/models/node.model';
+import { FlowService } from '../../../visual-programming/services/flow.service';
 import { toNodeMetadata } from '../../../visual-programming/utils/save/metadata';
 import { buildCdtNodePayload } from '../../../visual-programming/utils/save/payload';
+import { stableNodeId } from '../../../visual-programming/utils/stable-node-id';
 import { GraphDto } from '../models/graph.model';
 
 export interface EditorInfo {
@@ -493,6 +495,7 @@ export class GraphCollaborationWsService {
     private configService = inject(ConfigService);
     private wsTicketService = inject(WsTicketService);
     private profileService = inject(ProfileService);
+    private flowService = inject(FlowService);
     private socket: WebSocket | null = null;
     private currentGraphId: number | null = null;
     private reconnectTimeout: number | null = null;
@@ -650,7 +653,7 @@ export class GraphCollaborationWsService {
                 this.lockedNodeFields.set(
                     new Map(
                         Object.entries(message.locks).map(([nodeId, fields]) => [
-                            nodeId,
+                            this.resolveLocalNodeId(nodeId),
                             new Map(Object.entries(fields) as [string, EditorInfo][]),
                         ])
                     )
@@ -711,27 +714,31 @@ export class GraphCollaborationWsService {
             case 'selection_changed':
                 this.selectionChanged$.next(message);
                 break;
-            case 'node_locked':
+            case 'node_locked': {
+                const localId = this.resolveLocalNodeId(message.node_id);
                 this.lockedNodeFields.update((m) => {
                     const next = new Map(m);
-                    const nodeFields = new Map(next.get(message.node_id) ?? []);
+                    const nodeFields = new Map(next.get(localId) ?? []);
                     nodeFields.set(message.field, message.editor);
-                    next.set(message.node_id, nodeFields);
+                    next.set(localId, nodeFields);
                     return next;
                 });
-                this.nodeLocked$.next(message);
+                this.nodeLocked$.next({ ...message, node_id: localId });
                 break;
-            case 'node_unlocked':
+            }
+            case 'node_unlocked': {
+                const localId = this.resolveLocalNodeId(message.node_id);
                 this.lockedNodeFields.update((m) => {
                     const next = new Map(m);
-                    const nodeFields = new Map(next.get(message.node_id) ?? []);
+                    const nodeFields = new Map(next.get(localId) ?? []);
                     nodeFields.delete(message.field);
-                    if (nodeFields.size === 0) next.delete(message.node_id);
-                    else next.set(message.node_id, nodeFields);
+                    if (nodeFields.size === 0) next.delete(localId);
+                    else next.set(localId, nodeFields);
                     return next;
                 });
-                this.nodeUnlocked$.next(message);
+                this.nodeUnlocked$.next({ ...message, node_id: localId });
                 break;
+            }
             case 'presence_state_updated':
                 this.updateEditorInfo(message.editor);
                 break;
@@ -881,6 +888,7 @@ export class GraphCollaborationWsService {
     public sendNodeLocked(node_id: string, field: string): void {
         const editor = this.buildEditorInfo();
         if (!editor) return;
+        const wireId = this.lockWireId(node_id);
         this.lockedNodeFields.update((m) => {
             const next = new Map(m);
             const nodeFields = new Map(next.get(node_id) ?? []);
@@ -888,12 +896,13 @@ export class GraphCollaborationWsService {
             next.set(node_id, nodeFields);
             return next;
         });
-        this.sendRaw({ type: 'node_locked', node_id, field, editor });
+        this.sendRaw({ type: 'node_locked', node_id: wireId, field, editor });
     }
 
     public sendNodeUnlocked(node_id: string, field: string): void {
         const editor = this.buildEditorInfo();
         if (!editor) return;
+        const wireId = this.lockWireId(node_id);
         this.lockedNodeFields.update((m) => {
             const next = new Map(m);
             const nodeFields = new Map(next.get(node_id) ?? []);
@@ -902,7 +911,20 @@ export class GraphCollaborationWsService {
             else next.set(node_id, nodeFields);
             return next;
         });
-        this.sendRaw({ type: 'node_unlocked', node_id, field, editor });
+        this.sendRaw({ type: 'node_unlocked', node_id: wireId, field, editor });
+    }
+
+    private lockWireId(node_id: string): string {
+        const node = this.flowService.nodes().find((n) => n.id === node_id);
+        return node?.backendId != null ? stableNodeId(node.type, node.backendId) : node_id;
+    }
+
+    private resolveLocalNodeId(wireId: string): string {
+        const nodes = this.flowService.nodes();
+        const match = nodes.find(
+            (n) => n.id === wireId || (n.backendId != null && stableNodeId(n.type, n.backendId) === wireId)
+        );
+        return match?.id ?? wireId;
     }
 
     private buildEditorInfo(): EditorInfo | null {
