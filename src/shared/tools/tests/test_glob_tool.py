@@ -78,3 +78,13 @@ class TestGlobTool:
         result = glob_main(pattern="*.py", path="sub")
 
         assert result == "nested.py"
+
+    def test_glob_pattern_escaping_root_returns_no_out_of_root_matches(self, sandbox_dir):
+        _touch_with_mtime(sandbox_dir.parent / "secret.txt", time.time())
+        _touch_with_mtime(sandbox_dir / "inside.txt", time.time())
+
+        result = glob_main(pattern="../*.txt")
+
+        assert "secret.txt" not in result
+        assert result == "No files match pattern ../*.txt"
+        assert not result.startswith("Error:")

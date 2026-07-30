@@ -63,6 +63,7 @@ def main(pattern: str, path: str | None = None) -> str:
 
         try:
             matches = list(search_root.glob(pattern))
+            matches = [m for m in matches if RouteTool.is_path_has_permission(m)]
         except (ValueError, NotImplementedError) as e:
             return f"Error: invalid glob pattern '{pattern}': {e}"
 
