@@ -357,7 +357,7 @@ class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
                 "is_visible",
             ]
 
-    queryset = LLMConfig.objects.all()
+    queryset = LLMConfig.objects.select_related("api_key_secret").all()
     serializer_class = LLMConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = LLMConfigFilter
@@ -422,7 +422,7 @@ class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
                 "is_visible",
             ]
 
-    queryset = EmbeddingConfig.objects.all()
+    queryset = EmbeddingConfig.objects.select_related("api_key_secret").all()
     serializer_class = EmbeddingConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = EmbeddingConfigFilter
@@ -1414,7 +1414,7 @@ class RealtimeConfigModelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
                 "realtime_model",
             ]
 
-    queryset = RealtimeConfig.objects.all()
+    queryset = RealtimeConfig.objects.select_related("api_key_secret").all()
     serializer_class = RealtimeConfigSerializer
 
     filter_backends = [DjangoFilterBackend]
@@ -1453,7 +1453,9 @@ class RealtimeTranscriptionConfigModelViewSet(
                 "realtime_transcription_model",
             ]
 
-    queryset = RealtimeTranscriptionConfig.objects.all()
+    queryset = RealtimeTranscriptionConfig.objects.select_related(
+        "api_key_secret"
+    ).all()
     serializer_class = RealtimeTranscriptionConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = RealtimeTranscriptionConfigFilter
@@ -1739,7 +1741,7 @@ class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewS
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
 
-    queryset = McpTool.objects.all()
+    queryset = McpTool.objects.select_related("auth_secret").all()
     serializer_class = McpToolSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["name", "tool_name"]

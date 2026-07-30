@@ -1,8 +1,10 @@
 import pytest
 from django.urls import reverse
 from tables.services.telegram_trigger_service import TelegramTriggerService
+from tables.models import Secret
 from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import WebhookTrigger
+from tables.services.secrets import secret_encryption
 
 
 @pytest.mark.django_db
@@ -42,9 +44,12 @@ class TestTelegramTriggerViewSet:
         )
 
         # 2. Create the initial node (triggers signal -> uses mock)
+        secret = Secret(org=graph.org, name="telegram-trigger-node-test-key")
+        secret_encryption.encrypt(text="12345:fake_key").write_to(secret)
+        secret.save()
         node = TelegramTriggerNode.objects.create(
             node_name="OldName",
-            telegram_bot_api_key="12345:fake_key",
+            telegram_bot_api_key_secret=secret,
             graph=graph,
         )
 
@@ -69,7 +74,12 @@ class TestTelegramTriggerViewSet:
         assert response.status_code == 200
         node.refresh_from_db()
         assert node.node_name == "NewName"
-        assert node.telegram_bot_api_key == "54321:new_fake_key"
+        assert (
+            secret_encryption.decrypt(
+                encryptedtext=node.telegram_bot_api_key_secret.value
+            )
+            == "54321:new_fake_key"
+        )
 
         # Verify the mock was called (once for create, once for update)
         assert mock_register.call_count == 2

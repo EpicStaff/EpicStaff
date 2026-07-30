@@ -45,7 +45,9 @@ from tables.models import (
     PythonCode,
     RealtimeAgent,
     Organization,
+    Secret,
 )
+from tables.services.secrets import secret_encryption
 
 from tests.helpers import data_to_json_file
 
@@ -417,12 +419,21 @@ def openai_realtime_model(openai_provider):
     return realtime_model
 
 
+def _make_secret(org, name, text):
+    secret = Secret(org=org, name=name)
+    secret_encryption.encrypt(text=text).write_to(secret)
+    secret.save()
+    return secret
+
+
 @pytest.fixture
 def openai_realtime_model_config(openai_realtime_model, default_org):
     # Create and return the `RealtimeModelConfig` instance
     config = RealtimeConfig.objects.create(
         custom_name="test",
-        api_key="test",
+        api_key_secret=_make_secret(
+            default_org, "openai-realtime-model-config-key", "test"
+        ),
         realtime_model=openai_realtime_model,
         org=default_org,
     )
@@ -441,7 +452,9 @@ def realtime_transcription_config(realtime_transcription_model, default_org):
     return RealtimeTranscriptionConfig.objects.create(
         custom_name="test_realtime_transcription_config",
         realtime_transcription_model=realtime_transcription_model,
-        api_key="mock key",
+        api_key_secret=_make_secret(
+            default_org, "realtime-transcription-config-key", "mock key"
+        ),
         org=default_org,
     )
 

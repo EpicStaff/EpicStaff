@@ -6,7 +6,10 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedUniqueValidator,
 )
 from tables.serializers.utils.mixins import TagHandlingMixin
-from tables.serializers.utils.secret_fields import SecretCharField
+from tables.serializers.utils.secret_fields import (
+    MaskedSecretField,
+    SecretFieldWriteMixin,
+)
 from tables.models.embedding_models import (
     EmbeddingConfig,
     EmbeddingModel,
@@ -28,8 +31,11 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
-    api_key = SecretCharField()
+class EmbeddingConfigSerializer(
+    SecretFieldWriteMixin, TagHandlingMixin, serializers.ModelSerializer
+):
+    secret_fk_fields = ["api_key_secret"]
+    api_key = MaskedSecretField(source="api_key_secret")
     tags = EmbeddingConfigTagSerializer(many=True, required=False)
     tag_model = EmbeddingConfigTag
     # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.
@@ -47,5 +53,5 @@ class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
     class Meta:
         model = EmbeddingConfig
-        fields = "__all__"
+        exclude = ["api_key_secret"]
         read_only_fields = ["org", "created_by"]

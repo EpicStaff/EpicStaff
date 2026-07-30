@@ -1,4 +1,7 @@
-from tables.serializers.utils.secret_fields import SecretCharField
+from tables.serializers.utils.secret_fields import (
+    MaskedSecretField,
+    SecretFieldWriteMixin,
+)
 from rest_framework import serializers
 
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
@@ -14,6 +17,7 @@ from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerValidator,
 )
 from tables.services.schedule_trigger_service import ScheduleTriggerService
+from tables.services.secrets import secret_service
 from tables.models.webhook_models import WebhookTrigger
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
@@ -109,9 +113,13 @@ class TelegramTriggerNodeFieldSerializer(
 
 
 class TelegramTriggerNodeSerializer(
-    ContentHashWritableMixin, WebhookCreationMixin, serializers.ModelSerializer
+    SecretFieldWriteMixin,
+    ContentHashWritableMixin,
+    WebhookCreationMixin,
+    serializers.ModelSerializer,
 ):
-    telegram_bot_api_key = SecretCharField()
+    secret_fk_fields = ["telegram_bot_api_key_secret"]
+    telegram_bot_api_key = MaskedSecretField(source="telegram_bot_api_key_secret")
     webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
     fields = TelegramTriggerNodeFieldSerializer(many=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -127,7 +135,15 @@ class TelegramTriggerNodeSerializer(
             "webhook_trigger",
         ] + BaseGraphEntityMixin.Meta.common_fields
 
+    def _resolve_org(self, instance):
+        return instance.graph.org
+
     def create(self, validated_data):
+        pending = {
+            f: validated_data.pop(f)
+            for f in self.secret_fk_fields
+            if f in validated_data
+        }
         fields_data = validated_data.pop("fields", [])
 
         webhook_trigger_data = validated_data.pop("webhook_trigger", None)
@@ -136,6 +152,26 @@ class TelegramTriggerNodeSerializer(
         if webhook_trigger_data:
             webhook_trigger_instance, _ = self._get_or_create_webhook_trigger(
                 webhook_trigger_data
+            )
+
+        # Resolve secrets before the node's first save, not after: a post_save
+        # receiver registers the bot webhook with Telegram, so the FK has to be
+        # set on that first save — otherwise the receiver fires once uselessly
+        # (no key yet) and a second time after _write_secrets re-saves.
+        graph = validated_data.get("graph")
+        for attr, text in pending.items():
+            validated_data[attr] = (
+                secret_service.create(
+                    text=text,
+                    org=graph.org,
+                    name=secret_service.auto_name(
+                        org=graph.org,
+                        model_name=TelegramTriggerNode.__name__.lower(),
+                        field_name=attr,
+                    ),
+                )
+                if text
+                else None
             )
 
         node = TelegramTriggerNode.objects.create(
@@ -147,6 +183,11 @@ class TelegramTriggerNodeSerializer(
         return node
 
     def update(self, instance, validated_data):
+        pending = {
+            f: validated_data.pop(f)
+            for f in self.secret_fk_fields
+            if f in validated_data
+        }
         fields_data = validated_data.pop("fields", None)
 
         if "webhook_trigger" in validated_data:
@@ -171,6 +212,7 @@ class TelegramTriggerNodeSerializer(
                     telegram_trigger_node=instance, **item
                 )
 
+        self._write_secrets(instance, pending)
         return instance
 
 

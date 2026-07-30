@@ -20,6 +20,7 @@ from tables.models.tag_models import (
     RealtimeConfigTag,
     RealtimeTranscriptionConfigTag,
 )
+from tables.services.secrets import secret_service
 
 
 class QuickstartService(metaclass=SingletonMeta):
@@ -221,35 +222,50 @@ class QuickstartService(metaclass=SingletonMeta):
             )
         return bool(checks) and all(checks)
 
+    def _attach_api_key_secret(self, config, api_key: str):
+        """Wrap the raw quickstart key in a Secret and point the config's FK at
+        it — configs no longer hold plaintext keys."""
+        if not api_key:
+            return config
+        config.api_key_secret = secret_service.create_for_field(
+            text=api_key,
+            org=config.org,
+            instance=config,
+            field_name="api_key_secret",
+        )
+        config.save(update_fields=["api_key_secret"])
+        return config
+
     def _create_llm_model_config(
         self, provider: Provider, api_key: str, config_name: str, org_id: int
     ) -> LLMConfig:
         llm_model = self._get_or_create_llm_model(provider)
-        return LLMConfig.objects.create(
-            model=llm_model, custom_name=config_name, api_key=api_key, org_id=org_id
+        config = LLMConfig.objects.create(
+            model=llm_model, custom_name=config_name, org_id=org_id
         )
+        return self._attach_api_key_secret(config=config, api_key=api_key)
 
     def _create_embedder_config(
         self, provider: Provider, api_key: str, config_name: str, org_id: int
     ) -> EmbeddingConfig:
         embedder_model = self._get_or_create_embedder_model(provider)
-        return EmbeddingConfig.objects.create(
+        config = EmbeddingConfig.objects.create(
             model=embedder_model,
             custom_name=config_name,
-            api_key=api_key,
             org_id=org_id,
         )
+        return self._attach_api_key_secret(config=config, api_key=api_key)
 
     def _create_realtime_config(
         self, provider: Provider, api_key: str, config_name: str, org_id: int
     ) -> RealtimeConfig:
         realtime_model = self._get_or_create_realtime_model(provider)
-        return RealtimeConfig.objects.create(
+        config = RealtimeConfig.objects.create(
             realtime_model=realtime_model,
             custom_name=config_name,
-            api_key=api_key,
             org_id=org_id,
         )
+        return self._attach_api_key_secret(config=config, api_key=api_key)
 
     def _create_realtime_transcription_config(
         self, provider: Provider, api_key: str, config_name: str, org_id: int
@@ -257,12 +273,12 @@ class QuickstartService(metaclass=SingletonMeta):
         realtime_transcription_model = self._get_or_create_realtime_transcription_model(
             provider
         )
-        return RealtimeTranscriptionConfig.objects.create(
+        config = RealtimeTranscriptionConfig.objects.create(
             realtime_transcription_model=realtime_transcription_model,
             custom_name=config_name,
-            api_key=api_key,
             org_id=org_id,
         )
+        return self._attach_api_key_secret(config=config, api_key=api_key)
 
     def _get_or_create_llm_model(self, provider: Provider):
         llm_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get("llm_model")
