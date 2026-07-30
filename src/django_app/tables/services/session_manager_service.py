@@ -1,3 +1,7 @@
+from dataclasses import replace
+
+from django.db import transaction
+
 from tables.exceptions import GraphEntryPointException
 from tables.models import (
     AudioTranscriptionNode,
@@ -32,15 +36,16 @@ from src.shared.models import (
     SubGraphData,
     SubGraphNodeData,
 )
-from tables.models.session_models import SessionWarningMessage
+from tables.models.session_models import SessionTrigger, SessionWarningMessage
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.services.converter_service import ConverterService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.trigger_spec import TriggerSpec
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
-from utils.graph_utils import NodeNameResolver, resolve_node_names
+from utils.graph_utils import NodeNameResolver, generate_node_name, resolve_node_names
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
 
@@ -101,9 +106,10 @@ class SessionManagerService(metaclass=SingletonMeta):
     def create_session(
         self,
         graph_id: int,
+        *,
         variables: dict | None = None,
         graph_user=None,
-        entrypoint: str | None = None,
+        trigger: TriggerSpec,
     ) -> Session:
         if variables is None:
             variables = dict()
@@ -130,14 +136,18 @@ class SessionManagerService(metaclass=SingletonMeta):
         variables_for_db = {k: v for k, v in variables.items() if k != "shared"}
 
         graph = Graph.objects.get(pk=graph_id)
-        session = Session.objects.create(
-            graph_id=graph_id,
-            status=Session.SessionStatus.PENDING,
-            variables=variables_for_db,
-            time_to_live=graph.time_to_live,
-            graph_user=graph_user,
-            entrypoint=entrypoint,
-        )
+        entrypoint = generate_node_name(trigger.node_id, trigger.node_name)
+
+        with transaction.atomic():
+            session = Session.objects.create(
+                graph_id=graph_id,
+                status=Session.SessionStatus.PENDING,
+                variables=variables_for_db,
+                time_to_live=graph.time_to_live,
+                graph_user=graph_user,
+                entrypoint=entrypoint,
+            )
+            SessionTrigger.objects.create(session=session, **trigger.to_fields())
         return session
 
     def create_session_data(
@@ -159,9 +169,10 @@ class SessionManagerService(metaclass=SingletonMeta):
     def run_session(
         self,
         graph_id: int,
+        *,
         variables: dict | None = None,
         user=None,
-        entrypoint: str | None = None,
+        trigger: TriggerSpec,
     ) -> int:
         variables = self._get_actual_variables(variables)
         logger.info(f"'run_session' got variables: {variables=}")
@@ -171,11 +182,14 @@ class SessionManagerService(metaclass=SingletonMeta):
             graph=graph, user=user, payload=variables
         )
 
+        if trigger.trigger_type == SessionTrigger.TriggerType.MANUAL:
+            trigger = replace(trigger, triggered_by_user=run_vars.graph_user)
+
         session: Session = self.create_session(
             graph_id=graph_id,
             variables=run_vars.variables,
             graph_user=run_vars.graph_user,
-            entrypoint=entrypoint,
+            trigger=trigger,
         )
         try:
             session_data: SessionData = self.create_session_data(session=session)

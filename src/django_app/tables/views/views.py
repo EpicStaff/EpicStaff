@@ -48,6 +48,7 @@ from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.quickstart_service import QuickstartService
 from tables.services.knowledge_services.indexing_service import IndexingService
+from tables.services.trigger_spec import TriggerSpec
 
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -221,7 +222,7 @@ class SessionViewSet(
         return SessionSerializer
 
     def get_queryset(self):
-        qs = Session.objects.select_related("graph").filter(
+        qs = Session.objects.select_related("graph", "trigger").filter(
             graph__org_id=self.get_active_org_id()
         )
         detailed = self.request.query_params.get("detailed", "true").lower()
@@ -483,7 +484,10 @@ class RunSession(APIView):
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
-                graph_id=graph_id, variables=variables, user=request.user
+                graph_id=graph_id,
+                variables=variables,
+                user=request.user,
+                trigger=TriggerSpec.manual(),
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:
