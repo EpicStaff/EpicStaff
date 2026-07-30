@@ -4,6 +4,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Literal, Optional
 
+from enums import FileExtensionEnum
 from errors import RepositoryError
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
@@ -142,6 +143,17 @@ class AbstractNaiveRagRepository(RepositoryErrorWrapper, abc.ABC):
             vector: Query embedding to compare against stored chunk embeddings.
             limit: Maximum number of chunks to return.
             similarity_threshold: Maximum distance threshold for a chunk to be included.
+        """
+
+    @abc.abstractmethod
+    async def get_document_content(
+        self, rag_id: int, document_id: int
+    ) -> tuple[bytes, FileExtensionEnum]:
+        """Return the raw file bytes and file extension of `document_id` within RAG collection `rag_id`.
+
+        Args:
+            rag_id: Primary key of the RAG collection.
+            document_id: Primary key of the document (config) whose file content to load.
         """
 
 
