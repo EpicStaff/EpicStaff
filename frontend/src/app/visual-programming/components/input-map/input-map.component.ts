@@ -194,12 +194,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 >
                     <i class="ti ti-plus"></i> Add Input
                 </button>
-                <div
-                    class="test-input-dirty-warning"
-                    [class.visible]="testInputDirty"
-                >
-                    <div class="test-input-dirty-warning__inner">Click "Save node" to save test variables.</div>
-                </div>
                 <div class="test-mode-actions">
                     <button
                         type="button"
@@ -453,48 +447,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     background-color: rgba(104, 95, 255, 0.12);
                 }
             }
-
-            .test-input-dirty-warning {
-                display: grid;
-                grid-template-rows: 0fr;
-                transition: grid-template-rows 0.15s cubic-bezier(0.22, 1, 0.36, 1);
-
-                &.visible {
-                    grid-template-rows: 1fr;
-
-                    .test-input-dirty-warning__inner {
-                        transform: translateY(0);
-                        opacity: 1;
-                    }
-                }
-
-                &__inner {
-                    display: flex;
-                    align-items: center;
-                    overflow: hidden;
-                    min-height: 0;
-                    font-size: 0.75rem;
-                    border-radius: 5px;
-                    border-left: 3px solid #efd616;
-                    background-color: rgba(239, 214, 22, 0.08);
-                    color: #efd616;
-                    padding: 0.25rem 0.5rem;
-                    transform: translateY(-100%);
-                    opacity: 0;
-                    transition:
-                        transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-                        opacity 0.25s ease;
-                }
-
-                .save-node-svg {
-                    color: var(--accent-color);
-                    background: var(--color-nodes-sidepanel-bg);
-                    border: none;
-                    padding: 0.25rem;
-                    border-radius: 4px;
-                    margin: 0 3px;
-                }
-            }
         `,
     ],
 })
@@ -506,7 +458,6 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     @Input() graphId: number | null = null;
     @Input() nodeName: string | null = null;
     @Input() testRunning: boolean = false;
-    @Input() testInputDirty: boolean = false;
     @Output() testModeChange = new EventEmitter<boolean>();
     @Output() runTest = new EventEmitter<Record<string, string>>();
 
@@ -952,10 +903,15 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         this.activeRowIndex = rowIndex;
 
         const triggerEl = event.currentTarget as HTMLElement;
+        const rect = triggerEl.getBoundingClientRect();
+        const origin =
+            rect.width || rect.height
+                ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+                : { x: event.clientX, y: event.clientY, width: 0, height: 0 };
 
         const positionStrategy = this.overlay
             .position()
-            .flexibleConnectedTo(triggerEl)
+            .flexibleConnectedTo(origin)
             .withPositions([
                 { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 8 },
                 { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -8 },

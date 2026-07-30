@@ -89,7 +89,6 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                         [graphId]="graphId()"
                                         [nodeName]="node().node_name"
                                         [testRunning]="testRunning()"
-                                        [testInputDirty]="testInputDirty()"
                                         (testModeChange)="isOpenTestMode.set($event)"
                                         (runTest)="onRunTest($event)"
                                     ></app-input-map>
@@ -492,11 +491,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     codeEditorHasError: boolean = false;
     private readonly pythonCodeChange$ = new Subject<string>();
     private readonly formDirtyTick = signal(0);
-    public readonly testInputDirty = computed(() => {
-        this.formDirtyTick();
-        if (!this.form) return false;
-        return this.buildTestInputValuesSignature() !== this.initialTestInputValuesSignature;
-    });
 
     public override readonly isDirty = computed(() => {
         this.formDirtyTick();
