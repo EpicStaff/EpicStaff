@@ -128,12 +128,12 @@ export class ProfileApiKeysTabComponent implements OnInit {
             .confirm(getProfileRevokeConfirmationData(name))
             .pipe(
                 switchMap((confirmed) => (confirmed === true ? this.currentUserService.revokeApiKey(id) : EMPTY)),
+                finalize(() => this.fetchApiKeys()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
                 next: () => this.toast.success(`"${name}" was revoked`),
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to revoke API key'),
-                complete: () => this.fetchApiKeys(),
             });
     }
 
@@ -145,12 +145,12 @@ export class ProfileApiKeysTabComponent implements OnInit {
             .confirm(getProfileDeleteConfirmationData(name, isActive))
             .pipe(
                 switchMap((confirmed) => (confirmed === true ? this.currentUserService.deleteApiKey(id) : EMPTY)),
+                finalize(() => this.fetchApiKeys()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
                 next: () => this.toast.success(`"${name}" was deleted`),
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to delete API key'),
-                complete: () => this.fetchApiKeys(),
             });
     }
 

@@ -315,12 +315,12 @@ export class ApiKeysTabComponent {
             .confirm(getAdminRevokeConfirmationData(row['name'] as string))
             .pipe(
                 switchMap((confirmed) => (confirmed === true ? this.apiKeysService.revokeApiKey(id) : EMPTY)),
+                finalize(() => this.resetFiltersAndReload()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
                 next: () => {
                     this.toast.success(`"${row['name']}" was revoked`);
-                    this.resetFiltersAndReload();
                 },
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to revoke API key'),
             });
@@ -332,12 +332,12 @@ export class ApiKeysTabComponent {
             .confirm(getAdminDeleteConfirmationData(row['ownerName'] as string))
             .pipe(
                 switchMap((confirmed) => (confirmed === true ? this.apiKeysService.deleteApiKey(id) : EMPTY)),
+                finalize(() => this.resetFiltersAndReload()),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
                 next: () => {
                     this.toast.success(`"${row['name']}" was deleted`);
-                    this.resetFiltersAndReload();
                 },
                 error: (err) => this.toast.error(err.error?.message ?? 'Failed to delete API key'),
             });
