@@ -1,7 +1,0 @@
-tool-data:
-  name: "Shell Exec Tool"
-  description: "Executes a shell command inside the sandbox with hardened caps: merged stdout/stderr truncated to 30000 characters, timeout-based process-tree kill with partial output, and an optional background mode that returns a job id immediately (retrieve results with the Shell Job Result Tool)."
-  args-schema: "args_schema.json"
-  code-file: "main.py"
-  entrypoint: "main"
-  requirements: "requirements.txt"
