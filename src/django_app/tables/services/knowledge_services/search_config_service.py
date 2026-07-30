@@ -29,6 +29,7 @@ from src.shared.models.knowledge import (
     NaiveRagSearchConfig,
 )
 from tables.constants.knowledge_constants import MAX_TOKEN_FIELD_VALUE
+from tables.utils.litellm_model_info import resolve_context_window
 
 
 SAFE_FRACTION = 0.8
@@ -217,6 +218,85 @@ def safe_budget(target_ctx: int, is_trusted: bool = True) -> int:
     return min(raw, MAX_TOKEN_FIELD_VALUE)
 
 
+def resolve_effective_budget(ctx: int, is_trusted: bool, custom: dict | None) -> int:
+    """Token budget for the suggestion, letting the caller drive it via a
+    user-supplied `max_context_tokens` in two cases:
+
+      1. ctx untrusted (model unknown to litellm and no config window) → use
+         the user value as the budget basis (capped at MAX_TOKEN_FIELD_VALUE);
+      2. ctx trusted but user value < recommended safe_budget (user economises)
+         → use the user value.
+
+    Otherwise (no value, non-numeric, or trusted value >= recommended) fall
+    back to the recommended safe_budget.
+    """
+    base = safe_budget(ctx, is_trusted)
+    if not custom:
+        return base
+    raw = custom.get("max_context_tokens")
+    if raw is None:
+        return base
+    try:
+        user = int(raw)
+    except (TypeError, ValueError):
+        return base
+    if user < 1:
+        return base
+    if not is_trusted:
+        return min(user, MAX_TOKEN_FIELD_VALUE)
+    if user < base:
+        return user
+    return base
+
+
+# Token-budget fields whose save-side upper bound tracks the model context
+# window (mirrors the fields clamp_token_fields adjusts on the suggest side).
+TOKEN_CAP_FIELDS = frozenset(
+    {
+        "max_context_tokens",
+        "data_max_tokens",
+        "reduce_max_tokens",
+        "reduce_max_completion_tokens",
+        "primer_llm_max_tokens",
+        "local_search_max_data_tokens",
+        "local_search_llm_max_gen_tokens",
+        "local_search_llm_max_gen_completion_tokens",
+    }
+)
+
+
+def resolve_token_field_cap(llm_config) -> int:
+    """Upper bound for token-budget search-config fields.
+
+    litellm-known model → its context window; unknown model, no configured
+    model, or no llm_config → MAX_TOKEN_FIELD_VALUE (general ceiling).
+    """
+    if llm_config is None:
+        return MAX_TOKEN_FIELD_VALUE
+    model_name = llm_config.model.name if llm_config.model else ""
+    user_override = getattr(llm_config, "context_window", None)
+    ctx, _warning, is_trusted = resolve_context_window(model_name, user_override)
+    return ctx if is_trusted else MAX_TOKEN_FIELD_VALUE
+
+
+def validate_graph_token_fields(graph_config: dict, cap: int) -> dict:
+    """Collect token fields exceeding `cap`, keyed by method then field.
+
+    Robust to the global/global_ key naming — iterates over per-method dicts.
+    """
+    errors: dict[str, dict[str, str]] = {}
+    for method_key, params in graph_config.items():
+        if not isinstance(params, dict):
+            continue
+        for field_name, value in params.items():
+            if field_name in TOKEN_CAP_FIELDS and value is not None and value > cap:
+                errors.setdefault(method_key, {})[field_name] = (
+                    f"Ensure this value is less than or equal to {cap} "
+                    f"(model context window)."
+                )
+    return errors
+
+
 def clamp_token_fields(
     fields: dict[str, int | None],
     budget: int,
@@ -320,7 +400,7 @@ def build_graph_basic_params(
     custom: dict | None,
 ) -> tuple[GraphRagBasicSearchParams, list[str]]:
     chunks = metrics.total_chunks
-    default_budget = safe_budget(ctx, is_trusted)
+    default_budget = resolve_effective_budget(ctx, is_trusted, custom)
     token_fields, clamped = clamp_token_fields(
         {
             "max_context_tokens": _pick(custom, "max_context_tokens", default_budget),
@@ -352,7 +432,7 @@ def build_graph_local_params(
         custom, metrics, "text_unit_prop", "community_prop"
     )
 
-    default_budget = safe_budget(ctx, is_trusted)
+    default_budget = resolve_effective_budget(ctx, is_trusted, custom)
     token_fields, clamped = clamp_token_fields(
         {
             "max_context_tokens": _pick(custom, "max_context_tokens", default_budget),
@@ -389,7 +469,7 @@ def build_graph_global_params(
 ) -> tuple[GraphRagGlobalSearchParams, list[str]]:
     chunks = metrics.total_chunks
     docs = metrics.total_documents
-    default_budget = safe_budget(ctx, is_trusted)
+    default_budget = resolve_effective_budget(ctx, is_trusted, custom)
     token_fields, clamped = clamp_token_fields(
         {
             "max_context_tokens": _pick(custom, "max_context_tokens", default_budget),
@@ -453,7 +533,7 @@ def build_graph_drift_params(
         custom, metrics, "local_search_text_unit_prop", "local_search_community_prop"
     )
 
-    default_budget = safe_budget(ctx, is_trusted)
+    default_budget = resolve_effective_budget(ctx, is_trusted, custom)
     token_fields, clamped = clamp_token_fields(
         {
             "data_max_tokens": _pick(custom, "data_max_tokens", default_budget),

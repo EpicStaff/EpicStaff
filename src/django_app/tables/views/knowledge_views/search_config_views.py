@@ -29,6 +29,7 @@ from tables.services.knowledge_services.search_config_service import (
     build_naive_params,
     get_graph_strategy,
     recommend_graph_search_method,
+    resolve_effective_budget,
     safe_budget,
 )
 from tables.services.knowledge_services.collection_management_service import (
@@ -76,13 +77,18 @@ def _build_response(
     clamped,
     is_trusted: bool,
     recommended_method: str | None = None,
+    effective_budget: int | None = None,
 ) -> Response:
     payload = SuggestOutput(
         metrics=metrics,
         resolved_llm_name=llm_name or None,
         llm_resolution_warning=warning,
         effective_llm_context_window=ctx,
-        safe_token_budget=safe_budget(ctx, is_trusted),
+        safe_token_budget=(
+            effective_budget
+            if effective_budget is not None
+            else safe_budget(ctx, is_trusted)
+        ),
         clamped_fields=clamped,
         suggested_params=suggested,
         recommended_search_method=recommended_method,
@@ -152,6 +158,9 @@ class GraphRagSuggestParamsView(APIView):
             suggested, clamped = strategy.builder(
                 metrics, ctx, is_trusted, req.user_custom_params
             )
+            effective_budget = resolve_effective_budget(
+                ctx, is_trusted, req.user_custom_params
+            )
             return _build_response(
                 metrics,
                 ctx,
@@ -161,6 +170,7 @@ class GraphRagSuggestParamsView(APIView):
                 clamped,
                 is_trusted,
                 recommended_method=recommend_graph_search_method(metrics),
+                effective_budget=effective_budget,
             )
         except (
             CollectionNotFoundException,

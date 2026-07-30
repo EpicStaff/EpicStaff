@@ -304,8 +304,7 @@ class GraphBasicSearchConfigInputSerializer(serializers.Serializer):
     max_context_tokens = serializers.IntegerField(
         required=False,
         min_value=100,
-        max_value=100000,
-        help_text="Maximum context tokens (100-100000)",
+        help_text="Maximum context tokens (upper bound = model context window)",
     )
 
 
@@ -351,8 +350,7 @@ class GraphLocalSearchConfigInputSerializer(serializers.Serializer):
     max_context_tokens = serializers.IntegerField(
         required=False,
         min_value=100,
-        max_value=100000,
-        help_text="Maximum context tokens (100-100000)",
+        help_text="Maximum context tokens (upper bound = model context window)",
     )
 
 
@@ -368,12 +366,8 @@ class GraphGlobalSearchConfigInputSerializer(serializers.Serializer):
     knowledge_prompt = serializers.CharField(
         required=False, allow_null=True, allow_blank=True
     )
-    max_context_tokens = serializers.IntegerField(
-        required=False, min_value=100, max_value=100000
-    )
-    data_max_tokens = serializers.IntegerField(
-        required=False, min_value=100, max_value=100000
-    )
+    max_context_tokens = serializers.IntegerField(required=False, min_value=100)
+    data_max_tokens = serializers.IntegerField(required=False, min_value=100)
     map_max_length = serializers.IntegerField(
         required=False, min_value=1, max_value=10000
     )
@@ -397,26 +391,22 @@ class GraphDriftSearchConfigInputSerializer(serializers.Serializer):
     reduce_prompt = serializers.CharField(
         required=False, allow_null=True, allow_blank=True
     )
-    data_max_tokens = serializers.IntegerField(
-        required=False, min_value=100, max_value=100000
-    )
+    data_max_tokens = serializers.IntegerField(required=False, min_value=100)
     reduce_max_tokens = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1, max_value=100000
+        required=False, allow_null=True, min_value=1
     )
     reduce_temperature = serializers.FloatField(
         required=False, min_value=0.0, max_value=2.0
     )
     reduce_max_completion_tokens = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1, max_value=100000
+        required=False, allow_null=True, min_value=1
     )
     concurrency = serializers.IntegerField(required=False, min_value=1, max_value=256)
     drift_k_followups = serializers.IntegerField(
         required=False, min_value=1, max_value=100
     )
     primer_folds = serializers.IntegerField(required=False, min_value=1, max_value=100)
-    primer_llm_max_tokens = serializers.IntegerField(
-        required=False, min_value=100, max_value=100000
-    )
+    primer_llm_max_tokens = serializers.IntegerField(required=False, min_value=100)
     n_depth = serializers.IntegerField(required=False, min_value=1, max_value=10)
     community_level = serializers.IntegerField(
         required=False, min_value=0, max_value=10
@@ -434,7 +424,7 @@ class GraphDriftSearchConfigInputSerializer(serializers.Serializer):
         required=False, min_value=1, max_value=100
     )
     local_search_max_data_tokens = serializers.IntegerField(
-        required=False, min_value=100, max_value=100000
+        required=False, min_value=100
     )
     local_search_temperature = serializers.FloatField(
         required=False, min_value=0.0, max_value=2.0
@@ -444,10 +434,10 @@ class GraphDriftSearchConfigInputSerializer(serializers.Serializer):
     )
     local_search_n = serializers.IntegerField(required=False, min_value=1, max_value=10)
     local_search_llm_max_gen_tokens = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1, max_value=100000
+        required=False, allow_null=True, min_value=1
     )
     local_search_llm_max_gen_completion_tokens = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1, max_value=100000
+        required=False, allow_null=True, min_value=1
     )
 
 

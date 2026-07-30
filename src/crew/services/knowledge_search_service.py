@@ -59,9 +59,15 @@ class RagSearchConfigFactory:
                 f"Supported types: {list(cls._configs.keys())}"
             )
 
-        data = {k: v for k, v in config_dict['search_params'].items() if k != 'search_method'}
-        data['rag_strategy'] = rag_type
-        data['method'] = config_dict['search_params']['search_method']
+        if rag_type == "graph":
+            search_params = config_dict["search_params"]
+            data = {k: v for k, v in search_params.items() if k != "search_method"}
+            data["rag_strategy"] = rag_type
+            data["method"] = search_params["search_method"]
+        else:
+            # naive-конфиг плоский: нет search_params/search_method
+            data = {k: v for k, v in config_dict.items() if k != "rag_type"}
+            data["rag_strategy"] = rag_type
 
         return config_class(data)
 
