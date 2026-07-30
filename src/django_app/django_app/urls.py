@@ -16,10 +16,10 @@ Including another URLconf
 """
 
 from django.urls import include, path
-from rest_framework_simplejwt.views import TokenRefreshView
 from tables.views.auth_views import (
     AdminPasswordResetView,
     ApiKeyValidateView,
+    CookieTokenRefreshView,
     FirstSetupView,
     LoginView,
     LogoutView,
@@ -30,6 +30,12 @@ from tables.views.auth_views import (
     SwaggerTokenView,
     TokenIntrospectView,
     WsTicketView,
+)
+from tables.views.api_key_views import (
+    ApiKeyManagementViewSet,
+    ProfileApiKeyDetailView,
+    ProfileApiKeyRevokeView,
+    ProfileApiKeysView,
 )
 from tables.views.permission_views import (
     MyPermissionsView,
@@ -49,7 +55,7 @@ from django.conf.urls.static import static
 urlpatterns = [
     path("api/auth/login/", LoginView.as_view(), name="login"),
     path("api/auth/logout/", LogoutView.as_view(), name="logout"),
-    path("api/auth/refresh/", TokenRefreshView.as_view(), name="refresh"),
+    path("api/auth/refresh/", CookieTokenRefreshView.as_view(), name="refresh"),
     path("api/auth/sse-ticket/", SseTicketView.as_view(), name="sse_ticket"),
     path("api/auth/ws-ticket/", WsTicketView.as_view(), name="ws_ticket"),
     path(
@@ -93,6 +99,36 @@ urlpatterns = [
         "api/profile/password-change/confirm/",
         PasswordChangeConfirmView.as_view(),
         name="profile_password_change_confirm",
+    ),
+    path(
+        "api/profile/api-keys/",
+        ProfileApiKeysView.as_view(),
+        name="profile_api_keys",
+    ),
+    path(
+        "api/profile/api-keys/<int:key_id>/",
+        ProfileApiKeyDetailView.as_view(),
+        name="profile_api_key_detail",
+    ),
+    path(
+        "api/profile/api-keys/<int:key_id>/revoke/",
+        ProfileApiKeyRevokeView.as_view(),
+        name="profile_api_key_revoke",
+    ),
+    path(
+        "api/api-keys/",
+        ApiKeyManagementViewSet.as_view({"get": "list"}),
+        name="api_keys_management",
+    ),
+    path(
+        "api/api-keys/<int:pk>/",
+        ApiKeyManagementViewSet.as_view({"delete": "destroy"}),
+        name="api_keys_management_detail",
+    ),
+    path(
+        "api/api-keys/<int:pk>/revoke/",
+        ApiKeyManagementViewSet.as_view({"post": "revoke"}),
+        name="api_keys_management_revoke",
     ),
     path(
         "api/permissions/catalog/",

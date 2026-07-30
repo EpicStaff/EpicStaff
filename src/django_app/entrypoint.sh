@@ -63,6 +63,8 @@ else
   echo "DJANGO_AUTO_CREATE_ADMIN=False — create the first superadmin via POST /api/auth/first-setup/."
 fi
 
+# Seed/rotate the singleton system API key from DJANGO_API_KEY.
+echo "Seeding system API key..."
 python manage.py seed_system_api_key
 
 # Collect static files for production server

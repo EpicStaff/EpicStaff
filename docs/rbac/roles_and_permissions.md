@@ -68,16 +68,25 @@ of caller and org. Cache-friendly.
 
 ```json
 {
-  "actions": ["CREATE", "READ", "UPDATE", "DELETE", "EXECUTE"],
+  "actions": [
+    { "code": "create", "label": "Create", "bit": 1 },
+    { "code": "read",   "label": "View",   "bit": 2 },
+    { "code": "update", "label": "Edit",   "bit": 4 },
+    { "code": "delete", "label": "Delete", "bit": 8 },
+    { "code": "export", "label": "Export", "bit": 16 }
+  ],
   "resource_types": [
-    { "group": "admin",     "key": "USERS",         "label": "Users",         "applicable_actions": ["CREATE", "READ", "UPDATE", "DELETE"] },
-    { "group": "admin",     "key": "ROLES",         "label": "Roles",         "applicable_actions": ["READ"] },
-    { "group": "admin",     "key": "ORGANIZATIONS", "label": "Organizations", "applicable_actions": ["READ", "UPDATE"] },
-    { "group": "workspace", "key": "PROJECTS",      "label": "Projects",      "applicable_actions": ["CREATE", "READ", "UPDATE", "DELETE"] },
-    { "group": "workspace", "key": "GRAPHS",        "label": "Graphs",        "applicable_actions": ["CREATE", "READ", "UPDATE", "DELETE", "EXECUTE"] },
-    { "group": "workspace", "key": "SESSIONS",      "label": "Sessions",      "applicable_actions": ["READ", "EXECUTE"] },
-    { "group": "config",    "key": "LLM_CONFIGS",   "label": "LLM configs",   "applicable_actions": ["CREATE", "READ", "UPDATE", "DELETE"] },
-    { "group": "config",    "key": "API_KEYS",      "label": "API keys",      "applicable_actions": ["CREATE", "READ", "DELETE"] }
+    { "code": "organizations",     "label": "Organizations",       "group": "admin",     "description": "Create, rename, deactivate organizations",       "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "users",             "label": "Users",               "group": "admin",     "description": "Add/remove members, assign roles within org",   "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "roles",             "label": "Roles",               "group": "admin",     "description": "Create/edit custom roles and assign to users",   "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "flows",             "label": "Flows",               "group": "workspace", "description": "Workflow definitions and their nodes",           "applicable_actions": ["create", "read", "update", "delete", "export"] },
+    { "code": "agents",            "label": "Agents",              "group": "workspace", "description": "AI agent configurations",                        "applicable_actions": ["create", "read", "update", "delete", "export"] },
+    { "code": "tools",             "label": "Tools",               "group": "workspace", "description": "Tool definitions and configurations",            "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "knowledge_sources", "label": "Knowledge Sources",   "group": "workspace", "description": "RAG collections and embeddings",                 "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "files",             "label": "Storage (Files)",     "group": "workspace", "description": "Files and folders in organization storage",      "applicable_actions": ["create", "read", "update", "delete", "export"] },
+    { "code": "projects",          "label": "Projects",            "group": "workspace", "description": "Organize AI agents and tasks",                   "applicable_actions": ["create", "read", "update", "delete", "export"] },
+    { "code": "llm_configs",       "label": "LLM Configs",         "group": "config",    "description": "LLM model configurations and settings",          "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "secrets",           "label": "API Keys / Secrets",  "group": "config",    "description": "Provider API keys, credentials, sensitive config", "applicable_actions": ["create", "read", "update", "delete"] }
   ]
 }
 ```

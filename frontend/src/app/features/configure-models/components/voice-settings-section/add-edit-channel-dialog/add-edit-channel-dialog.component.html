@@ -41,11 +41,12 @@
 
         <div>
             <app-custom-input
-                type="password"
+                type="secret"
                 label="Auth Token"
                 formControlName="auth_token"
-                placeholder="••••••••••••••••••••••••••••••••"
+                placeholder="Enter Auth Token..."
                 tooltipText="Your Twilio Auth Token"
+                cautionMessage="You must enter the full new auth token to change it. Partial updates aren't supported."
             />
         </div>
 

@@ -18,15 +18,26 @@ jobs:
     if: vars.CLA_ENFORCED == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        run: pip install google-api-python-client google-auth requests
+
       - name: "CLA Assistant"
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
-        uses: contributor-assistant/github-action@v2.6.1
+        run: python .github/scripts/cla_sign.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-        with:
-          path-to-signatures: 'signatures/cla.json'
-          path-to-document: 'CLA.md'
-          branch: 'cla-signatures'
-          allowlist: dependabot[bot]
-          custom-notsigned-prcomment: 'Thank you for your submission, we appreciate it. EpicStaff is a source-available project maintained by HYS Enterprise B.V. and distributed under the PolyForm Perimeter License 1.0.0. Before we can accept your contribution, we ask that you read and sign our Individual Contributor License Agreement (CLA). You can sign the CLA by posting a Pull Request comment in the same format as below.'
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          CLA_GDRIVE_ROOT_ID: ${{ vars.CLA_GDRIVE_ROOT_ID }}
+          CLA_GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.CLA_GDRIVE_SERVICE_ACCOUNT_JSON }}

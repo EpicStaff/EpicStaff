@@ -1,11 +1,11 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import {
+    AccessToken,
     GetMeResponse,
     PasswordChangeConfirmRequest,
     PasswordChangeVerifyRequest,
     PasswordChangeVerifyResponse,
-    TokenPair,
     UpdateMeRequest,
     UserRole,
 } from '@shared/models';
@@ -96,8 +96,8 @@ export class ProfileService {
         return this.http.post<PasswordChangeVerifyResponse>(`${this.baseUrl}password-change/request/`, dto);
     }
 
-    confirmPasswordChange(dto: PasswordChangeConfirmRequest): Observable<TokenPair> {
-        return this.http.post<TokenPair>(`${this.baseUrl}password-change/confirm/`, dto);
+    confirmPasswordChange(dto: PasswordChangeConfirmRequest): Observable<AccessToken> {
+        return this.http.post<AccessToken>(`${this.baseUrl}password-change/confirm/`, dto, { withCredentials: true });
     }
 
     /** Switches the active organization: clears all caches, sets the new org,

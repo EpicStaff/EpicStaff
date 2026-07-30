@@ -7,7 +7,7 @@ from tables.serializers.permission_serializers import (
     CatalogResponseSerializer,
     PermissionsMeResponseSerializer,
 )
-from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permission_catalog import (
     ACTION_METADATA,
@@ -19,7 +19,7 @@ from tables.services.rbac.permission_resolver import PermissionResolver
 class PermissionCatalogView(APIView):
     """Static permission taxonomy. Drives the FE matrix UI."""
 
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -38,7 +38,7 @@ class PermissionCatalogView(APIView):
 class MyPermissionsView(APIView):
     """Caller's effective permissions in the active org (header)."""
 
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     _org_context = OrgContextService()

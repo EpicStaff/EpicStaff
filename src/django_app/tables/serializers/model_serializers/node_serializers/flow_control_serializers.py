@@ -8,7 +8,6 @@ from tables.models.graph_models import (
     ConditionalEdge,
     DecisionTableNode,
     EndNode,
-    GraphOrganization,
     StartNode,
     ClassificationDecisionTableNode,
     ClassificationConditionGroup,
@@ -21,7 +20,9 @@ from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
 )
-from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+)
 from tables.serializers.utils.mixins import (
     NestedPythonCodeMixin,
     assert_node_ref_in_graph,
@@ -31,12 +32,6 @@ from tables.services.persistent_variables_service import (
 )
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
-)
-from tables.constants.variables_constants import (
-    DOMAIN_VARIABLES_KEY,
-    DOMAIN_ORGANIZATION_KEY,
-    DOMAIN_USER_KEY,
-    DOMAIN_PERSISTENT_KEY,
 )
 
 
@@ -68,45 +63,28 @@ class StartNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
     def get_node_name(self, obj):
         return "__start__"
 
+    def validate(self, attrs):
+        PersistentVariablesService().validate_start_node_variables(
+            attrs.get("variables")
+        )
+        return super().validate(attrs)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        instance = super().create(validated_data)
+        PersistentVariablesService().sync_from_start_node(
+            instance.graph, {}, instance.variables or {}
+        )
+        return instance
+
     @transaction.atomic
     def update(self, instance, validated_data):
         old_variables = instance.variables.copy() if instance.variables else {}
-
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-
-        # TODO: rbac refactor
-        graph_organization = GraphOrganization.objects.filter(
-            graph=instance.graph
-        ).first()
-
-        if graph_organization:
-            service = PersistentVariablesService()
-            service.sync_graph_organization(
-                graph_organization, old_variables, instance.variables
-            )
-
+        instance = super().update(instance, validated_data)
+        PersistentVariablesService().sync_from_start_node(
+            instance.graph, old_variables, instance.variables or {}
+        )
         return instance
-
-    # TODO: refactor, persistant variables story
-    def validate(self, attrs):
-        variables = attrs.get("variables")
-        actual_variables = variables.get(DOMAIN_VARIABLES_KEY, {})
-
-        persistent_variables = variables.get(DOMAIN_PERSISTENT_KEY, {})
-        organization_variables = persistent_variables.get(DOMAIN_ORGANIZATION_KEY, [])
-        user_variables = persistent_variables.get(DOMAIN_USER_KEY, [])
-
-        service = PersistentVariablesService()
-        for path in organization_variables + user_variables:
-            value = service.get_by_path(actual_variables, path)
-            if value is None:
-                raise serializers.ValidationError(
-                    f"Path {path} in {DOMAIN_PERSISTENT_KEY} does not exist in {DOMAIN_VARIABLES_KEY}."
-                )
-
-        return super().validate(attrs)
 
 
 class EndNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
@@ -185,22 +163,52 @@ class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
     classification_decision_table_node = serializers.PrimaryKeyRelatedField(
         read_only=True
     )
-    prompt = serializers.PrimaryKeyRelatedField(
-        queryset=ClassificationDecisionTablePrompt.objects.all(),
-        required=False,
-        allow_null=True,
+    # prompt_key (preferred) links a same-payload prompt by its per-node key;
+    # prompt (pk) is back-compat. Both resolve node-locally.
+    prompt = serializers.IntegerField(
+        source="prompt_id", required=False, allow_null=True
     )
-    prompt_key = serializers.SerializerMethodField()
+    prompt_key = serializers.CharField(required=False, allow_null=True, write_only=True)
 
-    def get_prompt_key(self, obj):
-        return obj.prompt.prompt_key if obj.prompt else None
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["prompt_key"] = instance.prompt.prompt_key if instance.prompt_id else None
+        return data
+
+    def validate_group_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("group_name may not be blank.")
+        return value
 
     class Meta:
         model = ClassificationConditionGroup
-        fields = "__all__"
+        fields = [
+            "id",
+            "classification_decision_table_node",
+            "prompt",
+            "prompt_key",
+            "created_at",
+            "updated_at",
+            "metadata",
+            "group_name",
+            "order",
+            "expression",
+            "manipulation",
+            "continue_flag",
+            "next_node_id",
+            "dock_visible",
+            "field_expressions",
+            "field_manipulations",
+            "route_code",
+            "section",
+        ]
 
 
 class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
+    llm_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=LLMConfig.objects.all(), required=False, allow_null=True
+    )
+
     class Meta:
         model = ClassificationDecisionTablePrompt
         fields = [
@@ -219,9 +227,10 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
     prompt_configs = ClassificationDecisionTablePromptSerializer(
         many=True, required=False
     )
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     pre_python_code = PythonCodeSerializer(required=False, allow_null=True)
     post_python_code = PythonCodeSerializer(required=False, allow_null=True)
-    default_llm_config = serializers.PrimaryKeyRelatedField(
+    default_llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(), required=False, allow_null=True
     )
 
@@ -246,6 +255,13 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
             "condition_groups",
             "prompt_configs",
         ]
+
+    def validate(self, attrs):
+        graph = attrs.get("graph") or getattr(self.instance, "graph", None)
+        for field in ("default_next_node_id", "next_error_node_id"):
+            node_id = attrs.get(field, getattr(self.instance, field, None))
+            assert_node_ref_in_graph(node_id=node_id, graph=graph, field=field)
+        return attrs
 
     def create(self, validated_data):
         condition_groups_data = validated_data.pop("condition_groups", None)

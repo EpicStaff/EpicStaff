@@ -126,16 +126,13 @@ class LiteLLMClient(BaseLLMClient):
             kwargs["seed"] = cfg.seed
         if cfg.timeout is not None:
             kwargs["timeout"] = cfg.timeout
-        # Caller-supplied output_schema takes precedence over the config-level
-        # response_format field so the structured-output feature can override
-        # without mutating the persisted LLMConfig row.
+        # Structured-output requests pass an output_schema, which becomes the
+        # response_format sent to the model.
         if self._output_schema:
             kwargs["response_format"] = {
                 "type": "json_schema",
                 "json_schema": self._output_schema,
             }
-        elif getattr(cfg, "response_format", None):
-            kwargs["response_format"] = cfg.response_format
         if getattr(cfg, "extra_headers", None):
             kwargs["extra_headers"] = cfg.extra_headers
 

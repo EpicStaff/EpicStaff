@@ -9,16 +9,18 @@ Streaming endpoint: SSEMixin (Django View) with ticket auth.
 
 from asgiref.sync import async_to_sync, sync_to_async
 from django.db.models import Count
+from django.http import Http404
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from utils.logger import logger
-
 from tables.models.flow_assistant_models import FlowAssistantConversation
+from tables.models.graph_models import Graph
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.flow_assistant_serializers import (
     AuditConversationSerializer,
     FlowAssistantConversationSerializer,
@@ -35,19 +37,19 @@ from tables.services.flow_assistant import (
 )
 from tables.services.flow_assistant.helpers import request_cancel
 from tables.services.flow_assistant.stream_serializer import serialize_stream_event
+from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.organization_resolution import resolve_organization_user
+from tables.services.rbac.permission_assert import assert_org_permission
 from tables.services.rbac.permissions import IsSuperadmin
 from tables.services.rbac.ticket_service import sse_ticket_service
 from tables.utils.mixins import SSEMixin
+from utils.logger import logger
 
 
-def _get_graph_or_404(graph_id: int):
-    """Return the Graph or raise 404-style exception."""
-    from django.http import Http404
-    from tables.models.graph_models import Graph
-
+def _get_graph_in_org_or_404(graph_id: int, org_id: int):
+    """Return the Graph only if it belongs to org_id; else 404."""
     try:
-        return Graph.objects.get(pk=graph_id)
+        return Graph.objects.get(pk=graph_id, org_id=org_id)
     except Graph.DoesNotExist:
         raise Http404(f"Graph {graph_id} not found.")
 
@@ -62,9 +64,6 @@ def _get_conversation_or_404(
     When organization_user is supplied the conversation must belong to that
     membership and must not be soft-deleted.
     """
-    from django.http import Http404
-    from rest_framework.exceptions import PermissionDenied
-
     try:
         conv = (
             FlowAssistantConversation.objects.select_related(
@@ -101,21 +100,43 @@ class FlowAssistantConfigView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
+    _org_service = OrgContextService()
 
     def get(self, request, graph_id: int):
-        _get_graph_or_404(graph_id)
+        org_id = self._org_service.resolve(request=request)
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.READ,
+        )
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=org_id)
         service = FlowAssistantService()
         assistant = service.get_or_create(graph_id)
 
-        serializer = FlowAssistantSerializer(assistant)
+        serializer = FlowAssistantSerializer(
+            instance=assistant, context={"request": request}
+        )
         return Response(serializer.data)
 
     def patch(self, request, graph_id: int):
-        _get_graph_or_404(graph_id)
+        org_id = self._org_service.resolve(request=request)
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.UPDATE,
+        )
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=org_id)
         service = FlowAssistantService()
         assistant = service.get_or_create(graph_id)
 
-        serializer = FlowAssistantSerializer(assistant, data=request.data, partial=True)
+        serializer = FlowAssistantSerializer(
+            instance=assistant,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
@@ -133,8 +154,14 @@ class FlowAssistantConversationsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, graph_id: int):
-        _get_graph_or_404(graph_id)
         organization_user = resolve_organization_user(request)
+        assert_org_permission(
+            user=request.user,
+            org_id=organization_user.org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.READ,
+        )
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
 
         queryset = (
             FlowAssistantConversation.objects.filter(
@@ -152,8 +179,14 @@ class FlowAssistantConversationsView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
     def post(self, request, graph_id: int):
-        _get_graph_or_404(graph_id)
         organization_user = resolve_organization_user(request)
+        assert_org_permission(
+            user=request.user,
+            org_id=organization_user.org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.READ,
+        )
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
         StartConversationSerializer(data=request.data).is_valid(raise_exception=True)
 
         service = FlowAssistantService()
@@ -177,8 +210,14 @@ class FlowAssistantConversationView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, graph_id: int, conversation_id: int):
-        _get_graph_or_404(graph_id)
         organization_user = resolve_organization_user(request)
+        assert_org_permission(
+            user=request.user,
+            org_id=organization_user.org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.READ,
+        )
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
         conversation = _get_conversation_or_404(
             graph_id, conversation_id, organization_user
         )
@@ -186,8 +225,14 @@ class FlowAssistantConversationView(APIView):
         return Response(serializer.data)
 
     def delete(self, request, graph_id: int, conversation_id: int):
-        _get_graph_or_404(graph_id)
         organization_user = resolve_organization_user(request)
+        assert_org_permission(
+            user=request.user,
+            org_id=organization_user.org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.READ,
+        )
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
         conversation = _get_conversation_or_404(
             graph_id, conversation_id, organization_user
         )
@@ -205,8 +250,14 @@ class FlowAssistantSendMessageView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, graph_id: int, conversation_id: int):
-        _get_graph_or_404(graph_id)
         organization_user = resolve_organization_user(request)
+        assert_org_permission(
+            user=request.user,
+            org_id=organization_user.org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.READ,
+        )
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
         conversation = _get_conversation_or_404(
             graph_id, conversation_id, organization_user
         )
@@ -435,6 +486,12 @@ class FlowAssistantCancelView(APIView):
 
     def post(self, request, graph_id: int, conversation_id: int):
         organization_user = resolve_organization_user(request)
+        assert_org_permission(
+            user=request.user,
+            org_id=organization_user.org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.READ,
+        )
         conv = FlowAssistantConversation.objects.filter(
             pk=conversation_id,
             organization_user=organization_user,

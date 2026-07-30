@@ -34,7 +34,6 @@ class FirstSetupResponseSerializer(serializers.Serializer):
     user = _SetupUserPayload()
     organization = _SetupOrganizationPayload()
     access = serializers.CharField()
-    refresh = serializers.CharField()
 
 
 # ---- Token introspect ----
@@ -51,17 +50,6 @@ class TokenIntrospectResponseSerializer(serializers.Serializer):
     scopes = serializers.ListField(child=serializers.CharField(), required=False)
 
 
-# ---- API-key validate ----
-
-
-class ApiKeyValidateResponseSerializer(serializers.Serializer):
-    active = serializers.BooleanField()
-    name = serializers.CharField()
-    prefix = serializers.CharField()
-    scopes = serializers.ListField(child=serializers.CharField())
-    owner_user_id = serializers.IntegerField(allow_null=True)
-
-
 # ---- Reset user ----
 
 
@@ -74,7 +62,6 @@ class ResetUserRequestSerializer(serializers.Serializer):
 
 class ResetUserResponseSerializer(serializers.Serializer):
     access = serializers.CharField()
-    refresh = serializers.CharField()
     api_key = serializers.CharField()
 
 
@@ -152,5 +139,8 @@ class LoginSerializer(TokenObtainPairSerializer):
 
 
 class LoginResponseSerializer(serializers.Serializer):
-    refresh = serializers.CharField()
+    access = serializers.CharField()
+
+
+class RefreshResponseSerializer(serializers.Serializer):
     access = serializers.CharField()

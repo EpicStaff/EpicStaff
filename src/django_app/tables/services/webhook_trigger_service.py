@@ -6,7 +6,7 @@ from django_app.settings import (
     REDIS_TUNNEL_CONFIG_CHANNEL,
     TUNNEL_URLS_HASH_KEY,
 )
-from tables.models.graph_models import GraphOrganization, WebhookTriggerNode
+from tables.models.graph_models import WebhookTriggerNode
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
@@ -58,18 +58,11 @@ class WebhookTriggerService(metaclass=SingletonMeta):
 
         webhook_trigger_node_list = WebhookTriggerNode.objects.filter(**filters)
 
-        # TODO: rbac refactor
         for webhook_trigger_node in webhook_trigger_node_list:
-            graph_organization = GraphOrganization.objects.filter(
-                graph=webhook_trigger_node.graph
-            ).first()
-            variables: dict = {"trigger_payload": payload}
-            if graph_organization:
-                variables.update(graph_organization.persistent_variables)
-
+            # Persistent-variable merging is owned by run_session.
             self.session_manager_service.run_session(
                 graph_id=webhook_trigger_node.graph.pk,
-                variables=variables,
+                variables={"trigger_payload": payload},
                 entrypoint=generate_node_name(
                     webhook_trigger_node.id, webhook_trigger_node.node_name
                 ),

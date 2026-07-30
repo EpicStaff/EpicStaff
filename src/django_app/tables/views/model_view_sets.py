@@ -293,6 +293,10 @@ from tables.swagger_schemas.twilio_schemas import (
     TWILIO_PHONE_NUMBERS_GET,
     TWILIO_CONFIGURE_WEBHOOK_POST,
 )
+from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
+from tables.models.rbac_models.rbac_enums import ResourceType
+from tables.services.rbac.org_context_service import OrgContextService
+from tables.services.rbac.permissions import HasOrgPermission
 from tables.graph_collab.notifications import GraphEditNotifier
 from utils.logger import logger
 
@@ -807,9 +811,11 @@ class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     filterset_fields = ["tool", "name"]
 
 
-class PythonCodeResultReadViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
-    # Superadmin-only
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+class PythonCodeResultReadViewSet(
+    OrgScopedViewSetMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
     queryset = PythonCodeResult.objects.all()
     serializer_class = PythonCodeResultSerializer
 
@@ -902,7 +908,7 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
     def perform_create(self, serializer):
         org_id = self.get_active_org_id()
         created_graph = serializer.save(org_id=org_id, created_by=self.request.user)
-        GraphOrganization.objects.create(graph=created_graph, organization_id=org_id)
+        GraphOrganization.objects.create(graph=created_graph)
 
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
@@ -1073,7 +1079,33 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
 
 
 @extend_schema_view(
+    list=extend_schema(
+        description=(
+            "Returns a paginated list of graph versions for the given graph. "
+            "Soft-deleted versions are excluded. "
+            "Use the `graph_id` query parameter to filter by a specific graph."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="graph_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter versions by graph ID.",
+            )
+        ],
+    ),
     restore=extend_schema(
+        summary="Restore the graph to the state captured in this version, with optional auto-backup before restoring.",
+        description=(
+            "Restores the target graph to the exact state stored in this version's snapshot. "
+            "Before applying the snapshot, the service validates that all external dependencies "
+            "(LLMs, tools, knowledge sources) referenced in the snapshot are still available; "
+            "any that are missing are stripped and reported in the `warnings` list. "
+            "If the `backup` query parameter is `true`, the current graph state is saved as a new "
+            "version before restoring, and its ID is returned in `auto_backup_version_id`. "
+            "Uses optimistic locking via `save_version` to prevent overwriting concurrent edits."
+        ),
         request=RestoreVersionInputSerializer,
         responses={
             200: inline_serializer(
@@ -1096,6 +1128,13 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
         ],
     ),
     create_graph=extend_schema(
+        summary="Create a new independent graph from this version's snapshot.",
+        description=(
+            "Creates a new, fully independent graph from the snapshot stored in this version. "
+            "The new graph is a copy — it does not remain linked to the original. "
+            "Missing dependencies are stripped from the snapshot and reported in `warnings`. "
+            "Returns the ID of the newly created graph."
+        ),
         request=None,
         responses={
             201: inline_serializer(
@@ -1106,6 +1145,24 @@ class GraphLightViewSet(OrgScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
                 },
             )
         },
+    ),
+    all=extend_schema(
+        summary="List all graph versions including soft-deleted ones.",
+        description=(
+            "Returns all graph versions including those that have been soft-deleted. "
+            "Intended for audit or recovery workflows where deleted versions need to be visible. "
+            "Use the `graph_id` query parameter to scope results to a specific graph."
+        ),
+        responses={200: GraphVersionReadSerializer(many=True)},
+        parameters=[
+            OpenApiParameter(
+                name="graph_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Filter versions by graph ID.",
+            )
+        ],
     ),
 )
 class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
@@ -1356,9 +1413,9 @@ class MemoryViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    # TODO(EST-2423 deferred):  org-scope agent memory. MemoryDatabase has no org
-    # link (UUID pk; agent_id/user_id live inside the opaque JSON payload), so it
-    # needs a denormalized org before it can be scoped. Authenticated-only for now.
+    # NOTE: this endpoint is scheduled for removal. Until then it is locked to
+    # superadmin
+    permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = MemoryDatabase.objects.all()
     serializer_class = MemorySerializer
     filter_backends = [DjangoFilterBackend]
@@ -1828,7 +1885,13 @@ class DecisionTableNodeModelViewSet(
         node.save()
 
 
-class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
+class ClassificationDecisionTableNodeModelViewSet(
+    OrgScopedChildViewSetMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "export": Permission.EXPORT}
+    org_filter_path = "graph__org_id"
     queryset = ClassificationDecisionTableNode.objects.all()
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1840,7 +1903,9 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        node, _ = self._node_service.create_or_update(data=request.data)
+        node, _ = self._node_service.create_or_update(
+            data=request.data, request=request
+        )
         return Response(self.get_serializer(node).data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
@@ -1848,7 +1913,10 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
         node, _ = self._node_service.create_or_update(
-            data=request.data, instance=instance, partial=partial
+            data=request.data,
+            instance=instance,
+            partial=partial,
+            request=request,
         )
         return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
 
@@ -1868,7 +1936,9 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="export")
     def export(self, request, pk=None):
         export_format = request.query_params.get("export_format", "json")
-        result = self._node_service.export(pk=pk, export_format=export_format)
+        result = self._node_service.export(
+            pk=pk, export_format=export_format, org_id=self.get_active_org_id()
+        )
         if result.errors is not None:
             return Response(
                 {"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST
@@ -1904,23 +1974,20 @@ class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewS
         return Response(serializer.data)
 
 
-class GraphOrganizationViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+# Read-only: the row is created alongside its graph (see
+# GraphViewSet.perform_create) and org is derived from graph.org, so there
+# is no client-facing create/update path.
+class GraphOrganizationViewSet(
+    OrgScopedChildViewSetMixin, viewsets.ReadOnlyModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
     queryset = GraphOrganization.objects.all()
     serializer_class = GraphOrganizationSerializer
 
-    def perform_create(self, serializer):
-        # Enforce the invariant: a flow's persistent-state row is always owned
-        # by the flow's own org (never a different organization).
-        self._assert_parent_in_active_org(serializer)
-        serializer.save(organization_id=serializer.validated_data["graph"].org_id)
 
-    def perform_update(self, serializer):
-        serializer.save(organization_id=serializer.instance.graph.org_id)
-
-
+# TODO refactor to use user_variable for persistent variables
 class GraphOrganizationUserViewSet(
     OrgScopedChildViewSetMixin, viewsets.ReadOnlyModelViewSet
 ):

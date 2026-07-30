@@ -1,3 +1,4 @@
+from tables.serializers.utils.secret_fields import SecretCharField
 from rest_framework import serializers
 
 from tables.models.webhook_models import (
@@ -25,6 +26,7 @@ class WebhookTriggerSerializer(serializers.ModelSerializer):
 
 
 class VoiceSettingsSerializer(serializers.ModelSerializer):
+    twilio_auth_token = SecretCharField()
     voice_stream_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
