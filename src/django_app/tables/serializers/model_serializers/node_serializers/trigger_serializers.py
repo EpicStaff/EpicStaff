@@ -69,7 +69,9 @@ class TelegramTriggerNodeSerializer(
     serializers.ModelSerializer,
 ):
     telegram_bot_api_key = SecretCharField()
-    webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
+    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    )
     fields = TelegramTriggerNodeFieldSerializer(many=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
