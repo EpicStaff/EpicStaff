@@ -558,8 +558,10 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     private buildFormSignatureExceptTestValues(): string {
         const raw = this.form.getRawValue() as Record<string, unknown>;
         const testInput = (raw['test_input'] as { key: string; value: string }[] | undefined) ?? [];
+        const inputMap = (raw['input_map'] as { key: string; value: string }[] | undefined) ?? [];
         const stripped = {
             ...raw,
+            input_map: inputMap.filter((p) => p.key?.trim()),
             test_input: testInput.map((p) => ({ key: p.key, value: '' })),
         };
         return JSON.stringify(stripped);
@@ -614,10 +616,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     }
 
     initializeForm(): FormGroup {
-        this.terminalLogs.set([]);
         const sc = this.node().stream_config;
-
-        this.useStorage.set(this.node().data.use_storage ?? false);
 
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
@@ -633,17 +632,20 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.initializeInputMap(form);
         this.initializeTestInput(form);
 
+        return form;
+    }
+
+    protected override onFormReinitialized(): void {
+        this.terminalLogs.set([]);
+        this.useStorage.set(this.node().data.use_storage ?? false);
         this.pythonCode = this.node().data.code || '';
         this.initialPythonCode = this.pythonCode;
-        this.form = form;
         this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
         this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();
 
-        form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+        this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.formDirtyTick.update((v) => v + 1);
         });
-
-        return form;
     }
 
     createUpdatedNode(opts?: { manualSave?: boolean }): PythonNodeModel {

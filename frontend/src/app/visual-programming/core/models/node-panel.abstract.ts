@@ -116,21 +116,31 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         }
     }
 
-    // Resizes the live FormArray to match the remote one: overlapping rows keep their existing
-    // control (preserving focus/subscriptions) and get their value set; grown rows steal the
-    // correctly-structured item control from the freshly-built (and discarded) source array;
-    // shrunk rows are dropped from the tail. Fixes add/remove of input-list items not appearing live.
+    // Syncs model-backed rows (overlapping rows keep their control to preserve focus/subscriptions;
+    // grown rows steal the source control; shrunk rows are dropped). Local in-progress rows — a
+    // blank key not yet representable in the persisted model — are left untouched on both sides so
+    // an unfinished input-list row isn't wiped by the next merge.
     private syncFormArray(target: FormArray, source: FormArray): void {
-        const sourceControls: AbstractControl[] = source.controls.slice();
+        const isInProgressRow = (c: AbstractControl): boolean => {
+            const v = c.value as { key?: unknown } | null;
+            return !!v && typeof v === 'object' && 'key' in v && String(v.key ?? '').trim() === '';
+        };
 
-        while (target.length > sourceControls.length) {
-            target.removeAt(target.length - 1, { emitEvent: false });
+        const sourceControls: AbstractControl[] = source.controls.filter((c) => !isInProgressRow(c));
+        const modelBacked: number[] = [];
+        target.controls.forEach((c, i) => {
+            if (!isInProgressRow(c)) modelBacked.push(i);
+        });
+
+        while (modelBacked.length > sourceControls.length) {
+            const idx = modelBacked.pop() as number;
+            target.removeAt(idx, { emitEvent: false });
         }
 
         for (let i = 0; i < sourceControls.length; i++) {
-            if (i < target.length) {
+            if (i < modelBacked.length) {
                 try {
-                    target.at(i).setValue(sourceControls[i].getRawValue(), { emitEvent: false });
+                    target.at(modelBacked[i]).setValue(sourceControls[i].getRawValue(), { emitEvent: false });
                 } catch {
                     /* structural mismatch of a single row — keep local */
                 }
@@ -143,6 +153,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     private reinitializeForm(node: T): void {
         this.form = this.initializeForm();
         this.lastInitializedNodeId = node.id;
+        this.onFormReinitialized();
 
         this.baseline = this.form.getRawValue() as Record<string, unknown>;
         this.initialNodeSnapshot = JSON.stringify(this.createUpdatedNode());
@@ -218,6 +229,8 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     protected shouldReinitializeForm(node: T): boolean {
         return this.lastInitializedNodeId !== node.id;
     }
+
+    protected onFormReinitialized(): void {}
 
     protected abstract initializeForm(): FormGroup;
     protected abstract createUpdatedNode(): T;
