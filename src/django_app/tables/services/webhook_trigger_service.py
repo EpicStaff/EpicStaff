@@ -35,19 +35,14 @@ class WebhookTriggerService(metaclass=SingletonMeta):
     def get_trigger_filters(self, path: str, config_id: str | None = None) -> dict:
         filters = {"webhook_trigger__path": path}
 
-        if config_id:
-            if ":" in config_id:
-                provider, trigger_path = config_id.split(":", 1)
-                if provider in ("ngrok", "localhost"):
-                    filters["webhook_trigger__path"] = trigger_path
-                    filters["webhook_trigger__provider_type"] = provider
-                else:
-                    logger.warning(
-                        f"Unknown tunnel provider '{provider}' for config '{config_id}'"
-                    )
+        if config_id and ":" in config_id:
+            provider, _ = config_id.split(":", 1)
+            if provider in ("ngrok", "localhost"):
+                filters["webhook_trigger__provider_type"] = provider
             else:
-                # No provider prefix — filter by path only, accept any provider
-                filters["webhook_trigger__path"] = config_id
+                logger.warning(
+                    f"Unknown tunnel provider '{provider}' for config '{config_id}'"
+                )
 
         return filters
 
