@@ -1,4 +1,14 @@
-import { ApplicationRef, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
+import {
+    ApplicationRef,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    inject,
+    input,
+    signal,
+    untracked,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl, FormArray, FormBuilder, FormGroup, ValidatorFn, Validators } from '@angular/forms';
 import { debounceTime } from 'rxjs';
@@ -81,10 +91,20 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     }
 
     private mergeRemoteIntoForm(): void {
+        const wasDirty = untracked(() => this.isDirty());
         const source = this.initializeForm();
         const remoteValue = source.getRawValue() as Record<string, unknown>;
         this.applyRemoteDiff(this.form, source, this.baseline ?? {});
         this.baseline = remoteValue;
+        if (!wasDirty) {
+            untracked(() => {
+                try {
+                    this.initialNodeSnapshot = JSON.stringify(this.createUpdatedNode());
+                } catch {
+                    /* keep previous snapshot */
+                }
+            });
+        }
         this.dirtyCheckTick.update((v) => v + 1);
     }
 
