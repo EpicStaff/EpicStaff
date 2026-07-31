@@ -139,6 +139,11 @@ class GraphRagDetailSerializer(serializers.ModelSerializer):
     index_config = GraphRagIndexConfigSerializer(read_only=True)
     total_documents_in_collection = serializers.SerializerMethodField()
     documents_in_graph_rag = serializers.SerializerMethodField()
+    processing_document_ids = serializers.ListSerializer(
+        source='indexing_document_config_ids',
+        child=serializers.IntegerField(),
+        allow_empty=True,
+    )
 
     class Meta:
         model = GraphRag
@@ -152,6 +157,7 @@ class GraphRagDetailSerializer(serializers.ModelSerializer):
             "rag_status",
             "collection_id",
             "collection_name",
+            "processing_document_ids",
             "index_config",
             "total_documents_in_collection",
             "documents_in_graph_rag",
