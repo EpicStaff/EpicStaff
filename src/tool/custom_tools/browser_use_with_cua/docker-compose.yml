@@ -1,0 +1,34 @@
+name: browser_use_with_cua
+services:
+  browser_use_with_cua:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: marko/browser_use_with_cua:dev
+    container_name: browser_use_with_cua
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      - DEEPSEEK_TEMPERATURE=${DEEPSEEK_TEMPERATURE:-0.0}
+      - VNC_PASS=${VNC_PASS:-secret}
+      - VNC_GEOMETRY=1600x900
+      - RUNS_DIR=/app/runs
+      - PYTHONUNBUFFERED=1
+      - DISPLAY=:99
+      - FASTMCP_HOST=0.0.0.0
+      - FASTMCP_PORT=8080
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - START_TOOL=browser
+      - START_URL=about:blank
+      - CUA_USE_LOCAL=1        
+      - CUA_CONTAINER_NAME=browser_use_with_cua
+    volumes:
+      - ./runs:/app/runs
+    ports:
+      - "5900:5900"
+      - "8080:8080"
+    command: ["python", "-u", "fast_mcp_server.py"]
+    restart: no
+
+

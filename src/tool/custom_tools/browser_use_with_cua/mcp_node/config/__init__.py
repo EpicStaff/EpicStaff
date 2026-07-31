@@ -1,0 +1,13 @@
+from .config import (
+    DEEPSEEK_API_KEY,
+    DEEPSEEK_MODEL,
+    DEEPSEEK_BASE_URL,
+    DEEPSEEK_TEMPERATURE,
+)
+
+__all__ = [
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_MODEL",
+    "DEEPSEEK_BASE_URL",
+    "DEEPSEEK_TEMPERATURE",
+]
