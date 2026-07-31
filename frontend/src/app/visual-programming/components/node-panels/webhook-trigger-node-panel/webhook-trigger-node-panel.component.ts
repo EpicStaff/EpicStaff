@@ -1,6 +1,6 @@
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CustomInputComponent, WebhookTriggerSelectComponent } from '@shared/components';
@@ -37,10 +37,22 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
 
-    liveUrl = signal<string | null>(null);
+    copied = signal<boolean>(false);
+    selectedTrigger = signal<WebhookTriggerModel | null>(null);
+    fullUrl = computed<string | null>(() => {
+        const t = this.selectedTrigger();
+        if (!t?.live_url) return null;
+        const base = t.live_url.replace(/\/+$/, '');
+        const path = (t.path ?? '').replace(/^\/+/, '');
+        return path ? `${base}/${path}` : base;
+    });
+    webhookInvalid = computed<boolean>(() => {
+        const t = this.selectedTrigger();
+        return !!t && !t.live_url;
+    });
 
     onTriggerResolved(trigger: WebhookTriggerModel | null): void {
-        this.liveUrl.set(trigger?.live_url ?? null);
+        this.selectedTrigger.set(trigger);
     }
 
     constructor() {
@@ -98,10 +110,11 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     }
 
     copyWebhookUrl(): void {
-        const url = this.liveUrl();
+        const url = this.fullUrl();
         if (!url) return;
 
         this.clipboard.copy(url);
+        this.copied.set(true);
     }
 
     toggleCodeEditorFullWidth(): void {

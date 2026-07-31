@@ -19,6 +19,7 @@ import {
     ReactiveFormsModule,
     ValidationErrors,
     Validator,
+    Validators,
 } from '@angular/forms';
 
 import {
@@ -91,7 +92,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     ];
 
     form = this.fb.group({
-        path: [''],
+        path: ['', [Validators.required]],
         provider_type: [null as WebhookProviderType | null],
         ngrok_name: [''],
         ngrok_auth_token: [''],
@@ -125,6 +126,10 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     private onValidatorChange: () => void = () => {};
 
     ngOnInit(): void {
+        this.applyProviderValidators((this.form.value.provider_type as WebhookProviderType | null) ?? null);
+        this.form.controls.provider_type.valueChanges
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((pt) => this.applyProviderValidators((pt as WebhookProviderType | null) ?? null));
         this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             this.providerType.set((this.form.value.provider_type as WebhookProviderType | null) ?? null);
             if (this.mode() === 'new') this.emit();
@@ -132,6 +137,30 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         this.service.changed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             if (this.triggersLoaded()) this.loadTriggers();
         });
+    }
+
+    private applyProviderValidators(pt: WebhookProviderType | null): void {
+        const ngrokName = this.form.controls.ngrok_name;
+        const ngrokToken = this.form.controls.ngrok_auth_token;
+        const localhostName = this.form.controls.localhost_name;
+
+        if (pt === 'ngrok') {
+            ngrokName.setValidators([Validators.required]);
+            ngrokToken.setValidators([Validators.required]);
+            localhostName.clearValidators();
+        } else if (pt === 'localhost') {
+            ngrokName.clearValidators();
+            ngrokToken.clearValidators();
+            localhostName.setValidators([Validators.required]);
+        } else {
+            ngrokName.clearValidators();
+            ngrokToken.clearValidators();
+            localhostName.clearValidators();
+        }
+        ngrokName.updateValueAndValidity({ emitEvent: false });
+        ngrokToken.updateValueAndValidity({ emitEvent: false });
+        localhostName.updateValueAndValidity({ emitEvent: false });
+        this.onValidatorChange();
     }
 
     onExistingOpened(): void {
@@ -229,12 +258,14 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
                 { emitEvent: false }
             );
             this.providerType.set(value.provider_type ?? null);
+            this.applyProviderValidators(value.provider_type ?? null);
             return;
         }
         this.mode.set('new');
         this.editingId = undefined;
         this.form.reset({ provider_type: null, ngrok_region: 'eu' }, { emitEvent: false });
         this.providerType.set(null);
+        this.applyProviderValidators(null);
     }
 
     registerOnChange(fn: (v: WebhookTriggerWrite | null) => void): void {
@@ -258,8 +289,16 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         if (this.mode() === 'new') {
             const path = (this.form.value.path ?? '').trim();
             if (path && !WEBHOOK_NAME_PATTERN.test(path)) return { pattern: true };
-            if ((this.pathRequired() || path) && !this.form.value.provider_type) {
+            const provider = (this.form.value.provider_type as WebhookProviderType | null) ?? null;
+            if ((this.pathRequired() || path) && !provider) {
                 return { providerRequired: true };
+            }
+            if (provider === 'ngrok') {
+                if (!(this.form.value.ngrok_name ?? '').trim()) return { ngrokNameRequired: true };
+                if (!(this.form.value.ngrok_auth_token ?? '').trim()) return { ngrokAuthTokenRequired: true };
+            }
+            if (provider === 'localhost') {
+                if (!(this.form.value.localhost_name ?? '').trim()) return { localhostNameRequired: true };
             }
         }
         return null;

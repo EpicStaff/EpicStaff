@@ -25,11 +25,11 @@
         </div>
     } @else {
         <div class="trigger-list">
-            @for (trigger of triggers(); track trigger.id) {
+            @for (trigger of displayedTriggers(); track trigger.id) {
                 <div class="trigger-card">
                     <div class="trigger-card__header">
                         <div class="trigger-card__name-row">
-                            <span class="trigger-card__name">{{ trigger.path }}</span>
+                            <span class="trigger-card__name">{{ trigger.name || trigger.path }}</span>
                             @if (trigger.provider_type) {
                                 <span class="trigger-card__badge">{{ trigger.provider_type }}</span>
                             }

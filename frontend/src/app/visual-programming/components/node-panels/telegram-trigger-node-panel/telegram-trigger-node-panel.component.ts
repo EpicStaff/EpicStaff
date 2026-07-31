@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
@@ -8,7 +8,6 @@ import {
     JsonEditorComponent,
     WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { startWith } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
 import {
@@ -20,6 +19,7 @@ import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { WebhookTriggerModel } from '../../../core/models/webhook-trigger.model';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
 import { WebhookStatus } from './webhook-status.model';
 
@@ -38,16 +38,16 @@ import { WebhookStatus } from './webhook-status.model';
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTriggerNodeModel> implements OnInit {
+export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTriggerNodeModel> {
     public override readonly isExpanded = input<boolean>(false);
 
     private dialog = inject(Dialog);
 
     selectedFields = signal<DisplayedTelegramField[]>([]);
-    webhookConfigured = signal<boolean>(false);
+    webhookRegistered = signal<boolean>(false);
 
     webhookStatusDisplay = computed<WebhookStatus>(() =>
-        this.webhookConfigured() ? WebhookStatus.SUCCESS : WebhookStatus.FAIL
+        this.webhookRegistered() ? WebhookStatus.SUCCESS : WebhookStatus.FAIL
     );
 
     jsonValues = computed(() => {
@@ -78,12 +78,8 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
         super();
     }
 
-    ngOnInit() {
-        this.webhookConfigured.set(this.isConfigured(this.node().data.webhook_trigger));
-    }
-
-    private isConfigured(value: unknown): boolean {
-        return typeof value === 'number';
+    onTriggerResolved(trigger: WebhookTriggerModel | null): void {
+        this.webhookRegistered.set(!!trigger?.live_url);
     }
 
     private setSelectedFields(nodeFields: TelegramTriggerNodeField[]): void {
@@ -103,20 +99,12 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
 
     initializeForm(): FormGroup {
         this.setSelectedFields(this.node().data.fields);
-        const form = this.fb.group({
+        return this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             telegram_bot_api_key: [this.node().data.telegram_bot_api_key || '', Validators.required],
             webhook_trigger: [this.node().data.webhook_trigger ?? null],
             fields: [this.node().data.fields || []],
         });
-        form.get('webhook_trigger')
-            ?.valueChanges.pipe(
-                startWith(form.get('webhook_trigger')?.value ?? null),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe((value) => this.webhookConfigured.set(this.isConfigured(value)));
-
-        return form;
     }
 
     createUpdatedNode(): TelegramTriggerNodeModel {

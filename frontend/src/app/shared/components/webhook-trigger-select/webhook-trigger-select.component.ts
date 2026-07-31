@@ -112,7 +112,14 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     displayLabel(t: WebhookTriggerModel): string {
-        return `${t.path} (${t.provider_type ?? 'none'})`;
+        switch (t.provider_type) {
+            case 'ngrok':
+                return `${t.ngrok_config?.name} (${t.provider_type ?? 'none'})`;
+            case 'localhost':
+                return `${t.localhost_config?.name} (${t.provider_type ?? 'none'})`;
+            default:
+                return `${t.path} (${t.provider_type ?? 'none'})`;
+        }
     }
 
     toggle(): void {
