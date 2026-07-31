@@ -29,6 +29,7 @@
             label="Webhook Path"
             formControlName="path"
             placeholder="e.g. my-webhook"
+            [required]="true"
             [activeColor]="activeColor()"
         ></app-custom-input>
 
@@ -36,6 +37,7 @@
             label="Provider"
             tooltipText="Tunnel provider that exposes this webhook."
             formControlName="provider_type"
+            [required]="true"
             [items]="providerItems()"
         />
 
@@ -44,6 +46,7 @@
                 label="Tunnel Name"
                 formControlName="ngrok_name"
                 placeholder="e.g. my-tunnel"
+                [required]="true"
                 [activeColor]="activeColor()"
             ></app-custom-input>
             <app-custom-input
@@ -51,6 +54,7 @@
                 label="Ngrok Auth Token"
                 formControlName="ngrok_auth_token"
                 placeholder="From dashboard.ngrok.com"
+                [required]="true"
                 [activeColor]="activeColor()"
             ></app-custom-input>
             <app-custom-input
@@ -71,6 +75,7 @@
                 label="Name"
                 formControlName="localhost_name"
                 placeholder="e.g. local"
+                [required]="true"
                 [activeColor]="activeColor()"
             ></app-custom-input>
         }

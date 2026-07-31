@@ -32,7 +32,10 @@
                     </div>
 
                     <div class="webhook-section">
-                        <app-webhook-trigger-select formControlName="webhook_trigger"></app-webhook-trigger-select>
+                        <app-webhook-trigger-select
+                            formControlName="webhook_trigger"
+                            (triggerResolved)="onTriggerResolved($event)"
+                        ></app-webhook-trigger-select>
 
                         <div class="webhook-status__container">
                             @switch (webhookStatusDisplay()) {

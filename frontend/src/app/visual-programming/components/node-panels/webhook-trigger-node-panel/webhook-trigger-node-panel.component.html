@@ -25,7 +25,7 @@
                         (triggerResolved)="onTriggerResolved($event)"
                     ></app-webhook-trigger-select>
 
-                    @if (liveUrl(); as url) {
+                    @if (fullUrl(); as url) {
                         <div class="webhook-url-display">
                             <span
                                 class="webhook-url-text"
@@ -44,9 +44,11 @@
                                     class="copy-icon"
                                     aria-hidden="true"
                                 ></span>
-                                <span>Copy</span>
+                                <span>{{ copied() ? 'Copied' : 'Copy' }}</span>
                             </button>
                         </div>
+                    } @else if (webhookInvalid()) {
+                        <div class="webhook-warning">Webhook is not registered. Check the trigger configuration.</div>
                     }
 
                     <app-custom-input

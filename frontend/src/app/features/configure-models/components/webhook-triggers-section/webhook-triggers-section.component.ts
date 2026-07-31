@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
     ButtonComponent,
@@ -30,6 +30,19 @@ export class WebhookTriggersSectionComponent implements OnInit {
 
     status = signal<LoadingState>(LoadingState.IDLE);
     triggers = signal<WebhookTriggerModel[]>([]);
+
+    displayedTriggers = computed(() => this.triggers().map((t) => ({ ...t, name: this.getTriggerName(t) })));
+
+    private getTriggerName(t: WebhookTriggerModel): string | undefined {
+        switch (t.provider_type) {
+            case 'ngrok':
+                return t.ngrok_config?.name;
+            case 'localhost':
+                return t.localhost_config?.name;
+            default:
+                return;
+        }
+    }
 
     ngOnInit(): void {
         this.loadTriggers();
