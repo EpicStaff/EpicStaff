@@ -56,10 +56,21 @@ export class SelectComponent implements ControlValueAccessor {
     placeholder = input<string>('Select option');
     invalid = input<boolean>(false);
     disabled = input<boolean>(false);
+    hideTrigger = input<boolean>(false);
+    panelClass = input<string | string[]>('');
+    showSearch = input<boolean>(false);
+    searchPlaceholder = input<string>('Search...');
 
     open = signal(false);
+    search = signal('');
     private controlDisabled = signal(false);
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
+
+    filteredItems = computed<SelectItem[]>(() => {
+        const term = this.search().toLowerCase().trim();
+        if (!term) return this.items();
+        return this.items().filter((i) => i.name.toLowerCase().includes(term));
+    });
 
     selectedValue = model<unknown | null>(null);
     selectedItem = computed(() => {
@@ -90,9 +101,15 @@ export class SelectComponent implements ControlValueAccessor {
     }
 
     openDropdown() {
+        this.openAt(this.triggerBtn.nativeElement);
+    }
+
+    openAt(originElement: HTMLElement, width?: number): void {
+        if (this.isDisabled()) return;
+        this.search.set('');
         if (!this.overlayRef) {
             const positionStrategy = this.overlayPositionBuilder
-                .flexibleConnectedTo(this.triggerBtn)
+                .flexibleConnectedTo(originElement)
                 .withPositions([
                     {
                         originX: 'start',
@@ -116,7 +133,8 @@ export class SelectComponent implements ControlValueAccessor {
                 scrollStrategy: this.overlay.scrollStrategies.reposition(),
                 hasBackdrop: true,
                 backdropClass: 'transparent-backdrop',
-                width: this.triggerBtn.nativeElement.offsetWidth,
+                panelClass: this.panelClass() || undefined,
+                width: width ?? originElement.offsetWidth,
             });
 
             this.overlayRef

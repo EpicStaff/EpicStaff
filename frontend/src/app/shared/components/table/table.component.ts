@@ -11,6 +11,7 @@ import {
     untracked,
 } from '@angular/core';
 
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { CheckboxComponent } from '../checkbox/checkbox.component';
 import { MultiSelectComponent } from '../multi-select/multi-select.component';
 import { AppTableColumnDef, TableRow } from './table.model';
@@ -20,7 +21,7 @@ import { AppTableCellDirective } from './table-cell.directive';
     selector: 'app-table',
     templateUrl: './table.component.html',
     styleUrls: ['./table.component.scss'],
-    imports: [NgTemplateOutlet, CheckboxComponent, MultiSelectComponent],
+    imports: [NgTemplateOutlet, CheckboxComponent, MultiSelectComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppTableComponent {
@@ -36,6 +37,8 @@ export class AppTableComponent {
     selectionChange = output<TableRow[]>();
     filterChange = output<{ key: string; values: string[] }>();
     rowClick = output<TableRow>();
+    /** Emitted when a column's headerIcon is clicked, with the clicked element to anchor a popup to */
+    headerIconClick = output<{ key: string; target: HTMLElement }>();
 
     readonly cellTemplates = contentChildren(AppTableCellDirective);
 
@@ -134,6 +137,10 @@ export class AppTableComponent {
         }
 
         this.rowClick.emit(item);
+    }
+
+    onHeaderIconClick(key: string, event: MouseEvent): void {
+        this.headerIconClick.emit({ key, target: event.currentTarget as HTMLElement });
     }
 
     onFilterChange(key: string, values: unknown[]): void {

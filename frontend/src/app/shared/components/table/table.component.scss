@@ -53,6 +53,41 @@
     white-space: nowrap;
 }
 
+.col-label-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary-60);
+
+    &--clickable {
+        cursor: pointer;
+
+        // .col-label sets its own color, which otherwise blocks inheriting this on hover/active.
+        &:hover {
+            color: var(--color-text-primary);
+
+            .col-label {
+                color: var(--color-text-primary);
+            }
+        }
+    }
+
+    &--active {
+        color: var(--color-text-primary);
+
+        .col-label {
+            color: var(--color-text-primary);
+        }
+    }
+}
+
+.col-label-badge {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--accent-color);
+    white-space: nowrap;
+}
+
 // ===== BODY =====
 .table-body {
     display: flex;
