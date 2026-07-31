@@ -225,6 +225,21 @@
     }
 }
 
+.secret-hint {
+    margin: 0.5rem 0 0;
+    padding: 8px 12px;
+    border-left: 3px solid var(--accent-color);
+    border-radius: 4px;
+    background: var(--color-ghost-btn-hover);
+    font-size: 13px;
+    line-height: 130%;
+    color: var(--accent-color);
+
+    strong {
+        font-weight: 700;
+    }
+}
+
 @keyframes spin {
     from {
         transform: rotate(0deg);

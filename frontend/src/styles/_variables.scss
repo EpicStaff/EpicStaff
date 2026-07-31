@@ -8,6 +8,8 @@
     --accent-color-hover: #574fd6;
     --accent-color-active: #473fb3;
     --color-required-asterisk: var(--accent-color);
+    // Same in both themes — --accent-color stays purple in light mode too, so white text on it stays legible either way.
+    --color-text-on-accent: var(--color-ks-white);
     --color-text-primary: #d9d9de;
     --color-text-secondary: #c8ceda99;
     --color-text-primary-hover: #ececf3;

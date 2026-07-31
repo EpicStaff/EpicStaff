@@ -12,6 +12,7 @@ import { ToastService } from '../../../../services/notifications';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 
 export const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
 
@@ -26,6 +27,7 @@ export const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
         ClipboardModule,
         SelectComponent,
         MatTooltipModule,
+        NodeSecretsFieldComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -51,6 +53,7 @@ export class WebhookTriggerNodePanelComponent
     pythonCode: string = '';
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
+    public readonly selectedSecretIds = signal<number[]>([]);
 
     selectedNgrokConfigUrl = computed<string | null>(() => {
         const config = this.ngrokConfigs().find((c) => c.id === this.ngrokConfigId());
@@ -109,6 +112,11 @@ export class WebhookTriggerNodePanelComponent
         this.codeEditorHasError = hasError;
     }
 
+    onSecretsChange(values: number[]): void {
+        this.selectedSecretIds.set(values);
+        this.notifyExternalChange();
+    }
+
     onNgrokConfigChanged(value: unknown): void {
         if (value == null) {
             this.ngrokConfigId.set(null);
@@ -139,6 +147,7 @@ export class WebhookTriggerNodePanelComponent
             });
         this.pythonCode = this.node().data.python_code.code || '';
         this.initialPythonCode = this.pythonCode;
+        this.selectedSecretIds.set(this.node().data.python_code.secret_ids ?? []);
         return form;
     }
 
@@ -172,6 +181,7 @@ export class WebhookTriggerNodePanelComponent
                     code: this.pythonCode,
                     entrypoint: 'main',
                     libraries: librariesArray,
+                    secret_ids: this.selectedSecretIds(),
                 },
             },
         };

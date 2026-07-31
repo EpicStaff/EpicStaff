@@ -31,7 +31,10 @@ import { forkJoin } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
+import { getSecretUsage, getSecretUsageCount } from '../../models/secret-usage.model';
+import { SETTINGS_DIALOG_SIZE } from '../../services/configure-models-dialog.service';
 import { AddSecretDialogComponent } from '../add-secret-dialog/add-secret-dialog.component';
+import { SecretUsageDialogComponent } from '../secret-usage-dialog/secret-usage-dialog.component';
 
 type UsedByFilter = 'unused' | 'deactivated' | null;
 
@@ -86,18 +89,16 @@ export class SecretsSectionComponent implements OnInit {
         if (usedByFilter === 'deactivated') {
             // No "deactivated" concept exists on the Secret model yet — always empty until it does.
             secrets = [];
+        } else if (usedByFilter === 'unused') {
+            secrets = secrets.filter((secret) => getSecretUsageCount(secret.id) === 0);
         }
-        // "unused" isn't filtered further: there's no "used by" relationship data on the
-        // Secret model yet (see usedByCount below), so every secret currently counts as unused.
 
         return secrets.map(
             (secret): TableRow => ({
                 id: secret.id,
                 name: secret.name,
                 preview: this.secretsStorageService.maskTail(secret.tail),
-                // Always 0 — no endpoint exists yet for "which resources reference this secret".
-                // The "referenced by N resources" caution below is unreachable until it does.
-                usedByCount: 0,
+                usedByCount: getSecretUsageCount(secret.id),
                 updatedLabel: getRelativeTime(new Date(secret.updated_at)),
             })
         );
@@ -153,8 +154,6 @@ export class SecretsSectionComponent implements OnInit {
 
     public onDeleteSecret(row: TableRow): void {
         const name = row['name'] as string;
-        // See the comment on `usedByCount` above — this is currently always 0/undefined,
-        // so the caution block below never actually renders yet.
         const usedByCount = row['usedByCount'] as number;
 
         this.confirmationDialogService
@@ -187,7 +186,6 @@ export class SecretsSectionComponent implements OnInit {
         const rows = this.selectedRows();
         if (!rows.length) return;
 
-        // Always 0 today — see the comment on `usedByCount` in the `secrets` computed above.
         const referencedCount = rows.filter((row) => (row['usedByCount'] as number) > 0).length;
 
         this.confirmationDialogService
@@ -226,5 +224,15 @@ export class SecretsSectionComponent implements OnInit {
 
     public onUsedByFilterChange(value: unknown): void {
         this.usedByFilter.set(value as UsedByFilter);
+    }
+
+    public onOpenUsage(row: TableRow): void {
+        const id = row['id'] as number;
+        const name = row['name'] as string;
+
+        this.dialog.open(SecretUsageDialogComponent, {
+            ...SETTINGS_DIALOG_SIZE,
+            data: { secretName: name, usage: getSecretUsage(id) },
+        });
     }
 }

@@ -20,6 +20,7 @@ import {
 } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import {
     createInputMapFromPairs,
@@ -43,6 +44,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
         NodeStorageSectionComponent,
         AppSvgIconComponent,
         HelpTooltipComponent,
+        NodeSecretsFieldComponent,
     ],
     animations: [expandCollapseAnimation],
     template: `
@@ -83,6 +85,13 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                     (runTest)="onRunTest($event)"
                                 ></app-input-map>
                             </div>
+
+                            <app-node-secrets-field
+                                [activeColor]="activeColor"
+                                [value]="selectedSecretIds()"
+                                tooltipText="Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets."
+                                (valueChange)="onSecretsChange($event)"
+                            />
 
                             <app-custom-input
                                 label="Output Variable Path"
@@ -432,6 +441,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly isCodeEditorFullWidth = signal<boolean>(true);
     public readonly useStorage = signal<boolean>(false);
 
+    public readonly selectedSecretIds = signal<number[]>([]);
+
     isOpenTestMode = signal(false);
     testResult = signal<PythonCodeResult | null>(null);
     testError = signal<string | null>(null);
@@ -555,6 +566,11 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.codeEditorHasError = hasError;
     }
 
+    onSecretsChange(values: number[]): void {
+        this.selectedSecretIds.set(values);
+        this.sidePanelService.triggerAutosave();
+    }
+
     onStorageToggle(value: boolean): void {
         this.useStorage.set(value);
         this.sidePanelService.triggerAutosave();
@@ -580,6 +596,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         const sc = this.node().stream_config;
 
         this.useStorage.set(this.node().data.use_storage ?? false);
+        this.selectedSecretIds.set(this.node().data.secret_ids ?? []);
 
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
@@ -641,6 +658,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 entrypoint: 'main',
                 libraries: librariesArray,
                 use_storage: this.useStorage(),
+                secret_ids: this.selectedSecretIds(),
             },
             stream_config: this.form.value.stream_config || {},
             test_input: opts?.manualSave ? this.getTestInputValue() : this.getTestInputValuePreservingSaved(),

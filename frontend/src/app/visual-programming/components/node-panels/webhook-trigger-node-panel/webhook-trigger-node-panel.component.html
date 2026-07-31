@@ -68,6 +68,13 @@
                         </div>
                     </div>
 
+                    <app-node-secrets-field
+                        [activeColor]="activeColor"
+                        [value]="selectedSecretIds()"
+                        tooltipText="Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets."
+                        (valueChange)="onSecretsChange($event)"
+                    />
+
                     <app-custom-input
                         label="Libraries"
                         tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"

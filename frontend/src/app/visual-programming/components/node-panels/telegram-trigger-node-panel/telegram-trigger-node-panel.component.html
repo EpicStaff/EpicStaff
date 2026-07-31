@@ -18,17 +18,25 @@
                             [errorMessage]="getNodeNameErrorMessage()"
                         ></app-custom-input>
 
-                        <app-custom-input
-                            label="Telegram bot key"
-                            tooltipText="Bot key"
-                            formControlName="telegram_bot_api_key"
-                            placeholder="Enter webhook name"
-                            type="secret"
-                            cautionMessage="You must enter the full new key to change it. Partial updates aren't supported."
-                            [required]="true"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getTelegramKeyErrorMessage()"
-                        ></app-custom-input>
+                        <div>
+                            <app-select
+                                formControlName="telegram_bot_api_key_secret_id"
+                                label="Telegram bot key"
+                                tooltipText="The stored secret holding this bot's Telegram API key"
+                                placeholder="Select a secret"
+                                [required]="true"
+                                [items]="secretItems()"
+                                [showSearch]="true"
+                                searchPlaceholder="Search a secret..."
+                            />
+                            @if (!form.get('telegram_bot_api_key_secret_id')?.value) {
+                                <div class="secret-hint">
+                                    Choose an existing secret. To add a new one, go to the
+                                    <strong>Secrets tab</strong>.
+                                </div>
+                            }
+                            <app-validation-errors [control]="form.get('telegram_bot_api_key_secret_id')!" />
+                        </div>
 
                         <app-custom-input
                             label="Webhook trigger path"
@@ -46,6 +54,13 @@
                             formControlName="ngrok_webhook_config"
                             [items]="ngrokConfigSelectItems()"
                             (changed)="onNgrokConfigChanged($event)"
+                        />
+
+                        <app-node-secrets-field
+                            [activeColor]="activeColor"
+                            [value]="selectedSecretIds()"
+                            tooltipText="Secrets this Telegram trigger can access at runtime — create and manage secrets under Settings → Secrets."
+                            (valueChange)="onSecretsChange($event)"
                         />
                     </div>
 

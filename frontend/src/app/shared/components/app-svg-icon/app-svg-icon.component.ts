@@ -4,8 +4,8 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
     selector: 'app-svg-icon',
     template: `
         <svg
-            [style.width]="size()"
-            [style.height]="size()"
+            [style.width]="width() ?? size()"
+            [style.height]="height() ?? size()"
             [attr.aria-label]="ariaLabel()"
             aria-hidden="true"
         >
@@ -31,4 +31,7 @@ export class AppSvgIconComponent {
     icon = input.required<string>();
     ariaLabel = input<string>('');
     size = input<string>('24px');
+    /** Overrides `size` for non-square icons. Falls back to `size()` when not provided. */
+    width = input<string | undefined>(undefined);
+    height = input<string | undefined>(undefined);
 }

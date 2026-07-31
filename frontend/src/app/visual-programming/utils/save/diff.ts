@@ -196,7 +196,7 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
 function toTelegramComparable(node: TelegramTriggerNodeModel): unknown {
     return {
         node_name: node.node_name,
-        telegram_bot_api_key: node.data.telegram_bot_api_key,
+        telegram_bot_api_key_secret_id: node.data.telegram_bot_api_key_secret_id,
         webhook_trigger: node.data.webhook_trigger,
         fields: node.data.fields,
         metadata: toNodeMetadata(node),

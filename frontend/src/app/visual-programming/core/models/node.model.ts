@@ -115,9 +115,11 @@ export interface WebhookTriggerNodeModel extends BaseNodeModel {
 export interface TelegramTriggerNodeModel extends BaseNodeModel {
     type: NodeType.TELEGRAM_TRIGGER;
     data: {
-        telegram_bot_api_key: string;
+        telegram_bot_api_key_secret_id: number | null;
         webhook_trigger: WebhookTriggerModel | null;
         fields: TelegramTriggerNodeField[];
+        // TODO: no backend field to receive this yet (frontend-only, see CustomPythonCode.secret_ids).
+        secret_ids?: number[];
     };
 }
 
@@ -130,6 +132,7 @@ export interface ClassificationDecisionTableNodeModel extends BaseNodeModel {
     type: NodeType.CLASSIFICATION_TABLE;
     data: {
         name?: string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         table: any;
     };
 }

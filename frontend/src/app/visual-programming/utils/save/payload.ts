@@ -400,7 +400,7 @@ export function buildBulkSavePayload(
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({
             node_name: n.node_name,
             graph: graphId,
-            telegram_bot_api_key: n.data.telegram_bot_api_key,
+            telegram_bot_api_key_secret_id: n.data.telegram_bot_api_key_secret_id,
             webhook_trigger: n.data.webhook_trigger,
             fields: n.data.fields,
             metadata: toNodeMetadata(n),

@@ -5,6 +5,8 @@ export interface ComputationConfig {
     input_map?: Record<string, string>;
     output_variable_path?: string;
     libraries?: string[];
+    // TODO: no backend field to receive this yet (frontend-only, see CustomPythonCode.secret_ids).
+    secret_ids?: number[];
 }
 
 export interface ClassificationDecisionTableData {

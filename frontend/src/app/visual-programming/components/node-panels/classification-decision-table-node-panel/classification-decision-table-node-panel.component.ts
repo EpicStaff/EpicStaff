@@ -45,6 +45,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
@@ -65,6 +66,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         AppSvgIconComponent,
         ActionDropdownButtonComponent,
         SelectComponent,
+        NodeSecretsFieldComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -103,6 +105,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
+    public readonly preSelectedSecretIds = signal<number[]>([]);
+    public readonly postSelectedSecretIds = signal<number[]>([]);
     private readonly codeChange$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
@@ -255,6 +259,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         this.preCode = preComp.code || '';
         this.postCode = postComp.code || '';
+        this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
+        this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
@@ -340,12 +346,14 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 input_map: preInputMap,
                 output_variable_path: this.form.value.pre_output_variable_path || undefined,
                 libraries: this.parseLibraries(this.form.value.pre_libraries),
+                secret_ids: this.preSelectedSecretIds(),
             },
             post_computation: {
                 code: this.postCode,
                 input_map: postInputMap,
                 output_variable_path: this.form.value.post_output_variable_path || undefined,
                 libraries: this.parseLibraries(this.form.value.post_libraries),
+                secret_ids: this.postSelectedSecretIds(),
             },
             condition_groups: conditionGroups,
             route_variable_name: 'route_code',
@@ -626,6 +634,18 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public onPostCodeChange(code: string): void {
         this.postCode = code;
+        this.notifyExternalChange();
+        this.codeChange$.next();
+    }
+
+    public onPreSecretsChange(values: number[]): void {
+        this.preSelectedSecretIds.set(values);
+        this.notifyExternalChange();
+        this.codeChange$.next();
+    }
+
+    public onPostSecretsChange(values: number[]): void {
+        this.postSelectedSecretIds.set(values);
         this.notifyExternalChange();
         this.codeChange$.next();
     }

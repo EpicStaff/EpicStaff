@@ -24,15 +24,20 @@
         </div>
 
         <div>
-            <app-custom-input
-                type="secret"
-                label="Auth Token"
+            <app-select
                 formControlName="auth_token"
-                [required]="true"
+                label="Auth Token"
+                placeholder="Select a secret"
                 tooltipText="Auth Token from: https://dashboard.ngrok.com/get-started/your-authtoken"
-                placeholder="e.g. 39HouLFMClthJIAw5a••••••••••••••"
-                cautionMessage="You must enter the full new auth token to change it. Partial updates aren't supported."
+                [items]="secretItems()"
+                [showSearch]="true"
+                searchPlaceholder="Search a secret..."
             />
+            @if (!form.get('auth_token')?.value) {
+                <div class="secret-hint">
+                    Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                </div>
+            }
             <app-validation-errors [control]="form.get('auth_token')!" />
         </div>
 

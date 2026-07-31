@@ -53,7 +53,7 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         },
     }),
     [NodeType.TELEGRAM_TRIGGER]: () => ({
-        telegram_bot_api_key: '',
+        telegram_bot_api_key_secret_id: null,
         fields: [],
     }),
     [NodeType.SCHEDULE_TRIGGER]: (): ScheduleTriggerNodeData => {

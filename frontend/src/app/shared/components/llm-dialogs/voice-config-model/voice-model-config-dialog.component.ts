@@ -6,10 +6,12 @@ import {
     ButtonComponent,
     CustomInputComponent,
     IconButtonComponent,
+    SelectComponent,
+    SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
-import { RealtimeConfigStorageService } from '@shared/services';
+import { RealtimeConfigStorageService, SecretsStorageService } from '@shared/services';
 
 import { ToastService } from '../../../../services/notifications';
 import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selector.component';
@@ -26,12 +28,14 @@ import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selec
         LlmModelSelectorComponent,
         ReactiveFormsModule,
         ValidationErrorsComponent,
+        SelectComponent,
     ],
 })
 export class VoiceModelConfigDialogComponent {
     private fb = inject(FormBuilder);
     private destroyRef = inject(DestroyRef);
     private realtimeModelConfigsService = inject(RealtimeConfigStorageService);
+    private secretsStorageService = inject(SecretsStorageService);
     private toast = inject(ToastService);
     private data = inject(DIALOG_DATA, { optional: true });
 
@@ -44,18 +48,33 @@ export class VoiceModelConfigDialogComponent {
     title = computed(() => (this.isEditMode() ? 'Edit Voice Configuration' : 'Add Voice Configuration'));
     saveLabel = computed(() => (this.isEditMode() ? 'Save Changes' : 'Add Voice Model'));
 
+    secretItems = computed<SelectItem[]>(() =>
+        this.secretsStorageService.secrets().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.secretsStorageService.maskTail(secret.tail),
+        }))
+    );
+
     form!: FormGroup;
 
     ngOnInit() {
         this.form = this.fb.group({
             custom_name: ['', [Validators.required]],
-            api_key: ['', [Validators.required]],
+            api_key_secret_id: [null, [Validators.required]],
             realtime_model: [null, [Validators.required]],
         });
 
         if (this.data?.configId) {
             this.loadConfig(this.data.configId);
         }
+
+        this.secretsStorageService
+            .getSecrets()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                error: () => this.toast.error('Failed to load secrets.'),
+            });
 
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
             if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {

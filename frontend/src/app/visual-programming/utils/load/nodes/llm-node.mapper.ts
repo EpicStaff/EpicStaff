@@ -11,7 +11,7 @@ export function mapLLMNodeToModel(ln: GetLLMNodeRequest): LLMNodeModel {
         id: ln.llm_config,
         custom_name: ln.node_name,
         model: 0,
-        api_key: '',
+        api_key_secret_id: null,
         temperature: null,
         top_p: null,
         stop: null,

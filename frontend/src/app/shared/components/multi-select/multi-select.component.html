@@ -26,7 +26,11 @@
 }
 
 <ng-template #dropdownTemplate>
-    <div class="multi-select__dropdown">
+    <div
+        class="multi-select__dropdown"
+        [style.--ms-width]="panelWidth()"
+        [style.--ms-height]="panelHeight()"
+    >
         @if (showSearch()) {
             <input
                 class="multi-select__search"
@@ -59,8 +63,12 @@
                                 [checked]="isChecked(item.value)"
                             />
                         }
-                        <span>
-                            {{ item.name }}
+                        <span class="multi-select__item-text">
+                            <span
+                                class="multi-select__item-name"
+                                [title]="item.name"
+                                >{{ item.name }}</span
+                            >
                             @if (item.tip) {
                                 <span class="multi-select__item-tip">
                                     {{ item.tip }}
@@ -78,22 +86,38 @@
             }
         </div>
 
-        <div class="multi-select__footer">
-            <app-button
-                mod="default"
-                type="outline-primary"
-                (click)="cancel()"
-            >
-                Cancel
-            </app-button>
+        <div
+            class="multi-select__footer"
+            [class.multi-select__footer--with-clear]="showClearFilter()"
+        >
+            @if (showClearFilter()) {
+                <app-button
+                    mod="default"
+                    type="outline-primary"
+                    [disabled]="!tempSelected().length"
+                    (click)="clearAll()"
+                >
+                    Clear
+                </app-button>
+            }
 
-            <app-button
-                mod="default"
-                type="primary"
-                (click)="save()"
-            >
-                Save Selection
-            </app-button>
+            <div class="multi-select__footer-actions">
+                <app-button
+                    mod="default"
+                    type="outline-primary"
+                    (click)="cancel()"
+                >
+                    Cancel
+                </app-button>
+
+                <app-button
+                    mod="default"
+                    type="primary"
+                    (click)="save()"
+                >
+                    {{ saveLabel() }}
+                </app-button>
+            </div>
         </div>
     </div>
 </ng-template>

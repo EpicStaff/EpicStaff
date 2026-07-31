@@ -48,6 +48,10 @@ export class MultiSelectComponent implements OnInit {
     checkboxPosition = input<'left' | 'right'>('right');
     color = input<'primary' | 'white'>('primary');
     disabled = input<boolean>(false);
+    showClearFilter = input<boolean>(false);
+    saveLabel = input<string>('Save Selection');
+    panelWidth = input<string>('338px');
+    panelHeight = input<string>('475px');
 
     /** When true the default trigger button is not rendered.
      *  Use openAt(element) to open the dropdown anchored to an external element. */
@@ -59,8 +63,11 @@ export class MultiSelectComponent implements OnInit {
 
     groupedFiltered = computed<GroupedItems[]>(() => {
         const search = this.search().toLowerCase();
+        const selected = this.tempSelected();
 
-        const filteredItems = this.items().filter((i) => i.name.toLowerCase().includes(search));
+        const filteredItems = this.items()
+            .filter((i) => i.name.toLowerCase().includes(search))
+            .sort((a, b) => Number(selected.includes(b.value)) - Number(selected.includes(a.value)));
 
         // Grouping disabled
         if (!this.grouped()) {
@@ -120,17 +127,14 @@ export class MultiSelectComponent implements OnInit {
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
             .withPositions([
-                // Preferred: below, left-aligned with trigger
+                // Below, left-aligned with trigger
                 { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                // Below, right-aligned with trigger (when right edge would clip)
+                // Below, right-aligned with trigger (when right edge would clip) — always below,
+                // never flips above, so the panel doesn't jump on top of the trigger/other controls.
                 { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-                // Above, left-aligned (when bottom would clip)
-                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
-                // Above, right-aligned (corner)
-                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
             ])
             .withPush(false)
-            .withFlexibleDimensions(false)
+            .withFlexibleDimensions(true)
             .withViewportMargin(8);
 
         if (this.overlayRef) {
@@ -180,6 +184,10 @@ export class MultiSelectComponent implements OnInit {
     cancel() {
         this.tempSelected.set([...this.selectedValues()]);
         this.close();
+    }
+
+    clearAll() {
+        this.tempSelected.set([]);
     }
 
     save() {
