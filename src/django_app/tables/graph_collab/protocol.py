@@ -50,6 +50,15 @@ class PresenceStateUpdatedMessage(BaseModel):
     editor: EditorInfo
 
 
+class EditRightsChangedMessage(BaseModel):
+    """Sent to a connection's own socket whenever `_recheck_permission` finds
+    an actual transition in its cached edit bit (gain or loss of flows
+    UPDATE) — never sent when a recheck runs but finds no change."""
+
+    type: str = "edit_rights_changed"
+    can_edit: bool
+
+
 class ErrorMessage(BaseModel):
     type: str = "error"
     code: str
@@ -66,7 +75,7 @@ class OpRejectedMessage(BaseModel):
     list_key: str
     node_ref: dict
     # One of: "target_not_found", "no_snapshot", "unknown_list_key",
-    # "missing_identity", "precondition_failed".
+    # "missing_identity", "precondition_failed", "permission_denied".
     reason: str
     details: dict | None = None
 

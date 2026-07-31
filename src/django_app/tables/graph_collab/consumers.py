@@ -7,7 +7,6 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from pydantic import BaseModel
-from rest_framework.exceptions import PermissionDenied
 
 from tables.graph_collab.autosave_loop import ensure_autosave_loop_running
 from tables.graph_collab.flush_service import flush_service
@@ -28,6 +27,7 @@ from tables.graph_collab.constants import (
 from tables.graph_collab.protocol import (
     CursorMovedMessage,
     EditorInfo,
+    EditRightsChangedMessage,
     ErrorMessage,
     GraphStateMessage,
     LockStateMessage,
@@ -40,10 +40,14 @@ from tables.graph_collab.protocol import (
     UserLeftMessage,
 )
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.permission_assert import assert_org_permission
+from tables.services.rbac.effective_permissions import EffectivePermissions
+from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.rbac.rbac_exceptions import OrgMembershipRequiredError
 
 from utils.logger import logger
+
+
+_permission_resolver = PermissionResolver()
 
 
 def _cursor_channel_name(graph_id: int) -> str:
@@ -52,6 +56,18 @@ def _cursor_channel_name(graph_id: int) -> str:
 
 def _lock_timeout() -> int:
     return getattr(settings, "GRAPH_LOCK_TIMEOUT_SECONDS", 300)
+
+
+def _resolve_flows_permissions(user, org_id: int) -> EffectivePermissions | None:
+    """Resolve `user`'s `EffectivePermissions` for `org_id`, treating a
+    genuine loss of all access (no membership row, or org deactivated —
+    both surfaced as `OrgMembershipRequiredError`) as `None` rather than
+    letting the exception propagate. Single choke point so callers (connect()
+    and the recheck path) don't duplicate this exception handling."""
+    try:
+        return _permission_resolver.resolve(user=user, org_id=org_id)
+    except OrgMembershipRequiredError:
+        return None
 
 
 class GraphEditConsumer(AsyncJsonWebsocketConsumer):
@@ -77,20 +93,23 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4404, reason="Graph not found.")
             return
 
-        try:
-            await sync_to_async(assert_org_permission)(
-                user, org_id, ResourceType.FLOWS, Permission.UPDATE
-            )
-        except OrgMembershipRequiredError:
+        effective = await sync_to_async(_resolve_flows_permissions)(user, org_id)
+        if effective is None:
             await self.close(
                 code=4403, reason="You are not a member of this organization."
             )
             return
-        except PermissionDenied:
+
+        if not effective.can(ResourceType.FLOWS, Permission.READ):
             await self.close(
-                code=4403, reason="You don't have permission to edit this flow."
+                code=4403, reason="You don't have permission to view this flow."
             )
             return
+
+        # Read-only connections are welcome — only writes are gated per-message
+        # below. Cache the single bit that matters so per-message handlers (and
+        # the permission-recheck backstop) don't re-resolve on every message.
+        self._can_edit = effective.can(ResourceType.FLOWS, Permission.UPDATE)
 
         self.org_id = org_id
         self.group = graph_group_name(self.graph_id)
@@ -277,6 +296,15 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             )
 
     async def _handle_node_locked(self, content: dict) -> None:
+        if not self._can_edit:
+            await self.send_json(
+                ErrorMessage(
+                    code="permission_denied",
+                    message="You don't have permission to edit this flow.",
+                ).model_dump()
+            )
+            return
+
         try:
             message = NodeLockedMessage.model_validate(content)
         except pydantic.ValidationError as exc:
@@ -319,6 +347,15 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
             )
 
     async def _handle_node_unlocked(self, content: dict) -> None:
+        if not self._can_edit:
+            await self.send_json(
+                ErrorMessage(
+                    code="permission_denied",
+                    message="You don't have permission to edit this flow.",
+                ).model_dump()
+            )
+            return
+
         try:
             message = NodeUnlockedMessage.model_validate(content)
         except pydantic.ValidationError as exc:
@@ -402,8 +439,26 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         # Override editor server-side — never trust the client-sent identity.
         message.editor = build_editor_info(self.scope["user"])
 
-        # Apply state-mutating ops to the live snapshot before relaying.
+        # Apply state-mutating ops to the live snapshot before relaying. Requires
+        # Permission.UPDATE — a read-only (view-only) connection may relay
+        # cursor/selection traffic but must not mutate the graph.
         if message.type in _STATE_OP_TYPES:
+            if not self._can_edit:
+                node = getattr(message, "node", None) or {}
+                await self.send_json(
+                    OpRejectedMessage(
+                        op_type=message.type,
+                        op_id=getattr(message, "op_id", None),
+                        list_key=getattr(message, "list_key", ""),
+                        node_ref={
+                            "id": node.get("id"),
+                            "temp_id": node.get("temp_id"),
+                        },
+                        reason="permission_denied",
+                    ).model_dump()
+                )
+                return
+
             result = await graph_state_service.apply_op(self.graph_id, message)
             if result is not None and not result.relay:
                 node = getattr(message, "node", None) or {}
@@ -509,9 +564,9 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
     async def permission_changed(self, event: dict) -> None:
         """Org-wide broadcast fired after a role change, membership removal,
-        or superadmin revocation that may have downgraded a connected user's
-        edit access. Filters on user_id — only the affected user's own
-        connections re-check and potentially close.
+        or superadmin revocation that may have changed a connected user's
+        flows access. Filters on user_id — only the affected user's own
+        connections re-check.
 
         Re-fetches the user row from the DB rather than reusing
         ``self.scope["user"]`` — that object was resolved once by the auth
@@ -524,12 +579,20 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         scope_user = self.scope["user"]
         if event["user_id"] != scope_user.id:
             return
-        await self._recheck_permission_or_close(scope_user.id)
+        await self._recheck_permission(scope_user.id)
 
-    async def _recheck_permission_or_close(self, user_id: int) -> None:
-        """Re-fetch *user_id* fresh from the DB and re-run the edit-permission
-        check that gates connect(). Closes with 4403 if the user no longer
-        exists or no longer qualifies.
+    async def _recheck_permission(self, user_id: int) -> None:
+        """Re-fetch *user_id* fresh from the DB and re-resolve their flows
+        permissions for this connection's org.
+
+        Closes with 4403 only on a genuine loss of ALL access — the user no
+        longer exists, has no membership in the org at all, or the org was
+        deactivated (all surfaced as `None` by ``_resolve_flows_permissions``),
+        or the resolved permissions no longer include READ. Any connection
+        that still holds at least READ stays open, with the cached edit flag
+        refreshed in place — this single branch covers both a downgrade (e.g.
+        lost UPDATE) and an upgrade (e.g. regained UPDATE), since both are
+        just "permissions changed, keep going."
         """
         fresh_user = await sync_to_async(self._get_user_by_id)(user_id)
         if fresh_user is None:
@@ -538,15 +601,23 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                 reason="Your access to this flow has changed. Please reconnect.",
             )
             return
-        try:
-            await sync_to_async(assert_org_permission)(
-                fresh_user, self.org_id, ResourceType.FLOWS, Permission.UPDATE
-            )
-        except (PermissionDenied, OrgMembershipRequiredError):
+
+        effective = await sync_to_async(_resolve_flows_permissions)(
+            fresh_user, self.org_id
+        )
+        if effective is None or not effective.can(ResourceType.FLOWS, Permission.READ):
             await self.close(
                 code=4403,
                 reason="Your access to this flow has changed. Please reconnect.",
             )
+            return
+
+        new_can_edit = effective.can(ResourceType.FLOWS, Permission.UPDATE)
+        if new_can_edit != self._can_edit:
+            await self.send_json(
+                EditRightsChangedMessage(can_edit=new_can_edit).model_dump()
+            )
+        self._can_edit = new_can_edit
 
     @staticmethod
     def _get_user_by_id(user_id: int):
@@ -685,17 +756,17 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
     async def _permission_recheck_loop(self) -> None:
         """Backstop for the event-driven ``permission_changed`` broadcast.
 
-        Re-runs the same org-permission check that gates ``connect()`` on a
-        fixed interval, closing the socket if the user's access has been
-        revoked or downgraded since connecting. Covers the case where a
-        `permission_changed` group_send is missed (e.g. transient channel
-        layer/Redis hiccup).
+        Re-runs the same flows-permission resolution that gates ``connect()``
+        on a fixed interval, refreshing the cached edit flag (or closing the
+        socket on a genuine loss of all access) since connecting. Covers the
+        case where a `permission_changed` group_send is missed (e.g. a
+        transient channel layer/Redis hiccup).
         """
         user_id = self.scope["user"].id
         try:
             while True:
                 await asyncio.sleep(PERMISSION_RECHECK_INTERVAL_SECONDS)
-                await self._recheck_permission_or_close(user_id)
+                await self._recheck_permission(user_id)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
