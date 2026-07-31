@@ -2224,7 +2224,7 @@ class TwilioPhoneNumbersView(generics.GenericAPIView):
             ]
             return Response({"results": numbers})
         except urllib.error.HTTPError as e:
-            return Response({"error": e.read().decode()}, status=e.code)
+            return Response({"error": e.read().decode(), "status": e.code}, status=400)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
