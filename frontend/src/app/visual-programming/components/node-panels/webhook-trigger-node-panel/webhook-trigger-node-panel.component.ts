@@ -39,13 +39,7 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
 
     copied = signal<boolean>(false);
     selectedTrigger = signal<WebhookTriggerModel | null>(null);
-    fullUrl = computed<string | null>(() => {
-        const t = this.selectedTrigger();
-        if (!t?.live_url) return null;
-        const base = t.live_url.replace(/\/+$/, '');
-        const path = (t.path ?? '').replace(/^\/+/, '');
-        return path ? `${base}/${path}` : base;
-    });
+    fullUrl = computed<string | null>(() => this.selectedTrigger()?.live_url ?? null);
     webhookInvalid = computed<boolean>(() => {
         const t = this.selectedTrigger();
         return !!t && !t.live_url;

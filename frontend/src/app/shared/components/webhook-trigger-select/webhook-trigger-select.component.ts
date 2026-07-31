@@ -76,8 +76,19 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
         const term = this.searchTerm().trim().toLowerCase();
         const list = this.triggers();
         if (!term) return list;
-        return list.filter((t) => t.path.toLowerCase().includes(term));
+        return list.filter((t) => this.triggerName(t).toLowerCase().includes(term));
     });
+
+    private triggerName(t: WebhookTriggerModel): string {
+        switch (t.provider_type) {
+            case 'ngrok':
+                return t.ngrok_config?.name ?? '';
+            case 'localhost':
+                return t.localhost_config?.name ?? '';
+            default:
+                return t.path ?? '';
+        }
+    }
 
     private onChange: (value: number | null) => void = () => {};
     private onTouched: () => void = () => {};
@@ -112,14 +123,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     }
 
     displayLabel(t: WebhookTriggerModel): string {
-        switch (t.provider_type) {
-            case 'ngrok':
-                return `${t.ngrok_config?.name} (${t.provider_type ?? 'none'})`;
-            case 'localhost':
-                return `${t.localhost_config?.name} (${t.provider_type ?? 'none'})`;
-            default:
-                return `${t.path} (${t.provider_type ?? 'none'})`;
-        }
+        return `${this.triggerName(t)} (${t.provider_type ?? 'none'})`;
     }
 
     toggle(): void {
