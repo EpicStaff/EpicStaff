@@ -112,7 +112,7 @@ export class DecisionTableGridComponent implements OnInit {
             if (this.serializeGroupsForCompare(incoming) === this.serializeGroupsForCompare(current)) {
                 return;
             }
-            this.buildRowDataFromInput(incoming);
+            untracked(() => this.buildRowDataFromInput(incoming));
         });
     }
 
