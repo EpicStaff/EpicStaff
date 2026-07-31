@@ -120,6 +120,11 @@ def second_graph(default_org):
 
 
 @pytest.fixture
+def org_graph(default_org):
+    return Graph.objects.create(name="org-scoped-graph", org=default_org)
+
+
+@pytest.fixture
 def fake_redis():
     fake = fakeredis.FakeStrictRedis()
     with unittest.mock.patch(
@@ -164,10 +169,26 @@ def patch_graph_state_redis(fake_async_redis, monkeypatch):
         "_redis",
         property(lambda self: fake_async_redis),
     )
-    # Also reset per-graph asyncio locks between tests.
     _gss_module.graph_state_service._locks.clear()
+    _gss_module.graph_state_service._revision.clear()
+    _gss_module.graph_state_service._flushed_revision.clear()
     yield
     _gss_module.graph_state_service._locks.clear()
+    _gss_module.graph_state_service._revision.clear()
+    _gss_module.graph_state_service._flushed_revision.clear()
+
+
+@pytest.fixture(autouse=True)
+def reset_autosave_task():
+    import tables.graph_collab.autosave_loop as _al_module
+
+    if _al_module._autosave_task is not None and not _al_module._autosave_task.done():
+        _al_module._autosave_task.cancel()
+    _al_module._autosave_task = None
+    yield
+    if _al_module._autosave_task is not None and not _al_module._autosave_task.done():
+        _al_module._autosave_task.cancel()
+    _al_module._autosave_task = None
 
 
 @pytest.fixture
