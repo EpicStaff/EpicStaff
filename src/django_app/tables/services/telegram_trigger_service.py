@@ -119,6 +119,8 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         filters = self.webhook_trigger_service.get_trigger_filters(
             path=url_path, config_id=config_id
         )
+        if filters is None:
+            return
 
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(**filters)
 

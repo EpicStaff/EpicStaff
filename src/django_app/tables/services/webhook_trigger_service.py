@@ -10,6 +10,7 @@ from tables.models.graph_models import WebhookTriggerNode
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
+    ProviderType,
     TunnelConfig,
     WebhookTrigger,
 )
@@ -32,17 +33,33 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         self.redis_service = redis_service
         self.session_manager_service = session_manager_service
 
-    def get_trigger_filters(self, path: str, config_id: str | None = None) -> dict:
+    def get_trigger_filters(self, path: str, config_id: str | None = None) -> dict | None:
+        """Build ORM filter kwargs for `WebhookTriggerNode`.
+
+        `config_id` is resolved by the `webhook` service from the request's
+        actual Host/domain and has the shape `"<provider>:<registered_path>"`. 
+        The segment after the provider is NOT an arbitrary config-name 
+        label — it is the `path` of the `WebhookTrigger` that was registered 
+        for that specific domain/tunnel at connect time.
+        Returns `None` when `config_id` identifies a specific tunnel/domain
+        whose registered path does NOT match the requested `path`.
+        """
         filters = {"webhook_trigger__path": path}
 
-        if config_id and ":" in config_id:
-            provider, _ = config_id.split(":", 1)
-            if provider in ("ngrok", "localhost"):
-                filters["webhook_trigger__provider_type"] = provider
-            else:
-                logger.warning(
-                    f"Unknown tunnel provider '{provider}' for config '{config_id}'"
-                )
+        if not config_id or ":" not in config_id:
+            return filters
+
+        provider, registered_path = config_id.split(":", 1)
+        if provider not in (ProviderType.NGROK, ProviderType.LOCALHOST):
+            logger.warning(
+                f"Unknown tunnel provider '{provider}' for config '{config_id}'"
+            )
+            return filters
+
+        if registered_path != path:
+            return None
+
+        filters["webhook_trigger__provider_type"] = provider
 
         return filters
 
@@ -50,6 +67,8 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         self, path: str, payload: dict, config_id: str | None = None
     ) -> None:
         filters = self.get_trigger_filters(path, config_id)
+        if filters is None:
+            return
 
         webhook_trigger_node_list = WebhookTriggerNode.objects.filter(**filters)
 
