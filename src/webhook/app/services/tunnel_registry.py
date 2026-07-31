@@ -7,6 +7,25 @@ from app.providers.provider_factory import get_provider
 from src.shared.models import BaseTunnelConfigData, WebhookConfigData
 
 
+class UnregisteredWebhookPathError(Exception):
+    """Raised when a request's domain is served by this service but no tunnel is
+    registered for the requested path.
+
+    The domain is known, so the set of paths registered for it is known too:
+    a request for any other path can never be processed by anything downstream,
+    and must be rejected instead of being attributed to an unrelated config.
+    """
+
+    def __init__(self, domain: str, path: str, registered_ids: list[str]):
+        self.domain = domain
+        self.path = path
+        self.registered_ids = registered_ids
+        super().__init__(
+            f"No webhook registered for path '{path}' on domain '{domain}'. "
+            f"Registered on this domain: {registered_ids}"
+        )
+
+
 class TunnelRegistry:
     def __init__(self, redis_service=None):
         self._tunnel_pool: dict[
@@ -105,17 +124,75 @@ class TunnelRegistry:
             data = self._tunnel_pool.get(unique_id)
             return data[0] if data else None
 
-    async def get_unique_id_by_domain(self, domain: str) -> str | None:
+    @staticmethod
+    def _normalize_path(path: str | None) -> str:
+        return (path or "").strip("/")
+
+    async def resolve_unique_id(self, domain: str, path: str | None = None) -> str | None:
+        """Resolve the `unique_id` of the tunnel an incoming request arrived through.
+
+        A tunnel's public URL alone is NOT always a unique key: every localhost
+        tunnel without an explicit `domain` gets the exact same
+        `http://{host}:{port}` public URL (see `LocalhostTunnel._get_webhook_url`),
+        so a domain-only match would return whichever localhost config happened
+        to register first and every other localhost webhook would be attributed
+        to the wrong config.
+
+        So resolution is domain first, then `path` as the tie-breaker. A config's
+        registered path is its `name` (`ConverterService` builds the config with
+        `name=trigger.path`), which is also the segment embedded in `unique_id`
+        (`"<provider>:<registered_path>"`).
+
+        Returns `None` only when this service knows nothing about `domain`
+        (empty Host, or a host that matches no active tunnel's public URL) —
+        downstream then falls back to path-only trigger lookup, which keeps
+        requests arriving through a proxy that rewrote Host working.
+
+        Raises `UnregisteredWebhookPathError` when the domain IS known but no
+        tunnel on it is registered for `path`: nothing downstream can process
+        such a request, so the caller must reject it rather than hand back some
+        other config's id.
+        """
         if not domain:
             return None
 
         # NOTE: yeah, it's O(n), but N is almost always equals to 1 or 2
         async with self._lock:
-            for unique_id, (tunnel, config) in self._tunnel_pool.items():
-                if tunnel._public_url and domain in tunnel._public_url:
-                    return unique_id
+            candidates = [
+                (unique_id, config)
+                for unique_id, (tunnel, config) in self._tunnel_pool.items()
+                if tunnel._public_url and domain in tunnel._public_url
+            ]
 
-        return None
+        if not candidates:
+            return None
+
+        # No path to match against (callers that only know the domain):
+        # domain-only resolution, unambiguous for ngrok and a single localhost.
+        if path is None:
+            if len(candidates) == 1:
+                return candidates[0][0]
+            logger.warning(
+                f"Ambiguous domain-only resolution for '{domain}'. "
+                f"Candidates: {[unique_id for unique_id, _ in candidates]}"
+            )
+            return candidates[0][0]
+
+        requested_path = self._normalize_path(path)
+        for unique_id, config in candidates:
+            if self._normalize_path(config.name) == requested_path:
+                return unique_id
+
+        # The domain is served here, so its registered paths are fully known and
+        # `requested_path` is not one of them. Returning any candidate's id would
+        # attribute the request to an unrelated webhook, and returning None would
+        # make downstream fall back to path-only lookup — both let the caller
+        # answer "success" for an event nothing will ever process.
+        raise UnregisteredWebhookPathError(
+            domain=domain,
+            path=requested_path,
+            registered_ids=[unique_id for unique_id, _ in candidates],
+        )
 
 
 _tunnel_registry: Optional[TunnelRegistry] = None

@@ -1,11 +1,15 @@
 import os
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
 
 from app.services.redis_service import RedisService, get_redis_service
-from app.services.tunnel_registry import get_tunnel_registry, TunnelRegistry
+from app.services.tunnel_registry import (
+    UnregisteredWebhookPathError,
+    get_tunnel_registry,
+    TunnelRegistry,
+)
 
 router = APIRouter()
 
@@ -22,7 +26,17 @@ async def handle_webhook(
         request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
     )
 
-    config_id = await registry.get_unique_id_by_domain(forwarded_host)
+    # `custom_path` is part of the resolution key, not just the payload: localhost
+    # tunnels all share one public URL, so the domain alone cannot tell them apart.
+    try:
+        config_id = await registry.resolve_unique_id(forwarded_host, custom_path)
+    except UnregisteredWebhookPathError as e:
+        # Nothing downstream can handle this event, so don't publish it and don't
+        # claim success — the sender needs to know the path does not exist.
+        logger.warning(str(e))
+        raise HTTPException(
+            status_code=404, detail=f"No webhook registered for path '{custom_path}'"
+        )
 
     logger.info(
         f"Webhook PATH: {custom_path} | CONFIG ID: {config_id} | DOMAIN: {forwarded_host}"
