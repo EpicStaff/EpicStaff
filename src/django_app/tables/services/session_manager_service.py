@@ -6,6 +6,7 @@ from tables.models import (
     Edge,
     FileExtractorNode,
     Graph,
+    KnowledgeNode,
     PythonNode,
     Session,
 )
@@ -28,6 +29,7 @@ from src.shared.models import (
     EdgeData,
     GraphData,
     GraphSessionMessageData,
+    KnowledgeNodeData,
     SessionData,
     SubGraphData,
     SubGraphNodeData,
@@ -256,6 +258,17 @@ class SessionManagerService(metaclass=SingletonMeta):
             .defer("test_input")
             .select_related("python_code")
         )
+        knowledge_node_list = (
+            KnowledgeNode.objects.filter(graph=graph.pk)
+            .select_related(
+                "source_collection",
+                "rag_type",
+                "naive_search_config",
+                "graph_basic_search_config",
+                "graph_local_search_config",
+            )
+            .prefetch_related("rag_type__naive_rags", "rag_type__graph_rags")
+        )
         file_extractor_node_list = FileExtractorNode.objects.filter(graph=graph.pk)
         audio_transcription_node_list = AudioTranscriptionNode.objects.filter(
             graph=graph.pk
@@ -305,6 +318,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         for node_list in (
             crew_node_list,
             python_node_list,
+            knowledge_node_list,
             file_extractor_node_list,
             audio_transcription_node_list,
             decision_table_node_list,
@@ -361,6 +375,19 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
             for item in python_node_list
         ]
+        knowledge_node_data_list: list[KnowledgeNodeData] = []
+        for item in knowledge_node_list:
+            if item.rag_type_id is None or item.source_collection_id is None:
+                logger.warning(
+                    f"KnowledgeNode {item.pk} is missing rag_type or "
+                    "source_collection, skipping."
+                )
+                continue
+            knowledge_node_data_list.append(
+                cv.convert_knowledge_node_to_pydantic(
+                    knowledge_node=item, resolver=resolver
+                )
+            )
         webhook_trigger_node_data_list = [
             cv.convert_webhook_trigger_node_to_pydantic(
                 webhook_trigger_node=item, resolver=resolver
@@ -499,6 +526,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             crew_node_list=crew_node_data_list,
             webhook_trigger_node_data_list=webhook_trigger_node_data_list,
             python_node_list=python_node_data_list,
+            knowledge_node_list=knowledge_node_data_list,
             file_extractor_node_list=file_extractor_node_data_list,
             audio_transcription_node_list=audio_transcription_node_data_list,
             code_agent_node_list=code_agent_node_data_list,

@@ -41,6 +41,7 @@ class EntityType(str, Enum):
     NOTE_NODE = "GraphNote"
     CODE_AGENT_NODE = "CodeAgentNode"
     SCHEDULE_TRIGGER_NODE = "ScheduleTriggerNode"
+    KNOWLEDGE_NODE = "KnowledgeNode"
 
 
 class NodeType(str, Enum):
@@ -58,3 +59,4 @@ class NodeType(str, Enum):
     NOTE_NODE = "GraphNote"
     CODE_AGENT_NODE = "CodeAgentNode"
     SCHEDULE_TRIGGER_NODE = "ScheduleTriggerNode"
+    KNOWLEDGE_NODE = "KnowledgeNode"

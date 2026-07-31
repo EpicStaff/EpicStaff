@@ -3,12 +3,15 @@ from tables.models.knowledge_models.naive_rag_models import (
     NaiveRag,
     AgentNaiveRag,
     NaiveRagSearchConfig,
+    KnowledgeNodeNaiveRagSearchConfig,
 )
 from tables.models.knowledge_models.graphrag_models import (
     GraphRag,
     AgentGraphRag,
     GraphRagBasicSearchConfig,
     GraphRagLocalSearchConfig,
+    KnowledgeNodeGraphRagBasicSearchConfig,
+    KnowledgeNodeGraphRagLocalSearchConfig,
 )
 from tables.models.crew_models import Agent
 from tables.exceptions import (
@@ -346,6 +349,62 @@ class SearchConfigService:
 
         return result
 
+
+    _NODE_GRAPH_METHOD_FIELDS = {
+        "basic": (
+            "graph_basic_search_config",
+            ("prompt", "k", "max_context_tokens"),
+        ),
+        "local": (
+            "graph_local_search_config",
+            (
+                "prompt",
+                "text_unit_prop",
+                "community_prop",
+                "conversation_history_max_turns",
+                "top_k_entities",
+                "top_k_relationships",
+                "max_context_tokens",
+            ),
+        ),
+    }
+
+    @staticmethod
+    def get_node_search_configs(node) -> dict | None:
+        """
+        Node-bound mirror of get_search_configs in the same nested format
+        build_rag_search_config expects. search_method comes from node.search_method.
+
+        Graph methods are driven by _NODE_GRAPH_METHOD_FIELDS, so a new method is
+        picked up without touching this assembly. getattr(..., None) relies on
+        Django's reverse-OneToOne accessor raising an AttributeError subclass when
+        no config row exists.
+        """
+        configs: dict = {}
+
+        naive = getattr(node, "naive_search_config", None)
+        if naive is not None:
+            configs["naive"] = {
+                "search_limit": naive.search_limit,
+                "similarity_threshold": round(float(naive.similarity_threshold), 2),
+            }
+
+        graph_cfg: dict = {}
+        for method, (
+            related_name,
+            fields,
+        ) in SearchConfigService._NODE_GRAPH_METHOD_FIELDS.items():
+            row = getattr(node, related_name, None)
+            graph_cfg[method] = (
+                None if row is None else {f: getattr(row, f) for f in fields}
+            )
+
+        if any(graph_cfg[method] is not None for method in graph_cfg):
+            graph_cfg["search_method"] = node.search_method
+            configs["graph"] = graph_cfg
+
+        return configs or None
+
     # Write methods
 
     @staticmethod
@@ -463,3 +522,85 @@ class SearchConfigService:
         if updated:
             config.save()
         return config
+
+    # ---- Node-bound search configs (partial merge, mirror of the agent methods) ----
+
+    _NODE_NAIVE_FIELDS = ("search_limit", "similarity_threshold")
+    _NODE_BASIC_FIELDS = ("prompt", "k", "max_context_tokens")
+    _NODE_LOCAL_FIELDS = (
+        "prompt",
+        "text_unit_prop",
+        "community_prop",
+        "conversation_history_max_turns",
+        "top_k_entities",
+        "top_k_relationships",
+        "max_context_tokens",
+    )
+
+    @staticmethod
+    def apply_node_search_configs(node, search_configs_data: dict):
+        """Partial-merge node search configs from validated nested data.
+
+        Only provided rag types / fields are touched — omitted blocks keep their
+        stored values (unlike the bulk-save replace-on-write path).
+        """
+        for rag_type, config in search_configs_data.items():
+            if rag_type == "naive":
+                SearchConfigService.update_node_naive_search_config(node, **config)
+            elif rag_type == "graph":
+                SearchConfigService.apply_node_graph_search_configs(node, config)
+
+    @staticmethod
+    def apply_node_graph_search_configs(node, config: dict):
+        """Apply graph search config to a node: search_method lives on the node,
+        basic/local params on their own node-bound rows."""
+        search_method = config.get("search_method")
+        if search_method:
+            node.search_method = search_method
+            node.save(update_fields=["search_method"])
+        basic = config.get("basic")
+        if basic:
+            SearchConfigService.update_node_graph_basic_search_config(node, **basic)
+        local = config.get("local")
+        if local:
+            SearchConfigService.update_node_graph_local_search_config(node, **local)
+
+    @staticmethod
+    def _update_node_config(model, node, valid_fields, kwargs):
+        """get_or_create the node-bound row and set only provided non-None fields."""
+        config, _ = model.objects.get_or_create(knowledge_node=node)
+        updated = False
+        for field, value in kwargs.items():
+            if field in valid_fields and value is not None:
+                setattr(config, field, value)
+                updated = True
+        if updated:
+            config.save()
+        return config
+
+    @staticmethod
+    def update_node_naive_search_config(node, **kwargs):
+        return SearchConfigService._update_node_config(
+            KnowledgeNodeNaiveRagSearchConfig,
+            node,
+            SearchConfigService._NODE_NAIVE_FIELDS,
+            kwargs,
+        )
+
+    @staticmethod
+    def update_node_graph_basic_search_config(node, **kwargs):
+        return SearchConfigService._update_node_config(
+            KnowledgeNodeGraphRagBasicSearchConfig,
+            node,
+            SearchConfigService._NODE_BASIC_FIELDS,
+            kwargs,
+        )
+
+    @staticmethod
+    def update_node_graph_local_search_config(node, **kwargs):
+        return SearchConfigService._update_node_config(
+            KnowledgeNodeGraphRagLocalSearchConfig,
+            node,
+            SearchConfigService._NODE_LOCAL_FIELDS,
+            kwargs,
+        )

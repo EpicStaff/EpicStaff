@@ -17,6 +17,7 @@ from .ai_providers import (
 from .graph_nodes import (
     CrewNodeData,
     PythonNodeData,
+    KnowledgeNodeData,
     FileExtractorNodeData,
     AudioTranscriptionNodeData,
     ConditionData,
@@ -118,6 +119,7 @@ __all__ = [
     # graph_nodes
     "CrewNodeData",
     "PythonNodeData",
+    "KnowledgeNodeData",
     "FileExtractorNodeData",
     "AudioTranscriptionNodeData",
     "ConditionData",

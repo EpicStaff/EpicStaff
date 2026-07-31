@@ -14,6 +14,7 @@ from tables.serializers.model_serializers.node_serializers.basic_node_serializer
     CrewNodeSerializer,
     EdgeSerializer,
     FileExtractorNodeSerializer,
+    KnowledgeNodeReadSerializer,
     PythonNodeSerializer,
     SubGraphNodeSerializer,
 )
@@ -172,6 +173,7 @@ class GraphSerializer(serializers.ModelSerializer):
     )
     subgraph_node_list = SubGraphNodeSerializer(many=True, read_only=True)
     code_agent_node_list = CodeAgentNodeSerializer(many=True, read_only=True)
+    knowledge_node_list = KnowledgeNodeReadSerializer(many=True, read_only=True)
     end_node_list = EndNodeSerializer(many=True, read_only=True, source="end_node")
     telegram_trigger_node_list = TelegramTriggerNodeSerializer(
         many=True, read_only=True
@@ -212,6 +214,7 @@ class GraphSerializer(serializers.ModelSerializer):
             "classification_decision_table_node_list",
             "subgraph_node_list",
             "code_agent_node_list",
+            "knowledge_node_list",
             "start_node_list",
             "end_node_list",
             "time_to_live",

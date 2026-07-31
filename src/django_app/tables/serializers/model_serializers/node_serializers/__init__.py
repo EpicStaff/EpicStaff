@@ -16,6 +16,8 @@ from .basic_node_serializers import (
     EdgeSerializer,
     FileExtractorNodeSerializer,
     KnowledgeNodeSerializer,
+    KnowledgeNodeReadSerializer,
+    KnowledgeNodeWriteSerializer,
     PythonNodeSerializer,
     SubGraphNodeSerializer,
 )

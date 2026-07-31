@@ -11,6 +11,7 @@ from tables.serializers.model_serializers import (
     EndNodeSerializer,
     FileExtractorNodeSerializer,
     GraphNoteSerializer,
+    KnowledgeNodeSerializer,
     PythonNodeSerializer,
     ScheduleTriggerNodeSerializer,
     StartNodeSerializer,

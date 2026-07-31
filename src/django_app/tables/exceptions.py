@@ -347,6 +347,13 @@ class UnknownRagTypeException(RagException):
         super().__init__(f"Unknown RAG type: '{rag_type}'")
 
 
+class KnowledgeNodeConfigurationError(RagException):
+    """Raised when a KnowledgeNode is not runnable: missing source_collection/rag_type,
+    or the rag_type has no built implementation to search."""
+
+    default_code = "knowledge_node_misconfigured"
+
+
 class ScheduleTriggerValidationError(CustomAPIExeption):
     status_code = 400
     default_detail = "ValidationError occurred in ScheduleTriggerValidator"

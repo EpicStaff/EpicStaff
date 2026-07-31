@@ -19,6 +19,8 @@ from tables.models.graph_models import (
     SubGraphNode,
 )
 from tables.models.knowledge_models import SourceCollection
+from tables.serializers.knowledge_serializers import NestedSearchConfigSerializer
+from tables.services.rag_assignment_service import SearchConfigService
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
@@ -90,6 +92,9 @@ class FileExtractorNodeSerializer(
 
 
 class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+    """Plain node serializer (no search configs). Base for bulk-save, which
+    persists the config blocks separately via its saveable."""
+
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     source_collection = OrgScopedPrimaryKeyRelatedField(
         queryset=SourceCollection.objects.all(), required=False, allow_null=True
@@ -98,6 +103,68 @@ class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSeriali
     class Meta:
         model = KnowledgeNode
         fields = "__all__"
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        # Merge with the instance so partial PATCH/bulk updates validate against the
+        # final state, not just the changed fields.
+        rag_type = attrs.get("rag_type", getattr(self.instance, "rag_type", None))
+        source_collection = attrs.get(
+            "source_collection", getattr(self.instance, "source_collection", None)
+        )
+        # A rag_type is only meaningful together with its own collection; the node
+        # searches source_collection with rag_type's implementation, so they must match.
+        if rag_type is not None:
+            if source_collection is None:
+                raise serializers.ValidationError(
+                    {"source_collection": "Required when rag_type is set."}
+                )
+            if rag_type.source_collection_id != source_collection.pk:
+                raise serializers.ValidationError(
+                    {
+                        "rag_type": "rag_type must belong to the node's source_collection."
+                    }
+                )
+        return attrs
+
+
+class KnowledgeNodeReadSerializer(KnowledgeNodeSerializer):
+    """Adds the nested read-back of node-bound search configs (mirror of
+    AgentReadSerializer.search_configs). Used for list/retrieve and inside
+    GraphSerializer.knowledge_node_list."""
+
+    search_configs = serializers.SerializerMethodField()
+
+    def get_search_configs(self, node: KnowledgeNode) -> dict | None:
+        return SearchConfigService.get_node_search_configs(node)
+
+
+class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
+    """Accepts a partial nested `search_configs` block and merges it into the
+    node-bound config rows (mirror of AgentWriteSerializer). Only provided
+    fields are touched — the FE may send just what changed."""
+
+    search_configs = NestedSearchConfigSerializer(required=False, allow_null=True)
+
+    def create(self, validated_data):
+        search_configs_data = validated_data.pop("search_configs", None)
+        node = super().create(validated_data)
+        if search_configs_data:
+            SearchConfigService.apply_node_search_configs(node, search_configs_data)
+        return node
+
+    def update(self, instance, validated_data):
+        search_configs_data = validated_data.pop("search_configs", None)
+        node = super().update(instance, validated_data)
+        if search_configs_data:
+            SearchConfigService.apply_node_search_configs(node, search_configs_data)
+        return node
+
+    def to_representation(self, instance):
+        """Return the persisted nested config (read format), not the raw input."""
+        data = super().to_representation(instance)
+        data["search_configs"] = SearchConfigService.get_node_search_configs(instance)
+        return data
 
 
 class AudioTranscriptionNodeSerializer(

@@ -5,6 +5,11 @@ from tables.models.graph_models import (
     ConditionGroup,
     DecisionTableNode,
 )
+from tables.models.knowledge_models import (
+    KnowledgeNodeGraphRagBasicSearchConfig,
+    KnowledgeNodeGraphRagLocalSearchConfig,
+    KnowledgeNodeNaiveRagSearchConfig,
+)
 from tables.services.graph_bulk_save_service.data_types import NodeRef
 
 
@@ -440,6 +445,64 @@ class ClassificationDecisionTableNodeSaveable:
 
         if self._deferred is not None:
             self._deferred.set_group_ids(created_groups)
+
+        return node
+
+
+class KnowledgeNodeSaveable:
+    """
+    Wraps a validated KnowledgeNodeBulkSerializer and its three optional nested
+    search-config rows (naive / graph-basic / graph-local).
+
+    The config rows are reverse OneToOne relations, not KnowledgeNode fields, so
+    the serializer never sees them — the factory pops them into nested_configs and
+    this saveable persists them here. Non-destructive merge: a provided block is
+    upserted (get_or_create + set sent fields); an omitted block is left as-is, so
+    the FE can save a flow without resending unchanged search configs.
+
+    _CONFIG_MODELS is the single extension point: a new graph search method needs
+    only its config model added here plus the matching payload key in the factory.
+    """
+
+    # nested payload key -> node-bound config model (FK field is always knowledge_node)
+    _CONFIG_MODELS = {
+        "naive_search_config": KnowledgeNodeNaiveRagSearchConfig,
+        "graph_basic_search_config": KnowledgeNodeGraphRagBasicSearchConfig,
+        "graph_local_search_config": KnowledgeNodeGraphRagLocalSearchConfig,
+    }
+    # Never let a client-sent id/FK reach the row create.
+    _CONFIG_EXCLUDED_FIELDS = frozenset({"id", "knowledge_node"})
+
+    def __init__(self, serializer, nested_configs, instance=None):
+        self._serializer = serializer
+        self._nested_configs = nested_configs or {}
+        self._instance = instance
+
+    def save(self):
+        s = self._serializer
+        validated = dict(s.validated_data)
+        _clean_for_write(validated)
+        node = (
+            s.create(validated)
+            if s.instance is None
+            else s.update(s.instance, validated)
+        )
+
+        for key, model in self._CONFIG_MODELS.items():
+            config_data = self._nested_configs.get(key)
+            if not config_data:
+                # Omitted block → keep the stored row untouched (non-destructive).
+                continue
+            cleaned = {
+                k: v
+                for k, v in config_data.items()
+                if k not in self._CONFIG_EXCLUDED_FIELDS
+            }
+            _clean_for_write(cleaned)
+            row, _ = model.objects.get_or_create(knowledge_node=node)
+            for field, value in cleaned.items():
+                setattr(row, field, value)
+            row.save()
 
         return node
 

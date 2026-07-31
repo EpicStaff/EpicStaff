@@ -225,6 +225,8 @@ from tables.serializers.model_serializers import (
     GraphSerializer,
     GraphSessionMessageSerializer,
     KnowledgeNodeSerializer,
+    KnowledgeNodeReadSerializer,
+    KnowledgeNodeWriteSerializer,
     LabelSerializer,
     McpToolSerializer,
     MemorySerializer,
@@ -869,6 +871,16 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
                 ),
                 "start_node_list",
                 Prefetch("graph_note_list", queryset=GraphNote.objects.all()),
+                Prefetch(
+                    "knowledge_node_list",
+                    queryset=KnowledgeNode.objects.select_related(
+                        "source_collection",
+                        "rag_type",
+                        "naive_search_config",
+                        "graph_basic_search_config",
+                        "graph_local_search_config",
+                    ),
+                ),
             )
             .all()
         )
@@ -1289,8 +1301,17 @@ class KnowledgeNodeViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = KnowledgeNode.objects.all()
-    serializer_class = KnowledgeNodeSerializer
+    queryset = KnowledgeNode.objects.select_related(
+        "naive_search_config",
+        "graph_basic_search_config",
+        "graph_local_search_config",
+    )
+    serializer_class = KnowledgeNodeWriteSerializer
+
+    def get_serializer_class(self):
+        if self.action in ("list", "retrieve"):
+            return KnowledgeNodeReadSerializer
+        return KnowledgeNodeWriteSerializer
 
 
 class AudioTranscriptionNodeViewSet(
