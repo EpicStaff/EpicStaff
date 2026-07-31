@@ -19,6 +19,7 @@ from embedder.gemini import GoogleGenAIEmbedder
 from embedder.cohere import CohereEmbedder
 from embedder.mistral import MistralEmbedder
 from embedder.together_ai import TogetherAIEmbedder
+from embedder.custom_embedder import CustomEmbedder
 
 
 class _LRUCache(OrderedDict):
@@ -368,8 +369,14 @@ class NaiveRAGStrategy(BaseRAGStrategy):
                 "together_ai": TogetherAIEmbedder,
             }
             embedder_class = provider_to_class.get(provider)
+
             if embedder_class is None:
-                raise ValueError(f"Embedder provider '{provider}' is not supported.")
+                logger.info(f"Using CustomEmbedder for provider '{provider}'")
+                return CustomEmbedder(
+                    api_key=embedder_config["api_key"],
+                    model_name=embedder_config["model_name"],
+                    base_url=embedder_config.get("base_url"),
+                )
 
             logger.info(f"Embedder class: {embedder_class.__name__}")
 

@@ -4,6 +4,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
@@ -13,7 +14,6 @@ from tables.models.rbac_models import ApiKey
 from tables.serializers.rbac_serializers import (
     AdminPasswordResetSerializer,
     LoginSerializer,
-    LogoutRequestSerializer,
     PasswordResetConfirmResponseSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestResponseSerializer,
@@ -27,12 +27,18 @@ from tables.services.rbac.password_recovery_service import PasswordRecoveryServi
 from tables.services.rbac.rbac_exceptions import InvalidRefreshTokenError
 from tables.services.rbac.reset_user_service import ResetUserService
 from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
+from tables.services.rbac.utils.refresh_cookie import (
+    clear_refresh_cookie,
+    get_refresh_from_cookie,
+    set_refresh_cookie,
+)
 from tables.swagger_schemas.auth_schema import (
     API_KEY_VALIDATE_GET,
     FIRST_SETUP_GET,
     FIRST_SETUP_POST,
     LOGIN_POST,
     LOGOUT_POST,
+    REFRESH_POST,
     RESET_USER_POST,
     SSE_TICKET_POST,
     SWAGGER_TOKEN_POST,
@@ -54,7 +60,12 @@ class LoginView(TokenObtainPairView):
         # before delegating to simplejwt. Wrong-credential errors stay a
         # flat 401 to avoid user-enumeration leaks.
         self._validator.validate_login(request.data)
-        return super().post(request, *args, **kwargs)
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            refresh_token = response.data.pop("refresh", None)
+            if refresh_token:
+                set_refresh_cookie(response, refresh_token)
+        return response
 
 
 class LogoutView(APIView):
@@ -63,24 +74,24 @@ class LogoutView(APIView):
 
     @extend_schema(**LOGOUT_POST)
     def post(self, request):
-        serializer = LogoutRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            token = RefreshToken(serializer.validated_data["refresh"])
-            # Ownership check: a leaked refresh token must not let a third
-            # party log the owner out. Mismatch is reported with the same
-            # exception as malformed/expired tokens so the caller cannot
-            # distinguish "real but not yours" from "garbage".
-            token_user_id = token.payload.get("user_id")
-            if token_user_id is None or int(token_user_id) != request.user.id:
-                raise InvalidRefreshTokenError()
-            token.blacklist()
-        except TokenError as exc:
-            raise InvalidRefreshTokenError() from exc
-        return Response(
+        refresh_value = get_refresh_from_cookie(request)
+        if refresh_value:
+            try:
+                token = RefreshToken(refresh_value)
+                # Ownership check: a leaked refresh token must not let a
+                # third party log the owner out.
+                token_user_id = token.payload.get("user_id")
+                if token_user_id is None or int(token_user_id) != request.user.id:
+                    raise InvalidRefreshTokenError()
+                token.blacklist()
+            except TokenError as exc:
+                raise InvalidRefreshTokenError() from exc
+        response = Response(
             {"detail": "Logged out."},
             status=status.HTTP_205_RESET_CONTENT,
         )
+        clear_refresh_cookie(response)
+        return response
 
 
 class SseTicketView(APIView):
@@ -144,7 +155,7 @@ class FirstSetupView(APIView):
         )
         tokens = TokenPair.for_user(result.user)
 
-        return Response(
+        response = Response(
             {
                 "user": {
                     "id": result.user.id,
@@ -158,10 +169,11 @@ class FirstSetupView(APIView):
                     "is_active": result.organization.is_active,
                 },
                 "access": tokens.access,
-                "refresh": tokens.refresh,
             },
             status=status.HTTP_201_CREATED,
         )
+        set_refresh_cookie(response, tokens.refresh)
+        return response
 
 
 class TokenIntrospectView(APIView):
@@ -343,6 +355,41 @@ class AdminPasswordResetView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class CookieTokenRefreshView(APIView):
+    """Read the refresh token from the HttpOnly cookie, validate it via
+    SimpleJWT, and return a fresh access token.  When token rotation is
+    enabled the new refresh token is set as a cookie as well."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(**REFRESH_POST)
+    def post(self, request):
+        refresh_value = get_refresh_from_cookie(request)
+        if not refresh_value:
+            return Response(
+                {"detail": "No refresh token."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        serializer = TokenRefreshSerializer(data={"refresh": refresh_value})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError:
+            response = Response(
+                {"detail": "Token is invalid or expired."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+            clear_refresh_cookie(response)
+            return response
+
+        response = Response({"access": serializer.validated_data["access"]})
+        new_refresh = serializer.validated_data.get("refresh")
+        if new_refresh:
+            set_refresh_cookie(response, new_refresh)
+        return response
+
+
 class ResetUserView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, IsSuperadmin]
@@ -360,10 +407,12 @@ class ResetUserView(APIView):
         )
         tokens = TokenPair.for_user(user)
 
-        return Response(
+        response = Response(
             {
                 "access": tokens.access,
-                "refresh": tokens.refresh,
+                "api_key": raw_key,
             },
             status=status.HTTP_201_CREATED,
         )
+        set_refresh_cookie(response, tokens.refresh)
+        return response

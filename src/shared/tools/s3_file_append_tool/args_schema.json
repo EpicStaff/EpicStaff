@@ -8,7 +8,7 @@
     },
     "content": {
       "type": "string",
-      "description": "Text to append to the file."
+      "description": "Text to append to the end of the file."
     }
   },
   "required": ["file_path", "content"]

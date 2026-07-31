@@ -443,7 +443,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         if (this.testRunning()) return 'processing';
         if (this.testError()) return 'error';
         const r = this.testResult();
-        if (r) return r.returncode === 0 ? 'done' : 'error';
+        if (r) return r.status === 'completed' ? 'done' : 'error';
         return 'idle';
     });
 
@@ -752,7 +752,9 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             .subscribe({
                 next: (event: PollEvent) => {
                     if (event.type === 'polling') {
-                        this.addLog('polling', 'Processing...');
+                        if (event.attempt === 1) {
+                            this.addLog('polling', 'Processing...');
+                        }
                     } else if (event.type === 'result') {
                         const result = event.data;
                         this.testResult.set(result);
@@ -764,7 +766,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                         if (result.stderr) {
                             this.addLog('stderr', result.stderr);
                         }
-                        if (result.returncode === 0) {
+                        if (result.status === 'completed') {
                             this.addLog('result', result.result_data || '(empty result)');
                         } else {
                             this.addLog('error', `Execution failed (return code: ${result.returncode})`);

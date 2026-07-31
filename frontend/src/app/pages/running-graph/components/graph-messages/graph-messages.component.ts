@@ -55,6 +55,7 @@ import { ClassificationDtMessageComponent } from './components/classification-dt
 import { CodeAgentStreamMessageComponent } from './components/code-agent-stream-message/code-agent-stream-message.component';
 import { ErrorMessageComponent } from './components/error-message/error-message.component';
 import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
+import { FindingsMessageComponent } from './components/findings-message/findings-message.component';
 import { FinishMessageComponent } from './components/finish-message/finish-message.component';
 import { LlmMessageComponent } from './components/llm-message/llm-message.component';
 import { LoadingDotsComponent } from './components/loading-animation/loading-animation.component';
@@ -98,6 +99,7 @@ const RENDERABLE_MESSAGE_TYPES: ReadonlySet<string> = new Set([
     MessageType.CONDITION_GROUP,
     MessageType.CONDITION_GROUP_MANIPULATION,
     MessageType.CLASSIFICATION_PROMPT,
+    MessageType.FINDINGS,
 ]);
 
 interface MessageViewEntry {
@@ -153,6 +155,7 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
         WaitForUserInputComponent,
         UserMessageComponent,
         ExtractedChunksMessageComponent,
+        FindingsMessageComponent,
         ClassificationDtMessageComponent,
         WarningMessagesComponent,
         SubgraphStartMessageComponent,
@@ -949,6 +952,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             case 'code_agent_stream':
             case 'subgraph_start':
             case 'subgraph_finish':
+            case 'findings':
                 return true;
             default:
                 return false;

@@ -54,7 +54,6 @@ from django_filters.rest_framework import DjangoFilterBackend
 from tables.models import (
     Session,
     # DocumentMetadata,
-    OrganizationUser,
     Graph,
     PythonCode,
     SessionWarningMessage,
@@ -70,12 +69,15 @@ from tables.serializers.serializers import (
     AnswerToLLMSerializer,
     BulkExportSerializer,
     InitRealtimeSerializer,
+    NotifyEmailSerializer,
     ProcessRagIndexingSerializer,
     RunSessionSerializer,
     RegisterTelegramTriggerSerializer,
     RunPythonCodeSerializer,
     SessionExportAllSerializer,
 )
+from tables.services.notification_email_sender import NotificationEmailSender
+from tables.throttles import NotifyEmailThrottle
 
 from tables.serializers.quickstart_serializers import (
     QuickstartSerializer,
@@ -150,6 +152,7 @@ session_manager_service = SessionManagerService()
 run_python_code_service = RunPythonCodeService()
 realtime_service = RealtimeService()
 quickstart_service = QuickstartService()
+notification_email_sender = NotificationEmailSender()
 
 
 @extend_schema_view(
@@ -465,19 +468,13 @@ class RunSession(APIView):
 
         graph_id = graph.id
 
-        # Resolve the running user's membership in the flow's organization.
-        # Superadmin may run any flow without a membership row. Persistent-variable
-        # merging and write-back are owned by run_session.
-        is_superadmin = getattr(request.user, "is_superadmin", False)
-        if not is_superadmin:
-            membership = OrganizationUser.objects.filter(
-                user=request.user, org_id=graph.org_id, org__is_active=True
-            ).first()
-            if membership is None:
-                return Response(
-                    {"message": "You cannot run a flow outside your organization."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+        # Running the flow requires READ on flows within its org (superadmin bypasses).
+        assert_org_permission(
+            user=request.user,
+            org_id=graph.org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.READ,
+        )
 
         variables = serializer.validated_data.get("variables", {})
         for key, file in request.FILES.items():
@@ -490,7 +487,11 @@ class RunSession(APIView):
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
-                graph_id=graph_id, variables=variables, user=request.user
+                graph_id=graph_id,
+                variables=variables,
+                user=request.user,
+                parent_session_id=serializer.validated_data.get("parent_session_id"),
+                token_budget=serializer.validated_data.get("token_budget"),
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:
@@ -625,6 +626,44 @@ class AnswerToLLM(APIView):
         return Response(status=status.HTTP_202_ACCEPTED)
 
 
+class NotifyEmailView(APIView):
+    """EST-3285 4.8: sends a notification email via notification_tool
+    (channel='email'). Reuses NotificationEmailSender (Django's send_mail /
+    EMAIL_BACKEND -- the same transport PasswordResetEmailSender uses), NOT a
+    parallel SMTP client. Requires auth (same DEFAULT_PERMISSION_CLASSES /
+    DEFAULT_AUTHENTICATION_CLASSES as every other endpoint), but auth alone
+    does not prevent abuse: this is driven by notification_tool (LLM output),
+    so a prompt-injected agent or a leaked API key could otherwise send
+    unlimited mail to arbitrary external addresses from our domain.
+    NotifyEmailThrottle caps that per authenticated user."""
+
+    throttle_classes = [NotifyEmailThrottle]
+
+    @extend_schema(
+        summary="Send a notification email",
+        request=NotifyEmailSerializer,
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = NotifyEmailSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        to_email = serializer.validated_data["to"]
+        subject = serializer.validated_data["subject"]
+        message = serializer.validated_data["message"]
+
+        sent, error = notification_email_sender.send(
+            to=to_email, subject=subject, message=message
+        )
+        if not sent:
+            return Response(
+                {"message": f"Failed to send notification email: {error}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response({"sent": True}, status=status.HTTP_200_OK)
+
+
 class RunPythonCodeAPIView(APIView):
     _org_context = OrgContextService()
 
@@ -646,7 +685,7 @@ class RunPythonCodeAPIView(APIView):
             user=request.user,
             org_id=org_id,
             resource_type=ResourceType.FLOWS,
-            action=Permission.UPDATE,
+            action=Permission.READ,
         )
         if not PythonCode.objects.filter(
             self._python_code_visible_q(org_id), pk=python_code.pk
@@ -659,7 +698,12 @@ class RunPythonCodeAPIView(APIView):
                 }
             )
 
-        execution_id = run_python_code_service.run_code(python_code.id, variables)
+        execution_id = run_python_code_service.run_code(
+            python_code_id=python_code.id,
+            varaibles=variables,
+            organization_id=org_id,
+            user=request.user,
+        )
         return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
 
     @staticmethod
