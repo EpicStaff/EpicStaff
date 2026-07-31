@@ -54,12 +54,7 @@
                     </div>
                 </app-lockable-field>
 
-                <!-- Tabs + all tab content (table / computations / prompts) — one lock zone -->
-                <app-lockable-field
-                    class="fill lock-inset"
-                    fieldId="cdt_body"
-                    [nodeId]="node().id"
-                >
+                <div class="fill lock-inset">
                     <!-- Tabs row -->
                     <div class="tabs-row">
                         <div class="tabs-row__left">
@@ -76,27 +71,56 @@
                             <button
                                 class="tab-link"
                                 [class.tab-link--active]="activeTab() === 'precomputation'"
+                                [class.tab-link--locked]="lockedByOther('precomputation')"
+                                [attr.title]="
+                                    lockedByOther('precomputation')
+                                        ? 'Editing by ' +
+                                          (lockedByOther('precomputation')?.display_name || 'another user')
+                                        : null
+                                "
                                 (click)="setActiveTab('precomputation')"
                                 type="button"
                             >
+                                @if (lockedByOther('precomputation')) {
+                                    <i class="ti ti-lock tab-link__lock-icon"></i>
+                                }
                                 Pre-computation
                             </button>
                             <span class="tab-separator">/</span>
                             <button
                                 class="tab-link"
                                 [class.tab-link--active]="activeTab() === 'postcomputation'"
+                                [class.tab-link--locked]="lockedByOther('postcomputation')"
+                                [attr.title]="
+                                    lockedByOther('postcomputation')
+                                        ? 'Editing by ' +
+                                          (lockedByOther('postcomputation')?.display_name || 'another user')
+                                        : null
+                                "
                                 (click)="setActiveTab('postcomputation')"
                                 type="button"
                             >
+                                @if (lockedByOther('postcomputation')) {
+                                    <i class="ti ti-lock tab-link__lock-icon"></i>
+                                }
                                 Post-computation
                             </button>
                             <span class="tab-separator">/</span>
                             <button
                                 class="tab-link"
                                 [class.tab-link--active]="activeTab() === 'prompts'"
+                                [class.tab-link--locked]="lockedByOther('prompts')"
+                                [attr.title]="
+                                    lockedByOther('prompts')
+                                        ? 'Editing by ' + (lockedByOther('prompts')?.display_name || 'another user')
+                                        : null
+                                "
                                 (click)="setActiveTab('prompts')"
                                 type="button"
                             >
+                                @if (lockedByOther('prompts')) {
+                                    <i class="ti ti-lock tab-link__lock-icon"></i>
+                                }
                                 Prompt library
                             </button>
 
@@ -356,7 +380,7 @@
                             </div>
                         </div>
                     }
-                </app-lockable-field>
+                </div>
             </form>
         }
     </div>

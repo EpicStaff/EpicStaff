@@ -239,6 +239,20 @@
     &:hover:not(.tab-link--active) {
         color: #8b83ff;
     }
+
+    &--locked {
+        color: rgba(255, 255, 255, 0.35);
+        cursor: not-allowed;
+
+        &:hover {
+            color: rgba(255, 255, 255, 0.35);
+        }
+    }
+}
+
+.tab-link__lock-icon {
+    margin-right: 0.3rem;
+    font-size: 0.8rem;
 }
 
 .tab-separator {

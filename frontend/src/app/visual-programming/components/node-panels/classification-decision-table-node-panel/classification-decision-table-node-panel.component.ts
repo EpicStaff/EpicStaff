@@ -18,6 +18,7 @@ import { Subject } from 'rxjs';
 import { debounceTime, takeUntil } from 'rxjs/operators';
 
 import { ImportExportService } from '../../../../core/services/import-export.service';
+import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import {
     ActionDropdownButtonComponent,
@@ -48,6 +49,8 @@ import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
 type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
+
+const LOCKABLE_TABS: ReadonlySet<TabType> = new Set(['precomputation', 'postcomputation', 'prompts']);
 
 @Component({
     selector: 'app-classification-decision-table-node-panel',
@@ -93,6 +96,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public activeTab = signal<TabType>('table');
     private lastFormNodeId: string | null = null;
+    private readonly profileService = inject(ProfileService);
+    private lockedTab: { nodeId: string; tab: TabType } | null = null;
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
@@ -186,6 +191,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.sidePanelService.triggerAutosave());
         this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.destroyRef.onDestroy(() => this.setLockedTab(null));
     }
 
     public availableNodeItems = computed<SelectItem[]>(() => {
@@ -279,9 +285,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.conditionGroups.set(groupsCopy);
         this.prompts.set({ ...(tableData.prompts || {}) });
 
-        // Only reset to the Table tab when a different node is opened — not on every remote
-        // merge (initializeForm runs on each peer update), which would yank a viewing
-        // collaborator back to the Table tab whenever the editor changes anything.
         if (this.lastFormNodeId !== node.id) {
             this.activeTab.set('table');
             this.lastFormNodeId = node.id;
@@ -290,13 +293,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         return form;
     }
 
-    // Runs exactly once per real reinit (a different node opened), never on the
-    // per-node-update merge cycles that call initializeForm() again just to diff
-    // values — see BaseSidePanel.mergeRemoteIntoForm. Sub-form instances and their
-    // valueChanges subscriptions must be created here, not in initializeForm(),
-    // or every remote/self node update would replace preInputForm/postInputForm
-    // (disconnecting them from the canonical form) and pile up duplicate subscriptions.
     protected override onFormReinitialized(): void {
+        this.setLockedTab(null);
         this.reinitDestroy$.next();
 
         const form = this.form;
@@ -325,6 +323,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .subscribe((pairs: { key: string; value: string }[]) => {
                 this.syncSubFormToMainArray(form, 'pre_input_map', pairs);
                 this.preInputMapVersion.update((v) => v + 1);
+                this.notifyExternalChange();
                 this.codeChange$.next();
             });
 
@@ -332,6 +331,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .pipe(takeUntil(this.reinitDestroy$), takeUntilDestroyed(this.destroyRef))
             .subscribe((pairs: { key: string; value: string }[]) => {
                 this.syncSubFormToMainArray(form, 'post_input_map', pairs);
+                this.notifyExternalChange();
                 this.codeChange$.next();
             });
 
@@ -407,8 +407,59 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         };
     }
 
+    private tabFieldId(tab: TabType): string {
+        return `cdt_tab_${tab}`;
+    }
+
+    public lockedByOther(tab: TabType) {
+        if (!LOCKABLE_TABS.has(tab)) return null;
+        const lock = this.wsService.lockedNodeFields().get(this.node().id)?.get(this.tabFieldId(tab)) ?? null;
+        if (!lock || lock.user_id === this.profileService.currentUserSignal()?.id) return null;
+        return lock;
+    }
+
+    private setLockedTab(tab: TabType | null): void {
+        if (this.lockedTab) {
+            this.wsService.sendNodeUnlocked(this.lockedTab.nodeId, this.tabFieldId(this.lockedTab.tab));
+            this.lockedTab = null;
+        }
+        if (tab && LOCKABLE_TABS.has(tab)) {
+            const nodeId = this.node().id;
+            this.wsService.sendNodeLocked(nodeId, this.tabFieldId(tab));
+            this.lockedTab = { nodeId, tab };
+        }
+    }
+
     public setActiveTab(tab: TabType): void {
-        this.activeTab.set(tab);
+        if (tab === this.activeTab()) return;
+
+        const lock = this.lockedByOther(tab);
+        if (lock) {
+            this.toastService.warning(
+                `${lock.display_name || 'Another user'} is editing this tab`,
+                3000,
+                'bottom-right'
+            );
+            return;
+        }
+
+        const applySwitch = () => {
+            this.setLockedTab(tab);
+            this.activeTab.set(tab);
+            if (tab === 'precomputation' || tab === 'postcomputation') {
+                this.seedSubFormInputMap(this.preInputForm, this.form.get('pre_input_map') as FormArray);
+                this.seedSubFormInputMap(this.postInputForm, this.form.get('post_input_map') as FormArray);
+                this.preInputMapVersion.update((v) => v + 1);
+            }
+        };
+
+        if (LOCKABLE_TABS.has(this.activeTab())) {
+            this.sidePanelService.triggerAutosave();
+            setTimeout(applySwitch, 0);
+            return;
+        }
+
+        applySwitch();
     }
 
     public onOpenPromptLibrary(event: { action: 'create' } | { action: 'edit'; promptId: string }): void {
