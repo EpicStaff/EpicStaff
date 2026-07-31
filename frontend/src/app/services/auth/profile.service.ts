@@ -2,7 +2,10 @@ import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import {
     AccessToken,
+    CreateApiKeyRequest,
+    CreateApiKeyResponse,
     GetMeResponse,
+    GetMyApiKeyResponse,
     PasswordChangeConfirmRequest,
     PasswordChangeVerifyRequest,
     PasswordChangeVerifyResponse,
@@ -110,6 +113,22 @@ export class ProfileService {
 
     clearCurrentUser(): void {
         this.currentUser.set(null);
+    }
+
+    createApiKey(dto: CreateApiKeyRequest): Observable<CreateApiKeyResponse> {
+        return this.http.post<CreateApiKeyResponse>(`${this.baseUrl}api-keys/`, dto);
+    }
+
+    getMyApiKeys(): Observable<GetMyApiKeyResponse[]> {
+        return this.http.get<GetMyApiKeyResponse[]>(`${this.baseUrl}api-keys/`);
+    }
+
+    revokeApiKey(id: number): Observable<GetMyApiKeyResponse> {
+        return this.http.post<GetMyApiKeyResponse>(`${this.baseUrl}api-keys/${id}/revoke/`, {});
+    }
+
+    deleteApiKey(id: number): Observable<void> {
+        return this.http.delete<void>(`${this.baseUrl}api-keys/${id}/`);
     }
 
     private setUser(user: GetMeResponse): void {

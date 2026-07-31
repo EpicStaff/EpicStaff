@@ -1,0 +1,95 @@
+@use '../tab-shared' as shared;
+
+@include shared.tab-base;
+
+.toolbar {
+    justify-content: space-between;
+}
+
+.org-filter {
+    width: 160px;
+}
+
+.owner-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.owner-info {
+    display: flex;
+    flex-direction: column;
+    line-height: 100%;
+    min-width: 0;
+}
+
+.owner-name {
+    font-size: 0.875rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &.inactive {
+        color: var(--text-secondary-60);
+    }
+}
+
+.owner-email {
+    font-size: 0.75rem;
+    color: var(--text-secondary-60);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.key-name {
+    font-size: 0.875rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    max-width: 100%;
+
+    &.inactive {
+        color: var(--text-secondary-60);
+    }
+}
+
+.key-value {
+    font-size: 0.875rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    max-width: 100%;
+
+    &.inactive {
+        color: var(--text-secondary-60);
+    }
+}
+
+.expires-value {
+    font-size: 0.875rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    max-width: 100%;
+
+    &.warning {
+        color: var(--orange);
+    }
+
+    &.danger {
+        color: var(--red);
+    }
+
+    &.inactive {
+        color: var(--text-secondary-60);
+    }
+}

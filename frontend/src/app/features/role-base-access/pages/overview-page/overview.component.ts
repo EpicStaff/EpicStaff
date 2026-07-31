@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { AppSvgIconComponent } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { RouterOutlet } from '@angular/router';
+import { RouteTab, RouteTabsComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -11,20 +10,42 @@ import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/direct
     selector: 'app-overview',
     templateUrl: './overview.component.html',
     styleUrls: ['./overview.component.scss'],
-    imports: [
-        RouterOutlet,
-        RouterLink,
-        RouterLinkActive,
-        AppSvgIconComponent,
-        HideInlineSubtitleOnOverflowDirective,
-        HasPermissionDirective,
-    ],
+    imports: [RouterOutlet, HideInlineSubtitleOnOverflowDirective, RouteTabsComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class OverviewComponent {
     private readonly permissionsService = inject(PermissionsService);
 
-    protected readonly ResourceCode = ResourceCode;
-    protected readonly ActionCode = ActionCode;
-    protected readonly isSuperadmin = this.permissionsService.isSuperadmin;
+    protected readonly tabs: RouteTab[] = [
+        {
+            routerLink: 'main',
+            icon: 'home',
+            label: 'Main',
+            isPermitted: this.permissionsService.isSuperadmin,
+        },
+        {
+            routerLink: 'organizations',
+            icon: 'buildings',
+            label: 'Organizations',
+            isPermitted: this.permissionsService.can(ResourceCode.Organizations, ActionCode.Read),
+        },
+        {
+            routerLink: 'users',
+            icon: 'profile',
+            label: 'Users',
+            isPermitted: this.permissionsService.can(ResourceCode.Users, ActionCode.Read),
+        },
+        {
+            routerLink: 'roles',
+            icon: 'briefcase',
+            label: 'Roles',
+            isPermitted: this.permissionsService.can(ResourceCode.Roles, ActionCode.Read),
+        },
+        {
+            routerLink: 'api-keys',
+            icon: 'key',
+            label: 'API Keys',
+            isPermitted: this.permissionsService.can(ResourceCode.Secrets, ActionCode.Read),
+        },
+    ];
 }
