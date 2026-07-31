@@ -3,19 +3,12 @@ from django.db.models import Model
 from django.db import transaction
 
 from tables.models.base_models import BaseGlobalNode
-from tables.models.webhook_models import (
-    LocalhostWebhookConfig,
-    NgrokWebhookConfig,
-    ProviderType,
-    WebhookTrigger,
-)
 from tables.models.python_models import PythonCode
 from tables.models import Agent, PythonCodeTool, ToolConfig, McpTool
 from tables.serializers.org_scoped_fields import (
     org_visible_queryset,
     resolve_active_org_id,
 )
-from utils.logger import logger
 
 
 def assert_node_ref_in_graph(node_id, graph, field: str) -> None:
@@ -323,81 +316,3 @@ class ToolsConnectionMixin:
                 )
 
 
-class WebhookCreationMixin:
-    @transaction.atomic
-    def _get_or_create_webhook_trigger(self, data):
-        path = data.get("path")
-        provider_type = data.get("provider_type")
-        request = self.context.get("request")
-        org_id = resolve_active_org_id(request) if request is not None else None
-        if request is None:
-            logger.warning(
-                "WebhookCreationMixin._get_or_create_webhook_trigger called "
-                "without a request in context; org scope cannot be applied."
-            )
-
-        try:
-            existing = WebhookTrigger.objects.get(path=path)
-        except WebhookTrigger.DoesNotExist:
-            existing = None
-        except WebhookTrigger.MultipleObjectsReturned:
-            logger.warning(
-                "Multiple WebhookTrigger rows found for path=%r — "
-                "expected at most one. Using the first result.",
-                path,
-            )
-            existing = WebhookTrigger.objects.filter(path=path).first()
-
-        if existing is not None:
-            if org_id is None or existing.org_id != org_id:
-                raise serializers.ValidationError(
-                    {"path": f'Invalid pk "{path}" - object does not exist.'}
-                )
-            trigger = existing
-            created = False
-        else:
-            if org_id is None:
-                raise serializers.ValidationError(
-                    "Organization context is required to create a webhook trigger."
-                )
-            trigger = WebhookTrigger.objects.create(
-                path=path,
-                provider_type=provider_type,
-                org_id=org_id,
-                created_by=getattr(request, "user", None),
-            )
-            created = True
-
-        if not created and trigger.provider_type != provider_type:
-            # Provider changed — delete the old config to avoid orphan
-            if trigger.provider_type == ProviderType.NGROK:
-                NgrokWebhookConfig.objects.filter(trigger=trigger).delete()
-                logger.info(
-                    "Deleted NgrokWebhookConfig for trigger pk=%s (provider_type=%s)",
-                    trigger.pk,
-                    trigger.provider_type,
-                )
-            elif trigger.provider_type == ProviderType.LOCALHOST:
-                LocalhostWebhookConfig.objects.filter(trigger=trigger).delete()
-                logger.info(
-                    "Deleted LocalhostWebhookConfig for trigger pk=%s (provider_type=%s)",
-                    trigger.pk,
-                    trigger.provider_type,
-                )
-            trigger.provider_type = provider_type
-            trigger.save(update_fields=["provider_type"])
-
-        if provider_type == ProviderType.NGROK:
-            ngrok_data = data.get("ngrok_config")
-            if ngrok_data:
-                NgrokWebhookConfig.objects.update_or_create(
-                    trigger=trigger, defaults=ngrok_data
-                )
-        elif provider_type == ProviderType.LOCALHOST:
-            localhost_data = data.get("localhost_config")
-            if localhost_data:
-                LocalhostWebhookConfig.objects.update_or_create(
-                    trigger=trigger, defaults=localhost_data
-                )
-
-        return trigger, created

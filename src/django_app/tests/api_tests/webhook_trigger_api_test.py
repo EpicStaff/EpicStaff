@@ -415,10 +415,12 @@ class TestWebhookTriggerOrgIsolation:
     ):
         """
         Path is a global namespace, but a trigger already claimed by another
-        org must be rejected exactly like a non-existent row. This is
-        WebhookCreationMixin behavior, exercised via /api/webhook-triggers/
-        (the actual trigger-creation flow now that nodes only reference an
-        existing trigger by id).
+        org (same path + provider_type) must be rejected exactly like a
+        non-existent row. This is enforced by
+        WebhookTriggerNestedSerializer.validate()'s (path, provider_type)
+        uniqueness check, exercised via /api/webhook-triggers/ (the actual
+        trigger-creation flow now that nodes only reference an existing
+        trigger by id).
         """
         WebhookTrigger.objects.create(
             path="claimed-by-other-org", provider_type=None, org=other_org
@@ -808,4 +810,119 @@ class TestWebhookTriggerDuplicatePathValidation:
         assert serializer.is_valid(), serializer.errors
         updated = serializer.save()
         assert updated.path == "brand-new-unique-path"
+
+
+@pytest.mark.django_db
+class TestWebhookTriggerCreateDoesNotMerge:
+    """EST-3625: POSTing a `path` that collides with an existing trigger must
+    never silently mutate/merge into that other row. `create()` is a plain
+    insert; `validate()` (already covered by EST-3620 tests above) is the
+    only thing allowed to reject a request before it reaches `create()`."""
+
+    def test_duplicate_path_and_provider_type_is_rejected_not_merged(
+        self, auth_client, default_org
+    ):
+        """An exact (path, provider_type) duplicate must be rejected with a
+        clean validation error, and must not mutate the existing row."""
+        existing = WebhookTrigger.objects.create(
+            path="dup-path-same-provider",
+            provider_type=ProviderType.NGROK,
+            org=default_org,
+        )
+        NgrokWebhookConfig.objects.create(
+            trigger=existing, name="original-ngrok", auth_token="original-token"
+        )
+
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "dup-path-same-provider",
+                "provider_type": "ngrok",
+                "ngrok_config": {
+                    "name": "hijack-attempt",
+                    "auth_token": "hijack-token",
+                    "domain": None,
+                },
+            },
+            format="json",
+        )
+
+        assert response.status_code == 400
+        # exactly one row for this (path, provider_type) — no merge, no new row
+        assert (
+            WebhookTrigger.objects.filter(
+                path="dup-path-same-provider", provider_type=ProviderType.NGROK
+            ).count()
+            == 1
+        )
+        existing.refresh_from_db()
+        assert existing.provider_type == ProviderType.NGROK
+        ngrok_config = NgrokWebhookConfig.objects.get(trigger=existing)
+        assert ngrok_config.name == "original-ngrok"
+        assert ngrok_config.auth_token == "original-token"
+
+    def test_same_path_different_provider_type_creates_separate_row(
+        self, auth_client, default_org
+    ):
+        """The model's actual constraint is unique_together(path,
+        provider_type) — two different providers ARE allowed to share a
+        path as separate rows. POSTing a new provider_type for an existing
+        path must create a sibling row, not hijack/mutate the existing one
+        (the EST-3625 bug: the old get_or_create looked up by `path` alone)."""
+        existing = WebhookTrigger.objects.create(
+            path="shared-path-diff-provider",
+            provider_type=ProviderType.LOCALHOST,
+            org=default_org,
+        )
+        LocalhostWebhookConfig.objects.create(
+            trigger=existing, name="local-cfg", domain="localhost:9000"
+        )
+
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {
+                "path": "shared-path-diff-provider",
+                "provider_type": "ngrok",
+                "ngrok_config": {
+                    "name": "new-ngrok-cfg",
+                    "auth_token": "new-token",
+                    "domain": None,
+                },
+            },
+            format="json",
+        )
+
+        assert response.status_code == 201, response.json()
+        new_trigger_id = response.json()["id"]
+        assert new_trigger_id != existing.id
+
+        rows = WebhookTrigger.objects.filter(path="shared-path-diff-provider")
+        assert rows.count() == 2
+
+        # the original row must be untouched — same provider, config intact
+        existing.refresh_from_db()
+        assert existing.provider_type == ProviderType.LOCALHOST
+        assert LocalhostWebhookConfig.objects.filter(trigger=existing).exists()
+        local_cfg = LocalhostWebhookConfig.objects.get(trigger=existing)
+        assert local_cfg.name == "local-cfg"
+
+        # the new row is a genuinely separate WebhookTrigger with its own config
+        new_trigger = WebhookTrigger.objects.get(id=new_trigger_id)
+        assert new_trigger.provider_type == ProviderType.NGROK
+        assert NgrokWebhookConfig.objects.filter(trigger=new_trigger).exists()
+
+    def test_fresh_unique_path_creates_normally(self, auth_client, default_org):
+        """No-regression sanity check: a normal POST with a fresh, unique
+        path still creates a single new WebhookTrigger as before."""
+        response = auth_client.post(
+            reverse("webhooktrigger-list"),
+            {"path": "brand-new-fresh-path", "provider_type": None},
+            format="json",
+        )
+
+        assert response.status_code == 201, response.json()
+        trigger = WebhookTrigger.objects.get(path="brand-new-fresh-path")
+        assert trigger.provider_type is None
+        assert trigger.org_id == default_org.id
+        assert WebhookTrigger.objects.filter(path="brand-new-fresh-path").count() == 1
 

@@ -1,3 +1,5 @@
+from django.db import transaction
+
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     LocalhostWebhookConfig,
@@ -5,7 +7,7 @@ from tables.models.webhook_models import (
     ProviderType,
     WebhookTrigger,
 )
-from tables.serializers.utils.mixins import WebhookCreationMixin
+from tables.serializers.org_scoped_fields import resolve_active_org_id
 from rest_framework import serializers
 from utils.logger import logger
 
@@ -29,15 +31,46 @@ class LocalhostConfigInlineSerializer(serializers.Serializer):
     )
 
 
-class WebhookTriggerNestedSerializer(WebhookCreationMixin, serializers.ModelSerializer):
+class WebhookTriggerNestedSerializer(serializers.ModelSerializer):
     provider_type = serializers.ChoiceField(
         choices=ProviderType.choices, required=False, allow_null=True
     )
     ngrok_config = NgrokConfigInlineSerializer(required=False, allow_null=True)
     localhost_config = LocalhostConfigInlineSerializer(required=False, allow_null=True)
 
+    @transaction.atomic
     def create(self, validated_data):
-        trigger, _ = self._get_or_create_webhook_trigger(validated_data)
+        # A true create — always inserts a new row. `validate()` already
+        # rejects an exact (path, provider_type) duplicate before we get
+        # here, so two different providers sharing the same `path` legally
+        # create two separate WebhookTrigger rows (unique_together allows
+        # it). No existing-row lookup/merge/config-deletion here — that
+        # get-or-create behavior used to hijack another provider's row on a
+        # path collision (EST-3625).
+        request = self.context.get("request")
+        org_id = resolve_active_org_id(request) if request is not None else None
+        if org_id is None:
+            raise serializers.ValidationError(
+                "Organization context is required to create a webhook trigger."
+            )
+
+        provider_type = validated_data.get("provider_type")
+        trigger = WebhookTrigger.objects.create(
+            path=validated_data.get("path"),
+            provider_type=provider_type,
+            org_id=org_id,
+            created_by=getattr(request, "user", None),
+        )
+
+        if provider_type == ProviderType.NGROK:
+            ngrok_data = validated_data.get("ngrok_config")
+            if ngrok_data:
+                NgrokWebhookConfig.objects.create(trigger=trigger, **ngrok_data)
+        elif provider_type == ProviderType.LOCALHOST:
+            localhost_data = validated_data.get("localhost_config")
+            if localhost_data:
+                LocalhostWebhookConfig.objects.create(trigger=trigger, **localhost_data)
+
         return trigger
 
     def update(self, instance, validated_data):
