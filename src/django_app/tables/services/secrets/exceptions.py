@@ -17,3 +17,14 @@ class SecretTooLargeError(CustomAPIExeption):
     status_code = 400
     default_detail = "Secret value is too large."
     default_code = "secret_too_large"
+
+
+class SecretResolutionError(CustomAPIExeption):
+    """Raised when a non-null Secret reference cannot be turned into plaintext:
+    the row is gone, or its value cannot be decrypted. A null reference is not an
+    error — it means no credential is configured, which is legitimate for
+    providers that need none."""
+
+    status_code = 500
+    default_detail = "Secret could not be resolved."
+    default_code = "secret_resolution_error"

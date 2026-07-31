@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from enum import Enum
 from typing import Literal, List, Any
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 from .ai_providers import LLMData, EmbedderData
 from .tools import PythonCodeToolData, BaseToolData
 from .knowledge import RagSearchConfig
@@ -43,9 +43,11 @@ class RealtimeAgentChatData(BaseModel):
     rag_search_config: RagSearchConfig | None = None
     llm: LLMData | None = None
     rt_model_name: str
-    rt_api_key: str
+    rt_api_key: str | None = None
+    rt_api_key_secret_id: int | None = Field(default=None, exclude=True)
     transcript_model_name: str | None = None
     transcript_api_key: str | None = None
+    transcript_api_key_secret_id: int | None = Field(default=None, exclude=True)
     temperature: float | None
     memory: bool
     tools: list[BaseToolData] = []

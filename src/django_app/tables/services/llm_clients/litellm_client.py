@@ -6,6 +6,7 @@ from typing import AsyncIterator
 
 import litellm
 
+from tables.services.secrets import secret_resolver
 from utils.logger import logger
 
 from .base import (
@@ -65,7 +66,9 @@ class LiteLLMClient(BaseLLMClient):
             raise UnsupportedLLMProviderError("(empty model name)")
 
         provider_name = (
-            (model.llm_provider.name or "").lower().strip() if model.llm_provider else ""
+            (model.llm_provider.name or "").lower().strip()
+            if model.llm_provider
+            else ""
         )
 
         if not provider_name or provider_name == "openai":
@@ -106,8 +109,11 @@ class LiteLLMClient(BaseLLMClient):
             "stream": True,
         }
 
-        if cfg.api_key:
-            kwargs["api_key"] = cfg.api_key
+        api_key = secret_resolver.resolve(
+            secret_id=cfg.api_key_secret_id, context="LiteLLMClient.api_key"
+        )
+        if api_key:
+            kwargs["api_key"] = api_key
         if model and model.base_url:
             kwargs["base_url"] = model.base_url
         if model and getattr(model, "api_version", None):

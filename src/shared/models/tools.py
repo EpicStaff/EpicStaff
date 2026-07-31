@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Any, Optional
-from pydantic import ConfigDict, model_validator
+from pydantic import ConfigDict, Field, model_validator
 from .ai_providers import LLMData, EmbedderData
 
 
@@ -34,6 +34,9 @@ class McpToolData(BaseModel):
 
     auth: Optional[str] = None
     """Authorization token or OAuth string, if the server requires it."""
+
+    auth_secret_id: Optional[int] = Field(default=None, exclude=True)
+    """In-memory carrier for SecretResolver; excluded from every dump."""
 
     init_timeout: Optional[float] = 10
     """Timeout for session initialization. Optional, default is 10 seconds."""

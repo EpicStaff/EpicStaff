@@ -22,6 +22,7 @@ from src.shared.models import (
     SessionData,
     StopSessionMessage,
 )
+from tables.services.secrets import secret_resolver
 from utils.singleton_meta import SingletonMeta
 from utils.logger import logger
 
@@ -80,9 +81,10 @@ class RedisService(metaclass=SingletonMeta):
         return self._async_redis_client
 
     def publish_session_data(self, session_data: SessionData) -> int:
-        return self.redis_client.publish(
-            "sessions:schema", session_data.model_dump_json()
-        )
+        # Resolve here, not upstream: the caller's object is what gets persisted
+        # to Session.graph_schema, so plaintext must exist only on this copy.
+        resolved = secret_resolver.resolve_payload(payload=session_data)
+        return self.redis_client.publish("sessions:schema", resolved.model_dump_json())
 
     def send_user_input(
         self,
@@ -137,10 +139,11 @@ class RedisService(metaclass=SingletonMeta):
     def publish_realtime_agent_chat(
         self, rt_agent_chat_data: RealtimeAgentChatData
     ) -> None:
-        self.redis_client.publish(
-            "realtime_agents:schema", rt_agent_chat_data.model_dump_json()
-        )
+        resolved = secret_resolver.resolve_payload(payload=rt_agent_chat_data)
+        self.redis_client.publish("realtime_agents:schema", resolved.model_dump_json())
         logger.info("Sent realtime agent chat to: realtime_agents:schema.")
+        # Deliberately dumps the UNRESOLVED original: logging `resolved` would
+        # write plaintext credentials into the log stream.
         logger.debug(f"Schema: {rt_agent_chat_data.model_dump()}.")
 
     def publish_user_graph_message(

@@ -1,9 +1,9 @@
 """Smoke tests for the service-layer readers of the six Secret FKs.
 
 The FK-wiring change renamed the raw credential columns out from under several
-services. These tests pin the ones that were fixed, and mark the two that were
-deliberately deferred to the SecretResolver subtask so the breakage stays
-visible instead of being rediscovered in production.
+services. Every one of them is now wired: quickstart and Telegram directly, the
+converter via id-carrying payload fields, and litellm_client via
+SecretResolver.resolve. Nothing here is deferred any more.
 """
 
 import pytest
@@ -170,41 +170,57 @@ class TestTelegramRegistrationReadsSecret:
 
 
 @pytest.mark.django_db
-class TestDeferredPlaintextConsumers:
-    """converter_service and litellm_client still read the deleted columns. They
-    need plaintext resolution, which is owned by the SecretResolver subtask
-    (design doc §8). These xfails are the tracking marker — when SecretResolver
-    lands, they should start passing and the markers come off."""
+class TestPayloadAndInProcessConsumers:
+    """Both former plaintext readers are now wired through SecretResolver — the
+    converter emits ids into the payload, litellm_client resolves in-process."""
 
-    @pytest.mark.xfail(
-        raises=AttributeError,
-        strict=True,
-        reason="converter_service.py:736 reads embedding_config.api_key; needs "
-        "plaintext resolution, deferred to the SecretResolver subtask",
-    )
     def test_converter_service_can_convert_embedding_config(self, org):
         from tables.models import EmbeddingModel
         from tables.services.converter_service import ConverterService
 
-        model = EmbeddingModel.objects.create(name="text-embedding-conv-test")
+        provider, _ = Provider.objects.get_or_create(name="openai")
+        model = EmbeddingModel.objects.create(
+            name="text-embedding-conv-test", embedding_provider=provider
+        )
         config = EmbeddingConfig.objects.create(
             custom_name="conv-test", model=model, org=org
         )
 
-        ConverterService().convert_embedding_config_to_pydantic(embedding_config=config)
+        data = ConverterService().convert_embedding_config_to_pydantic(
+            embedding_config=config
+        )
 
-    @pytest.mark.xfail(
-        raises=AttributeError,
-        strict=True,
-        reason="litellm_client.py:109 reads cfg.api_key; needs plaintext "
-        "resolution, deferred to the SecretResolver subtask",
-    )
+        assert data.config.api_key is None
+        assert data.config.api_key_secret_id is None
+
     def test_litellm_client_builds_kwargs(self, org):
+        from tables.models import LLMModel
+        from tables.services.llm_clients.litellm_client import LiteLLMClient
+        from tables.services.secrets import secret_service
+
+        provider, _ = Provider.objects.get_or_create(name="openai")
+        model = LLMModel.objects.create(name="gpt-4o-lite-test", llm_provider=provider)
+        secret = secret_service.create(
+            text="sk-litellm-resolved", org=org, name="litellm-key"
+        )
+        config = LLMConfig.objects.create(
+            custom_name="lite-test", model=model, org=org, api_key_secret=secret
+        )
+
+        kwargs = LiteLLMClient(llm_config=config)._build_kwargs(messages=[], tools=[])
+
+        assert kwargs["api_key"] == "sk-litellm-resolved"
+
+    def test_litellm_client_omits_api_key_when_no_secret_attached(self, org):
         from tables.models import LLMModel
         from tables.services.llm_clients.litellm_client import LiteLLMClient
 
         provider, _ = Provider.objects.get_or_create(name="openai")
-        model = LLMModel.objects.create(name="gpt-4o-lite-test", llm_provider=provider)
-        config = LLMConfig.objects.create(custom_name="lite-test", model=model, org=org)
+        model = LLMModel.objects.create(name="gpt-4o-lite-nokey", llm_provider=provider)
+        config = LLMConfig.objects.create(
+            custom_name="lite-no-key", model=model, org=org
+        )
 
-        LiteLLMClient(llm_config=config)._build_kwargs(messages=[], tools=[])
+        kwargs = LiteLLMClient(llm_config=config)._build_kwargs(messages=[], tools=[])
+
+        assert "api_key" not in kwargs

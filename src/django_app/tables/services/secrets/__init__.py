@@ -6,8 +6,10 @@ from tables.services.secrets.encryption import (
 )
 from tables.services.secrets.exceptions import (
     SecretDecryptionError,
+    SecretResolutionError,
     SecretTooLargeError,
 )
+from tables.services.secrets.secret_resolver import SecretResolver, secret_resolver
 from tables.services.secrets.secret_service import SecretService, secret_service
 
 __all__ = [
@@ -16,7 +18,10 @@ __all__ = [
     "SecretEncryption",
     "secret_encryption",
     "SecretDecryptionError",
+    "SecretResolutionError",
     "SecretTooLargeError",
+    "SecretResolver",
+    "secret_resolver",
     "SecretService",
     "secret_service",
 ]

@@ -521,11 +521,11 @@ class ConverterService(metaclass=SingletonMeta):
             memory=agent.memory,
             tools=self._get_agent_base_tools(agent=agent),
             rt_model_name=rt_config.realtime_model.name,
-            rt_api_key=rt_config.api_key,
+            rt_api_key_secret_id=rt_config.api_key_secret_id,
             transcript_model_name=rt_transcription_config.realtime_transcription_model.name
             if rt_transcription_config
             else None,
-            transcript_api_key=rt_transcription_config.api_key
+            transcript_api_key_secret_id=rt_transcription_config.api_key_secret_id
             if rt_transcription_config
             else None,
             temperature=agent.default_temperature,
@@ -688,7 +688,7 @@ class ConverterService(metaclass=SingletonMeta):
             transport=mcp_tool.transport,
             tool_name=mcp_tool.tool_name,
             timeout=mcp_tool.timeout,
-            auth=mcp_tool.auth,
+            auth_secret_id=mcp_tool.auth_secret_id,
             init_timeout=mcp_tool.init_timeout,
         )
 
@@ -711,7 +711,7 @@ class ConverterService(metaclass=SingletonMeta):
                 seed=config.seed,
                 base_url=config.model.base_url,
                 api_version=config.model.api_version,
-                api_key=config.api_key,
+                api_key_secret_id=config.api_key_secret_id,
                 deployment_id=config.model.deployment_id,
                 headers=config.headers,
                 extra_headers=config.extra_headers,
@@ -733,7 +733,7 @@ class ConverterService(metaclass=SingletonMeta):
             config=EmbedderConfigData(
                 model=embedding_config.model.name,
                 base_url=embedding_config.model.base_url,
-                api_key=embedding_config.api_key,
+                api_key_secret_id=embedding_config.api_key_secret_id,
             ),
         )
 
