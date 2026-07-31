@@ -124,8 +124,11 @@ class WebhookTriggerNestedSerializer(serializers.ModelSerializer):
         try:
             from tables.services.webhook_trigger_service import WebhookTriggerService
 
-            rep["live_url"] = WebhookTriggerService().get_tunnel_url_for_trigger(
-                instance
+            base_url = WebhookTriggerService().get_tunnel_url_for_trigger(instance)
+            rep["live_url"] = (
+                f"{base_url.rstrip('/')}/webhooks/{instance.path}"
+                if base_url is not None
+                else None
             )
         except Exception:
             logger.exception(

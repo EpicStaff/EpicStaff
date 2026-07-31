@@ -1,3 +1,5 @@
+from unittest import mock
+
 import pytest
 from django.urls import reverse
 
@@ -925,4 +927,58 @@ class TestWebhookTriggerCreateDoesNotMerge:
         assert trigger.provider_type is None
         assert trigger.org_id == default_org.id
         assert WebhookTrigger.objects.filter(path="brand-new-fresh-path").count() == 1
+
+
+@pytest.mark.django_db
+class TestWebhookTriggerLiveUrlIncludesPath:
+    """EST-3626: `WebhookTriggerNestedSerializer.to_representation()` must
+    return the full routable URL (`<tunnel-base>/webhooks/<path>`), not just
+    the bare tunnel base, since that's the actual inbound route the
+    `webhook` service exposes (`POST /webhooks/{custom_path:path}` in
+    `src/webhook/app/controllers/webhook_routes.py`)."""
+
+    def test_live_url_appends_trigger_path_when_tunnel_url_available(
+        self, default_org
+    ):
+        trigger = WebhookTrigger.objects.create(
+            path="my-trigger-path",
+            provider_type=ProviderType.NGROK,
+            org=default_org,
+        )
+        NgrokWebhookConfig.objects.create(
+            trigger=trigger, name="ng", auth_token="tok"
+        )
+
+        with mock.patch(
+            "tables.services.webhook_trigger_service.WebhookTriggerService"
+            ".get_tunnel_url_for_trigger",
+            return_value="https://abcd1234.ngrok-free.app",
+        ):
+            data = WebhookTriggerNestedSerializer(trigger).data
+
+        assert (
+            data["live_url"]
+            == "https://abcd1234.ngrok-free.app/webhooks/my-trigger-path"
+        )
+
+    def test_live_url_stays_none_when_no_tunnel_url_available(self, default_org):
+        """No live tunnel yet -> live_url must stay None, not become
+        `None/<path>`."""
+        trigger = WebhookTrigger.objects.create(
+            path="my-trigger-path",
+            provider_type=ProviderType.NGROK,
+            org=default_org,
+        )
+        NgrokWebhookConfig.objects.create(
+            trigger=trigger, name="ng", auth_token="tok"
+        )
+
+        with mock.patch(
+            "tables.services.webhook_trigger_service.WebhookTriggerService"
+            ".get_tunnel_url_for_trigger",
+            return_value=None,
+        ):
+            data = WebhookTriggerNestedSerializer(trigger).data
+
+        assert data["live_url"] is None
 
