@@ -1,10 +1,11 @@
 import pytest
 from rest_framework.test import APIClient
 
+from tables.models import Secret
 from tables.models.graph_models import Graph, TelegramTriggerNode
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
-from tables.services.secrets import secret_encryption
+from tables.services.secrets import secret_service
 
 
 @pytest.fixture
@@ -33,24 +34,39 @@ def client_a(db, django_user_model, org):
 
 
 @pytest.mark.django_db
-def test_telegram_bot_api_key_masked_round_trip(client_a, graph):
+def test_telegram_bot_api_key_attaches_secret_by_id(client_a, graph, org):
+    secret = secret_service.create(
+        text="bot-token-abc123", org=org, name="telegram-bot-key"
+    )
+
     create_resp = client_a.post(
         "/api/telegram-trigger-nodes/",
         {
             "node_name": "telegram-1",
             "graph": graph.id,
-            "telegram_bot_api_key": "bot-token-abc123",
+            "telegram_bot_api_key_secret_id": secret.id,
             "fields": [],
         },
         format="json",
     )
-    assert create_resp.status_code == 201
-    assert create_resp.data["telegram_bot_api_key"] == "****c123"
+    assert create_resp.status_code == 201, create_resp.content
+    assert create_resp.data["telegram_bot_api_key_secret_id"] == secret.id
+    assert "telegram_bot_api_key" not in create_resp.data
 
     node = TelegramTriggerNode.objects.get(id=create_resp.data["id"])
-    assert node.telegram_bot_api_key_secret is not None
-    assert node.telegram_bot_api_key_secret.org_id == graph.org_id
-    assert (
-        secret_encryption.decrypt(encryptedtext=node.telegram_bot_api_key_secret.value)
-        == "bot-token-abc123"
+    assert node.telegram_bot_api_key_secret_id == secret.id
+    # Reused the existing row rather than creating a second one.
+    assert Secret.objects.filter(org=org).count() == 1
+
+
+@pytest.mark.django_db
+def test_telegram_node_created_without_a_secret(client_a, graph):
+    resp = client_a.post(
+        "/api/telegram-trigger-nodes/",
+        {"node_name": "telegram-2", "graph": graph.id, "fields": []},
+        format="json",
     )
+    assert resp.status_code == 201, resp.content
+
+    node = TelegramTriggerNode.objects.get(id=resp.data["id"])
+    assert node.telegram_bot_api_key_secret_id is None

@@ -2,14 +2,12 @@ from rest_framework import serializers
 
 from tables.models.tag_models import EmbeddingConfigTag, EmbeddingModelTag
 from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
     OrgVisiblePrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
 )
 from tables.serializers.utils.mixins import TagHandlingMixin
-from tables.serializers.utils.secret_fields import (
-    MaskedSecretField,
-    SecretFieldWriteMixin,
-)
+from tables.models.secret_models import Secret
 from tables.models.embedding_models import (
     EmbeddingConfig,
     EmbeddingModel,
@@ -31,11 +29,13 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
         read_only_fields = ["org", "created_by"]
 
 
-class EmbeddingConfigSerializer(
-    SecretFieldWriteMixin, TagHandlingMixin, serializers.ModelSerializer
-):
-    secret_fk_fields = ["api_key_secret"]
-    api_key = MaskedSecretField(source="api_key_secret")
+class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
+    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="api_key_secret",
+        required=False,
+        allow_null=True,
+    )
     tags = EmbeddingConfigTagSerializer(many=True, required=False)
     tag_model = EmbeddingConfigTag
     # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.

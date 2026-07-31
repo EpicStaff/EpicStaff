@@ -1,16 +1,20 @@
-from tables.serializers.utils.secret_fields import (
-    MaskedSecretField,
-    SecretFieldWriteMixin,
-)
 from rest_framework import serializers
 
 from tables.models.mcp_models import McpTool
-from tables.serializers.org_scoped_fields import OrgScopedUniqueValidator
+from tables.models.secret_models import Secret
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    OrgScopedUniqueValidator,
+)
 
 
-class McpToolSerializer(SecretFieldWriteMixin, serializers.ModelSerializer):
-    secret_fk_fields = ["auth_secret"]
-    auth = MaskedSecretField(source="auth_secret")
+class McpToolSerializer(serializers.ModelSerializer):
+    auth_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="auth_secret",
+        required=False,
+        allow_null=True,
+    )
     # Per-org unique name → clean 400 instead of a DB IntegrityError (500).
     name = serializers.CharField(
         validators=[
