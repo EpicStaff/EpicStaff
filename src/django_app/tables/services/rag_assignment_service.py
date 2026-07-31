@@ -255,6 +255,19 @@ class SearchConfigService:
     Handles both read (get) and write (create/update/apply) operations.
     """
 
+    # Column sets shared by agent- and node-bound configs (same fields, different models).
+    _NAIVE_FIELDS = ("search_limit", "similarity_threshold")
+    _BASIC_FIELDS = ("prompt", "k", "max_context_tokens")
+    _LOCAL_FIELDS = (
+        "prompt",
+        "text_unit_prop",
+        "community_prop",
+        "conversation_history_max_turns",
+        "top_k_entities",
+        "top_k_relationships",
+        "max_context_tokens",
+    )
+
     # Read methods
 
     @staticmethod
@@ -324,49 +337,22 @@ class SearchConfigService:
         search_method = agent_graph_rag.search_method if agent_graph_rag else None
 
         result = {"search_method": search_method}
-
-        if basic is not None:
-            result["basic"] = {
-                "prompt": basic.prompt,
-                "k": basic.k,
-                "max_context_tokens": basic.max_context_tokens,
-            }
-        else:
-            result["basic"] = None
-
-        if local is not None:
-            result["local"] = {
-                "prompt": local.prompt,
-                "text_unit_prop": local.text_unit_prop,
-                "community_prop": local.community_prop,
-                "conversation_history_max_turns": local.conversation_history_max_turns,
-                "top_k_entities": local.top_k_entities,
-                "top_k_relationships": local.top_k_relationships,
-                "max_context_tokens": local.max_context_tokens,
-            }
-        else:
-            result["local"] = None
+        result["basic"] = (
+            None
+            if basic is None
+            else {f: getattr(basic, f) for f in SearchConfigService._BASIC_FIELDS}
+        )
+        result["local"] = (
+            None
+            if local is None
+            else {f: getattr(local, f) for f in SearchConfigService._LOCAL_FIELDS}
+        )
 
         return result
 
-
     _NODE_GRAPH_METHOD_FIELDS = {
-        "basic": (
-            "graph_basic_search_config",
-            ("prompt", "k", "max_context_tokens"),
-        ),
-        "local": (
-            "graph_local_search_config",
-            (
-                "prompt",
-                "text_unit_prop",
-                "community_prop",
-                "conversation_history_max_turns",
-                "top_k_entities",
-                "top_k_relationships",
-                "max_context_tokens",
-            ),
-        ),
+        "basic": ("graph_basic_search_config", _BASIC_FIELDS),
+        "local": ("graph_local_search_config", _LOCAL_FIELDS),
     }
 
     @staticmethod
@@ -491,7 +477,7 @@ class SearchConfigService:
     def update_graph_basic_search_config(agent: Agent, **kwargs):
         """Update basic search config. Creates if doesn't exist."""
         config, _ = GraphRagBasicSearchConfig.objects.get_or_create(agent=agent)
-        valid_fields = ("prompt", "k", "max_context_tokens")
+        valid_fields = SearchConfigService._BASIC_FIELDS
         updated = False
         for field, value in kwargs.items():
             if field in valid_fields and value is not None:
@@ -505,15 +491,7 @@ class SearchConfigService:
     def update_graph_local_search_config(agent: Agent, **kwargs):
         """Update local search config. Creates if doesn't exist."""
         config, _ = GraphRagLocalSearchConfig.objects.get_or_create(agent=agent)
-        valid_fields = (
-            "prompt",
-            "text_unit_prop",
-            "community_prop",
-            "conversation_history_max_turns",
-            "top_k_entities",
-            "top_k_relationships",
-            "max_context_tokens",
-        )
+        valid_fields = SearchConfigService._LOCAL_FIELDS
         updated = False
         for field, value in kwargs.items():
             if field in valid_fields and value is not None:
@@ -524,18 +502,6 @@ class SearchConfigService:
         return config
 
     # ---- Node-bound search configs (partial merge, mirror of the agent methods) ----
-
-    _NODE_NAIVE_FIELDS = ("search_limit", "similarity_threshold")
-    _NODE_BASIC_FIELDS = ("prompt", "k", "max_context_tokens")
-    _NODE_LOCAL_FIELDS = (
-        "prompt",
-        "text_unit_prop",
-        "community_prop",
-        "conversation_history_max_turns",
-        "top_k_entities",
-        "top_k_relationships",
-        "max_context_tokens",
-    )
 
     @staticmethod
     def apply_node_search_configs(node, search_configs_data: dict):
@@ -583,7 +549,7 @@ class SearchConfigService:
         return SearchConfigService._update_node_config(
             KnowledgeNodeNaiveRagSearchConfig,
             node,
-            SearchConfigService._NODE_NAIVE_FIELDS,
+            SearchConfigService._NAIVE_FIELDS,
             kwargs,
         )
 
@@ -592,7 +558,7 @@ class SearchConfigService:
         return SearchConfigService._update_node_config(
             KnowledgeNodeGraphRagBasicSearchConfig,
             node,
-            SearchConfigService._NODE_BASIC_FIELDS,
+            SearchConfigService._BASIC_FIELDS,
             kwargs,
         )
 
@@ -601,6 +567,6 @@ class SearchConfigService:
         return SearchConfigService._update_node_config(
             KnowledgeNodeGraphRagLocalSearchConfig,
             node,
-            SearchConfigService._NODE_LOCAL_FIELDS,
+            SearchConfigService._LOCAL_FIELDS,
             kwargs,
         )
