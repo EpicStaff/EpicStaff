@@ -1,0 +1,51 @@
+{
+  "title": "ReportFindingsToolArgs",
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "description": "List of findings to report. Each finding is an object with a required 'title' and optional 'severity' (info|low|medium|high|critical, default 'info'), 'category', 'file', 'line', and 'detail'.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Short one-line summary of the finding."
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["info", "low", "medium", "high", "critical"],
+            "description": "Severity level. Defaults to 'info' when omitted or invalid.",
+            "default": "info"
+          },
+          "category": {
+            "type": "string",
+            "description": "Optional grouping/category label, e.g. 'security', 'style', 'performance'."
+          },
+          "file": {
+            "type": "string",
+            "description": "Optional file path the finding relates to."
+          },
+          "line": {
+            "type": "integer",
+            "description": "Optional line number in the file."
+          },
+          "detail": {
+            "type": "string",
+            "description": "Optional extended explanation of the finding."
+          }
+        },
+        "required": ["title"]
+      }
+    },
+    "title": {
+      "type": "string",
+      "description": "Optional overall title for the findings report."
+    },
+    "summary": {
+      "type": "string",
+      "description": "Optional overall summary of the findings report."
+    }
+  },
+  "required": ["findings"]
+}

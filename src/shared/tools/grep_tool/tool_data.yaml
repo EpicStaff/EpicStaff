@@ -1,0 +1,7 @@
+tool-data:
+  name: "Grep Tool"
+  description: "Searches file contents by regular expression across files (pure-Python backend, no external binary required). Path is relative to the sandbox root."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

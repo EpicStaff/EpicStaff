@@ -53,6 +53,7 @@ from tables.views.model_view_sets import (
 
 from tables.views.views import (
     AnswerToLLM,
+    NotifyEmailView,
     InitRealtimeAPIView,
     RegisterTelegramTriggerApiView,
     ProcessRagIndexingView,
@@ -232,6 +233,7 @@ urlpatterns = [
         name="get-updates",
     ),
     path("sessions/<int:session_id>/stop/", StopSession.as_view(), name="stop-session"),
+    path("notify/email/", NotifyEmailView.as_view(), name="notify-email"),
     path(
         "run-python-code/",
         RunPythonCodeAPIView.as_view(),
