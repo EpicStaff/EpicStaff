@@ -2,8 +2,9 @@ import abc
 import functools
 import inspect
 from collections.abc import Awaitable, Callable
-from typing import Literal
+from typing import Literal, Optional
 
+from enums import FileExtensionEnum
 from errors import RepositoryError
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
@@ -144,6 +145,17 @@ class AbstractNaiveRagRepository(RepositoryErrorWrapper, abc.ABC):
             similarity_threshold: Maximum distance threshold for a chunk to be included.
         """
 
+    @abc.abstractmethod
+    async def get_document_content(
+        self, rag_id: int, document_id: int
+    ) -> tuple[bytes, FileExtensionEnum]:
+        """Return the raw file bytes and file extension of `document_id` within RAG collection `rag_id`.
+
+        Args:
+            rag_id: Primary key of the RAG collection.
+            document_id: Primary key of the document (config) whose file content to load.
+        """
+
 
 class AbstractGraphRagRepository(RepositoryErrorWrapper, abc.ABC):
     @abc.abstractmethod
@@ -172,6 +184,12 @@ class AbstractGraphRagRepository(RepositoryErrorWrapper, abc.ABC):
         """
 
     @abc.abstractmethod
+    async def get_indexed_documents_excluding(
+        self, rag_id: int, ids: frozenset[int]
+    ) -> list[TextDocument]:
+        pass
+
+    @abc.abstractmethod
     async def get_config(self, rag_id: int) -> GraphRagConfig:
         """Return a fully-populated `GraphRagConfig` assembled from the DB records for `rag_id`.
 
@@ -184,7 +202,7 @@ class AbstractGraphRagRepository(RepositoryErrorWrapper, abc.ABC):
         self,
         rag_id: int,
         ids: frozenset[int],
-        status: Literal['new', 'indexed'],
+        status: Literal['new', 'completed'],
     ):
         """Persist status of `documents` within the RAG collection `rag_id`.
 

@@ -21,6 +21,10 @@ def _new_rag(rag_id: int = 1) -> Rag:
     return Rag(id=rag_id, status=IndexStatusEnum.NEW, indexing_document_ids=set())
 
 
+def _completed_rag(rag_id: int = 1) -> Rag:
+    return Rag(id=rag_id, status=IndexStatusEnum.COMPLETED, indexing_document_ids=set())
+
+
 def _text_document(doc_id: int, *, status: str = "new", text: str = "hello world") -> TextDocument:
     """Construct a real TextDocument as the repository does, with a controllable status field."""
     return TextDocument(
@@ -95,6 +99,11 @@ class FakeGraphRagRepo:
     async def has_indexed_document(self, rag_id: int) -> bool:
         return self._has_indexed_db
 
+    async def get_indexed_documents_excluding(
+        self, rag_id: int, ids: frozenset[int]
+    ) -> list[TextDocument]:
+        return [d for d in self._documents if int(d.id) not in ids]
+
     async def update_rag(self, rag: Rag) -> None:
         # Append only when status actually changes to avoid duplicate log entries.
         if not self.rag_status_log or self.rag_status_log[-1] != rag.status:
@@ -104,7 +113,7 @@ class FakeGraphRagRepo:
         self,
         rag_id: int,
         ids: frozenset[int],
-        status: Literal["new", "indexed"],
+        status: Literal["new", "completed"],
     ) -> None:
         self.status_updates.append((frozenset(ids), status))
 
@@ -160,7 +169,7 @@ async def test_index_success_full_flow_marks_documents_indexed_and_rag_completed
     await GraphIndexer(uow).execute(request)
 
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.COMPLETED]
-    assert repo.status_updates == [(frozenset({7}), "indexed")]
+    assert repo.status_updates == [(frozenset({7}), "completed")]
     assert rag.indexing_document_ids == set()
     assert len(build_index_called) == 1
 
@@ -198,7 +207,7 @@ async def test_build_index_receives_documents_dataframe_and_config(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "has_indexed_db, request_has_indexed, expected_is_update_run",
+    "rag_completed, request_has_completed_doc, expected_is_update_run",
     [
         (True, False, True),
         (True, True, False),
@@ -206,30 +215,26 @@ async def test_build_index_receives_documents_dataframe_and_config(monkeypatch):
         (False, True, False),
     ],
     ids=[
-        "db_indexed_request_new_expect_update",
-        "db_indexed_request_indexed_expect_no_update",
-        "db_new_request_new_expect_no_update",
-        "db_new_request_indexed_expect_no_update",
+        "rag_completed_request_new_docs_expect_update",
+        "rag_completed_request_has_completed_doc_expect_no_update",
+        "rag_new_request_new_docs_expect_no_update",
+        "rag_new_request_has_completed_doc_expect_no_update",
     ],
 )
 async def test_is_update_run_computed_correctly(
     monkeypatch,
-    has_indexed_db: bool,
-    request_has_indexed: bool,
+    rag_completed: bool,
+    request_has_completed_doc: bool,
     expected_is_update_run: bool,
 ):
-    rag = _new_rag()
-    # When request_has_indexed is True, the document's raw_data status must be 'indexed'
-    # to satisfy: has_indexed_document_in_request = any(d.raw_data['status'] == 'indexed' ...)
-    doc_status = "indexed" if request_has_indexed else "new"
+    # is_update_run is True only when rag.status==COMPLETED AND none of the request
+    # documents has raw_data['status']=='completed'. The repo.has_indexed_document flag
+    # is not consulted by production code for this decision.
+    rag = _completed_rag() if rag_completed else _new_rag()
+    doc_status = "completed" if request_has_completed_doc else "new"
     document = _text_document(10, status=doc_status)
     config = object()
-    repo = FakeGraphRagRepo(
-        rag=rag,
-        config=config,
-        documents=[document],
-        has_indexed_db=has_indexed_db,
-    )
+    repo = FakeGraphRagRepo(rag=rag, config=config, documents=[document])
     uow = FakeUoW(repo)
 
     captured_is_update_run: list[bool] = []

@@ -4,7 +4,7 @@ from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiRespo
 from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.serializers.naive_rag_serializers import (
     ChunkPreviewResponseSerializer,
-    ChunkingResponseSerializer,
+    ChunkingResponseSerializer, ChunkingConfigSerializer,
 )
 from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
@@ -768,6 +768,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
         "4. Publish message to Redis and wait for response (50s timeout)\n"
         "5. Return result (completed, failed, cancelled, or timeout)"
     ),
+    request=ChunkingConfigSerializer,
     parameters=[
         OpenApiParameter(
             name="naive_rag_id",

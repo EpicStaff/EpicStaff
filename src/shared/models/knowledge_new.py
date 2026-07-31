@@ -255,16 +255,19 @@ SearchConfig = Annotated[GraphSearchConfig | NaiveSearchConfig, Field(discrimina
 class PrechunkRequest(ValueObject):
     """Request to pre-chunk a document for a RAG collection."""
 
-    rag_id: int
     rag_strategy: RAGStrategy
+    rag_id: int
     document_id: int
+    chunk_strategy: str
+    chunk_size: int
+    chunk_overlap: int
+    extra: dict = Field(default_factory=dict)
 
 
 class PrechunkResponse(ValueObject):
     """Preview chunks produced for a `PrechunkRequest`."""
 
     request: PrechunkRequest
-    status: DocumentStatusEnum
     chunks: list[PreviewChunk]
 
 

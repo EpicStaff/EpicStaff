@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from database.models import (
     DocumentMetadata,
     EmbeddingModel,
@@ -10,7 +12,8 @@ from database.models import (
 )
 from database.models import EmbeddingConfig as ORMEmbeddingConfig
 from database.repositories.base import AbstractNaiveRagRepository, BaseSQLAlchemyRepository
-from enums import DocumentStatusEnum
+from enums import DocumentStatusEnum, FileExtensionEnum
+from errors import DocumentNotFoundError
 from models import (
     ChunkingConfig,
     Document,
@@ -223,6 +226,30 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
             for r in rows
             if r.similarity >= similarity_threshold
         ]
+
+    async def get_document_content(
+        self, rag_id: int, document_id: int
+    ) -> tuple[bytes, FileExtensionEnum]:
+        result = await self._session.execute(
+            select(NaiveRagDocumentConfig)
+            .where(
+                NaiveRagDocumentConfig.naive_rag_id == rag_id,
+                NaiveRagDocumentConfig.naive_rag_document_id == document_id,
+            )
+            .options(
+                joinedload(NaiveRagDocumentConfig.document).joinedload(
+                    DocumentMetadata.document_content
+                )
+            )
+        )
+        config = result.scalar_one_or_none()
+        if config is None:
+            raise DocumentNotFoundError(rag_id=rag_id, document_id=document_id)
+
+        metadata = config.document
+        content = bytes(metadata.document_content.content)
+        extension = FileExtensionEnum(Path(metadata.file_name).suffix.lower())
+        return content, extension
 
     @staticmethod
     def _to_document(config: NaiveRagDocumentConfig) -> Document:
