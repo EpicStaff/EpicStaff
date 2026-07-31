@@ -15,7 +15,7 @@ import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Subject } from 'rxjs';
-import { debounceTime } from 'rxjs/operators';
+import { debounceTime, takeUntil } from 'rxjs/operators';
 
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
@@ -104,6 +104,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public preCode: string = '';
     public postCode: string = '';
     private readonly codeChange$ = new Subject<void>();
+    private readonly reinitDestroy$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly importExportService = inject(ImportExportService);
@@ -274,6 +275,32 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.initializeInputMapArray(form, 'pre_input_map', preComp.input_map || {});
         this.initializeInputMapArray(form, 'post_input_map', postComp.input_map || {});
 
+        const groupsCopy = this.cloneConditionGroups(tableData.condition_groups || []);
+        this.conditionGroups.set(groupsCopy);
+        this.prompts.set({ ...(tableData.prompts || {}) });
+
+        // Only reset to the Table tab when a different node is opened — not on every remote
+        // merge (initializeForm runs on each peer update), which would yank a viewing
+        // collaborator back to the Table tab whenever the editor changes anything.
+        if (this.lastFormNodeId !== node.id) {
+            this.activeTab.set('table');
+            this.lastFormNodeId = node.id;
+        }
+
+        return form;
+    }
+
+    // Runs exactly once per real reinit (a different node opened), never on the
+    // per-node-update merge cycles that call initializeForm() again just to diff
+    // values — see BaseSidePanel.mergeRemoteIntoForm. Sub-form instances and their
+    // valueChanges subscriptions must be created here, not in initializeForm(),
+    // or every remote/self node update would replace preInputForm/postInputForm
+    // (disconnecting them from the canonical form) and pile up duplicate subscriptions.
+    protected override onFormReinitialized(): void {
+        this.reinitDestroy$.next();
+
+        const form = this.form;
+
         // Build sub-forms for InputMapComponent.
         // InputMapComponent uses ControlContainer to find its parent FormGroup and then
         // looks up 'input_map' and 'test_input' arrays by name. By providing these sub-forms
@@ -294,7 +321,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         // Sync sub-form input_map → canonical array on main form whenever user edits.
         (this.preInputForm.get('input_map') as FormArray).valueChanges
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .pipe(takeUntil(this.reinitDestroy$), takeUntilDestroyed(this.destroyRef))
             .subscribe((pairs: { key: string; value: string }[]) => {
                 this.syncSubFormToMainArray(form, 'pre_input_map', pairs);
                 this.preInputMapVersion.update((v) => v + 1);
@@ -302,7 +329,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             });
 
         (this.postInputForm.get('input_map') as FormArray).valueChanges
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .pipe(takeUntil(this.reinitDestroy$), takeUntilDestroyed(this.destroyRef))
             .subscribe((pairs: { key: string; value: string }[]) => {
                 this.syncSubFormToMainArray(form, 'post_input_map', pairs);
                 this.codeChange$.next();
@@ -311,24 +338,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         ['pre_output_variable_path', 'pre_libraries', 'post_output_variable_path', 'post_libraries'].forEach(
             (controlName) => {
                 form.get(controlName)!
-                    .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+                    .valueChanges.pipe(takeUntil(this.reinitDestroy$), takeUntilDestroyed(this.destroyRef))
                     .subscribe(() => this.codeChange$.next());
             }
         );
-
-        const groupsCopy = this.cloneConditionGroups(tableData.condition_groups || []);
-        this.conditionGroups.set(groupsCopy);
-        this.prompts.set({ ...(tableData.prompts || {}) });
-
-        // Only reset to the Table tab when a different node is opened — not on every remote
-        // merge (initializeForm runs on each peer update), which would yank a viewing
-        // collaborator back to the Table tab whenever the editor changes anything.
-        if (this.lastFormNodeId !== node.id) {
-            this.activeTab.set('table');
-            this.lastFormNodeId = node.id;
-        }
-
-        return form;
     }
 
     createUpdatedNode(): ClassificationDecisionTableNodeModel {

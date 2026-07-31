@@ -778,7 +778,8 @@ export class GraphCollaborationWsService {
         allNodes: NodeModel[] = [],
         connections: ConnectionModel[] = [],
         prevNode: NodeModel | null = null,
-        withExpected = false
+        withExpected = false,
+        prevConnections?: ConnectionModel[]
     ): string | null {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return null;
@@ -788,7 +789,7 @@ export class GraphCollaborationWsService {
         if (!editor) return null;
 
         if (prevNode) {
-            const prevPayload = buildNodeBackendPayload(prevNode, graphId, allNodes, connections);
+            const prevPayload = buildNodeBackendPayload(prevNode, graphId, allNodes, prevConnections ?? connections);
             if (prevPayload) {
                 const { node: partial, changed_fields } = buildPartialNodePayload(prevPayload, payload);
                 if (changed_fields.length === 0) return null;

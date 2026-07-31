@@ -899,13 +899,16 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.recordAfterChange();
         const normalizedNode = normalizeTableNodeSize(updatedNode);
         const prev = this.flowService.nodes().find((n) => n.id === normalizedNode.id) ?? null;
+        const prevConnections = this.flowService.connections();
         this.flowService.updateNode(normalizedNode);
         this.wsService.sendNodeUpdated(
             normalizedNode,
             this.currentFlowId!,
             this.flowState.nodes,
             this.flowService.connections(),
-            prev
+            prev,
+            false,
+            prevConnections
         );
         const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
         this.sidePanelService.clearSelection();
@@ -929,13 +932,16 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.recordAfterChange();
         const normalizedNode = normalizeTableNodeSize(updatedNode);
         const prev = this.flowService.nodes().find((n) => n.id === normalizedNode.id) ?? null;
+        const prevConnections = this.flowService.connections();
         this.flowService.updateNode(normalizedNode);
         this.wsService.sendNodeUpdated(
             normalizedNode,
             this.currentFlowId!,
             this.flowState.nodes,
             this.flowService.connections(),
-            prev
+            prev,
+            false,
+            prevConnections
         );
         const movedNodeIds = this.resolveTableOverlaps(normalizedNode);
 
@@ -2075,6 +2081,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const target = pick(nc) as NodeModel | null;
             const source = other(nc) as NodeModel | null;
             if (target && source) {
+                const prevConnections = this.flowService.connections();
                 this.flowService.updateNode(target);
                 const opId = this.wsService.sendNodeUpdated(
                     target,
@@ -2082,7 +2089,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     this.flowService.nodes(),
                     this.flowService.connections(),
                     source,
-                    true
+                    true,
+                    prevConnections
                 );
                 if (opId) this.pendingUndoOps.set(opId, { revert: source, entry, direction });
             } else if (target && !source) {
