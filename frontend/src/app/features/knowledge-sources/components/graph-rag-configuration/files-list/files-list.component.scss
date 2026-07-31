@@ -1,3 +1,7 @@
+:host {
+    overflow: hidden;
+}
+
 .list {
     display: flex;
     flex-direction: column;
@@ -8,7 +12,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 1.875rem 1rem 0;
+        padding: 0 1.875rem 1rem 2.5rem;
         width: 100%;
         font-size: 0.875rem;
         font-weight: 130;
@@ -23,16 +27,61 @@
     }
 
     .files-wrapper {
-        overflow: auto;
+        overflow-y: auto;
+        overflow-x: hidden;
         margin-right: 0.7rem;
         padding-bottom: 2rem;
     }
 
-    .file {
+    .rows {
+        overflow: visible;
+        margin: 0.5rem 0 0.5rem 2.5rem;
+        width: 574px;
+        border-radius: 10px;
+        border: 1px solid var(--color-divider-subtle);
+    }
+
+    .row-wrapper {
+        position: relative;
+        border-bottom: 1px solid var(--color-divider-subtle);
+
+        &:first-child {
+            border-radius: 10px 10px 0 0;
+        }
+
+        &:last-child {
+            border-bottom: none;
+            border-radius: 0 0 10px 10px;
+        }
+
+        &--dark {
+            background-color: var(--color-drag-drop-active);
+        }
+    }
+
+    .status-icon {
+        position: absolute;
+        left: -1.5rem;
+        top: 50%;
+        transform: translateY(-50%);
+        flex-shrink: 0;
+
+        &--completed {
+            color: var(--color-ks-status-completed);
+        }
+
+        &--failed {
+            color: var(--color-ks-status-failed);
+        }
+    }
+
+    .row {
+        position: relative;
         display: flex;
         align-items: center;
         justify-content: space-between;
         column-gap: 1rem;
+        padding: 0.5rem 0.625rem;
         font-size: 12px;
     }
 

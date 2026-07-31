@@ -1,4 +1,4 @@
-import { computed, inject, Injectable, Signal, signal } from '@angular/core';
+import { computed, inject, Injectable, Signal, signal, WritableSignal } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { map, tap } from 'rxjs/operators';
 
@@ -17,7 +17,8 @@ export class GraphRagStrategy implements RagCreationStrategy {
     private collectionsStorage = inject(CollectionsStorageService);
     private graphRagSignal = signal<CollectionGraphRag | null>(null);
     private indexingConfigIds: number[] = [];
-    readonly canIndex: Signal<boolean> = signal(true);
+    private _canIndex: WritableSignal<boolean> = signal(false);
+    readonly canIndex: Signal<boolean> = this._canIndex.asReadonly();
 
     readonly isIndexing: Signal<boolean> = computed(() => {
         const rag = this.graphRagSignal();
@@ -84,6 +85,6 @@ export class GraphRagStrategy implements RagCreationStrategy {
     }
 
     getConfigurationInputs(): Record<string, unknown> {
-        return { graphRag: this.graphRagSignal() };
+        return { graphRag: this.graphRagSignal(), canIndexChange: this._canIndex };
     }
 }

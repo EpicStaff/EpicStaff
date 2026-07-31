@@ -15,32 +15,44 @@
     </div>
 
     <div class="files-wrapper">
-        <app-list
-            width="574px"
-            [items]="documents()"
-        >
-            <ng-template
-                let-item
-                let-i="index"
-            >
-                <app-list-row class="file">
-                    <div class="name-column">
-                        <span class="file-index">{{ i + 1 }}</span>
-                        <app-svg-icon
-                            icon="document"
-                            size="0.75rem"
-                        />
-                        <span class="file-name">{{ item.file_name }}</span>
-                    </div>
-                    <div class="size-column">
-                        <span class="size">{{ item.file_size | fileSize }}</span>
-                        <app-list-actions>
-                            <!--                            <app-button-->
-                            <!--                                type="outline-secondary"-->
-                            <!--                                mod="small"-->
-                            <!--                            >-->
-                            <!--                                Watch Conversion-->
-                            <!--                            </app-button>-->
+        <ol class="rows">
+            @for (item of documents(); track item.graph_rag_document_id; let i = $index; let odd = $odd) {
+                <div
+                    class="row-wrapper"
+                    [class.row-wrapper--dark]="odd"
+                >
+                    @switch (item.status) {
+                        @case ('indexed') {
+                            <app-svg-icon
+                                icon="check"
+                                class="status-icon status-icon--completed"
+                                size="0.75rem"
+                            />
+                        }
+                        @case ('failed') {
+                            <app-svg-icon
+                                icon="close"
+                                class="status-icon status-icon--failed"
+                                size="0.75rem"
+                            />
+                        }
+                    }
+                    <li class="row">
+                        <div class="name-column">
+                            <app-checkbox
+                                color="secondary"
+                                [checked]="checkedDocIds().has(item.graph_rag_document_id)"
+                                (changed)="toggleDoc.emit(item.graph_rag_document_id)"
+                            />
+                            <span class="file-index">{{ i + 1 }}</span>
+                            <app-svg-icon
+                                icon="document"
+                                size="0.75rem"
+                            />
+                            <span class="file-name">{{ item.file_name }}</span>
+                        </div>
+                        <div class="size-column">
+                            <span class="size">{{ item.file_size | fileSize }}</span>
                             <app-svg-icon
                                 icon="close"
                                 style="cursor: pointer"
@@ -48,10 +60,10 @@
                                 size="1rem"
                                 (click)="onDelete(item.document_id)"
                             />
-                        </app-list-actions>
-                    </div>
-                </app-list-row>
-            </ng-template>
-        </app-list>
+                        </div>
+                    </li>
+                </div>
+            }
+        </ol>
     </div>
 </div>
