@@ -260,16 +260,16 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             output_variable_path: tableData.post_output_variable_path,
         };
 
-        this.preCode = preComp.code || '';
-        this.postCode = postComp.code || '';
+        const preCodeValue = preComp.code || '';
+        const postCodeValue = postComp.code || '';
 
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
-            pre_computation_code: [this.preCode],
+            pre_computation_code: [preCodeValue],
             pre_input_map: this.fb.array([] as FormGroup[]),
             pre_output_variable_path: [preComp.output_variable_path || ''],
             pre_libraries: [preComp.libraries?.join(', ') || ''],
-            post_computation_code: [this.postCode],
+            post_computation_code: [postCodeValue],
             post_input_map: this.fb.array([] as FormGroup[]),
             post_output_variable_path: [postComp.output_variable_path || ''],
             post_libraries: [postComp.libraries?.join(', ') || ''],
@@ -298,6 +298,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.reinitDestroy$.next();
 
         const form = this.form;
+        this.preCode = form.get('pre_computation_code')?.value || '';
+        this.postCode = form.get('post_computation_code')?.value || '';
 
         // Build sub-forms for InputMapComponent.
         // InputMapComponent uses ControlContainer to find its parent FormGroup and then

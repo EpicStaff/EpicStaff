@@ -1041,7 +1041,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         const updatedGroups = existingGroups.map((group, index) => {
             const raw = rawGroups[index];
             if (!raw) return group;
-            return { ...group, next_node: toCanvasId(raw['next_node_id'], raw['next_node_temp_id']) };
+            return {
+                ...group,
+                next_node: toCanvasId(raw['next_node_id'], raw['next_node_temp_id']),
+                prompt_id:
+                    (raw['prompt_key'] as string | null | undefined) ??
+                    (group['prompt_id'] as string | null | undefined) ??
+                    null,
+            };
         });
         const defaultNext = toCanvasId(payload['default_next_node_id'], payload['default_next_node_temp_id']);
         const errorNext = toCanvasId(payload['next_error_node_id'], payload['next_error_node_temp_id']);
