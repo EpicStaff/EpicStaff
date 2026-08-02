@@ -581,7 +581,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     onSaveClick(): void {
         if (!this.form || this.form.invalid || this.isSaving()) return;
-        const updatedNode = this.createUpdatedNode({ manualSave: true });
+        const updatedNode = this.createUpdatedNode();
         this.sidePanelService.requestSaveNode(updatedNode);
     }
 
@@ -642,7 +642,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         });
     }
 
-    createUpdatedNode(opts?: { manualSave?: boolean }): PythonNodeModel {
+    createUpdatedNode(): PythonNodeModel {
         const validInputPairs = getValidInputPairs(this.inputMapPairs);
         const inputMapValue = createInputMapFromPairs(validInputPairs);
         if (this.isOpenTestMode()) {
@@ -677,7 +677,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 use_storage: this.useStorage(),
             },
             stream_config: this.form.value.stream_config || {},
-            test_input: opts?.manualSave ? this.getTestInputValue() : this.getTestInputValuePreservingSaved(),
+            test_input: this.getTestInputValue(),
         };
     }
 
@@ -687,19 +687,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             const key = (c.value.key as string)?.trim();
             if (key) {
                 acc[key] = (c.value.value as string) ?? '';
-            }
-            return acc;
-        }, {});
-    }
-
-    private getTestInputValuePreservingSaved(): Record<string, string> {
-        const testArray = this.form.get('test_input') as FormArray;
-        const previouslySaved = (this.node().test_input ?? {}) as Record<string, string>;
-        return testArray.controls.reduce((acc: Record<string, string>, c) => {
-            const key = (c.value.key as string)?.trim();
-            if (key) {
-                const currentFormValue = (c.value.value as string) ?? '';
-                acc[key] = previouslySaved[key] ?? currentFormValue;
             }
             return acc;
         }, {});
