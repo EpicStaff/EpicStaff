@@ -22,17 +22,24 @@ export interface UndoEntry {
     providedIn: 'root',
 })
 export class UndoRedoService {
+    private static readonly COALESCE_WINDOW_MS = 800;
+
     private undoStack = signal<UndoEntry[]>([]);
     private redoStack = signal<UndoEntry[]>([]);
+    private lastRecordAt = 0;
 
     readonly canUndo = computed(() => this.undoStack().length > 0);
     readonly canRedo = computed(() => this.redoStack().length > 0);
 
     public record(entry: UndoEntry): void {
         if (!entry.nodes.length && !entry.connections.length) return;
+        const now = Date.now();
+        const withinCoalesceWindow = now - this.lastRecordAt < UndoRedoService.COALESCE_WINDOW_MS;
+        this.lastRecordAt = now;
+
         const stack = this.undoStack();
         const last = stack[stack.length - 1];
-        if (last && this.isSameNodeFieldUpdate(last, entry)) {
+        if (last && withinCoalesceWindow && this.isSameNodeFieldUpdate(last, entry)) {
             const merged: UndoEntry = {
                 nodes: [{ before: last.nodes[0].before, after: entry.nodes[0].after }],
                 connections: [],

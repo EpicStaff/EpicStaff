@@ -402,15 +402,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     constructor() {
         effect(() => {
             const groups = this.conditionGroups();
-            if (groups && groups.length > 0) {
-                untracked(() => {
-                    this.rowData.set([...groups]);
-                    if (!this.fieldColumnsInitialized) {
-                        this.initFieldColumnsFromData(groups);
-                        this.fieldColumnsInitialized = true;
-                    }
-                });
-            }
+            untracked(() => {
+                this.rowData.set(groups ? [...groups] : []);
+                if (groups && groups.length > 0 && !this.fieldColumnsInitialized) {
+                    this.initFieldColumnsFromData(groups);
+                    this.fieldColumnsInitialized = true;
+                }
+            });
         });
         effect(() => {
             this.prompts();
