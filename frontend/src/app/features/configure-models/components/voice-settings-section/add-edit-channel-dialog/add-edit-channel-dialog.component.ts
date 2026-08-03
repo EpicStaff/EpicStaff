@@ -58,7 +58,8 @@ export class AddEditChannelDialogComponent implements OnInit {
     private savedChannel = signal<RealtimeChannel | null>(this.data.channel);
     /** The trigger model resolved by the field (picked existing, or inline draft). */
     private resolvedTrigger = signal<WebhookTriggerModel | null>(this.data.channel?.twilio?.webhook_trigger ?? null);
-    liveUrl = signal<string | null>(this.data.channel?.twilio?.webhook_trigger?.live_url ?? null);
+    /** Id of a trigger we created during this dialog session, so retries update instead of duplicating. */
+    private createdTriggerId = signal<number | null>(null);
 
     private agents = signal<GetAgentRequest[]>([]);
     private phoneNumbers = signal<TwilioPhoneNumber[]>([]);
@@ -94,7 +95,7 @@ export class AddEditChannelDialogComponent implements OnInit {
             account_sid: [tw?.account_sid ?? ''],
             auth_token: [tw?.auth_token ?? ''],
             phone_number: [tw?.phone_number ?? ''],
-            webhook_trigger: [(tw?.webhook_trigger ?? null) as WebhookTriggerWrite | null],
+            webhook_trigger: [(tw?.webhook_trigger?.id ?? null) as WebhookTriggerWrite | null],
         });
 
         this.agentsService
@@ -126,7 +127,6 @@ export class AddEditChannelDialogComponent implements OnInit {
 
     onTriggerResolved(trigger: WebhookTriggerModel | null): void {
         this.resolvedTrigger.set(trigger);
-        this.liveUrl.set(trigger?.live_url ?? null);
     }
 
     onSubmit(): void {
@@ -217,15 +217,20 @@ export class AddEditChannelDialogComponent implements OnInit {
             return;
         }
 
+        const currentTwilio = this.savedChannel()?.twilio ?? existingTwilio;
+
         // Resolve the webhook trigger first (write = int PK on TwilioChannel), then attach its id.
         this.resolveWebhookTrigger()
             .pipe(
                 switchMap((trigger) => {
-                    this.liveUrl.set(trigger?.live_url ?? null);
+                    if (trigger?.id) {
+                        this.createdTriggerId.set(trigger.id);
+                        this.resolvedTrigger.set(trigger);
+                    }
                     const webhookTriggerId = trigger?.id ?? null;
-                    const obs = existingTwilio
+                    const obs = currentTwilio
                         ? this.channelService.updateTwilioChannel({
-                              channel: existingTwilio.channel,
+                              channel: currentTwilio.channel,
                               account_sid: accountSid,
                               auth_token: authToken,
                               phone_number: phoneNumber || null,
@@ -271,8 +276,9 @@ export class AddEditChannelDialogComponent implements OnInit {
             const resolved = this.resolvedTrigger();
             return resolved && resolved.id === value ? of(resolved) : this.webhookTriggerService.getById(value);
         }
-        return value.id
-            ? this.webhookTriggerService.update(value.id, value)
+        const existingId = value.id ?? this.createdTriggerId();
+        return existingId
+            ? this.webhookTriggerService.update(existingId, { ...value, id: existingId })
             : this.webhookTriggerService.create(value);
     }
 

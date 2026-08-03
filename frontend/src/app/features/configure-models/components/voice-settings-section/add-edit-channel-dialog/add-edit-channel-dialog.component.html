@@ -3,10 +3,15 @@
         {{ data.action === 'create' ? 'Add Channel' : 'Edit Channel' }}
     </div>
 
-    <form class="dialog__form" [formGroup]="form">
-        <div *ngIf="errorMessage()" class="dialog__error-message">
-            <p>{{ errorMessage() }}</p>
-        </div>
+    <form
+        class="dialog__form"
+        [formGroup]="form"
+    >
+        @if (errorMessage()) {
+            <div class="dialog__error-message">
+                <p>{{ errorMessage() }}</p>
+            </div>
+        }
 
         <div>
             <app-custom-input
@@ -59,7 +64,11 @@
             tooltipText="Twilio phone number in E.164 format"
             (opened)="onPhoneSelectOpened()"
         />
-        <p *ngIf="phoneLoadError()" class="dialog__field-error">{{ phoneLoadError() }}</p>
+        @if (phoneLoadError()) {
+            <p class="dialog__field-error">
+                {{ phoneLoadError() }}
+            </p>
+        }
 
         <div class="dialog__section-divider">
             <span class="dialog__section-label">Webhook Tunnel</span>
@@ -71,15 +80,19 @@
             [allowLocalhost]="false"
             (triggerResolved)="onTriggerResolved($event)"
         ></app-webhook-trigger-field>
-
-        @if (liveUrl()) {
-            <p class="dialog__field-hint">Live URL: {{ liveUrl() }}</p>
-        }
     </form>
 
     <div class="dialog__actions">
-        <app-button type="outline-primary" (click)="onCancel()">Cancel</app-button>
-        <app-button type="primary" (click)="onSubmit()" [disabled]="form.invalid || isSubmitting()">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+            >Cancel</app-button
+        >
+        <app-button
+            type="primary"
+            (click)="onSubmit()"
+            [disabled]="form.invalid || isSubmitting()"
+        >
             @if (isSubmitting()) {
                 {{ data.action === 'create' ? 'Creating…' : 'Saving…' }}
             } @else {
