@@ -142,12 +142,37 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     // blank key not yet representable in the persisted model — are left untouched on both sides so
     // an unfinished input-list row isn't wiped by the next merge.
     private syncFormArray(target: FormArray, source: FormArray): void {
-        const isInProgressRow = (c: AbstractControl): boolean => {
+        const isBlankRow = (c: AbstractControl): boolean => {
             const v = c.value as { key?: unknown } | null;
             return !!v && typeof v === 'object' && 'key' in v && String(v.key ?? '').trim() === '';
         };
+        const getKey = (c: AbstractControl): string => {
+            const v = c.value as { key?: unknown } | null;
+            return v && typeof v === 'object' ? String(v.key ?? '').trim() : '';
+        };
 
-        const sourceControls: AbstractControl[] = source.controls.filter((c) => !isInProgressRow(c));
+        if (target.controls.length === 1 && isBlankRow(target.at(0)) && target.at(0).pristine) {
+            const realSourceRows = source.controls.filter((c) => !isBlankRow(c));
+            if (realSourceRows.length > 0) {
+                target.at(0).setValue(realSourceRows[0].getRawValue(), { emitEvent: false });
+                for (let i = 1; i < realSourceRows.length; i++) {
+                    target.push(realSourceRows[i], { emitEvent: false });
+                }
+                return;
+            }
+        }
+
+        const isInProgressRow = (c: AbstractControl): boolean => c.dirty || isBlankRow(c);
+        const dirtyTargetKeys = new Set(
+            target.controls
+                .filter((c) => c.dirty)
+                .map(getKey)
+                .filter((k) => k !== '')
+        );
+
+        const sourceControls: AbstractControl[] = source.controls.filter(
+            (c) => !isInProgressRow(c) && !dirtyTargetKeys.has(getKey(c))
+        );
         const modelBacked: number[] = [];
         target.controls.forEach((c, i) => {
             if (!isInProgressRow(c)) modelBacked.push(i);
