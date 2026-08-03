@@ -205,7 +205,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     <button
                         type="button"
                         class="btn-secondary"
-                        [disabled]="fillLoading() || !pythonNodeId || !hasSuccessfulSession()"
+                        [disabled]="fillLoading() || !hasSuccessfulSession()"
                         [matTooltip]="getButtonTooltip()"
                         matTooltipPosition="above"
                         (click)="onFillVariables()"
@@ -215,7 +215,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     <button
                         type="button"
                         class="btn-primary"
-                        [disabled]="testRunning || !canRunTest() || !pythonNodeId"
+                        [disabled]="testRunning || !canRunTest()"
                         [matTooltip]="getRunTestButtonTooltip()"
                         matTooltipPosition="above"
                         (click)="onRunTest()"
@@ -1033,9 +1033,6 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         if (this.fillLoading()) {
             return 'Loading variables...';
         }
-        if (!this.pythonNodeId) {
-            return 'Save the graph first to enable this feature';
-        }
         if (!this.hasSuccessfulSession()) {
             return 'Fill out the Input list and complete a successful session to access Input Variables (available after entering the first test values).';
         }
@@ -1045,9 +1042,6 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     getRunTestButtonTooltip(): string {
         if (this.testRunning) {
             return 'Test is already running...';
-        }
-        if (!this.pythonNodeId) {
-            return 'Click Save in the top panel to save the graph before running a test';
         }
         if (!this.canRunTest()) {
             return 'Fill out all test input variables before running the test';
