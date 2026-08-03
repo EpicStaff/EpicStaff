@@ -11,13 +11,5 @@ class SecretService:
         secret.save()
         return secret
 
-    def update(self, instance: Secret, *, text: str | None = None, **fields) -> Secret:
-        for attr, val in fields.items():
-            setattr(instance, attr, val)
-        if text is not None:
-            secret_encryption.encrypt(text=text).write_to(instance)
-        instance.save()
-        return instance
-
 
 secret_service = SecretService()

@@ -6,7 +6,9 @@ from tables.services.secrets import secret_service
 
 
 class SecretSerializer(serializers.ModelSerializer):
-    value = serializers.CharField(write_only=True, required=False)
+    # Write-only and required: a Secret is created with its value and never
+    # updated, so there is no "omit to keep the existing one" case.
+    value = serializers.CharField(write_only=True)
 
     class Meta:
         model = Secret
@@ -37,17 +39,6 @@ class SecretSerializer(serializers.ModelSerializer):
             )
         ]
 
-    def validate(self, attrs):
-        if self.instance is None and "value" not in attrs:
-            raise serializers.ValidationError(
-                {"value": "This field is required when creating a secret."}
-            )
-        return attrs
-
     def create(self, validated_data):
         text = validated_data.pop("value")
         return secret_service.create(text=text, **validated_data)
-
-    def update(self, instance, validated_data):
-        text = validated_data.pop("value", None)
-        return secret_service.update(instance=instance, text=text, **validated_data)

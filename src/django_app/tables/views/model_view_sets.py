@@ -1920,7 +1920,20 @@ class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(labels, many=True).data)
 
 
-class SecretViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+class SecretViewSet(
+    OrgScopedViewSetMixin,
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Create / read / delete only — a Secret's name and value are immutable.
+
+    Rotating a credential means creating a new Secret and repointing the configs
+    at it, so PUT and PATCH are deliberately not exposed.
+    """
+
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
     rbac_action_map = {**DEFAULT_ACTION_MAP}

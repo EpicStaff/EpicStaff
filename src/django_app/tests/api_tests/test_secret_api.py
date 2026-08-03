@@ -120,10 +120,10 @@ def test_list_only_active_org(client_a, org_a, org_b):
     assert "B_SECRET" not in names
 
 
+# No patch/put: the viewset exposes create/read/delete only, so those verbs are
+# covered by test_update_verbs_are_not_exposed instead.
 CROSS_ORG_ACTIONS = [
     ("get", None),
-    ("patch", {"name": "HIJACKED"}),
-    ("put", {"name": "HIJACKED", "value": "sk-attacker"}),
     ("delete", None),
 ]
 
@@ -193,17 +193,14 @@ def test_value_never_appears_in_any_response(client_a):
     for item in results:
         assert "value" not in item
 
-    patch_resp = client_a.patch(
-        f"/api/secrets/{secret_id}/", {"metadata": {"env": "prod"}}, format="json"
-    )
-    assert "value" not in patch_resp.data
-
 
 @pytest.mark.django_db
 def test_create_without_value_returns_400(client_a):
     resp = client_a.post("/api/secrets/", {"name": "OPENAI_KEY"}, format="json")
     assert resp.status_code == 400
-    assert "This field is required when creating a secret." in resp.data["message"]
+    # `value` is a plain required field now that there is no update path to omit
+    # it on, so this is DRF's standard required-field message.
+    assert "This field is required." in resp.data["message"]
 
 
 @pytest.mark.django_db
@@ -219,68 +216,37 @@ def test_created_row_stores_encryptedtext_not_the_posted_text(client_a):
 
 
 @pytest.mark.django_db
-def test_patch_with_new_value_re_encrypts(client_a):
-    create_resp = client_a.post(
-        "/api/secrets/", {"name": "OPENAI_KEY", "value": "sk-live-old"}, format="json"
-    )
-    secret_id = create_resp.data["id"]
-    patch_resp = client_a.patch(
-        f"/api/secrets/{secret_id}/", {"value": "sk-live-new"}, format="json"
-    )
-    assert patch_resp.status_code == 200
-    reloaded = Secret.objects.get(id=secret_id)
-    assert secret_encryption.decrypt(encryptedtext=reloaded.value) == "sk-live-new"
-    assert reloaded.tail == "-new"
-    assert reloaded.id == secret_id
-
-
-@pytest.mark.django_db
 @pytest.mark.parametrize("verb", ["patch", "put"])
-def test_omitting_value_on_update_leaves_it_unchanged(client_a, verb):
-    create_resp = client_a.post(
-        "/api/secrets/",
-        {"name": "OPENAI_KEY", "value": "sk-live-abc123"},
+def test_update_verbs_are_not_exposed(client_a, org_a, verb):
+    """A Secret's name and value are immutable once created — rotating a
+    credential means creating a new Secret and repointing the configs at it.
+
+    The rejection is 403 rather than 405 because HasOrgPermission runs in
+    DRF's initial() before method dispatch: with no `update`/`partial_update`
+    action routed, `view.action` is None, so the action map cannot resolve a
+    required permission and the gate fails closed
+    (tables/services/rbac/permissions.py:80-83).
+    """
+    secret = Secret.objects.create(name="IMMUTABLE", value="ciphertext", org=org_a)
+
+    resp = getattr(client_a, verb)(
+        f"/api/secrets/{secret.id}/",
+        {"name": "RENAMED", "value": "sk-live-new"},
         format="json",
     )
-    secret_id = create_resp.data["id"]
-    original_value = Secret.objects.get(id=secret_id).value
 
-    # PUT still needs "name" (a required field for a full update); PATCH doesn't,
-    # but sending it too keeps one payload usable for both verbs.
-    resp = getattr(client_a, verb)(
-        f"/api/secrets/{secret_id}/", {"name": "RENAMED_KEY"}, format="json"
-    )
-    assert resp.status_code == 200
-    reloaded = Secret.objects.get(id=secret_id)
-    assert reloaded.name == "RENAMED_KEY"
-    assert reloaded.value == original_value
+    assert resp.status_code == 403
+    secret.refresh_from_db()
+    assert secret.name == "IMMUTABLE"
+    assert secret.value == "ciphertext"
 
 
-@pytest.mark.django_db
-def test_patch_rename_to_free_name_succeeds(client_a, org_a):
-    Secret.objects.create(name="OLD_NAME", value="ciphertext", org=org_a)
-    secret = Secret.objects.get(name="OLD_NAME")
-    resp = client_a.patch(
-        f"/api/secrets/{secret.id}/", {"name": "NEW_NAME"}, format="json"
-    )
-    assert resp.status_code == 200
-
-
-@pytest.mark.django_db
-def test_patch_rename_to_taken_name_returns_400(client_a, org_a):
-    Secret.objects.create(name="TAKEN_NAME", value="ciphertext-a", org=org_a)
-    other = Secret.objects.create(name="OTHER_NAME", value="ciphertext-b", org=org_a)
-    resp = client_a.patch(
-        f"/api/secrets/{other.id}/", {"name": "TAKEN_NAME"}, format="json"
-    )
-    assert resp.status_code == 400
-
-
+# No patch entry: the viewset no longer routes it, so there is no RBAC surface
+# left to gate — test_update_verbs_are_not_exposed covers the verb instead.
 SECRET_ACTIONS = [
     ("get", "/api/secrets/", None),
     ("get", "/api/secrets/{id}/", None),
     ("post", "/api/secrets/", {"name": "X", "value": "sk-live-x"}),
-    ("patch", "/api/secrets/{id}/", {"name": "Y"}),
     ("delete", "/api/secrets/{id}/", None),
 ]
 
