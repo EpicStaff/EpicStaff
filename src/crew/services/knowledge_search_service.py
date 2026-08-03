@@ -165,7 +165,7 @@ class KnowledgeSearchService:
 
         if isinstance(response.result, str):
             return [response.result]
-        return [chunk.text for chunk in response.chunks]
+        return [chunk.text for chunk in response.result]
 
     @staticmethod
     def _cancel_search_on_stop(
