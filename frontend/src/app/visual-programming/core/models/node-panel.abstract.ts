@@ -95,6 +95,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         const source = this.initializeForm();
         const remoteValue = source.getRawValue() as Record<string, unknown>;
         this.applyRemoteDiff(this.form, source, this.baseline ?? {});
+        this.onRemoteFormMerged();
         this.baseline = remoteValue;
         if (!wasDirty) {
             untracked(() => {
@@ -251,6 +252,8 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     }
 
     protected onFormReinitialized(): void {}
+
+    protected onRemoteFormMerged(): void {}
 
     protected abstract initializeForm(): FormGroup;
     protected abstract createUpdatedNode(): T;

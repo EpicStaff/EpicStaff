@@ -642,6 +642,18 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         });
     }
 
+    // pythonCode lives outside `this.form`, so a remote node_updated never reaches it via
+    // applyRemoteDiff. Adopt the incoming code only if we have no local unsaved edit of our own
+    // (same three-way-merge rule the form fields already follow), otherwise keep typing untouched.
+    protected override onRemoteFormMerged(): void {
+        const remoteCode = this.node().data.code || '';
+        if (this.pythonCode === this.initialPythonCode) {
+            this.pythonCode = remoteCode;
+            this.formDirtyTick.update((v) => v + 1);
+        }
+        this.initialPythonCode = remoteCode;
+    }
+
     createUpdatedNode(): PythonNodeModel {
         const validInputPairs = getValidInputPairs(this.inputMapPairs);
         const inputMapValue = createInputMapFromPairs(validInputPairs);
