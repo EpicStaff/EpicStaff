@@ -180,7 +180,6 @@ class TestKnowledgeNodeCreate:
         ],
     )
     def test_out_of_range_values_fail(self, auth_client, graph, bad):
-        # A9
         resp = auth_client.post(
             list_url(), {"graph": graph.id, "search_configs": bad}, format="json"
         )
