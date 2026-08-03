@@ -1,31 +1,18 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, model } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, model, output } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import {
-    AppSvgIconComponent,
-    ButtonComponent,
-    ListActionsComponent,
-    ListComponent,
-    ListRowComponent,
-} from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent, CheckboxComponent } from '@shared/components';
 import { switchMap, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../services/notifications';
 import { FileSizePipe } from '../../../../../shared/pipes/file-size.pipe';
-import { GraphRagDocument } from '../../../models/graph-rag.model';
+import { GraphRagDocument } from '../../../models/graph-rag-document.model';
 import { GraphRagService } from '../../../services/graph-rag.service';
 
 @Component({
     selector: 'app-graph-rag-files-list',
     templateUrl: './files-list.component.html',
     styleUrls: ['./files-list.component.scss'],
-    imports: [
-        ButtonComponent,
-        FileSizePipe,
-        ListActionsComponent,
-        ListComponent,
-        ListRowComponent,
-        AppSvgIconComponent,
-    ],
+    imports: [ButtonComponent, FileSizePipe, AppSvgIconComponent, CheckboxComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphRagFilesListComponent {
@@ -35,6 +22,8 @@ export class GraphRagFilesListComponent {
 
     ragId = input.required<number>();
     documents = model.required<GraphRagDocument[]>();
+    checkedDocIds = input.required<Set<number>>();
+    toggleDoc = output<number>();
 
     reIncludeFiles(): void {
         const ragId = this.ragId();
@@ -42,8 +31,8 @@ export class GraphRagFilesListComponent {
             .reIncludeFiles(ragId)
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                switchMap(() => this.graphRagService.getRagById(ragId)),
-                tap((graphRag) => this.documents.set(graphRag.documents))
+                switchMap(() => this.graphRagService.getRagDocuments(ragId)),
+                tap((docs) => this.documents.set(docs.documents))
             )
             .subscribe({
                 next: () => {

@@ -28,10 +28,16 @@
         }
 
         <div class="files-content">
-            <app-graph-rag-files-list
-                [ragId]="graphRag().graph_rag_id"
-                [(documents)]="documents"
-            />
+            @if (documentsLoading()) {
+                <app-loading-spinner size="md" />
+            } @else {
+                <app-graph-rag-files-list
+                    [ragId]="graphRag().graph_rag_id"
+                    [(documents)]="documents"
+                    [checkedDocIds]="checkedDocIds()"
+                    (toggleDoc)="toggleDoc($event)"
+                />
+            }
         </div>
     </div>
 

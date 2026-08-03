@@ -16,7 +16,7 @@
 
     @if (collection().rag_configurations.length) {
         <div class="rag-configs">
-            @for (config of collection().rag_configurations; track config.rag_id) {
+            @for (config of collection().rag_configurations; track config.rag_type) {
                 <div
                     class="rag-badge"
                     [style.color]="ragStatusConfig[config.status].color"

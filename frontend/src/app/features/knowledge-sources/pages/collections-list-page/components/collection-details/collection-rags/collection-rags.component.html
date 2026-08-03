@@ -5,7 +5,7 @@
     </div>
 } @else {
     <ul class="rags">
-        @for (config of collection().rag_configurations; track config.rag_id) {
+        @for (config of collection().rag_configurations; track config.rag_type) {
             <li
                 class="item"
                 (click)="onConfigureRag(config.rag_type)"

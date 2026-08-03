@@ -4,14 +4,16 @@ import {
     Component,
     computed,
     DestroyRef,
+    effect,
     inject,
     input,
     OnInit,
     signal,
     ViewChild,
+    WritableSignal,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
-import { RadioButtonComponent, SelectItem } from '@shared/components';
+import { LoadingSpinnerComponent, RadioButtonComponent, SelectItem } from '@shared/components';
 import { EMPTY, merge, Observable, skip } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap, tap } from 'rxjs/operators';
 
@@ -19,12 +21,8 @@ import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
-import {
-    CollectionGraphRag,
-    CreateGraphRagIndexConfigRequest,
-    GraphRagDocument,
-    GraphRagFileType,
-} from '../../models/graph-rag.model';
+import { CollectionGraphRag, CreateGraphRagIndexConfigRequest, GraphRagFileType } from '../../models/graph-rag.model';
+import { GraphRagDocument } from '../../models/graph-rag-document.model';
 import { RagConfiguration } from '../../models/rag-configuration';
 import { GraphRagService } from '../../services/graph-rag.service';
 import { GraphRagFilesListComponent } from './files-list/files-list.component';
@@ -41,6 +39,7 @@ import { AppGraphRagParametersComponent } from './index-parameters/index-paramet
         AppGraphRagParametersComponent,
         AppSvgIconComponent,
         HelpTooltipComponent,
+        LoadingSpinnerComponent,
     ],
 })
 export class GraphRagConfigurationComponent implements OnInit, AfterViewInit, RagConfiguration {
@@ -49,9 +48,12 @@ export class GraphRagConfigurationComponent implements OnInit, AfterViewInit, Ra
     private destroyRef = inject(DestroyRef);
 
     graphRag = input.required<CollectionGraphRag>();
+    canIndexChange = input<WritableSignal<boolean>>();
+    documents = signal<GraphRagDocument[]>([]);
+    checkedDocIds = signal<Set<number>>(new Set());
 
     selectedFormat = signal<GraphRagFileType>('text');
-    documents = signal<GraphRagDocument[]>([]);
+    documentsLoading = signal<boolean>(true);
     hasNonTxtDocuments = computed(() => this.documents().some((doc) => !doc.file_name.endsWith('.txt')));
     format$ = toObservable(this.selectedFormat);
 
@@ -72,10 +74,27 @@ export class GraphRagConfigurationComponent implements OnInit, AfterViewInit, Ra
 
     @ViewChild('indexParameters', { static: true }) indexParameters!: AppGraphRagParametersComponent;
 
+    constructor() {
+        effect(() => {
+            this.canIndexChange()?.set(this.checkedDocIds().size > 0);
+        });
+    }
+
     ngOnInit() {
         const graphRag = this.graphRag();
         this.selectedFormat.set(graphRag.index_config.file_type);
-        this.documents.set(graphRag.documents);
+        this.fetchDocuments(graphRag.graph_rag_id);
+    }
+
+    private fetchDocuments(ragId: number): void {
+        this.graphRagService
+            .getRagDocuments(ragId)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (resp) => this.documents.set(resp.documents),
+                error: () => this.toastService.error('Failed to get documents'),
+                complete: () => this.documentsLoading.set(false),
+            });
     }
 
     ngAfterViewInit(): void {
@@ -114,7 +133,19 @@ export class GraphRagConfigurationComponent implements OnInit, AfterViewInit, Ra
     }
 
     getDocumentConfigIds(): number[] {
-        return this.documents().map((d) => d.graph_rag_document_id);
+        const checked = this.checkedDocIds();
+        return this.documents()
+            .map((d) => d.graph_rag_document_id)
+            .filter((id) => checked.has(id));
+    }
+
+    toggleDoc(id: number): void {
+        this.checkedDocIds.update((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
     }
 
     getIndexingDocuments(): IndexingDocumentInfo[] {

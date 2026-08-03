@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent } from '@shared/components';
 import { filter, switchMap } from 'rxjs/operators';
@@ -20,10 +20,12 @@ import { RagConfigurationDialogComponent } from '../rag-configuration-dialog.com
 export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent implements OnInit {
     private graphRagService = inject(GraphRagService);
     private collectionsStorage = inject(CollectionsStorageService);
+    private ragConfiguration = viewChild(GraphRagConfigurationComponent);
 
     graphRag = signal<CollectionGraphRag | null>(null);
 
-    docConfigIds = computed(() => this.graphRag()?.documents.map((d) => d.graph_rag_document_id) ?? []);
+    docConfigIds = computed(() => this.ragConfiguration()?.getDocumentConfigIds() ?? []);
+    indexingDisabled = computed(() => !this.docConfigIds().length);
 
     isIndexing = computed(() => {
         for (const c of this.collectionsStorage.fullCollections()) {
@@ -34,7 +36,10 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
     });
 
     ngOnInit() {
-        const id = this.data.ragId;
+        this.getGraphRag(this.data.ragId);
+    }
+
+    getGraphRag(id: number): void {
         this.graphRagService
             .getRagById(id)
             .pipe(takeUntilDestroyed(this.destroyRef))

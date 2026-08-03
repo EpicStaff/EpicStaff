@@ -8,6 +8,7 @@ import {
     CreateGraphRagForCollectionResponse,
     CreateGraphRagIndexConfigRequest,
 } from '../models/graph-rag.model';
+import { GraphRagDocumentListResponse } from '../models/graph-rag-document.model';
 
 @Injectable({
     providedIn: 'root',
@@ -39,6 +40,10 @@ export class GraphRagService {
 
     getRagById(ragId: number): Observable<CollectionGraphRag> {
         return this.http.get<CollectionGraphRag>(`${this.apiUrl}${ragId}/`);
+    }
+
+    getRagDocuments(ragId: number): Observable<GraphRagDocumentListResponse> {
+        return this.http.get<GraphRagDocumentListResponse>(`${this.apiUrl}${ragId}/documents/list/`);
     }
 
     updateRagIndexConfigs(
