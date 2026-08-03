@@ -1181,6 +1181,7 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
                 user=request.user,
                 saved_at=flush_outcome.result.saved_at,
                 temp_id_map=flush_outcome.result.temp_id_map,
+                deleted_ids=flush_outcome.result.flushed_deleted,
             )
 
         version = GraphVersioningService().save_version(

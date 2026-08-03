@@ -31,6 +31,7 @@ def _build_graph_saved_message(
     saved_at: str,
     avatar_url: str | None = None,
     temp_id_map: dict[str, int] | None = None,
+    deleted_ids: dict[str, list[int]] | None = None,
 ) -> dict:
     """Build a ``GraphSavedMessage`` dict ready for channel layer group_send.
 
@@ -46,12 +47,21 @@ def _build_graph_saved_message(
     else:
         editor = build_editor_info(user=user)
 
+    # deleted_ids originates from the snapshot's `deleted` accumulator.
+    # Drop empty lists here — the single choke point shared by every caller
+    # (autosave loop, WS consumer, version endpoint) — so only keys with actual
+    # ids are sent, and `{}` when nothing was deleted.
+    non_empty_deleted_ids = {
+        delete_key: ids for delete_key, ids in (deleted_ids or {}).items() if ids
+    }
+
     message = GraphSavedMessage(
         graph_id=graph_id,
         new_save_version=new_save_version,
         saved_by=editor,
         saved_at=saved_at,
         temp_id_map=temp_id_map or {},
+        deleted_ids=non_empty_deleted_ids,
     )
     return message.model_dump()
 
@@ -75,11 +85,13 @@ class GraphEditNotifier:
         saved_at: str,
         avatar_url: str | None = None,
         temp_id_map: dict[str, int] | None = None,
+        deleted_ids: dict[str, list[int]] | None = None,
     ) -> None:
         """Broadcast graph_saved from a synchronous HTTP view.
 
-        ``temp_id_map`` is optional and defaults to ``{}`` — existing REST
-        callers that do not pass it retain identical behaviour.
+        ``temp_id_map`` and ``deleted_ids`` are optional and default to
+        ``{}`` — existing REST callers that do not pass them retain
+        identical behaviour.
 
         """
 
@@ -91,6 +103,7 @@ class GraphEditNotifier:
             saved_at=saved_at,
             avatar_url=avatar_url,
             temp_id_map=temp_id_map,
+            deleted_ids=deleted_ids,
         )
         GraphEditNotifier._send(graph_id, message)
 
@@ -260,6 +273,7 @@ async def anotify_graph_saved(
     user=None,
     avatar_url: str | None = None,
     temp_id_map: dict[str, int] | None = None,
+    deleted_ids: dict[str, list[int]] | None = None,
 ) -> None:
     """Broadcast graph_saved from an async context (e.g. WebSocket consumer).
 
@@ -269,6 +283,10 @@ async def anotify_graph_saved(
 
     ``temp_id_map`` carries the frontend-temp-id → real-DB-id mapping produced
     by a flush so connected editors can reconcile their local node references.
+
+    ``deleted_ids`` carries the pks permanently hard-deleted by this flush
+    (keyed by delete_key), letting connected editors null those ids out of
+    their undo/redo stack.
 
     Pass ``user=None`` (the default) when called from the global autosave loop,
     which has no acting user — the save will be attributed to ``_SYSTEM_EDITOR``.
@@ -287,6 +305,7 @@ async def anotify_graph_saved(
         saved_at=saved_at,
         avatar_url=avatar_url,
         temp_id_map=temp_id_map,
+        deleted_ids=deleted_ids,
     )
     try:
         await layer.group_send(graph_group_name(graph_id), message)

@@ -246,6 +246,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                                 saved_at=outcome.result.saved_at,
                                 user=editor_user,
                                 temp_id_map=outcome.result.temp_id_map,
+                                deleted_ids=outcome.result.flushed_deleted,
                             )
                         if outcome.safe_to_clear:
                             await graph_state_service.clear(graph_id)

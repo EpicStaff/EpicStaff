@@ -298,6 +298,36 @@ class GraphLiveStateService:
             return {}
         return json.loads(raw)
 
+    async def prune_resolved_temp_ids(self, graph_id: int, dead_ids: set[int]) -> None:
+        """Drop every entry of the retained temp_id -> real_id map whose real
+        id is in *dead_ids* (a node/edge flushed as a deletion).
+
+        This is a targeted prune, not a clear-on-success: record_resolved_temp_ids's
+        whole purpose (see its docstring) is letting a late-arriving op that
+        references an already-remapped temp_id resolve to the real id even
+        after the node has been flushed out of the live snapshot. Clearing the
+        map on every successful flush would destroy that for every temp_id
+        that is still alive — so this only removes the entries that point at
+        pks which no longer exist, filtering by VALUE, never by key. Do not
+        "simplify" this into a blanket clear.
+
+        No-op when *dead_ids* is empty.
+        """
+        if not dead_ids:
+            return
+        resolved = await self.get_resolved_temp_ids(graph_id)
+        filtered = {
+            temp_id: real_id
+            for temp_id, real_id in resolved.items()
+            if real_id not in dead_ids
+        }
+        if len(filtered) == len(resolved):
+            # Nothing was actually pruned — skip the pointless Redis write
+            # and TTL refresh.
+            return
+        ttl = getattr(settings, "GRAPH_LIVE_STATE_TTL_SECONDS", 86400)
+        await self._redis.set(_tempids_key(graph_id), json.dumps(filtered), ex=ttl)
+
     async def apply_id_remap(
         self,
         graph_id: int,
@@ -408,6 +438,17 @@ class GraphLiveStateService:
                 live_deleted[delete_key] = [
                     id_ for id_ in live_ids if id_ not in persisted_set
                 ]
+
+            # Invalidate the retained temp_id -> real_id map for every pk that
+            # was just permanently hard-deleted by this flush. Without this,
+            # a stale entry like {U: 42} survives after node 42 is deleted, and
+            # a later op re-creating temp_id U (FE undo/redo replaying a stale
+            # copy) resolves to the now-dead pk 42 instead of being treated as
+            # a genuine create — the exact bug this fix targets.
+            dead_ids: set[int] = {
+                dead_id for ids in flushed_deleted.values() for dead_id in ids
+            }
+            await self.prune_resolved_temp_ids(graph_id, dead_ids)
 
             # Orphan node detection.
             # A node with temp_id T was in the flushed snapshot (and therefore
@@ -561,6 +602,26 @@ class GraphLiveStateService:
             )
             return None
 
+        # reject only when the id is an int (assume it already in db) AND
+        # that id is NOT currently pending deletion in the accumulator.
+        # This check must NOT apply to the legacy NodeUpdatedMessage
+        # (changed_fields is None) path that also flows through this method
+        # — there a real id is entirely legitimate
+        # (e.g. broadcastDecisionRoutingUpdate).
+        node_id = message.node.get("id")
+        delete_key = _LIST_KEY_TO_DELETE_KEY.get(list_key)
+        if isinstance(message, NodeCreatedMessage) and isinstance(node_id, int):
+            pending_delete = delete_key is not None and node_id in deleted.get(
+                delete_key, []
+            )
+            if not pending_delete:
+                logger.warning(
+                    "Rejecting node_created carrying a real id {} on graph {}",
+                    node_id,
+                    graph_id,
+                )
+                return OpResult(OpStatus.REJECTED, "stale_id_recreate", relay=False)
+
         entries: list[dict] = snapshot.setdefault(list_key, [])
         new_entry = copy.copy(message.node)
         if list_key in SINGLETON_LIST_KEYS:
@@ -568,11 +629,15 @@ class GraphLiveStateService:
         else:
             _upsert_entry(entries, new_entry)
 
-        # if this node has a real id that was previously deleted,
-        # remove it from the accumulator — the node is alive again.
+        # If this node has a real id that was previously deleted, remove it
+        # from the accumulator — the node is alive again. Two callers reach
+        # here with such an id: the legacy NodeUpdatedMessage path
+        # (changed_fields is None), and a NodeCreatedMessage that passed the
+        # guard above because its id was still pending deletion (the
+        # pre-flush undo case). Either way, dropping it from the accumulator
+        # is what keeps the row alive with its original pk.
         entry_id = new_entry.get("id")
         if entry_id is not None:
-            delete_key = _LIST_KEY_TO_DELETE_KEY.get(list_key)
             if delete_key:
                 accumulator: list = deleted.get(delete_key, [])
                 if entry_id in accumulator:
@@ -751,6 +816,31 @@ class GraphLiveStateService:
                         graph_id,
                     )
                     return
+
+                # A connection create carrying a real DB id is legitimate
+                # exactly in the pre-flush undo window — same rule as
+                # node_created (see _apply_node_upsert).
+                # Once a flush persists the deletion, apply_id_remap removes
+                # the id from the accumulator and the pk is dead — a create
+                # carrying it again is a stale replay and must be rejected
+                connection_id_candidate = message.connection.get("id")
+                if isinstance(connection_id_candidate, int):
+                    delete_key = _LIST_KEY_TO_DELETE_KEY.get(list_key)
+                    pending_delete = (
+                        delete_key is not None
+                        and connection_id_candidate in deleted.get(delete_key, [])
+                    )
+                    if not pending_delete:
+                        logger.warning(
+                            "Rejecting connection_created carrying a real id {} "
+                            "on graph {}",
+                            connection_id_candidate,
+                            graph_id,
+                        )
+                        return OpResult(
+                            OpStatus.REJECTED, "stale_id_recreate", relay=False
+                        )
+
                 entries = snapshot.setdefault(list_key, [])
                 new_connection = copy.copy(message.connection)
 

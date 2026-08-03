@@ -62,6 +62,7 @@ async def _autosave_pass() -> None:
                     saved_at=result.saved_at,
                     user=None,
                     temp_id_map=result.temp_id_map,
+                    deleted_ids=result.flushed_deleted,
                 )
             elif outcome.status is FlushStatus.FAILED and outcome.persistent:
                 await anotify_save_failed(

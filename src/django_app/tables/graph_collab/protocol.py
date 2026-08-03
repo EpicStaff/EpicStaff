@@ -19,6 +19,10 @@ class GraphSavedMessage(BaseModel):
     # Maps frontend temp_id strings to the real DB integer ids assigned on insert.
     # Empty for saves originating from the REST path (which has no temp ids).
     temp_id_map: dict[str, int] = {}
+    # Ids permanently hard-deleted by this flush, keyed by delete_key (e.g.
+    # "edge_ids", "conditional_edge_ids", "python_node_ids") — the same shape
+    # as the snapshot's "deleted" accumulator.
+    deleted_ids: dict[str, list[int]] = {}
 
 
 class GraphSaveFailedMessage(BaseModel):
@@ -75,7 +79,8 @@ class OpRejectedMessage(BaseModel):
     list_key: str
     node_ref: dict
     # One of: "target_not_found", "no_snapshot", "unknown_list_key",
-    # "missing_identity", "precondition_failed", "permission_denied".
+    # "missing_identity", "precondition_failed", "permission_denied",
+    # "stale_id_recreate".
     reason: str
     details: dict | None = None
 
