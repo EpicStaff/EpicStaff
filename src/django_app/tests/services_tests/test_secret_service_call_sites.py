@@ -67,8 +67,9 @@ class TestQuickstartWrapsKeyInSecret:
             == "sk-quickstart-test-9876"
         )
 
-        # Every config type quickstart creates for this provider gets its own
-        # Secret, each named independently per model.
+        # Every config type quickstart creates for this provider is Secret-backed.
+        # They all share the one Secret created for the bundle — see
+        # test_quickstart_secret_reuse.py for the sharing assertions.
         for model_cls in (EmbeddingConfig, RealtimeConfig):
             config = model_cls.objects.filter(org=org).first()
             if config is None:

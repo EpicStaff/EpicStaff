@@ -14,6 +14,7 @@ from tables.models.llm_models import (
 from tables.models.embedding_models import EmbeddingModel, EmbeddingConfig
 from tables.models.provider import Provider
 from tables.models.default_models import DefaultModels
+from tables.models.secret_models import Secret
 from tables.models.tag_models import (
     LLMConfigTag,
     EmbeddingConfigTag,
@@ -50,7 +51,20 @@ class QuickstartService(metaclass=SingletonMeta):
 
     def __init__(self): ...
 
-    def quickstart(self, provider: str, api_key: str, org_id: int) -> dict:
+    def quickstart(
+        self,
+        *,
+        provider: str,
+        org_id: int,
+        api_key: str | None = None,
+        secret: Secret | None = None,
+    ) -> dict:
+        """Create a matched set of provider configs backed by a single Secret.
+
+        Exactly one of `api_key` (cold start — a Secret is created and named after
+        the bundle) or `secret` (reuse — nothing is created) is expected; the
+        serializer enforces that.
+        """
         try:
             if provider not in self.PROVIDER_CONFIGS:
                 supported = ", ".join(self.PROVIDER_CONFIGS.keys())
@@ -61,34 +75,56 @@ class QuickstartService(metaclass=SingletonMeta):
             config_name = self._generate_unique_quickstart_config_name(provider)
             provider_obj = Provider.objects.get(name=provider)
             with transaction.atomic():
+                # One Secret backs the whole bundle. Resolved before any config
+                # exists, so every config can set the FK on its INSERT.
+                bundle_secret = secret or secret_service.create(
+                    text=api_key,
+                    org_id=org_id,
+                    name=self._bundle_secret_name(bundle_name=config_name),
+                )
                 llm_config = self._create_llm_model_config(
-                    provider_obj, api_key, config_name, org_id=org_id
+                    provider=provider_obj,
+                    config_name=config_name,
+                    org_id=org_id,
+                    secret=bundle_secret,
                 )
                 embedding_config = self._create_embedder_config(
-                    provider_obj, api_key, config_name, org_id=org_id
+                    provider=provider_obj,
+                    config_name=config_name,
+                    org_id=org_id,
+                    secret=bundle_secret,
                 )
                 realtime_config = None
                 realtime_transcription_config = None
                 if provider == "openai":
                     realtime_config = self._create_realtime_config(
-                        provider_obj, api_key, config_name, org_id=org_id
+                        provider=provider_obj,
+                        config_name=config_name,
+                        org_id=org_id,
+                        secret=bundle_secret,
                     )
                     realtime_transcription_config = (
                         self._create_realtime_transcription_config(
-                            provider_obj, api_key, config_name, org_id=org_id
+                            provider=provider_obj,
+                            config_name=config_name,
+                            org_id=org_id,
+                            secret=bundle_secret,
                         )
                     )
 
                 elif provider == "gemini":
                     self._create_realtime_config(
-                        provider_obj, api_key, config_name, org_id=org_id
+                        provider=provider_obj,
+                        config_name=config_name,
+                        org_id=org_id,
+                        secret=bundle_secret,
                     )
 
                 self._apply_quickstart_tag(
-                    llm_config,
-                    embedding_config,
-                    realtime_config,
-                    realtime_transcription_config,
+                    llm_config=llm_config,
+                    embedding_config=embedding_config,
+                    realtime_config=realtime_config,
+                    realtime_transcription_config=realtime_transcription_config,
                 )
             logger.success(
                 f"Quickstart configuration: {config_name} created successfully!"
@@ -222,63 +258,60 @@ class QuickstartService(metaclass=SingletonMeta):
             )
         return bool(checks) and all(checks)
 
-    def _attach_api_key_secret(self, config, api_key: str):
-        """Wrap the raw quickstart key in a Secret and point the config's FK at
-        it — configs no longer hold plaintext keys."""
-        if not api_key:
-            return config
-        config.api_key_secret = secret_service.create_for_field(
-            text=api_key,
-            org=config.org,
-            instance=config,
-            field_name="api_key_secret",
-        )
-        config.save(update_fields=["api_key_secret"])
-        return config
+    def _bundle_secret_name(self, *, bundle_name: str) -> str:
+        """Name the bundle's Secret after the bundle it backs, not after one of the
+        config types that reference it — a single Secret serves them all.
+
+        Uniqueness rides on _generate_unique_quickstart_config_name, which never
+        reuses a bundle name, so the (org, name) constraint on Secret holds.
+        """
+        return f"{bundle_name.replace('_', '-')}-api-key"
 
     def _create_llm_model_config(
-        self, provider: Provider, api_key: str, config_name: str, org_id: int
+        self, *, provider: Provider, config_name: str, org_id: int, secret: Secret
     ) -> LLMConfig:
-        llm_model = self._get_or_create_llm_model(provider)
-        config = LLMConfig.objects.create(
-            model=llm_model, custom_name=config_name, org_id=org_id
+        llm_model = self._get_or_create_llm_model(provider=provider)
+        return LLMConfig.objects.create(
+            model=llm_model,
+            custom_name=config_name,
+            org_id=org_id,
+            api_key_secret=secret,
         )
-        return self._attach_api_key_secret(config=config, api_key=api_key)
 
     def _create_embedder_config(
-        self, provider: Provider, api_key: str, config_name: str, org_id: int
+        self, *, provider: Provider, config_name: str, org_id: int, secret: Secret
     ) -> EmbeddingConfig:
-        embedder_model = self._get_or_create_embedder_model(provider)
-        config = EmbeddingConfig.objects.create(
+        embedder_model = self._get_or_create_embedder_model(provider=provider)
+        return EmbeddingConfig.objects.create(
             model=embedder_model,
             custom_name=config_name,
             org_id=org_id,
+            api_key_secret=secret,
         )
-        return self._attach_api_key_secret(config=config, api_key=api_key)
 
     def _create_realtime_config(
-        self, provider: Provider, api_key: str, config_name: str, org_id: int
+        self, *, provider: Provider, config_name: str, org_id: int, secret: Secret
     ) -> RealtimeConfig:
-        realtime_model = self._get_or_create_realtime_model(provider)
-        config = RealtimeConfig.objects.create(
+        realtime_model = self._get_or_create_realtime_model(provider=provider)
+        return RealtimeConfig.objects.create(
             realtime_model=realtime_model,
             custom_name=config_name,
             org_id=org_id,
+            api_key_secret=secret,
         )
-        return self._attach_api_key_secret(config=config, api_key=api_key)
 
     def _create_realtime_transcription_config(
-        self, provider: Provider, api_key: str, config_name: str, org_id: int
+        self, *, provider: Provider, config_name: str, org_id: int, secret: Secret
     ) -> RealtimeTranscriptionConfig:
         realtime_transcription_model = self._get_or_create_realtime_transcription_model(
-            provider
+            provider=provider
         )
-        config = RealtimeTranscriptionConfig.objects.create(
+        return RealtimeTranscriptionConfig.objects.create(
             realtime_transcription_model=realtime_transcription_model,
             custom_name=config_name,
             org_id=org_id,
+            api_key_secret=secret,
         )
-        return self._attach_api_key_secret(config=config, api_key=api_key)
 
     def _get_or_create_llm_model(self, provider: Provider):
         llm_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get("llm_model")

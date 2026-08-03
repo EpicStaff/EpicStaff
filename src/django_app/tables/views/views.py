@@ -770,10 +770,15 @@ class QuickstartView(APIView):
 
     @extend_schema(**QUICKSTART_POST)
     def post(self, request):
-        serializer = QuickstartSerializer(data=request.data)
+        # The request must be in context: OrgScopedPrimaryKeyRelatedField reads the
+        # active org from it and denies every pk without it (fail-safe).
+        serializer = QuickstartSerializer(
+            data=request.data, context={"request": request}
+        )
         if serializer.is_valid():
             provider = serializer.validated_data["provider"]
-            api_key = serializer.validated_data["api_key"]
+            api_key = serializer.validated_data.get("api_key")
+            secret = serializer.validated_data.get("api_key_secret_id")
             org_id = self._org_context.resolve(
                 request=request, view_kwargs=getattr(self, "kwargs", {})
             )
@@ -784,7 +789,12 @@ class QuickstartView(APIView):
                 action=self.rbac_required_action,
             )
 
-            result = quickstart_service.quickstart(provider, api_key, org_id=org_id)
+            result = quickstart_service.quickstart(
+                provider=provider,
+                api_key=api_key,
+                secret=secret,
+                org_id=org_id,
+            )
 
             if result.get("success", False):
                 config_name = result["config_name"]
