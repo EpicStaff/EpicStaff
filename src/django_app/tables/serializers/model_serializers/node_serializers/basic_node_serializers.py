@@ -158,6 +158,7 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
         node = super().update(instance, validated_data)
         if search_configs_data:
             SearchConfigService.apply_node_search_configs(node, search_configs_data)
+            node.refresh_from_db()
         return node
 
     def to_representation(self, instance):
