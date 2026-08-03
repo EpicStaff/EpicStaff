@@ -486,6 +486,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     pythonCode: string = '';
     initialPythonCode: string = '';
+    private initialUseStorage: boolean = false;
     private initialFormSignatureExceptTestValues: string = '';
     private initialTestInputValuesSignature: string = '';
     codeEditorHasError: boolean = false;
@@ -498,6 +499,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         return (
             this.buildFormSignatureExceptTestValues() !== this.initialFormSignatureExceptTestValues ||
             this.pythonCode !== this.initialPythonCode ||
+            this.useStorage() !== this.initialUseStorage ||
             this.buildTestInputValuesSignature() !== this.initialTestInputValuesSignature
         );
     });
@@ -536,6 +538,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         if (!this.form) return;
         this.form.markAsPristine();
         this.initialPythonCode = this.pythonCode;
+        this.initialUseStorage = this.useStorage();
         this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
         this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();
         this.formDirtyTick.update((v) => v + 1);
@@ -632,6 +635,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     protected override onFormReinitialized(): void {
         this.terminalLogs.set([]);
         this.useStorage.set(this.node().data.use_storage ?? false);
+        this.initialUseStorage = this.useStorage();
         this.pythonCode = this.node().data.code || '';
         this.initialPythonCode = this.pythonCode;
         this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
@@ -652,6 +656,12 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             this.formDirtyTick.update((v) => v + 1);
         }
         this.initialPythonCode = remoteCode;
+
+        const remoteUseStorage = this.node().data.use_storage ?? false;
+        if (this.useStorage() === this.initialUseStorage) {
+            this.useStorage.set(remoteUseStorage);
+        }
+        this.initialUseStorage = remoteUseStorage;
     }
 
     createUpdatedNode(): PythonNodeModel {
