@@ -46,7 +46,8 @@ from tables.serializers.naive_rag_serializers import (
     ChunkSearchResponseSerializer,
     ChunkSearchRequestSerializer,
     PreviewChunksByIdsRequestSerializer,
-    PreviewChunksByIdsResponseSerializer, ChunkingConfigSerializer,
+    PreviewChunksByIdsResponseSerializer,
+    ChunkingConfigSerializer,
 )
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 
@@ -331,44 +332,42 @@ class NaiveRagDocumentConfigViewSet(
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT)
     @action(detail=False, methods=["put"], url_path="bulk-update")
     def bulk_update(self, request, naive_rag_id=None):
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=request.data, many=True)
         serializer.is_valid(raise_exception=True)
-
-        config_ids = serializer.validated_data.pop("config_ids")
 
         try:
             result = NaiveRagService.bulk_update_document_configs_with_partial_errors(
                 naive_rag_id=int(naive_rag_id),
-                config_ids=config_ids,
-                **serializer.validated_data,
+                data=serializer.validated_data,
             )
 
             # Use the new serializer that includes errors field
             response_serializer = DocumentConfigWithErrorsSerializer(
                 result["configs"],
                 many=True,
-                context={"config_errors": result["config_errors"]},
+                context={"config_errors": result["errors"]},
             )
 
             # Build status message
-            if result["failed_count"] == 0:
-                message = f"Successfully updated {result['updated_count']} config(s)"
+            if result["failed"] == 0:
+                message = f"Successfully updated {result['updated']} config(s)"
                 response_status = status.HTTP_200_OK
-            elif result["updated_count"] == 0:
-                message = f"Failed to update {result['failed_count']} config(s)"
+            elif result["updated"] == 0:
+                message = f"Failed to update {result['failed']} config(s)"
                 response_status = status.HTTP_207_MULTI_STATUS
             else:
                 message = (
-                    f"Successfully updated {result['updated_count']} config(s), "
-                    f"Failed to update {result['failed_count']} config(s)"
+                    f"Successfully updated {result['updated']} config(s), "
+                    f"Failed to update {result['failed']} config(s)"
                 )
                 response_status = status.HTTP_207_MULTI_STATUS
 
             return Response(
                 {
                     "message": message,
-                    "updated_count": result["updated_count"],
-                    "failed_count": result["failed_count"],
+                    "updated_count": result["updated"],
+                    "unupdated_count": result["unupdated"],
+                    "failed_count": result["failed"],
                     "configs": response_serializer.data,
                 },
                 status=response_status,
@@ -475,7 +474,7 @@ class NaiveRagDocumentConfigViewSet(
             config = NaiveRagService.update_document_config(
                 config_id=int(pk),
                 naive_rag_id=naive_rag_id,
-                **serializer.validated_data,
+                data=serializer.validated_data,
             )
 
             response_serializer = DocumentConfigSerializer(config)
@@ -598,7 +597,7 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
             {
                 "naive_rag_id": naive_rag_id,
                 "document_config_id": document_config_id,
-                "status": 'chunked',
+                "status": "completed",
                 "chunk_count": len(response.chunks),
                 "chunks": [chunk.model_dump() for chunk in response.chunks],
             },

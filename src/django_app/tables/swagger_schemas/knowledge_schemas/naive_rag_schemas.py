@@ -4,7 +4,7 @@ from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiRespo
 from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.serializers.naive_rag_serializers import (
     ChunkPreviewResponseSerializer,
-    ChunkingResponseSerializer, ChunkingConfigSerializer,
+    ChunkingResponseSerializer, ChunkingConfigSerializer, DocumentConfigBulkUpdateSerializer,
 )
 from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
@@ -319,6 +319,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT = dict(
         "- Returns errors for configs that fail validation\n"
         "- Configs retain their current DB values when validation fails"
     ),
+    request=DocumentConfigBulkUpdateSerializer(many=True),
     responses={
         200: OpenApiResponse(
             response=OpenApiTypes.STR,

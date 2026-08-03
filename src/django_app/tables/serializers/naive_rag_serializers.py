@@ -1,4 +1,7 @@
 from rest_framework import serializers
+
+from tables.constants.knowledge_constants import MIN_CHUNK_SIZE, MAX_CHUNK_SIZE, MIN_CHUNK_OVERLAP, \
+    MAX_CHUNK_OVERLAP
 from tables.models.knowledge_models import (
     NaiveRag,
     NaiveRagDocumentConfig,
@@ -142,9 +145,17 @@ class DocumentConfigUpdateSerializer(serializers.Serializer):
     All fields optional - only updates provided fields.
     """
 
-    chunk_size = serializers.IntegerField(required=False, help_text="New chunk size")
+    chunk_size = serializers.IntegerField(
+        required=False,
+        min_value=MIN_CHUNK_SIZE,
+        max_value=MAX_CHUNK_SIZE,
+        help_text="New chunk size",
+    )
     chunk_overlap = serializers.IntegerField(
-        required=False, help_text="New chunk overlap"
+        required=False,
+        min_value=MIN_CHUNK_OVERLAP,
+        max_value=MAX_CHUNK_OVERLAP,
+        help_text="New chunk overlap"
     )
     chunk_strategy = serializers.ChoiceField(
         required=False,
@@ -213,22 +224,22 @@ class NaiveRagDetailSerializer(serializers.ModelSerializer):
 
 
 class DocumentConfigBulkUpdateSerializer(serializers.Serializer):
-    """
-    Serializer for bulk updating document configs.
-    Updates multiple configs by their config IDs.
-    """
-
-    config_ids = serializers.ListField(
-        child=serializers.IntegerField(),
+    id = serializers.IntegerField(
         required=True,
-        allow_empty=False,
-        help_text="List of naive_rag_document_config IDs to update",
+        help_text="Primary Key of Document Config.",
     )
+
     chunk_size = serializers.IntegerField(
-        required=False, help_text="New chunk size (applied to all selected configs)"
+        required=False,
+        min_value=MIN_CHUNK_SIZE,
+        max_value=MAX_CHUNK_SIZE,
+        help_text="New chunk size (applied to all selected configs)",
     )
     chunk_overlap = serializers.IntegerField(
-        required=False, help_text="New chunk overlap (applied to all selected configs)"
+        required=False,
+        min_value=MIN_CHUNK_OVERLAP,
+        max_value=MAX_CHUNK_OVERLAP,
+        help_text="New chunk overlap (applied to all selected configs)",
     )
     chunk_strategy = serializers.ChoiceField(
         required=False,
@@ -240,25 +251,13 @@ class DocumentConfigBulkUpdateSerializer(serializers.Serializer):
         help_text="New additional parameters (applied to all selected configs)",
     )
 
-    def validate_config_ids(self, value):
-        """Validate config_ids list is not empty."""
-        if not value:
-            raise serializers.ValidationError("config_ids list cannot be empty")
-        return value
+    default_error_messages = {
+        "empty_data_to_update": "At least one field must be provided to update config id={id}",
+    }
 
     def validate(self, attrs):
-        """Ensure at least one update field is provided besides config_ids."""
-        update_fields = {
-            "chunk_size",
-            "chunk_overlap",
-            "chunk_strategy",
-            "additional_params",
-        }
-        if not any(field in attrs for field in update_fields):
-            raise serializers.ValidationError(
-                "At least one field must be provided for update: "
-                "chunk_size, chunk_overlap, chunk_strategy, or additional_params"
-            )
+        if not any(f in attrs for f in self.fields if f != "id"):
+            self.fail("empty_data_to_update", id=attrs["id"])
         return attrs
 
 

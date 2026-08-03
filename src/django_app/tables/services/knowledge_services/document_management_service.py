@@ -6,6 +6,7 @@ from loguru import logger
 
 from tables.models import SourceCollection, DocumentMetadata, DocumentContent
 from tables.models.knowledge_models import NaiveRag
+from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.constants.knowledge_constants import (
     MAX_FILE_SIZE,
     ALLOWED_FILE_TYPES,
@@ -318,7 +319,7 @@ class DocumentManagementService:
         document.delete()
 
         for rag in affected_rags:
-            rag.update_rag_status()
+            NaiveRagService.sync_rag_status_after_config_removal(rag)
 
         if content and not content.metadata_records.exists():
             content.delete()
@@ -399,7 +400,7 @@ class DocumentManagementService:
         ):
             collection.update_collection_status()
         for rag in affected_rags:
-            rag.update_rag_status()
+            NaiveRagService.sync_rag_status_after_config_removal(rag)
 
         # Delete dangling content
         dangling_content = (
