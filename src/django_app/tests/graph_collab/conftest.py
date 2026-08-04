@@ -69,8 +69,20 @@ CHANNEL_LAYERS_OVERRIDE = {
 }
 
 
-def _editor(user_id: int, name: str = "Alice") -> EditorInfo:
+def _editor(user_id: int = 1, name: str = "Alice") -> EditorInfo:
     return EditorInfo(user_id=user_id, display_name=name, avatar_url=None)
+
+
+def _flow(**lists) -> dict:
+    """Return a minimal superset-snapshot dict"""
+    base = {
+        "crew_node_list": [],
+        "python_node_list": [],
+        "edge_list": [],
+        "conditional_edge_list": [],
+    }
+    base.update(lists)
+    return base
 
 
 @pytest.fixture(autouse=True)
@@ -230,3 +242,8 @@ def make_communicator():
 def service():
     """GraphPresenceService instance for unit tests."""
     return GraphPresenceService()
+
+
+@pytest.fixture
+def live_state_service():
+    return _gss_module.GraphLiveStateService()
