@@ -126,7 +126,7 @@ class NaiveRagService:
         logger.info(
             "Created NaiveRag {} for collection {}",
             rag.naive_rag_id,
-            collection.id,
+            collection.collection_id,
         )
 
         return rag
@@ -160,7 +160,7 @@ class NaiveRagService:
         logger.info(
             "Updated NaiveRag {} for collection {}",
             rag.naive_rag_id,
-            collection.id,
+            collection.collection_id,
         )
 
         return rag
