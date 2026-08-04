@@ -232,9 +232,12 @@ class NaiveRagNotFoundException(RagException):
 class DocumentConfigNotFoundException(RagException):
     """Raised when document config is not found."""
 
-    def __init__(self, config_id):
-        self.config_id = config_id
-        super().__init__(f"Document config with id {config_id} not found")
+    def __init__(self, msg: str = "", config_id=None):
+        if msg:
+            super().__init__(msg)
+        else:
+            self.config_id = config_id
+            super().__init__(f"Document config with id {config_id} not found")
 
 
 class EmbedderNotFoundException(RagException):
@@ -311,12 +314,15 @@ class InvalidGraphRagParametersException(RagException):
 class GraphRagDocumentNotFoundException(RagException):
     """Raised when a document is not linked to the specified GraphRag."""
 
-    def __init__(self, document_id, graph_rag_id):
-        self.document_id = document_id
-        self.graph_rag_id = graph_rag_id
-        super().__init__(
-            f"Document {document_id} is not linked to GraphRag {graph_rag_id}"
-        )
+    def __init__(self, msg: str = "", document_id=None, graph_rag_id=None):
+        if msg:
+            super().__init__(msg)
+        else:
+            self.document_id = document_id
+            self.graph_rag_id = graph_rag_id
+            super().__init__(
+                f"Document {document_id} is not linked to GraphRag {graph_rag_id}"
+            )
 
 
 class AgentMissingCollectionException(RagException):

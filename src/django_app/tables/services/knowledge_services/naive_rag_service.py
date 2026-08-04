@@ -282,7 +282,7 @@ class NaiveRagService:
             )  # fmt: off
 
         except NaiveRagDocumentConfig.DoesNotExist:
-            raise DocumentConfigNotFoundException(config_id)
+            raise DocumentConfigNotFoundException(config_id=config_id)
 
         config, updated_fields = cls._update_document_config(config, data)
         rag_updated_fields = set()
@@ -619,7 +619,7 @@ class NaiveRagService:
                 naive_rag_document_id=config_id,
             )
         except NaiveRagDocumentConfig.DoesNotExist:
-            raise DocumentConfigNotFoundException(config_id)
+            raise DocumentConfigNotFoundException(config_id=config_id)
 
         # Validate config belongs to the specified naive_rag
         if config.naive_rag_id != naive_rag_id:
