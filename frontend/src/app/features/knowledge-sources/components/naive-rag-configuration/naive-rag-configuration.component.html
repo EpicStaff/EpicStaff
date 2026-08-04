@@ -43,8 +43,7 @@
             [ragId]="naiveRagId()"
             [(selectedRagDocId)]="selectedRagDocId"
             (docsCheckChange)="filteredAndCheckedDocIds.set($event)"
-            (docFieldChange)="onDocFieldChange($event)"
-            (applyBulkUpdate)="applyBulkEdit($event)"
+            (applyBulkUpdate)="applyPendingBulkEdit($event)"
             (onTuneChunk)="openTuneChunkModal($event)"
         />
     </div>

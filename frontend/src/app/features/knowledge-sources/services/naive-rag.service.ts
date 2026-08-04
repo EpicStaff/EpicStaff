@@ -14,13 +14,11 @@ import {
 import {
     BulkDeleteNaiveRagDocumentDtoRequest,
     BulkDeleteNaiveRagDocumentDtoResponse,
-    BulkUpdateNaiveRagDocumentDtoRequest,
     BulkUpdateNaiveRagDocumentDtoResponse,
+    BulkUpdateNaiveRagDocumentsRequest,
     GetNaiveRagDocumentConfigsResponse,
     InitNaiveRagDocumentsResponse,
-    NaiveRagDocumentConfig,
-    UpdateNaiveRagDocumentDtoRequest,
-    UpdateNaiveRagDocumentResponse,
+    RunNaiveRagDocumentChunkingRequest,
 } from '../models/naive-rag-document.model';
 
 @Injectable({
@@ -55,24 +53,9 @@ export class NaiveRagService {
         return this.http.get<GetNaiveRagDocumentConfigsResponse>(`${this.apiUrl}${naiveRagId}/document-configs/`);
     }
 
-    getDocumentConfigById(ragId: number, documentId: number): Observable<NaiveRagDocumentConfig> {
-        return this.http.get<NaiveRagDocumentConfig>(`${this.apiUrl}${ragId}/document-configs/${documentId}/`);
-    }
-
-    updateDocumentConfigById(
-        ragId: number,
-        documentId: number,
-        dto: UpdateNaiveRagDocumentDtoRequest
-    ): Observable<UpdateNaiveRagDocumentResponse> {
-        return this.http.put<UpdateNaiveRagDocumentResponse>(
-            `${this.apiUrl}${ragId}/document-configs/${documentId}/`,
-            dto
-        );
-    }
-
     bulkUpdateDocumentConfigs(
         ragId: number,
-        dto: BulkUpdateNaiveRagDocumentDtoRequest
+        dto: BulkUpdateNaiveRagDocumentsRequest[]
     ): Observable<BulkUpdateNaiveRagDocumentDtoResponse> {
         return this.http.put<BulkUpdateNaiveRagDocumentDtoResponse>(
             `${this.apiUrl}${ragId}/document-configs/bulk-update/`,
@@ -94,10 +77,14 @@ export class NaiveRagService {
         return this.http.post<InitNaiveRagDocumentsResponse>(`${this.apiUrl}${ragId}/document-configs/initialize/`, {});
     }
 
-    runChunkingProcess(ragId: number, documentId: number): Observable<NaiveRagChunkingResponse> {
+    runChunkingProcess(
+        ragId: number,
+        documentId: number,
+        body: RunNaiveRagDocumentChunkingRequest
+    ): Observable<NaiveRagChunkingResponse> {
         return this.http.post<NaiveRagChunkingResponse>(
             `${this.apiUrl}${ragId}/document-configs/${documentId}/process-chunking/`,
-            {}
+            body
         );
     }
 

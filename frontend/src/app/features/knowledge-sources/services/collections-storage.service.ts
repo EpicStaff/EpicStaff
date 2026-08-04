@@ -8,6 +8,7 @@ import {
     DeleteCollectionResponse,
     GetCollectionRequest,
 } from '../models/collection.model';
+import { CollectionDetailsGraphRag } from '../models/graph-rag.model';
 import { CollectionDetailsNaiveRag } from '../models/naive-rag.model';
 import { CollectionsApiService } from './collections-api.service';
 
@@ -55,10 +56,15 @@ export class CollectionsStorageService implements StorageService {
         this.processingConfigIdsSignal.set(
             new Set(
                 this.fullCollectionsSignal().flatMap((c) =>
-                    c.rag_configurations
-                        // TODO remove the rag_type filter when graph rag doc config status is ready
-                        .filter((r): r is CollectionDetailsNaiveRag => r.rag_type === 'naive')
-                        .flatMap((r) => r.indexing_document_config_ids)
+                    c.rag_configurations.flatMap((r) => {
+                        if (r.rag_type === 'naive') {
+                            return (r as CollectionDetailsNaiveRag).indexing_document_config_ids;
+                        }
+                        if (r.rag_type === 'graph') {
+                            return (r as CollectionDetailsGraphRag).processing_document_ids ?? [];
+                        }
+                        return [];
+                    })
                 )
             )
         );

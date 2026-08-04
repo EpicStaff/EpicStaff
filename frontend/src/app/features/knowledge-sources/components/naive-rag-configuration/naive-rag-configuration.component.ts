@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -21,12 +22,15 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { EMPTY, groupBy, mergeMap, of, Subject } from 'rxjs';
-import { catchError, debounceTime, switchMap } from 'rxjs/operators';
+import { EMPTY, Observable, of } from 'rxjs';
+import { catchError, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
-import { UpdateNaiveRagDocumentDtoRequest } from '../../models/naive-rag-document.model';
+import {
+    BulkUpdateNaiveRagDocumentsResponse,
+    UpdateNaiveRagDocumentDtoRequest,
+} from '../../models/naive-rag-document.model';
 import { RagConfiguration } from '../../models/rag-configuration';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
 import { KnowledgeSourcesPollingService } from '../../services/knowledge-sources-polling.service';
@@ -35,7 +39,7 @@ import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-docume
 import { DocumentChunksSectionComponent } from '../document-chunks-section/document-chunks-section.component';
 import { EditFileParametersDialogComponent } from '../edit-file-parameters-dialog/edit-file-parameters-dialog.component';
 import { ConfigurationTableComponent } from './configuration-table/configuration-table.component';
-import { DocFieldChange, DocumentStatusFilter } from './configuration-table/configuration-table.interface';
+import { DocumentStatusFilter } from './configuration-table/configuration-table.interface';
 
 @Component({
     selector: 'app-naive-rag-configuration',
@@ -82,8 +86,6 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
 
     showBulkRow = computed(() => this.bulkBtnActive() && !!this.filteredAndCheckedDocIds().length);
 
-    private docFieldChange$ = new Subject<DocFieldChange>();
-
     constructor() {
         effect(() => {
             this.canIndexChange()?.set(this.filteredAndCheckedDocIds().length > 0);
@@ -106,32 +108,6 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
 
         this.pollingService.startDocumentConfigsPolling(id);
         this.destroyRef.onDestroy(() => this.pollingService.stopDocumentConfigsPolling());
-
-        this.docFieldChange$
-            .pipe(
-                groupBy((change) => change.documentId),
-                mergeMap((group$) =>
-                    group$.pipe(
-                        debounceTime(300),
-                        switchMap((change) =>
-                            this.documentsStorageService.updateDocumentField(id, change).pipe(
-                                catchError((err) => {
-                                    const [error] = err.error?.errors;
-
-                                    this.toastService.error(`Update failed: ${error.reason}`);
-                                    return EMPTY;
-                                })
-                            )
-                        )
-                    )
-                ),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe(() => this.toastService.success('Document updated'));
-    }
-
-    onDocFieldChange(change: DocFieldChange) {
-        this.docFieldChange$.next(change);
     }
 
     initDocuments() {
@@ -158,18 +134,16 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
             });
     }
 
-    applyBulkEdit(dto: UpdateNaiveRagDocumentDtoRequest) {
+    /**
+     * Bulk-row apply to pending only. Save happens via Save & Run Indexing.
+     */
+    applyPendingBulkEdit(patch: UpdateNaiveRagDocumentDtoRequest) {
         const config_ids = this.filteredAndCheckedDocIds();
         if (!config_ids.length) return;
-        const id = this.naiveRagId();
 
-        this.documentsStorageService
-            .bulkEditDocConfigs(id, config_ids, dto)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (res) => this.toastService.success(res.message),
-                error: (e) => console.error(e),
-            });
+        for (const id of config_ids) {
+            this.documentsStorageService.setPendingFields(id, patch);
+        }
     }
 
     applyBulkDelete() {
@@ -231,38 +205,67 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
         return true;
     }
 
-    getDocumentConfigIds(): number[] {
-        const { configIds } = this.getDocumentsForIndexing();
-        return configIds;
+    // TODO check is this can be removed
+    // Naive rag persists per-document pending fields via its own bulk endpoint
+    // called from the naive dialog wrapper. The generic save-then-index flow does
+    // nothing extra here.
+    shouldSaveConfig(): boolean {
+        return false;
     }
 
+    getDocumentConfigIds(): number[] {
+        return this.filteredAndCheckedDocIds();
+    }
+
+    hasUnsavedChanges(): boolean {
+        return this.documentsStorageService.pending().size > 0;
+    }
+
+    // TODO check this
     getIndexingDocuments(): IndexingDocumentInfo[] {
         const checkedIds = this.filteredAndCheckedDocIds();
-        const allDocs = this.documentsStorageService.documents();
-        const docs = checkedIds.length ? allDocs.filter((d) => checkedIds.includes(d.naive_rag_document_id)) : allDocs;
+        const docs = this.documentsStorageService
+            .documents()
+            .filter((d) => checkedIds.includes(d.naive_rag_document_id));
 
         return docs.map((d) => ({
             fileName: d.file_name,
-            wasIndexed: d.status === 'completed' || d.status === 'warning',
+            wasIndexed: d.status === 'completed' || d.status === 'outdated',
         }));
     }
-
+    // TODO and this
     getDocumentsForIndexing(): { configIds: number[]; fileNames: string[] } {
         const checkedIds = this.filteredAndCheckedDocIds();
-        const allDocs = this.documentsStorageService.documents();
-
-        if (checkedIds.length) {
-            const checkedDocs = allDocs.filter((d) => checkedIds.includes(d.naive_rag_document_id));
-            return {
-                configIds: checkedIds,
-                fileNames: checkedDocs.map((d) => d.file_name),
-            };
-        }
+        const docs = this.documentsStorageService
+            .documents()
+            .filter((d) => checkedIds.includes(d.naive_rag_document_id));
 
         return {
-            configIds: allDocs.map((d) => d.naive_rag_document_id),
-            fileNames: allDocs.map((d) => d.file_name),
+            configIds: checkedIds,
+            fileNames: docs.map((d) => d.file_name),
         };
+    }
+
+    uploadPendingForChecked(): Observable<BulkUpdateNaiveRagDocumentsResponse | null> {
+        const id = this.naiveRagId();
+        const checkedIds = this.filteredAndCheckedDocIds();
+        if (!checkedIds.length) return of(null);
+
+        return this.documentsStorageService.bulkPartialUpdate(id, checkedIds).pipe(
+            catchError((err: HttpErrorResponse) => {
+                const first = err.error?.errors?.[0];
+                this.toastService.error(first?.reason ? `Save failed: ${first.reason}` : 'Save failed');
+                return of(null);
+            })
+        );
+    }
+
+    hasFailedSavesForChecked(): boolean {
+        const checkedIds = new Set(this.filteredAndCheckedDocIds());
+        return this.documentsStorageService.documents().some((d) => {
+            if (!checkedIds.has(d.naive_rag_document_id)) return false;
+            return !!d.errors && Object.keys(d.errors).length > 0;
+        });
     }
 
     private handleDeepLink(): void {

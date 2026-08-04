@@ -91,9 +91,11 @@ export class DocumentChunksSectionComponent implements OnDestroy {
                 takeUntilDestroyed(this.destroyRef),
                 switchMap(() => {
                     const state = this.chunksStorageService.documentStates().get(documentId);
-                    if (!state) return EMPTY;
 
+                    if (!state) return EMPTY;
                     if (state.status === 'chunks_outdated') return EMPTY;
+                    if (state.status === 'chunking_timeout') return EMPTY;
+                    if (state.status === 'chunking_failed') return EMPTY;
                     if (this.selectedDocumentId() !== documentId) return EMPTY;
 
                     const deepLinkChunkId = this.deepLinkService.pending()?.chunkId ?? 0;

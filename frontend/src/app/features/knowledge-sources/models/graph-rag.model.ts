@@ -13,6 +13,7 @@ export interface CollectionDetailsGraphRag {
     require_reindexing: boolean;
     reindex_reason: Record<string, string>;
     status: RagStatus;
+    processing_document_ids: number[];
     created_at: string;
     updated_at: string;
 }
@@ -24,6 +25,7 @@ export interface CollectionGraphRag {
     embedder_name: string;
     llm: number;
     llm_name: string;
+    processing_document_ids: number[];
     rag_status: RagStatus;
     collection_id: number;
     collection_name: string;

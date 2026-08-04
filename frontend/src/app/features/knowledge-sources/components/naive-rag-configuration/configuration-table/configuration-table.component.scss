@@ -86,15 +86,21 @@
         align-items: center;
     }
 
-    &__row-error {
-        display: block;
+    &__row-message {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         font-size: 0.75rem;
         margin: 0 0.625rem 0.5rem;
         border-radius: 5px;
-        border-left: 3px solid var(--color-ks-status-failed);
-        background-color: var(--color-ks-transparent-red);
-        color: var(--color-ks-status-failed);
         padding: 0.25rem 0.5rem;
+        border-left: 2px solid transparent;
+
+        &--danger {
+            border-left: 3px solid var(--color-ks-status-failed);
+            background-color: var(--color-ks-transparent-red);
+            color: var(--color-ks-status-failed);
+        }
 
         &--warning {
             border-left-color: var(--color-ks-status-warning);

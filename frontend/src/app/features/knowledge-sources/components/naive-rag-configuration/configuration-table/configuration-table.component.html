@@ -119,33 +119,29 @@
                         @switch (d.status) {
                             @case ('completed') {
                                 <app-svg-icon
+                                    matTooltip="Chunked"
+                                    matTooltipPosition="above"
                                     icon="check"
                                     class="table__status-icon table__status-icon--completed"
                                     size="0.75rem"
                                 />
                             }
-                            @case ('chunked') {
-                                <app-svg-icon
-                                    icon="check"
-                                    class="table__status-icon table__status-icon--completed"
-                                    size="0.75rem"
-                                />
-                            }
-                            @case ('chunking') {
+                            @case ('processing') {
                                 <div class="table__status-icon table__status-spinner"></div>
                             }
-                            @case ('indexing') {
-                                <div class="table__status-icon table__status-spinner"></div>
-                            }
-                            @case ('warning') {
+                            @case ('outdated') {
                                 <app-svg-icon
-                                    icon="warning"
+                                    matTooltip="Indexed config outdated"
+                                    matTooltipPosition="above"
+                                    icon="clock"
                                     class="table__status-icon table__status-icon--warning"
                                     size="0.75rem"
                                 />
                             }
                             @case ('failed') {
                                 <app-svg-icon
+                                    matTooltip="Indexing failed"
+                                    matTooltipPosition="above"
                                     icon="close"
                                     class="table__status-icon table__status-icon--failed"
                                     size="0.75rem"
@@ -187,7 +183,7 @@
                             <app-select
                                 mod="small"
                                 [items]="chunkStrategySelectItems"
-                                [(selectedValue)]="d.chunk_strategy"
+                                [selectedValue]="d.chunk_strategy"
                                 [invalid]="!!d.errors?.chunk_strategy"
                                 (changed)="onChunkStrategyChange(d, $event)"
                             />
@@ -206,7 +202,7 @@
                                     mod="small"
                                     [min]="20"
                                     [max]="8000"
-                                    [(value)]="d.chunk_size"
+                                    [value]="d.chunk_size"
                                     [invalid]="!!d.errors?.chunk_size"
                                     (changed)="onDocFieldChange(d, 'chunk_size', $event)"
                                 />
@@ -218,7 +214,7 @@
                                     mod="small"
                                     [min]="0"
                                     [max]="1000"
-                                    [(value)]="d.chunk_overlap"
+                                    [value]="d.chunk_overlap"
                                     [invalid]="!!d.errors?.chunk_overlap"
                                     (changed)="onDocFieldChange(d, 'chunk_overlap', $event)"
                                 />
@@ -241,16 +237,34 @@
                             </app-button>
                         </div>
                     </li>
-                    @if ((d.status === 'failed' || d.status === 'warning') && d.error_message) {
-                        <label
-                            class="table__row-error"
-                            [class.table__row-error--warning]="d.status === 'warning'"
-                        >
+                    @if (d.status === 'failed' && d.error_message) {
+                        <label class="table__row-message table__row-message--danger">
                             {{ d.error_message }}
                         </label>
                     }
+                    @if (d.status === 'outdated' && d.outdated_reasons) {
+                        @for (reason of d.outdated_reasons | keyvalue; track reason.key) {
+                            <label class="table__row-message class.table__row-message--danger">
+                                {{ reason.value }}
+                            </label>
+                        }
+                    }
                     @for (error of d.errors | keyvalue; track error.key) {
-                        <label class="table__row-error"> Update failed: {{ error.value?.reason }} </label>
+                        <label class="table__row-message table__row-message--danger">
+                            Update failed: {{ error.value?.reason }}
+                        </label>
+                    }
+                    @if (hasPending(d.naive_rag_document_id)) {
+                        <label class="table__row-message table__row-message--warning">
+                            <span>Parameters changed</span>
+                            <app-button
+                                type="secondary"
+                                mod="small"
+                                (click)="revert(d.naive_rag_document_id)"
+                            >
+                                Revert
+                            </app-button>
+                        </label>
                     }
                 </div>
             }
