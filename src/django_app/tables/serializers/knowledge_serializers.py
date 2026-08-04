@@ -60,15 +60,11 @@ class RagConfigurationSummarySerializer(serializers.Serializer):
         allow_null=True,
         help_text="Additional message (e.g., error or status info)",
     )
-    require_reindex = serializers.BooleanField(
+    outdated_reasons = serializers.DictField(
+        child=serializers.CharField(),
         required=False,
         allow_null=True,
-        help_text="If Rag requires reindex or not."
-    )
-    reindex_reason = serializers.DictField(
-        required=False,
-        allow_null=True,
-        help_text='Reasons to reindex rag.'
+        help_text="Outdated reasons for this RAG configuration.",
     )
     created_at = serializers.DateTimeField(
         help_text="When this RAG configuration was created"

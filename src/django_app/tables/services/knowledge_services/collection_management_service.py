@@ -390,6 +390,7 @@ class CollectionManagementService:
             "rag_id": naive_rag.naive_rag_id,
             "rag_type": "naive",
             "status": naive_rag.rag_status,
+            "outdated_reasons": naive_rag.outdated_reasons,
             "is_ready_for_indexing": is_ready_for_indexing,
             "embedder_name": (
                 naive_rag.embedder.custom_name if naive_rag.embedder else None
@@ -431,8 +432,7 @@ class CollectionManagementService:
             "rag_id": graph_rag.graph_rag_id,
             "rag_type": "graph",
             "status": graph_rag.rag_status,
-            "require_reindex": graph_rag.require_reindex(),
-            "reindex_reason": graph_rag.reindex_reason,
+            "outdated_reasons": graph_rag.outdated_reasons,
             "is_ready_for_indexing": is_ready_for_indexing,
             "embedder_name": (
                 graph_rag.embedder.custom_name if graph_rag.embedder else None
