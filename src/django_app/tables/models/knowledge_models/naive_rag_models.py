@@ -17,6 +17,7 @@ class NaiveRag(models.Model):
         - PROCESSING - rag is in indexing.
         - COMPLETED - rag is indexed.
         - FAILED - rag failed at indexing.
+        - CANCELLED - rag indexing is cancelled.
         - PARTIAL - rag is completed and has completed and failed documents.
         - OUTDATED - rag completed, but outdated by changes of indexing config, embedding config
          or document content.
@@ -27,6 +28,7 @@ class NaiveRag(models.Model):
         COMPLETED = "completed"
         WARNING = "warning"  # deprecated
         FAILED = "failed"
+        CANCELLED = "cancelled"
         PARTIAL = "partial"
         OUTDATED = "outdated"
 
