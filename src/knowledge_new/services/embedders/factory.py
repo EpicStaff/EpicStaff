@@ -5,15 +5,17 @@ from services.embedders import strategies
 from services.embedders.base import AbstractEmbedder
 
 _STRATEGIES: dict[EmbedderProviderEnum, type[AbstractEmbedder]] = {
-    EmbedderProviderEnum.COHERE: strategies.CohereEmbedder,
-    EmbedderProviderEnum.GEMINI: strategies.GeminiEmbedder,
-    EmbedderProviderEnum.MISTRAL: strategies.MistralEmbedder,
-    EmbedderProviderEnum.OPENAI: strategies.OpenAIEmbedder,
-    EmbedderProviderEnum.TOGETHER_AI: strategies.TogetherAIEmbedder,
+    EmbedderProviderEnum.COHERE: strategies.CohereLiteLLMEmbedder,
+    EmbedderProviderEnum.GEMINI: strategies.LiteLLMEmbedder,
+    EmbedderProviderEnum.MISTRAL: strategies.LiteLLMEmbedder,
+    EmbedderProviderEnum.OPENAI: strategies.LiteLLMEmbedder,
+    EmbedderProviderEnum.TOGETHER_AI: strategies.LiteLLMEmbedder,
 }
 
 
-def build_embedder(provider: EmbedderProviderEnum, config: EmbeddingConfig) -> AbstractEmbedder:
+def build_embedder(
+    provider: EmbedderProviderEnum, config: EmbeddingConfig
+) -> AbstractEmbedder:
     """Create the embedder registered for `provider`.
 
     Args:
