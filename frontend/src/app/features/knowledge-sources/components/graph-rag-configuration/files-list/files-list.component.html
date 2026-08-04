@@ -1,14 +1,19 @@
 <div class="list">
     <div class="title">
-        <span
-            >Selected Files: <span class="count">({{ documents().length }})</span></span
-        >
+        <span>
+            @if (indexMode() === 'update_new') {
+                Add Files to Config:
+            } @else {
+                Selected Files:
+            }
+            <span class="count">({{ checkedDocIds().size }})</span>
+        </span>
 
         <app-button
             class="reinclude-btn"
             type="outline-primary"
             mod="small"
-            (click)="reIncludeFiles()"
+            (click)="onReIncludeFiles()"
         >
             Re-include Files
         </app-button>
@@ -16,25 +21,29 @@
 
     <div class="files-wrapper">
         <ol class="rows">
-            @for (item of documents(); track item.graph_rag_document_id; let i = $index; let odd = $odd) {
+            @for (item of documentsWithDisabled(); track item.graph_rag_document_id; let i = $index; let odd = $odd) {
                 <div
                     class="row-wrapper"
                     [class.row-wrapper--dark]="odd"
                 >
-                    @switch (item.status) {
-                        @case ('indexed') {
-                            <app-svg-icon
-                                icon="check"
-                                class="status-icon status-icon--completed"
-                                size="0.75rem"
-                            />
-                        }
-                        @case ('failed') {
-                            <app-svg-icon
-                                icon="close"
-                                class="status-icon status-icon--failed"
-                                size="0.75rem"
-                            />
+                    @if (isProcessing(item.graph_rag_document_id)) {
+                        <div class="status-icon status-spinner"></div>
+                    } @else {
+                        @switch (item.status) {
+                            @case ('indexed') {
+                                <app-svg-icon
+                                    icon="check"
+                                    class="status-icon status-icon--completed"
+                                    size="0.75rem"
+                                />
+                            }
+                            @case ('failed') {
+                                <app-svg-icon
+                                    icon="close"
+                                    class="status-icon status-icon--failed"
+                                    size="0.75rem"
+                                />
+                            }
                         }
                     }
                     <li class="row">
@@ -42,23 +51,37 @@
                             <app-checkbox
                                 color="secondary"
                                 [checked]="checkedDocIds().has(item.graph_rag_document_id)"
+                                [disabled]="item.status === 'indexed'"
                                 (changed)="toggleDoc.emit(item.graph_rag_document_id)"
                             />
-                            <span class="file-index">{{ i + 1 }}</span>
+                            <span
+                                class="file-index"
+                                [class.dimmed]="item.status === 'indexed'"
+                                >{{ i + 1 }}</span
+                            >
                             <app-svg-icon
                                 icon="document"
                                 size="0.75rem"
+                                [class.dimmed]="item.status === 'indexed'"
                             />
-                            <span class="file-name">{{ item.file_name }}</span>
+                            <span
+                                class="file-name"
+                                [class.dimmed]="item.status === 'indexed'"
+                                >{{ item.file_name }}</span
+                            >
                         </div>
                         <div class="size-column">
-                            <span class="size">{{ item.file_size | fileSize }}</span>
+                            <span
+                                class="size"
+                                [class.dimmed]="item.status === 'indexed'"
+                                >{{ item.file_size | fileSize }}</span
+                            >
                             <app-svg-icon
                                 icon="close"
-                                style="cursor: pointer"
                                 class="file-action"
+                                [class.file-action--disabled]="item.status === 'indexed'"
                                 size="1rem"
-                                (click)="onDelete(item.document_id)"
+                                (click)="onDelete(item)"
                             />
                         </div>
                     </li>

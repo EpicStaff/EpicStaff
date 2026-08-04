@@ -1,7 +1,9 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent } from '@shared/components';
-import { filter, switchMap } from 'rxjs/operators';
+import { EMPTY, Observable, of } from 'rxjs';
+import { filter, switchMap, tap } from 'rxjs/operators';
 
 import { getIndexingConfirmationData } from '../../../helpers/get-indexing-confirmation-data.util';
 import { CollectionGraphRag } from '../../../models/graph-rag.model';
@@ -25,8 +27,11 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
     graphRag = signal<CollectionGraphRag | null>(null);
 
     docConfigIds = computed(() => this.ragConfiguration()?.getDocumentConfigIds() ?? []);
-    indexingDisabled = computed(() => !this.docConfigIds().length);
-
+    hasUnsavedChanges = computed(() => this.ragConfiguration()?.hasUnsavedChanges() ?? false);
+    indexingDisabled = computed(() => !this.docConfigIds().length && !this.hasUnsavedChanges());
+    runButtonLabel = computed(() => {
+        return this.ragConfiguration()?.indexMode() === 'total_reindex' ? 'Save & Re-index' : 'Save & Run Index';
+    });
     isIndexing = computed(() => {
         for (const c of this.collectionsStorage.fullCollections()) {
             const config = c.rag_configurations.find((r) => r.rag_id === this.data.ragId);
@@ -47,29 +52,88 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
     }
 
     onClose() {
-        this.dialogRef.close();
+        if (!this.hasUnsavedChanges()) {
+            this.dialogRef.close();
+            return;
+        }
+
+        this.confirmation
+            .confirm({
+                title: 'Unsaved Changes',
+                message: 'You have unsaved changes in your Graph RAG Configuration. Would you like to leave?',
+                type: 'warning',
+                cancelText: 'Cancel',
+                confirmText: 'Leave',
+            })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                if (result === true) this.dialogRef.close();
+            });
     }
 
     runIndexing() {
+        const ragComponent = this.ragConfiguration();
+        if (!ragComponent) return;
+
+        const config = ragComponent.getConfigurationData();
+        if (!config) return;
+
+        const ragId = this.data.ragId;
+        const configIds = this.docConfigIds();
+        const shouldSave = ragComponent.shouldSaveConfig();
+        const pendingDeleteIds = ragComponent.getPendingDeleteDocumentIds();
+
+        if (!configIds.length && !this.hasUnsavedChanges()) return;
+
+        const delete$: Observable<unknown> = pendingDeleteIds.length ? ragComponent.bulkDeletePending(ragId) : of(null);
+
+        const save$: Observable<unknown> = shouldSave
+            ? this.graphRagService
+                  .updateRagIndexConfigs(ragId, config)
+                  .pipe(
+                      tap(() =>
+                          this.graphRag.update((prev) =>
+                              prev ? { ...prev, index_config: { ...prev.index_config, ...config } } : prev
+                          )
+                      )
+                  )
+            : of(null);
+
         this.confirmation
-            .confirm(getIndexingConfirmationData([]))
+            .confirm(getIndexingConfirmationData(ragComponent.getIndexingDocuments()))
             .pipe(
                 filter((result) => result === true),
-                switchMap(() =>
-                    this.ragIndexingService.startIndexing({
-                        rag_id: this.data.ragId,
-                        rag_type: 'graph',
-                        document_config_ids: this.docConfigIds(),
-                    })
-                ),
+                switchMap(() => delete$),
+                switchMap(() => save$),
+                switchMap(() => {
+                    if (!configIds.length) {
+                        this.toast.success('Changes saved');
+                        return EMPTY;
+                    }
+                    return this.ragIndexingService
+                        .startIndexing({
+                            rag_id: ragId,
+                            rag_type: 'graph',
+                            document_config_ids: configIds,
+                        })
+                        .pipe(
+                            tap(() => {
+                                this.toast.success('Indexing started');
+                                this.collectionsStorage.markRagAsProcessing(ragId);
+                                this.collectionsStorage.markConfigsAsProcessing(configIds);
+                            })
+                        );
+                }),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                next: () => {
-                    this.toast.success('Indexing started');
-                    this.collectionsStorage.markRagAsProcessing(this.data.ragId);
+                error: (err: HttpErrorResponse) => {
+                    if (err?.validationErrors?.length) {
+                        ragComponent.setServerValidationErrors(err.validationErrors);
+                        return;
+                    }
+                    this.toast.error(err.error?.message || 'Files re-indexing failed');
                 },
-                error: () => this.toast.error('Files re-indexing failed'),
             });
     }
 }

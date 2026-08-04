@@ -18,6 +18,8 @@
     display: flex;
     flex-direction: column;
     row-gap: 0.5rem;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
 
     .item {
         padding: 0.5rem;

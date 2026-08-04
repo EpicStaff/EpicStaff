@@ -36,6 +36,28 @@
                     [isOverlay]="false"
                 />
             }
+            @case ('chunking_timeout') {
+                <ng-container
+                    *ngTemplateOutlet="
+                        chunksHeader;
+                        context: {
+                            disabled: false,
+                            statusText: 'Timeout',
+                            statusClass: 'outdated',
+                            statusIcon: 'clock',
+                            btnText: 'Retry chunk',
+                        }
+                    "
+                ></ng-container>
+                <div class="chunks__empty">
+                    <app-svg-icon
+                        icon="file-checked"
+                        size="3rem"
+                    />
+                    <span>Chunking is taking longer than expected. Check status later or retry.</span>
+                </div>
+            }
+
             @case ('chunking_failed') {
                 <ng-container
                     *ngTemplateOutlet="
