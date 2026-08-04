@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { NgIf } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -37,7 +36,6 @@ export interface AddEditChannelDialogData {
         CustomInputComponent,
         SelectComponent,
         ButtonComponent,
-        NgIf,
         WebhookTriggerFieldComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,

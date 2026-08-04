@@ -106,7 +106,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         const items = this.triggers()
             .filter((t) => allowLocalhost || t.provider_type !== 'localhost')
             .map((t) => ({
-                name: `${t.path} (${t.provider_type ?? 'none'})`,
+                name: `${this.triggerName(t)} (${t.provider_type ?? 'none'})`,
                 value: t.id as number,
             }));
         const selected = this.selectedExistingId();
@@ -161,6 +161,17 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         ngrokToken.updateValueAndValidity({ emitEvent: false });
         localhostName.updateValueAndValidity({ emitEvent: false });
         this.onValidatorChange();
+    }
+
+    private triggerName(t: WebhookTriggerModel): string {
+        switch (t.provider_type) {
+            case 'ngrok':
+                return t.ngrok_config?.name ?? '';
+            case 'localhost':
+                return t.localhost_config?.name ?? '';
+            default:
+                return t.path ?? '';
+        }
     }
 
     onExistingOpened(): void {
