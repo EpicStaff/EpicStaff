@@ -69,7 +69,7 @@ class SessionFilter(filters.FilterSet):
     )
     graph_name = filters.CharFilter(field_name="graph__name", lookup_expr="iexact")
     is_error_cause = filters.BooleanFilter(method="filter_by_error_cause")
-    trigger_type = filters.CharFilter(field_name="trigger__trigger_type")
+    trigger_type = CharInFilter(field_name="trigger__trigger_type", lookup_expr="in")
 
     # duration filters
     duration_lt = filters.NumberFilter(method="filter_duration_lt")

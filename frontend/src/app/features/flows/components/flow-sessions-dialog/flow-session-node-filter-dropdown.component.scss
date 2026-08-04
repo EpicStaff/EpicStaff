@@ -212,3 +212,36 @@
         background: rgba(94, 158, 255, 0.1);
     }
 }
+
+.trigger-dropdown-footer {
+    padding: 8px 10px;
+    border-top: 1px solid var(--color-divider-regular, #333);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.cancel-btn {
+    background: none;
+    border: 1px solid var(--accent-color, #5e9eff);
+    border-radius: 6px;
+    color: var(--accent-color, #5e9eff);
+    font-size: 12px;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+
+    &:hover {
+        background: rgba(94, 158, 255, 0.1);
+    }
+}
+
+.save-btn {
+    background: var(--accent-color, #5e9eff);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 12px;
+    padding: 4px 12px;
+    cursor: pointer;
+}
