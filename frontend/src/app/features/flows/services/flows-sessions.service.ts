@@ -243,7 +243,7 @@ export class GraphSessionService {
         offset?: number,
         status?: string[],
         ordering?: string,
-        graphName?: string | null,
+        graphName?: string[],
         triggerType?: TriggerType[],
         isErrorCause?: boolean,
         durationFilter?: DurationFilter | null
@@ -254,7 +254,7 @@ export class GraphSessionService {
         if (offset !== undefined) params = params.set('offset', offset.toString());
         if (status && !status.includes('all')) params = params.set('status', status.join(','));
         if (ordering) params = params.set('ordering', ordering);
-        if (graphName) params = params.set('graph_name', graphName);
+        if (graphName && graphName.length > 0) params = params.set('graph_name', graphName.join(','));
         if (triggerType && triggerType.length > 0) params = params.set('trigger_type', triggerType.join(','));
         if (isErrorCause) params = params.set('is_error_cause', 'true');
         if (durationFilter) params = this.applyDurationParams(params, durationFilter);

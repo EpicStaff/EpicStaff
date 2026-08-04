@@ -13,7 +13,12 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
-import { CheckboxComponent, IconButtonComponent, LoadingSpinnerComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    CheckboxComponent,
+    IconButtonComponent,
+    LoadingSpinnerComponent,
+} from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
@@ -39,6 +44,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
     imports: [
         CommonModule,
         CheckboxComponent,
+        AppSvgIconComponent,
         FlowSessionStatusBadgeComponent,
         LoadingSpinnerComponent,
         IconButtonComponent,
@@ -96,8 +102,11 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                             (click)="sortable && toggleSort()"
                         >
                             Created At
-                            @if (sortable) {
-                                <span class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                            @if (showFlowName) {
+                                <app-svg-icon
+                                    icon="menu"
+                                    size="16px"
+                                ></app-svg-icon>
                             }
                         </th>
                         <th class="col-duration">
@@ -276,7 +285,7 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     @Input() selectedIds: Set<number> = new Set();
     @Input() flows: { id: number; name: string }[] = [];
-    @Input() flowNameFilter: string | null = null;
+    @Input() flowNameFilter: string[] = [];
     @Input() trigger: TriggerType[] = [];
     @Input() durationFilter: DurationFilter | null = null;
 
@@ -288,7 +297,7 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
     @Output() stopSession = new EventEmitter<number>();
     @Output() sortChange = new EventEmitter<'asc' | 'desc'>();
     @Output() statusFilterChange = new EventEmitter<string[]>();
-    @Output() flowNameFilterChange = new EventEmitter<string | null>();
+    @Output() flowNameFilterChange = new EventEmitter<string[]>();
     @Output() triggerFilterChange = new EventEmitter<TriggerType[]>();
     @Output() durationFilterChange = new EventEmitter<DurationFilter | null>();
     @Output() selectedIdsChange = new EventEmitter<Set<number>>();

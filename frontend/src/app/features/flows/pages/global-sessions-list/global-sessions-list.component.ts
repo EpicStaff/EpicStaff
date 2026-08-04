@@ -71,7 +71,7 @@ export class GlobalSessionsListComponent {
     ];
     public statusFilter = signal<string[]>(['all']);
     public sortOrder = signal<'asc' | 'desc'>('desc');
-    public flowFilter = signal<string | null>(null);
+    public flowFilter = signal<string[]>([]);
     public triggerFilter = signal<TriggerType[]>([]);
     public isErrorCauseFilter = signal<boolean>(false);
     public durationFilter = signal<DurationFilter | null>(null);
@@ -187,8 +187,8 @@ export class GlobalSessionsListComponent {
         this.currentPage.set(1);
     }
 
-    public onFlowFilterChange(name: string | null): void {
-        this.flowFilter.set(name);
+    public onFlowFilterChange(names: string[]): void {
+        this.flowFilter.set(names);
         this.currentPage.set(1);
     }
 
@@ -296,9 +296,11 @@ export class GlobalSessionsListComponent {
             obs$ = this.importExportService.bulkExportSessions(Array.from(this.selectedIds()), format);
         } else {
             const activeStatuses = this.statusFilter().filter((s) => s !== 'all');
-            const selectedFlow = this.flowFilter()
-                ? this.availableFlows().find((f) => f.name === this.flowFilter())
-                : null;
+            const selectedFlowNames = this.flowFilter();
+            const selectedFlow =
+                selectedFlowNames.length === 1
+                    ? this.availableFlows().find((f) => f.name === selectedFlowNames[0])
+                    : null;
             obs$ = this.importExportService.exportAll(
                 {
                     graph: selectedFlow?.id,
@@ -332,7 +334,7 @@ export class GlobalSessionsListComponent {
         offset: number,
         status: string[],
         sort: 'asc' | 'desc' = 'desc',
-        graphName?: string | null,
+        graphName?: string[],
         triggerType?: TriggerType[],
         isErrorCause?: boolean,
         durationFilter?: DurationFilter | null

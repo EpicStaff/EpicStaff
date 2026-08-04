@@ -67,7 +67,7 @@ class SessionFilter(filters.FilterSet):
     node_name = filters.CharFilter(
         field_name="graphsessionmessage__name", lookup_expr="exact", distinct=True
     )
-    graph_name = filters.CharFilter(field_name="graph__name", lookup_expr="iexact")
+    graph_name = CharInFilter(field_name="graph__name", lookup_expr="in")
     is_error_cause = filters.BooleanFilter(method="filter_by_error_cause")
     trigger_type = CharInFilter(field_name="trigger__trigger_type", lookup_expr="in")
 

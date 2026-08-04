@@ -33,7 +33,7 @@
     overflow-y: hidden;
     border: 1px solid var(--color-divider-regular);
     background: var(--color-nodes-actionbar-bg);
-    min-height: 300px;
+    min-height: 520px;
 }
 
 table {
@@ -80,20 +80,24 @@ table {
 
     th.col-trigger,
     td.col-trigger {
-        width: 150px;
-        min-width: 150px;
+        width: 130px;
+        min-width: 130px;
     }
 
     th.col-created,
     td.col-created {
-        width: 150px;
-        min-width: 150px;
+        width: 190px;
+        min-width: 190px;
+    }
+
+    th.col-created app-svg-icon {
+        vertical-align: middle;
     }
 
     th.col-duration,
     td.col-duration {
-        min-width: 110px;
-        width: 110px;
+        min-width: 90px;
+        width: 90px;
     }
 
     th.col-actions,

@@ -14,7 +14,7 @@
     border: 1px solid var(--color-divider-regular, #333);
     border-radius: 8px;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
-    min-width: 220px;
+    min-width: 320px;
 }
 
 .search-box {
@@ -74,6 +74,7 @@
         margin-bottom: 5px;
         cursor: pointer;
         font-size: 1em;
+        font-weight: 400;
         color: var(--color-text-primary, #fff);
         transition:
             background 0.15s,
@@ -135,6 +136,10 @@
         align-items: center;
         gap: 6px;
     }
+}
+
+.node-filter-dropdown.open .dropdown-toggle {
+    color: var(--accent-color, #5e9eff);
 }
 
 .dropdown-arrow-wrapper {
@@ -203,8 +208,10 @@
     border: 1px solid var(--accent-color, #5e9eff);
     border-radius: 6px;
     color: var(--accent-color, #5e9eff);
+    font-family: 'Inter', sans-serif;
     font-size: 12px;
-    padding: 4px 12px;
+    font-weight: 400;
+    padding: 6.5px 12px;
     cursor: pointer;
     transition: background 0.15s;
 
@@ -226,8 +233,10 @@
     border: 1px solid var(--accent-color, #5e9eff);
     border-radius: 6px;
     color: var(--accent-color, #5e9eff);
+    font-family: 'Inter', sans-serif;
     font-size: 12px;
-    padding: 4px 12px;
+    font-weight: 400;
+    padding: 6.5px 12px;
     cursor: pointer;
     transition: background 0.15s;
 
@@ -241,7 +250,9 @@
     border: none;
     border-radius: 6px;
     color: #fff;
+    font-family: 'Inter', sans-serif;
     font-size: 12px;
-    padding: 4px 12px;
+    font-weight: 400;
+    padding: 6.5px 12px;
     cursor: pointer;
 }

@@ -9,7 +9,7 @@ import {
     Output,
     SimpleChanges,
 } from '@angular/core';
-import { CheckboxComponent } from '@shared/components';
+import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 import { ClickOutsideDirective } from '@shared/directives';
 
 import { TriggerType } from '../../services/flows-sessions.service';
@@ -20,7 +20,7 @@ const ALL_TRIGGER_TYPES: TriggerType[] = ['manual', 'schedule', 'webhook', 'tele
 @Component({
     selector: 'app-trigger-filter-dropdown',
     standalone: true,
-    imports: [CommonModule, ClickOutsideDirective, CheckboxComponent],
+    imports: [CommonModule, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     styles: [
         `
@@ -32,7 +32,7 @@ const ALL_TRIGGER_TYPES: TriggerType[] = ['manual', 'schedule', 'webhook', 'tele
                 justify-content: flex-start !important;
             }
             :host .dropdown-panel {
-                z-index: 1100 !important;
+                z-index: 9999 !important;
             }
             :host .node-filter-dropdown {
                 margin-left: 0;
@@ -50,27 +50,11 @@ const ALL_TRIGGER_TYPES: TriggerType[] = ['manual', 'schedule', 'webhook', 'tele
                 (click)="toggleDropdown($event)"
             >
                 <span class="selected-label">
-                    <i class="ti ti-filter"></i>
-                    @if (value.length === 0) {
-                        Trigger
-                    } @else {
-                        Trigger ({{ value.length }})
-                    }
-                </span>
-                <span class="dropdown-arrow-wrapper">
-                    <svg
-                        class="dropdown-arrow"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M7 10l5 5 5-5"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            fill="none"
-                        />
-                    </svg>
+                    Trigger
+                    <app-svg-icon
+                        icon="menu"
+                        size="16px"
+                    ></app-svg-icon>
                 </span>
             </button>
 
