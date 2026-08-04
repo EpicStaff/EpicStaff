@@ -581,18 +581,32 @@ class GraphLiveStateService:
             )
             return True
 
-    def _apply_node_upsert(
+    async def _apply_node_upsert(
         self, snapshot: dict, deleted: dict, message, graph_id: int
     ) -> OpResult | None:
         """Handle NodeCreatedMessage and legacy NodeUpdatedMessage (changed_fields
-        is None) — wholesale-replace upsert semantics, unchanged from
-        pre-EST-3020 behavior: normalize_op_entry, singleton collapse or
-        _upsert_entry (append-on-miss kept), deleted-accumulator resurrect kept.
+        is None) — wholesale-replace upsert semantics: normalize_op_entry,
+        singleton collapse or _upsert_entry (append-on-miss kept),
+        deleted-accumulator resurrect kept.
 
         Returns None for an unknown list_key (mirrors the old bare `return` —
         apply_op's caller treats a None result as "relay, but nothing changed").
-        # TODO(EST-3020): collapse legacy update branch after FE migrates to changed_fields
+
+        NOTE: this legacy branch is permanent — sendNodePositionDuringDrag
+        always uses this shape and will never migrate to changed_fields.
         """
+        # Resolve a bare temp_id to its real id BEFORE the stale-id-recreate
+        # guard below runs on message.node["id"] — this is what lets that
+        # guard correctly reject/resurrect creates referenced by temp_id,
+        # not just by real id.
+        temp_id = message.node.get("temp_id")
+        if message.node.get("id") is None and temp_id is not None:
+            resolved = await self.get_resolved_temp_ids(graph_id)
+            real_id = resolved.get(str(temp_id))
+            if real_id is not None:
+                message.node["id"] = real_id
+                message.node.pop("temp_id", None)
+
         list_key = message.list_key
         if list_key not in _KNOWN_LIST_KEYS:
             logger.warning(
@@ -768,7 +782,9 @@ class GraphLiveStateService:
                 isinstance(message, NodeUpdatedMessage)
                 and message.changed_fields is None
             ):
-                result = self._apply_node_upsert(snapshot, deleted, message, graph_id)
+                result = await self._apply_node_upsert(
+                    snapshot, deleted, message, graph_id
+                )
 
             elif isinstance(message, NodeUpdatedMessage):
                 result = await self._apply_node_merge(
