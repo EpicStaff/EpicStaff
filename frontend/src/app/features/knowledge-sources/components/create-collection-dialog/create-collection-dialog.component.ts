@@ -1,10 +1,11 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgComponentOutlet } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent, ConfirmationDialogService, StepConfig } from '@shared/components';
 import { AppSvgIconComponent, StepperComponent } from '@shared/components';
-import { filter, Observable, of } from 'rxjs';
+import { EMPTY, filter, Observable, of } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
@@ -93,7 +94,7 @@ export class CreateCollectionDialogComponent {
         {
             id: CreateCollectionStep.CONFIGURE,
             label: 'Configure',
-            proceedLabel: 'Run Indexing',
+            proceedLabel: 'Save & Run Indexing',
             onProceed: () => this.handleIndexing(),
             canProceed: () => this.strategy()?.canIndex() ?? false,
         },
@@ -186,6 +187,8 @@ export class CreateCollectionDialogComponent {
         const componentInstance: RagConfiguration = this.strategyComponent['_componentRef'].instance;
         const componentData = componentInstance.getConfigurationData();
         const configIds = componentInstance.getDocumentConfigIds();
+        const shouldSave = componentInstance.shouldSaveConfig();
+        const pendingDeleteIds = componentInstance.getPendingDeleteDocumentIds?.() ?? [];
 
         if (!componentData) {
             return of(false);
@@ -196,17 +199,28 @@ export class CreateCollectionDialogComponent {
             indexingDocs = this.selectedDocuments().map((d) => ({ fileName: d.file_name, wasIndexed: false }));
         }
 
+        const savePending$: Observable<unknown> = componentInstance.uploadPendingForChecked?.() ?? of(null);
+
         return this.confirmation.confirm(getIndexingConfirmationData(indexingDocs)).pipe(
             takeUntilDestroyed(this.destroyRef),
             filter((result) => result === true),
-            switchMap(() =>
-                strategy.startIndexing({ ...componentData, configIds }).pipe(
-                    catchError(() => {
+            switchMap(() => savePending$),
+            switchMap(() => {
+                if (componentInstance.hasFailedSavesForChecked?.()) {
+                    this.toastService.error('Some documents failed to save. Fix the errors and retry.');
+                    return EMPTY;
+                }
+                return strategy.startIndexing({ ...componentData, configIds, shouldSave, pendingDeleteIds }).pipe(
+                    catchError((err: HttpErrorResponse) => {
+                        if (err?.validationErrors?.length) {
+                            componentInstance.setServerValidationErrors?.(err.validationErrors);
+                            return of(false);
+                        }
                         this.toastService.error('Indexing failed');
                         return of(false);
                     })
-                )
-            )
+                );
+            })
         );
     }
 

@@ -4,10 +4,11 @@ export type DocumentChunkingProcessStatus = 'completed' | 'canceled' | 'failed' 
 
 export type DocumentStatus = 'new' | 'chunking' | 'chunked' | 'indexing' | 'completed' | 'failed';
 
-export type DocumentWithChunksStatus =
+export type DocumentChunksStatus =
     | 'new'
     | 'chunking'
     | 'chunking_failed'
+    | 'chunking_timeout'
     | 'chunked'
     | 'fetching_chunks'
     | 'chunks_ready'
@@ -15,7 +16,8 @@ export type DocumentWithChunksStatus =
 
 export interface DocumentChunkingState {
     id: number;
-    status: DocumentWithChunksStatus;
+    status: DocumentChunksStatus;
+    preOutdatedStatus?: DocumentChunksStatus;
     chunkOverlap: number;
     chunkSize: number;
     chunkStrategy: NaiveRagChunkStrategy;

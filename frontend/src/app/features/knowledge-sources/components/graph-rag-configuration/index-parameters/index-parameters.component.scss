@@ -43,7 +43,46 @@
         }
     }
 
+    .reset-btn-wrapper {
+        display: flex;
+        justify-content: flex-end;
+    }
+
     .control {
         width: 200px;
+
+        &--readonly {
+            font-size: 0.875rem;
+            color: var(--color-ks-text);
+        }
     }
+
+    .readonly-chips {
+        width: auto;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+
+    .readonly-chip {
+        display: flex;
+        align-items: center;
+        height: 40px;
+        padding: 4px 12px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background-color: var(--color-input-background);
+        font-size: 0.875rem;
+    }
+}
+
+.server-error {
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    border-left: 3px solid var(--color-ks-status-failed);
+    background-color: var(--color-ks-transparent-red);
+    color: var(--color-ks-status-failed);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: pre-line;
 }

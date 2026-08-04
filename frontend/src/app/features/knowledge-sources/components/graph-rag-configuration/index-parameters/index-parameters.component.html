@@ -2,9 +2,22 @@
     <form
         class="form"
         [formGroup]="form"
+        [appServerErrors]="form"
+        [errorsRef]="serverErrorsRef"
+        #serverErrors="serverErrors"
     >
         <div class="tooltip">Index Parameters</div>
-        <div></div>
+        <div class="reset-btn-wrapper">
+            @if (!readonly()) {
+                <app-button
+                    type="outline-primary"
+                    leftIcon="refresh"
+                    (click)="onResetClick()"
+                >
+                    Reset to Origin
+                </app-button>
+            }
+        </div>
 
         <div class="tooltip">
             <label>Chunk Strategy</label>
@@ -14,13 +27,19 @@
                 position="right"
             />
         </div>
-        <div class="control">
-            <app-radio-button
-                formControlName="chunk_strategy"
-                [options]="chunkStrategyOptions"
-            />
-            <app-validation-errors [control]="getControl('chunk_strategy')!" />
-        </div>
+        @if (readonly()) {
+            <div class="control control--readonly">
+                {{ getControl('chunk_strategy')?.value }}
+            </div>
+        } @else {
+            <div class="control">
+                <app-radio-button
+                    formControlName="chunk_strategy"
+                    [options]="chunkStrategyOptions"
+                />
+                <app-validation-errors [control]="getControl('chunk_strategy')!" />
+            </div>
+        }
 
         <div class="tooltip">
             <label>Chunk Size</label>
@@ -30,16 +49,22 @@
                 position="right"
             />
         </div>
-        <div class="control">
-            <app-input-number
-                formControlName="chunk_size"
-                [min]="100"
-                [max]="10000"
-                [invalid]="!!getControl('chunk_size')?.invalid"
-                [alwaysShowSteps]="true"
-            />
-            <app-validation-errors [control]="getControl('chunk_size')!" />
-        </div>
+        @if (readonly()) {
+            <div class="control control--readonly">
+                {{ getControl('chunk_size')?.value }}
+            </div>
+        } @else {
+            <div class="control">
+                <app-input-number
+                    formControlName="chunk_size"
+                    [min]="100"
+                    [max]="10000"
+                    [invalid]="!!getControl('chunk_size')?.invalid"
+                    [alwaysShowSteps]="true"
+                />
+                <app-validation-errors [control]="getControl('chunk_size')!" />
+            </div>
+        }
 
         <div class="tooltip">
             <label>Chunk Overlap</label>
@@ -49,16 +74,22 @@
                 position="right"
             />
         </div>
-        <div class="control">
-            <app-input-number
-                formControlName="chunk_overlap"
-                [min]="0"
-                [max]="5000"
-                [invalid]="!!getControl('chunk_overlap')?.invalid"
-                [alwaysShowSteps]="true"
-            />
-            <app-validation-errors [control]="getControl('chunk_overlap')!" />
-        </div>
+        @if (readonly()) {
+            <div class="control control--readonly">
+                {{ getControl('chunk_overlap')?.value }}
+            </div>
+        } @else {
+            <div class="control">
+                <app-input-number
+                    formControlName="chunk_overlap"
+                    [min]="0"
+                    [max]="5000"
+                    [invalid]="!!getControl('chunk_overlap')?.invalid"
+                    [alwaysShowSteps]="true"
+                />
+                <app-validation-errors [control]="getControl('chunk_overlap')!" />
+            </div>
+        }
 
         <div class="tooltip">
             <label>Entity Types</label>
@@ -68,17 +99,25 @@
                 position="right"
             />
         </div>
-        <div>
-            <app-chips-input
-                formControlName="entity_types"
-                inputPlaceholder="Enter entity type"
-                separatorPlaceholder="Add comma separated entity types to invite"
-                [minItemLength]="1"
-                [maxItemLength]="20"
-                [showSeparatorToggle]="true"
-            />
-            <app-validation-errors [control]="getControl('entity_types')!" />
-        </div>
+        @if (readonly()) {
+            <div class="control control--readonly readonly-chips">
+                @for (item of getControl('entity_types')?.value ?? []; track $index) {
+                    <span class="readonly-chip">{{ item }}</span>
+                }
+            </div>
+        } @else {
+            <div>
+                <app-chips-input
+                    formControlName="entity_types"
+                    inputPlaceholder="Enter entity type"
+                    separatorPlaceholder="Add comma separated entity types to invite"
+                    [minItemLength]="1"
+                    [maxItemLength]="20"
+                    [showSeparatorToggle]="true"
+                />
+                <app-validation-errors [control]="getControl('entity_types')!" />
+            </div>
+        }
 
         <div class="tooltip">
             <label>Max Gleanings</label>
@@ -88,16 +127,22 @@
                 position="right"
             />
         </div>
-        <div class="control">
-            <app-input-number
-                formControlName="max_gleanings"
-                [invalid]="!!getControl('max_gleanings')?.invalid"
-                [alwaysShowSteps]="true"
-                [min]="1"
-                [max]="10"
-            />
-            <app-validation-errors [control]="getControl('max_gleanings')!" />
-        </div>
+        @if (readonly()) {
+            <div class="control control--readonly">
+                {{ getControl('max_gleanings')?.value }}
+            </div>
+        } @else {
+            <div class="control">
+                <app-input-number
+                    formControlName="max_gleanings"
+                    [invalid]="!!getControl('max_gleanings')?.invalid"
+                    [alwaysShowSteps]="true"
+                    [min]="1"
+                    [max]="10"
+                />
+                <app-validation-errors [control]="getControl('max_gleanings')!" />
+            </div>
+        }
 
         <div class="tooltip">
             <label>Max Cluster Size</label>
@@ -107,17 +152,31 @@
                 position="right"
             />
         </div>
-        <div class="control">
-            <app-input-number
-                formControlName="max_cluster_size"
-                [min]="1"
-                [max]="100"
-                [invalid]="!!getControl('max_cluster_size')?.invalid"
-                [alwaysShowSteps]="true"
-            />
-            <app-validation-errors [control]="getControl('max_cluster_size')!" />
-        </div>
+        @if (readonly()) {
+            <div class="control control--readonly">
+                {{ getControl('max_cluster_size')?.value }}
+            </div>
+        } @else {
+            <div class="control">
+                <app-input-number
+                    formControlName="max_cluster_size"
+                    [min]="1"
+                    [max]="100"
+                    [invalid]="!!getControl('max_cluster_size')?.invalid"
+                    [alwaysShowSteps]="true"
+                />
+                <app-validation-errors [control]="getControl('max_cluster_size')!" />
+            </div>
+        }
     </form>
+
+    @if (serverErrors.formLevelErrors().length > 0) {
+        <div class="server-error">
+            @for (msg of serverErrors.formLevelErrors(); track $index) {
+                {{ msg }}
+            }
+        </div>
+    }
 
     <div class="json-wrapper">
         <app-json-editor
@@ -128,6 +187,7 @@
             [fullHeight]="true"
             [jsonData]="jsonData()"
             [editorOptions]="editorOptions"
+            [readonly]="readonly()"
             (jsonChange)="onJsonChange($event)"
             (validationChange)="onJsonValidChange($event)"
         />
