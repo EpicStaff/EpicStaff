@@ -309,6 +309,7 @@ class ClassificationDecisionTableNodeSaveable:
             "id",
             "classification_decision_table_node",
             "next_node_temp_id",
+            "prompt_key",
         }
     )
 
