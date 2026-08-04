@@ -28,6 +28,7 @@ class Migration(migrations.Migration):
                     ("completed", "Completed"),
                     ("warning", "Warning"),
                     ("failed", "Failed"),
+                    ("cancelled", "Cancelled"),
                     ("partial", "Partial"),
                     ("outdated", "Outdated"),
                 ],
