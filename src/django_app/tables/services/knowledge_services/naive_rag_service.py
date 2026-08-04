@@ -136,26 +136,29 @@ class NaiveRagService:
         cls, rag: NaiveRag, collection: SourceCollection, embedding_config: EmbeddingConfig,
     ) -> NaiveRag:
         updated_fields = set()
+        embedding_provider_changed = (
+            rag.embedder is None
+            or rag.embedder.model.embedding_provider != embedding_config.model.embedding_provider
+        )
 
-        if rag.embedder and embedding_config and rag.embedder.pk != embedding_config.pk:
-            if rag.embedder.model.provider != embedding_config.model.provider:
+        if rag.embedder is None or rag.embedder.pk != embedding_config.pk:
+            if embedding_provider_changed:
                 rag.add_outdated_reason(
                     code="changed_embedding_config",
-                    detail="Embedding config was changed."
+                    detail="Embedding config was changed.",
                 )
                 rag.rag_status = rag.NaiveRagStatus.OUTDATED
-                updated_fields.update(["rag_status", "outdated_reason"])
-
+                updated_fields.update(["rag_status", "outdated_reasons"])
             rag.embedder = embedding_config
-            updated_fields.add('embedder')
+            updated_fields.add("embedder")
 
-        rag.save(update_fields=updated_fields)
+        if updated_fields:
+            rag.save(update_fields=updated_fields)
 
-        (
-            rag.naive_rag_configs
-            .filter(status=NaiveRagDocumentConfig.NaiveRagDocumentStatus.COMPLETED)
-            .update(status=NaiveRagDocumentConfig.NaiveRagDocumentStatus.OUTDATED)
-        )  # fmt: off
+        if embedding_provider_changed:
+            rag.naive_rag_configs.filter(
+                status=NaiveRagDocumentConfig.NaiveRagDocumentStatus.COMPLETED
+            ).update(status=NaiveRagDocumentConfig.NaiveRagDocumentStatus.OUTDATED)
 
         logger.info(
             "Updated NaiveRag {} for collection {}",
@@ -537,7 +540,12 @@ class NaiveRagService:
     @staticmethod
     def sync_rag_status_after_config_removal(rag: NaiveRag) -> None:
         updated_fields = set()
-        if not rag.naive_rag_configs.exists() and rag.outdated_reasons:
+        has_outdated = (
+            rag.naive_rag_configs
+            .filter(status=NaiveRagDocumentConfig.NaiveRagDocumentStatus.OUTDATED)
+            .exists()
+        )  # fmt: off
+        if not has_outdated and rag.outdated_reasons:
             rag.clear_outdated_reason()
             updated_fields.add("outdated_reasons")
         if rag.update_rag_status():

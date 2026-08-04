@@ -5,8 +5,9 @@ from django.core.files.uploadedfile import UploadedFile
 from loguru import logger
 
 from tables.models import SourceCollection, DocumentMetadata, DocumentContent
-from tables.models.knowledge_models import NaiveRag
+from tables.models.knowledge_models import NaiveRag, GraphRagDocument
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
+from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.constants.knowledge_constants import (
     MAX_FILE_SIZE,
     ALLOWED_FILE_TYPES,
@@ -316,10 +317,20 @@ class DocumentManagementService:
             NaiveRag.objects.filter(naive_rag_configs__document=document).distinct()
         )
 
+        graph_links = GraphRagDocument.objects.filter(document=document).select_related("graph_rag")
+        affected_graph_rags: dict[int, tuple] = {}
+        for link in graph_links:
+            rag = link.graph_rag
+            completed = link.status == GraphRagDocument.Status.COMPLETED
+            existing = affected_graph_rags.get(rag.graph_rag_id)
+            affected_graph_rags[rag.graph_rag_id] = (rag, (existing[1] if existing else False) or completed)
+
         document.delete()
 
         for rag in affected_rags:
             NaiveRagService.sync_rag_status_after_config_removal(rag)
+        for rag, indexed_deleted in affected_graph_rags.values():
+            GraphRagService.sync_status_after_document_removal(rag, indexed_deleted)
 
         if content and not content.metadata_records.exists():
             content.delete()
@@ -388,6 +399,14 @@ class DocumentManagementService:
             ).distinct()
         )
 
+        graph_links = GraphRagDocument.objects.filter(document_id__in=found_ids).select_related("graph_rag")
+        affected_graph_rags: dict[int, tuple] = {}
+        for link in graph_links:
+            rag = link.graph_rag
+            completed = link.status == GraphRagDocument.Status.COMPLETED
+            existing = affected_graph_rags.get(rag.graph_rag_id)
+            affected_graph_rags[rag.graph_rag_id] = (rag, (existing[1] if existing else False) or completed)
+
         # Delete all documents
         _, details = documents.delete()
         deleted_count = details.get(DocumentMetadata._meta.label, 0)
@@ -401,6 +420,8 @@ class DocumentManagementService:
             collection.update_collection_status()
         for rag in affected_rags:
             NaiveRagService.sync_rag_status_after_config_removal(rag)
+        for rag, indexed_deleted in affected_graph_rags.values():
+            GraphRagService.sync_status_after_document_removal(rag, indexed_deleted)
 
         # Delete dangling content
         dangling_content = (
