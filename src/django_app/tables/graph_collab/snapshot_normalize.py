@@ -7,33 +7,14 @@ frontend late-join converter can still use them.
 """
 
 import copy
-
-from tables.services.graph_bulk_save_service.registry import (
-    NODE_TYPE_REGISTRY,
-    SINGLETON_LIST_KEYS,
-)
 from utils.logger import logger
 
-# All snapshot list keys that require ``graph`` injection.
-_ALL_LIST_KEYS: frozenset[str] = frozenset(
-    [
-        "crew_node_list",
-        "python_node_list",
-        "file_extractor_node_list",
-        "audio_transcription_node_list",
-        "start_node_list",
-        "end_node_list",
-        "subgraph_node_list",
-        "decision_table_node_list",
-        "graph_note_list",
-        "webhook_trigger_node_list",
-        "telegram_trigger_node_list",
-        "schedule_trigger_node_list",
-        "code_agent_node_list",
-        "classification_decision_table_node_list",
-        "edge_list",
-        "conditional_edge_list",
-    ]
+from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
+
+from tables.graph_collab.constants import (
+    _SINGLETON_LIST_KEYS,
+    _ALL_LIST_KEYS,
+    _DECISION_TABLE_LIST_KEYS,
 )
 
 
@@ -203,7 +184,7 @@ def reconcile_against_db(payload: dict, graph) -> dict:
 
 
 def _collapse_singleton_lists(payload: dict) -> dict[str, int]:
-    """Collapse each ``SINGLETON_LIST_KEYS`` list in *payload* to one entry.
+    """Collapse each ``_SINGLETON_LIST_KEYS`` list in *payload* to one entry.
 
     Self-heals graphs that were already corrupted (duplicate start/end
     entries) before the op-time dedup in ``graph_state_service.apply_op``
@@ -215,7 +196,7 @@ def _collapse_singleton_lists(payload: dict) -> dict[str, int]:
     lists that actually had more than one entry, for logging.
     """
     collapsed: dict[str, int] = {}
-    for list_key in SINGLETON_LIST_KEYS:
+    for list_key in _SINGLETON_LIST_KEYS:
         entries = payload.get(list_key) or []
         if len(entries) <= 1:
             continue
@@ -246,12 +227,6 @@ def _enqueue_deletion(deleted: dict, delete_key: str, entry_id: int | None) -> N
         accumulator.append(entry_id)
 
 
-_ROUTING_LIST_KEYS: tuple[str, ...] = (
-    "decision_table_node_list",
-    "classification_decision_table_node_list",
-)
-
-
 def _null_dangling_routing_refs(payload: dict, surviving_node_ids: set[int]) -> dict:
     """Null decision-table routing refs pointing at a node gone from the DB.
 
@@ -261,7 +236,7 @@ def _null_dangling_routing_refs(payload: dict, surviving_node_ids: set[int]) -> 
     nulled, keyed by list_key, for logging.
     """
     nulled: dict[str, list[dict]] = {}
-    for list_key in _ROUTING_LIST_KEYS:
+    for list_key in _DECISION_TABLE_LIST_KEYS:
         for entry in payload.get(list_key) or []:
             if entry is None:
                 continue

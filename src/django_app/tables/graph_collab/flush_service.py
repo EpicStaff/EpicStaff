@@ -30,10 +30,10 @@ from tables.exceptions import (
     ContentHashConflictError,
     GraphSaveVersionConflictError,
 )
-from tables.graph_collab.graph_state_service import (
-    _KNOWN_LIST_KEYS,
-    graph_state_service,
-)
+
+from tables.graph_collab.constants import _ALL_LIST_KEYS
+
+from tables.graph_collab.graph_state_service import graph_state_service
 from tables.graph_collab.snapshot_normalize import (
     inject_bulk_save_fields,
     reconcile_against_db,
@@ -134,9 +134,7 @@ def _do_db_flush(graph_id: int, snapshot: dict):
     payload["save_version"] = graph.save_version
 
     # Self-heal drift: drop payload refs to node rows already gone from the DB
-    # (e.g. a Crew delete cascaded its CrewNode while the live snapshot still
-    # holds the stale node/edge refs). Payload-only — the retained Redis
-    # snapshot itself is left untouched.
+    #  Payload-only — the retained Redis snapshot itself is left untouched.
     payload = reconcile_against_db(payload, graph=graph)
 
     serializer = GraphBulkSaveInputSerializer(data=payload)
@@ -233,7 +231,7 @@ class GraphFlushService:
         # endpoint-reference fields on the same entry), and that own temp_id
         # must also be self-stamped and orphan-checked like node temp_ids.
         flushed_temp_id_to_list_key: dict[str, str] = {}
-        for list_key in _KNOWN_LIST_KEYS:
+        for list_key in _ALL_LIST_KEYS:
             for entry in snapshot.get(list_key, []):
                 if entry is None:
                     # Corrupted snapshot entry — skip; the serializer will reject

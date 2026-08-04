@@ -77,15 +77,13 @@ NODE_TYPE_REGISTRY — single source of truth for all node types
 
 To add a new node type:
   1. Add one BulkSerializer class in graph_bulk_save_serializers.py.
-  2. Add one NodeTypeConfig line here.
+  2. Add one NodeTypeConfig line here. If the type is at-most-one-per-graph
+     (like StartNode/EndNode), set is_singleton=True — this flag is what
+     tables.graph_collab.constants derives _SINGLETON_LIST_KEYS from, which
+     graph_state_service.py and snapshot_normalize.py both rely on for
+     singleton-aware handling.
   Everything else (service loop, serializer fields, deletions, temp_id
   scan) updates automatically.
-
-If the new node type is one-per-graph (like StartNode/EndNode), set
-is_singleton=True on its NodeTypeConfig — otherwise it silently falls out
-of both the collab snapshot dedup (graph_state_service.py,
-snapshot_normalize.py) and the bulk-save natural-key guard (service.py),
-which both derive their behavior from SINGLETON_LIST_KEYS below.
 """
 
 NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
@@ -190,7 +188,3 @@ EDGE_DELETE_CONFIGS: list[EdgeDeleteConfig] = [
     EdgeDeleteConfig("edge_ids", Edge),
     EdgeDeleteConfig("conditional_edge_ids", ConditionalEdge),
 ]
-
-SINGLETON_LIST_KEYS: frozenset[str] = frozenset(
-    config.list_key for config in NODE_TYPE_REGISTRY if config.is_singleton
-)

@@ -19,7 +19,14 @@ from tables.graph_collab.protocol import (
 )
 
 from tables.graph_collab.snapshot_normalize import inject_bulk_save_fields
-from tables.services.graph_bulk_save_service.registry import SINGLETON_LIST_KEYS
+from tables.graph_collab.constants import (
+    _SINGLETON_LIST_KEYS,
+    _EDGE_ENDPOINT_TEMP_FIELDS,
+    _ALL_LIST_KEYS,
+    _LIST_KEY_TO_DELETE_KEY,
+    _EDGE_NODE_REF_FIELDS,
+    _DECISION_TABLE_LIST_KEYS,
+)
 from tables.services.redis_service import RedisService
 from utils.logger import logger
 
@@ -85,7 +92,7 @@ def _collapse_singleton_entry(
 ) -> None:
     """
     Collapse *entries* to exactly one entry for an at-most-one-per-graph
-    list (start_node_list / end_node_list — see SINGLETON_LIST_KEYS).
+    list (start_node_list / end_node_list — see _SINGLETON_LIST_KEYS).
     """
     existing_id = entries[0].get("id") if entries else None
     new_id = new_entry.get("id")
@@ -105,12 +112,6 @@ def _collapse_singleton_entry(
     entries[:] = [new_entry]
 
 
-_EDGE_ENDPOINT_TEMP_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
-    "edge_list": (("start_temp_id", "start_node_id"), ("end_temp_id", "end_node_id")),
-    "conditional_edge_list": (("source_temp_id", "source_node_id"),),
-}
-
-
 def _resolve_edge_endpoints(
     entry: dict, list_key: str, resolved_temp_ids: dict[str, int]
 ) -> dict:
@@ -127,46 +128,6 @@ def _resolve_edge_endpoints(
             entry[real_field] = real_id
             entry.pop(temp_field, None)
     return entry
-
-
-# Maps list_key to the corresponding deleted-accumulator key. Covers every
-# list type: node lists use the <type>_node_ids pattern; edge lists use
-# edge_ids / conditional_edge_ids.
-_LIST_KEY_TO_DELETE_KEY: dict[str, str] = {
-    "crew_node_list": "crew_node_ids",
-    "python_node_list": "python_node_ids",
-    "file_extractor_node_list": "file_extractor_node_ids",
-    "audio_transcription_node_list": "audio_transcription_node_ids",
-    "start_node_list": "start_node_ids",
-    "end_node_list": "end_node_ids",
-    "subgraph_node_list": "subgraph_node_ids",
-    "decision_table_node_list": "decision_table_node_ids",
-    "graph_note_list": "graph_note_ids",
-    "webhook_trigger_node_list": "webhook_trigger_node_ids",
-    "telegram_trigger_node_list": "telegram_trigger_node_ids",
-    "schedule_trigger_node_list": "schedule_trigger_node_ids",
-    "code_agent_node_list": "code_agent_node_ids",
-    "classification_decision_table_node_list": "classification_decision_table_node_ids",
-    "edge_list": "edge_ids",
-    "conditional_edge_list": "conditional_edge_ids",
-}
-
-_KNOWN_LIST_KEYS: frozenset[str] = frozenset(_LIST_KEY_TO_DELETE_KEY.keys())
-
-# Node-ref fields on each edge list that must be checked when cascading a
-# node delete — edge_list has two endpoints, conditional_edge_list has one
-# (conditional edges have no target_node_id field).
-_EDGE_NODE_REF_FIELDS: dict[str, tuple[str, ...]] = {
-    "edge_list": ("start_node_id", "end_node_id"),
-    "conditional_edge_list": ("source_node_id",),
-}
-
-# Decision-table-like list keys whose entries carry routing refs to other
-# nodes (default_next_node_id / next_error_node_id / condition_groups[].next_node_id).
-_DECISION_TABLE_LIST_KEYS: tuple[str, ...] = (
-    "decision_table_node_list",
-    "classification_decision_table_node_list",
-)
 
 
 class GraphLiveStateService:
@@ -357,7 +318,7 @@ class GraphLiveStateService:
             # Simultaneously collect the set of temp_ids still present in the
             # LIVE snapshot so we can detect orphans
             live_temp_ids: set[str] = set()
-            for list_key in _KNOWN_LIST_KEYS:
+            for list_key in _ALL_LIST_KEYS:
                 entries: list[dict] = snapshot.get(list_key, [])
                 for entry in entries:
                     tid = entry.get("temp_id")
@@ -407,10 +368,7 @@ class GraphLiveStateService:
                     entry[id_key] = real
                     entry.pop(temp_key, None)
 
-            for list_key in (
-                "decision_table_node_list",
-                "classification_decision_table_node_list",
-            ):
+            for list_key in _DECISION_TABLE_LIST_KEYS:
                 for table_entry in snapshot.get(list_key, []):
                     if table_entry is None:
                         continue
@@ -608,7 +566,7 @@ class GraphLiveStateService:
                 message.node.pop("temp_id", None)
 
         list_key = message.list_key
-        if list_key not in _KNOWN_LIST_KEYS:
+        if list_key not in _ALL_LIST_KEYS:
             logger.warning(
                 "Ignoring op with unknown list_key {} on graph {}",
                 list_key,
@@ -638,7 +596,7 @@ class GraphLiveStateService:
 
         entries: list[dict] = snapshot.setdefault(list_key, [])
         new_entry = copy.copy(message.node)
-        if list_key in SINGLETON_LIST_KEYS:
+        if list_key in _SINGLETON_LIST_KEYS:
             _collapse_singleton_entry(entries, new_entry, list_key)
         else:
             _upsert_entry(entries, new_entry)
@@ -669,7 +627,7 @@ class GraphLiveStateService:
         See module-level OpResult for the reject reasons this can return.
         """
         list_key = message.list_key
-        if list_key not in _KNOWN_LIST_KEYS:
+        if list_key not in _ALL_LIST_KEYS:
             logger.warning(
                 "Rejecting merge op with unknown list_key {} on graph {}",
                 list_key,
@@ -699,7 +657,7 @@ class GraphLiveStateService:
         entries: list[dict] = snapshot.setdefault(list_key, [])
 
         target_index: int | None = None
-        if list_key in SINGLETON_LIST_KEYS:
+        if list_key in _SINGLETON_LIST_KEYS:
             if entries:
                 target_index = 0
                 if entries[0].get("id") is not None:
@@ -794,7 +752,7 @@ class GraphLiveStateService:
             elif isinstance(message, NodesDeletedMessage):
                 for ref in message.refs:
                     list_key = ref.list_key
-                    if list_key not in _KNOWN_LIST_KEYS:
+                    if list_key not in _ALL_LIST_KEYS:
                         logger.warning(
                             "Ignoring delete ref with unknown list_key {} on graph {}",
                             list_key,
@@ -825,7 +783,7 @@ class GraphLiveStateService:
 
             elif isinstance(message, ConnectionCreatedMessage):
                 list_key = message.list_key
-                if list_key not in _KNOWN_LIST_KEYS:
+                if list_key not in _ALL_LIST_KEYS:
                     logger.warning(
                         "Ignoring op with unknown list_key {} on graph {}",
                         list_key,
@@ -878,7 +836,7 @@ class GraphLiveStateService:
 
             elif isinstance(message, ConnectionDeletedMessage):
                 list_key = message.list_key
-                if list_key not in _KNOWN_LIST_KEYS:
+                if list_key not in _ALL_LIST_KEYS:
                     logger.warning(
                         "Ignoring op with unknown list_key {} on graph {}",
                         list_key,
@@ -904,7 +862,7 @@ class GraphLiveStateService:
             elif isinstance(message, ConnectionsDeletedMessage):
                 for ref in message.refs:
                     list_key = ref.list_key
-                    if list_key not in _KNOWN_LIST_KEYS:
+                    if list_key not in _ALL_LIST_KEYS:
                         logger.warning(
                             "Ignoring delete ref with unknown list_key {} on graph {}",
                             list_key,
@@ -927,7 +885,7 @@ class GraphLiveStateService:
 
             elif isinstance(message, ConnectionWaypointsUpdatedMessage):
                 list_key = message.list_key
-                if list_key not in _KNOWN_LIST_KEYS:
+                if list_key not in _ALL_LIST_KEYS:
                     logger.warning(
                         "Ignoring op with unknown list_key {} on graph {}",
                         list_key,
