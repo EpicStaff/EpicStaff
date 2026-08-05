@@ -1,33 +1,31 @@
 import { BasePort } from '../../models/port.model';
 
-export const DEFAULT_CODE_AGENT_NODE_PORTS: BasePort[] = [
+export const DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS: BasePort[] = [
     {
         port_type: 'input',
-        role: 'code-agent-in',
+        role: 'knowledge-retriever-in',
         multiple: true,
         label: 'In',
         allowedConnections: [
             'project-out',
             'python-out',
-            'edge-out',
             'start-start',
             'table-out',
             'llm-out-right',
-            'file-extractor-out',
             'subgraph-out',
-            'audio-to-text-out',
             'webhook-trigger-out',
             'telegram-trigger-out',
             'schedule-trigger-out',
             'code-agent-out',
-            'knowledge-retriever-out',
+            'decision-default',
+            'decision-error',
         ],
         position: 'left',
-        color: '#00e676',
+        color: '#D9D9DE',
     },
     {
         port_type: 'output',
-        role: 'code-agent-out',
+        role: 'knowledge-retriever-out',
         multiple: false,
         label: 'Out',
         allowedConnections: [
@@ -36,16 +34,12 @@ export const DEFAULT_CODE_AGENT_NODE_PORTS: BasePort[] = [
             'edge-in',
             'table-in',
             'llm-out-left',
-            'file-extractor-in',
             'end-in',
             'subgraph-in',
             'audio-to-text-in',
-            'webhook-trigger-in',
-            'telegram-trigger-in',
             'code-agent-in',
-            'knowledge-retriever-in',
         ],
         position: 'right',
-        color: '#00e676',
+        color: '#D9D9DE',
     },
 ];

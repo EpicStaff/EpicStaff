@@ -18,4 +18,5 @@ export enum NodeType {
     AUDIO_TO_TEXT = 'audio-to-text-node',
     SCHEDULE_TRIGGER = 'schedule-trigger',
     CODE_AGENT = 'code-agent',
+    KNOWLEDGE_RETRIEVER = 'knowledge-retriever',
 }

@@ -6,7 +6,6 @@ import {
     CreateConditionGroupRequest,
     CreateDecisionTableNodeRequest,
 } from '../../../pages/flows-page/components/flow-visual-programming/models/decision-table-node.model';
-import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import {
@@ -121,22 +120,6 @@ function serializeCDTFieldExpressions(fieldExpressions: Record<string, unknown>)
     return result;
 }
 
-interface CdtConditionGroupUi {
-    group_name: string;
-    order?: number;
-    expression?: string | null;
-    prompt_id?: string | null;
-    manipulation?: string | null;
-    continue_flag?: boolean;
-    continue?: boolean;
-    route_code?: string | null;
-    next_node?: string | null;
-    dock_visible?: boolean;
-    field_expressions?: Record<string, unknown>;
-    field_manipulations?: Record<string, unknown>;
-    section?: string | null;
-}
-
 function buildCdtNodePayload(
     node: ClassificationDecisionTableNodeModel,
     graphId: number,
@@ -144,13 +127,13 @@ function buildCdtNodePayload(
     idMap: Map<string, number>,
     connections: ConnectionModel[]
 ): Record<string, unknown> {
-    const tableData = node.data?.table;
-    const preComp = tableData?.pre_computation || {};
-    const postComp = tableData?.post_computation || {};
-    const preCodeValue = preComp.code || tableData?.pre_computation_code || '';
-    const postCodeValue = postComp.code || tableData?.post_computation_code || '';
+    const tableData = node.data.table;
+    const preComp = tableData.pre_computation;
+    const postComp = tableData.post_computation;
+    const preCodeValue = preComp?.code || tableData.pre_computation_code || '';
+    const postCodeValue = postComp?.code || tableData.post_computation_code || '';
 
-    const conditionGroups = ((tableData?.condition_groups || []) as CdtConditionGroupUi[])
+    const conditionGroups = (tableData.condition_groups ?? [])
         .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
         .map((g, idx) => {
             // Resolve next_node only when route_code is present.
@@ -176,7 +159,7 @@ function buildCdtNodePayload(
                 // this same save connects in one payload. `prompt` (numeric id) is
                 // still sent for back-compat; the backend prefers prompt_key.
                 prompt_key: g.prompt_id ?? null,
-                prompt: (tableData?.prompts?.[g.prompt_id ?? ''] as PromptConfig | undefined)?.backendId ?? null,
+                prompt: tableData.prompts?.[g.prompt_id ?? '']?.backendId ?? null,
                 manipulation: g.manipulation || null,
                 continue_flag: !!(g.continue_flag ?? g.continue),
                 route_code: g.route_code || null,
@@ -184,12 +167,12 @@ function buildCdtNodePayload(
                 next_node_id: resolved.backendId,
                 ...(resolved.tempId ? { next_node_temp_id: resolved.tempId } : {}),
                 dock_visible: g.dock_visible !== false,
-                field_expressions: serializeCDTFieldExpressions(g.field_expressions || {}),
-                field_manipulations: (g.field_manipulations || {}) as Record<string, string>,
+                field_expressions: serializeCDTFieldExpressions(g.field_expressions ?? {}),
+                field_manipulations: g.field_manipulations ?? {},
             };
         });
 
-    let defaultTargetUuid: string | null = tableData?.default_next_node ?? null;
+    let defaultTargetUuid: string | null = tableData.default_next_node ?? null;
     if (!defaultTargetUuid) {
         const conn = connections.find(
             (c) => c.sourceNodeId === node.id && c.sourcePortId === `${node.id}_decision-default`
@@ -197,7 +180,7 @@ function buildCdtNodePayload(
         if (conn) defaultTargetUuid = conn.targetNodeId;
     }
 
-    let errorTargetUuid: string | null = tableData?.next_error_node ?? null;
+    let errorTargetUuid: string | null = tableData.next_error_node ?? null;
     if (!errorTargetUuid) {
         const conn = connections.find(
             (c) => c.sourceNodeId === node.id && c.sourcePortId === `${node.id}_decision-error`
@@ -216,24 +199,24 @@ function buildCdtNodePayload(
                 ? null
                 : {
                       code: preCodeValue,
-                      libraries: preComp.libraries || [],
+                      libraries: preComp?.libraries ?? [],
                       entrypoint: 'main',
                       global_kwargs: {},
                   },
-        pre_input_map: preComp.input_map || tableData?.pre_input_map || {},
-        pre_output_variable_path: preComp.output_variable_path || tableData?.pre_output_variable_path || null,
+        pre_input_map: preComp?.input_map ?? tableData.pre_input_map ?? {},
+        pre_output_variable_path: preComp?.output_variable_path || tableData.pre_output_variable_path || null,
         post_python_code:
             postCodeValue.trim() === ''
                 ? null
                 : {
                       code: postCodeValue,
-                      libraries: postComp.libraries || [],
+                      libraries: postComp?.libraries ?? [],
                       entrypoint: 'main',
                       global_kwargs: {},
                   },
-        post_input_map: postComp.input_map || tableData?.post_input_map || {},
-        post_output_variable_path: postComp.output_variable_path || tableData?.post_output_variable_path || null,
-        prompt_configs: Object.entries((tableData?.prompts || {}) as Record<string, PromptConfig>).map(
+        post_input_map: postComp?.input_map ?? tableData.post_input_map ?? {},
+        post_output_variable_path: postComp?.output_variable_path || tableData.post_output_variable_path || null,
+        prompt_configs: Object.entries(tableData.prompts ?? {}).map(
             ([key, cfg]) =>
                 ({
                     prompt_key: key,
@@ -244,7 +227,7 @@ function buildCdtNodePayload(
                     variable_mappings: cfg.variable_mappings ?? {},
                 }) satisfies CreatePromptConfigRequest
         ),
-        default_llm_config: tableData?.default_llm_config ?? null,
+        default_llm_config: tableData.default_llm_config ?? null,
         ...(defaultRef.backendId != null ? { default_next_node_id: defaultRef.backendId } : {}),
         ...(defaultRef.tempId != null ? { default_next_node_temp_id: defaultRef.tempId } : {}),
         ...(errorRef.backendId != null ? { next_error_node_id: errorRef.backendId } : {}),

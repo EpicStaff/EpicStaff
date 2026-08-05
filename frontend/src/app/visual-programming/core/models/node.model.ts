@@ -10,6 +10,7 @@ import { ScheduleTriggerNodeData } from '../../../pages/flows-page/components/fl
 import { TelegramTriggerNodeField } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { GetLlmConfigRequest } from '../../../shared/models/llms/llm-config.model';
 import { NodeType } from '../enums/node-type';
+import { ClassificationDecisionTableData } from './classification-decision-table.model';
 import { DecisionTableNode } from './decision-table.model';
 import { ViewPort } from './port.model';
 import { WebhookTriggerModel } from './webhook-trigger.model';
@@ -130,7 +131,7 @@ export interface ClassificationDecisionTableNodeModel extends BaseNodeModel {
     type: NodeType.CLASSIFICATION_TABLE;
     data: {
         name?: string;
-        table: any;
+        table: ClassificationDecisionTableData;
     };
 }
 
@@ -154,6 +155,12 @@ export interface CodeAgentNodeModel extends BaseNodeModel {
     stream_config?: Record<string, boolean>;
 }
 
+// TODO check data
+export interface KnowledgeRetrieverNodeModel extends BaseNodeModel {
+    type: NodeType.KNOWLEDGE_RETRIEVER;
+    data: null;
+}
+
 export type NodeModel =
     | AgentNodeModel
     | TaskNodeModel
@@ -173,4 +180,5 @@ export type NodeModel =
     | ScheduleTriggerNodeModel
     | ClassificationDecisionTableNodeModel
     | EndNodeModel
-    | CodeAgentNodeModel;
+    | CodeAgentNodeModel
+    | KnowledgeRetrieverNodeModel;

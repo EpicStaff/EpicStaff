@@ -7,6 +7,7 @@ import { ConditionalEdgeNodePanelComponent } from '../../components/node-panels/
 import { DecisionTableNodePanelComponent } from '../../components/node-panels/decision-table-node-panel/decision-table-node-panel.component';
 import { EndNodePanelComponent } from '../../components/node-panels/end-node-panel/end-node-panel.component';
 import { FileExtractorNodePanelComponent } from '../../components/node-panels/file-extractor-node-panel/file-extractor-node-panel.component';
+import { KnowledgeRetrieverNodePanelComponent } from '../../components/node-panels/knowledge-retriever-node-panel/knowledge-retriever-node-panel.component';
 import { ProjectNodePanelComponent } from '../../components/node-panels/project-node-panel/project-node-panel.component';
 import { PythonNodePanelComponent } from '../../components/node-panels/python-node-panel/python-node-panel.component';
 import { ScheduleTriggerNodePanelComponent } from '../../components/node-panels/schedule-trigger-node-panel/schedule-trigger-node-panel.component';
@@ -34,5 +35,6 @@ export const PANEL_COMPONENT_MAP: Record<string, Type<NodePanel<NodeModel>>> = {
     [NodeType.AUDIO_TO_TEXT]: asNodePanelComponent(AudioToTextNodePanelComponent),
     [NodeType.SCHEDULE_TRIGGER]: asNodePanelComponent(ScheduleTriggerNodePanelComponent),
     [NodeType.CODE_AGENT]: asNodePanelComponent(CodeAgentNodePanelComponent),
+    [NodeType.KNOWLEDGE_RETRIEVER]: asNodePanelComponent(KnowledgeRetrieverNodePanelComponent),
     // start: StartNodePanelComponent,
 };

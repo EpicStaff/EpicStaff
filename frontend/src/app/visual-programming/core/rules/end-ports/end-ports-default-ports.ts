@@ -21,6 +21,7 @@ export const DEFAULT_END_NODE_PORTS: BasePort[] = [
             'code-agent-out',
             'decision-default',
             'decision-error',
+            'knowledge-retriever-out',
         ],
         position: 'left',
         color: '#d3d3d3',
