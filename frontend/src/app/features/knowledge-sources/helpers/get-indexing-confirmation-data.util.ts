@@ -1,6 +1,7 @@
 import { ConfirmationDialogData } from '@shared/components';
 
 export interface IndexingDocumentInfo {
+    configId: number;
     fileName: string;
     wasIndexed: boolean;
 }

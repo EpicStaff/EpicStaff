@@ -5,10 +5,8 @@ import { IndexingDocumentInfo } from '../helpers/get-indexing-confirmation-data.
 
 export interface RagConfiguration {
     getConfigurationData(): unknown;
-    getDocumentConfigIds(): number[];
     getIndexingDocuments(): IndexingDocumentInfo[];
-    // TODO check is new fields below needed
-    shouldSaveConfig(): boolean;
+    shouldSaveConfig?(): boolean;
     setServerValidationErrors?(errors: ApiErrorItem[]): void;
     // Optional list of document_ids that must be deleted (bulk) before saving
     // the config and starting indexing. Empty / undefined = nothing to delete.

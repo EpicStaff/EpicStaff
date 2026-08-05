@@ -10,7 +10,7 @@ import { catchError, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { RAG_TYPE_CONFIG } from '../../constants/constants';
-import { getIndexingConfirmationData } from '../../helpers/get-indexing-confirmation-data.util';
+import { getIndexingConfirmationData, IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
 import { RagType } from '../../models/base-rag.model';
 import { CreateCollectionStep } from '../../models/collection.model';
 import { DisplayedListDocument } from '../../models/document.model';
@@ -186,18 +186,22 @@ export class CreateCollectionDialogComponent {
 
         const componentInstance: RagConfiguration = this.strategyComponent['_componentRef'].instance;
         const componentData = componentInstance.getConfigurationData();
-        const configIds = componentInstance.getDocumentConfigIds();
-        const shouldSave = componentInstance.shouldSaveConfig();
+        const shouldSave = componentInstance.shouldSaveConfig?.() ?? false;
         const pendingDeleteIds = componentInstance.getPendingDeleteDocumentIds?.() ?? [];
 
         if (!componentData) {
             return of(false);
         }
 
-        let indexingDocs = componentInstance.getIndexingDocuments();
-        if (!indexingDocs.length) {
-            indexingDocs = this.selectedDocuments().map((d) => ({ fileName: d.file_name, wasIndexed: false }));
-        }
+        const realIndexingDocs = componentInstance.getIndexingDocuments();
+        const configIds = realIndexingDocs.map((d) => d.configId);
+        const indexingDocs: IndexingDocumentInfo[] = realIndexingDocs.length
+            ? realIndexingDocs
+            : this.selectedDocuments().map((d) => ({
+                  configId: d.document_id!,
+                  fileName: d.file_name,
+                  wasIndexed: false,
+              }));
 
         const savePending$: Observable<unknown> = componentInstance.uploadPendingForChecked?.() ?? of(null);
 
