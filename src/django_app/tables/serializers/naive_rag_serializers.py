@@ -466,6 +466,21 @@ class PreviewChunksByIdsResponseSerializer(serializers.Serializer):
 
 class ChunkingConfigSerializer(serializers.Serializer):
     chunk_strategy = serializers.ChoiceField(choices=NaiveRagDocumentConfig.ChunkStrategy.choices)
-    chunk_size = serializers.IntegerField(min_value=0)
-    chunk_overlap = serializers.IntegerField(min_value=0)
+    chunk_size = serializers.IntegerField(
+        min_value=MIN_CHUNK_SIZE,
+        max_value=MAX_CHUNK_SIZE,
+    )
+    chunk_overlap = serializers.IntegerField(
+        min_value=MIN_CHUNK_OVERLAP,
+        max_value=MAX_CHUNK_OVERLAP,
+    )
     additional_params = serializers.JSONField(default=dict)
+
+    def validate(self, attrs):
+        chunk_size = attrs['chunk_size']
+        chunk_overlap = attrs['chunk_overlap']
+        if chunk_overlap >= chunk_size:
+            raise serializers.ValidationError(
+                {"chunk_overlap": ["'chunk_overlap' must be less then 'chunk_size'"]}
+            )
+        return attrs
