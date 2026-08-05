@@ -776,54 +776,54 @@ class QuickstartView(APIView):
         serializer = QuickstartSerializer(
             data=request.data, context={"request": request}
         )
-        if serializer.is_valid():
-            provider = serializer.validated_data["provider"]
-            api_key = serializer.validated_data.get("api_key")
-            secret = serializer.validated_data.get("api_key_secret_id")
-            org_id = self._org_context.resolve(
-                request=request, view_kwargs=getattr(self, "kwargs", {})
-            )
-            assert_org_permission(
-                user=request.user,
-                org_id=org_id,
-                resource_type=self.rbac_resource_type,
-                action=self.rbac_required_action,
+        serializer.is_valid(raise_exception=True)
+
+        provider = serializer.validated_data["provider"]
+        api_key = serializer.validated_data.get("api_key")
+        secret = serializer.validated_data.get("api_key_secret_id")
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=self.rbac_resource_type,
+            action=self.rbac_required_action,
+        )
+
+        result = quickstart_service.quickstart(
+            provider=provider,
+            api_key=api_key,
+            secret=secret,
+            org_id=org_id,
+        )
+
+        if not result.get("success", False):
+            return Response(
+                data={"detail": "Error quickstart", "error": result.get("error")},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-            result = quickstart_service.quickstart(
-                provider=provider,
-                api_key=api_key,
-                secret=secret,
-                org_id=org_id,
-            )
-
-            if result.get("success", False):
-                config_name = result["config_name"]
-                configs = QuickstartConfigSerializer(
-                    {
-                        "config_name": config_name,
-                        "llm_config": result["llm_config"],
-                        "embedding_config": result["embedding_config"],
-                        "realtime_config": result["realtime_config"],
-                        "realtime_transcription_config": result[
-                            "realtime_transcription_config"
-                        ],
-                    }
-                ).data
-                return Response(
-                    data={
-                        "detail": "Quickstart initiated successfully!",
-                        "config_name": config_name,
-                        "configs": configs,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            else:
-                return Response(
-                    data={"detail": "Error quickstart", "error": result.get("error")},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        config_name = result["config_name"]
+        configs = QuickstartConfigSerializer(
+            {
+                "config_name": config_name,
+                "llm_config": result["llm_config"],
+                "embedding_config": result["embedding_config"],
+                "realtime_config": result["realtime_config"],
+                "realtime_transcription_config": result[
+                    "realtime_transcription_config"
+                ],
+            }
+        ).data
+        return Response(
+            data={
+                "detail": "Quickstart initiated successfully!",
+                "config_name": config_name,
+                "configs": configs,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class QuickstartApplyView(APIView):

@@ -26,6 +26,16 @@ from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.secrets import secret_encryption, secret_service
 
 
+def error_text(resp):
+    """Validation details as one string, whatever shape the body has.
+
+    The view raises ValidationError, and utils/exception_handler.py flattens every
+    APIException into {"status_code", "code", "message"} — so the per-field dict
+    DRF produces is not what reaches the client.
+    """
+    return str(resp.data)
+
+
 @pytest.fixture
 def org(db):
     return Organization.objects.create(name="Org QuickstartReuse")
@@ -203,10 +213,8 @@ def test_both_credential_forms_rejected(client_a, org, openai_seeded, quickstart
         format="json",
     )
 
-    # This view returns serializer.errors raw (views.py:815), so the project's
-    # flattening exception handler never runs — assert on the DRF error dict.
     assert resp.status_code == 400, resp.content
-    assert "not both" in str(resp.data["non_field_errors"])
+    assert "not both" in error_text(resp)
     assert not LLMConfig.objects.filter(custom_name="quickstart_openai").exists()
 
 
@@ -215,7 +223,7 @@ def test_neither_credential_form_rejected(client_a, openai_seeded, quickstart_ur
     resp = client_a.post(quickstart_url, {"provider": "openai"}, format="json")
 
     assert resp.status_code == 400, resp.content
-    assert "api_key_secret_id" in str(resp.data["non_field_errors"])
+    assert "api_key_secret_id" in error_text(resp)
     assert not LLMConfig.objects.filter(custom_name="quickstart_openai").exists()
 
 
@@ -228,7 +236,9 @@ def test_blank_api_key_rejected(client_a, openai_seeded, quickstart_url):
     )
 
     assert resp.status_code == 400, resp.content
-    assert "api_key" in resp.data
+    # "may not be blank", not the exactly-one-of message: the field-level check
+    # rejects "" before validate() ever sees it.
+    assert "may not be blank" in error_text(resp)
     assert not LLMConfig.objects.filter(custom_name="quickstart_openai").exists()
 
 
@@ -245,7 +255,7 @@ def test_foreign_org_secret_rejected(
     )
 
     assert resp.status_code == 400, resp.content
-    assert "does not exist" in str(resp.data["api_key_secret_id"])
+    assert "does not exist" in error_text(resp)
     assert not LLMConfig.objects.filter(custom_name="quickstart_openai").exists()
     assert not Secret.objects.filter(org=org).exists()
 
@@ -275,6 +285,4 @@ def test_foreign_secret_error_matches_a_nonexistent_id(
     def without_digits(detail):
         return "".join(ch for ch in str(detail) if not ch.isdigit())
 
-    assert without_digits(a.data["api_key_secret_id"]) == without_digits(
-        b.data["api_key_secret_id"]
-    )
+    assert without_digits(error_text(a)) == without_digits(error_text(b))
