@@ -40,9 +40,13 @@ def build_chunker(
         ),
     ],
 )
-async def test_chunking_by_regex_without_overlap(regex, text, chunk_size, expected_chunks):
+async def test_chunking_by_regex_without_overlap(
+    regex, text, chunk_size, expected_chunks
+):
     expected_chunks = [PreviewChunk(text=t) for t in expected_chunks]
-    chunker = build_chunker(chunk_size=chunk_size, extra={"character": {"regex": regex}})
+    chunker = build_chunker(
+        chunk_size=chunk_size, extra={"character": {"regex": regex}}
+    )
     chunks = await chunker.chunk(text)
     assert chunks == expected_chunks
 
@@ -90,10 +94,14 @@ async def test_chunking_raises_error_for_invalid_data(text):
         await chunker.chunk(text)
 
 
-@pytest.mark.parametrize("extra", [{}, {"character": {}}, {"character": {"regex": None}}])
-async def test_chunking_uses_default_regexp(extra):
+@pytest.mark.parametrize(
+    "extra", [{}, {"character": {}}, {"character": {"regex": None}}]
+)
+async def test_no_regex_windows_whole_text(extra):
+    # With no separator the whole text is windowed by chunk_size, not split away.
     chunker = build_chunker(chunk_size=4, chunk_overlap=0, extra=extra)
-    assert chunker.regex_pattern == r".+"
+    chunks = await chunker.chunk("12345678")
+    assert chunks == [PreviewChunk(text=t) for t in ["1234", "5678"]]
 
 
 @pytest.mark.parametrize(
@@ -120,7 +128,9 @@ async def test_chunking_uses_default_regexp(extra):
         ),
     ],
 )
-async def test_short_part_is_kept_as_single_chunk(text, chunk_size, chunk_overlap, expected_chunk):
+async def test_short_part_is_kept_as_single_chunk(
+    text, chunk_size, chunk_overlap, expected_chunk
+):
     chunker = build_chunker(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
@@ -131,14 +141,18 @@ async def test_short_part_is_kept_as_single_chunk(text, chunk_size, chunk_overla
 
 
 async def test_short_part_not_lost_among_normal_parts():
-    chunker = build_chunker(chunk_size=4, chunk_overlap=3, extra={"character": {"regex": ","}})
+    chunker = build_chunker(
+        chunk_size=4, chunk_overlap=3, extra={"character": {"regex": ","}}
+    )
     chunks = await chunker.chunk("ab,cdefgh")
     assert chunks == [PreviewChunk(text=t) for t in ["ab", "cdef", "defg", "efgh"]]
 
 
 async def test_chunking_is_running_in_process():
     text = "12345678-qwertyui,ASDFGHJK"
-    chunker = build_chunker(chunk_size=4, chunk_overlap=2, extra={"character": {"regex": r"-|,"}})
+    chunker = build_chunker(
+        chunk_size=4, chunk_overlap=2, extra={"character": {"regex": r"-|,"}}
+    )
     inline_chunks = await chunker.chunk(text)
     result, worker_pid = await offload_to_process(lambda: chunker.chunk(text))
     assert result == inline_chunks

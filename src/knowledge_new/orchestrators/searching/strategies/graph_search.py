@@ -150,5 +150,14 @@ class GraphSearch(AbstractSearch):
         reader = DataReader(table_provider)
         files = {n: await getattr(reader, n)() for n in required_files}
         if optional_files:
-            files.update({n: await getattr(reader, n, None)() for n in optional_files})
+            files.update(
+                {
+                    n: (
+                        await getattr(reader, n)()
+                        if await table_provider.has(n)
+                        else None
+                    )
+                    for n in optional_files
+                }
+            )
         return files
