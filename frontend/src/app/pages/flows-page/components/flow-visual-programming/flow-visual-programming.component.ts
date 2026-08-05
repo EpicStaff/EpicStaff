@@ -234,8 +234,41 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 }
 
                 this.flowService.applyConnectionIdMap(tempIdMap, event.graph_id);
+                // Remap first: this assigns freshly-created pks into the undo/redo
+                // stacks. Invalidation (below) must run after — reversed, a pk that
+                // was just legitimately assigned by this same flush could be wrongly
+                // cleared again.
                 this.undoRedoService.remapTempIds(tempIdMap);
             }
+
+            const deletedIds = event.deleted_ids;
+            if (deletedIds && Object.keys(deletedIds).length > 0) {
+                const deletedConnectionIds = new Set<number>();
+                const deletedNodeIds = new Set<number>();
+                for (const [key, ids] of Object.entries(deletedIds)) {
+                    // Node pks and edge pks are drawn from independent BigAutoField
+                    // sequences, so they can collide numerically. Misclassifying a
+                    // deleted id into the wrong set is worse than a missed
+                    // invalidation: it can null the `data` of a still-live entity
+                    // whose id happens to match, causing it to re-enter the backend
+                    // as a create and orphan its real row. An unrecognized key is
+                    // therefore skipped entirely rather than defaulted to either
+                    // set — a stale pk surviving in the undo stack is the strictly
+                    // safer failure mode.
+                    let targetSet: Set<number> | null = null;
+                    if (key === 'edge_ids' || key === 'conditional_edge_ids') {
+                        targetSet = deletedConnectionIds;
+                    } else if (key.endsWith('_node_ids')) {
+                        targetSet = deletedNodeIds;
+                    }
+                    if (!targetSet) continue;
+                    for (const id of ids) targetSet.add(id);
+                }
+                if (deletedNodeIds.size > 0 || deletedConnectionIds.size > 0) {
+                    this.undoRedoService.invalidateDeletedIds(deletedNodeIds, deletedConnectionIds);
+                }
+            }
+
             this.savedFlowState.set(cloneFlowState(this.currentFlowState()));
         });
 

@@ -150,6 +150,13 @@ export type GraphSavedMessage = {
     saved_by: EditorInfo;
     saved_at: string;
     temp_id_map: Record<string, number>;
+    /**
+     * Backend delete-accumulator keys (`edge_ids`, `conditional_edge_ids`, and one
+     * per node type such as `python_node_ids`, `crew_node_ids`, `start_node_ids`, …)
+     * mapped to the real DB pks whose deletion was just persisted by this flush.
+     * Optional — older backends won't send it.
+     */
+    deleted_ids?: Record<string, number[]>;
 };
 
 type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting';

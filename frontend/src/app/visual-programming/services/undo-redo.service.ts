@@ -108,6 +108,62 @@ export class UndoRedoService {
         this.redoStack.update((s) => s.map(fixEntry));
     }
 
+    /**
+     * Scrubs backend pks that were just hard-deleted out of both stacks, so a
+     * later undo/redo re-creates the entity (temp_id create) instead of sending
+     * an update against a row that no longer exists. Inverse of `remapTempIds`:
+     * that method only ever adds pks, this one only ever removes them.
+     *
+     * Canvas ids are left untouched — only `backendId` / `data` are cleared.
+     */
+    public invalidateDeletedIds(deletedNodeIds: ReadonlySet<number>, deletedConnectionIds: ReadonlySet<number>): void {
+        if (deletedNodeIds.size === 0 && deletedConnectionIds.size === 0) return;
+
+        const fixNode = (n: NodeModel | null): NodeModel | null => {
+            if (!n) return n;
+            if (n.backendId != null && deletedNodeIds.has(n.backendId)) return { ...n, backendId: null };
+            return n;
+        };
+        const fixConn = (c: ConnectionModel | null): ConnectionModel | null => {
+            if (!c) return c;
+            if (c.data?.id != null && deletedConnectionIds.has(c.data.id)) return { ...c, data: null };
+            return c;
+        };
+
+        const fixEntry = (e: UndoEntry): UndoEntry => {
+            let changed = false;
+
+            const nodes = e.nodes.map((nc) => {
+                const before = fixNode(nc.before);
+                const after = fixNode(nc.after);
+                if (before !== nc.before || after !== nc.after) changed = true;
+                return before !== nc.before || after !== nc.after ? { before, after } : nc;
+            });
+
+            const connections = e.connections.map((cc) => {
+                const before = fixConn(cc.before);
+                const after = fixConn(cc.after);
+                if (before !== cc.before || after !== cc.after) changed = true;
+                return before !== cc.before || after !== cc.after ? { before, after } : cc;
+            });
+
+            return changed ? { nodes, connections } : e;
+        };
+
+        const fixStack = (stack: UndoEntry[]): UndoEntry[] => {
+            let changed = false;
+            const next = stack.map((entry) => {
+                const fixed = fixEntry(entry);
+                if (fixed !== entry) changed = true;
+                return fixed;
+            });
+            return changed ? next : stack;
+        };
+
+        this.undoStack.update((s) => fixStack(s));
+        this.redoStack.update((s) => fixStack(s));
+    }
+
     public clear(): void {
         this.undoStack.set([]);
         this.redoStack.set([]);
