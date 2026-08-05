@@ -98,7 +98,7 @@ class GraphSearch(AbstractSearch):
 
         if request.search_config.method not in self._SEARCH_MAP:
             raise UnsupportedError(
-                that='graph search method',
+                that="graph search method",
                 got=request.search_config.method,
             )
 

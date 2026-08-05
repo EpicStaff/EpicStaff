@@ -1,6 +1,6 @@
 from errors import NoPreviewChunksProducedError
 from loguru import logger
-from models import PrechunkRequest, PrechunkResponse, ChunkingConfig
+from models import ChunkingConfig, PrechunkRequest, PrechunkResponse
 from orchestrators.prechunking.base import AbstractPrechunker
 from services.chunkers import build_chunker
 from services.file_text_extractors import build_file_text_extractor
@@ -34,8 +34,7 @@ class NaivePrechunker(AbstractPrechunker):
 
         async with self.uow:
             await self.uow.naive_rag_repo.save_preview_chunks(
-                document_id=request.document_id,
-                chunks=preview_chunks
+                document_id=request.document_id, chunks=preview_chunks
             )
             await self.uow.commit()
 
