@@ -21,6 +21,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from agents.models import AgentDefaultSurface, AgentDefinition, Surface, SurfacePlace
+from tables.models.rbac_models import Organization
 from agents.models.surface_models import (
     SurfaceGraphBasicSearchConfig,
     SurfaceGraphLocalSearchConfig,
@@ -43,6 +44,11 @@ from tests.fixtures import *  # noqa: F401,F403
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def org_b(db):
+    return Organization.objects.create(name="Org B")
 
 
 @pytest.fixture
@@ -338,3 +344,29 @@ def test_init_realtime_unknown_agent_definition_id_returns_400(auth_client):
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_init_realtime_cross_org_agent_definition_rejected(
+    auth_client, org_b, openai_realtime_model_config, realtime_transcription_config
+):
+    """An org_a caller must not be able to init a realtime session for another
+    org's AgentDefinition by guessing/reusing its RealtimeAgentDefinition pk."""
+    other_agent_definition = AgentDefinition.objects.create(
+        organization=org_b, name="other-org-agent"
+    )
+    other_rt_agent_definition = RealtimeAgentDefinition.objects.create(
+        agent_definition=other_agent_definition,
+        realtime_config=openai_realtime_model_config,
+        realtime_transcription_config=realtime_transcription_config,
+    )
+
+    url = reverse("init-realtime")
+    response = auth_client.post(
+        url,
+        data={"agent_definition_id": other_rt_agent_definition.pk},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "agent_definition_id" in str(response.data)
