@@ -208,7 +208,6 @@ class NaiveRagService:
         if chunk_overlap >= chunk_size:
             reason = "'chunk_overlap' must be less than 'chunk_size'"
             raise InvalidChunkParametersException(
-                detail=reason,
                 errors=[{"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}],
             )
 
@@ -226,7 +225,6 @@ class NaiveRagService:
                 f" Allowed: {', '.join(sorted(allowed))}"
             )
             raise InvalidChunkParametersException(
-                detail=reason,
                 errors=[ {"field": "chunk_strategy", "value": chunk_strategy, "reason": reason}],
             )
 
