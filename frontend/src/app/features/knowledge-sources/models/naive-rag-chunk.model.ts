@@ -1,4 +1,5 @@
 import { NaiveRagChunkStrategy } from '../enums/naive-rag-chunk-strategy';
+import { NaiveRagAdditionalParams } from './naive-rag-document.model';
 
 export type DocumentChunkingProcessStatus = 'completed' | 'canceled' | 'failed' | 'timeout';
 
@@ -14,10 +15,17 @@ export type DocumentChunksStatus =
     | 'chunks_ready'
     | 'chunks_outdated';
 
+export interface ChunkedWithParams {
+    chunk_strategy: NaiveRagChunkStrategy;
+    chunk_size: number;
+    chunk_overlap: number;
+    additional_params: NaiveRagAdditionalParams;
+}
+
 export interface DocumentChunkingState {
     id: number;
     status: DocumentChunksStatus;
-    preOutdatedStatus?: DocumentChunksStatus;
+    chunkedWith?: ChunkedWithParams;
     chunkOverlap: number;
     chunkSize: number;
     chunkStrategy: NaiveRagChunkStrategy;

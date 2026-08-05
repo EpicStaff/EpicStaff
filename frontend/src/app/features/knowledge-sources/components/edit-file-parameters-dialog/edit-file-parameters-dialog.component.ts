@@ -1,9 +1,18 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject, signal, ViewChild } from '@angular/core';
+import {
+    AfterViewInit,
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    signal,
+    ViewChild,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 
-import { NaiveRagChunkStrategy } from '../../enums/naive-rag-chunk-strategy';
-import { NaiveRagAdditionalParams, UpdateNaiveRagDocumentDtoRequest } from '../../models/naive-rag-document.model';
+import { UpdateNaiveRagDocumentDtoRequest } from '../../models/naive-rag-document.model';
 import { NaiveRagDocumentsStorageService } from '../../services/naive-rag-documents-storage.service';
 import { DocumentChunksSectionComponent } from '../document-chunks-section/document-chunks-section.component';
 import { TableDocument } from '../naive-rag-configuration/configuration-table/configuration-table.interface';
@@ -16,8 +25,9 @@ import { DocumentConfigComponent } from './document-config/document-config.compo
     imports: [AppSvgIconComponent, DocumentConfigComponent, DocumentChunksSectionComponent, ButtonComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class EditFileParametersDialogComponent {
+export class EditFileParametersDialogComponent implements AfterViewInit {
     private dialogRef = inject(DialogRef);
+    private destroyRef = inject(DestroyRef);
     private documentsStorageService = inject(NaiveRagDocumentsStorageService);
     readonly data: { ragId: number; collectionId: number; ragDocumentId: number; allDocumentIds: number[] } =
         inject(DIALOG_DATA);
@@ -36,6 +46,12 @@ export class EditFileParametersDialogComponent {
     isNextDisabled = computed(
         () => this.currentIndex() === -1 || this.currentIndex() >= this.data.allDocumentIds.length - 1
     );
+
+    ngAfterViewInit(): void {
+        this.formSection.form.valueChanges
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.captureFormAsPending(this.selectedDocumentId()));
+    }
 
     nextDocument() {
         const index = this.currentIndex();
@@ -65,13 +81,13 @@ export class EditFileParametersDialogComponent {
     }
 
     private captureFormAsPending(documentId: number): boolean {
-        const strategy = this.formSection.selectedStrategy() as NaiveRagChunkStrategy | null;
+        const strategy = this.formSection.selectedStrategy();
         const form = this.formSection.form;
         const mainParams = form.get('strategyParams')?.get('mainParams');
         const additionalParams = form.get('strategyParams')?.get('additionalParams');
 
-        if (!mainParams || !additionalParams || !strategy) return false;
-        if (mainParams.invalid || additionalParams.invalid) return false;
+        if (!mainParams || !additionalParams || !strategy || additionalParams.invalid || mainParams.invalid)
+            return false;
 
         const strategyChanged = strategy !== this.document().chunk_strategy;
         const userEdited = mainParams.dirty || additionalParams.dirty || strategyChanged;
@@ -79,19 +95,22 @@ export class EditFileParametersDialogComponent {
 
         const baseline = this.document();
         const baselineAdditional = baseline.additional_params;
-        const baselineStrategyBlock = (baselineAdditional?.[strategy] ?? {}) as Record<string, unknown>;
 
         const patch: UpdateNaiveRagDocumentDtoRequest = {
             chunk_strategy: strategy,
             ...mainParams.value,
-            additional_params: {
+        };
+
+        if (additionalParams.dirty || strategyChanged) {
+            const baselineStrategyBlock = baselineAdditional?.[strategy] ?? {};
+            patch.additional_params = {
                 ...baselineAdditional,
                 [strategy]: {
                     ...baselineStrategyBlock,
-                    ...(additionalParams.value as Record<string, unknown>),
+                    ...additionalParams.value,
                 },
-            } as Partial<NaiveRagAdditionalParams>,
-        };
+            };
+        }
 
         this.documentsStorageService.setPendingFields(documentId, patch);
         return true;

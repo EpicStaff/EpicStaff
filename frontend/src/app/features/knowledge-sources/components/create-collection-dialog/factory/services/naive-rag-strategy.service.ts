@@ -1,6 +1,6 @@
 import { computed, Injectable, Signal, signal, WritableSignal } from '@angular/core';
-import { Observable } from 'rxjs';
-import { map, tap } from 'rxjs/operators';
+import { Observable, of } from 'rxjs';
+import { map, switchMap, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../services/notifications';
 import { CreateNaiveRag } from '../../../../models/naive-rag.model';
@@ -41,24 +41,31 @@ export class NaiveRagStrategy implements RagCreationStrategy {
         );
     }
 
-    startIndexing(data?: { configIds: number[] }): Observable<boolean> {
+    startIndexing(data?: { configIds: number[]; pendingDeleteIds?: number[] }): Observable<boolean> {
         const naiveRagId = this.naiveRag.naive_rag_id;
         const configIds =
             data?.configIds ?? this.documentsStorageService.documents().map((d) => d.naive_rag_document_id);
 
-        return this.ragIndexingService
-            .startIndexing({
-                rag_id: naiveRagId,
-                rag_type: 'naive',
-                document_config_ids: configIds,
-            })
-            .pipe(
-                tap(() => {
-                    this.toastService.success('Indexing started');
-                    this.collectionsStorage.markConfigsAsProcessing(configIds);
-                }),
-                map(() => true)
-            );
+        // Flush the soft-delete set (if any) before indexing runs, mirroring
+        // the update-flow order in `NaiveRagConfigurationDialog.runIndexing`.
+        const delete$: Observable<unknown> = data?.pendingDeleteIds?.length
+            ? this.documentsStorageService.bulkDeletePending(naiveRagId)
+            : of(null);
+
+        return delete$.pipe(
+            switchMap(() =>
+                this.ragIndexingService.startIndexing({
+                    rag_id: naiveRagId,
+                    rag_type: 'naive',
+                    document_config_ids: configIds,
+                })
+            ),
+            tap(() => {
+                this.toastService.success('Indexing started');
+                this.collectionsStorage.markConfigsAsProcessing(configIds);
+            }),
+            map(() => true)
+        );
     }
 
     stopIndexing() {
