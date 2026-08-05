@@ -9,6 +9,7 @@ class SecretSerializer(serializers.ModelSerializer):
     # Write-only and required: a Secret is created with its value and never
     # updated, so there is no "omit to keep the existing one" case.
     value = serializers.CharField(write_only=True)
+    usage_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Secret
@@ -22,6 +23,7 @@ class SecretSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
+            "usage_count",
         ]
         read_only_fields = [
             "id",
@@ -42,3 +44,8 @@ class SecretSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         text = validated_data.pop("value")
         return secret_service.create(text=text, **validated_data)
+
+    def get_usage_count(self, secret) -> int:
+        """Distinct resources referencing this secret."""
+
+        return self.context["usage_count_provider"].count_for(secret_id=secret.pk)

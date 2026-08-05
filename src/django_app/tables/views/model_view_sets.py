@@ -204,6 +204,8 @@ from tables.services.rbac.permissions import (
 )
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
+from tables.services.secrets import SecretUsageCountProvider, secret_usage_service
+from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     validate_classification_condition_group_names,
 )
@@ -1936,9 +1938,33 @@ class SecretViewSet(
 
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "usage": Permission.READ}
     queryset = Secret.objects.all()
     serializer_class = SecretSerializer
+
+    @extend_schema(**SECRET_USAGE_GET)
+    @action(detail=True, methods=["get"], url_path="usage")
+    def usage(self, request, pk=None):
+        """Where this secret is referenced, for the deletion-safety dialog.
+
+        get_object() goes through OrgScopedViewSetMixin, so another org's secret
+        is a 404 rather than a 403 — a 403 would confirm the row exists.
+        """
+        secret = self.get_object()
+        return Response(secret_usage_service.summary(secret=secret))
+
+    def get_serializer_context(self):
+        """Give the serializer one lazily-computed usage provider per request.
+
+        PAGE_SIZE is 500000, so the org-wide count set and the page's are the same
+        rows in practice; computing once org-wide keeps the query count flat as the
+        number of secrets grows.
+        """
+        context = super().get_serializer_context()
+        context["usage_count_provider"] = SecretUsageCountProvider(
+            org_id=self.get_active_org_id()
+        )
+        return context
 
 
 class VoiceSettingsView(generics.RetrieveUpdateAPIView):

@@ -15,6 +15,11 @@ from tables.services.secrets.exceptions import (
 )
 from tables.services.secrets.secret_resolver import SecretResolver, secret_resolver
 from tables.services.secrets.secret_service import SecretService, secret_service
+from tables.services.secrets.usage_service import (
+    SecretUsageCountProvider,
+    SecretUsageService,
+    secret_usage_service,
+)
 
 __all__ = [
     "GET_SECRET_FUNC",
@@ -30,4 +35,7 @@ __all__ = [
     "secret_resolver",
     "SecretService",
     "secret_service",
+    "SecretUsageCountProvider",
+    "SecretUsageService",
+    "secret_usage_service",
 ]
