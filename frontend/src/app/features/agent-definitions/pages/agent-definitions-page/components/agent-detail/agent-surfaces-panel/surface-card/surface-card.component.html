@@ -2,6 +2,7 @@
     class="surface-card"
     [class.surface-card--readonly]="readOnly()"
     [class.surface-card--expanded]="expanded() || hideHeader()"
+    [class.surface-card--flat]="flat()"
     [class.surface-card--drop-target]="fileDropActive()"
     appDragHover
     (dragHover)="onStorageDragHover()"
@@ -228,7 +229,7 @@
                 >
                     <app-svg-icon
                         icon="tools"
-                        size="14px"
+                        size="12px"
                     />
                     Tools
                 </button>
@@ -240,8 +241,8 @@
                     (click)="selectTab('files')"
                 >
                     <app-svg-icon
-                        icon="folder"
-                        size="14px"
+                        icon="files-tab"
+                        size="12px"
                     />
                     Files
                 </button>
@@ -253,8 +254,8 @@
                     (click)="selectTab('collections')"
                 >
                     <app-svg-icon
-                        icon="file"
-                        size="14px"
+                        icon="knowledge-tab"
+                        size="12px"
                     />
                     Knowledge Collections
                 </button>
@@ -332,7 +333,9 @@
                                     matTooltipClass="surface-tool-tooltip"
                                 >
                                     <span class="res-row__name">{{ tool.name }}</span>
-                                    <span class="res-row__desc">{{ tool.description }}</span>
+                                    @if (!hideDescriptions()) {
+                                        <span class="res-row__desc">{{ tool.description }}</span>
+                                    }
                                 </span>
                                 @if (!readOnly()) {
                                     <button
