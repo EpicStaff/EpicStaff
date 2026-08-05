@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from django.db.models import Case, When, Count, F
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -669,10 +670,14 @@ class NaiveRagChunkPreviewView(APIView):
     def get(self, request, naive_rag_id: int, document_config_id: int):
         # Validate document config exists and belongs to naive_rag
         try:
-            config = NaiveRagDocumentConfig.objects.get(
-                naive_rag_document_id=document_config_id,
-                naive_rag_id=naive_rag_id,
-            )
+            config = (
+                NaiveRagDocumentConfig.objects
+                .annotate(total_preview_chunks=Count("preview_chunks"))
+                .get(
+                    naive_rag_document_id=document_config_id,
+                    naive_rag_id=naive_rag_id,
+                )
+            )  # fmt: off
         except NaiveRagDocumentConfig.DoesNotExist:
             return Response(
                 {
@@ -694,35 +699,18 @@ class NaiveRagChunkPreviewView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Decide which chunks to return based on status
-        doc_status = config.status
-
-        if doc_status == NaiveRagDocumentConfig.NaiveRagDocumentStatus.COMPLETED:
-            # Return indexed chunks
-            chunks_qs = NaiveRagChunk.objects.filter(
-                naive_rag_document_config_id=document_config_id
-            ).order_by("chunk_index")
-            total_count = chunks_qs.count()
-            chunks = chunks_qs[offset : offset + limit]
-            serializer = NaiveRagChunkSerializer(chunks, many=True)
-        else:
-            # Return preview chunks (for CHUNKED or other statuses)
-            chunks_qs = NaiveRagPreviewChunk.objects.filter(
-                naive_rag_document_config_id=document_config_id
-            ).order_by("chunk_index")
-            total_count = chunks_qs.count()
-            chunks = chunks_qs[offset : offset + limit]
-            serializer = NaiveRagPreviewChunkSerializer(chunks, many=True)
+        chunks = config.preview_chunks.all()[offset:offset+limit]
+        chunks = NaiveRagPreviewChunkSerializer(chunks, many=True).data
 
         return Response(
             {
                 "naive_rag_id": naive_rag_id,
-                "document_config_id": document_config_id,
-                "status": doc_status,
-                "total_chunks": total_count,
+                "document_config_id": config.naive_rag_document_id,
+                "status": config.status,
+                "total_chunks": config.total_preview_chunks,
                 "limit": limit,
                 "offset": offset,
-                "chunks": serializer.data,
+                "chunks": chunks,
             },
             status=status.HTTP_200_OK,
         )
