@@ -275,8 +275,9 @@ class GraphRagService:
         chunk_size = data.get("chunk_size") or index_config.chunk_size
         chunk_overlap = data.get("chunk_overlap") or index_config.chunk_overlap
         if chunk_overlap >= chunk_size:
+            reason = "'chunk_overlap' must be less than 'chunk_size'"
             raise InvalidGraphRagParametersException(
-                "'chunk_overlap' must be less then 'chunk_size'"
+                errors=[{"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}],
             )
         
         updated_fields = set()
