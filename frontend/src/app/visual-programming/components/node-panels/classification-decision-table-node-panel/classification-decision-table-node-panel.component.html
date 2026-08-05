@@ -138,23 +138,29 @@
 
                     <!-- Decision Table Tab -->
                     @if (activeTab() === 'table') {
-                        <div class="grid-section">
-                            <app-classification-decision-table-grid
-                                [conditionGroups]="conditionGroups()"
-                                [activeColor]="activeColor"
-                                [currentNodeId]="node().id"
-                                [storageNodeId]="gridStorageId()"
-                                [prompts]="prompts()"
-                                [defaultLlmId]="form.value.default_llm_config || null"
-                                [llmConfigs]="llmConfigOptions()"
-                                [preInputMapKeys]="inputMapVariableNames()"
-                                [domainKeys]="domainKeys()"
-                                (conditionGroupsChange)="onConditionGroupsChange($event)"
-                                (promptChange)="updatePrompt($event.promptId, $event.field, $event.value)"
-                                (promptAdd)="onPromptAdd($event.id, $event.config)"
-                                (openPromptLibrary)="onOpenPromptLibrary($event)"
-                            />
-                        </div>
+                        <app-lockable-field
+                            class="fill lock-inset"
+                            fieldId="condition_groups"
+                            [nodeId]="node().id"
+                        >
+                            <div class="grid-section">
+                                <app-classification-decision-table-grid
+                                    [conditionGroups]="conditionGroups()"
+                                    [activeColor]="activeColor"
+                                    [currentNodeId]="node().id"
+                                    [storageNodeId]="gridStorageId()"
+                                    [prompts]="prompts()"
+                                    [defaultLlmId]="form.value.default_llm_config || null"
+                                    [llmConfigs]="llmConfigOptions()"
+                                    [preInputMapKeys]="inputMapVariableNames()"
+                                    [domainKeys]="domainKeys()"
+                                    (conditionGroupsChange)="onConditionGroupsChange($event)"
+                                    (promptChange)="updatePrompt($event.promptId, $event.field, $event.value)"
+                                    (promptAdd)="onPromptAdd($event.id, $event.config)"
+                                    (openPromptLibrary)="onOpenPromptLibrary($event)"
+                                />
+                            </div>
+                        </app-lockable-field>
                     }
 
                     <!-- Pre-computation Tab -->
