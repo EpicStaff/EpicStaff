@@ -80,6 +80,9 @@ class FakeNaiveRagRepo:
     async def has_failed_document(self, rag_id: int) -> bool:
         return any(d.status == DocumentStatusEnum.FAILED for d in self._documents)
 
+    async def has_outdated_document(self, rag_id: int) -> bool:
+        return any(d.status == DocumentStatusEnum.OUTDATED for d in self._documents)
+
     async def update_document(self, rag_id: int, document: Document) -> None:
         self.doc_status_log.append(document.status)
 
@@ -185,9 +188,6 @@ async def test_index_success_full_flow_sets_document_and_rag_statuses(monkeypatc
 
     assert repo.doc_status_log == [
         DocumentStatusEnum.PROCESSING,
-        DocumentStatusEnum.CHUNKING,
-        DocumentStatusEnum.CHUNKED,
-        DocumentStatusEnum.INDEXING,
         DocumentStatusEnum.COMPLETED,
     ]
     assert document.status == DocumentStatusEnum.COMPLETED
@@ -235,7 +235,7 @@ async def test_index_success_skips_chunking_when_preview_chunks_exist(monkeypatc
         id=7,
         name="doc.txt",
         content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.CHUNKED,
+        status=DocumentStatusEnum.NEW,
         config=ChunkingConfig(
             chunk_strategy=ChunkStrategyEnum.CHARACTER,
             chunk_size=50,
@@ -254,10 +254,9 @@ async def test_index_success_skips_chunking_when_preview_chunks_exist(monkeypatc
 
     await NaiveIndexer(uow).execute(request)
 
-    # chunking stage skipped — PROCESSING then straight to INDEXING → COMPLETED, no CHUNKING/CHUNKED
+    # chunking stage skipped because preview_chunks already exist — PROCESSING then COMPLETED
     assert repo.doc_status_log == [
         DocumentStatusEnum.PROCESSING,
-        DocumentStatusEnum.INDEXING,
         DocumentStatusEnum.COMPLETED,
     ]
     assert document.status == DocumentStatusEnum.COMPLETED
@@ -307,9 +306,6 @@ async def test_index_rechunks_when_config_changed_despite_existing_preview_chunk
     # config changed → full re-chunk even though preview chunks already existed
     assert repo.doc_status_log == [
         DocumentStatusEnum.PROCESSING,
-        DocumentStatusEnum.CHUNKING,
-        DocumentStatusEnum.CHUNKED,
-        DocumentStatusEnum.INDEXING,
         DocumentStatusEnum.COMPLETED,
     ]
     assert document.status == DocumentStatusEnum.COMPLETED
@@ -354,13 +350,14 @@ async def test_index_rechunks_when_config_changed_despite_existing_preview_chunk
             [IndexStatusEnum.PROCESSING, IndexStatusEnum.CANCELLED],
             [],
         ),
-        # cancel mid-document (commit of the INDEXING update)
+        # cancel mid-document (commit of finish_document — update_document was called
+        # before commit, so COMPLETED is logged even though the transaction rolled back)
         (
             None,
             None,
             [None, None, asyncio.CancelledError(), None],
             [IndexStatusEnum.PROCESSING, IndexStatusEnum.CANCELLED],
-            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.INDEXING],
+            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.COMPLETED],
         ),
     ],
     ids=["rag_fetch", "preparation", "processing_update", "document_update"],
@@ -377,7 +374,7 @@ async def test_cancellation_marks_rag_cancelled(
         id=7,
         name="doc.txt",
         content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.CHUNKED,
+        status=DocumentStatusEnum.NEW,
         config=ChunkingConfig(
             chunk_strategy=ChunkStrategyEnum.CHARACTER,
             chunk_size=50,
@@ -421,7 +418,7 @@ async def test_cancellation_marks_rag_cancelled(
                 ),
             },
             None,
-            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED],
+            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.FAILED],
         ),
         # chunker fails on invalid regex → FAILED
         (
@@ -437,7 +434,7 @@ async def test_cancellation_marks_rag_cancelled(
                 ),
             },
             None,
-            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED],
+            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.FAILED],
         ),
         # chunker yields nothing → NoPreviewChunksProducedError → FAILED
         (
@@ -453,14 +450,14 @@ async def test_cancellation_marks_rag_cancelled(
                 ),
             },
             None,
-            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.CHUNKING, DocumentStatusEnum.FAILED],
+            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.FAILED],
         ),
-        # embedder fails on an already-chunked doc → FAILED
+        # embedder fails on a doc with pre-existing preview chunks → FAILED
         (
             {
                 "name": "doc.txt",
                 "content": b"alpha\n\nbeta",
-                "status": DocumentStatusEnum.CHUNKED,
+                "status": DocumentStatusEnum.NEW,
                 "config": ChunkingConfig(
                     chunk_strategy=ChunkStrategyEnum.CHARACTER,
                     chunk_size=50,
@@ -470,7 +467,7 @@ async def test_cancellation_marks_rag_cancelled(
                 "preview_chunks": [PreviewChunk(text="alpha"), PreviewChunk(text="beta")],
             },
             EmbeddingError(embedder="FakeEmbedder"),
-            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.INDEXING, DocumentStatusEnum.FAILED],
+            [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.FAILED],
         ),
     ],
     ids=["extraction_failure", "chunking_failure", "no_chunks_produced", "embedding_failure"],
@@ -496,12 +493,12 @@ async def test_document_error_marks_document_failed_and_rag_failed(
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.FAILED]
 
 
-async def test_index_warning_when_one_document_succeeds_and_one_fails(monkeypatch):
+async def test_index_partial_when_one_document_succeeds_and_one_fails(monkeypatch):
     good_doc = Document(
         id=1,
         name="good.txt",
         content=b"alpha\n\nbeta",
-        status=DocumentStatusEnum.CHUNKED,
+        status=DocumentStatusEnum.NEW,
         config=ChunkingConfig(
             chunk_strategy=ChunkStrategyEnum.CHARACTER,
             chunk_size=50,
@@ -523,7 +520,9 @@ async def test_index_warning_when_one_document_succeeds_and_one_fails(monkeypatc
         ),
     )
     rag = _new_rag()
-    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, documents=[good_doc, bad_doc], rag=rag)
+    repo = FakeNaiveRagRepo(
+        embedding_config=_EMBEDDING_CONFIG, documents=[good_doc, bad_doc], rag=rag
+    )
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2])
     monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, cfg: embedder)
@@ -538,10 +537,8 @@ async def test_index_warning_when_one_document_succeeds_and_one_fails(monkeypatc
     # processing order across both documents
     assert repo.doc_status_log == [
         DocumentStatusEnum.PROCESSING,
-        DocumentStatusEnum.INDEXING,
         DocumentStatusEnum.COMPLETED,
         DocumentStatusEnum.PROCESSING,
-        DocumentStatusEnum.CHUNKING,
         DocumentStatusEnum.FAILED,
     ]
     # only the good doc's chunks were persisted
@@ -550,8 +547,8 @@ async def test_index_warning_when_one_document_succeeds_and_one_fails(monkeypatc
         IndexedChunk(text="beta", vector=[0.1, 0.2]),
     ]
     assert repo.saved_indexed_chunks == [(1, expected_indexed)]
-    # mix of completed + failed → rag ends WARNING
-    assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.WARNING]
+    # mix of completed + failed → rag ends PARTIAL
+    assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.PARTIAL]
 
 
 @pytest.mark.parametrize(
@@ -659,34 +656,27 @@ def _processed_document(outcome: str, doc_id: int) -> Document:
     [
         (DocumentStatusEnum.NEW, "completed", IndexStatusEnum.COMPLETED),
         (DocumentStatusEnum.NEW, "failed", IndexStatusEnum.FAILED),
-        (DocumentStatusEnum.CHUNKING, "completed", IndexStatusEnum.COMPLETED),
-        (DocumentStatusEnum.CHUNKING, "failed", IndexStatusEnum.FAILED),
-        (DocumentStatusEnum.CHUNKED, "completed", IndexStatusEnum.COMPLETED),
-        (DocumentStatusEnum.CHUNKED, "failed", IndexStatusEnum.FAILED),
-        (DocumentStatusEnum.INDEXING, "completed", IndexStatusEnum.COMPLETED),
-        (DocumentStatusEnum.INDEXING, "failed", IndexStatusEnum.FAILED),
+        (DocumentStatusEnum.PROCESSING, "completed", IndexStatusEnum.COMPLETED),
+        (DocumentStatusEnum.PROCESSING, "failed", IndexStatusEnum.FAILED),
         (DocumentStatusEnum.COMPLETED, "completed", IndexStatusEnum.COMPLETED),
-        (DocumentStatusEnum.COMPLETED, "failed", IndexStatusEnum.WARNING),
-        (DocumentStatusEnum.WARNING, "completed", IndexStatusEnum.COMPLETED),
-        (DocumentStatusEnum.WARNING, "failed", IndexStatusEnum.FAILED),
-        (DocumentStatusEnum.FAILED, "completed", IndexStatusEnum.WARNING),
+        (DocumentStatusEnum.COMPLETED, "failed", IndexStatusEnum.PARTIAL),
+        (DocumentStatusEnum.FAILED, "completed", IndexStatusEnum.PARTIAL),
         (DocumentStatusEnum.FAILED, "failed", IndexStatusEnum.FAILED),
+        # A remaining OUTDATED document makes the rag OUTDATED regardless of doc2 outcome
+        (DocumentStatusEnum.OUTDATED, "completed", IndexStatusEnum.OUTDATED),
+        (DocumentStatusEnum.OUTDATED, "failed", IndexStatusEnum.OUTDATED),
     ],
     ids=[
         "doc1=new,doc2=completed",
         "doc1=new,doc2=failed",
-        "doc1=chunking,doc2=completed",
-        "doc1=chunking,doc2=failed",
-        "doc1=chunked,doc2=completed",
-        "doc1=chunked,doc2=failed",
-        "doc1=indexing,doc2=completed",
-        "doc1=indexing,doc2=failed",
+        "doc1=processing,doc2=completed",
+        "doc1=processing,doc2=failed",
         "doc1=completed,doc2=completed",
         "doc1=completed,doc2=failed",
-        "doc1=warning,doc2=completed",
-        "doc1=warning,doc2=failed",
         "doc1=failed,doc2=completed",
         "doc1=failed,doc2=failed",
+        "doc1=outdated,doc2=completed",
+        "doc1=outdated,doc2=failed",
     ],
 )
 async def test_finalize_rag_status_considers_documents_outside_ids(
@@ -708,3 +698,74 @@ async def test_finalize_rag_status_considers_documents_outside_ids(
     assert doc1.status == doc1_status  # untouched — outside document_ids
     assert repo.rag_status_log[-1] == expected_status
     assert rag.indexing_document_ids == set()
+
+
+async def test_outdated_reasons_cleared_when_no_outdated_document_remains(monkeypatch):
+    """When no document has OUTDATED status after a run, outdated_reasons is cleared."""
+    document = Document(
+        id=7,
+        name="doc.txt",
+        content=b"alpha\n\nbeta",
+        status=DocumentStatusEnum.NEW,
+        config=ChunkingConfig(
+            chunk_strategy=ChunkStrategyEnum.CHARACTER,
+            chunk_size=50,
+            chunk_overlap=0,
+            extra={"character": {"regex": r"\n\n"}},
+        ),
+    )
+    rag = Rag(
+        id=1,
+        status=IndexStatusEnum.NEW,
+        indexing_document_ids=set(),
+        outdated_reasons={"doc_7": "content_changed"},
+    )
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, documents=[document], rag=rag)
+    uow = FakeUoW(repo)
+    embedder = FakeEmbedder(vector=[0.1, 0.2])
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, cfg: embedder)
+
+    request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({7}))
+
+    await NaiveIndexer(uow).execute(request)
+
+    # no OUTDATED doc remains → reasons cleared → rag is COMPLETED (not OUTDATED)
+    assert rag.outdated_reasons == {}
+    assert repo.rag_status_log[-1] == IndexStatusEnum.COMPLETED
+
+
+async def test_outdated_reasons_preserved_when_outdated_document_remains(monkeypatch):
+    """When a remaining document has OUTDATED status, outdated_reasons is kept and rag is OUTDATED."""
+    outdated_doc = _static_document(DocumentStatusEnum.OUTDATED, doc_id=1)
+    active_doc = Document(
+        id=2,
+        name="active.txt",
+        content=b"alpha\n\nbeta",
+        status=DocumentStatusEnum.NEW,
+        config=ChunkingConfig(
+            chunk_strategy=ChunkStrategyEnum.CHARACTER,
+            chunk_size=50,
+            chunk_overlap=0,
+            extra={"character": {"regex": r"\n\n"}},
+        ),
+    )
+    rag = Rag(
+        id=1,
+        status=IndexStatusEnum.NEW,
+        indexing_document_ids=set(),
+        outdated_reasons={"doc_1": "source_changed"},
+    )
+    repo = FakeNaiveRagRepo(
+        embedding_config=_EMBEDDING_CONFIG, documents=[outdated_doc, active_doc], rag=rag
+    )
+    uow = FakeUoW(repo)
+    embedder = FakeEmbedder(vector=[0.1, 0.2])
+    monkeypatch.setattr(naive_indexer, "build_embedder", lambda provider, cfg: embedder)
+
+    request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({2}))
+
+    await NaiveIndexer(uow).execute(request)
+
+    # OUTDATED doc still present → reasons preserved → rag is OUTDATED
+    assert rag.outdated_reasons == {"doc_1": "source_changed"}
+    assert repo.rag_status_log[-1] == IndexStatusEnum.OUTDATED

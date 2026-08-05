@@ -10,13 +10,11 @@ Seams used:
   storage entirely.
 """
 
-import pytest
-
 import pandas
-from graphrag.config.models.graph_rag_config import GraphRagConfig
-
+import pytest
 from enums import GraphSearchMethodEnum
 from errors import UnsupportedError
+from graphrag.config.models.graph_rag_config import GraphRagConfig
 from models import SearchRequest, SearchResponse
 from orchestrators.searching.strategies.graph_search import GraphSearch, SearchSpecification
 from src.shared.models.knowledge_new import (
@@ -53,7 +51,6 @@ class FakeUoW:
 
     async def __aexit__(self, *exc):
         return False
-
 
 
 def make_fake_searcher(return_value):
@@ -130,9 +127,6 @@ async def test_happy_path_correct_searcher_invoked(
     fake = make_fake_searcher(expected_result)
     monkeypatch.setitem(GraphSearch._SEARCH_MAP, method, _make_spec_for(method, fake))
 
-    # _resolve_files returns only required files (no covariates for non-LOCAL methods)
-    specs = GraphSearch._SEARCH_MAP[method]
-
     async def fake_resolve_files(config, required_files, optional_files=None):
         files = {}
         all_fakes = {
@@ -171,9 +165,7 @@ async def test_happy_path_correct_searcher_invoked(
         (GraphSearchMethodEnum.DRIFT, GraphDriftSearchConfig()),
     ],
 )
-async def test_query_and_config_are_forwarded_to_searcher(
-    method, search_config, uow, monkeypatch
-):
+async def test_query_and_config_are_forwarded_to_searcher(method, search_config, uow, monkeypatch):
     """query kwarg and config are passed through to the searcher."""
     fake = make_fake_searcher("result")
     monkeypatch.setitem(GraphSearch._SEARCH_MAP, method, _make_spec_for(method, fake))
