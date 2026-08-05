@@ -98,6 +98,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private lastFormNodeId: string | null = null;
     private readonly profileService = inject(ProfileService);
     private lockedTab: { nodeId: string; tab: TabType } | null = null;
+    private pendingTabSwitchTimer: ReturnType<typeof setTimeout> | null = null;
 
     public conditionGroups = signal<ConditionGroup[]>([]);
     public prompts = signal<Record<string, PromptConfig>>({});
@@ -341,7 +342,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             (controlName) => {
                 form.get(controlName)!
                     .valueChanges.pipe(takeUntil(this.reinitDestroy$), takeUntilDestroyed(this.destroyRef))
-                    .subscribe(() => this.codeChange$.next());
+                    .subscribe(() => {
+                        this.notifyExternalChange();
+                        this.codeChange$.next();
+                    });
             }
         );
     }
@@ -421,6 +425,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     private setLockedTab(tab: TabType | null): void {
+        if (this.pendingTabSwitchTimer !== null) {
+            clearTimeout(this.pendingTabSwitchTimer);
+            this.pendingTabSwitchTimer = null;
+        }
         if (this.lockedTab) {
             this.wsService.sendNodeUnlocked(this.lockedTab.nodeId, this.tabFieldId(this.lockedTab.tab));
             this.lockedTab = null;
@@ -457,7 +465,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         if (LOCKABLE_TABS.has(this.activeTab())) {
             this.sidePanelService.triggerAutosave();
-            setTimeout(applySwitch, 0);
+            if (this.pendingTabSwitchTimer !== null) {
+                clearTimeout(this.pendingTabSwitchTimer);
+            }
+            this.pendingTabSwitchTimer = setTimeout(applySwitch, 0);
             return;
         }
 

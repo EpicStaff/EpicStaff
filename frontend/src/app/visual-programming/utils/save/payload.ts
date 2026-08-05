@@ -211,7 +211,7 @@ export function buildCdtNodePayload(
         graph: graphId,
         node_name: node.node_name,
         pre_python_code:
-            preCodeValue.trim() === ''
+            preCodeValue.trim() === '' && (preComp.libraries || []).length === 0
                 ? null
                 : {
                       code: preCodeValue,
@@ -222,7 +222,7 @@ export function buildCdtNodePayload(
         pre_input_map: preComp.input_map || tableData?.pre_input_map || {},
         pre_output_variable_path: preComp.output_variable_path || tableData?.pre_output_variable_path || null,
         post_python_code:
-            postCodeValue.trim() === ''
+            postCodeValue.trim() === '' && (postComp.libraries || []).length === 0
                 ? null
                 : {
                       code: postCodeValue,
