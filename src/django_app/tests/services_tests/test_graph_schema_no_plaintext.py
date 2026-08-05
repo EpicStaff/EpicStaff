@@ -107,7 +107,9 @@ class TestGraphSchemaNeverHoldsPlaintext:
         session = service.create_session(graph_id=graph.pk, variables={})
         session_data = service.create_session_data(session=session)
 
-        service.redis_service.publish_session_data(session_data=session_data)
+        service.redis_service.publish_session_data(
+            session_data=session_data, org_id=graph.org_id
+        )
 
         assert SENTINEL not in session_data.model_dump_json()
 
@@ -139,3 +141,83 @@ class TestUnresolvableSecretFailsTheSession:
         assert session.status == Session.SessionStatus.ERROR
         assert "reason" in session.status_data
         assert not published, "a session with an unresolvable secret was published"
+
+
+NODE_SENTINEL = "sk-NODE-SENTINEL-must-never-be-persisted-2c8e"
+
+
+@pytest.fixture
+def graph_with_secret_declaring_python_node(org):
+    """A runnable graph whose Python node asks for a Secret holding NODE_SENTINEL.
+
+    The declaration is the get_secret("...") literal in the code — there is no
+    request field and no relation to set, which is why this works identically for
+    a Python node, a decision-table pre/post block and a custom tool.
+    """
+    from tables.models import PythonCode
+    from tables.models.graph_models import PythonNode
+
+    secret = secret_service.create(
+        text=NODE_SENTINEL, org=org, name="node-decl-leak-test"
+    )
+    python_code = PythonCode.objects.create(
+        code=(
+            "def main(**kwargs):\n"
+            '    return get_secret("node-decl-leak-test") is not None\n'
+        ),
+        entrypoint="main",
+    )
+
+    graph = Graph.objects.create(name="node-decl-graph", org=org)
+    start = StartNode.objects.create(graph=graph, variables={"variables": {}})
+    node = PythonNode.objects.create(
+        graph=graph, python_code=python_code, node_name="py_node"
+    )
+    Edge.objects.create(graph=graph, start_node_id=start.pk, end_node_id=node.pk)
+    return graph, secret
+
+
+@pytest.mark.django_db
+class TestDeclaredNodeSecretsNeverPersist:
+    def test_no_plaintext_reaches_graph_schema(
+        self, graph_with_secret_declaring_python_node, monkeypatch
+    ):
+        graph, secret = graph_with_secret_declaring_python_node
+        published = []
+
+        service = SessionManagerService()
+        monkeypatch.setattr(
+            service.redis_service.redis_client,
+            "publish",
+            lambda channel, message: published.append((channel, message)) or 2,
+        )
+
+        session_id = service.run_session(graph_id=graph.pk, variables={})
+        session = Session.objects.get(pk=session_id)
+
+        stored = json.dumps(session.graph_schema)
+        assert NODE_SENTINEL not in stored, "declared secret's plaintext persisted"
+        assert "secret_names" not in stored, "name carrier must be exclude=True"
+
+        # secrets is a plain (non-excluded) field, so it appears in graph_schema
+        # as a key — but it must always be empty there. graph_schema is built
+        # from the unresolved original, never from resolve_payload()'s copy, so
+        # a non-empty value here would mean resolution leaked into persistence.
+        for value in _find_values_by_key(session.graph_schema, "secrets"):
+            assert value == {}, "resolved plaintext must never reach graph_schema"
+
+        # The inverse: the sandbox is useless if crew never receives the value.
+        wire = "".join(message for _, message in published)
+        assert NODE_SENTINEL in wire, "crew received no resolved secret"
+
+
+def _find_values_by_key(node, key):
+    """Recursively collect every value stored under `key` anywhere in `node`."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k == key:
+                yield v
+            yield from _find_values_by_key(v, key)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _find_values_by_key(item, key)

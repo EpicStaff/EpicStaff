@@ -63,7 +63,8 @@ class CreateVenvHandler(AbstractHandler):
         context["libraries"] = set(context["libraries"])
         # Install libraries
         predefined_libraries = {
-            "/app/src/shared/dotdict"
+            "/app/src/shared/dotdict",
+            "/app/src/shared/epicstaff_secrets",
         }  # TODO: deal with hard coded path
         if context.get("use_storage"):
             predefined_libraries.add("/app/src/shared/epicstaff_storage")
@@ -240,6 +241,7 @@ import json
 
 try:
     from dotdict import DotDict, DotObject, DotList
+    from epicstaff_secrets import get_secret
     for k, v in {global_kwargs}.items():
         globals()[k] = v
 
@@ -272,6 +274,32 @@ except Exception:
 
         return wrapped_code
 
+    def build_env(self, *, context: Dict[str, Any]) -> dict[str, str] | None:
+        """Per-execution environment for the child process, or None to inherit.
+
+        Everything credential-bearing travels here rather than through
+        wrap_code: wrap_code's output is written to temp_code_path on disk, the
+        environment is not.
+        """
+        storage_allowed_paths = context.get("storage_allowed_paths")
+        storage_org_prefix = context.get("storage_org_prefix")
+        secrets = context.get("secrets")
+
+        if storage_allowed_paths is None and storage_org_prefix is None and not secrets:
+            return None
+
+        env = os.environ.copy()
+        if storage_allowed_paths is not None:
+            env["STORAGE_ALLOWED_PATHS"] = json.dumps(storage_allowed_paths)
+        if storage_org_prefix is not None:
+            env["STORAGE_ORG_PREFIX"] = storage_org_prefix
+        if secrets:
+            # One JSON variable rather than one per secret: Secret.name is a
+            # free-form CharField and may contain spaces, so per-name variables
+            # would need mangling. Mirrors STORAGE_ALLOWED_PATHS above.
+            env["EPICSTAFF_SECRETS"] = json.dumps(secrets)
+        return env
+
     async def handle(self, context: Dict[str, Any]) -> Any:
         """Execute the provided code asynchronously."""
         python_executable = context["python_executable"]
@@ -299,16 +327,7 @@ except Exception:
 
         # Execute the code asynchronously
         logger.info(f"Executing code using {python_executable}...")
-        storage_allowed_paths = context.get("storage_allowed_paths")
-        storage_org_prefix = context.get("storage_org_prefix")
-
-        env = None
-        if storage_allowed_paths is not None or storage_org_prefix is not None:
-            env = os.environ.copy()
-            if storage_allowed_paths is not None:
-                env["STORAGE_ALLOWED_PATHS"] = json.dumps(storage_allowed_paths)
-            if storage_org_prefix is not None:
-                env["STORAGE_ORG_PREFIX"] = storage_org_prefix
+        env = self.build_env(context=context)
 
         process = await asyncio.create_subprocess_shell(
             f"{python_executable} {temp_code_path}",
@@ -380,6 +399,7 @@ class DynamicVenvExecutorChain:
         use_storage: bool = False,
         storage_allowed_paths: list[str] | None = None,
         storage_org_prefix: str | None = None,
+        secrets: dict[str, str] | None = None,
     ) -> CodeResultData:
         """Run the complete workflow asynchronously."""
         if func_kwargs is None:
@@ -402,6 +422,7 @@ class DynamicVenvExecutorChain:
             "use_storage": use_storage,
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,
+            "secrets": secrets,
         }
 
         result = await self.chain.handle(context)

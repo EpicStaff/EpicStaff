@@ -66,9 +66,14 @@ async def listen_redis():
             async for message in pubsub.listen():
                 if message["type"] == "message":
                     try:
-                        logger.info(f"Received message: {message['data']}")
                         data = json.loads(message["data"])
                         code_task_data = CodeTaskData(**data)
+                        # Never log message["data"]: it carries resolved secret
+                        # plaintext. log_summary() is the safe projection.
+                        logger.info(
+                            f"Received code execution task: "
+                            f"{code_task_data.log_summary()}"
+                        )
                         asyncio.create_task(run(code_task_data=code_task_data))
                     except Exception as e:
                         logger.error(f"Error processing message: {e}")
@@ -94,6 +99,7 @@ async def run(code_task_data: CodeTaskData):
             use_storage=code_task_data.use_storage,
             storage_allowed_paths=code_task_data.storage_allowed_paths,
             storage_org_prefix=code_task_data.storage_org_prefix,
+            secrets=code_task_data.secrets,
         )
         if code_task_data.use_storage and code_task_data.storage_org_prefix:
             try:

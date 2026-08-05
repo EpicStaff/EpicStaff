@@ -4,6 +4,10 @@ from tables.services.secrets.encryption import (
     SecretEncryption,
     secret_encryption,
 )
+from tables.services.secrets.code_scanner import (
+    GET_SECRET_FUNC,
+    scan_secret_names,
+)
 from tables.services.secrets.exceptions import (
     SecretDecryptionError,
     SecretResolutionError,
@@ -13,6 +17,8 @@ from tables.services.secrets.secret_resolver import SecretResolver, secret_resol
 from tables.services.secrets.secret_service import SecretService, secret_service
 
 __all__ = [
+    "GET_SECRET_FUNC",
+    "scan_secret_names",
     "MAX_TEXT_BYTES",
     "SealedValue",
     "SecretEncryption",

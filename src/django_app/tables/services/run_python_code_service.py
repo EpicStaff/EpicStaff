@@ -6,6 +6,7 @@ from django.utils import timezone
 from src.shared.models import CodeResultData, CodeTaskData
 from tables.models import PythonCode, PythonCodeResult
 from tables.services.redis_service import RedisService
+from tables.services.secrets import scan_secret_names, secret_resolver
 from utils.singleton_meta import SingletonMeta
 
 MAX_STORED_RESULTS = 200
@@ -39,6 +40,17 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         additional_global_kwargs = additional_global_kwargs or {}
 
         python_code: PythonCode = PythonCode.objects.get(id=python_code_id)
+
+        # Resolve before anything is written or published: this path never goes
+        # through the session payload, so it resolves for itself, and a failure
+        # must leave no PENDING result row and publish nothing. organization_id
+        # is what scopes the lookup; the code itself is the declaration.
+        secrets = secret_resolver.resolve_named(
+            names=scan_secret_names(code=python_code.code),
+            org_id=organization_id,
+            context=f"PythonCode(id={python_code_id}).secrets",
+        )
+
         execution_id = self.gen_execution_id()
         PythonCodeResult.objects.create(
             execution_id=execution_id,
@@ -55,6 +67,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             func_kwargs=varaibles,
             execution_id=execution_id,
             global_kwargs={**python_code.global_kwargs, **additional_global_kwargs},
+            secrets=secrets,
         )
 
         channel = self.code_exec_task_channel

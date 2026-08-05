@@ -80,10 +80,10 @@ class RedisService(metaclass=SingletonMeta):
             self._initialize_async()
         return self._async_redis_client
 
-    def publish_session_data(self, session_data: SessionData) -> int:
+    def publish_session_data(self, *, session_data: SessionData, org_id: int) -> int:
         # Resolve here, not upstream: the caller's object is what gets persisted
         # to Session.graph_schema, so plaintext must exist only on this copy.
-        resolved = secret_resolver.resolve_payload(payload=session_data)
+        resolved = secret_resolver.resolve_payload(payload=session_data, org_id=org_id)
         return self.redis_client.publish("sessions:schema", resolved.model_dump_json())
 
     def send_user_input(
@@ -137,9 +137,11 @@ class RedisService(metaclass=SingletonMeta):
         )
 
     def publish_realtime_agent_chat(
-        self, rt_agent_chat_data: RealtimeAgentChatData
+        self, *, rt_agent_chat_data: RealtimeAgentChatData, org_id: int
     ) -> None:
-        resolved = secret_resolver.resolve_payload(payload=rt_agent_chat_data)
+        resolved = secret_resolver.resolve_payload(
+            payload=rt_agent_chat_data, org_id=org_id
+        )
         self.redis_client.publish("realtime_agents:schema", resolved.model_dump_json())
         logger.info("Sent realtime agent chat to: realtime_agents:schema.")
         # Deliberately dumps the UNRESOLVED original: logging `resolved` would

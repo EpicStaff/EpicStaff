@@ -184,6 +184,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             session.graph_schema = session_data.graph.model_dump(mode="json")
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
+                org_id=graph.org_id,
             )
             required_listeners = 2
             if received_n != required_listeners:

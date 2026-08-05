@@ -92,6 +92,7 @@ from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import RealtimeAgentChat
 from tables.models.webhook_models import NgrokWebhookConfig
+from tables.services.secrets import scan_secret_names
 from tables.validators.crew_memory_validator import CrewMemoryValidator
 from tables.validators.task_validator import TaskValidator
 from tables.validators.tool_config_validator import (
@@ -566,6 +567,12 @@ class ConverterService(metaclass=SingletonMeta):
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
+            # The code IS the declaration, so there is no client field to trust
+            # and every context (CDT pre/post and custom tools included) behaves
+            # identically. Names only: resolution happens in redis_service, on
+            # the copy that goes to Redis — never on the object that becomes
+            # graph_schema.
+            secret_names=scan_secret_names(code=python_code.code),
         )
 
     @staticmethod
@@ -600,7 +607,10 @@ class ConverterService(metaclass=SingletonMeta):
         )
         merged_kwargs = {**user_defaults, **(python_code_data.global_kwargs or {})}
         python_code_data = PythonCodeData(
-            **{**python_code_data.model_dump(), "global_kwargs": merged_kwargs}
+            **{**python_code_data.model_dump(), "global_kwargs": merged_kwargs},
+            # model_dump() omits secret_names (exclude=True), so a plain re-splat
+            # would silently drop the declaration for tools.
+            secret_names=python_code_data.secret_names,
         )
         return PythonCodeToolData(
             id=python_code_tool.pk,

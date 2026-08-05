@@ -58,6 +58,33 @@ class PythonCodeData(BaseModel):
     storage_org_prefix: str | None = None
     session_id: int | None = None
 
+    secret_names: list[str] = Field(default_factory=list, exclude=True)
+    """Names this node's code asks for, extracted by scan_secret_names().
+
+    The declaration comes from the code itself, not from the client — there is no
+    request field for it, which is why every Python context behaves identically.
+
+    Excluded because this model is nested in GraphData, which becomes
+    Session.graph_schema. The names are not credentials, but they are the
+    caller's data and nothing downstream of Redis needs them.
+    """
+
+    secrets: dict[str, str] = Field(default_factory=dict)
+    """{name: plaintext}, filled on the resolved copy only.
+
+    NOT excluded: this is how the resolved value reaches crew — redis_service
+    publishes `resolved.model_dump_json()`, and if this field were excluded
+    that dump could never carry it, no matter how it was filled.
+
+    This is safe because resolution happens only on the deep copy that
+    SecretResolver.resolve_payload() returns, never on the caller's object.
+    `Session.graph_schema` is built from that original, unresolved object
+    (see session_manager_service.py), so its `secrets` is always the empty
+    default here — never plaintext. Nothing prevents future code from
+    resolving in place instead of on a copy; that discipline, not a Field
+    flag, is what keeps this field's value out of persisted storage.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -151,5 +178,23 @@ class CodeTaskData(BaseModel):
     storage_allowed_paths: list[str] | None = None
     storage_org_prefix: str | None = None
     session_id: int | None = None
+
+    secrets: dict[str, str] = {}
+    """{name: plaintext} for the sandbox. NOT excluded: this message is never
+    persisted, and excluding it would silently deliver no secrets."""
+
+    def log_summary(self) -> str:
+        """A log-safe description of this task.
+
+        `secrets` holds resolved plaintext, so neither its values nor its keys
+        are rendered — only its size, which is what actually helps when
+        debugging ("did the node receive its declarations?"). Callers must log
+        this instead of the message body.
+        """
+        return (
+            f"execution_id={self.execution_id} venv={self.venv_name} "
+            f"entrypoint={self.entrypoint} libraries={len(self.libraries)} "
+            f"secrets={len(self.secrets)}"
+        )
 
     model_config = ConfigDict(from_attributes=True)

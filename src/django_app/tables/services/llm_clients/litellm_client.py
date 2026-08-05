@@ -110,7 +110,9 @@ class LiteLLMClient(BaseLLMClient):
         }
 
         api_key = secret_resolver.resolve(
-            secret_id=cfg.api_key_secret_id, context="LiteLLMClient.api_key"
+            secret_id=cfg.api_key_secret_id,
+            org_id=cfg.org_id,
+            context="LiteLLMClient.api_key",
         )
         if api_key:
             kwargs["api_key"] = api_key

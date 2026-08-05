@@ -717,6 +717,7 @@ class InitRealtimeAPIView(APIView):
             connection_key = realtime_service.init_realtime(
                 agent_id=agent_id,
                 config=config,
+                org_id=org_id,
             )
 
         except Exception as e:

@@ -34,7 +34,10 @@ class RealtimeService(metaclass=SingletonMeta):
             if rt_agent.realtime_config
             else None
         )
-        if provider not in ("elevenlabs", "gemini") and rt_agent.realtime_transcription_config is None:
+        if (
+            provider not in ("elevenlabs", "gemini")
+            and rt_agent.realtime_transcription_config is None
+        ):
             missing_fields.append("realtime_transcription_config")
 
         if missing_fields:
@@ -59,7 +62,7 @@ class RealtimeService(metaclass=SingletonMeta):
             connection_key=connection_key,
         )
 
-    def init_realtime(self, agent_id: int, config: dict) -> str:
+    def init_realtime(self, *, agent_id: int, config: dict, org_id: int) -> str:
         rt_agent = self.get_rt_agent(agent_id=agent_id)
         rt_agent_chat = self.create_rt_agent_chat(rt_agent)
 
@@ -72,6 +75,7 @@ class RealtimeService(metaclass=SingletonMeta):
                 setattr(rt_agent_chat_data, key, value)
 
         self.redis_service.publish_realtime_agent_chat(
-            rt_agent_chat_data=rt_agent_chat_data
+            rt_agent_chat_data=rt_agent_chat_data,
+            org_id=org_id,
         )
         return rt_agent_chat_data.connection_key
