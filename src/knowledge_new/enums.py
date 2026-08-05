@@ -45,9 +45,11 @@ class IndexStatusEnum(StrEnum):
     NEW = "new"
     PROCESSING = "processing"
     COMPLETED = "completed"
-    WARNING = "warning"
+    WARNING = "warning"  # deprecated
     FAILED = "failed"
     CANCELLED = "cancelled"
+    PARTIAL = "partial"
+    OUTDATED = "outdated"
 
 
 class FileExtensionEnum(StrEnum):
