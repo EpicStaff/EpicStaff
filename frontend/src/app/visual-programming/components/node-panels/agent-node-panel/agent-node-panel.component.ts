@@ -323,6 +323,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
                             combined,
                             placeLabel: this.node().data.name || 'Surface Summary',
                             hideInstructions: true,
+                            hideDescriptions: true,
                         },
                     });
                 },

@@ -288,6 +288,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
                             combined,
                             placeLabel: this.node().data.name || 'Surface Summary',
                             hideInstructions: true,
+                            hideDescriptions: true,
                         },
                     });
                 },

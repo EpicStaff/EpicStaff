@@ -71,7 +71,11 @@
     align-items: center;
     gap: 0.5rem;
     min-width: 0;
-    flex-shrink: 0;
+    overflow: hidden;
+    // Title gives up space LAST: it barely shrinks (weight 1) while the actions row
+    // shrinks aggressively first (weight 9999), so buttons collapse to icons before
+    // the category name starts truncating.
+    flex: 1 1 auto;
 }
 
 .surface-category__icon {
@@ -90,14 +94,21 @@
     font-weight: 500;
     color: var(--color-text-primary);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
 }
 
 .surface-category__actions {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
+    // Shrinks first and hardest; overflow-hidden makes the directive see buttons
+    // getting clipped and collapse them to icons before the title is touched.
+    flex: 9999 1 auto;
     min-width: 0;
     overflow: hidden;
+    justify-content: flex-end;
 }
 
 .surface-category__btn {
