@@ -2,9 +2,8 @@ import abc
 import functools
 import inspect
 from collections.abc import Awaitable, Callable
-from typing import Literal, Optional
 
-from enums import FileExtensionEnum
+from enums import DocumentStatusEnum, FileExtensionEnum
 from errors import RepositoryError
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
@@ -96,6 +95,14 @@ class AbstractNaiveRagRepository(RepositoryErrorWrapper, abc.ABC):
     @abc.abstractmethod
     async def has_failed_document(self, rag_id: int) -> bool:
         """Return True if `rag_id` has at least one document with FAILED status.
+
+        Args:
+            rag_id: Primary key of the RAG collection.
+        """
+
+    @abc.abstractmethod
+    async def has_outdated_document(self, rag_id: int) -> bool:
+        """Return True if `rag_id` has at least one document with OUTDATED status.
 
         Args:
             rag_id: Primary key of the RAG collection.
@@ -202,7 +209,7 @@ class AbstractGraphRagRepository(RepositoryErrorWrapper, abc.ABC):
         self,
         rag_id: int,
         ids: frozenset[int],
-        status: Literal['new', 'completed'],
+        status: DocumentStatusEnum,
     ):
         """Persist status of `documents` within the RAG collection `rag_id`.
 
@@ -213,8 +220,24 @@ class AbstractGraphRagRepository(RepositoryErrorWrapper, abc.ABC):
         """
 
     @abc.abstractmethod
-    async def has_indexed_document(self, rag_id: int) -> bool:
-        """Return whether the RAG collection `rag_id` has at least one indexed document.
+    async def has_completed_document(self, rag_id: int) -> bool:
+        """Return True if `rag_id` has at least one document with COMPLETED status.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
+        """
+
+    @abc.abstractmethod
+    async def has_failed_document(self, rag_id: int) -> bool:
+        """Return True if `rag_id` has at least one document with FAILED status.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
+        """
+
+    @abc.abstractmethod
+    async def has_outdated_document(self, rag_id: int) -> bool:
+        """Return True if `rag_id` has at least one document with OUTDATED status.
 
         Args:
             rag_id: Primary key of the GraphRAG collection.

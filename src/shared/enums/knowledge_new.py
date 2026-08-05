@@ -1,9 +1,9 @@
 from enum import StrEnum
 
 __all__ = [
+    "DocumentStatusEnum",
     "GraphSearchMethodEnum",
     "RAGStrategy",
-    "DocumentStatusEnum",
 ]
 
 
@@ -21,9 +21,10 @@ class GraphSearchMethodEnum(StrEnum):
 class DocumentStatusEnum(StrEnum):
     NEW = "new"
     PROCESSING = "processing"
-    CHUNKING = "chunking"
-    CHUNKED = "chunked"
-    INDEXING = "indexing"
+    CHUNKING = "chunking"  # deprecated
+    CHUNKED = "chunked"  # deprecated
+    INDEXING = "indexing"  # deprecated
     COMPLETED = "completed"
-    WARNING = "warning"
+    WARNING = "warning"  # deprecated
     FAILED = "failed"
+    OUTDATED = "outdated"

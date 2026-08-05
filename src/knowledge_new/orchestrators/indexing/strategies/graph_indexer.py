@@ -1,9 +1,7 @@
 from dataclasses import asdict
-from typing import Literal
 
 import pandas
-
-from enums import IndexStatusEnum
+from enums import DocumentStatusEnum, IndexStatusEnum
 from errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
 from graphrag.api import build_index
 from graphrag_input import TextDocument
@@ -28,7 +26,6 @@ class GraphIndexer(AbstractIndexer):
             else:
                 is_update_run = True
 
-
         rag.mark_as_processing(request.document_ids)
         await self._update_rag(rag)
 
@@ -41,15 +38,19 @@ class GraphIndexer(AbstractIndexer):
 
         errors = {r.workflow: r.error for r in results if r.error is not None}
         if errors:
+            await self._update_status_of_documents(
+                rag.id, request.document_ids, status=DocumentStatusEnum.FAILED
+            )
             raise ExceptionGroup(
                 f"GraphRAG indexing failed for RAG(id={rag.id}) "
                 f"in workflow(s): {', '.join(errors.keys())}.",
                 list(errors.values()),
             )
 
-        await self._update_status_of_documents(rag.id, request.document_ids, status='completed')
-        rag.mark_as_completed()
-        await self._update_rag(rag)
+        await self._update_status_of_documents(
+            rag.id, request.document_ids, DocumentStatusEnum.COMPLETED
+        )
+        await self._finish_rag(rag, request.document_ids)
 
         logger.info("Finished indexing in RAG(id={}, status={}).", rag.id, rag.status.value)
 
@@ -57,12 +58,14 @@ class GraphIndexer(AbstractIndexer):
         if (rag := self.state.get("rag")) is not None:
             rag: Rag
             rag.mark_as_cancelled()
+            rag.finish_document(*request.document_ids)
             await self._update_rag(rag)
 
     async def on_error(self, request: IndexRequest, error: Exception):
         if (rag := self.state.get("rag")) is not None:
             rag: Rag
             rag.mark_as_failed(error)
+            rag.finish_document(*request.document_ids)
             await self._update_rag(rag)
 
     async def _get_rag_under_uow(self, rag_id: int) -> Rag:
@@ -99,13 +102,13 @@ class GraphIndexer(AbstractIndexer):
             await self.uow.commit()
 
     def _has_indexed_document(self, documents: list[TextDocument]) -> bool:
-        return any(d.raw_data['status'] == 'completed' for d in documents)
+        return any(d.raw_data["status"] == DocumentStatusEnum.COMPLETED for d in documents)
 
     async def _update_status_of_documents(
         self,
         rag_id: int,
         ids: frozenset[int],
-        status: Literal['new', 'completed'],
+        status: DocumentStatusEnum,
     ):
         async with self.uow:
             await self.uow.graph_rag_repo.update_status_of_documents(
@@ -113,4 +116,30 @@ class GraphIndexer(AbstractIndexer):
                 ids=ids,
                 status=status,
             )
+            await self.uow.commit()
+
+    async def _finish_rag(self, rag: Rag, document_ids: set[int]):
+        async with self.uow:
+            rag.finish_document(*document_ids)
+
+            has_outdated = await self.uow.graph_rag_repo.has_outdated_document(rag_id=rag.id)
+            has_completed = await self.uow.graph_rag_repo.has_completed_document(rag_id=rag.id)
+            has_failed = await self.uow.graph_rag_repo.has_failed_document(rag_id=rag.id)
+
+            if has_outdated:
+                rag.mark_as_outdated()
+            elif rag.indexing_document_ids:
+                rag.status = IndexStatusEnum.PROCESSING
+            elif has_completed:
+                rag.mark_as_completed()
+            elif has_failed:
+                rag.mark_as_failed("Failed to index all documents.")
+            else:
+                rag.mark_as_new()
+                # need to delete indexing result of graph rag
+
+            if not has_outdated:
+                rag.outdated_reasons.clear()
+
+            await self.uow.graph_rag_repo.update_rag(rag=rag)
             await self.uow.commit()

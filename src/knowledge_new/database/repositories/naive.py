@@ -38,6 +38,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 status=orm_rag.rag_status,
                 indexing_document_ids=set(orm_rag.indexing_document_config_ids),
                 error_message=orm_rag.error_message,
+                outdated_reasons=orm_rag.outdated_reasons or {},
             )
         return None
 
@@ -49,6 +50,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 rag_status=rag.status,
                 indexing_document_config_ids=list(rag.indexing_document_ids),
                 error_message=rag.error_message,
+                outdated_reasons=rag.outdated_reasons or {},
             )
         )
 
@@ -117,6 +119,17 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractNaiveRagRep
                 exists().where(
                     NaiveRagDocumentConfig.naive_rag_id == rag_id,
                     NaiveRagDocumentConfig.status == DocumentStatusEnum.FAILED,
+                )
+            )
+        )
+        return result.scalar_one()
+
+    async def has_outdated_document(self, rag_id: int) -> bool:
+        result = await self._session.execute(
+            select(
+                exists().where(
+                    NaiveRagDocumentConfig.naive_rag_id == rag_id,
+                    NaiveRagDocumentConfig.status == DocumentStatusEnum.OUTDATED,
                 )
             )
         )
