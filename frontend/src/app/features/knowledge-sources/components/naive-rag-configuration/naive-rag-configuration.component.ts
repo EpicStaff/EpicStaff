@@ -23,7 +23,7 @@ import {
     SelectItem,
 } from '@shared/components';
 import { EMPTY, Observable, of } from 'rxjs';
-import { catchError, switchMap } from 'rxjs/operators';
+import { catchError, defaultIfEmpty, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
 import { IndexingDocumentInfo } from '../../helpers/get-indexing-confirmation-data.util';
@@ -113,6 +113,8 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
     initDocuments() {
         const id = this.naiveRagId();
 
+        this.documentsStorageService.clearPendingDeletes();
+
         this.naiveRagService
             .initializeDocuments(id)
             .pipe(
@@ -160,27 +162,10 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
             })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
-                if (result === true) {
-                    this.deleteDocConfigs(config_ids);
+                if (result !== true) return;
+                for (const id of config_ids) {
+                    this.documentsStorageService.markPendingDelete(id);
                 }
-            });
-    }
-
-    private deleteDocConfigs(config_ids: number[]) {
-        const id = this.naiveRagId();
-
-        this.documentsStorageService
-            .bulkDeleteDocConfigs(id, config_ids)
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                catchError(() => {
-                    this.toastService.error('Documents delete failed');
-                    return of();
-                })
-            )
-            .subscribe({
-                next: (res) => this.toastService.success(res.message),
-                error: (e) => console.error(e),
             });
     }
 
@@ -205,45 +190,30 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
         return true;
     }
 
-    // TODO check is this can be removed
-    // Naive rag persists per-document pending fields via its own bulk endpoint
-    // called from the naive dialog wrapper. The generic save-then-index flow does
-    // nothing extra here.
-    shouldSaveConfig(): boolean {
-        return false;
-    }
-
-    getDocumentConfigIds(): number[] {
-        return this.filteredAndCheckedDocIds();
-    }
-
     hasUnsavedChanges(): boolean {
-        return this.documentsStorageService.pending().size > 0;
+        return (
+            this.documentsStorageService.pending().size > 0 || this.documentsStorageService.pendingDeleteIds().size > 0
+        );
     }
 
-    // TODO check this
+    bulkDeletePending(): Observable<unknown> {
+        return this.documentsStorageService.bulkDeletePending(this.naiveRagId());
+    }
+
+    getPendingDeleteDocumentIds(): number[] {
+        return Array.from(this.documentsStorageService.pendingDeleteIds());
+    }
+
     getIndexingDocuments(): IndexingDocumentInfo[] {
-        const checkedIds = this.filteredAndCheckedDocIds();
-        const docs = this.documentsStorageService
+        const checkedIds = new Set(this.filteredAndCheckedDocIds());
+        return this.documentsStorageService
             .documents()
-            .filter((d) => checkedIds.includes(d.naive_rag_document_id));
-
-        return docs.map((d) => ({
-            fileName: d.file_name,
-            wasIndexed: d.status === 'completed' || d.status === 'outdated',
-        }));
-    }
-    // TODO and this
-    getDocumentsForIndexing(): { configIds: number[]; fileNames: string[] } {
-        const checkedIds = this.filteredAndCheckedDocIds();
-        const docs = this.documentsStorageService
-            .documents()
-            .filter((d) => checkedIds.includes(d.naive_rag_document_id));
-
-        return {
-            configIds: checkedIds,
-            fileNames: docs.map((d) => d.file_name),
-        };
+            .filter((d) => checkedIds.has(d.naive_rag_document_id))
+            .map((d) => ({
+                configId: d.naive_rag_document_id,
+                fileName: d.file_name,
+                wasIndexed: d.status === 'completed' || d.status === 'outdated',
+            }));
     }
 
     uploadPendingForChecked(): Observable<BulkUpdateNaiveRagDocumentsResponse | null> {
@@ -252,6 +222,7 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
         if (!checkedIds.length) return of(null);
 
         return this.documentsStorageService.bulkPartialUpdate(id, checkedIds).pipe(
+            defaultIfEmpty(null),
             catchError((err: HttpErrorResponse) => {
                 const first = err.error?.errors?.[0];
                 this.toastService.error(first?.reason ? `Save failed: ${first.reason}` : 'Save failed');

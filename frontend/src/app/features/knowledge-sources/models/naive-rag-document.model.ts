@@ -57,7 +57,7 @@ export interface UpdateNaiveRagDocumentConfigError {
     reason: string;
 }
 
-interface UpdatedNaiveRagDocumentConfig extends NaiveRagDocumentConfig {
+export interface UpdatedNaiveRagDocumentConfig extends NaiveRagDocumentConfig {
     errors: UpdateNaiveRagDocumentConfigError[];
 }
 

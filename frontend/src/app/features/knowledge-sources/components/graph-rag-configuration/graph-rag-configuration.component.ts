@@ -95,61 +95,24 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
     readonly formatOptions = FORMAT_OPTIONS;
     readonly indexModeOptions = INDEX_MODE_OPTIONS;
 
-    // TODO analyze it
     constructor() {
+        // Sync the parent's can-index writable input with local selection state.
         effect(() => {
             this.canIndexChange()?.set(this.checkedDocIds().size > 0);
         });
 
-        // Switching back to Update New restores everything that was unsaved:
-        //   - drop pending document deletions (files reappear in the list),
-        //   - drop selection of already-indexed docs (they become non-selectable).
-        // Tracks only `indexMode`; the rest runs under `untracked` so this effect
-        // fires solely on mode transitions and does not react to (and undo) edits
-        // or polling refreshes.
+        // Fires only on `indexMode` transitions. Everything else is untracked so
+        // polling refreshes / edits don't re-trigger the reset.
         effect(() => {
             if (this.indexMode() !== 'update_new') return;
-
-            untracked(() => {
-                this.clearPendingDeletes();
-
-                const indexedIds = new Set(
-                    this.allDocuments()
-                        .filter((d) => d.status === 'indexed')
-                        .map((d) => d.graph_rag_document_id)
-                );
-                if (indexedIds.size === 0) return;
-
-                this.checkedDocIds.update((prev) => this.removeIds(prev, indexedIds));
-            });
+            untracked(() => this.applyUpdateNewMode());
         });
 
-        // Newly-added pending deletions can't be indexed — drop them from selection.
-        effect(() => {
-            const pending = this.pendingDeleteIdsSignal();
-            if (pending.size === 0) return;
-            this.checkedDocIds.update((prev) => this.removeIds(prev, pending));
-        });
-
-        // Prune pending IDs whose docs no longer exist in the shared list (removed
-        // by a bulk-delete from any flow, or by polling). Keeps `hasUnsavedChanges`
-        // honest and avoids stale close-confirmation prompts.
+        // Reacts to the shared docs list (polling / cross-flow bulk deletes) and
+        // prunes pending IDs that no longer refer to an existing doc.
         effect(() => {
             const allIds = new Set(this.allDocuments().map((d) => d.graph_rag_document_id));
-            untracked(() => {
-                this.pendingDeleteIdsSignal.update((prev) => {
-                    if (prev.size === 0) return prev;
-                    let mutated = false;
-                    const next = new Set(prev);
-                    for (const id of prev) {
-                        if (!allIds.has(id)) {
-                            next.delete(id);
-                            mutated = true;
-                        }
-                    }
-                    return mutated ? next : prev;
-                });
-            });
+            untracked(() => this.pruneOrphanedPendingDeletes(allIds));
         });
     }
 
@@ -171,6 +134,7 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
             next.add(graphRagDocumentId);
             return next;
         });
+        this.checkedDocIds.update((prev) => this.removeIds(prev, [graphRagDocumentId]));
     }
 
     onReIncludeFiles(): void {
@@ -234,12 +198,9 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
             .map((d) => d.document_id);
     }
 
-    getDocumentConfigIds(): number[] {
-        return this.selectedDocs().map((d) => d.graph_rag_document_id);
-    }
-
     getIndexingDocuments(): IndexingDocumentInfo[] {
         return this.selectedDocs().map((d) => ({
+            configId: d.graph_rag_document_id,
             fileName: d.file_name,
             wasIndexed: d.status === 'indexed',
         }));
@@ -262,5 +223,37 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
             if (next.delete(id)) mutated = true;
         }
         return mutated ? next : source;
+    }
+
+    /**
+     * Update-new mode restores everything that was unsaved and
+     * drops pending document deletions (files reappear in the list)
+     */
+    private applyUpdateNewMode(): void {
+        this.clearPendingDeletes();
+
+        const indexedIds = new Set(
+            this.allDocuments()
+                .filter((d) => d.status === 'indexed')
+                .map((d) => d.graph_rag_document_id)
+        );
+        if (indexedIds.size === 0) return;
+
+        this.checkedDocIds.update((prev) => this.removeIds(prev, indexedIds));
+    }
+
+    private pruneOrphanedPendingDeletes(allIds: Set<number>): void {
+        this.pendingDeleteIdsSignal.update((prev) => {
+            if (prev.size === 0) return prev;
+            let mutated = false;
+            const next = new Set(prev);
+            for (const id of prev) {
+                if (!allIds.has(id)) {
+                    next.delete(id);
+                    mutated = true;
+                }
+            }
+            return mutated ? next : prev;
+        });
     }
 }

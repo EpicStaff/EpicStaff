@@ -26,7 +26,12 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
 
     graphRag = signal<CollectionGraphRag | null>(null);
 
-    docConfigIds = computed(() => this.ragConfiguration()?.getDocumentConfigIds() ?? []);
+    docConfigIds = computed(
+        () =>
+            this.ragConfiguration()
+                ?.getIndexingDocuments()
+                .map((d) => d.configId) ?? []
+    );
     hasUnsavedChanges = computed(() => this.ragConfiguration()?.hasUnsavedChanges() ?? false);
     indexingDisabled = computed(() => !this.docConfigIds().length && !this.hasUnsavedChanges());
     runButtonLabel = computed(() => {
