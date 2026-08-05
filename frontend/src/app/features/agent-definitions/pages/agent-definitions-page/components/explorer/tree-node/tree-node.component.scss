@@ -22,7 +22,8 @@
         background-color: color-mix(in srgb, var(--accent-color) 18%, transparent);
 
         .row__label,
-        .row__icon {
+        .row__icon,
+        .row__chevron {
             color: var(--accent-color);
         }
     }
@@ -48,7 +49,7 @@
 
     &__chevron {
         flex-shrink: 0;
-        color: var(--color-text-secondary);
+        color: inherit;
         transition: transform 0.15s ease;
 
         &--rotated {
@@ -64,13 +65,16 @@
 
     &__icon {
         flex-shrink: 0;
-        color: var(--color-text-secondary);
 
         &--surface {
             color: var(--color-text-primary);
         }
 
         &--group {
+            color: var(--color-text-primary);
+        }
+
+        &--agent {
             color: var(--color-text-primary);
         }
     }
