@@ -3,8 +3,6 @@ import { AppSvgIconComponent } from '@shared/components';
 
 export interface DetailCrumb {
     label: string;
-    icon?: string;
-    iconSize?: string;
     navAgentId?: number;
     navAgentSurfacesId?: number;
 }

@@ -116,6 +116,7 @@
                     [showSidebar]="store.showSidebar()"
                     [crumbs]="agentCrumbs()"
                     (toggleSidebar)="store.toggleSidebar()"
+                    (navAgent)="store.selectAgent($event)"
                 >
                     @if (store.selectedAgent() || store.selectedSurface()) {
                         <button

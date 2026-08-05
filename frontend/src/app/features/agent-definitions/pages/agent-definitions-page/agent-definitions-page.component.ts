@@ -110,7 +110,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         if (sv.ownerAgent) {
             return [
                 { label: 'AGENTS' },
-                { label: sv.ownerAgent.name, icon: 'agents-tab', navAgentId: sv.ownerAgent.id },
+                { label: sv.ownerAgent.name, navAgentId: sv.ownerAgent.id },
                 { label: 'Surfaces', navAgentSurfacesId: sv.ownerAgent.id },
                 { label: sv.surface.name },
             ];
@@ -119,10 +119,18 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     });
 
     protected readonly agentCrumbs = computed<DetailCrumb[]>(() => {
-        const a = this.store.selectedAgent() ?? this.store.surfacesOnlyAgent();
-        if (a) return [{ label: 'AGENTS' }, { label: a.name, icon: 'agents-tab' }];
+        const agent = this.store.selectedAgent();
+        if (agent) return [{ label: 'AGENTS' }, { label: agent.name }];
+        const surfacesAgent = this.store.surfacesOnlyAgent();
+        if (surfacesAgent) {
+            return [
+                { label: 'AGENTS' },
+                { label: surfacesAgent.name, navAgentId: surfacesAgent.id },
+                { label: 'Surfaces' },
+            ];
+        }
         const s = this.store.selectedSurface();
-        if (s) return [{ label: 'SHARED SURFACES' }, { label: s.name, icon: 'surface-shared', iconSize: '12px' }];
+        if (s) return [{ label: 'SHARED SURFACES' }, { label: s.name }];
         return [];
     });
 
@@ -279,7 +287,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 maxWidth: '100vw',
                 panelClass: 'surface-summary-dialog-panel',
                 injector: this.injector,
-                data: { combined, placeLabel: label },
+                data: { combined, placeLabel: label, hideInstructions: true, hideDescriptions: true },
             });
         });
     }
