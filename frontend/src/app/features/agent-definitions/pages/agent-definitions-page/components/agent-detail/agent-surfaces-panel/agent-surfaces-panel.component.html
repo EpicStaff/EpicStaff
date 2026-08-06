@@ -97,6 +97,16 @@
                     </div>
                 </div>
 
+                @if (category.hint) {
+                    <div class="surface-category__hint">
+                        <app-svg-icon
+                            icon="help"
+                            size="12px"
+                        />
+                        <span>{{ category.hint }}</span>
+                    </div>
+                }
+
                 @if (isDrafting(category.id)) {
                     <div class="surface-item surface-item--expanded">
                         <div class="surface-item__row">

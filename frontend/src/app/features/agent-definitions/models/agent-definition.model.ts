@@ -1,4 +1,4 @@
-export type AgentSurfacePlace = 'all' | 'flow' | 'chat';
+export type AgentSurfacePlace = 'all' | 'flow' | 'chat' | 'realtime';
 
 // UI fallbacks shown when the agent's value is null (backend null = inherit
 // DefaultAgentDefinitionConfig; these mirror those org-wide defaults). Saving a

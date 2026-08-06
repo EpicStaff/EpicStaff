@@ -2,7 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 
-export type SurfaceUsagePlace = 'every-place' | 'flow' | 'chat';
+export type SurfaceUsagePlace = 'every-place' | 'flow' | 'chat' | 'realtime';
 
 export interface SurfaceAgentUsage {
     agentId: number;

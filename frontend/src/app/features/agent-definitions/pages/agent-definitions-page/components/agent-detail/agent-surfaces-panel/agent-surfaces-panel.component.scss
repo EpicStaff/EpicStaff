@@ -99,6 +99,21 @@
     min-width: 0;
 }
 
+.surface-category__hint {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.1rem 0 0.5rem;
+    color: var(--color-text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.4;
+
+    app-svg-icon {
+        flex-shrink: 0;
+        color: var(--accent-color);
+    }
+}
+
 .surface-category__actions {
     display: inline-flex;
     align-items: center;
