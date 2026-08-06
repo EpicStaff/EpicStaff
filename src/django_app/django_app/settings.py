@@ -116,6 +116,7 @@ REST_FRAMEWORK = {
         "password_reset_request": os.getenv(
             "PASSWORD_RESET_REQUEST_THROTTLE_RATE", "5/hour"
         ),
+        "notify_email": os.getenv("NOTIFY_EMAIL_THROTTLE_RATE", "10/hour"),
     },
 }
 

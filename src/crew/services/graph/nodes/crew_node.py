@@ -61,12 +61,29 @@ class CrewNode(BaseNode):
             stream_config=self.stream_config,
         )
 
-        gloabl_kwargs = {
+        if "session_id" in input_:
+            logger.warning(
+                f"Crew {self.node_name}: input already defines 'session_id'="
+                f"{input_['session_id']!r} — overriding with the internal "
+                f"session id {self.session_id} because built-in tools (e.g. "
+                "subflow_tool) depend on the injected value."
+            )
+
+        global_kwargs = {
             **input_,
             "state": {
                 "variables": state["variables"].model_dump(),
                 "state_history": state["state_history"],
             },
+            # Exposed as a bare global (globals().get("session_id")) to
+            # built-in python-code tools — e.g. subflow_tool uses it to link
+            # a sub-flow run to its caller via Session.parent_session and to
+            # walk the ancestor chain for a recursion guard. Additive only:
+            # existing tools ignore unused globals, so this is a no-op for
+            # every tool that doesn't read "session_id". Always wins over a
+            # same-named flow input / tool static config (warned above) —
+            # internal tools depend on the injected value being authoritative.
+            "session_id": self.session_id,
         }
 
         crew = await self.crew_parser_service.parse_crew(
@@ -74,7 +91,7 @@ class CrewNode(BaseNode):
             session_id=self.session_id,
             crew_callback_factory=crew_callback_factory,
             inputs=input_,
-            global_kwargs=gloabl_kwargs,
+            global_kwargs=global_kwargs,
             stop_event=self.stop_event,
             node_name=self.node_name,
             execution_order=execution_order,

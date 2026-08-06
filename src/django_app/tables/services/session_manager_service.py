@@ -110,6 +110,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         variables: dict | None = None,
         graph_user=None,
         trigger: TriggerSpec,
+        entrypoint: str | None = None,
+        parent_session_id: int | None = None,
+        token_budget: int | None = None,
     ) -> Session:
         if variables is None:
             variables = dict()
@@ -136,7 +139,13 @@ class SessionManagerService(metaclass=SingletonMeta):
         variables_for_db = {k: v for k, v in variables.items() if k != "shared"}
 
         graph = Graph.objects.get(pk=graph_id)
-        entrypoint = generate_node_name(trigger.node_id, trigger.node_name)
+        status_data = {"token_budget": token_budget} if token_budget is not None else {}
+        # Trigger nodes name the entrypoint; manual/parent-flow triggers have no
+        # node id, so generate_node_name returns None and an explicitly passed
+        # entrypoint wins.
+        entrypoint = (
+            generate_node_name(trigger.node_id, trigger.node_name) or entrypoint
+        )
 
         with transaction.atomic():
             session = Session.objects.create(
@@ -146,6 +155,8 @@ class SessionManagerService(metaclass=SingletonMeta):
                 time_to_live=graph.time_to_live,
                 graph_user=graph_user,
                 entrypoint=entrypoint,
+                parent_session_id=parent_session_id,
+                status_data=status_data,
             )
             SessionTrigger.objects.create(session=session, **trigger.to_fields())
         return session
@@ -153,17 +164,25 @@ class SessionManagerService(metaclass=SingletonMeta):
     def create_session_data(
         self,
         session: Session,
+        token_budget: int | None = None,
     ) -> SessionData:
         self.subgraph_validator.validate(session.graph)
 
         unique_subgraphs: dict[int, SubGraphData] = {}
         graph_data = self._build_graph_data(session.graph, unique_subgraphs, session)
 
+        initial_state = dict(session.variables)
+        if token_budget is not None:
+            # See TOKEN_BUDGET_STATE_KEY in
+            # crew/services/graph/graph_session_manager_service.py -- popped
+            # back out before it becomes a live flow variable.
+            initial_state["__token_budget__"] = token_budget
+
         return SessionData(
             id=session.pk,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
-            initial_state=session.variables,
+            initial_state=initial_state,
         )
 
     def run_session(
@@ -173,6 +192,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         variables: dict | None = None,
         user=None,
         trigger: TriggerSpec,
+        entrypoint: str | None = None,
+        parent_session_id: int | None = None,
+        token_budget: int | None = None,
     ) -> int:
         variables = self._get_actual_variables(variables)
         logger.info(f"'run_session' got variables: {variables=}")
@@ -190,9 +212,14 @@ class SessionManagerService(metaclass=SingletonMeta):
             variables=run_vars.variables,
             graph_user=run_vars.graph_user,
             trigger=trigger,
+            entrypoint=entrypoint,
+            parent_session_id=parent_session_id,
+            token_budget=token_budget,
         )
         try:
-            session_data: SessionData = self.create_session_data(session=session)
+            session_data: SessionData = self.create_session_data(
+                session=session, token_budget=token_budget
+            )
             # TODO: add ping or waiting for crew to accept connections
 
             session.graph_schema = session_data.graph.model_dump(mode="json")
@@ -225,8 +252,14 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
         return session.pk
 
+    # message_type values handled generically by the branch below: this is a
+    # plain GraphSessionMessage row + redis republish. "user" is the original
+    # AnswerToLLM path (kept byte-for-byte). Adding a message_type here never
+    # requires a migration -- message_data is a free-form JSONField.
+    _GENERIC_MESSAGE_TYPES = ("user",)
+
     def register_message(self, data: dict, created_at_dt) -> None:
-        if data["message_data"]["message_type"] == "user":
+        if data["message_data"]["message_type"] in self._GENERIC_MESSAGE_TYPES:
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
             session = Session.objects.get(id=graph_session_message_data.session_id)
             GraphSessionMessage.objects.create(

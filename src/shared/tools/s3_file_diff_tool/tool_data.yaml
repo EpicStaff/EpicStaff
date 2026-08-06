@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Diff Tool"
+  description: "Compare two S3-stored files and return a unified diff (diff -u semantics). Params: file_path_a, file_path_b (both required). Returns 'files are identical' when there is no difference. Output is capped at roughly 30,000 characters with a truncation notice for very large diffs."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

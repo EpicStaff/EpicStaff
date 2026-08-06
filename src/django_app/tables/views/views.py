@@ -70,12 +70,15 @@ from tables.serializers.serializers import (
     AnswerToLLMSerializer,
     BulkExportSerializer,
     InitRealtimeSerializer,
+    NotifyEmailSerializer,
     ProcessRagIndexingSerializer,
     RunSessionSerializer,
     RegisterTelegramTriggerSerializer,
     RunPythonCodeSerializer,
     SessionExportAllSerializer,
 )
+from tables.services.notification_email_sender import NotificationEmailSender
+from tables.throttles import NotifyEmailThrottle
 
 from tables.serializers.quickstart_serializers import (
     QuickstartSerializer,
@@ -150,6 +153,7 @@ session_manager_service = SessionManagerService()
 run_python_code_service = RunPythonCodeService()
 realtime_service = RealtimeService()
 quickstart_service = QuickstartService()
+notification_email_sender = NotificationEmailSender()
 
 
 @extend_schema_view(
@@ -481,13 +485,24 @@ class RunSession(APIView):
             variables["files"] = files_dict
             logger.info(f"Added {len(files_dict)} files to variables.")
 
+        parent_session_id = serializer.validated_data.get("parent_session_id")
+        # A sub-flow launched by the subflow_tool is triggered by its parent
+        # session, not by a human hitting this endpoint.
+        trigger = (
+            TriggerSpec.parent_flow(parent_session_id)
+            if parent_session_id is not None
+            else TriggerSpec.manual()
+        )
+
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
                 graph_id=graph_id,
                 variables=variables,
                 user=request.user,
-                trigger=TriggerSpec.manual(),
+                trigger=trigger,
+                parent_session_id=parent_session_id,
+                token_budget=serializer.validated_data.get("token_budget"),
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:
@@ -620,6 +635,44 @@ class AnswerToLLM(APIView):
         )
 
         return Response(status=status.HTTP_202_ACCEPTED)
+
+
+class NotifyEmailView(APIView):
+    """EST-3285 4.8: sends a notification email via notification_tool
+    (channel='email'). Reuses NotificationEmailSender (Django's send_mail /
+    EMAIL_BACKEND -- the same transport PasswordResetEmailSender uses), NOT a
+    parallel SMTP client. Requires auth (same DEFAULT_PERMISSION_CLASSES /
+    DEFAULT_AUTHENTICATION_CLASSES as every other endpoint), but auth alone
+    does not prevent abuse: this is driven by notification_tool (LLM output),
+    so a prompt-injected agent or a leaked API key could otherwise send
+    unlimited mail to arbitrary external addresses from our domain.
+    NotifyEmailThrottle caps that per authenticated user."""
+
+    throttle_classes = [NotifyEmailThrottle]
+
+    @extend_schema(
+        summary="Send a notification email",
+        request=NotifyEmailSerializer,
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = NotifyEmailSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        to_email = serializer.validated_data["to"]
+        subject = serializer.validated_data["subject"]
+        message = serializer.validated_data["message"]
+
+        sent, error = notification_email_sender.send(
+            to=to_email, subject=subject, message=message
+        )
+        if not sent:
+            return Response(
+                {"message": f"Failed to send notification email: {error}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response({"sent": True}, status=status.HTTP_200_OK)
 
 
 class RunPythonCodeAPIView(APIView):

@@ -1,0 +1,7 @@
+tool-data:
+  name: "Web Fetch Tool"
+  description: "Fetches a URL and converts its content to markdown (or passes through plain text/JSON). Includes an SSRF guard refusing private/loopback/link-local addresses. http and https only; cross-host redirects are not followed."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

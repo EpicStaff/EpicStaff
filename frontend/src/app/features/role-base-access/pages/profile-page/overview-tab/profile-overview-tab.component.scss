@@ -1,0 +1,129 @@
+:host {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow: hidden;
+}
+
+.info-cards {
+    display: flex;
+    gap: 30px;
+}
+
+.orgs-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    gap: 12px;
+
+    .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        .sort {
+            max-width: 200px;
+        }
+    }
+
+    .org-list-scroll {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+    }
+}
+
+.title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-weight: 700;
+    color: var(--text);
+
+    .count,
+    .icon {
+        color: var(--purple-primary);
+    }
+
+    &.section-title {
+        font-size: 18px;
+    }
+
+    &.card-title {
+        font-size: 14px;
+    }
+}
+
+.card {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 16px;
+    padding: 30px;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 10px;
+
+    .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+
+        .label {
+            color: var(--text-secondary-60);
+        }
+
+        .value {
+            color: var(--text);
+
+            &.role {
+                color: var(--purple-primary);
+                font-weight: 500;
+            }
+        }
+    }
+
+    .role-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+
+        .role-tag {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--text);
+            background: var(--transparent-white-8);
+        }
+    }
+}
+
+.org-row {
+    .left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .org-name {
+            flex: 1;
+            font-size: 14px;
+            color: var(--text);
+        }
+    }
+
+    .right {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+
+        .org-role {
+            font-size: 14px;
+            color: var(--purple-primary);
+        }
+    }
+}

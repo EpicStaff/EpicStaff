@@ -1,10 +1,16 @@
-def main(src: str, dst: str) -> str:
+def main(from_path: str, to_path: str) -> str:
     from epicstaff_storage import EpicStaffStorage
 
+    storage = EpicStaffStorage()
     try:
-        EpicStaffStorage().copy(src, dst)
-        return f"File copied from {src} to {dst} successfully."
+        storage.copy(from_path, to_path)
     except FileNotFoundError:
-        return f"Source file {src} not found."
+        return f"Source file not found: {from_path}."
     except PermissionError as e:
         return str(e)
+    except ValueError as e:
+        return str(e)
+    except RuntimeError as e:
+        return str(e)
+
+    return f"Copied {from_path} to {to_path}."
