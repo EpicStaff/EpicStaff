@@ -171,12 +171,18 @@ class KnowledgeSearchService:
                     subscriber=subscriber,
                 )
 
+                results = knowledge_callback_receiver.results
+                if results.status == "failed":
+                    raise RuntimeError(
+                        f"Knowledge search failed for {rag_type_id}: {results.message}"
+                    )
+
                 if self.writer is not None:
                     self._add_knowledges_to_graph_message(
-                        knowledge_results=knowledge_callback_receiver.results,
+                        knowledge_results=results,
                         token_usage=knowledge_callback_receiver.token_usage,
                     )
-                return knowledge_callback_receiver.results.results
+                return results.results
 
             if stop_event is not None:
                 stop_event.check_stop()

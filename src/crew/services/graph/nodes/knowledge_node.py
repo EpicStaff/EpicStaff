@@ -42,7 +42,13 @@ class KnowledgeNode(BaseNode):
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
     ) -> str:
-        query = self.query_template.format(**input_)
+        if self.query_template:
+            try:
+                query = self.query_template.format(**input_)
+            except (KeyError, IndexError, ValueError):
+                query = self.query_template
+        else:
+            query = "\n".join(str(v) for v in input_.values())
         # None = no per-node config rows → let the search service apply RAG defaults.
         rag_search_config = (
             self.rag_search_config.model_dump() if self.rag_search_config else {}

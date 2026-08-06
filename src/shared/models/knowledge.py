@@ -98,6 +98,8 @@ class BaseKnowledgeSearchMessageResponse(BaseModel):
     # Support backwards compatibility
     results: List[str] = []  # deprecated, use chunks instead
     token_usage: dict = {}
+    status: Literal["completed", "failed"] = "completed"
+    message: str | None = None  # error detail when status == "failed"
 
     model_config = ConfigDict(from_attributes=True)
 

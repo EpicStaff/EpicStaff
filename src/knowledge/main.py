@@ -12,6 +12,7 @@ from src.shared.models import (
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
     BaseKnowledgeSearchMessage,
+    BaseKnowledgeSearchMessageResponse,
     ProcessRagIndexingMessage,
 )
 
@@ -320,7 +321,25 @@ async def execute_search(
 
             logger.info(f"Search completed for {rag_type}_rag_id: {rag_id}")
         except Exception as e:
-            logger.error(f"Error processing search: {e}")
+            error_message = f"Error processing search: {e}"
+            logger.error(error_message)
+
+            response = BaseKnowledgeSearchMessageResponse(
+                rag_id=rag_id,
+                rag_type=rag_type,
+                collection_id=collection_id,
+                uuid=uuid,
+                retrieved_chunks=0,
+                query=query,
+                chunks=[],
+                rag_search_config=rag_search_config,
+                status="failed",
+                message=error_message,
+            )
+            await redis_service.async_publish(
+                channel=response_channel,
+                message=response.model_dump(),
+            )
 
 
 async def searching(
