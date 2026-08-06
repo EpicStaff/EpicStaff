@@ -29,8 +29,10 @@ import {
     ExtractTextFromStorageDialogResult,
 } from '../../../../components/extract-text-from-storage-dialog/extract-text-from-storage-dialog.component';
 import { AgentDefinition } from '../../../../models/agent-definition.model';
+import { RealtimeAgentDefinition } from '../../../../models/realtime-agent-definition.model';
 import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../models/surface.model';
 import { SurfaceCategoryId } from '../../../../models/surface-category.model';
+import { RealtimeAgentDefinitionsApiService } from '../../../../services/realtime-agent-definitions-api.service';
 import { SurfaceDragService } from '../../../../services/surface-drag.service';
 import { INSTRUCTIONS_ACCEPT_ATTR, readFileAsText } from '../../../../utils/instructions-file.utils';
 import {
@@ -94,6 +96,7 @@ export class AgentDetailComponent implements OnInit {
     private readonly storageDrag = inject(StorageDragService);
     private readonly surfaceDrag = inject(SurfaceDragService);
     private readonly toast: ToastService = inject(ToastService);
+    private readonly realtimeApi = inject(RealtimeAgentDefinitionsApiService);
 
     readonly acceptAttr = INSTRUCTIONS_ACCEPT_ATTR;
 
@@ -135,6 +138,11 @@ export class AgentDetailComponent implements OnInit {
     });
 
     readonly llmLoading = signal<boolean>(true);
+
+    private realtimeLoadedForAgentId: number | null = null;
+    // Cached RealtimeAgentDefinition row (null = none / not loaded). Used to seed
+    // Additional Settings and to decide create vs patch when saving realtime_config.
+    private realtimeDef: RealtimeAgentDefinition | null = null;
 
     readonly bootAsDoc = signal<boolean>(false);
     readonly bootDocName = 'Boot_Instructions.md';
@@ -183,6 +191,19 @@ export class AgentDetailComponent implements OnInit {
         effect(() => {
             this.saveErrorTick();
             untracked(() => this.revertToSnapshot());
+        });
+
+        // Load RealtimeAgentDefinition once per agent (for Additional Settings seed).
+        effect(() => {
+            const a = this.agent();
+            if (!a || this.isCreating()) {
+                this.realtimeLoadedForAgentId = null;
+                this.realtimeDef = null;
+                return;
+            }
+            if (a.id === this.realtimeLoadedForAgentId) return;
+            this.realtimeLoadedForAgentId = a.id;
+            untracked(() => this.loadRealtimeState(a.id));
         });
 
         // While a storage item or shared surface is being dragged, an agent shown in the
@@ -283,11 +304,29 @@ export class AgentDetailComponent implements OnInit {
         this.bootLength.set((this.savedSnapshot.instructions ?? '').length);
     }
 
+    private loadRealtimeState(agentId: number): void {
+        this.realtimeApi
+            .getByAgentId(agentId)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (rt) => {
+                    if (this.agent()?.id !== agentId) return;
+                    this.realtimeDef = rt;
+                },
+                error: () => {
+                    if (this.agent()?.id !== agentId) return;
+                    this.realtimeLoadedForAgentId = null;
+                    this.realtimeDef = null;
+                },
+            });
+    }
+
     openAdditionalSettings(): void {
         const a = this.agent();
         if (!a || this.saving()) return;
         const data: AgentAdditionalSettingsData = {
             fcm_llm_config: a.fcm_llm_config,
+            realtime_config: this.realtimeDef?.realtime_config ?? null,
             max_iter: a.max_iter,
             max_rpm: a.max_rpm,
             max_execution_time: a.max_execution_time,
@@ -303,6 +342,7 @@ export class AgentDetailComponent implements OnInit {
             .closed.pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (!result) return;
+                this.persistRealtimeConfig(a.id, result.realtime_config);
                 const v = this.form.getRawValue();
                 this.savedSnapshot = { ...v, name: v.name.trim() || a.name };
                 this.save.emit({
@@ -323,6 +363,35 @@ export class AgentDetailComponent implements OnInit {
                     max_consecutive_failures: result.max_consecutive_failures,
                     schema_max_retries: result.schema_max_retries,
                 });
+            });
+    }
+
+    // realtime_config lives on RealtimeAgentDefinition, not AgentDefinition.
+    // Patch existing row, or create one when the agent first gets a realtime model
+    // (that is what makes the agent appear on Chats → Agents).
+    private persistRealtimeConfig(agentId: number, realtimeConfig: number | null): void {
+        const current = this.realtimeDef?.realtime_config ?? null;
+        if (realtimeConfig === current) return;
+
+        if (this.realtimeDef) {
+            this.realtimeApi
+                .partialUpdate(agentId, { realtime_config: realtimeConfig })
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe({
+                    next: (rt) => (this.realtimeDef = rt),
+                    error: () => this.toast.error('Failed to save realtime config'),
+                });
+            return;
+        }
+
+        if (realtimeConfig == null) return;
+
+        this.realtimeApi
+            .create({ agent_definition: agentId, realtime_config: realtimeConfig })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (rt) => (this.realtimeDef = rt),
+                error: () => this.toast.error('Failed to save realtime config'),
             });
     }
 
