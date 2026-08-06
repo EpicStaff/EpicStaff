@@ -19,7 +19,8 @@ from tables.exceptions import (
     LLMConfigNotFoundException,
     CollectionNotFoundException,
     InvalidGraphRagParametersException,
-    GraphRagDocumentNotFoundException, DocumentConfigNotFoundException,
+    GraphRagDocumentNotFoundException,
+    DocumentConfigNotFoundException,
     InvalidChunkParametersException,
 )
 from tables.constants.knowledge_constants import (
