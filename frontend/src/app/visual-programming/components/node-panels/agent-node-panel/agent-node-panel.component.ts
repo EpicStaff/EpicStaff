@@ -79,6 +79,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     public readonly selectedSurfaceIds = signal<number[]>([]);
     public readonly inlineSurface = signal<InlineSurface | null>(null);
     public readonly tasks = signal<AgentNodeTaskUi[]>([]);
+    private readonly pendingAutoSelectAgentId = signal<number | null>(null);
 
     /** Both `<app-multi-select>` instances (compact + expanded views) for the surfaces
      *  dropdown — used to force-close whichever is open after the local-surface dialog
@@ -215,7 +216,10 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
                 catchError(() => of([])),
                 takeUntilDestroyed()
             )
-            .subscribe((surfaces) => this.surfaces.set(surfaces));
+            .subscribe((surfaces) => {
+                this.surfaces.set(surfaces);
+                this.applyPendingAgentSurfaceAutoSelect();
+            });
 
         this.sidePanelService.graphSaved$
             .pipe(takeUntilDestroyed())
@@ -238,6 +242,15 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         agentControl?.markAsTouched();
         agentControl?.markAsDirty();
         this.pruneInvalidSurfaceSelection();
+
+        // Only while creating a brand-new (not yet persisted) node: pre-select every surface
+        // the newly picked agent owns.
+        const isNewNode = this.node().backendId == null;
+        this.pendingAutoSelectAgentId.set(isNewNode && id != null ? id : null);
+        if (isNewNode && id != null) {
+            this.autoSelectAgentSurfaces(id);
+        }
+
         this.sidePanelService.triggerAutosave();
         this.notifyExternalChange();
     }
@@ -582,6 +595,22 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         if (next.length !== this.selectedSurfaceIds().length) {
             this.selectedSurfaceIds.set(next);
         }
+    }
+
+    private autoSelectAgentSurfaces(agentId: number): void {
+        const agentSurfaceIds = this.surfaces()
+            .filter((surface) => surface.owner_agent === agentId)
+            .map((surface) => surface.id);
+        if (agentSurfaceIds.length === 0) return;
+        this.selectedSurfaceIds.update((current) => Array.from(new Set([...current, ...agentSurfaceIds])));
+    }
+
+    private applyPendingAgentSurfaceAutoSelect(): void {
+        const pendingAgentId = this.pendingAutoSelectAgentId();
+        if (pendingAgentId == null) return;
+        this.pendingAutoSelectAgentId.set(null);
+        if (this.node().backendId != null || this.agentDefinitionId() !== pendingAgentId) return;
+        this.autoSelectAgentSurfaces(pendingAgentId);
     }
 
     private initializeInputMap(form: FormGroup): void {
