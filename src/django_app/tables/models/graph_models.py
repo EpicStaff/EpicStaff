@@ -19,6 +19,7 @@ from tables.models.label_models import Label
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 from tables.exceptions import GraphSaveVersionConflictError
 from tables.models.knowledge_models.graphrag_models import AgentGraphRag
+from tables.models.knowledge_models.collection_models import BaseRagType
 
 
 class GraphManager(models.Manager):
@@ -174,6 +175,13 @@ class KnowledgeNode(BaseNode):
     search_method = models.CharField(
         max_length=10,
         choices=AgentGraphRag.SearchMethod.choices,
+        null=True,
+        blank=True,
+        default=None,
+    )
+    last_rag_type = models.CharField(
+        max_length=30,
+        choices=BaseRagType.RagType.choices,
         null=True,
         blank=True,
         default=None,

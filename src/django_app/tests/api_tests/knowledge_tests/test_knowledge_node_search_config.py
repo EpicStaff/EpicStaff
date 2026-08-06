@@ -183,10 +183,15 @@ class TestKnowledgeNodeCreate:
         }
         resp = auth_client.post(list_url(), data, format="json")
         assert resp.status_code == status.HTTP_201_CREATED, resp.content
+        body = resp.json()
         # Read-back mirrors the impl id (dropdown round-trip), not BaseRagType.pk.
-        assert resp.json()["rag_type"] == impl.naive_rag_id
-        node = KnowledgeNode.objects.get(id=resp.json()["id"])
+        assert body["rag_type"] == impl.naive_rag_id
+        # Top level echoes the last saved rag kind; search_method stays nested only.
+        assert body["last_rag_type"] == "naive"
+        assert "search_method" not in body
+        node = KnowledgeNode.objects.get(id=body["id"])
         assert node.rag_type_id == naive_rag_type.rag_type_id
+        assert node.last_rag_type == "naive"
 
     def test_graph_impl_id_resolves_in_collection_with_both(
         self, auth_client, graph, collection, naive_rag_type
@@ -212,9 +217,15 @@ class TestKnowledgeNodeCreate:
         }
         resp = auth_client.post(list_url(), data, format="json")
         assert resp.status_code == status.HTTP_201_CREATED, resp.content
-        node = KnowledgeNode.objects.get(id=resp.json()["id"])
+        body = resp.json()
+        node = KnowledgeNode.objects.get(id=body["id"])
         assert node.rag_type_id == graph_rag_type.rag_type_id
-        assert resp.json()["rag_type"] == graph_impl.graph_rag_id
+        assert body["rag_type"] == graph_impl.graph_rag_id
+        assert body["last_rag_type"] == "graph"
+        assert node.last_rag_type == "graph"
+        # search_method survives nested, not at the top level.
+        assert body["search_configs"]["graph"]["search_method"] == "basic"
+        assert "search_method" not in body
 
     def test_empty_search_configs_fails(self, auth_client, graph):
         resp = auth_client.post(

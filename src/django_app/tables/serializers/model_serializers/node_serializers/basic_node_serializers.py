@@ -127,6 +127,10 @@ class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSeriali
     class Meta:
         model = KnowledgeNode
         fields = "__all__"
+        extra_kwargs = {
+            "search_method": {"write_only": True},
+            "last_rag_type": {"read_only": True},
+        }
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -157,6 +161,7 @@ class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSeriali
             )
         # Hand the resolved BaseRagType to the model FK.
         attrs["rag_type"] = base_rag_type
+        attrs["last_rag_type"] = base_rag_type.rag_type
         return attrs
 
 
