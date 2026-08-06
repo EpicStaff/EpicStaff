@@ -5,7 +5,11 @@ from typing import Callable, Optional, Union
 
 import asyncio
 
-from crewai.agents.crew_agent_executor import KNOWLEDGE_KEYWORD
+from crewai.agents.crew_agent_executor import (
+    EMPTY_KNOWLEDGE_KEYWORD,
+    END_OF_KNOWLEDGE_KEYWORD,
+    KNOWLEDGE_KEYWORD,
+)
 from crewai.agents.parser import AgentAction, AgentFinish
 from crewai.task import TaskOutput
 from langgraph.types import StreamWriter
@@ -276,8 +280,14 @@ class CrewCallbackFactory:
         )
 
     def _extract_knowledges(self, knowledge_snippets: list) -> str:
+        if not knowledge_snippets:
+            return EMPTY_KNOWLEDGE_KEYWORD
         snippet = "\n\n".join(knowledge_snippets)
-        return f'{KNOWLEDGE_KEYWORD} \n\n"{snippet}"' if knowledge_snippets else ""
+        return (
+            f'{KNOWLEDGE_KEYWORD}\n\n"{snippet}"{END_OF_KNOWLEDGE_KEYWORD}'
+            "Answer strictly from the knowledge above. If it does not cover the "
+            "question, say the documents do not cover it; do not use outside knowledge."
+        )
 
     def get_wait_for_user_callback(
         self,

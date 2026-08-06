@@ -17,6 +17,7 @@ from graphrag_storage.tables.table_provider_factory import create_table_provider
 from models import SearchRequest, SearchResponse
 from orchestrators.searching import AbstractSearch
 from pydantic import BaseModel as PydanticModel
+from services.grounding_guard import apply_grounding_guard
 
 
 DEFAULT_RESPONSE_TYPE = "Multiple Paragraphs"
@@ -133,8 +134,16 @@ class GraphSearch(AbstractSearch):
         if callable(extra_kwargs):
             extra_kwargs = extra_kwargs(request.search_config, method_config, files)
 
-        result, _ = await specs.searcher(
+        result, context = await specs.searcher(
             query=request.query, config=config, **files, **extra_kwargs
+        )
+
+        result = await apply_grounding_guard(
+            query=request.query,
+            response=result,
+            context=context,
+            config=config,
+            method=request.search_config.method,
         )
 
         return SearchResponse(request=request, result=result)

@@ -164,7 +164,7 @@ class KnowledgeSearchService:
             self._add_knowledges_to_graph_message(response, knowledge_collection_id)
 
         if isinstance(response.result, str):
-            return [response.result]
+            return [response.result] if response.result.strip() else []
         return [chunk.text for chunk in response.result]
 
     @staticmethod
