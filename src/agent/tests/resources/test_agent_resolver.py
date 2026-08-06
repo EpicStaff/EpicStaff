@@ -378,3 +378,32 @@ async def test_resolved_agent_context_has_empty_messages():
     resolved = await _resolver().resolve(agent, request)
 
     assert resolved.context.messages == []
+
+
+# ---------------------------------------------------------------------------
+# knowledge_sink threading
+# ---------------------------------------------------------------------------
+
+
+async def test_knowledge_sink_threaded_to_registry_builder():
+    """resolve(..., knowledge_sink=...) must reach ToolRegistryBuilder so
+    knowledge tools registered during this resolve call notify the sink."""
+    collection = _collection_spec("collection:7", entries=[_naive_entry()])
+    agent = _agent_spec(collection_refs=["collection:7"])
+    request = _request([agent], collections=[collection])
+    sink = MagicMock()
+
+    await _resolver().resolve(agent, request, knowledge_sink=sink)
+
+    sink.register_knowledge_tool.assert_called_once_with(
+        "search_test_knowledge_base_naive"
+    )
+
+
+async def test_resolve_without_knowledge_sink_still_works():
+    agent = _agent_spec()
+    request = _request([agent])
+
+    resolved = await _resolver().resolve(agent, request)
+
+    assert resolved.agent_id == agent.id

@@ -11,7 +11,8 @@ Protocol (see src/agent/tests/test_contract.py):
    or ``agent.error`` payload, both keyed by ``correlation_id``. Along the
    way, live envelopes whose ``type`` is in ``LIVE_EVENT_TYPES`` (currently
    ``agent.tool_call`` / ``agent.tool_result`` / ``agent.task_start`` /
-   ``agent.task_finish``) are forwarded to the caller's ``on_event`` callback
+   ``agent.task_finish`` / ``agent.knowledge_search``) are forwarded to the
+   caller's ``on_event`` callback
    and otherwise skipped; envelopes of any other unrecognized type sharing
    the correlation_id are silently skipped too (old-crew compatibility).
 
@@ -42,7 +43,13 @@ from src.shared.models.agent_service import (
 from src.shared.redis_streams import StreamEnvelope
 
 LIVE_EVENT_TYPES = frozenset(
-    {"agent.tool_call", "agent.tool_result", "agent.task_start", "agent.task_finish"}
+    {
+        "agent.tool_call",
+        "agent.tool_result",
+        "agent.task_start",
+        "agent.task_finish",
+        "agent.knowledge_search",
+    }
 )
 """Envelope types forwarded live to ``on_event`` instead of ending the wait."""
 

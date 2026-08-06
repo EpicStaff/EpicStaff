@@ -376,6 +376,41 @@ async def test_run_task_forwards_task_lifecycle_events_to_on_event_in_order(
 
 
 @pytest.mark.asyncio
+async def test_run_task_forwards_knowledge_search_events_and_does_not_end_wait(
+    redis_service_stub, task_node_data, fake_stream_client
+):
+    service = AgentTaskService(redis_service=redis_service_stub, poll_block_ms=50)
+    collected: list[StreamEnvelope] = []
+
+    async def fake_agent():
+        request_envelope = await _read_one_request(
+            fake_stream_client, service.request_stream
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"collection_id": 7, "chunks": []},
+            event_type="agent.knowledge_search",
+        )
+        await _publish_result(
+            fake_stream_client,
+            service.result_stream,
+            request_envelope.correlation_id,
+            {"final_text": "done", "stop_reason": "completed"},
+        )
+
+    responder = asyncio.create_task(fake_agent())
+    result = await service.run_task(
+        task_node_data, StopEvent(), on_event=collected.append
+    )
+    await responder
+
+    assert [envelope.type for envelope in collected] == ["agent.knowledge_search"]
+    assert result["final_text"] == "done"
+
+
+@pytest.mark.asyncio
 async def test_run_task_on_event_raising_logs_warning_and_still_returns_final(
     redis_service_stub, task_node_data, fake_stream_client
 ):

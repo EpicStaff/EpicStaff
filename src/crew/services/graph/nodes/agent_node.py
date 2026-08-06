@@ -16,6 +16,8 @@ STREAM_EVENT_BY_ENVELOPE_TYPE = {
     "agent.task_finish": "task_finish",
 }
 
+KNOWLEDGE_SEARCH_ENVELOPE_TYPE = "agent.knowledge_search"
+
 
 class AgentNode(BaseNode):
     TYPE = "AGENT"
@@ -70,6 +72,20 @@ class AgentNode(BaseNode):
 
         def _on_agent_event(envelope):
             nonlocal step_id
+            if envelope.type == KNOWLEDGE_SEARCH_ENVELOPE_TYPE:
+                self.custom_session_message_writer.add_custom_message(
+                    session_id=self.session_id,
+                    node_name=self.node_name,
+                    writer=writer,
+                    execution_order=execution_order,
+                    message_data={
+                        "message_type": "extracted_chunks",
+                        "sse_visible": True,
+                        **envelope.payload,
+                    },
+                )
+                return
+
             event = STREAM_EVENT_BY_ENVELOPE_TYPE.get(envelope.type)
             if event is None:
                 return
