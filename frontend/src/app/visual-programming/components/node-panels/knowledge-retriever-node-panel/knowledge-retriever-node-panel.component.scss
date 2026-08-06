@@ -77,13 +77,13 @@
 .form-group {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 1rem;
 }
 
 .form-group-container {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
+    gap: 1rem;
 }
 
 // ── RAG Search Config collapsible section ──
@@ -91,26 +91,24 @@
 .search-config-section {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
 }
 
 .search-config-toggle {
     background: none;
     border: none;
-    color: var(--color-text-primary, #d4d4d4);
-    font-size: 0.85rem;
+    color: var(--text);
+    font-size: 0.875rem;
     padding: 0.25rem 0;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    text-align: left;
+    gap: 0.5rem;
 
     .chevron {
         display: inline-block;
         transition: transform 0.15s ease;
         font-size: 0.7rem;
-        color: #d9d9d999;
+        color: var(--text-secondary-60);
 
         &.open {
             transform: rotate(90deg);
@@ -125,7 +123,6 @@
 .search-config-body {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
     padding-top: 0.25rem;
 }
 
@@ -171,38 +168,47 @@
 }
 
 .editor-panel {
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1;
     height: 100%;
     min-height: 0;
     min-width: 0;
-    border: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
-    border-radius: 0 8px 8px 0;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
     overflow: hidden;
-}
 
-.editor-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--color-divider-subtle, rgba(255, 255, 255, 0.1));
-    flex-shrink: 0;
-}
-
-.editor-tab {
-    background: none;
-    border: none;
-    color: var(--color-text-secondary, #d9d9d999);
-    font-size: 0.8rem;
-    padding: 0.6rem 1.2rem;
-    border-bottom: 2px solid transparent;
-
-    &.active {
-        color: var(--color-text-primary, #d4d4d4);
-        border-bottom-color: var(--accent-color, #685fff);
+    &:hover app-copy-button {
+        opacity: 1;
     }
 }
 
-.editor-tab-content {
+.editor-panel-header {
+    display: flex;
+    justify-content: space-between;
+
+    .left {
+        display: flex;
+        border-bottom: 1px solid var(--color-divider-subtle);
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        flex-shrink: 0;
+        font-size: 0.875rem;
+
+        .icon {
+            color: var(--accent-color);
+        }
+
+        .tooltip {
+            font-size: 0.75rem;
+            color: var(--text-secondary-60);
+        }
+    }
+}
+
+.editor-panel-content {
     flex: 1;
     min-height: 0;
     display: flex;
@@ -219,4 +225,15 @@
     app-code-editor {
         min-width: 0;
     }
+}
+
+.template-textarea-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.template-textarea-rounded {
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 10px;
+    overflow: hidden;
 }

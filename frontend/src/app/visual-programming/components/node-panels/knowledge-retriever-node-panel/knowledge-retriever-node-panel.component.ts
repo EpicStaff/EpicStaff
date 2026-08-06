@@ -4,6 +4,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
+    AppSvgIconComponent,
+    CopyButtonComponent,
     CustomInputComponent,
     DualSliderComponent,
     InputNumberComponent,
@@ -11,7 +13,9 @@ import {
     SelectComponent,
     SelectItem,
     SliderWithStepperComponent,
+    TemplateTextareaComponent,
     TextareaComponent,
+    TooltipComponent,
 } from '@shared/components';
 import {
     AgentSearchConfigs,
@@ -28,7 +32,6 @@ import {
     GetCollectionRequest,
 } from '../../../../features/knowledge-sources/models/collection.model';
 import { CollectionsApiService } from '../../../../features/knowledge-sources/services/collections-api.service';
-import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { KnowledgeRetrieverNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { SidePanelService } from '../../../services/side-panel.service';
@@ -36,6 +39,11 @@ import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 
 type RagKind = 'naive' | 'graph';
+
+interface RagChoice {
+    rag_id: number;
+    rag_type: RagKind;
+}
 
 const NAIVE_DEFAULTS: NaiveRagSearchConfig = {
     search_limit: 3,
@@ -58,9 +66,7 @@ const GRAPH_LOCAL_DEFAULTS: GraphLocalSearchConfig = {
     max_context_tokens: 12000,
 };
 
-// TODO review this component before any merge!
 @Component({
-    standalone: true,
     selector: 'app-knowledge-retriever-node-panel',
     imports: [
         CommonModule,
@@ -72,9 +78,12 @@ const GRAPH_LOCAL_DEFAULTS: GraphLocalSearchConfig = {
         InputNumberComponent,
         DualSliderComponent,
         RadioButtonComponent,
-        TextareaComponent,
+        TemplateTextareaComponent,
         InputMapComponent,
-        CodeEditorComponent,
+        TextareaComponent,
+        TooltipComponent,
+        AppSvgIconComponent,
+        CopyButtonComponent,
     ],
     templateUrl: './knowledge-retriever-node-panel.component.html',
     styleUrls: ['./knowledge-retriever-node-panel.component.scss'],
@@ -86,37 +95,27 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
     private readonly collectionsService = inject(CollectionsApiService);
     private readonly sidePanelService = inject(SidePanelService);
 
-    // ── async data ──
     readonly collections = signal<GetCollectionRequest[]>([]);
     readonly loadingCollections = signal<boolean>(false);
     readonly rags = signal<GetCollectionRagsResponse[]>([]);
     readonly loadingRags = signal<boolean>(false);
 
-    // ── UI state ──
     readonly searchConfigOpen = signal<boolean>(true);
     readonly isCodeEditorFullWidth = signal<boolean>(false);
 
-    // The search-config sub-form is (re)built when rag_type changes — 'naive' and
-    // 'graph' have completely different shapes. Held outside the main FormGroup
-    // and swapped via a template @if.
     searchConfigsFormGroup: FormGroup | null = null;
 
-    // Extracted controls so the DualSlider (which uses two 1-way bindings) can
-    // read/write them without duplicating state.
     textUnitPropControl: FormControl | null = null;
     communityPropControl: FormControl | null = null;
 
-    // "Instructions" (== `query`) is edited via CodeEditor in the expanded view.
-    // Kept outside the form because CodeEditor is not a ControlValueAccessor here.
-    queryText = '';
-
     private readonly codeChange$ = new Subject<void>();
-    private readonly currentRagIdSignal = signal<number | null>(null);
+    private readonly currentRagChoice = signal<RagChoice | null>(null);
 
+    // TODO add global and drift methods when they are ready, then
+    // TODO investigate if we can reuse same logic in both: here, and agent create/update modal
     readonly searchMethodOptions: SelectItem[] = [
         { name: 'Basic', value: 'basic' },
         { name: 'Local', value: 'local' },
-        // Global / DRIFT intentionally omitted — implemented in a different branch.
     ];
 
     readonly collectionItems = computed<SelectItem[]>(() => [
@@ -124,16 +123,16 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
         ...this.collections().map((c) => ({ name: c.collection_name, value: c.collection_id })),
     ]);
 
-    readonly ragItems = computed<SelectItem[]>(() => this.rags().map((r) => ({ name: r.rag_type, value: r.rag_id })));
+    readonly ragItems = computed<SelectItem<RagChoice>[]>(() =>
+        this.rags()
+            .filter((r) => r.rag_type === 'naive' || r.rag_type === 'graph')
+            .map((r) => ({
+                name: r.rag_type,
+                value: { rag_id: r.rag_id, rag_type: r.rag_type as RagKind },
+            }))
+    );
 
-    /** Derives the rag kind ('naive' | 'graph') from the currently selected rag_id. */
-    readonly selectedRagKind = computed<RagKind | null>(() => {
-        const ragId = this.currentRagIdSignal();
-        if (ragId == null) return null;
-        const found = this.rags().find((r) => r.rag_id === ragId);
-        const kind = found?.rag_type;
-        return kind === 'naive' || kind === 'graph' ? kind : null;
-    });
+    readonly selectedRagKind = computed<RagKind | null>(() => this.currentRagChoice()?.rag_type ?? null);
 
     constructor() {
         super();
@@ -166,15 +165,14 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
         const node = this.node();
         const data = node.data;
 
-        this.queryText = data.query ?? '';
-        this.currentRagIdSignal.set(data.rag_type);
+        this.currentRagChoice.set(null);
 
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [node.output_variable_path ?? ''],
             source_collection: [data.source_collection],
-            rag_type: [data.rag_type],
+            rag_type: this.fb.control<RagChoice | null>(null),
             query: [data.query ?? ''],
         });
 
@@ -186,13 +184,15 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
 
         form.get('rag_type')!
             .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((ragId: number | null) => {
-                this.currentRagIdSignal.set(ragId);
+            .subscribe((choice: RagChoice | null) => {
+                this.currentRagChoice.set(choice);
                 this.rebuildSearchConfigsFormGroup(data.search_configs);
             });
 
-        // Pre-load rags for the initially selected collection so the dropdown +
-        // sub-form are populated on first render.
+        form.get('query')!
+            .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.codeChange$.next());
+
         if (data.source_collection != null) {
             this.loadRagsForCollection(data.source_collection);
         }
@@ -207,11 +207,10 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
         const validPairs = getValidInputPairs(this.inputMapPairs);
         const inputMap = createInputMapFromPairs(validPairs);
 
-        const ragId: number | null = this.form.value.rag_type ?? null;
+        const choice: RagChoice | null = this.form.value.rag_type ?? null;
         const kind = this.selectedRagKind();
         const searchConfigs = this.serializeSearchConfigs(kind);
 
-        // Backend uses one column for `search_method`; keep top-level + nested mirror in sync.
         const graphMethod: GraphSearchMethod | null =
             kind === 'graph' && searchConfigs?.graph?.search_method ? searchConfigs.graph.search_method : null;
 
@@ -223,21 +222,12 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
             data: {
                 ...node.data,
                 source_collection: this.form.value.source_collection ?? null,
-                rag_type: ragId,
-                query: this.queryText,
+                rag_type: choice?.rag_id ?? null,
+                query: this.form.value.query ?? '',
                 search_method: graphMethod,
                 search_configs: searchConfigs,
             },
         };
-    }
-
-    // ── Instructions (query) ──
-
-    onQueryCodeChange(code: string): void {
-        this.queryText = code;
-        this.form.patchValue({ query: code }, { emitEvent: false });
-        this.codeChange$.next();
-        this.notifyExternalChange();
     }
 
     toggleCodeEditorFullWidth(): void {
@@ -248,8 +238,6 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
         this.searchConfigOpen.update((v) => !v);
     }
 
-    // ── DualSlider bridges (graph.local) ──
-
     onTextUnitPropUpdate(value: number): void {
         this.textUnitPropControl?.setValue(value);
     }
@@ -258,10 +246,7 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
         this.communityPropControl?.setValue(value);
     }
 
-    // ── Internals ──
-
     private onCollectionChange(collectionId: number | null): void {
-        // Clear rag selection — rag_type must belong to source_collection per API.
         this.form.get('rag_type')!.setValue(null);
         if (collectionId == null) {
             this.rags.set([]);
@@ -279,11 +264,25 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
                 next: (list) => {
                     this.rags.set(list);
                     this.loadingRags.set(false);
-                    // Rebuild — the sub-form depends on rag kind which is derived from the rag list.
+                    this.rehydrateRagChoiceFromSavedData();
                     this.rebuildSearchConfigsFormGroup(this.node().data.search_configs);
                 },
                 error: () => this.loadingRags.set(false),
             });
+    }
+
+    private rehydrateRagChoiceFromSavedData(): void {
+        if (this.form.get('rag_type')!.value != null) return;
+
+        const savedRagId = this.node().data.rag_type;
+        if (savedRagId == null) return;
+
+        const match = this.rags().find(
+            (r) => r.rag_id === savedRagId && (r.rag_type === 'naive' || r.rag_type === 'graph')
+        );
+        if (!match) return;
+
+        this.form.get('rag_type')!.setValue({ rag_id: match.rag_id, rag_type: match.rag_type as RagKind });
     }
 
     private rebuildSearchConfigsFormGroup(existing: AgentSearchConfigs | null): void {
@@ -333,7 +332,6 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
         this.communityPropControl = null;
     }
 
-    /** Reads the current sub-form back into the API-shaped `search_configs`. */
     private serializeSearchConfigs(kind: RagKind | null): AgentSearchConfigs | null {
         if (!kind || !this.searchConfigsFormGroup) return null;
         const value = this.searchConfigsFormGroup.value;
@@ -345,7 +343,6 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
                 },
             };
         }
-        // kind === 'graph'
         const method: GraphSearchMethod = value.search_method ?? 'basic';
         return {
             graph: {

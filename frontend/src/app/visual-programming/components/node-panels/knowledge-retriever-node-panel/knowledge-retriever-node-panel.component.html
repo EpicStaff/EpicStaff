@@ -75,29 +75,25 @@
                                             class="search-config-body"
                                         >
                                             @if (selectedRagKind() === 'naive') {
-                                                <div class="form-group">
-                                                    <app-slider-with-stepper
-                                                        formControlName="similarity_threshold"
-                                                        label="Similarity Threshold"
-                                                        tooltipText="Lower values return more results (less relevant); higher values are more precise."
-                                                        [min]="0"
-                                                        [max]="1"
-                                                        [step]="0.1"
-                                                        [decimals]="1"
-                                                    />
-                                                </div>
+                                                <app-slider-with-stepper
+                                                    formControlName="similarity_threshold"
+                                                    label="Similarity Threshold"
+                                                    tooltipText="Lower values return more results (less relevant); higher values are more precise."
+                                                    [min]="0"
+                                                    [max]="1"
+                                                    [step]="0.1"
+                                                    [decimals]="1"
+                                                />
 
-                                                <div class="form-group">
-                                                    <app-slider-with-stepper
-                                                        formControlName="search_limit"
-                                                        label="Search Limit"
-                                                        tooltipText="Maximum number of items to retrieve. Higher = more context but slower."
-                                                        [min]="1"
-                                                        [max]="1000"
-                                                        [step]="1"
-                                                        [decimals]="0"
-                                                    />
-                                                </div>
+                                                <app-slider-with-stepper
+                                                    formControlName="search_limit"
+                                                    label="Search Limit"
+                                                    tooltipText="Maximum number of items to retrieve. Higher = more context but slower."
+                                                    [min]="1"
+                                                    [max]="1000"
+                                                    [step]="1"
+                                                    [decimals]="0"
+                                                />
                                             } @else if (selectedRagKind() === 'graph') {
                                                 <div class="form-group">
                                                     <app-radio-button
@@ -106,21 +102,20 @@
                                                         tooltipText="Basic: vector-based retrieval. Local: combines knowledge-graph with raw text chunks."
                                                         [options]="searchMethodOptions"
                                                     />
-                                                </div>
 
-                                                @switch (searchConfigsFormGroup.get('search_method')?.value) {
-                                                    @case ('basic') {
-                                                        <div formGroupName="basic">
-                                                            <div class="form-group">
+                                                    @switch (searchConfigsFormGroup.get('search_method')?.value) {
+                                                        @case ('basic') {
+                                                            <div
+                                                                class="form-group"
+                                                                formGroupName="basic"
+                                                            >
                                                                 <app-textarea
                                                                     formControlName="prompt"
                                                                     label="Prompt"
                                                                     tooltipText="Custom general-knowledge prompt. Leave empty for the default."
                                                                     placeholder="Custom general knowledge instruction... Leave empty for default."
                                                                 />
-                                                            </div>
-                                                            <div class="form-group-container">
-                                                                <div class="form-group">
+                                                                <div class="form-group-container">
                                                                     <app-input-number
                                                                         formControlName="k"
                                                                         label="K"
@@ -129,8 +124,6 @@
                                                                         [min]="1"
                                                                         [max]="100"
                                                                     />
-                                                                </div>
-                                                                <div class="form-group">
                                                                     <app-input-number
                                                                         formControlName="max_context_tokens"
                                                                         label="Max Context Tokens"
@@ -141,21 +134,20 @@
                                                                     />
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    }
-                                                    @case ('local') {
-                                                        <div formGroupName="local">
-                                                            <div class="form-group">
+                                                        }
+                                                        @case ('local') {
+                                                            <div
+                                                                class="form-group"
+                                                                formGroupName="local"
+                                                            >
                                                                 <app-textarea
                                                                     formControlName="prompt"
                                                                     label="Prompt"
                                                                     tooltipText="Custom prompt for local graph search. Leave empty for the default."
                                                                     placeholder="Custom general knowledge instruction... Leave empty for default."
                                                                 />
-                                                            </div>
 
-                                                            @if (textUnitPropControl && communityPropControl) {
-                                                                <div class="form-group">
+                                                                @if (textUnitPropControl && communityPropControl) {
                                                                     <app-dual-slider
                                                                         firstLabel="Text Unit Proportion"
                                                                         firstTooltipText="Proportion of context devoted to raw text units."
@@ -173,11 +165,9 @@
                                                                         [max]="1"
                                                                         [step]="0.01"
                                                                     />
-                                                                </div>
-                                                            }
+                                                                }
 
-                                                            <div class="form-group-container">
-                                                                <div class="form-group">
+                                                                <div class="form-group-container">
                                                                     <app-input-number
                                                                         formControlName="conversation_history_max_turns"
                                                                         label="Conv. History Max Turns"
@@ -186,8 +176,6 @@
                                                                         [min]="1"
                                                                         [max]="50"
                                                                     />
-                                                                </div>
-                                                                <div class="form-group">
                                                                     <app-input-number
                                                                         formControlName="max_context_tokens"
                                                                         label="Max Context Tokens"
@@ -197,10 +185,8 @@
                                                                         [max]="100000"
                                                                     />
                                                                 </div>
-                                                            </div>
 
-                                                            <div class="form-group-container">
-                                                                <div class="form-group">
+                                                                <div class="form-group-container">
                                                                     <app-input-number
                                                                         formControlName="top_k_entities"
                                                                         label="Top K Entities"
@@ -209,8 +195,6 @@
                                                                         [min]="1"
                                                                         [max]="100"
                                                                     />
-                                                                </div>
-                                                                <div class="form-group">
                                                                     <app-input-number
                                                                         formControlName="top_k_relationships"
                                                                         label="Top K Relationships"
@@ -221,9 +205,9 @@
                                                                     />
                                                                 </div>
                                                             </div>
-                                                        </div>
+                                                        }
                                                     }
-                                                }
+                                                </div>
                                             }
                                         </div>
                                     }
@@ -258,20 +242,27 @@
                         </button>
 
                         <div class="editor-panel">
-                            <div class="editor-tabs">
-                                <span
-                                    class="editor-tab active"
-                                    [style.--accent-color]="activeColor"
-                                >
-                                    Instructions
-                                </span>
+                            <app-copy-button [text]="form.get('query')?.getRawValue()" />
+                            <div class="editor-panel-header">
+                                <div class="left">
+                                    <app-svg-icon
+                                        class="icon"
+                                        icon="file"
+                                        size="14px"
+                                    />
+                                    Text Editor
+                                    <span class="tooltip"> Instructions </span>
+                                </div>
                             </div>
-                            <div class="editor-tab-content">
-                                <app-code-editor
+                            <div class="editor-panel-content">
+                                <app-template-textarea
                                     class="code-editor-section"
-                                    [pythonCode]="queryText"
-                                    (pythonCodeChange)="onQueryCodeChange($event)"
-                                ></app-code-editor>
+                                    formControlName="query"
+                                    placeholder="Enter instructions. Use {variable} to insert dynamic values..."
+                                    [stretch]="true"
+                                    [resizable]="false"
+                                    [showLineNumbers]="true"
+                                />
                             </div>
                         </div>
                     </div>
@@ -342,29 +333,24 @@
                                     class="search-config-body"
                                 >
                                     @if (selectedRagKind() === 'naive') {
-                                        <div class="form-group">
-                                            <app-slider-with-stepper
-                                                formControlName="similarity_threshold"
-                                                label="Similarity Threshold"
-                                                tooltipText="Lower values return more results (less relevant); higher values are more precise."
-                                                [min]="0"
-                                                [max]="1"
-                                                [step]="0.1"
-                                                [decimals]="1"
-                                            />
-                                        </div>
-
-                                        <div class="form-group">
-                                            <app-slider-with-stepper
-                                                formControlName="search_limit"
-                                                label="Search Limit"
-                                                tooltipText="Maximum number of items to retrieve. Higher = more context but slower."
-                                                [min]="1"
-                                                [max]="1000"
-                                                [step]="1"
-                                                [decimals]="0"
-                                            />
-                                        </div>
+                                        <app-slider-with-stepper
+                                            formControlName="similarity_threshold"
+                                            label="Similarity Threshold"
+                                            tooltipText="Lower values return more results (less relevant); higher values are more precise."
+                                            [min]="0"
+                                            [max]="1"
+                                            [step]="0.1"
+                                            [decimals]="1"
+                                        />
+                                        <app-slider-with-stepper
+                                            formControlName="search_limit"
+                                            label="Search Limit"
+                                            tooltipText="Maximum number of items to retrieve. Higher = more context but slower."
+                                            [min]="1"
+                                            [max]="1000"
+                                            [step]="1"
+                                            [decimals]="0"
+                                        />
                                     } @else if (selectedRagKind() === 'graph') {
                                         <div class="form-group">
                                             <app-radio-button
@@ -373,21 +359,19 @@
                                                 tooltipText="Basic: vector-based retrieval. Local: combines knowledge-graph with raw text chunks."
                                                 [options]="searchMethodOptions"
                                             />
-                                        </div>
-
-                                        @switch (searchConfigsFormGroup.get('search_method')?.value) {
-                                            @case ('basic') {
-                                                <div formGroupName="basic">
-                                                    <div class="form-group">
+                                            @switch (searchConfigsFormGroup.get('search_method')?.value) {
+                                                @case ('basic') {
+                                                    <div
+                                                        class="form-group"
+                                                        formGroupName="basic"
+                                                    >
                                                         <app-textarea
                                                             formControlName="prompt"
                                                             label="Prompt"
                                                             tooltipText="Custom general-knowledge prompt. Leave empty for the default."
                                                             placeholder="Custom general knowledge instruction... Leave empty for default."
                                                         />
-                                                    </div>
-                                                    <div class="form-group-container">
-                                                        <div class="form-group">
+                                                        <div class="form-group-container">
                                                             <app-input-number
                                                                 formControlName="k"
                                                                 label="K"
@@ -396,8 +380,6 @@
                                                                 [min]="1"
                                                                 [max]="100"
                                                             />
-                                                        </div>
-                                                        <div class="form-group">
                                                             <app-input-number
                                                                 formControlName="max_context_tokens"
                                                                 label="Max Context Tokens"
@@ -408,21 +390,20 @@
                                                             />
                                                         </div>
                                                     </div>
-                                                </div>
-                                            }
-                                            @case ('local') {
-                                                <div formGroupName="local">
-                                                    <div class="form-group">
+                                                }
+                                                @case ('local') {
+                                                    <div
+                                                        class="form-group"
+                                                        formGroupName="local"
+                                                    >
                                                         <app-textarea
                                                             formControlName="prompt"
                                                             label="Prompt"
                                                             tooltipText="Custom prompt for local graph search. Leave empty for the default."
                                                             placeholder="Custom general knowledge instruction... Leave empty for default."
                                                         />
-                                                    </div>
 
-                                                    @if (textUnitPropControl && communityPropControl) {
-                                                        <div class="form-group">
+                                                        @if (textUnitPropControl && communityPropControl) {
                                                             <app-dual-slider
                                                                 firstLabel="Text Unit Proportion"
                                                                 firstTooltipText="Proportion of context devoted to raw text units."
@@ -436,11 +417,9 @@
                                                                 [max]="1"
                                                                 [step]="0.01"
                                                             />
-                                                        </div>
-                                                    }
+                                                        }
 
-                                                    <div class="form-group-container">
-                                                        <div class="form-group">
+                                                        <div class="form-group-container">
                                                             <app-input-number
                                                                 formControlName="conversation_history_max_turns"
                                                                 label="Conv. History Max Turns"
@@ -449,8 +428,6 @@
                                                                 [min]="1"
                                                                 [max]="50"
                                                             />
-                                                        </div>
-                                                        <div class="form-group">
                                                             <app-input-number
                                                                 formControlName="max_context_tokens"
                                                                 label="Max Context Tokens"
@@ -460,10 +437,8 @@
                                                                 [max]="100000"
                                                             />
                                                         </div>
-                                                    </div>
 
-                                                    <div class="form-group-container">
-                                                        <div class="form-group">
+                                                        <div class="form-group-container">
                                                             <app-input-number
                                                                 formControlName="top_k_entities"
                                                                 label="Top K Entities"
@@ -472,8 +447,6 @@
                                                                 [min]="1"
                                                                 [max]="100"
                                                             />
-                                                        </div>
-                                                        <div class="form-group">
                                                             <app-input-number
                                                                 formControlName="top_k_relationships"
                                                                 label="Top K Relationships"
@@ -484,22 +457,24 @@
                                                             />
                                                         </div>
                                                     </div>
-                                                </div>
+                                                }
                                             }
-                                        }
+                                        </div>
                                     }
                                 </div>
                             }
                         </div>
                     }
 
-                    <div class="form-group">
-                        <app-textarea
-                            label="Instructions"
+                    <div class="template-textarea-wrapper">
+                        <app-tooltip
                             tooltipText="Query text sent to the knowledge base. Supports template variables like {name}."
-                            placeholder="Enter task instructions..."
+                            label="Instructions"
+                        />
+                        <app-template-textarea
+                            class="template-textarea-rounded"
+                            placeholder="Enter instructions. Use {variable} to insert dynamic values..."
                             formControlName="query"
-                            (input)="onQueryCodeChange(form.get('query')!.value)"
                         />
                     </div>
                 </div>
