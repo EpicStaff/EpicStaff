@@ -302,6 +302,9 @@ export function buildBulkSavePayload(
         classification_decision_table_node_ids: nodeDiff.classificationDecisionTableNodes.toDelete
             .map((n) => n.backendId!)
             .filter((id) => id != null),
+        knowledge_node_ids: nodeDiff.knowledgeRetrieverNodes.toDelete
+            .map((n) => n.backendId!)
+            .filter((id) => id != null),
         edge_ids: connectionDiff.toDelete.map((c) => c.data?.id).filter((id): id is number => id != null),
     };
 
@@ -429,6 +432,18 @@ export function buildBulkSavePayload(
         classification_decision_table_node_list: nodeItems(nodeDiff.classificationDecisionTableNodes, (n) =>
             buildCdtNodePayload(n, graphId, current.nodes, idMap, current.connections)
         ),
+        knowledge_node_list: nodeItems(nodeDiff.knowledgeRetrieverNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            input_map: n.input_map || {},
+            output_variable_path: n.output_variable_path || null,
+            source_collection: n.data?.source_collection ?? null,
+            rag_type: n.data?.rag_type ?? null,
+            query: n.data?.query ?? '',
+            search_method: n.data?.search_method ?? null,
+            search_configs: n.data?.search_configs ?? null,
+            metadata: toNodeMetadata(n),
+        })),
         edge_list: [...edgeList, ...edgeUpdateList],
         deleted,
     };

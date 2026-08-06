@@ -10,6 +10,7 @@ import {
     EndNodeModel,
     FileExtractorNodeModel,
     GraphNoteModel,
+    KnowledgeRetrieverNodeModel,
     LLMNodeModel,
     NodeModel,
     ProjectNodeModel,
@@ -254,6 +255,21 @@ function toCodeAgentComparable(node: CodeAgentNodeModel): unknown {
     };
 }
 
+function toKnowledgeRetrieverComparable(node: KnowledgeRetrieverNodeModel): unknown {
+    const data = node.data;
+    return {
+        node_name: node.node_name,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        source_collection: data?.source_collection ?? null,
+        rag_type: data?.rag_type ?? null,
+        query: data?.query ?? '',
+        search_method: data?.search_method ?? null,
+        search_configs: data?.search_configs ?? null,
+        metadata: toNodeMetadata(node),
+    };
+}
+
 interface CdtConditionGroupUi {
     group_name: string;
     order?: number;
@@ -402,6 +418,11 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<ClassificationDecisionTableNodeModel>(previous.nodes, NodeType.CLASSIFICATION_TABLE),
             nodesByType<ClassificationDecisionTableNodeModel>(current.nodes, NodeType.CLASSIFICATION_TABLE),
             (n) => toCdtComparable(n, current.nodes)
+        ),
+        knowledgeRetrieverNodes: diffNodesByBackendId(
+            nodesByType<KnowledgeRetrieverNodeModel>(previous.nodes, NodeType.KNOWLEDGE_RETRIEVER),
+            nodesByType<KnowledgeRetrieverNodeModel>(current.nodes, NodeType.KNOWLEDGE_RETRIEVER),
+            toKnowledgeRetrieverComparable
         ),
     };
 }

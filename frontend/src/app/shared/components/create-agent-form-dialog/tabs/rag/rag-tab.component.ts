@@ -135,7 +135,7 @@ export class RagTabComponent implements OnInit {
         this.form().setControl('search_configs', this.searchConfigsFormGroup);
     }
 
-    private initGraphBasicSearchConfig(configs: GraphBasicSearchConfig | undefined): FormGroup {
+    private initGraphBasicSearchConfig(configs: GraphBasicSearchConfig | null | undefined): FormGroup {
         return this.fb.group({
             prompt: [configs?.prompt || null, [Validators.maxLength(1000)]],
             k: [configs?.k ?? 10, [Validators.required, Validators.min(1), Validators.max(100)]],
@@ -146,7 +146,7 @@ export class RagTabComponent implements OnInit {
         });
     }
 
-    private initGraphLocalSearchConfig(configs: GraphLocalSearchConfig | undefined): FormGroup {
+    private initGraphLocalSearchConfig(configs: GraphLocalSearchConfig | null | undefined): FormGroup {
         this.textUnitProportionControl = this.fb.control(configs?.text_unit_prop ?? 0.5, [
             Validators.required,
             Validators.min(0),

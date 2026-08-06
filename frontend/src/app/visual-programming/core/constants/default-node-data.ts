@@ -108,6 +108,11 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         inactivity_timeout_s: 120,
         max_wait_s: 300,
     }),
-    // TODO check
-    [NodeType.KNOWLEDGE_RETRIEVER]: () => ({}),
+    [NodeType.KNOWLEDGE_RETRIEVER]: () => ({
+        source_collection: null,
+        rag_type: null,
+        query: '',
+        search_method: null,
+        search_configs: null,
+    }),
 };

@@ -6,6 +6,7 @@ import { CustomPythonCode } from '../../../features/tools/models/python-code.mod
 import { ToolConfig } from '../../../features/tools/models/tool-config.model';
 import { CodeAgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { CustomConditionalEdgeModelForNode } from '../../../pages/flows-page/components/flow-visual-programming/models/conditional-edge.model';
+import { GetKnowledgeRetrieverNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/knowledge-retriever-node.model';
 import { ScheduleTriggerNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
 import { TelegramTriggerNodeField } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { GetLlmConfigRequest } from '../../../shared/models/llms/llm-config.model';
@@ -155,10 +156,9 @@ export interface CodeAgentNodeModel extends BaseNodeModel {
     stream_config?: Record<string, boolean>;
 }
 
-// TODO check data
 export interface KnowledgeRetrieverNodeModel extends BaseNodeModel {
     type: NodeType.KNOWLEDGE_RETRIEVER;
-    data: null;
+    data: GetKnowledgeRetrieverNodeRequest;
 }
 
 export type NodeModel =
