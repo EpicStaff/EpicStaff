@@ -759,8 +759,8 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
     summary="Trigger document chunking and wait for completion",
     description=(
         "Trigger document chunking and wait for completion.\n\n"
-        "Target is identified entirely by the URL path parameters below — no "
-        "request body is required.\n\n"
+        "The chunking config (chunk_strategy, chunk_size, chunk_overlap, additional_params) "
+        "must be provided in the request body.\n\n"
         "URL: POST /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/\n\n"
         "Flow:\n"
         "1. Validate document config exists and belongs to naive_rag\n"
@@ -853,12 +853,15 @@ NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_POST = dict(
         "Request cancellation of an in-flight document chunking.\n"
         "Publishes a cancel signal to the knowledge service, which stops the "
         "running prechunk task for the given document config.\n\n"
-        "Target is identified entirely by the URL path parameters below — no "
-        "request body is required.\n\n"
+        "Cancellation works by matching the in-flight task via a hash of its exact "
+        "request parameters. The request body MUST contain the same chunking config "
+        "(chunk_strategy, chunk_size, chunk_overlap, additional_params) that was used "
+        "to start chunking — a mismatch results in a no-op.\n\n"
         "Fire-and-forget: a 202 is returned regardless of whether chunking was "
         "actually in progress. If nothing was running, the signal is a no-op.\n\n"
         "URL: POST /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/cancel/"
     ),
+    request=ChunkingConfigSerializer,
     parameters=[
         OpenApiParameter(
             name="naive_rag_id",

@@ -609,8 +609,10 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
 class CancelNaiveRagDocumentChunkingView(APIView):
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_POST)
     def post(self, request, naive_rag_id: int, document_config_id: int):
+        serializer = ChunkingConfigSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         try:
-            config = NaiveRagDocumentConfig.objects.get(
+            NaiveRagDocumentConfig.objects.get(
                 naive_rag_document_id=document_config_id,
                 naive_rag_id=naive_rag_id,
             )
@@ -624,18 +626,19 @@ class CancelNaiveRagDocumentChunkingView(APIView):
             )
 
         target_request = PrechunkRequest(
-            rag_id=naive_rag_id,
             rag_strategy="naive",
-            document_id=config.document_id,
+            rag_id=naive_rag_id,
+            document_id=document_config_id,
+            **serializer.validated_data,
         ).model_dump()
         producer.send(
             settings.KNOWLEDGE_CANCEL_REQUEST_CHANNEL,
             Message(payload=CancelRequest(target_request=target_request).model_dump()),
         )
         logger.info(
-            "Sent prechunk cancellation rag_id=%s document_id=%s",
+            "Sent prechunk cancellation rag_id=%s document_config_id=%s",
             naive_rag_id,
-            config.document_id,
+            document_config_id,
         )
 
         return Response(
