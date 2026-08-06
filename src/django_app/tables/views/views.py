@@ -16,6 +16,7 @@ from tables.models import Tool
 from tables.models import Crew
 from tables.models import Agent
 from tables.services.realtime_service import RealtimeService
+from agents.models import AgentDefinition
 from tables.swagger_schemas.python_node_test_mode_schema import (
     LAST_TEST_INPUT_SWAGGER as _LAST_TEST_INPUT_SWAGGER,
 )
@@ -737,8 +738,9 @@ class InitRealtimeAPIView(APIView):
         config = serializer.validated_data.get("config", {})
 
         # Org isolation: starting a realtime session is a read/use of an agent,
-        # so require AGENTS.READ and reject an agent_id outside the active org
-        # (rejected like a missing id — existence never leaks).
+        # so require AGENTS.READ and reject an agent_id/agent_definition_id
+        # outside the active org (rejected like a missing id — existence
+        # never leaks).
         org_id = self._org_context.resolve(
             request=request, view_kwargs=getattr(self, "kwargs", {})
         )
@@ -748,10 +750,21 @@ class InitRealtimeAPIView(APIView):
             resource_type=ResourceType.AGENTS,
             action=Permission.READ,
         )
-        if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
-            raise ValidationError(
-                {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
-            )
+        if agent_id is not None:
+            if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
+                raise ValidationError(
+                    {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
+                )
+
+        if agent_definition_id is not None:
+            if not AgentDefinition.objects.filter(
+                pk=agent_definition_id, organization_id=org_id
+            ).exists():
+                raise ValidationError(
+                    {
+                        "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
+                    }
+                )
 
         try:
             if agent_definition_id is not None:
