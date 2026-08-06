@@ -96,7 +96,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        flex: 0 10 auto;
+        flex: 0 1 auto;
         gap: 0.5rem;
         background-color: var(--accent-color, #685fff);
         color: var(--white);
@@ -106,10 +106,10 @@
         font-weight: 500;
         font-size: 14px;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: background-color 0.2s ease;
         height: 40px;
         width: auto;
-        min-width: 2.5rem;
+        min-width: 0;
         max-width: 100%;
         overflow: hidden;
 
@@ -121,21 +121,24 @@
             opacity: 0.7;
         }
 
-        i {
-            font-size: 18px;
+        app-svg-icon {
             flex-shrink: 0;
         }
 
         .start-speaking-btn__label {
             min-width: 0;
             overflow: hidden;
-            white-space: nowrap;
             text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
-        &.start-speaking-btn--only-icon {
-            padding-left: 0.6rem;
-            padding-right: 0.6rem;
+        &--only-icon {
+            flex: 0 0 auto;
+            width: 40px;
+            min-width: 40px;
+            max-width: 40px;
+            padding: 0;
+            gap: 0;
 
             .start-speaking-btn__label {
                 display: none;
