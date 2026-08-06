@@ -63,3 +63,26 @@ def test_at_least_one_config_subclass_was_actually_checked():
         if getattr(subclass.Meta, "model", None) is not None
     ]
     assert concrete, "no concrete BaseConfigImportSerializer subclass found"
+
+
+@pytest.mark.django_db
+def test_python_code_export_omits_the_secret_declaration():
+    """Secret is not an import/export entity, so its PKs are meaningless in another
+    org. The declaration must not travel at all — only the code, which carries the
+    names as get_secret() literals because it is user code."""
+    from tables.import_export.serializers.python_tools import (
+        PythonCodeImportSerializer,
+    )
+    from tables.models import PythonCode
+
+    python_code = PythonCode.objects.create(
+        code='def main(**kwargs):\n    return get_secret("EXPORTED_KEY")\n',
+        entrypoint="main",
+    )
+
+    exported = PythonCodeImportSerializer(python_code).data
+
+    assert "secrets" not in exported
+    assert "secret_ids" not in exported
+    # The name still travels, unavoidably: it is a literal inside user code.
+    assert "EXPORTED_KEY" in exported["code"]

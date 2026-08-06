@@ -37,7 +37,7 @@ class RedisService(IRedisMessagingService, metaclass=SingletonMeta):
         # Channel only: this method is generic and serves multiple channels
         # (e.g. code_exec_tasks, knowledge-search requests), and at least one
         # of those payloads carries resolved secret plaintext.
-        logger.info(f"Message published to channel '{channel}'.")
+        logger.info("Message published to channel '{}'.", channel)
 
     async def listen_to_channel(self, channel: str, callback):
         """Listen for messages on a Redis channel."""
@@ -49,5 +49,5 @@ class RedisService(IRedisMessagingService, metaclass=SingletonMeta):
                 data = message["data"]
                 # Channel only, for the same reason as async_publish: a payload
                 # on any of these channels may carry credentials.
-                logger.info(f"Received message from channel '{channel}'.")
+                logger.info("Received message from channel '{}'.", channel)
                 await callback(data)

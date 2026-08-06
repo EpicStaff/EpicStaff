@@ -167,6 +167,9 @@ def graph_with_secret_declaring_python_node(org):
         ),
         entrypoint="main",
     )
+    # The declaration is the M2M now, not the literal in the code. Without this the
+    # node would fail session-start validation instead of publishing.
+    python_code.secrets.set([secret])
 
     graph = Graph.objects.create(name="node-decl-graph", org=org)
     start = StartNode.objects.create(graph=graph, variables={"variables": {}})

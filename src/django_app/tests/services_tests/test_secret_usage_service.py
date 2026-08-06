@@ -50,21 +50,23 @@ class TestCounts:
 
     def test_a_flow_counts_once_however_many_nodes_use_the_secret(self, org, secret):
         graph = Graph.objects.create(name="Multi-node flow", org=org)
+        # Each node gets its own declared PythonCode: the declaration is per
+        # PythonCode, and these three nodes do not share one.
         for node_name in ("first", "second", "third"):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
             PythonNode.objects.create(
-                graph=graph,
-                node_name=node_name,
-                python_code=PythonCode.objects.create(code=DECLARING_CODE),
+                graph=graph, node_name=node_name, python_code=python_code
             )
 
         assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 1
 
     def test_counts_sum_across_categories(self, org, secret):
         graph = Graph.objects.create(name="Counted flow", org=org)
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        python_code.secrets.set([secret])
         PythonNode.objects.create(
-            graph=graph,
-            node_name="node",
-            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            graph=graph, node_name="node", python_code=python_code
         )
         McpTool.objects.create(
             name="counted tool",
@@ -93,12 +95,17 @@ class TestCounts:
         """Names are org-scoped by UniqueConstraint(org, name), so an identically
         named secret elsewhere is a different credential entirely."""
         other = Organization.objects.create(name="Org SecretUsageService Other")
-        secret_service.create(text="sk-other", org=other, name="USAGE_KEY")
+        other_secret = secret_service.create(
+            text="sk-other", org=other, name="USAGE_KEY"
+        )
         other_graph = Graph.objects.create(name="Other flow", org=other)
+        # The other org's node genuinely declares its own same-named secret —
+        # otherwise this test would pass trivially, since an undeclared node is
+        # invisible to usage regardless of org.
+        other_code = PythonCode.objects.create(code=DECLARING_CODE)
+        other_code.secrets.set([other_secret])
         PythonNode.objects.create(
-            graph=other_graph,
-            node_name="other node",
-            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            graph=other_graph, node_name="other node", python_code=other_code
         )
 
         assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 0
@@ -129,10 +136,10 @@ class TestSummary:
 
     def test_categories_come_in_a_fixed_order(self, org, secret):
         graph = Graph.objects.create(name="Ordered flow", org=org)
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        python_code.secrets.set([secret])
         PythonNode.objects.create(
-            graph=graph,
-            node_name="node",
-            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            graph=graph, node_name="node", python_code=python_code
         )
         McpTool.objects.create(
             name="ordered tool",
@@ -161,11 +168,15 @@ class TestSummary:
     def test_cdt_pre_and_post_collapse_to_one_node(self, org, secret):
         """Two sources see the same node. The dialog must list it once."""
         graph = Graph.objects.create(name="CDT agg flow", org=org)
+        pre_code = PythonCode.objects.create(code=DECLARING_CODE)
+        pre_code.secrets.set([secret])
+        post_code = PythonCode.objects.create(code=DECLARING_CODE)
+        post_code.secrets.set([secret])
         ClassificationDecisionTableNode.objects.create(
             graph=graph,
             node_name="classify",
-            pre_python_code=PythonCode.objects.create(code=DECLARING_CODE),
-            post_python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            pre_python_code=pre_code,
+            post_python_code=post_code,
         )
 
         summary = secret_usage_service.summary(secret=secret)
@@ -183,10 +194,10 @@ class TestSummary:
     ):
         graph = Graph.objects.create(name="Grouped flow", org=org)
         for node_name in ("alpha", "beta"):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
             PythonNode.objects.create(
-                graph=graph,
-                node_name=node_name,
-                python_code=PythonCode.objects.create(code=DECLARING_CODE),
+                graph=graph, node_name=node_name, python_code=python_code
             )
 
         summary = secret_usage_service.summary(secret=secret)
@@ -245,10 +256,10 @@ class TestSummary:
 
     def test_total_equals_the_sum_of_category_item_counts(self, org, secret):
         graph = Graph.objects.create(name="Total flow", org=org)
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        python_code.secrets.set([secret])
         PythonNode.objects.create(
-            graph=graph,
-            node_name="node",
-            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            graph=graph, node_name="node", python_code=python_code
         )
         McpTool.objects.create(
             name="total tool",
@@ -267,10 +278,10 @@ class TestSummary:
     def test_summary_total_matches_counts_for_the_same_secret(self, org, secret):
         """The invariant that keeps the table chip and the dialog headline honest."""
         graph = Graph.objects.create(name="Agreement flow", org=org)
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        python_code.secrets.set([secret])
         PythonNode.objects.create(
-            graph=graph,
-            node_name="node",
-            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            graph=graph, node_name="node", python_code=python_code
         )
         McpTool.objects.create(
             name="agreement tool",

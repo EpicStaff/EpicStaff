@@ -92,7 +92,7 @@ from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import RealtimeAgentChat
 from tables.models.webhook_models import NgrokWebhookConfig
-from tables.services.secrets import scan_secret_names
+from tables.services.secrets import assert_tool_secrets_declared
 from tables.validators.crew_memory_validator import CrewMemoryValidator
 from tables.validators.task_validator import TaskValidator
 from tables.validators.tool_config_validator import (
@@ -567,12 +567,13 @@ class ConverterService(metaclass=SingletonMeta):
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
-            # The code IS the declaration, so there is no client field to trust
-            # and every context (CDT pre/post and custom tools included) behaves
-            # identically. Names only: resolution happens in redis_service, on
-            # the copy that goes to Redis — never on the object that becomes
-            # graph_schema.
-            secret_names=scan_secret_names(code=python_code.code),
+            # The declaration is the allow-list: everything selected is injected,
+            # whether the code reads it or not. That is what makes a computed name
+            # -- get_secret(f"KEY_{env}") -- work, since no static parse could see
+            # it. The parser is now only a validator (declaration_validator.py).
+            # Names only: resolution happens in redis_service, on the copy that
+            # goes to Redis -- never on the object that becomes graph_schema.
+            secret_names=list(python_code.secrets.values_list("name", flat=True)),
         )
 
     @staticmethod
@@ -604,6 +605,14 @@ class ConverterService(metaclass=SingletonMeta):
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
+        )
+        # A PythonCodeTool is org-owned, not graph-owned, so the session-start graph
+        # walk cannot reach it. Gate it here, where the tool is already in hand and
+        # its name is available for the error.
+        assert_tool_secrets_declared(
+            tool_name=python_code_tool.name,
+            code=python_code_tool.python_code.code,
+            declared=set(python_code_data.secret_names),
         )
         merged_kwargs = {**user_defaults, **(python_code_data.global_kwargs or {})}
         python_code_data = PythonCodeData(
@@ -650,6 +659,13 @@ class ConverterService(metaclass=SingletonMeta):
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
+        )
+        # A configured tool reaches the session through this method only, so gating
+        # convert_python_code_tool_to_pydantic alone would leave it ungated.
+        assert_tool_secrets_declared(
+            tool_name=python_code_tool.name,
+            code=python_code.code,
+            declared=set(python_code_data.secret_names),
         )
 
         return PythonCodeToolData(

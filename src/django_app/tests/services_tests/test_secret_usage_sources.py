@@ -235,12 +235,14 @@ class TestFlowFkUsageSource:
 
 @pytest.mark.django_db
 class TestFlowCodeUsageSource:
-    def test_python_node_declaring_in_code_is_reported(self, org, secret, names):
+    def test_python_node_declaring_a_secret_is_reported(self, org, secret, names):
         graph = Graph.objects.create(name="Python flow", org=org)
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        # The declaration is the M2M — usage reports what a node is allowed to
+        # read, because that is what deleting the secret would take away.
+        python_code.secrets.set([secret])
         PythonNode.objects.create(
-            graph=graph,
-            node_name="charge_card",
-            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            graph=graph, node_name="charge_card", python_code=python_code
         )
 
         source = FlowCodeUsageSource(
@@ -257,64 +259,51 @@ class TestFlowCodeUsageSource:
         assert hit.node_name == "charge_card"
         assert hit.node_type == NODE_TYPE_PYTHON
 
-    def test_a_name_only_in_a_comment_is_not_reported(self, org, names):
-        """The SQL prefilter matches this row, so only the AST pass can reject it.
-        This is the test that proves the prefilter did not replace the scanner."""
-        graph = Graph.objects.create(name="Comment flow", org=org)
+    def test_a_name_in_code_without_a_declaration_is_not_usage(self, org, names):
+        """Usage means declared. A node that merely names a secret is a node that
+        cannot be saved and that the session gate rejects — not a user of it.
+
+        The parser-behaviour cases that used to live here (comment-only,
+        unparseable, unknown name) moved to test_secret_declaration_validator.py,
+        which is where the parser still runs.
+        """
+        graph = Graph.objects.create(name="Mention flow", org=org)
         PythonNode.objects.create(
             graph=graph,
-            node_name="commented",
-            python_code=PythonCode.objects.create(
-                code='def main(**kwargs):\n    # get_secret("USAGE_KEY") one day\n    return 1\n'
-            ),
-        )
-
-        source = FlowCodeUsageSource(
-            model=PythonNode, code_field="python_code", node_type=NODE_TYPE_PYTHON
-        )
-
-        assert source.collect(org_id=org.id, secret_names=names) == []
-
-    def test_unparseable_code_is_reported_as_nothing(self, org, names):
-        """Code that cannot parse cannot run, and receives no secrets either — so
-        reporting no usage keeps the answer consistent with the runtime."""
-        graph = Graph.objects.create(name="Broken flow", org=org)
-        PythonNode.objects.create(
-            graph=graph,
-            node_name="broken",
-            python_code=PythonCode.objects.create(
-                code='def main(:\n    get_secret("USAGE_KEY")\n'
-            ),
-        )
-
-        source = FlowCodeUsageSource(
-            model=PythonNode, code_field="python_code", node_type=NODE_TYPE_PYTHON
-        )
-
-        assert source.collect(org_id=org.id, secret_names=names) == []
-
-    def test_a_name_with_no_matching_secret_is_not_reported(self, org, names):
-        graph = Graph.objects.create(name="Typo flow", org=org)
-        PythonNode.objects.create(
-            graph=graph,
-            node_name="typo",
-            python_code=PythonCode.objects.create(
-                code='def main(**kwargs):\n    return get_secret("NO_SUCH_KEY")\n'
-            ),
-        )
-
-        source = FlowCodeUsageSource(
-            model=PythonNode, code_field="python_code", node_type=NODE_TYPE_PYTHON
-        )
-
-        assert source.collect(org_id=org.id, secret_names=names) == []
-
-    def test_webhook_trigger_node_is_reported(self, org, names):
-        graph = Graph.objects.create(name="Webhook flow", org=org)
-        WebhookTriggerNode.objects.create(
-            graph=graph,
-            node_name="on_hook",
+            node_name="mentions_only",
             python_code=PythonCode.objects.create(code=DECLARING_CODE),
+        )
+
+        source = FlowCodeUsageSource(
+            model=PythonNode, code_field="python_code", node_type=NODE_TYPE_PYTHON
+        )
+
+        assert source.collect(org_id=org.id, secret_names=names) == []
+
+    def test_a_declared_but_unreferenced_secret_is_usage(self, org, secret, names):
+        """Over-reporting is the safe direction for a deletion guard: being warned
+        about something harmless beats deleting something that breaks a flow."""
+        graph = Graph.objects.create(name="Unused decl flow", org=org)
+        python_code = PythonCode.objects.create(
+            code="def main(**kwargs):\n    return 1\n"
+        )
+        python_code.secrets.set([secret])
+        PythonNode.objects.create(
+            graph=graph, node_name="unused_decl", python_code=python_code
+        )
+
+        source = FlowCodeUsageSource(
+            model=PythonNode, code_field="python_code", node_type=NODE_TYPE_PYTHON
+        )
+
+        assert len(source.collect(org_id=org.id, secret_names=names)) == 1
+
+    def test_webhook_trigger_node_is_reported(self, org, secret, names):
+        graph = Graph.objects.create(name="Webhook flow", org=org)
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        python_code.secrets.set([secret])
+        WebhookTriggerNode.objects.create(
+            graph=graph, node_name="on_hook", python_code=python_code
         )
 
         source = FlowCodeUsageSource(
@@ -328,15 +317,19 @@ class TestFlowCodeUsageSource:
             ("on_hook", NODE_TYPE_WEBHOOK_TRIGGER)
         ]
 
-    def test_cdt_pre_and_post_are_separate_sources(self, org, names):
+    def test_cdt_pre_and_post_are_separate_sources(self, org, secret, names):
         """Two source entries see the same node. Collapsing them into one node
-        entry is aggregation's job (Task 3), not the source's."""
+        entry is aggregation's job, not the source's."""
         graph = Graph.objects.create(name="CDT flow", org=org)
+        pre_code = PythonCode.objects.create(code=DECLARING_CODE)
+        pre_code.secrets.set([secret])
+        post_code = PythonCode.objects.create(code=DECLARING_CODE)
+        post_code.secrets.set([secret])
         ClassificationDecisionTableNode.objects.create(
             graph=graph,
             node_name="classify",
-            pre_python_code=PythonCode.objects.create(code=DECLARING_CODE),
-            post_python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            pre_python_code=pre_code,
+            post_python_code=post_code,
         )
 
         pre = FlowCodeUsageSource(
@@ -373,13 +366,15 @@ class TestFlowCodeUsageSource:
 
 @pytest.mark.django_db
 class TestToolCodeUsageSource:
-    def test_own_org_tool_is_reported(self, org, names):
+    def test_own_org_tool_is_reported(self, org, secret, names):
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        python_code.secrets.set([secret])
         PythonCodeTool.objects.create(
             name="Stripe refund",
             description="refund",
             org=org,
             built_in=False,
-            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            python_code=python_code,
         )
 
         hits = ToolCodeUsageSource().collect(org_id=org.id, secret_names=names)
@@ -388,15 +383,17 @@ class TestToolCodeUsageSource:
             ("tools", "Stripe refund")
         ]
 
-    def test_built_in_tool_counts_for_the_querying_org(self, org, names):
+    def test_built_in_tool_counts_for_the_querying_org(self, org, secret, names):
         """Built-ins are global (org=NULL) but resolve the *querying* org's secret
         at run time, so deleting it really would break this org's use of them."""
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        python_code.secrets.set([secret])
         PythonCodeTool.objects.create(
             name="Built-in fetcher",
             description="built in",
             org=None,
             built_in=True,
-            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            python_code=python_code,
         )
 
         hits = ToolCodeUsageSource().collect(org_id=org.id, secret_names=names)
@@ -431,10 +428,10 @@ class TestConditionalEdgeUsageSource:
             ),
         )
         Edge.objects.create(graph=graph, start_node_id=start.pk, end_node_id=router.pk)
+        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
+        edge_code.secrets.set([secret])
         ConditionalEdge.objects.create(
-            graph=graph,
-            source_node_id=router.pk,
-            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            graph=graph, source_node_id=router.pk, python_code=edge_code
         )
 
         hits = ConditionalEdgeUsageSource().collect(org_id=org.id, secret_names=names)
@@ -449,12 +446,14 @@ class TestConditionalEdgeUsageSource:
         # reports node_name verbatim and the dialog must read consistently.
         assert hit.node_name == "route_by_tier"
 
-    def test_edge_with_no_source_node_falls_back_to_its_own_id(self, org, names):
+    def test_edge_with_no_source_node_falls_back_to_its_own_id(
+        self, org, secret, names
+    ):
         graph = Graph.objects.create(name="Orphan branch flow", org=org)
+        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
+        edge_code.secrets.set([secret])
         edge = ConditionalEdge.objects.create(
-            graph=graph,
-            source_node_id=None,
-            python_code=PythonCode.objects.create(code=DECLARING_CODE),
+            graph=graph, source_node_id=None, python_code=edge_code
         )
 
         hits = ConditionalEdgeUsageSource().collect(org_id=org.id, secret_names=names)

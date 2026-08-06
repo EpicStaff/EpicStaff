@@ -1,14 +1,49 @@
 from tables.models.python_models import PythonCode
 
+#: Distinguishes "the payload omitted secrets" from "the payload sent an empty list".
+#: A PATCH that omits secret_ids must leave the declaration alone; one that sends []
+#: must clear it.
+_UNSET = object()
+
+
+def create_python_code(*, python_code_data: dict) -> PythonCode:
+    """Create a PythonCode from serializer data, honouring the `secrets` M2M."""
+    declared = python_code_data.pop("secrets", None)
+    python_code = PythonCode.objects.create(**python_code_data)
+    if declared is not None:
+        python_code.secrets.set(declared)
+    return python_code
+
+
+def apply_python_code_fields(
+    *, python_code: PythonCode, python_code_data: dict
+) -> None:
+    """Apply serializer data to an existing PythonCode, honouring the M2M.
+
+    `secrets` cannot go through setattr either, and it must be applied only when the
+    payload actually carried it — hence _UNSET rather than None, since [] is a
+    meaningful value that clears the declaration.
+    """
+    declared = python_code_data.pop("secrets", _UNSET)
+    for attr, value in python_code_data.items():
+        setattr(python_code, attr, value)
+    python_code.save()
+    if declared is not _UNSET:
+        python_code.secrets.set(declared)
+
 
 def copy_python_code(python_code: PythonCode) -> PythonCode:
     """Create and return a new PythonCode instance with all fields duplicated."""
-    return PythonCode.objects.create(
+    duplicate = PythonCode.objects.create(
         code=python_code.code,
         entrypoint=python_code.entrypoint,
         libraries=python_code.libraries,
         global_kwargs=python_code.global_kwargs,
     )
+    # Copy stays inside one org, so the ids remain valid and the duplicate must be
+    # runnable. Dropping the declaration would leave a copy that fails validation.
+    duplicate.secrets.set(python_code.secrets.all())
+    return duplicate
 
 
 def get_base_node_fields(node) -> dict:

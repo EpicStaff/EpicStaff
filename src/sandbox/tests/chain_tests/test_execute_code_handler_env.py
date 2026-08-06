@@ -110,7 +110,7 @@ class TestGeneratedSourceStaysClean:
     def test_get_secret_is_in_scope_without_the_user_importing_it(self):
         """Node code calls get_secret("NAME") with no import line, the same way
         it already uses DotDict. Detection is unaffected either way --
-        scan_secret_names matches the call, never an import -- so this is purely
+        parse_secret_names matches the call, never an import -- so this is purely
         ergonomic, but it must actually be in scope or every node raises
         NameError at runtime."""
         wrapped = ExecuteCodeHandler().wrap_code(

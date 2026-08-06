@@ -59,10 +59,13 @@ class PythonCodeData(BaseModel):
     session_id: int | None = None
 
     secret_names: list[str] = Field(default_factory=list, exclude=True)
-    """Names this node's code asks for, extracted by scan_secret_names().
+    """Names this code is *allowed* to read — its declared allow-list.
 
-    The declaration comes from the code itself, not from the client — there is no
-    request field for it, which is why every Python context behaves identically.
+    Read from PythonCode.secrets, the relation written through `secret_ids`. Not
+    from the code: parse_secret_names() only checks that the code asks for nothing
+    outside this set. Everything listed here is injected whether the code reads it
+    or not, which is what lets a computed name like get_secret(f"KEY_{env}")
+    resolve.
 
     Excluded because this model is nested in GraphData, which becomes
     Session.graph_schema. The names are not credentials, but they are the

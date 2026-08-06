@@ -10,7 +10,11 @@ from tables.models import PythonCode, PythonCodeResult, Secret
 from tables.models.rbac_models import Organization
 from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
-from tables.services.secrets import SecretResolutionError, secret_service
+from tables.services.secrets import (
+    SecretResolutionError,
+    UndeclaredSecretError,
+    secret_service,
+)
 
 PLAINTEXT = "sk-runmode-abc123"
 
@@ -45,11 +49,12 @@ class TestRunPythonCodeResolvesDeclaredSecrets:
     def test_declared_secret_reaches_the_sandbox_message(
         self, org, user, redis_client_mock
     ):
-        secret_service.create(text=PLAINTEXT, org=org, name="RUNMODE_KEY")
-        # The declaration is the code: no picker, no request field, no M2M.
+        secret = secret_service.create(text=PLAINTEXT, org=org, name="RUNMODE_KEY")
         python_code = PythonCode.objects.create(
             code='def main(): return get_secret("RUNMODE_KEY")'
         )
+        # The declaration is the M2M, not the literal in the code.
+        python_code.secrets.set([secret])
 
         RunPythonCodeService(redis_service=RedisService()).run_code(
             python_code_id=python_code.pk,
@@ -74,30 +79,30 @@ class TestRunPythonCodeResolvesDeclaredSecrets:
 
         assert _published_messages(redis_client_mock)[0]["secrets"] == {}
 
-    def test_another_orgs_secret_name_resolves_to_nothing(
-        self, org, other_org, user, redis_client_mock
-    ):
-        """Naming another org's secret is trivially easy — it is just a string in
-        the code — so resolution is the boundary. The name is scoped to the
-        caller's org, so it simply finds nothing and the sandbox raises
-        SecretNotAvailableError at the call."""
-        secret_service.create(
-            text="sk-foreign-runmode", org=other_org, name="FOREIGN_RUNMODE"
-        )
+    def test_an_undeclared_name_is_rejected(self, org, user, redis_client_mock):
+        """Test mode must agree with a real run about what this code may read, so an
+        undeclared name fails here too — before any result row is written.
+
+        This replaces an older test about naming another org's secret: that is no
+        longer reachable, because the declaration is an org-scoped relation rather
+        than a string the caller picks.
+        """
+        secret_service.create(text=PLAINTEXT, org=org, name="RUNMODE_KEY")
         python_code = PythonCode.objects.create(
-            code='def main(): return get_secret("FOREIGN_RUNMODE")'
+            code='def main(): return get_secret("RUNMODE_KEY")'
         )
+        # Deliberately no secrets.set(...) — the name is used but not declared.
 
-        RunPythonCodeService(redis_service=RedisService()).run_code(
-            python_code_id=python_code.pk,
-            varaibles={},
-            organization_id=org.id,
-            user=user,
-        )
+        with pytest.raises(UndeclaredSecretError):
+            RunPythonCodeService(redis_service=RedisService()).run_code(
+                python_code_id=python_code.pk,
+                varaibles={},
+                organization_id=org.id,
+                user=user,
+            )
 
-        published = _published_messages(redis_client_mock)
-        assert published[0]["secrets"] == {}
-        assert "sk-foreign-runmode" not in json.dumps(published[0])
+        assert not redis_client_mock.publish.call_args_list
+        assert not PythonCodeResult.objects.exists()
 
     def test_undecryptable_secret_fails_before_anything_is_written(
         self, org, user, redis_client_mock
@@ -110,6 +115,9 @@ class TestRunPythonCodeResolvesDeclaredSecrets:
         python_code = PythonCode.objects.create(
             code='def main(): return get_secret("CORRUPT_KEY")'
         )
+        # Must be declared so this reaches the decryption failure, which is the
+        # point of the test, rather than tripping the declaration gate first.
+        python_code.secrets.set([secret])
 
         with pytest.raises(SecretResolutionError):
             RunPythonCodeService(redis_service=RedisService()).run_code(

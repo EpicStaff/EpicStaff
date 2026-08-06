@@ -242,7 +242,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         try:
             channel = message["channel"]
             data = message["data"]
-            logger.debug(f"Get message from {channel}")
+            logger.debug("Get message from {}", channel)
 
             if channel == self.session_schema_channel:
                 await self._handle_session_start(data)

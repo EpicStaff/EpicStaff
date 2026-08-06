@@ -71,14 +71,14 @@ async def listen_redis():
                         # Never log message["data"]: it carries resolved secret
                         # plaintext. log_summary() is the safe projection.
                         logger.info(
-                            f"Received code execution task: "
-                            f"{code_task_data.log_summary()}"
+                            "Received code execution task: {}",
+                            code_task_data.log_summary(),
                         )
                         asyncio.create_task(run(code_task_data=code_task_data))
                     except Exception as e:
-                        logger.error(f"Error processing message: {e}")
+                        logger.error("Error processing message: {}", e)
         except Exception as e:
-            logger.error(f"Redis listener disconnected, reconnecting in 1s: {e}")
+            logger.error("Redis listener disconnected, reconnecting in 1s: {}", e)
             await asyncio.sleep(1)
 
 

@@ -12,7 +12,7 @@ class PythonCodeImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PythonCode
-        exclude = ["id"]
+        exclude = ["id", "secrets"]
 
 
 class PythonCodeToolConfigImportSerializer(serializers.ModelSerializer):

@@ -69,12 +69,13 @@ def secret(org):
 
 @pytest.fixture
 def used_secret(org, secret):
-    """The secret referenced from a flow, a tool and an LLM config."""
+    """The secret declared by a flow node, and referenced by a tool and an LLM config."""
     graph = Graph.objects.create(name="API flow", org=org)
+    python_code = PythonCode.objects.create(code=DECLARING_CODE)
+    # Usage means declared: a node that only names the secret is not a user of it.
+    python_code.secrets.set([secret])
     PythonNode.objects.create(
-        graph=graph,
-        node_name="charge_card",
-        python_code=PythonCode.objects.create(code=DECLARING_CODE),
+        graph=graph, node_name="charge_card", python_code=python_code
     )
     McpTool.objects.create(
         name="api tool",

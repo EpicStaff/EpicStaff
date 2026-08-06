@@ -37,6 +37,10 @@ from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.services.converter_service import ConverterService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.secrets import (
+    UndeclaredSecretError,
+    secret_declaration_validator,
+)
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
@@ -164,7 +168,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         entrypoint: str | None = None,
     ) -> int:
         variables = self._get_actual_variables(variables)
-        logger.info(f"'run_session' got variables: {variables=}")
+        logger.info("'run_session' got variables: {}", variables)
 
         graph = Graph.objects.get(pk=graph_id)
         run_vars = self.persistent_variables_service.build_run_variables(
@@ -178,6 +182,16 @@ class SessionManagerService(metaclass=SingletonMeta):
             entrypoint=entrypoint,
         )
         try:
+            violations = secret_declaration_validator.violations(graph_id=graph_id)
+            if violations:
+                # Raised inside the try so the existing handler marks the session
+                # ERROR, records the reason and publishes nothing. Every violation
+                # is reported, so one run tells the user everything to fix.
+                raise UndeclaredSecretError(
+                    "Session aborted: "
+                    + " ".join(violation.describe() for violation in violations)
+                )
+
             session_data: SessionData = self.create_session_data(session=session)
             # TODO: add ping or waiting for crew to accept connections
 
@@ -194,7 +208,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                     "reason": f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required."
                 }
             logger.info(
-                f"Session data published in Redis for session ID: {session.pk}."
+                "Session data published in Redis for session ID: {}.", session.pk
             )
 
         except Exception as e:

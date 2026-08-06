@@ -1,11 +1,12 @@
 """The one thing to get right. PythonCodeData is nested in GraphData, and
 session.graph_schema = session_data.graph.model_dump(mode="json").
 
-`secret_names` is excluded because it is *derived* state — scan_secret_names()
-reads it back out of `code` on demand, so persisting it would duplicate a fact
-that can go stale. It is NOT a confidentiality measure: the names are string
-literals in `code`, which graph_schema stores in full, so they are visible there
-either way. Only the plaintext is secret.
+`secret_names` is excluded because nothing downstream of Redis needs it: it is a
+copy of PythonCode.secrets, the relation that is already the source of truth, so
+persisting it in graph_schema would duplicate a fact that can go stale. It is NOT
+a confidentiality measure — the names a node reads are string literals in `code`,
+which graph_schema stores in full, so they are visible there either way. Only the
+plaintext is secret.
 
 `secrets` is deliberately NOT excluded: it is the only way the plaintext
 crosses the django->crew Redis boundary (redis_service publishes

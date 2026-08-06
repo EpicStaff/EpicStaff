@@ -326,7 +326,7 @@ except Exception:
             f.write(wrapped_code)
 
         # Execute the code asynchronously
-        logger.info(f"Executing code using {python_executable}...")
+        logger.info("Executing code using {}...", python_executable)
         env = self.build_env(context=context)
 
         process = await asyncio.create_subprocess_shell(

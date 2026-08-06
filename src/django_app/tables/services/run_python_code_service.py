@@ -6,7 +6,11 @@ from django.utils import timezone
 from src.shared.models import CodeResultData, CodeTaskData
 from tables.models import PythonCode, PythonCodeResult
 from tables.services.redis_service import RedisService
-from tables.services.secrets import scan_secret_names, secret_resolver
+from tables.services.secrets import (
+    UndeclaredSecretError,
+    parse_secret_names,
+    secret_resolver,
+)
 from utils.singleton_meta import SingletonMeta
 
 MAX_STORED_RESULTS = 200
@@ -43,10 +47,25 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         # Resolve before anything is written or published: this path never goes
         # through the session payload, so it resolves for itself, and a failure
-        # must leave no PENDING result row and publish nothing. organization_id
-        # is what scopes the lookup; the code itself is the declaration.
+        # must leave no PENDING result row and publish nothing. organization_id is
+        # what scopes the lookup; the declaration is the M2M, so Test mode and a
+        # real run agree about what this code may read.
+        declared = set(python_code.secrets.values_list("name", flat=True))
+        parsed = parse_secret_names(code=python_code.code)
+        undeclared = parsed - declared
+        if undeclared:
+            raise UndeclaredSecretError(
+                f"PythonCode(id={python_code_id}) calls "
+                + ", ".join(f'get_secret("{name}")' for name in sorted(undeclared))
+                + ", which "
+                + ("are" if len(undeclared) > 1 else "is")
+                + " not declared for it. Declared: "
+                + (", ".join(sorted(declared)) or "none")
+                + "."
+            )
+
         secrets = secret_resolver.resolve_named(
-            names=scan_secret_names(code=python_code.code),
+            names=sorted(declared),
             org_id=organization_id,
             context=f"PythonCode(id={python_code_id}).secrets",
         )
