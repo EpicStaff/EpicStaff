@@ -407,7 +407,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         ]
         file_extractor_node_data_list = [
             cv.convert_file_extractor_node_to_pydantic(
-                file_extractor_node=item, resolver=resolver
+                file_extractor_node=item,
+                resolver=resolver,
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
             )
             for item in file_extractor_node_list
         ]

@@ -304,6 +304,9 @@ class SessionGraphBuilder:
                 input_map=file_extractor_node_data.input_map,
                 output_variable_path=file_extractor_node_data.output_variable_path,
                 stop_event=self.stop_event,
+                storage_allowed_paths=file_extractor_node_data.storage_allowed_paths,
+                storage_org_prefix=file_extractor_node_data.storage_org_prefix,
+                org_id=file_extractor_node_data.org_id,
             )
             self.add_node(file_extractor_node)
 
