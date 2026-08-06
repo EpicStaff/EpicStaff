@@ -90,8 +90,7 @@ export class CodeEditorComponent implements OnDestroy {
         if (this.monacoEditor) {
             this.ruffDiagnosticsService.setMarkers(this.monacoEditor, diagnostics);
         }
-        const hasErrors = diagnostics.some((d) => d.code && (d.code.startsWith('E') || d.code.startsWith('F')));
-        this.errorChange.emit(hasErrors);
+        this.errorChange.emit(this.ruffDiagnosticsService.hasSyntaxErrors(diagnostics));
         this.cdr.markForCheck();
     }
 

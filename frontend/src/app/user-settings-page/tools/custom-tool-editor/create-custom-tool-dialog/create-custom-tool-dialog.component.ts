@@ -503,7 +503,7 @@ export class CreateCustomToolDialogComponent {
             return 'JSON Configuration is invalid';
         }
         if (this.pythonHasError()) {
-            return 'Fix Python code errors before saving';
+            return 'Fix Python syntax errors before saving';
         }
         return null;
     }
