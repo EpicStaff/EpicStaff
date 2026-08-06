@@ -194,6 +194,139 @@ async def test_execute_forwards_task_lifecycle_events_as_task_node_stream(
 
 
 @pytest.mark.asyncio
+async def test_execute_forwards_knowledge_search_envelope_as_extracted_chunks(
+    task_node_data,
+):
+    agent_task_service = AsyncMock()
+    knowledge_payload = {
+        "collection_id": 7,
+        "rag_id": 3,
+        "rag_type": "naive",
+        "retrieved_chunks": 2,
+        "knowledge_query": "What is EpicStaff?",
+        "rag_search_config": {"top_k": 2},
+        "chunks": [{"text": "chunk one"}, {"text": "chunk two"}],
+        "token_usage": {"total_tokens": 15},
+    }
+
+    async def fake_run_task(node_data, stop_event, on_event=None):
+        on_event(
+            StreamEnvelope(
+                type="agent.knowledge_search",
+                correlation_id="corr-1",
+                payload=knowledge_payload,
+            )
+        )
+        return {"final_text": "done"}
+
+    agent_task_service.run_task.side_effect = fake_run_task
+
+    node = TaskNode(
+        session_id=1,
+        node_name="task_node_1",
+        stop_event=MagicMock(),
+        task_node_data=task_node_data,
+        agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
+    )
+
+    writer = MagicMock()
+    state = make_state({})
+    await node.run(state=state, writer=writer)
+
+    extracted_chunks_messages = [
+        call.args[0].message_data
+        for call in writer.call_args_list
+        if isinstance(call.args[0].message_data, dict)
+        and call.args[0].message_data.get("message_type") == "extracted_chunks"
+    ]
+
+    assert len(extracted_chunks_messages) == 1
+    message = extracted_chunks_messages[0]
+    assert message["sse_visible"] is True
+    for key, value in knowledge_payload.items():
+        assert message[key] == value
+
+
+@pytest.mark.asyncio
+async def test_execute_knowledge_search_envelope_does_not_shift_stream_step_id(
+    task_node_data,
+):
+    agent_task_service = AsyncMock()
+
+    async def fake_run_task(node_data, stop_event, on_event=None):
+        on_event(
+            StreamEnvelope(
+                type="agent.task_start",
+                correlation_id="corr-1",
+                payload={"task": {"name": "task_node_1", "order": 0}},
+            )
+        )
+        on_event(
+            StreamEnvelope(
+                type="agent.tool_call",
+                correlation_id="corr-1",
+                payload={"id": "call_1", "name": "search", "arguments": "{}"},
+            )
+        )
+        on_event(
+            StreamEnvelope(
+                type="agent.knowledge_search",
+                correlation_id="corr-1",
+                payload={"collection_id": 7, "chunks": []},
+            )
+        )
+        on_event(
+            StreamEnvelope(
+                type="agent.tool_result",
+                correlation_id="corr-1",
+                payload={"tool_call_id": "call_1", "content": "result"},
+            )
+        )
+        on_event(
+            StreamEnvelope(
+                type="agent.task_finish",
+                correlation_id="corr-1",
+                payload={
+                    "task": {"name": "task_node_1", "order": 0},
+                    "message": "done",
+                },
+            )
+        )
+        return {"final_text": "done"}
+
+    agent_task_service.run_task.side_effect = fake_run_task
+
+    node = TaskNode(
+        session_id=1,
+        node_name="task_node_1",
+        stop_event=MagicMock(),
+        task_node_data=task_node_data,
+        agent_task_service=agent_task_service,
+        remembered_outputs_store=make_remembered_outputs_store(),
+    )
+
+    writer = MagicMock()
+    state = make_state({})
+    await node.run(state=state, writer=writer)
+
+    stream_messages = [
+        call.args[0].message_data
+        for call in writer.call_args_list
+        if isinstance(call.args[0].message_data, dict)
+        and call.args[0].message_data.get("message_type") == "task_node_stream"
+    ]
+
+    assert [message["event"] for message in stream_messages] == [
+        "task_start",
+        "tool_call",
+        "tool_result",
+        "task_finish",
+    ]
+    assert [message["step_id"] for message in stream_messages] == [1, 2, 3, 4]
+
+
+@pytest.mark.asyncio
 async def test_execute_drops_unknown_envelope_type_and_writes_no_message(
     task_node_data,
 ):

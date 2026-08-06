@@ -6,19 +6,13 @@ from models.state import State
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
 from services.graph.nodes import BaseNode
+from services.graph.nodes.agent_stream_events import AgentStreamEventForwarder
 from services.graph.nodes.instruction_render import render_instructions
 from services.graph.remembered_outputs import (
     RememberedOutputsStore,
     format_remembered_outputs_preamble,
 )
 from src.shared.models import TaskNodeData
-
-STREAM_EVENT_BY_ENVELOPE_TYPE = {
-    "agent.tool_call": "tool_call",
-    "agent.tool_result": "tool_result",
-    "agent.task_start": "task_start",
-    "agent.task_finish": "task_finish",
-}
 
 
 class TaskNode(BaseNode):
@@ -69,32 +63,17 @@ class TaskNode(BaseNode):
             update={"instructions": preamble + rendered_instructions}
         )
 
-        step_id = 0
-
-        def _on_agent_event(envelope):
-            nonlocal step_id
-            event = STREAM_EVENT_BY_ENVELOPE_TYPE.get(envelope.type)
-            if event is None:
-                return
-
-            step_id += 1
-            self.custom_session_message_writer.add_custom_message(
-                session_id=self.session_id,
-                node_name=self.node_name,
-                writer=writer,
-                execution_order=execution_order,
-                message_data={
-                    "message_type": "task_node_stream",
-                    "event": event,
-                    "step_id": step_id,
-                    "is_final": False,
-                    "sse_visible": True,
-                    "data": envelope.payload,
-                },
-            )
+        on_agent_event = AgentStreamEventForwarder(
+            custom_session_message_writer=self.custom_session_message_writer,
+            session_id=self.session_id,
+            node_name=self.node_name,
+            writer=writer,
+            execution_order=execution_order,
+            stream_message_type="task_node_stream",
+        )
 
         result = await self.agent_task_service.run_task(
-            task_node_data, self.stop_event, on_event=_on_agent_event
+            task_node_data, self.stop_event, on_event=on_agent_event
         )
 
         final_text = result.get("final_text")
