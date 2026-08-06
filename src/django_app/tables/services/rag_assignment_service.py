@@ -390,16 +390,28 @@ class SearchConfigService:
         search_method = agent_graph_rag.search_method if agent_graph_rag else None
 
         result = {"search_method": search_method}
-        result["basic"] = (
-            None
-            if basic is None
-            else {f: getattr(basic, f) for f in SearchConfigService._BASIC_FIELDS}
-        )
-        result["local"] = (
-            None
-            if local is None
-            else {f: getattr(local, f) for f in SearchConfigService._LOCAL_FIELDS}
-        )
+
+        if basic is not None:
+            result["basic"] = {
+                "prompt": basic.prompt,
+                "k": basic.k,
+                "max_context_tokens": basic.max_context_tokens,
+            }
+        else:
+            result["basic"] = None
+
+        if local is not None:
+            result["local"] = {
+                "prompt": local.prompt,
+                "text_unit_prop": local.text_unit_prop,
+                "community_prop": local.community_prop,
+                "conversation_history_max_turns": local.conversation_history_max_turns,
+                "top_k_entities": local.top_k_entities,
+                "top_k_relationships": local.top_k_relationships,
+                "max_context_tokens": local.max_context_tokens,
+            }
+        else:
+            result["local"] = None
 
         return result
 
