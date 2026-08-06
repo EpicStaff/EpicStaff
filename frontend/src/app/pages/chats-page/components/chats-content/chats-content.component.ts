@@ -20,8 +20,8 @@ export class ChatsContentComponent {
         public chatsService: ChatsService
     ) {}
 
-    public get selectedAgent() {
-        return this.chatsService.selectedAgent$();
+    public get hasSelection(): boolean {
+        return this.chatsService.selectedChatAgent$() !== null;
     }
 
     ngOnDestroy() {}

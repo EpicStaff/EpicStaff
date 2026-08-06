@@ -9,13 +9,15 @@ import { ConfigService } from '../../../services/config/config.service';
 import { ToastService } from '../../../services/notifications/toast.service';
 // @ts-ignore
 import { RealtimeClient } from '../libs/openai/client';
+import {
+    chatAgentRealtimeConfigId,
+    chatAgentTranscriptionConfigId,
+    InitRealtimePayload,
+    toInitRealtimePayload,
+} from '../models/chat-agent.model';
 import { ChatsService } from './chats.service';
 import { WavStreamPlayerService } from './wav-player.service';
 import { WavRecorderService } from './wav-recorder.service';
-
-export interface InitRealtime {
-    agent_id: number;
-}
 
 export interface ConnectionResult {
     success: boolean;
@@ -97,9 +99,17 @@ export class ConsoleService implements OnDestroy {
      * @returns Observable<ConnectionResult>
      */
     private initiateConnection(): Observable<ConnectionResult> {
-        const selectedAgent = this.chatsService.selectedAgent$();
+        const selected = this.chatsService.selectedChatAgent$();
 
-        if (!selectedAgent?.realtime_agent.realtime_config) {
+        if (!selected) {
+            this.toastService.warning('No agent is selected');
+            return of<ConnectionResult>({
+                success: false,
+                error: new Error('No agent selected'),
+            });
+        }
+
+        if (!chatAgentRealtimeConfigId(selected)) {
             this.toastService.warning('The selected agent does not have Realtime LLM specified');
             return of<ConnectionResult>({
                 success: false,
@@ -107,15 +117,7 @@ export class ConsoleService implements OnDestroy {
             });
         }
 
-        if (!selectedAgent?.id) {
-            this.toastService.warning('The selected agent does not have a valid ID');
-            return of<ConnectionResult>({
-                success: false,
-                error: new Error('No agent ID found'),
-            });
-        }
-
-        if (!selectedAgent?.realtime_agent.realtime_transcription_config) {
+        if (!chatAgentTranscriptionConfigId(selected)) {
             this.toastService.warning('The selected agent does not have a transcription config');
             return of<ConnectionResult>({
                 success: false,
@@ -123,9 +125,7 @@ export class ConsoleService implements OnDestroy {
             });
         }
 
-        const payload: InitRealtime = {
-            agent_id: selectedAgent.id,
-        };
+        const payload: InitRealtimePayload = toInitRealtimePayload(selected);
         return this.http
             .post<{ connection_key: string }>(this.apiUrl, payload, {
                 headers: this.headers,

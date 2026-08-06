@@ -1,26 +1,27 @@
 .chat-item {
     display: flex;
     align-items: center;
-    padding: 10px 16px;
-    border-radius: 10px;
-    margin-bottom: 8px;
-    background-color: #151515;
+    padding: 0.625rem 0.75rem;
+    border-radius: 8px;
+    background: transparent;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.15s ease;
     position: relative;
+    min-width: 0;
 
     &:hover {
-        background-color: rgba(40, 40, 40, 0.8);
+        background-color: var(--color-ks-hover-row, rgba(255, 255, 255, 0.04));
     }
 
     &.active {
-        background-color: rgba(104, 95, 255, 0.15);
+        background-color: color-mix(in srgb, var(--accent-color, #685fff) 18%, transparent);
     }
 
     .agent-role {
         flex: 1;
-        font-size: 14px;
-        color: rgba(255, 255, 255, 0.9);
+        min-width: 0;
+        font-size: 0.875rem;
+        color: var(--color-text-primary);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -29,7 +30,7 @@
     .settings-btn {
         background: none;
         border: none;
-        color: rgba(255, 255, 255, 0.5);
+        color: var(--color-text-secondary);
         margin-left: 8px;
         padding: 4px;
         cursor: pointer;
@@ -38,22 +39,19 @@
         justify-content: center;
         border-radius: 4px;
         opacity: 0;
+        flex-shrink: 0;
         transition:
-            opacity 0.2s ease,
-            background-color 0.2s ease,
-            color 0.2s ease;
+            opacity 0.15s ease,
+            background-color 0.15s ease,
+            color 0.15s ease;
 
         &:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: rgba(255, 255, 255, 0.8);
+            background-color: color-mix(in srgb, var(--color-text-primary) 10%, transparent);
+            color: var(--color-text-primary);
         }
     }
 
-    &:hover .settings-btn {
-        opacity: 1;
-    }
-
-    // Make settings button always visible for selected agent
+    &:hover .settings-btn,
     &.active .settings-btn {
         opacity: 1;
     }

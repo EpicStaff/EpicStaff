@@ -1,6 +1,6 @@
 <div
     class="chat-container"
-    *ngIf="agent"
+    *ngIf="hasSelection"
 >
     <app-chat-header> </app-chat-header>
 
@@ -11,7 +11,7 @@
 
 <div
     class="empty-state"
-    *ngIf="!agent"
+    *ngIf="!hasSelection"
 >
     <p>Please select an agent to start chatting.</p>
 </div>
