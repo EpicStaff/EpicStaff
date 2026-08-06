@@ -13,18 +13,6 @@ from tables.graph_collab.flush_service import (
 )
 from tables.graph_collab.graph_state_service import graph_state_service
 
-# Used only by these 5 tests, which call _base_snapshot(...) directly and are
-# frozen byte-for-byte per explicit instruction — do not touch their bodies,
-# names, or docstrings, and do not migrate them to the base_snapshot fixture:
-#   test_flush_flat_start_entry_already_rich_shape_is_idempotent
-#   test_flush_flat_end_entry_already_rich_shape_is_idempotent
-#   test_flush_flat_webhook_trigger_entry_already_rich_shape_is_idempotent
-#   test_flush_flat_telegram_trigger_entry_already_rich_shape_is_idempotent
-#   test_flush_flat_crew_entry_already_rich_shape_is_idempotent
-# Every other test in this file uses the `base_snapshot`/`empty_deleted`
-# fixtures from conftest.py instead.
-from tests.graph_collab.conftest import _base_snapshot
-
 
 _PYTHON_CODE_DATA = {
     "code": "def main(): return 42",
@@ -322,61 +310,9 @@ def _get_python_code_for_node(node_id: int):
     return node.python_code
 
 
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.asyncio
-async def test_flush_already_nested_python_entry_is_idempotent(
-    graph, base_snapshot, flush_service
-):
-    """A python node entry that already has a nested python_code dict flushes
-    unchanged — normalizing an already-normalized entry must be idempotent."""
-    from tables.graph_collab.protocol import EditorInfo, NodeUpdatedMessage
-
-    await graph_state_service.seed(
-        graph.id, base_snapshot(save_version=graph.save_version)
-    )
-
-    nested_payload = {
-        "temp_id": "ddddeeee-0000-0000-0000-000000000007",
-        "graph": graph.id,
-        "node_name": "Seeded-Node",
-        "python_code": {
-            "code": "def main(): return 'seeded'",
-            "entrypoint": "main",
-            "libraries": [],
-            "global_kwargs": {},
-        },
-        "test_input": {},
-        "use_storage": False,
-        "stream_config": {},
-        "input_map": {},
-        "output_variable_path": None,
-    }
-    editor = EditorInfo(user_id=1, display_name="Test User", avatar_url=None)
-    msg = NodeUpdatedMessage(
-        node=nested_payload,
-        list_key="python_node_list",
-        editor=editor,
-    )
-    await graph_state_service.apply_op(graph.id, msg)
-
-    outcome = await flush_service.flush(graph.id)
-
-    assert outcome.status is FlushStatus.SAVED, (
-        f"Expected SAVED but got {outcome.status!r} "
-        f"(failure_reason={outcome.failure_reason!r})."
-    )
-
-    python_node_count = await _count_python_nodes(graph.id)
-    assert python_node_count == 1
-
-    node = await _get_first_python_node(graph.id)
-    python_code = await _get_python_code_for_node(node.id)
-    assert python_code.code == "def main(): return 'seeded'"
-
-
 # ---------------------------------------------------------------------------
-# Flat-shape normalization for start, end, webhook_trigger, telegram_trigger,
-# crew node types
+# Entries already in backend bulk-save shape, across node types (start, end,
+# webhook_trigger, telegram_trigger, crew, python)
 # ---------------------------------------------------------------------------
 
 
@@ -487,98 +423,30 @@ def _count_crew_nodes(graph_id: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# start_node flush tests
+# Per-node-type payload builders + no-op/extra verification callbacks for
+# test_flush_bulk_save_shape_entry_persists_single_row below.
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.asyncio
-async def test_flush_flat_start_entry_already_rich_shape_is_idempotent(graph):
-    """A start node entry already in bulk-save shape (variables at top level) passes
-    through normalize_op_entry unchanged."""
-    from tables.graph_collab.protocol import EditorInfo, NodeUpdatedMessage
-
-    temp_id = "aaaabbbb-1111-0000-0000-000000000001"
-    rich_payload = {
-        "temp_id": temp_id,
+async def _build_rich_start_entry(graph) -> dict:
+    return {
+        "temp_id": "aaaabbbb-1111-0000-0000-000000000001",
         "graph": graph.id,
         "variables": {"variables": {"x": 1}, "persistent": {}},
     }
-    await graph_state_service.seed(
-        graph.id, _base_snapshot(save_version=graph.save_version)
-    )
-
-    editor = EditorInfo(user_id=1, display_name="Test User", avatar_url=None)
-    msg = NodeUpdatedMessage(
-        node=rich_payload, list_key="start_node_list", editor=editor
-    )
-    await graph_state_service.apply_op(graph.id, msg)
-
-    service = GraphFlushService()
-    outcome = await service.flush(graph.id)
-
-    assert outcome.status is FlushStatus.SAVED, (
-        f"Expected SAVED but got {outcome.status!r} "
-        f"(failure_reason={outcome.failure_reason!r}). "
-        "Rich-shape start entry was rejected — idempotency broken."
-    )
-    count = await _count_start_nodes(graph.id)
-    assert count == 1
 
 
-# ---------------------------------------------------------------------------
-# end_node flush tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.asyncio
-async def test_flush_flat_end_entry_already_rich_shape_is_idempotent(graph):
-    """A end node entry already in bulk-save shape (output_map at top level) passes
-    through unchanged."""
-    from tables.graph_collab.protocol import EditorInfo, NodeUpdatedMessage
-
-    temp_id = "aaaabbbb-2222-0000-0000-000000000002"
-    rich_payload = {
-        "temp_id": temp_id,
+async def _build_rich_end_entry(graph) -> dict:
+    return {
+        "temp_id": "aaaabbbb-2222-0000-0000-000000000002",
         "graph": graph.id,
         "output_map": {"result": "final"},
     }
-    await graph_state_service.seed(
-        graph.id, _base_snapshot(save_version=graph.save_version)
-    )
-
-    editor = EditorInfo(user_id=1, display_name="Test User", avatar_url=None)
-    msg = NodeUpdatedMessage(node=rich_payload, list_key="end_node_list", editor=editor)
-    await graph_state_service.apply_op(graph.id, msg)
-
-    service = GraphFlushService()
-    outcome = await service.flush(graph.id)
-
-    assert outcome.status is FlushStatus.SAVED, (
-        f"Expected SAVED but got {outcome.status!r} "
-        f"(failure_reason={outcome.failure_reason!r}). "
-        "Rich-shape end entry was rejected — idempotency broken."
-    )
-    count = await _count_end_nodes(graph.id)
-    assert count == 1
 
 
-# ---------------------------------------------------------------------------
-# webhook_trigger node flush tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.asyncio
-async def test_flush_flat_webhook_trigger_entry_already_rich_shape_is_idempotent(graph):
-    """An entry already carrying python_code as a nested dict (DB-seed shape) passes through
-    normalize_op_entry unchanged — idempotency check."""
-    from tables.graph_collab.protocol import EditorInfo, NodeUpdatedMessage
-
-    temp_id = "aaaabbbb-3333-0000-0000-000000000003"
-    rich_payload = {
-        "temp_id": temp_id,
+async def _build_rich_webhook_trigger_entry(graph) -> dict:
+    return {
+        "temp_id": "aaaabbbb-3333-0000-0000-000000000003",
         "graph": graph.id,
         "node_name": "Webhook-Seeded",
         # metadata required by WebhookTriggerNodeSerializer (MetadataMixin in explicit field list)
@@ -591,114 +459,136 @@ async def test_flush_flat_webhook_trigger_entry_already_rich_shape_is_idempotent
         },
         "webhook_trigger": None,
     }
-    await graph_state_service.seed(
-        graph.id, _base_snapshot(save_version=graph.save_version)
-    )
-
-    editor = EditorInfo(user_id=1, display_name="Test User", avatar_url=None)
-    msg = NodeUpdatedMessage(
-        node=rich_payload, list_key="webhook_trigger_node_list", editor=editor
-    )
-    await graph_state_service.apply_op(graph.id, msg)
-
-    service = GraphFlushService()
-    outcome = await service.flush(graph.id)
-
-    assert outcome.status is FlushStatus.SAVED, (
-        f"Expected SAVED but got {outcome.status!r} "
-        f"(failure_reason={outcome.failure_reason!r}). "
-        "Rich-shape webhook_trigger entry was rejected — idempotency broken."
-    )
-    count = await _count_webhook_trigger_nodes(graph.id)
-    assert count == 1
 
 
-# ---------------------------------------------------------------------------
-# telegram_trigger node flush tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.asyncio
-async def test_flush_flat_telegram_trigger_entry_already_rich_shape_is_idempotent(
-    graph,
-):
-    """An entry already in bulk-save shape (fields at top level) passes through unchanged."""
-    from tables.graph_collab.protocol import EditorInfo, NodeUpdatedMessage
-
-    temp_id = "aaaabbbb-4444-0000-0000-000000000004"
-    rich_payload = {
-        "temp_id": temp_id,
+async def _build_rich_telegram_trigger_entry(graph) -> dict:
+    return {
+        "temp_id": "aaaabbbb-4444-0000-0000-000000000004",
         "graph": graph.id,
         "node_name": "Telegram-Seeded",
         "telegram_bot_api_key": "key_seeded",
         "webhook_trigger": None,
         "fields": [],
     }
-    await graph_state_service.seed(
-        graph.id, _base_snapshot(save_version=graph.save_version)
-    )
-
-    editor = EditorInfo(user_id=1, display_name="Test User", avatar_url=None)
-    msg = NodeUpdatedMessage(
-        node=rich_payload, list_key="telegram_trigger_node_list", editor=editor
-    )
-    await graph_state_service.apply_op(graph.id, msg)
-
-    service = GraphFlushService()
-    outcome = await service.flush(graph.id)
-
-    assert outcome.status is FlushStatus.SAVED, (
-        f"Expected SAVED but got {outcome.status!r} "
-        f"(failure_reason={outcome.failure_reason!r}). "
-        "Rich-shape telegram_trigger entry was rejected — idempotency broken."
-    )
-    count = await _count_telegram_trigger_nodes(graph.id)
-    assert count == 1
 
 
-# ---------------------------------------------------------------------------
-# crew node flush tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.asyncio
-async def test_flush_flat_crew_entry_already_rich_shape_is_idempotent(graph):
-    """An entry already carrying crew_id at top level (either from op-normalize or from
-    inject_bulk_save_fields) passes through _normalize_crew_entry unchanged — setdefault
-    must not overwrite an existing crew_id."""
-    from tables.graph_collab.protocol import EditorInfo, NodeUpdatedMessage
-
+async def _build_rich_crew_entry(graph) -> dict:
+    """Crew's own entry needs a pre-existing row: the case under test is a
+    bulk-save-shape update against an existing crew node's real id, not a
+    brand-new temp_id create."""
     crew_node, crew = await _create_crew_and_crew_node(graph)
-
-    # Already-rich shape: crew_id is at top level (no data.id needed).
-    rich_payload = {
+    return {
         "id": crew_node.id,
         "graph": graph.id,
         "node_name": "Crew-Node #1",
         "crew_id": crew.id,
     }
+
+
+async def _build_rich_python_entry(graph) -> dict:
+    return {
+        "temp_id": "ddddeeee-0000-0000-0000-000000000007",
+        "graph": graph.id,
+        "node_name": "Seeded-Node",
+        "python_code": {
+            "code": "def main(): return 'seeded'",
+            "entrypoint": "main",
+            "libraries": [],
+            "global_kwargs": {},
+        },
+        "test_input": {},
+        "use_storage": False,
+        "stream_config": {},
+        "input_map": {},
+        "output_variable_path": None,
+    }
+
+
+async def _verify_nothing_extra(graph_id: int) -> None:
+    pass
+
+
+async def _verify_python_code_persisted(graph_id: int) -> None:
+    node = await _get_first_python_node(graph_id)
+    python_code = await _get_python_code_for_node(node.id)
+    assert python_code.code == "def main(): return 'seeded'"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "build_entry, list_key, count_nodes, verify_extra",
+    [
+        (
+            _build_rich_start_entry,
+            "start_node_list",
+            _count_start_nodes,
+            _verify_nothing_extra,
+        ),
+        (
+            _build_rich_end_entry,
+            "end_node_list",
+            _count_end_nodes,
+            _verify_nothing_extra,
+        ),
+        (
+            _build_rich_webhook_trigger_entry,
+            "webhook_trigger_node_list",
+            _count_webhook_trigger_nodes,
+            _verify_nothing_extra,
+        ),
+        (
+            _build_rich_telegram_trigger_entry,
+            "telegram_trigger_node_list",
+            _count_telegram_trigger_nodes,
+            _verify_nothing_extra,
+        ),
+        (
+            _build_rich_crew_entry,
+            "crew_node_list",
+            _count_crew_nodes,
+            _verify_nothing_extra,
+        ),
+        (
+            _build_rich_python_entry,
+            "python_node_list",
+            _count_python_nodes,
+            _verify_python_code_persisted,
+        ),
+    ],
+    ids=["start", "end", "webhook_trigger", "telegram_trigger", "crew", "python"],
+)
+async def test_flush_bulk_save_shape_entry_persists_single_row(
+    graph,
+    base_snapshot,
+    flush_service,
+    build_entry,
+    list_key,
+    count_nodes,
+    verify_extra,
+):
+    """An op entry already in backend bulk-save shape (as opposed to raw
+    FE-canvas shape) is accepted and persisted as exactly one row, for
+    every affected node type."""
+    from tables.graph_collab.protocol import EditorInfo, NodeUpdatedMessage
+
     await graph_state_service.seed(
-        graph.id, _base_snapshot(save_version=graph.save_version)
+        graph.id, base_snapshot(save_version=graph.save_version)
     )
 
+    rich_payload = await build_entry(graph)
     editor = EditorInfo(user_id=1, display_name="Test User", avatar_url=None)
-    msg = NodeUpdatedMessage(
-        node=rich_payload, list_key="crew_node_list", editor=editor
-    )
+    msg = NodeUpdatedMessage(node=rich_payload, list_key=list_key, editor=editor)
     await graph_state_service.apply_op(graph.id, msg)
 
-    service = GraphFlushService()
-    outcome = await service.flush(graph.id)
+    outcome = await flush_service.flush(graph.id)
 
     assert outcome.status is FlushStatus.SAVED, (
         f"Expected SAVED but got {outcome.status!r} "
-        f"(failure_reason={outcome.failure_reason!r}). "
-        "Rich-shape crew entry was rejected — idempotency broken."
+        f"(failure_reason={outcome.failure_reason!r})."
     )
-    count = await _count_crew_nodes(graph.id)
-    assert count == 1
+    assert await count_nodes(graph.id) == 1
+    await verify_extra(graph.id)
 
 
 # ---------------------------------------------------------------------------
@@ -1011,98 +901,6 @@ async def test_flush_start_node_null_persistent_variables_crashes_with_none_get(
         "Null persistent_variables in initialState should be treated as empty "
         "and the flush should succeed."
     )
-
-
-# ---------------------------------------------------------------------------
-# A brand-new connection carrying a composite-string temp_id (not a UUID) must
-# be normalized to a valid UUID before flush.
-# ---------------------------------------------------------------------------
-
-
-# TODO: open design question — composite string temp_ids are no longer hashed
-# into UUIDs. apply_op now copies connection_created payloads verbatim
-# (graph_state_service._apply_node_upsert / the ConnectionCreatedMessage
-# branch), so a composite string temp_id (e.g. "<sourcePortId>+<targetPortId>")
-# is never hashed into a UUID before reaching the snapshot, and
-# EdgeBulkSerializer.temp_id (a UUIDField) rejects it with "Must be a valid
-# UUID." This test is kept (not deleted) per explicit instruction, commented
-# out until a replacement normalization strategy is decided.
-#
-# @pytest.mark.django_db(transaction=True)
-# @pytest.mark.asyncio
-# async def test_flush_new_edge_with_composite_string_temp_id_succeeds(
-#     graph, base_snapshot, flush_service
-# ):
-#     """A brand-new connection sent via connection_created carries a
-#     composite-string temp_id (e.g. "<sourcePortId>+<targetPortId>"), not a
-#     UUID. apply_op must normalize it to a valid UUID before it reaches the
-#     snapshot, and flush() must succeed."""
-#     from asgiref.sync import sync_to_async
-#     from tables.graph_collab.protocol import ConnectionCreatedMessage, EditorInfo
-#     from tables.models.graph_models import Edge, StartNode, PythonNode
-#     from tables.models.python_models import PythonCode
-#
-#     start_node = await sync_to_async(StartNode.objects.create)(
-#         graph=graph, variables={}
-#     )
-#     python_code = await sync_to_async(PythonCode.objects.create)(
-#         code="def main(inputs): return inputs",
-#         entrypoint="main",
-#         libraries="",
-#         global_kwargs={},
-#     )
-#     python_node = await sync_to_async(PythonNode.objects.create)(
-#         graph=graph,
-#         node_name="Python-Node #1",
-#         python_code=python_code,
-#         test_input={},
-#         use_storage=False,
-#         stream_config={},
-#         input_map={},
-#     )
-#
-#     await graph_state_service.seed(
-#         graph.id, base_snapshot(save_version=graph.save_version)
-#     )
-#
-#     composite_temp_id = "abc-port-1+def-port-2"
-#     connection_payload = {
-#         "temp_id": composite_temp_id,
-#         "start_node_id": start_node.id,
-#         "end_node_id": python_node.id,
-#         "metadata": {},
-#         "graph": graph.id,
-#     }
-#     editor = EditorInfo(user_id=1, display_name="Test User", avatar_url=None)
-#     msg = ConnectionCreatedMessage(
-#         connection=connection_payload,
-#         list_key="edge_list",
-#         editor=editor,
-#     )
-#     await graph_state_service.apply_op(graph.id, msg)
-#
-#     snapshot = await graph_state_service.get_snapshot(graph.id)
-#     stored_entry = next(
-#         entry
-#         for entry in snapshot["edge_list"]
-#         if entry.get("start_node_id") == start_node.id
-#     )
-#     import uuid
-#
-#     uuid.UUID(stored_entry["temp_id"])  # raises ValueError if not a valid UUID
-#     assert stored_entry["temp_id"] != composite_temp_id
-#
-#     outcome = await flush_service.flush(graph.id)
-#
-#     assert outcome.status is FlushStatus.SAVED, (
-#         f"Expected SAVED but got {outcome.status!r} "
-#         f"(failure_reason={outcome.failure_reason!r}). "
-#         "A new edge with a composite-string temp_id was not normalized to a "
-#         "valid UUID before flush."
-#     )
-#
-#     edge_count = await sync_to_async(Edge.objects.filter(graph_id=graph.id).count)()
-#     assert edge_count == 1
 
 
 @pytest.mark.django_db(transaction=True)
