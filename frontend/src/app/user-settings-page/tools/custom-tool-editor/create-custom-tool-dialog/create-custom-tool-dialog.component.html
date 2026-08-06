@@ -4,9 +4,21 @@
         (ngSubmit)="submit()"
     >
         <header class="dialog-header">
-            <h2 class="title">{{ isEditMode ? 'Edit Custom Tool' : 'Create Custom Tool' }}</h2>
+            <h2 class="title">{{ dialogTitle() }}</h2>
             <div class="dialog-header-right">
-                @if (isEditMode) {
+                @if (isBuiltIn()) {
+                    <app-button
+                        *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+                        type="primary"
+                        mod="default"
+                        [disabled]="isSaving()"
+                        [matTooltip]="builtInSaveTooltip"
+                        matTooltipClass="builtin-copy-tooltip"
+                        matTooltipPosition="below"
+                        (click)="submit()"
+                        >{{ isSaving() ? 'Saving copy...' : 'Save as copy' }}</app-button
+                    >
+                } @else if (isEditMode()) {
                     <app-button
                         *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
                         type="outline-primary"
@@ -19,7 +31,7 @@
                 <button
                     class="header-icon-btn header-icon-btn--cancel"
                     type="button"
-                    [attr.aria-label]="isEditMode ? 'Discard changes' : 'Cancel'"
+                    [attr.aria-label]="isEditMode() ? 'Discard changes' : 'Cancel'"
                     matTooltip="Cancel"
                     matTooltipPosition="above"
                     (click)="close()"
@@ -29,21 +41,23 @@
                         size="1.1rem"
                     ></app-svg-icon>
                 </button>
-                <button
-                    *appHasPermission="[ResourceCode.Tools, isEditMode ? ActionCode.Update : ActionCode.Create]"
-                    class="header-icon-btn header-icon-btn--confirm"
-                    type="button"
-                    [disabled]="isSaving()"
-                    [attr.aria-label]="isEditMode ? 'Save changes' : 'Create tool'"
-                    matTooltip="Save"
-                    matTooltipPosition="above"
-                    (click)="submit()"
-                >
-                    <app-svg-icon
-                        icon="check"
-                        size="1.1rem"
-                    ></app-svg-icon>
-                </button>
+                @if (!isBuiltIn()) {
+                    <button
+                        *appHasPermission="[ResourceCode.Tools, isEditMode() ? ActionCode.Update : ActionCode.Create]"
+                        class="header-icon-btn header-icon-btn--confirm"
+                        type="button"
+                        [disabled]="isSaving()"
+                        [attr.aria-label]="isEditMode() ? 'Save changes' : 'Create tool'"
+                        matTooltip="Save"
+                        matTooltipPosition="above"
+                        (click)="submit()"
+                    >
+                        <app-svg-icon
+                            icon="check"
+                            size="1.1rem"
+                        ></app-svg-icon>
+                    </button>
+                }
             </div>
         </header>
 
