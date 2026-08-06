@@ -23,34 +23,38 @@ from tests.graph_collab.conftest import _editor
 # ---------------------------------------------------------------------------
 
 
-def test_update_editor_replaces_across_multiple_graphs(service):
+def test_update_editor_replaces_across_multiple_graphs(presence_service):
     old = _editor(user_id=1, name="Old Name")
-    service.add(graph_id=10, channel_name="ch-a", editor=old)
-    service.add(graph_id=20, channel_name="ch-b", editor=old)
+    presence_service.add(graph_id=10, channel_name="ch-a", editor=old)
+    presence_service.add(graph_id=20, channel_name="ch-b", editor=old)
     # A different user also present in graph 20 — should be untouched.
     other = _editor(user_id=99, name="Other")
-    service.add(graph_id=20, channel_name="ch-c", editor=other)
+    presence_service.add(graph_id=20, channel_name="ch-c", editor=other)
 
     updated = _editor(user_id=1, name="New Name")
-    affected = service.update_editor_for_user(user_id=1, editor=updated)
+    affected = presence_service.update_editor_for_user(user_id=1, editor=updated)
 
     assert sorted(affected) == [10, 20]
-    assert service._store[10]["ch-a"].display_name == "New Name"
-    assert service._store[20]["ch-b"].display_name == "New Name"
+    assert presence_service._store[10]["ch-a"].display_name == "New Name"
+    assert presence_service._store[20]["ch-b"].display_name == "New Name"
     # Other user unchanged.
-    assert service._store[20]["ch-c"].display_name == "Other"
+    assert presence_service._store[20]["ch-c"].display_name == "Other"
 
 
-def test_update_editor_returns_empty_when_user_not_present(service):
-    service.add(graph_id=10, channel_name="ch-a", editor=_editor(user_id=99))
+def test_update_editor_returns_empty_when_user_not_present(presence_service):
+    presence_service.add(graph_id=10, channel_name="ch-a", editor=_editor(user_id=99))
 
-    affected = service.update_editor_for_user(user_id=1, editor=_editor(user_id=1))
+    affected = presence_service.update_editor_for_user(
+        user_id=1, editor=_editor(user_id=1)
+    )
 
     assert affected == []
 
 
-def test_update_editor_returns_empty_when_store_is_empty(service):
-    affected = service.update_editor_for_user(user_id=1, editor=_editor(user_id=1))
+def test_update_editor_returns_empty_when_store_is_empty(presence_service):
+    affected = presence_service.update_editor_for_user(
+        user_id=1, editor=_editor(user_id=1)
+    )
     assert affected == []
 
 

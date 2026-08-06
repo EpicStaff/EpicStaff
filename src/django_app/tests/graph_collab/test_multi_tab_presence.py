@@ -20,37 +20,37 @@ from tests.graph_collab.conftest import _editor
 # ---------------------------------------------------------------------------
 
 
-def test_has_user_returns_true_when_user_is_present(service):
-    service.add(graph_id=1, channel_name="ch-a", editor=_editor(user_id=10))
-    assert service.has_user(graph_id=1, user_id=10) is True
+def test_has_user_returns_true_when_user_is_present(presence_service):
+    presence_service.add(graph_id=1, channel_name="ch-a", editor=_editor(user_id=10))
+    assert presence_service.has_user(graph_id=1, user_id=10) is True
 
 
-def test_has_user_returns_false_when_user_is_absent(service):
-    service.add(graph_id=1, channel_name="ch-a", editor=_editor(user_id=10))
-    assert service.has_user(graph_id=1, user_id=99) is False
+def test_has_user_returns_false_when_user_is_absent(presence_service):
+    presence_service.add(graph_id=1, channel_name="ch-a", editor=_editor(user_id=10))
+    assert presence_service.has_user(graph_id=1, user_id=99) is False
 
 
-def test_has_user_returns_false_for_unknown_graph(service):
-    assert service.has_user(graph_id=999, user_id=10) is False
+def test_has_user_returns_false_for_unknown_graph(presence_service):
+    assert presence_service.has_user(graph_id=999, user_id=10) is False
 
 
-def test_has_user_returns_false_after_only_channel_removed(service):
-    service.add(graph_id=1, channel_name="ch-a", editor=_editor(user_id=10))
-    service.remove(graph_id=1, channel_name="ch-a")
-    assert service.has_user(graph_id=1, user_id=10) is False
+def test_has_user_returns_false_after_only_channel_removed(presence_service):
+    presence_service.add(graph_id=1, channel_name="ch-a", editor=_editor(user_id=10))
+    presence_service.remove(graph_id=1, channel_name="ch-a")
+    assert presence_service.has_user(graph_id=1, user_id=10) is False
 
 
-def test_has_user_returns_true_after_one_of_two_channels_removed(service):
-    service.add(graph_id=1, channel_name="ch-a", editor=_editor(user_id=10))
-    service.add(graph_id=1, channel_name="ch-b", editor=_editor(user_id=10))
-    service.remove(graph_id=1, channel_name="ch-a")
-    assert service.has_user(graph_id=1, user_id=10) is True
+def test_has_user_returns_true_after_one_of_two_channels_removed(presence_service):
+    presence_service.add(graph_id=1, channel_name="ch-a", editor=_editor(user_id=10))
+    presence_service.add(graph_id=1, channel_name="ch-b", editor=_editor(user_id=10))
+    presence_service.remove(graph_id=1, channel_name="ch-a")
+    assert presence_service.has_user(graph_id=1, user_id=10) is True
 
 
-def test_has_user_is_scoped_to_graph(service):
+def test_has_user_is_scoped_to_graph(presence_service):
     """A user present in graph 1 must not appear as present in graph 2."""
-    service.add(graph_id=1, channel_name="ch-a", editor=_editor(user_id=10))
-    assert service.has_user(graph_id=2, user_id=10) is False
+    presence_service.add(graph_id=1, channel_name="ch-a", editor=_editor(user_id=10))
+    assert presence_service.has_user(graph_id=2, user_id=10) is False
 
 
 # ---------------------------------------------------------------------------

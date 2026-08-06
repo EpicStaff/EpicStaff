@@ -11,14 +11,24 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import override_settings
 from django.urls import re_path
 
+from asgiref.sync import sync_to_async
+
 from tables.models import Graph
+from tables.models.crew_models import Crew
+from tables.models.graph_models import CrewNode
 from tables.models.rbac_models import OrganizationUser
 
 from tables.graph_collab import graph_state_service as _gss_module
 from tables.graph_collab import lock_service as _ls_module
+from tables.graph_collab.constants import _ALL_LIST_KEYS, _LIST_KEY_TO_DELETE_KEY
 from tables.graph_collab.consumers import GraphEditConsumer
-from tables.graph_collab.presence_service import presence_service, GraphPresenceService
+from tables.graph_collab.flush_service import GraphFlushService
+from tables.graph_collab.presence_service import (
+    presence_service as _presence_service_singleton,
+    GraphPresenceService,
+)
 from tables.graph_collab.protocol import EditorInfo
+from tables.services.schedule_trigger_service import ScheduleTriggerService
 
 
 application = URLRouter(
@@ -73,15 +83,18 @@ def _editor(user_id: int = 1, name: str = "Alice") -> EditorInfo:
     return EditorInfo(user_id=user_id, display_name=name, avatar_url=None)
 
 
-def _flow(**lists) -> dict:
-    """Return a minimal superset-snapshot dict"""
-    base = {
-        "crew_node_list": [],
-        "python_node_list": [],
-        "edge_list": [],
-        "conditional_edge_list": [],
-    }
-    base.update(lists)
+def _empty_deleted() -> dict:
+    """All-empty `deleted` accumulator, derived from the registry so a new
+    node/edge type can never silently go missing here."""
+    return {delete_key: [] for delete_key in _LIST_KEY_TO_DELETE_KEY.values()}
+
+
+def _base_snapshot(**overrides) -> dict:
+    """Minimal valid superset snapshot for flush tests, derived from the registry."""
+    base = {list_key: [] for list_key in _ALL_LIST_KEYS}
+    base["save_version"] = 0  # overridden by the service from DB
+    base["deleted"] = _empty_deleted()
+    base.update(overrides)
     return base
 
 
@@ -149,9 +162,9 @@ def fake_redis():
 @pytest.fixture(autouse=True)
 def reset_presence_store():
     """Reset the module-level presence store between tests to prevent state leakage."""
-    presence_service._store.clear()
+    _presence_service_singleton._store.clear()
     yield
-    presence_service._store.clear()
+    _presence_service_singleton._store.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -228,22 +241,80 @@ def auth_client(api_client, regular_user, default_org):
 
 @pytest.fixture
 def make_communicator():
-    from django.contrib.auth.models import AnonymousUser
-
-    def _make(graph_id: int, user=None):
-        communicator = WebsocketCommunicator(application, f"ws/graphs/{graph_id}/edit/")
-        communicator.scope["user"] = user or AnonymousUser()
-        return communicator
-
-    return _make
+    return _make_communicator
 
 
 @pytest.fixture
-def service():
-    """GraphPresenceService instance for unit tests."""
+def presence_service():
+    """Fresh GraphPresenceService instance for unit tests."""
     return GraphPresenceService()
 
 
 @pytest.fixture
 def live_state_service():
     return _gss_module.GraphLiveStateService()
+
+
+@pytest.fixture
+def base_snapshot():
+    """Factory for a minimal valid bulk-save-shape snapshot.
+
+    Usage: ``base_snapshot(crew_node_list=[...], save_version=graph.save_version)``.
+    """
+    return _base_snapshot
+
+
+@pytest.fixture
+def empty_deleted():
+    """Factory for an all-empty `deleted` accumulator. Usage: ``empty_deleted()``."""
+    return _empty_deleted
+
+
+@pytest.fixture
+def editor() -> EditorInfo:
+    """A single default EditorInfo for partial-update/op tests."""
+    return _editor(name="Test")
+
+
+@pytest.fixture
+def flush_service():
+    """Fresh GraphFlushService instance — the service holds no state, so a new
+    instance per test is equivalent to the module-level singleton."""
+    return GraphFlushService()
+
+
+@pytest.fixture
+def schedule_trigger_service():
+    """ScheduleTriggerService is a SingletonMeta singleton already constructed
+    at Django app startup (tables/apps.py). Any constructor args passed here
+    are silently ignored — SingletonMeta only runs ``__init__`` on the very
+    first construction in the process, so this always returns that
+    pre-existing app-startup instance, wired with its own real
+    SessionManagerService. Tests only need a working service, not an
+    injected one, so returning the singleton as-is is sufficient.
+    """
+    return ScheduleTriggerService()
+
+
+@pytest.fixture
+def make_crew_node():
+    """Async factory creating an org-scoped Crew and, optionally, a CrewNode.
+
+    Usage: ``crew, node = await make_crew_node(default_org, graph=test_graph)``.
+    Pass ``graph=None`` (the default) to create just the Crew.
+    """
+
+    @sync_to_async
+    def _make(
+        org,
+        graph=None,
+        crew_name: str = "Test Crew",
+        node_name: str = "Crew-Node #1",
+    ) -> tuple[Crew, CrewNode | None]:
+        crew = Crew.objects.create(name=crew_name, org=org)
+        node = None
+        if graph is not None:
+            node = CrewNode.objects.create(graph=graph, node_name=node_name, crew=crew)
+        return crew, node
+
+    return _make
