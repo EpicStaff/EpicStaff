@@ -115,6 +115,12 @@ def validate_output_schema(value):
 
 
 class CrewNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
+    """
+    DEPRECATED: CrewNodeSerializer is deprecated. Use AgentNodeSerializer or
+    TaskNodeSerializer instead. Exists only for backward compatibility with
+    existing CrewNode rows.
+    """
+
     crew = CrewSerializer(read_only=True)
     crew_id = serializers.IntegerField(write_only=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -181,6 +187,12 @@ class AudioTranscriptionNodeSerializer(
 
 
 class CodeAgentNodeSerializer(serializers.ModelSerializer):
+    """
+    DEPRECATED: CodeAgentNodeSerializer is deprecated. Use AgentNodeSerializer
+    or TaskNodeSerializer instead. Exists only for backward compatibility with
+    existing CodeAgentNode rows.
+    """
+
     # Org isolation: only an LLMConfig from the caller's active org may be referenced.
     llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(), required=False, allow_null=True

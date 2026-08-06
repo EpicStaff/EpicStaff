@@ -431,6 +431,12 @@ class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
 
 
 class AgentViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
+    """
+    DEPRECATED: AgentViewSet is deprecated. Use agents.AgentDefinition +
+    AgentNode endpoints instead. Exists only for backward compatibility with
+    existing Agent rows.
+    """
+
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
     rbac_action_map = {
@@ -595,6 +601,12 @@ class AgentViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
 
 
 class CrewReadWriteViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet):
+    """
+    DEPRECATED: CrewReadWriteViewSet is deprecated. Use the new Agent/Task
+    graph node endpoints (AgentNode, TaskNode) instead. Exists only for
+    backward compatibility with existing Crew rows.
+    """
+
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.PROJECTS
     rbac_action_map = {
@@ -646,6 +658,12 @@ class CrewReadWriteViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet)
 
 
 class TaskReadWriteViewSet(OrgScopedChildViewSetMixin, ModelViewSet):
+    """
+    DEPRECATED: TaskReadWriteViewSet is deprecated. Use TaskNode/AgentNodeTask
+    endpoints instead. Exists only for backward compatibility with existing
+    Task rows.
+    """
+
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.PROJECTS
     org_filter_path = "crew__org_id"
@@ -1281,6 +1299,12 @@ class CrewNodeViewSet(
     ContentHashPreconditionMixin,
     viewsets.ModelViewSet,
 ):
+    """
+    DEPRECATED: CrewNodeViewSet is deprecated. Use AgentNodeViewSet or
+    TaskNodeViewSet instead. Exists only for backward compatibility with
+    existing CrewNode rows.
+    """
+
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
@@ -1330,6 +1354,12 @@ class AudioTranscriptionNodeViewSet(
 class CodeAgentNodeViewSet(
     OrgScopedChildViewSetMixin, IdempotentNodeCreateMixin, viewsets.ModelViewSet
 ):
+    """
+    DEPRECATED: CodeAgentNodeViewSet is deprecated. Use AgentNodeViewSet or
+    TaskNodeViewSet instead. Exists only for backward compatibility with
+    existing CodeAgentNode rows.
+    """
+
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
