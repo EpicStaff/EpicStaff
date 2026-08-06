@@ -223,6 +223,7 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
                 ...node.data,
                 source_collection: this.form.value.source_collection ?? null,
                 rag_type: choice?.rag_id ?? null,
+                last_rag_type: kind,
                 query: this.form.value.query ?? '',
                 search_method: graphMethod,
                 search_configs: searchConfigs,
@@ -274,15 +275,13 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
     private rehydrateRagChoiceFromSavedData(): void {
         if (this.form.get('rag_type')!.value != null) return;
 
-        const savedRagId = this.node().data.rag_type;
-        if (savedRagId == null) return;
+        const savedKind = this.node().data.last_rag_type;
+        if (savedKind == null) return;
 
-        const match = this.rags().find(
-            (r) => r.rag_id === savedRagId && (r.rag_type === 'naive' || r.rag_type === 'graph')
-        );
+        const match = this.rags().find((r) => r.rag_type === savedKind);
         if (!match) return;
 
-        this.form.get('rag_type')!.setValue({ rag_id: match.rag_id, rag_type: match.rag_type as RagKind });
+        this.form.get('rag_type')!.setValue({ rag_id: match.rag_id, rag_type: savedKind });
     }
 
     private rebuildSearchConfigsFormGroup(existing: AgentSearchConfigs | null): void {

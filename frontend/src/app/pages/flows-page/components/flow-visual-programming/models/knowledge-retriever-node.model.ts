@@ -14,5 +14,6 @@ export interface GetKnowledgeRetrieverNodeRequest {
     query: string;
     search_method: 'basic' | 'local' | null;
     rag_type: number | null;
+    last_rag_type: 'naive' | 'graph' | null;
     content_hash: string | null;
 }
