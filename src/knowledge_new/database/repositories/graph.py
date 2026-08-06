@@ -55,7 +55,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
     async def _get_documents(self, rag_id: int, *conditions) -> list[TextDocument]:
         result = await self._session.execute(
             select(GraphRagDocument)
-            .where(GraphRagDocument.graph_rag == rag_id, *conditions)
+            .where(GraphRagDocument.graph_rag_id == rag_id, *conditions)
             .options(
                 joinedload(GraphRagDocument.document).joinedload(DocumentMetadata.document_content)
             )
