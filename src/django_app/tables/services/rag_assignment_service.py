@@ -13,6 +13,7 @@ from tables.models.knowledge_models.graphrag_models import (
     KnowledgeNodeGraphRagBasicSearchConfig,
     KnowledgeNodeGraphRagLocalSearchConfig,
 )
+from tables.models.knowledge_models.collection_models import BaseRagType
 from tables.models.crew_models import Agent
 from tables.exceptions import (
     NaiveRagNotFoundException,
@@ -247,6 +248,58 @@ class RagAssignmentService:
     def unassign_graph_rag_from_agent(agent: Agent):
         """Remove GraphRag assignment."""
         AgentGraphRag.objects.filter(agent=agent).delete()
+
+    # ---- KnowledgeNode rag_type resolution ----
+    # The flow editor sends a RAG *implementation* id (naive_rag_id / graph_rag_id,
+    # as surfaced by /available-rags) in the node's `rag_type`, but the model FK
+    # points at BaseRagType. naive_rag_id / graph_rag_id are independent AutoField
+    # sequences, so the same integer can name a naive AND a graph rag inside one
+    # collection — these two methods translate between the impl id space and
+    # BaseRagType, disambiguating that collision by kind.
+
+    @staticmethod
+    def resolve_base_rag_type_by_impl(
+        impl_id: int, source_collection, kind_hint: str | None = None
+    ) -> BaseRagType | None:
+        """Map a RAG implementation id to its BaseRagType within source_collection.
+        On an id collision across kinds, kind_hint ('naive'|'graph') decides;
+        otherwise the single matching kind wins. None when nothing matches."""
+        naive = (
+            NaiveRag.objects.select_related("base_rag_type")
+            .filter(
+                naive_rag_id=impl_id,
+                base_rag_type__source_collection=source_collection,
+            )
+            .first()
+        )
+        graph = (
+            GraphRag.objects.select_related("base_rag_type")
+            .filter(
+                graph_rag_id=impl_id,
+                base_rag_type__source_collection=source_collection,
+            )
+            .first()
+        )
+        if naive and graph:
+            chosen = graph if kind_hint == "graph" else naive
+            return chosen.base_rag_type
+        if naive:
+            return naive.base_rag_type
+        if graph:
+            return graph.base_rag_type
+        return None
+
+    @staticmethod
+    def impl_id_for_base_rag_type(base_rag_type: BaseRagType | None) -> int | None:
+        """Inverse of resolve_*: the impl id the flow editor expects on read
+        (mirror of /available-rags), taken from the BaseRagType's first impl."""
+        if base_rag_type is None:
+            return None
+        if base_rag_type.rag_type == BaseRagType.RagType.NAIVE:
+            impl = base_rag_type.naive_rags.order_by("naive_rag_id").first()
+            return impl.naive_rag_id if impl else None
+        impl = base_rag_type.graph_rags.order_by("graph_rag_id").first()
+        return impl.graph_rag_id if impl else None
 
 
 class SearchConfigService:

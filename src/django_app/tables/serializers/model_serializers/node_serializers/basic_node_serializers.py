@@ -20,7 +20,10 @@ from tables.models.graph_models import (
 )
 from tables.models.knowledge_models import SourceCollection
 from tables.serializers.knowledge_serializers import NestedSearchConfigSerializer
-from tables.services.rag_assignment_service import SearchConfigService
+from tables.services.rag_assignment_service import (
+    RagAssignmentService,
+    SearchConfigService,
+)
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
@@ -91,6 +94,26 @@ class FileExtractorNodeSerializer(
         fields = "__all__"
 
 
+class RagImplIdField(serializers.Field):
+    """`rag_type` on the wire is the RAG *implementation* id (naive_rag_id /
+    graph_rag_id, as surfaced by /available-rags) — NOT BaseRagType.pk, which the
+    default FK field would (mis)resolve it to. Write keeps the raw int for
+    KnowledgeNodeSerializer.validate() to resolve against source_collection; read
+    mirrors the impl id back out so the flow editor round-trips its dropdown."""
+
+    default_error_messages = {"invalid": "rag_type must be an integer rag id."}
+
+    def to_internal_value(self, data):
+        try:
+            return int(data)
+        except (TypeError, ValueError):
+            self.fail("invalid")
+
+    def to_representation(self, value):
+        # get_attribute passes the BaseRagType instance (or None) straight through.
+        return RagAssignmentService.impl_id_for_base_rag_type(value)
+
+
 class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     """Plain node serializer (no search configs). Base for bulk-save, which
     persists the config blocks separately via its saveable."""
@@ -99,6 +122,7 @@ class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSeriali
     source_collection = OrgScopedPrimaryKeyRelatedField(
         queryset=SourceCollection.objects.all(), required=False, allow_null=True
     )
+    rag_type = RagImplIdField(required=False, allow_null=True)
 
     class Meta:
         model = KnowledgeNode
@@ -106,25 +130,33 @@ class KnowledgeNodeSerializer(ContentHashWritableMixin, serializers.ModelSeriali
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        # Merge with the instance so partial PATCH/bulk updates validate against the
-        # final state, not just the changed fields.
-        rag_type = attrs.get("rag_type", getattr(self.instance, "rag_type", None))
+        if "rag_type" not in attrs:
+            return attrs
+        rag_impl_id = attrs["rag_type"]  # raw impl id, or None to clear
+        if rag_impl_id is None:
+            return attrs
         source_collection = attrs.get(
             "source_collection", getattr(self.instance, "source_collection", None)
         )
-        # A rag_type is only meaningful together with its own collection; the node
-        # searches source_collection with rag_type's implementation, so they must match.
-        if rag_type is not None:
-            if source_collection is None:
-                raise serializers.ValidationError(
-                    {"source_collection": "Required when rag_type is set."}
-                )
-            if rag_type.source_collection_id != source_collection.pk:
-                raise serializers.ValidationError(
-                    {
-                        "rag_type": "rag_type must belong to the node's source_collection."
-                    }
-                )
+        if source_collection is None:
+            raise serializers.ValidationError(
+                {"source_collection": "Required when rag_type is set."}
+            )
+        search_method = attrs.get(
+            "search_method", getattr(self.instance, "search_method", None)
+        )
+        kind_hint = "graph" if search_method else "naive"
+        base_rag_type = RagAssignmentService.resolve_base_rag_type_by_impl(
+            rag_impl_id, source_collection, kind_hint
+        )
+        if base_rag_type is None:
+            raise serializers.ValidationError(
+                {
+                    "rag_type": "No RAG with this id exists in the node's source_collection."
+                }
+            )
+        # Hand the resolved BaseRagType to the model FK.
+        attrs["rag_type"] = base_rag_type
         return attrs
 
 
@@ -145,6 +177,12 @@ class KnowledgeNodeWriteSerializer(KnowledgeNodeSerializer):
     fields are touched — the FE may send just what changed."""
 
     search_configs = NestedSearchConfigSerializer(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        graph = (attrs.get("search_configs") or {}).get("graph") or {}
+        if graph.get("search_method") and not attrs.get("search_method"):
+            attrs["search_method"] = graph["search_method"]
+        return super().validate(attrs)
 
     def create(self, validated_data):
         search_configs_data = validated_data.pop("search_configs", None)

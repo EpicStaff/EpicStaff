@@ -8,7 +8,12 @@ from django.urls import reverse
 from rest_framework import status
 
 from tables.models.graph_models import Graph, KnowledgeNode
-from tables.models.knowledge_models import BaseRagType, SourceCollection
+from tables.models.knowledge_models import (
+    BaseRagType,
+    GraphRag,
+    NaiveRag,
+    SourceCollection,
+)
 from tables.models.knowledge_models import (
     KnowledgeNodeNaiveRagSearchConfig,
     KnowledgeNodeGraphRagBasicSearchConfig,
@@ -141,12 +146,12 @@ class TestKnowledgeNodeCreate:
         assert cfg["naive"]["search_limit"] == 4
         assert cfg["graph"]["basic"]["k"] == 5
 
-    def test_rag_type_without_collection_fails(
-        self, auth_client, graph, naive_rag_type
-    ):
+    def test_rag_type_without_collection_fails(self, auth_client, graph):
+        # rag_type is an impl id (naive_rag_id / graph_rag_id); it means nothing
+        # without a source_collection to resolve it in.
         resp = auth_client.post(
             list_url(),
-            {"graph": graph.id, "rag_type": naive_rag_type.pk},
+            {"graph": graph.id, "rag_type": 1},
             format="json",
         )
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
@@ -155,14 +160,61 @@ class TestKnowledgeNodeCreate:
     def test_rag_type_from_other_collection_fails(
         self, auth_client, graph, collection, other_collection_rag_type
     ):
+        # Impl id exists, but in a different collection than the node's → unresolvable.
+        impl = NaiveRag.objects.create(base_rag_type=other_collection_rag_type)
         data = {
             "graph": graph.id,
             "source_collection": collection.collection_id,
-            "rag_type": other_collection_rag_type.pk,
+            "rag_type": impl.naive_rag_id,
         }
         resp = auth_client.post(list_url(), data, format="json")
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert "rag_type must belong" in str(resp.json())
+        assert "No RAG with this id" in str(resp.json())
+
+    def test_rag_type_naive_impl_id_resolves(
+        self, auth_client, graph, collection, naive_rag_type
+    ):
+        impl = NaiveRag.objects.create(base_rag_type=naive_rag_type)
+        data = {
+            "graph": graph.id,
+            "source_collection": collection.collection_id,
+            "rag_type": impl.naive_rag_id,
+            "search_configs": {"naive": {"search_limit": 3}},
+        }
+        resp = auth_client.post(list_url(), data, format="json")
+        assert resp.status_code == status.HTTP_201_CREATED, resp.content
+        # Read-back mirrors the impl id (dropdown round-trip), not BaseRagType.pk.
+        assert resp.json()["rag_type"] == impl.naive_rag_id
+        node = KnowledgeNode.objects.get(id=resp.json()["id"])
+        assert node.rag_type_id == naive_rag_type.rag_type_id
+
+    def test_graph_impl_id_resolves_in_collection_with_both(
+        self, auth_client, graph, collection, naive_rag_type
+    ):
+        # Reproduces the reported bug: a collection with BOTH rags where the naive
+        # and graph impl ids collide (separate AutoField sequences both start at 1).
+        # search_method must steer resolution to the graph BaseRagType.
+        graph_rag_type = BaseRagType.objects.create(
+            source_collection=collection, rag_type=BaseRagType.RagType.GRAPH
+        )
+        naive_impl = NaiveRag.objects.create(base_rag_type=naive_rag_type)
+        # Force the id collision explicitly — PostgreSQL AutoField sequences aren't
+        # reset by the per-test transaction rollback, so they rarely collide naturally.
+        graph_impl = GraphRag.objects.create(
+            base_rag_type=graph_rag_type, graph_rag_id=naive_impl.naive_rag_id
+        )
+        assert naive_impl.naive_rag_id == graph_impl.graph_rag_id  # collision
+        data = {
+            "graph": graph.id,
+            "source_collection": collection.collection_id,
+            "rag_type": graph_impl.graph_rag_id,
+            "search_configs": {"graph": {"search_method": "basic", "basic": {"k": 5}}},
+        }
+        resp = auth_client.post(list_url(), data, format="json")
+        assert resp.status_code == status.HTTP_201_CREATED, resp.content
+        node = KnowledgeNode.objects.get(id=resp.json()["id"])
+        assert node.rag_type_id == graph_rag_type.rag_type_id
+        assert resp.json()["rag_type"] == graph_impl.graph_rag_id
 
     def test_empty_search_configs_fails(self, auth_client, graph):
         resp = auth_client.post(
