@@ -21,7 +21,6 @@ import {
     SelectDropdownListItem,
     SelectDropdownTriggerDirective,
     SelectItem,
-    TextareaComponent,
     TooltipComponent,
 } from '@shared/components';
 import { catchError, of } from 'rxjs';
@@ -44,6 +43,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
+import { VariableHighlightTextareaComponent } from '../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 
 const LOCAL_SURFACE_VALUE = '__local_surface__';
 
@@ -52,7 +52,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
-        TextareaComponent,
+        VariableHighlightTextareaComponent,
         InputMapComponent,
         JsonEditorComponent,
         SelectDropdownComponent,
@@ -110,6 +110,14 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         this.dirtyCheckTick();
         const control = this.form?.get('instructions');
         return !!control && control.invalid && control.touched;
+    });
+
+    public readonly inputMapKeys = computed<string[]>(() => {
+        this.dirtyCheckTick();
+        if (!this.form) return [];
+        return getValidInputPairs(this.inputMapPairs)
+            .map((control) => ((control.value as { key?: string }).key ?? '').trim())
+            .filter((key): key is string => key.length > 0);
     });
 
     public readonly hasLocalSurface = computed<boolean>(() => this.inlineSurface() !== null);

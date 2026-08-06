@@ -128,6 +128,7 @@
                                 [activeColor]="activeColor"
                                 [selectedCell]="isExpanded() ? effectiveRightPane() : null"
                                 [showValidation]="tasksTouched()"
+                                [variableNames]="inputMapKeys()"
                                 (tasksChange)="onTasksChange($event)"
                                 (cellSelect)="onCellSelect($event)"
                             ></app-agent-tasks-table>
@@ -159,7 +160,8 @@
                                 (jsonChange)="onRightSchemaChange($event)"
                                 [showHeader]="true"
                                 [allowCopy]="true"
-                                [allowExpand]="false"
+                                [allowExpand]="true"
+                                (expand)="toggleRightPaneField()"
                                 [title]="'JSON Editor'"
                                 [subtitle]="'Output Schema — Task ' + selectedTaskNumber()"
                                 [fullHeight]="true"
@@ -189,15 +191,27 @@
                                             size="0.9rem"
                                         />
                                     </button>
+                                    <button
+                                        type="button"
+                                        class="icon-button"
+                                        title="Collapse"
+                                        (click)="toggleRightPaneField()"
+                                    >
+                                        <app-svg-icon
+                                            icon="editor-expand"
+                                            size="0.85rem"
+                                        />
+                                    </button>
                                 </div>
                             </div>
                             <div class="main-editor-pane__body">
-                                <textarea
+                                <app-variable-highlight-textarea
                                     class="main-editor-pane__textarea"
                                     placeholder="Enter task instructions..."
                                     [value]="rightInstructionsValue()"
-                                    (input)="onRightInstructionsInput($event)"
-                                ></textarea>
+                                    [variables]="inputMapKeys()"
+                                    (valueChange)="onRightInstructionsInput($event)"
+                                ></app-variable-highlight-textarea>
                             </div>
                         }
                     </div>
@@ -325,6 +339,7 @@
                             [activeColor]="activeColor"
                             [selectedCell]="isExpanded() ? effectiveRightPane() : null"
                             [showValidation]="tasksTouched()"
+                            [variableNames]="inputMapKeys()"
                             (tasksChange)="onTasksChange($event)"
                             (cellSelect)="onCellSelect($event)"
                         ></app-agent-tasks-table>

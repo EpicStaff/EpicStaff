@@ -285,28 +285,12 @@
     }
 
     &__textarea {
+        display: flex;
         flex: 1;
         min-height: 0;
         height: 100%;
         width: 100%;
         padding: 0.75rem;
-        background: var(--color-background-body, #212325) !important;
-        border: none !important;
-        outline: none !important;
-        resize: none;
-        color: var(--color-text-primary, #d9d9de);
-        font-size: 0.875rem;
-        font-family: inherit;
-
-        &::placeholder {
-            color: var(--color-input-text-placeholder, rgba(217, 217, 222, 0.35));
-        }
-
-        &:focus,
-        &:focus-within {
-            border-color: transparent !important;
-            outline: none !important;
-        }
     }
 
     &__empty {
@@ -319,4 +303,35 @@
         color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
         font-size: 0.875rem;
     }
+}
+
+::ng-deep .main-editor-pane__textarea .vht-wrapper {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+::ng-deep .main-editor-pane__textarea .vht-field {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    background: var(--color-background-body, #212325) !important;
+    border: none !important;
+}
+
+::ng-deep .main-editor-pane__textarea .vht-field:focus-within {
+    border-color: transparent !important;
+}
+
+::ng-deep .main-editor-pane__textarea .vht-backdrop {
+    background: var(--color-background-body, #212325);
+}
+
+::ng-deep .main-editor-pane__textarea .vht-textarea {
+    flex: 1;
+    min-height: 0;
+    height: 100% !important;
+    resize: none;
+    outline: none !important;
 }

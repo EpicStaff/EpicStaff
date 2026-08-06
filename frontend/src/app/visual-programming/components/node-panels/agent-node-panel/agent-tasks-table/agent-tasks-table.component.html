@@ -62,13 +62,14 @@
                             class="att-cell att-cell--instructions"
                             [class.att-cell--selected]="isCellSelected(i, 'instructions')"
                         >
-                            <textarea
-                                class="att-textarea"
-                                [class.att-textarea--invalid]="isInstructionsInvalid(task)"
+                            <app-variable-highlight-textarea
+                                class="att-textarea-highlight"
+                                [class.att-textarea-highlight--invalid]="isInstructionsInvalid(task)"
                                 placeholder="Describe what this task should do..."
                                 [value]="task.instructions"
-                                (input)="onInstructionsInput(i, $event)"
-                            ></textarea>
+                                [variables]="variableNames()"
+                                (valueChange)="onInstructionsInput(i, $event)"
+                            ></app-variable-highlight-textarea>
                             <app-svg-icon
                                 class="att-expand-icon"
                                 icon="editor-expand"

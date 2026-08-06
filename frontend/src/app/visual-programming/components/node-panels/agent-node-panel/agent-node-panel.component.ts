@@ -45,6 +45,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
+import { VariableHighlightTextareaComponent } from '../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 import { AgentTasksTableComponent } from './agent-tasks-table/agent-tasks-table.component';
 
 type RightPaneSelection = { taskIndex: number; field: 'instructions' | 'schema' };
@@ -65,6 +66,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         JsonEditorComponent,
         AgentTasksTableComponent,
         ValidationErrorsComponent,
+        VariableHighlightTextareaComponent,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -114,6 +116,14 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     public readonly tasksTouched = computed<boolean>(() => {
         this.dirtyCheckTick();
         return this.form?.get('tasksValidity')?.touched ?? false;
+    });
+
+    public readonly inputMapKeys = computed<string[]>(() => {
+        this.dirtyCheckTick();
+        if (!this.form) return [];
+        return getValidInputPairs(this.inputMapPairs)
+            .map((control) => ((control.value as { key?: string }).key ?? '').trim())
+            .filter((key): key is string => key.length > 0);
     });
 
     /** Whether the node currently has a task-local (`inline_surface`) surface. There is at
@@ -339,12 +349,20 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         this.rightPane.set(selection);
     }
 
+    toggleRightPaneField(): void {
+        const pane = this.effectiveRightPane();
+        if (!pane) return;
+        this.rightPane.set({
+            taskIndex: pane.taskIndex,
+            field: pane.field === 'instructions' ? 'schema' : 'instructions',
+        });
+    }
+
     rightInstructionsValue(): string {
         return this.selectedTask()?.instructions ?? '';
     }
 
-    onRightInstructionsInput(event: Event): void {
-        const value = (event.target as HTMLTextAreaElement).value;
+    onRightInstructionsInput(value: string): void {
         const task = this.selectedTask();
         if (!task) return;
         this.updateSelectedTaskField(task.tempId, { instructions: value });

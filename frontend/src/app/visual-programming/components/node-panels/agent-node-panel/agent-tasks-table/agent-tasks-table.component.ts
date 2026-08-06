@@ -19,6 +19,7 @@ import { AppSvgIconComponent } from '@shared/components';
 
 import { AgentNodeTaskUi } from '../../../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { ToastService } from '../../../../../services/notifications';
+import { VariableHighlightTextareaComponent } from '../../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 
 interface ContextRef {
     id?: number;
@@ -31,7 +32,7 @@ interface ResolvedTaskRef extends AgentNodeTaskUi {
 
 @Component({
     selector: 'app-agent-tasks-table',
-    imports: [DragDropModule, AppSvgIconComponent],
+    imports: [DragDropModule, AppSvgIconComponent, VariableHighlightTextareaComponent],
     templateUrl: './agent-tasks-table.component.html',
     styleUrls: ['./agent-tasks-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -40,10 +41,8 @@ export class AgentTasksTableComponent {
     public readonly tasks = input.required<AgentNodeTaskUi[]>();
     public readonly activeColor = input<string>('#685fff');
     public readonly selectedCell = input<{ taskIndex: number; field: 'instructions' | 'schema' } | null>(null);
-    /** Set once a save attempt has been made against an invalid task list (mirrors the
-     *  panel's `tasksValidity` form control's `touched` state) — gates the per-row blank
-     *  name/instructions highlight below so it doesn't show before the user has tried to
-     *  save. */
+    public readonly variableNames = input<string[]>([]);
+
     public readonly showValidation = input<boolean>(false);
     public readonly tasksChange = output<AgentNodeTaskUi[]>();
     public readonly cellSelect = output<{ taskIndex: number; field: 'instructions' | 'schema' }>();
@@ -84,8 +83,7 @@ export class AgentTasksTableComponent {
         this.updateTask(index, { name: value });
     }
 
-    onInstructionsInput(index: number, event: Event): void {
-        const value = (event.target as HTMLTextAreaElement).value;
+    onInstructionsInput(index: number, value: string): void {
         this.updateTask(index, { instructions: value });
     }
 

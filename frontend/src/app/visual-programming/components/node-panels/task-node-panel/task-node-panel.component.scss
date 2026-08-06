@@ -251,7 +251,7 @@
     width: 100%;
 }
 
-::ng-deep .editor-block__textarea .textarea-field {
+::ng-deep .editor-block__textarea .vht-field {
     background: var(--color-background-body, #212325);
 }
 
@@ -332,41 +332,34 @@
     }
 }
 
-::ng-deep .main-editor-pane__textarea .textarea-wrapper {
+::ng-deep .main-editor-pane__textarea .vht-wrapper {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
+}
+
+::ng-deep .main-editor-pane__textarea .vht-field {
+    flex: 1;
+    min-height: 0;
+    display: flex;
     background: var(--color-background-body, #212325) !important;
     border: none !important;
     box-shadow: none;
 }
 
-::ng-deep .main-editor-pane__textarea .textarea-field {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    background: var(--color-background-body, #212325) !important;
-    border: none !important;
-}
-
-::ng-deep .main-editor-pane__textarea .textarea-field:focus-within {
+::ng-deep .main-editor-pane__textarea .vht-field:focus-within {
     border-color: transparent !important;
 }
 
-::ng-deep .main-editor-pane__textarea .textarea-field textarea {
-    background: var(--color-background-body, #212325) !important;
-    border: none !important;
-    outline: none !important;
+::ng-deep .main-editor-pane__textarea .vht-backdrop {
+    background: var(--color-background-body, #212325);
 }
 
-::ng-deep .main-editor-pane__textarea .textarea {
+::ng-deep .main-editor-pane__textarea .vht-textarea {
     flex: 1;
     min-height: 0;
     height: 100% !important;
     resize: none;
-}
-
-::ng-deep .main-editor-pane__textarea .resize-handle {
-    display: none;
+    outline: none !important;
 }

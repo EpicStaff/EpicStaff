@@ -167,13 +167,14 @@
                                         />
                                     </div>
                                 </div>
-                                <app-textarea
+                                <app-variable-highlight-textarea
                                     class="editor-block__textarea"
                                     formControlName="instructions"
                                     placeholder="Enter task instructions..."
                                     [rows]="8"
                                     [invalid]="instructionsInvalid()"
-                                ></app-textarea>
+                                    [variables]="inputMapKeys()"
+                                ></app-variable-highlight-textarea>
                                 <app-validation-errors [control]="form.get('instructions')!" />
                             </div>
                         }
@@ -216,13 +217,14 @@
                                 </div>
                             </div>
                             <div class="main-editor-pane__body">
-                                <app-textarea
+                                <app-variable-highlight-textarea
                                     class="main-editor-pane__textarea"
                                     formControlName="instructions"
                                     placeholder="Enter task instructions..."
                                     [rows]="20"
                                     [invalid]="instructionsInvalid()"
-                                ></app-textarea>
+                                    [variables]="inputMapKeys()"
+                                ></app-variable-highlight-textarea>
                                 @if (instructionsInvalid()) {
                                     <app-validation-errors
                                         class="main-editor-pane__validation"
@@ -352,7 +354,7 @@
                         [activeColor]="activeColor"
                     ></app-custom-input>
 
-                    <app-textarea
+                    <app-variable-highlight-textarea
                         label="Instructions"
                         [required]="true"
                         tooltipText="Instructions given to the agent describing what this task should accomplish."
@@ -360,7 +362,8 @@
                         placeholder="Enter task instructions..."
                         [rows]="5"
                         [invalid]="instructionsInvalid()"
-                    ></app-textarea>
+                        [variables]="inputMapKeys()"
+                    ></app-variable-highlight-textarea>
                     <app-validation-errors [control]="form.get('instructions')!" />
 
                     <div class="output-schema-section">
