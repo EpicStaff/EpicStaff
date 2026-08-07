@@ -2093,6 +2093,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 );
                 if (opId) this.pendingUndoOps.set(opId, { revert: source, entry, direction });
             } else if (target && !source) {
+                if (target.type === NodeType.END && this.flowService.hasEndNode()) {
+                    this.toastService.warning('Only one End node is allowed', 4000, 'bottom-right');
+                    continue;
+                }
                 this.flowService.addNode(target);
                 this.wsService.sendNodeCreated(
                     target,
