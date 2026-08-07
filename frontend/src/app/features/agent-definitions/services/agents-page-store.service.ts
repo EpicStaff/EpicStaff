@@ -31,6 +31,8 @@ export interface SurfaceView {
     ownerAgent: AgentDefinition | null;
     readOnly: boolean;
     place: SurfaceCategoryId | null;
+    // All places this surface holds under ownerAgent (multi-place). Empty when not agent-owned.
+    places: AgentSurfacePlace[];
 }
 
 const VISIBLE_SECTIONS_STORAGE_KEY = 'agents-explorer/visibleSections';
@@ -126,9 +128,10 @@ export class AgentsPageStore {
         const ownerAgent = s.ownerAgentId != null ? (this.agents().find((a) => a.id === s.ownerAgentId) ?? null) : null;
         const isShared = this.isSurfaceShared(surface.id);
         const readOnly = isShared && ownerAgent != null;
-        const assignment = ownerAgent?.default_surfaces.find((ds) => ds.surface === surface.id);
-        const place = assignment ? placeToCategory(assignment.place) : null;
-        return { surface, ownerAgent, readOnly, place };
+        const rows = ownerAgent?.default_surfaces.filter((ds) => ds.surface === surface.id) ?? [];
+        const places = rows.map((ds) => ds.place);
+        const place = rows.length ? placeToCategory(rows[0].place) : null;
+        return { surface, ownerAgent, readOnly, place, places };
     });
 
     readonly surfacesOnlyAgent = computed<AgentDefinition | null>(() => {
@@ -408,14 +411,16 @@ export class AgentsPageStore {
         this.updateSurface(id, { owner_agent: null });
     }
 
-    attachSharedSurfaceToAgent(surfaceId: number, agentId: number): void {
-        this.assignSurfaceToAgent(surfaceId, agentId, 'all');
+    attachSharedSurfaceToAgent(surfaceId: number, agentId: number, category?: SurfaceCategoryId): void {
+        this.assignSurfaceToAgent(surfaceId, agentId, category ? categoryToPlace(category) : 'all');
     }
 
     dropSharedSurfaceOnAgent(surfaceId: number, agentId: number, category?: SurfaceCategoryId): void {
         const agent = this.agents().find((a) => a.id === agentId);
         if (!agent) return;
-        if (agent.default_surfaces.some((ds) => ds.surface === surfaceId)) {
+        // Tree-drop (no category ⇒ 'all'): don't silently promote an already-placed surface to
+        // everywhere — keep the "already attached" guard when no target place is specified.
+        if (!category && agent.default_surfaces.some((ds) => ds.surface === surfaceId)) {
             const name = this.surfaces().find((s) => s.id === surfaceId)?.name ?? 'Surface';
             this.toast.info(`"${name}" is already attached to "${agent.name}"`);
             return;
@@ -423,12 +428,44 @@ export class AgentsPageStore {
         this.assignSurfaceToAgent(surfaceId, agentId, category ? categoryToPlace(category) : 'all');
     }
 
+    // Add one place to a surface, upholding the invariant (one 'all' XOR a subset of concretes).
     private assignSurfaceToAgent(surfaceId: number, agentId: number, place: AgentSurfacePlace): void {
         const agent = this.agents().find((a) => a.id === agentId);
         if (!agent) return;
-        if (agent.default_surfaces.some((ds) => ds.surface === surfaceId && ds.place === place)) return;
-        const next: AgentDefaultSurface[] = [...agent.default_surfaces, { surface: surfaceId, place }];
-        this.patchAgentDefaultSurfaces(agentId, next);
+        const rows = agent.default_surfaces.filter((ds) => ds.surface === surfaceId);
+        const others = agent.default_surfaces.filter((ds) => ds.surface !== surfaceId);
+
+        if (place === 'all') {
+            // Everywhere replaces any concrete rows.
+            if (rows.length === 1 && rows[0].place === 'all') return;
+            this.patchAgentDefaultSurfaces(agentId, [...others, { surface: surfaceId, place: 'all' }]);
+            return;
+        }
+        // Adding a concrete place.
+        if (rows.some((ds) => ds.place === 'all')) {
+            const name = this.surfaces().find((s) => s.id === surfaceId)?.name ?? 'Surface';
+            this.toast.info(`"${name}" is already available everywhere`);
+            return;
+        }
+        if (rows.some((ds) => ds.place === place)) return;
+        this.patchAgentDefaultSurfaces(agentId, [...agent.default_surfaces, { surface: surfaceId, place }]);
+    }
+
+    // Set the exact place-set for a surface (checkbox control / DnD move-instance). Upholds the
+    // invariant: 'all' present ⇒ a single 'all' row; else one row per concrete place; empty ⇒ no-op.
+    setSurfacePlaces(surfaceId: number, agentId: number, places: AgentSurfacePlace[]): void {
+        const agent = this.agents().find((a) => a.id === agentId);
+        if (!agent) return;
+        const others = agent.default_surfaces.filter((ds) => ds.surface !== surfaceId);
+        let rows: AgentDefaultSurface[];
+        if (places.includes('all')) {
+            rows = [{ surface: surfaceId, place: 'all' }];
+        } else {
+            const concretes = [...new Set(places)].filter((p) => p !== 'all');
+            if (concretes.length === 0) return;
+            rows = concretes.map((place) => ({ surface: surfaceId, place }));
+        }
+        this.patchAgentDefaultSurfaces(agentId, [...others, ...rows]);
     }
 
     moveSurfacePlace(surfaceId: number, agentId: number, category: SurfaceCategoryId): void {

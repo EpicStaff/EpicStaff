@@ -28,7 +28,7 @@ import {
     ExtractTextFromStorageDialogComponent,
     ExtractTextFromStorageDialogResult,
 } from '../../../../components/extract-text-from-storage-dialog/extract-text-from-storage-dialog.component';
-import { AgentDefinition } from '../../../../models/agent-definition.model';
+import { AgentDefinition, AgentSurfacePlace } from '../../../../models/agent-definition.model';
 import { RealtimeAgentDefinition } from '../../../../models/realtime-agent-definition.model';
 import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../models/surface.model';
 import { SurfaceCategoryId } from '../../../../models/surface-category.model';
@@ -117,9 +117,9 @@ export class AgentDetailComponent implements OnInit {
     readonly openBootDoc = output<void>();
     readonly extractText = output<string>();
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
-    readonly addFromShared = output<number>();
+    readonly addFromShared = output<{ surfaceId: number; category: SurfaceCategoryId }>();
     readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
-    readonly moveSurfacePlace = output<{ id: number; place: SurfaceCategoryId }>();
+    readonly setSurfacePlaces = output<{ surfaceId: number; places: AgentSurfacePlace[] }>();
     readonly makeSharedSurface = output<number>();
     readonly detachSurface = output<number>();
     readonly deleteSurfaceFromPanel = output<number>();

@@ -82,10 +82,10 @@
                         <button
                             type="button"
                             class="surface-card__action surface-card__action--accent"
-                            matTooltip="Detach from agent"
+                            matTooltip="Detach from this place"
                             matTooltipPosition="above"
                             matTooltipClass="custom-tooltip"
-                            (click)="onHeaderAction('detach', $event)"
+                            (click)="onDetachPlace($event)"
                         >
                             <app-svg-icon
                                 icon="x"
@@ -113,6 +113,8 @@
                     @if (hasMenuItems()) {
                         <div class="surface-card__menu-wrap">
                             <button
+                                #menuTrigger="cdkOverlayOrigin"
+                                cdkOverlayOrigin
                                 type="button"
                                 class="surface-card__action surface-card__action--accent"
                                 aria-label="More actions"
@@ -123,11 +125,15 @@
                                     size="14px"
                                 />
                             </button>
-                            @if (menuOpen()) {
-                                <div
-                                    class="surface-card__menu-backdrop"
-                                    (click)="closeMenu()"
-                                ></div>
+                            <ng-template
+                                cdkConnectedOverlay
+                                [cdkConnectedOverlayOrigin]="menuTrigger"
+                                [cdkConnectedOverlayOpen]="menuOpen()"
+                                [cdkConnectedOverlayPositions]="menuPositions"
+                                [cdkConnectedOverlayFlexibleDimensions]="true"
+                                (overlayOutsideClick)="closeMenu()"
+                                (detach)="closeMenu()"
+                            >
                                 <div class="surface-card__menu">
                                     @if (showAgentSpecificMenu()) {
                                         <button
@@ -152,16 +158,44 @@
                                         >
                                             Make Agent-Specific Copy
                                         </button>
-                                        @for (target of moveTargets(); track target.place; let first = $first) {
-                                            <button
-                                                type="button"
-                                                class="surface-card__menu-item"
-                                                [class.surface-card__menu-item--no-divider]="!first"
-                                                (click)="onMoveToPlace(target.place, $event)"
-                                            >
-                                                {{ target.label }}
-                                            </button>
-                                        }
+                                        <div
+                                            class="surface-card__places"
+                                            [class.surface-card__places--busy]="placesBusy()"
+                                            (click)="$event.stopPropagation()"
+                                        >
+                                            <label class="surface-card__place">
+                                                <app-checkbox
+                                                    [checked]="everywhereChecked()"
+                                                    [disabled]="placesBusy()"
+                                                    (changed)="onToggleEverywhere($event)"
+                                                />
+                                                <span>Everywhere</span>
+                                            </label>
+                                            <label class="surface-card__place">
+                                                <app-checkbox
+                                                    [checked]="flowChecked()"
+                                                    [disabled]="placesBusy() || everywhereChecked()"
+                                                    (changed)="onTogglePlace('flow', $event)"
+                                                />
+                                                <span>Flow</span>
+                                            </label>
+                                            <label class="surface-card__place">
+                                                <app-checkbox
+                                                    [checked]="chatChecked()"
+                                                    [disabled]="placesBusy() || everywhereChecked()"
+                                                    (changed)="onTogglePlace('chat', $event)"
+                                                />
+                                                <span>Chat</span>
+                                            </label>
+                                            <label class="surface-card__place">
+                                                <app-checkbox
+                                                    [checked]="realtimeChecked()"
+                                                    [disabled]="placesBusy() || everywhereChecked()"
+                                                    (changed)="onTogglePlace('realtime', $event)"
+                                                />
+                                                <span>Realtime</span>
+                                            </label>
+                                        </div>
                                     } @else if (showSharedSurfacesMenu()) {
                                         <button
                                             type="button"
@@ -172,7 +206,7 @@
                                         </button>
                                     }
                                 </div>
-                            }
+                            </ng-template>
                         </div>
                     }
                 </div>
@@ -182,23 +216,6 @@
 
     @if (expanded() || hideHeader()) {
         <div class="surface-card__body">
-            @if (showMeta()) {
-                <div class="field">
-                    <label class="field__label">Assigned to agents</label>
-                    @if (assignedAgentChips().length > 0) {
-                        <div class="agent-chips">
-                            @for (chip of assignedAgentChips(); track chip.id) {
-                                <span class="agent-chip agent-chip--readonly">{{ chip.name }}</span>
-                            }
-                        </div>
-                    } @else {
-                        <p class="field__hint">
-                            Not assigned to any agent yet. Add it from an agent's Surfaces (Add From Shared).
-                        </p>
-                    }
-                </div>
-            }
-
             @if (!hideInstructions()) {
                 <div class="field">
                     @if (readOnly()) {

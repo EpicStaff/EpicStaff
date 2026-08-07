@@ -77,7 +77,7 @@
                 <div class="detail-body">
                     @if (store.selectedSurfaceView(); as view) {
                         <div class="surface-pane">
-                            @if (view.ownerAgent && selectedSurfacePlace(); as place) {
+                            @if (view.ownerAgent && view.places.length <= 1 && selectedSurfacePlace(); as place) {
                                 <div class="surface-pane__place">
                                     <app-svg-icon
                                         [icon]="place.icon"
@@ -93,7 +93,8 @@
                                 [isShared]="store.isSurfaceShared(view.surface.id)"
                                 [showMeta]="!view.ownerAgent && store.isSurfaceShared(view.surface.id)"
                                 [currentPlace]="view.place"
-                                [agents]="store.agents()"
+                                [surfacePlaces]="view.places"
+                                [placesBusy]="store.saving()"
                                 (rename)="store.updateSurface(view.surface.id, { name: $event })"
                                 (surfaceChange)="store.updateSurface(view.surface.id, $event)"
                                 (openSource)="store.openSharedSurfaceSource(view.surface.id)"
@@ -102,8 +103,8 @@
                                 (makeAgentSpecificCopy)="
                                     store.makeAgentSpecificCopy(view.surface.id, view.ownerAgent!.id)
                                 "
-                                (moveSurfacePlace)="
-                                    store.moveSurfacePlace(view.surface.id, view.ownerAgent!.id, $event)
+                                (setSurfacePlaces)="
+                                    store.setSurfacePlaces(view.surface.id, view.ownerAgent!.id, $event)
                                 "
                                 (duplicate)="store.duplicateSurface(view.surface.id)"
                                 (deleteSurface)="onDeleteSurface(view.surface.id)"
@@ -152,7 +153,6 @@
                                 [surface]="null"
                                 [isCreating]="true"
                                 [showMeta]="true"
-                                [agents]="store.agents()"
                                 (create)="onCreateSurface($event)"
                             />
                         </div>
@@ -173,7 +173,9 @@
                             (createSurface)="
                                 store.createSurfaceForAgent(store.selectedAgent()!.id, $event.body, $event.place)
                             "
-                            (addFromShared)="store.attachSharedSurfaceToAgent($event, store.selectedAgent()!.id)"
+                            (addFromShared)="
+                                store.attachSharedSurfaceToAgent($event.surfaceId, store.selectedAgent()!.id, $event.category)
+                            "
                             (dropSharedSurface)="
                                 store.dropSharedSurfaceOnAgent(
                                     $event.surfaceId,
@@ -181,8 +183,8 @@
                                     $event.category
                                 )
                             "
-                            (moveSurfacePlace)="
-                                store.moveSurfacePlace($event.id, store.selectedAgent()!.id, $event.place)
+                            (setSurfacePlaces)="
+                                store.setSurfacePlaces($event.surfaceId, store.selectedAgent()!.id, $event.places)
                             "
                             (makeSharedSurface)="store.makeSurfaceShared($event)"
                             (detachSurface)="store.detachSurfaceFromAgent($event, store.selectedAgent()!.id)"
@@ -204,7 +206,13 @@
                             (createSurface)="
                                 store.createSurfaceForAgent(store.surfacesOnlyAgent()!.id, $event.body, $event.place)
                             "
-                            (addFromShared)="store.attachSharedSurfaceToAgent($event, store.surfacesOnlyAgent()!.id)"
+                            (addFromShared)="
+                                store.attachSharedSurfaceToAgent(
+                                    $event.surfaceId,
+                                    store.surfacesOnlyAgent()!.id,
+                                    $event.category
+                                )
+                            "
                             (dropSharedSurface)="
                                 store.dropSharedSurfaceOnAgent(
                                     $event.surfaceId,
@@ -212,8 +220,8 @@
                                     $event.category
                                 )
                             "
-                            (moveSurfacePlace)="
-                                store.moveSurfacePlace($event.id, store.surfacesOnlyAgent()!.id, $event.place)
+                            (setSurfacePlaces)="
+                                store.setSurfacePlaces($event.surfaceId, store.surfacesOnlyAgent()!.id, $event.places)
                             "
                             (makeSharedSurface)="store.makeSurfaceShared($event)"
                             (detachSurface)="store.detachSurfaceFromAgent($event, store.surfacesOnlyAgent()!.id)"

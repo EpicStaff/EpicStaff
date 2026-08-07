@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
@@ -20,6 +21,7 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
+    CheckboxComponent,
     ConfirmationDialogService,
     SelectDropdownComponent,
     SelectDropdownHeaderAction,
@@ -44,7 +46,6 @@ import { CollectionsStorageService } from '../../../../../../../knowledge-source
 import { McpToolDialogComponent } from '../../../../../../../tools/components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../../../../../../tools/models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../../../../../../tools/models/python-code-tool.model';
-import { AgentDefinition } from '../../../../../../models/agent-definition.model';
 import {
     CreateSurfaceRequest,
     PartialUpdateSurfaceRequest,
@@ -65,7 +66,8 @@ import {
     SurfaceTabId,
     SurfaceToolOption,
 } from '../../../../../../models/surface-card.model';
-import { SURFACE_CATEGORIES, SurfaceCategoryId } from '../../../../../../models/surface-category.model';
+import { AgentSurfacePlace } from '../../../../../../models/agent-definition.model';
+import { categoryToPlace, SurfaceCategoryId } from '../../../../../../models/surface-category.model';
 import { StorageFileMeta, SurfaceCatalogsStore } from '../../../../../../services/surface-catalogs-store.service';
 import { DELETE_CONFIRM_DIALOG_WIDTH } from '../../../../../../utils/delete-confirmation.util';
 import {
@@ -91,6 +93,8 @@ import { SurfaceKnowledgeAdvancedComponent } from './surface-knowledge-advanced/
         EnterBlurDirective,
         DragHoverDirective,
         SurfaceKnowledgeAdvancedComponent,
+        CheckboxComponent,
+        OverlayModule,
     ],
     templateUrl: './surface-card.component.html',
     styleUrls: ['./surface-card.component.scss'],
@@ -109,7 +113,6 @@ export class SurfaceCardComponent {
     surface = input<Surface | null>(null);
     readOnly = input<boolean>(false);
     showMeta = input<boolean>(false);
-    agents = input<AgentDefinition[]>([]);
 
     expanded = model<boolean>(false);
     isShared = input<boolean>(false);
@@ -120,6 +123,11 @@ export class SurfaceCardComponent {
     hideInstructions = input<boolean>(false);
     hideDescriptions = input<boolean>(false);
     flat = input<boolean>(false);
+    // Full place-set this surface holds under the agent (for the place checkboxes).
+    surfacePlaces = input<AgentSurfacePlace[]>([]);
+    // True while a placement PATCH is in flight — disables the checkboxes and holds
+    // the optimistic local state until the store settles (see the resync effect).
+    placesBusy = input<boolean>(false);
 
     readonly save = output<void>();
     readonly cancel = output<void>();
@@ -130,7 +138,7 @@ export class SurfaceCardComponent {
     readonly detach = output<void>();
     readonly makeShared = output<void>();
     readonly makeAgentSpecificCopy = output<void>();
-    readonly moveSurfacePlace = output<SurfaceCategoryId>();
+    readonly placesChange = output<AgentSurfacePlace[]>();
     readonly duplicate = output<void>();
     readonly deleteSurface = output<void>();
 
@@ -146,14 +154,15 @@ export class SurfaceCardComponent {
     private readonly nameFocused = signal<boolean>(false);
     private lastSentName: string | null = null;
 
-    readonly moveTargets = computed(() => {
-        if (!this.isShared() || !this.readOnly()) return [];
-        const current = this.currentPlace();
-        return SURFACE_CATEGORIES.filter((c) => c.id !== current).map((c) => ({
-            place: c.id,
-            label: c.moveLabel,
-        }));
-    });
+    // Optimistic local copy of the surface's place-set. Seeded/resynced from the
+    // `surfacePlaces` input whenever no placement PATCH is in flight, so it holds the
+    // optimistic value during a save and reverts to store state if the PATCH fails.
+    private readonly localPlaces = signal<AgentSurfacePlace[]>([]);
+
+    readonly everywhereChecked = computed(() => this.localPlaces().includes('all'));
+    readonly flowChecked = computed(() => this.everywhereChecked() || this.localPlaces().includes('flow'));
+    readonly chatChecked = computed(() => this.everywhereChecked() || this.localPlaces().includes('chat'));
+    readonly realtimeChecked = computed(() => this.everywhereChecked() || this.localPlaces().includes('realtime'));
 
     readonly showAgentSpecificMenu = computed(() => !this.isShared() && !this.readOnly());
     readonly showSharedInAgentMenu = computed(() => this.isShared() && this.readOnly());
@@ -240,19 +249,53 @@ export class SurfaceCardComponent {
         }
     }
 
-    onMoveToPlace(place: SurfaceCategoryId, event: MouseEvent): void {
-        event.stopPropagation();
-        this.menuOpen.set(false);
-        this.moveSurfacePlace.emit(place);
+    // The kebab is kept open by a stopPropagation wrapper around the checkbox group,
+    // so these only need the new checked state.
+    onToggleEverywhere(checked: boolean): void {
+        if (this.placesBusy()) return;
+        const next: AgentSurfacePlace[] = checked ? ['all'] : ['flow', 'chat', 'realtime'];
+        this.applyPlaces(next);
     }
 
-    readonly assignedAgentChips = computed<{ id: number; name: string }[]>(() => {
-        const id = this.surface()?.id;
-        if (id == null) return [];
-        return this.agents()
-            .filter((a) => a.default_surfaces.some((ds) => ds.surface === id))
-            .map((a) => ({ id: a.id, name: a.name }));
-    });
+    onTogglePlace(place: Exclude<AgentSurfacePlace, 'all'>, checked: boolean): void {
+        if (this.placesBusy() || this.everywhereChecked()) return;
+        const current = this.localPlaces().filter((p) => p !== 'all');
+        let next: AgentSurfacePlace[];
+        if (checked) {
+            next = current.includes(place) ? current : [...current, place];
+        } else {
+            next = current.filter((p) => p !== place);
+            if (next.length === 0) return; // keep at least one place; use Detach to remove entirely
+        }
+        this.applyPlaces(next);
+    }
+
+    private applyPlaces(next: AgentSurfacePlace[]): void {
+        this.localPlaces.set(next);
+        this.placesChange.emit(next);
+    }
+
+    // The X on a card detaches the surface from THIS place only; if it was the last place,
+    // the surface is removed from the agent entirely.
+    onDetachPlace(event: MouseEvent): void {
+        event.stopPropagation();
+        this.menuOpen.set(false);
+        if (this.placesBusy()) return;
+        const cat = this.currentPlace();
+        const thisPlace = cat ? categoryToPlace(cat) : null;
+        const next = thisPlace ? this.localPlaces().filter((p) => p !== thisPlace) : [];
+        if (next.length === 0) {
+            this.detach.emit();
+        } else {
+            this.applyPlaces(next);
+        }
+    }
+
+    // Prefer opening below the trigger (right-aligned); flip above when there isn't room.
+    readonly menuPositions: ConnectedPosition[] = [
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+    ];
 
     readonly toolsExpanded = signal<boolean>(false);
     readonly filesExpanded = signal<boolean>(false);
@@ -397,6 +440,17 @@ export class SurfaceCardComponent {
     private lastSurfaceId: number | null | undefined = undefined;
 
     constructor() {
+        // Resync the optimistic place-set from the input whenever no placement PATCH is
+        // in flight. On save success the input carries the new value; on failure it still
+        // carries the pre-edit value, so this reverts the optimistic toggle. While busy we
+        // keep the optimistic value (the store `saving` flips synchronously on emit).
+        effect(() => {
+            const busy = this.placesBusy();
+            const input = this.surfacePlaces();
+            if (busy) return;
+            untracked(() => this.localPlaces.set([...input]));
+        });
+
         effect(() => {
             const s = this.surface();
 
