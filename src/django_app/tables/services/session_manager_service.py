@@ -416,7 +416,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         ]
         audio_transcription_node_data_list = [
             cv.convert_audio_transcription_node_to_pydantic(
-                audio_transcription_node=item, resolver=resolver
+                audio_transcription_node=item,
+                resolver=resolver,
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
             )
             for item in audio_transcription_node_list
         ]

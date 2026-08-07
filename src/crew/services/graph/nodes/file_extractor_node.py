@@ -47,10 +47,10 @@ class FileContentExtractorNode(PythonNode):
 
     def _get_extractor_code(self, arg_names: list[str]):
         return f"""
-from epicstaff_storage import storage
 import pdfplumber
 import csv
 import json
+from epicstaff_storage import storage
 from io import BytesIO, TextIOWrapper
 from docx import Document
 

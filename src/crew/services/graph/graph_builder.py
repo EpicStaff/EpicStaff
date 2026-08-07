@@ -318,6 +318,9 @@ class SessionGraphBuilder:
                 input_map=audio_transcription_node_data.input_map,
                 output_variable_path=audio_transcription_node_data.output_variable_path,
                 stop_event=self.stop_event,
+                storage_allowed_paths=audio_transcription_node_data.storage_allowed_paths,
+                storage_org_prefix=audio_transcription_node_data.storage_org_prefix,
+                org_id=audio_transcription_node_data.org_id,
             )
             self.add_node(audio_transcription_node)
 
