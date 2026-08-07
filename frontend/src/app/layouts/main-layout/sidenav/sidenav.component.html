@@ -67,6 +67,45 @@
     </ul>
 
     <ul class="sidenav-nav bottom-nav">
+        @if (isEpicChatEnabled) {
+            <li class="sidenav-nav-item">
+                <div class="tooltip-wrapper">
+                    <div
+                        class="sidenav-nav-link epic-chat-slot"
+                        [class.active]="epicChatService.isChatOpen()"
+                    >
+                        <epic-chat
+                            #epicChat
+                            class="epic-chat-host"
+                            theme-preset="epicstaff"
+                            [themeConfig]="epicChatThemeConfig"
+                            chat-icon-path=""
+                            chat-icon-size="32"
+                            message-timeout="180000"
+                            [apiBaseUrl]="apiBaseUrl"
+                            [accessToken]="accessToken"
+                            [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"
+                            [attr.chat-left]="
+                                epicChatService.isDocked() ? epicChatService.dockLeftPx() + 'px' : '68px'
+                            "
+                            [attr.chat-bottom]="epicChatService.isDocked() ? '0px' : '10px'"
+                            [attr.chat-top]="epicChatService.isDocked() ? '0px' : null"
+                            [attr.chat-width]="
+                                epicChatService.isDocked() ? epicChatService.dockWidth() + 'px' : null
+                            "
+                            [attr.chat-height]="epicChatService.isDocked() ? '100vh' : null"
+                            [dockEnabled]="true"
+                            [fileAttachmentDisabled]="false"
+                            [isDockMode]="epicChatService.isDocked()"
+                            [epChatCommand]="epicChatService.epChatCommand()"
+                            (epChatCommandResult)="onEpChatCommandResult($event)"
+                            (epChatEvent)="onEpChatEvent($event)"
+                        ></epic-chat>
+                    </div>
+                </div>
+            </li>
+        }
+
         @for (item of bottomNavItems; track item.id) {
             @if (item.isPermitted) {
                 <li
@@ -113,6 +152,7 @@
                 <div class="tooltip-wrapper user-avatar-wrapper">
                     <div
                         class="user-avatar-btn"
+                        [class.active]="isUserMenuOpen()"
                         (click)="toggleUserMenu($event)"
                     >
                         <app-user-avatar
@@ -138,29 +178,4 @@
             </li>
         }
     </ul>
-
-    @if (isEpicChatEnabled) {
-        <epic-chat
-            #epicChat
-            class="epic-chat-host"
-            theme-preset="epicstaff"
-            [themeConfig]="epicChatThemeConfig"
-            chat-icon-path=""
-            message-timeout="180000"
-            [apiBaseUrl]="apiBaseUrl"
-            [accessToken]="accessToken"
-            [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"
-            [attr.chat-left]="epicChatService.isDocked() ? epicChatService.dockLeftPx() + 'px' : '68px'"
-            [attr.chat-bottom]="epicChatService.isDocked() ? '0px' : '10px'"
-            [attr.chat-top]="epicChatService.isDocked() ? '0px' : null"
-            [attr.chat-width]="epicChatService.isDocked() ? epicChatService.dockWidth() + 'px' : null"
-            [attr.chat-height]="epicChatService.isDocked() ? '100vh' : null"
-            [dockEnabled]="true"
-            [fileAttachmentDisabled]="false"
-            [isDockMode]="epicChatService.isDocked()"
-            [epChatCommand]="epicChatService.epChatCommand()"
-            (epChatCommandResult)="onEpChatCommandResult($event)"
-            (epChatEvent)="onEpChatEvent($event)"
-        ></epic-chat>
-    }
 </nav>
