@@ -44,6 +44,7 @@ _GRAPH_RELATION_NAMES = (
     "end_node",
     "graph_note_list",
     "code_agent_node_list",
+    "knowledge_node_list",
     "edge_list",
     "conditional_edge_list",
 )
