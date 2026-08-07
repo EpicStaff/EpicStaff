@@ -47,10 +47,15 @@ class Rag(Entity):
     status: IndexStatusEnum
     indexing_document_ids: set[int]
     error_message: str | None = None
-    reindex_reason: dict[str, str] = Field(default_factory=dict)
+    outdated_reasons: dict[str, str] = Field(default_factory=dict)
 
-    def finish_document(self, document_id: int):
-        self.indexing_document_ids.discard(document_id)
+    def finish_document(self, *ids: int):
+        self.indexing_document_ids.difference_update(ids)
+
+    def mark_as_new(self):
+        self.status = IndexStatusEnum.NEW
+        self.error_message = None
+        self.outdated_reasons.clear()
 
     def mark_as_processing(self, document_ids: Iterable[int]):
         self.status = IndexStatusEnum.PROCESSING
@@ -59,21 +64,20 @@ class Rag(Entity):
 
     def mark_as_completed(self):
         self.status = IndexStatusEnum.COMPLETED
-        self.indexing_document_ids.clear()
-        self.reindex_reason.clear()
 
     def mark_as_failed(self, error: Exception | str):
         self.status = IndexStatusEnum.FAILED
         self.error_message = str(error)
-        self.indexing_document_ids.clear()
 
-    def mark_as_warning(self):
-        self.status = IndexStatusEnum.WARNING
-        self.indexing_document_ids.clear()
+    def mark_as_outdated(self, **reasons: str):
+        self.status = IndexStatusEnum.OUTDATED
+        self.outdated_reasons.update(reasons)
+
+    def mark_as_partial(self):
+        self.status = IndexStatusEnum.PARTIAL
 
     def mark_as_cancelled(self):
         self.status = IndexStatusEnum.CANCELLED
-        self.indexing_document_ids.clear()
         self.error_message = None
 
 
@@ -117,16 +121,6 @@ class Document(Entity):
     def mark_as_processing(self):
         self.status = DocumentStatusEnum.PROCESSING
         self.error_message = None
-
-    def mark_as_chunking(self):
-        self.status = DocumentStatusEnum.CHUNKING
-
-    def mark_as_chunked(self, chunks: list[PreviewChunk]):
-        self.status = DocumentStatusEnum.CHUNKED
-        self.preview_chunks = chunks
-
-    def mark_as_indexing(self):
-        self.status = DocumentStatusEnum.INDEXING
 
     def mark_as_completed(self, chunks: list[IndexedChunk]):
         self.status = DocumentStatusEnum.COMPLETED

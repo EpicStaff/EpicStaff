@@ -90,6 +90,7 @@ class GraphRagSerializer(serializers.ModelSerializer):
             "llm",
             "llm_name",
             "rag_status",
+            "outdated_reasons",
             "collection_id",
             "error_message",
             "created_at",
@@ -137,11 +138,13 @@ class GraphRagDetailSerializer(serializers.ModelSerializer):
         source="base_rag_type.source_collection.collection_name", read_only=True
     )
     index_config = GraphRagIndexConfigSerializer(read_only=True)
-    documents = GraphRagDocumentSerializer(
-        source="graph_rag_documents", many=True, read_only=True
-    )
     total_documents_in_collection = serializers.SerializerMethodField()
     documents_in_graph_rag = serializers.SerializerMethodField()
+    processing_document_ids = serializers.ListSerializer(
+        source="indexing_document_config_ids",
+        child=serializers.IntegerField(),
+        allow_empty=True,
+    )
 
     class Meta:
         model = GraphRag
@@ -153,12 +156,13 @@ class GraphRagDetailSerializer(serializers.ModelSerializer):
             "llm",
             "llm_name",
             "rag_status",
+            "outdated_reasons",
             "collection_id",
             "collection_name",
+            "processing_document_ids",
             "index_config",
             "total_documents_in_collection",
             "documents_in_graph_rag",
-            "documents",
             "error_message",
             "created_at",
             "updated_at",
@@ -304,7 +308,8 @@ class GraphBasicSearchConfigInputSerializer(serializers.Serializer):
     max_context_tokens = serializers.IntegerField(
         required=False,
         min_value=100,
-        help_text="Maximum context tokens (upper bound = model context window)",
+        max_value=100000,
+        help_text="Maximum context tokens (100-100000)",
     )
 
 

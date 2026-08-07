@@ -1,7 +1,6 @@
 from typing import List, Dict, Any, Optional
 from django.db import transaction
-from django.db.models import Count
-from django.db.models.functions import Concat
+from django.db.models import Q, F, OuterRef
 from loguru import logger
 
 from tables.models.knowledge_models import (
@@ -11,8 +10,6 @@ from tables.models.knowledge_models import (
     GraphRag,
     GraphRagDocument,
     GraphRagIndexConfig,
-    GraphRagInputFileType,
-    GraphRagChunkStrategyType,
 )
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.llm_models import LLMConfig
@@ -23,6 +20,8 @@ from tables.exceptions import (
     CollectionNotFoundException,
     InvalidGraphRagParametersException,
     GraphRagDocumentNotFoundException,
+    DocumentConfigNotFoundException,
+    InvalidChunkParametersException,
 )
 from tables.constants.knowledge_constants import (
     GRAPHRAG_DEFAULT_INPUT_FILE_TYPE,
@@ -32,14 +31,6 @@ from tables.constants.knowledge_constants import (
     GRAPHRAG_DEFAULT_ENTITY_TYPES,
     GRAPHRAG_DEFAULT_MAX_GLEANINGS,
     GRAPHRAG_DEFAULT_MAX_CLUSTER_SIZE,
-    GRAPHRAG_MIN_CHUNK_SIZE,
-    GRAPHRAG_MAX_CHUNK_SIZE,
-    GRAPHRAG_MIN_CHUNK_OVERLAP,
-    GRAPHRAG_MAX_CHUNK_OVERLAP,
-    GRAPHRAG_MIN_MAX_GLEANINGS,
-    GRAPHRAG_MAX_MAX_GLEANINGS,
-    GRAPHRAG_MIN_MAX_CLUSTER_SIZE,
-    GRAPHRAG_MAX_MAX_CLUSTER_SIZE,
 )
 
 
@@ -110,6 +101,12 @@ class GraphRagService:
             return None
 
     @staticmethod
+    def _mark_completed_documents_outdated(graph_rag: GraphRag) -> int:
+        return graph_rag.graph_rag_documents.filter(
+            status=GraphRagDocument.Status.COMPLETED
+        ).update(status=GraphRagDocument.Status.OUTDATED)
+
+    @staticmethod
     def _create_default_index_config() -> GraphRagIndexConfig:
         """Create default index configuration."""
         index_config = GraphRagIndexConfig.objects.create(
@@ -128,9 +125,88 @@ class GraphRagService:
 
         return index_config
 
-    @staticmethod
+    @classmethod
+    def _create_rag(
+        cls,
+        collection: SourceCollection,
+        embedding_config: EmbeddingConfig,
+        llm_config: LLMConfig,
+    ) -> GraphRag:
+        index_config = cls._create_default_index_config()
+        base_rag_type = BaseRagType.objects.create(
+            source_collection=collection, rag_type=BaseRagType.RagType.GRAPH
+        )
+        rag = GraphRag.objects.create(
+            base_rag_type=base_rag_type,
+            embedder=embedding_config,
+            llm=llm_config,
+            index_config=index_config,
+        )
+
+        all_documents = collection.documents.iterator(chunk_size=100)
+        graph_rag_documents = [
+            GraphRagDocument(graph_rag=rag, document=d)
+            for d in all_documents
+        ]  # fmt: off
+        GraphRagDocument.objects.bulk_create(graph_rag_documents, batch_size=100)
+
+        logger.info(
+            f"Created GraphRag {rag.graph_rag_id} "
+            f"for collection {collection.collection_id} with {len(graph_rag_documents)} documents."
+        )
+
+        return rag
+
+    @classmethod
+    def _update_rag(
+        cls,
+        rag: GraphRag,
+        collection: SourceCollection,
+        embedding_config: EmbeddingConfig,
+        llm_config: LLMConfig,
+    ) -> GraphRag:
+        updated_fields = set()
+        embedding_provider_changed = (
+            rag.embedder is None
+            or rag.embedder.model.embedding_provider
+            != embedding_config.model.embedding_provider
+        )
+
+        if rag.embedder is None or rag.embedder.pk != embedding_config.pk:
+            if embedding_provider_changed:
+                rag.rag_status = rag.GraphRagStatus.OUTDATED
+                rag.add_outdated_reason(
+                    "changed_embedding_config",
+                    "Embedding config was changed.",
+                )
+                updated_fields.update(["rag_status", "outdated_reasons"])
+            rag.embedder = embedding_config
+            updated_fields.add("embedder")
+
+        if rag.llm is None or rag.llm.pk != llm_config.pk:
+            rag.llm = llm_config
+            updated_fields.add("llm")
+
+        rag.save(update_fields=updated_fields)
+
+        if embedding_provider_changed:
+            (
+                rag.graph_rag_documents.filter(
+                    ~Q(graph_rag_document_id__in=rag.indexing_document_config_ids),
+                    status=GraphRagDocument.Status.COMPLETED,
+                ).update(status=GraphRagDocument.Status.OUTDATED)
+            )
+
+        logger.info(
+            f"Updated GraphRag {rag.graph_rag_id} for collection {collection.collection_id}"
+        )
+
+        return rag
+
+    @classmethod
     @transaction.atomic
     def create_or_update_graph_rag(
+        cls,
         collection_id: int,
         embedder_id: int,
         llm_id: int,
@@ -153,69 +229,22 @@ class GraphRagService:
             EmbedderNotFoundException: If embedder not found
             LLMConfigNotFoundException: If LLM config not found
         """
-        # Validate collection exists
-        collection = GraphRagService._get_collection(collection_id)
+        collection = cls._get_collection(collection_id)
+        embedding_config = cls._get_embedder(embedder_id)
+        llm_config = cls._get_llm_config(llm_id)
 
-        # Validate embedder exists
-        embedder = GraphRagService._get_embedder(embedder_id)
+        rag = cls.get_or_none_graph_rag_by_collection(collection_id)
+        if rag:
+            rag = cls._update_rag(rag, collection, embedding_config, llm_config)
+        else:
+            rag = cls._create_rag(collection, embedding_config, llm_config)
 
-        # Validate LLM config exists
-        llm_config = GraphRagService._get_llm_config(llm_id)
+        return rag
 
-        # Check if GraphRag already exists for this collection
-        existing_graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(
-            collection_id
-        )
-
-        if existing_graph_rag:
-            # Update existing GraphRag
-            existing_graph_rag.embedder = embedder
-            existing_graph_rag.llm = llm_config
-            existing_graph_rag.save(update_fields=["embedder", "llm"])
-
-            logger.info(
-                f"Updated GraphRag {existing_graph_rag.graph_rag_id} "
-                f"for collection {collection_id}"
-            )
-
-            return existing_graph_rag
-
-        # Create default index config
-        index_config = GraphRagService._create_default_index_config()
-
-        # Create BaseRagType
-        base_rag_type = BaseRagType.objects.create(
-            source_collection=collection, rag_type=BaseRagType.RagType.GRAPH
-        )
-
-        # Create GraphRag
-        graph_rag = GraphRag.objects.create(
-            base_rag_type=base_rag_type,
-            embedder=embedder,
-            llm=llm_config,
-            index_config=index_config,
-            rag_status=GraphRag.GraphRagStatus.NEW,
-        )
-
-        # Auto-add ALL documents from collection
-        all_documents = DocumentMetadata.objects.filter(
-            source_collection_id=collection_id
-        )
-        for document in all_documents:
-            GraphRagDocument.objects.create(graph_rag=graph_rag, document=document)
-
-        doc_count = all_documents.count()
-
-        logger.info(
-            f"Created GraphRag {graph_rag.graph_rag_id} "
-            f"for collection {collection_id} with {doc_count} documents"
-        )
-
-        return graph_rag
-
-    @staticmethod
+    @classmethod
     @transaction.atomic
     def update_index_config(
+        cls,
         graph_rag_id: int,
         data: dict[str, Any],
     ) -> GraphRag:
@@ -233,22 +262,25 @@ class GraphRagService:
             InvalidGraphRagParametersException: If parameters are invalid
         """
         logger.info("start update index config for data: {}", data)
-        rag = GraphRagService.get_graph_rag(graph_rag_id)
+
+        # TODO: it is unprotected from system changing index config at indexing.
+
+        rag = cls.get_graph_rag(graph_rag_id)
         if not rag.index_config:
             raise InvalidGraphRagParametersException(
                 "GraphRag has no index configuration"
             )
         index_config = rag.index_config
 
-        chunk_size = data.get("chunk_size")
-        chunk_overlap = data.get("chunk_overlap")
-        if chunk_size and not chunk_overlap or not chunk_size and chunk_overlap:
-            chunk_size = chunk_size or index_config.chunk_size
-            chunk_overlap = chunk_overlap or index_config.chunk_overlap
-            if chunk_overlap >= chunk_size:
-                raise InvalidGraphRagParametersException(
-                    "'chunk_overlap' must be less then 'chunk_size'"
-                )
+        chunk_size = data.get("chunk_size") or index_config.chunk_size
+        chunk_overlap = data.get("chunk_overlap") or index_config.chunk_overlap
+        if chunk_overlap >= chunk_size:
+            reason = "'chunk_overlap' must be less than 'chunk_size'"
+            raise InvalidChunkParametersException(
+                errors=[
+                    {"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}
+                ],
+            )
 
         updated_fields = set()
         for field, value in data.items():
@@ -260,13 +292,18 @@ class GraphRagService:
         if updated_fields:
             index_config.save(update_fields=updated_fields)
 
-            has_document_in_rag = rag.graph_rag_documents.exists()
-            if has_document_in_rag:
-                rag.add_reindex_reason(
+            completed_documents = rag.graph_rag_documents.filter(
+                ~Q(graph_rag_document_id__in=rag.indexing_document_config_ids),
+                status=GraphRagDocument.Status.COMPLETED,
+            )
+            if completed_documents:
+                rag.add_outdated_reason(
                     code="index_config_changed",
                     detail="Index config was changed.",
                 )
-                rag.save(update_fields={"reindex_reason"})
+                rag.rag_status = GraphRag.GraphRagStatus.OUTDATED
+                rag.save(update_fields={"outdated_reasons", "rag_status"})
+                completed_documents.update(status=GraphRagDocument.Status.OUTDATED)
 
         logger.info("Updated index config for GraphRag(id={})", graph_rag_id)
 
@@ -288,35 +325,36 @@ class GraphRagService:
             dict with removal info
         """
         rag = GraphRagService.get_graph_rag(graph_rag_id)
-        documents = (
-            rag.graph_rag_documents
-            .filter(graph_rag_id=graph_rag_id, document_id__in=document_ids)
-            .only('document_id', 'status')
-        )  # fmt: off
+        documents = rag.graph_rag_documents.filter(document_id__in=document_ids)
 
-        has_indexed_link = False
-        ids = []
-        for document in documents:
-            ids.append(document.document_id)
-            if document.status == GraphRagDocument.Status.INDEXED:
-                has_indexed_link = True
+        found_ids = {d.document_id for d in documents}
+        missing_ids = set(document_ids) - found_ids
+        if missing_ids:
+            raise GraphRagDocumentNotFoundException(
+                f"Documents not found or don't belong to"
+                f" GraphRag {rag.graph_rag_id}: {sorted(missing_ids)}"
+            )
 
+        completed_document_deleted = documents.filter(
+            status=GraphRagDocument.Status.COMPLETED
+        ).exists()
+        deleted_document_ids = list(documents.values_list("document_id", flat=True))
         documents.delete()
 
-        has_document_in_rag = rag.graph_rag_documents.exists()
-        if not has_document_in_rag and rag.require_reindex():
-            rag.reindex_reason.clear()
-            rag.rag_status = rag.GraphRagStatus.NEW
-        elif has_document_in_rag and has_indexed_link:
-            rag.add_reindex_reason(
-                code="indexed_documents_deleted",
-                detail="Indexed documents were deleted.",
-            )
-        rag.save()
+        GraphRagService.sync_status_after_document_removal(
+            rag, completed_document_deleted
+        )
 
-        logger.info("Removed {} documents from GraphRag(id={})", len(ids), graph_rag_id)
+        logger.info(
+            "Removed {} documents from GraphRag(id={})",
+            len(deleted_document_ids),
+            graph_rag_id,
+        )
 
-        return {"removed_count": len(ids), "removed_document_ids": ids}
+        return {
+            "removed_count": len(deleted_document_ids),
+            "removed_document_ids": deleted_document_ids,
+        }
 
     @staticmethod
     @transaction.atomic
@@ -332,33 +370,48 @@ class GraphRagService:
             dict with removal info
         """
         rag = GraphRagService.get_graph_rag(graph_rag_id)
-        document = (
-            rag.graph_rag_documents
-            .filter(document_id=document_id)
-            .only('document_id', 'status')
-            .first()
-        )  # fmt: off
+        document = rag.graph_rag_documents.filter(document_id=document_id).first()
         if document is None:
-            raise GraphRagDocumentNotFoundException(document_id, graph_rag_id)
+            raise GraphRagDocumentNotFoundException(
+                f"Document {document_id} is not linked to GraphRag {graph_rag_id}"
+            )
 
+        was_completed = document.status == GraphRagDocument.Status.COMPLETED
         document.delete()
 
-        has_document_in_rag = rag.graph_rag_documents.exists()
-        if not has_document_in_rag and rag.require_reindex():
-            rag.reindex_reason.clear()
-            rag.rag_status = rag.GraphRagStatus.NEW
-        elif has_document_in_rag and document.status == GraphRagDocument.Status.INDEXED:
-            rag.add_reindex_reason(
-                code="indexed_documents_deleted",
-                detail="Indexed documents were deleted.",
-            )
-        rag.save()
+        GraphRagService.sync_status_after_document_removal(rag, was_completed)
 
         logger.info(
-            "Removed document(id={}) from GraphRag(id={})", document_id, graph_rag_id
+            "Removed document(id={}) from GraphRag(id={})",
+            document_id,
+            graph_rag_id,
         )
 
         return {"graph_rag_id": graph_rag_id, "document_id": document_id}
+
+    @staticmethod
+    def sync_status_after_document_removal(
+        rag: GraphRag, indexed_document_deleted: bool
+    ) -> None:
+        updated_fields = set()
+        S = GraphRagDocument.Status
+        if indexed_document_deleted:
+            # Graph can't excise a single file from the index — treat any indexed
+            # deletion as outdating the whole graph.
+            rag.graph_rag_documents.filter(status=S.COMPLETED).update(status=S.OUTDATED)
+            rag.add_outdated_reason(
+                code="indexed_document_deleted",
+                detail="Indexed document was deleted.",
+            )
+            updated_fields.add("outdated_reasons")
+        has_outdated = rag.graph_rag_documents.filter(status=S.OUTDATED).exists()
+        if not has_outdated and rag.outdated_reasons:
+            rag.clear_outdated_reason()
+            updated_fields.add("outdated_reasons")
+        if rag.update_rag_status():
+            updated_fields.add("rag_status")
+        if updated_fields:
+            rag.save(update_fields=updated_fields)
 
     @staticmethod
     def get_documents_for_graph_rag(graph_rag_id: int) -> List[DocumentMetadata]:

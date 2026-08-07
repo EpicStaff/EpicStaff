@@ -1,3 +1,6 @@
+from pathlib import Path
+
+from django.db.models import Case, When, Count, F
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -45,6 +48,7 @@ from tables.serializers.naive_rag_serializers import (
     ChunkSearchRequestSerializer,
     PreviewChunksByIdsRequestSerializer,
     PreviewChunksByIdsResponseSerializer,
+    ChunkingConfigSerializer,
 )
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 
@@ -329,44 +333,42 @@ class NaiveRagDocumentConfigViewSet(
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT)
     @action(detail=False, methods=["put"], url_path="bulk-update")
     def bulk_update(self, request, naive_rag_id=None):
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=request.data, many=True)
         serializer.is_valid(raise_exception=True)
-
-        config_ids = serializer.validated_data.pop("config_ids")
 
         try:
             result = NaiveRagService.bulk_update_document_configs_with_partial_errors(
                 naive_rag_id=int(naive_rag_id),
-                config_ids=config_ids,
-                **serializer.validated_data,
+                data=serializer.validated_data,
             )
 
             # Use the new serializer that includes errors field
             response_serializer = DocumentConfigWithErrorsSerializer(
                 result["configs"],
                 many=True,
-                context={"config_errors": result["config_errors"]},
+                context={"config_errors": result["errors"]},
             )
 
             # Build status message
-            if result["failed_count"] == 0:
-                message = f"Successfully updated {result['updated_count']} config(s)"
+            if result["failed"] == 0:
+                message = f"Successfully updated {result['updated']} config(s)"
                 response_status = status.HTTP_200_OK
-            elif result["updated_count"] == 0:
-                message = f"Failed to update {result['failed_count']} config(s)"
+            elif result["updated"] == 0:
+                message = f"Failed to update {result['failed']} config(s)"
                 response_status = status.HTTP_207_MULTI_STATUS
             else:
                 message = (
-                    f"Successfully updated {result['updated_count']} config(s), "
-                    f"Failed to update {result['failed_count']} config(s)"
+                    f"Successfully updated {result['updated']} config(s), "
+                    f"Failed to update {result['failed']} config(s)"
                 )
                 response_status = status.HTTP_207_MULTI_STATUS
 
             return Response(
                 {
                     "message": message,
-                    "updated_count": result["updated_count"],
-                    "failed_count": result["failed_count"],
+                    "updated_count": result["updated"],
+                    "unupdated_count": result["unupdated"],
+                    "failed_count": result["failed"],
                     "configs": response_serializer.data,
                 },
                 status=response_status,
@@ -473,7 +475,7 @@ class NaiveRagDocumentConfigViewSet(
             config = NaiveRagService.update_document_config(
                 config_id=int(pk),
                 naive_rag_id=naive_rag_id,
-                **serializer.validated_data,
+                data=serializer.validated_data,
             )
 
             response_serializer = DocumentConfigSerializer(config)
@@ -536,14 +538,17 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST)
     def post(self, request, naive_rag_id: int, document_config_id: int):
-        # Validate document config exists and belongs to naive_rag
+        serializer = ChunkingConfigSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         try:
-            config = NaiveRagDocumentConfig.objects.select_related(
-                "naive_rag", "document"
-            ).get(
-                naive_rag_document_id=document_config_id,
-                naive_rag_id=naive_rag_id,
-            )
+            config = (
+                NaiveRagDocumentConfig.objects
+                .select_related("naive_rag", "document")
+                .get(
+                    naive_rag_document_id=document_config_id,
+                    naive_rag_id=naive_rag_id,
+                )
+            )  # fmt: off
         except NaiveRagDocumentConfig.DoesNotExist:
             return Response(
                 {
@@ -554,14 +559,17 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
             )
 
         prechunk_request = PrechunkRequest(
-            rag_id=naive_rag_id,
             rag_strategy="naive",
-            document_id=config.document_id,
+            rag_id=naive_rag_id,
+            document_id=document_config_id,
+            document_extension=Path(config.document.file_name).suffix,
+            content=bytes(config.document.document_content.content),
+            **serializer.validated_data,
         )
 
         producer.send(
             settings.KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL,
-            Message(payload=prechunk_request.model_dump()),
+            Message(payload=prechunk_request.model_dump(mode="json")),
         )
         logger.info(
             "Sent prechunk request rag_id=%s document_id=%s",
@@ -590,7 +598,7 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
             {
                 "naive_rag_id": naive_rag_id,
                 "document_config_id": document_config_id,
-                "status": response.status,
+                "status": "completed",
                 "chunk_count": len(response.chunks),
                 "chunks": [chunk.model_dump() for chunk in response.chunks],
             },
@@ -601,8 +609,10 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
 class CancelNaiveRagDocumentChunkingView(APIView):
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_POST)
     def post(self, request, naive_rag_id: int, document_config_id: int):
+        serializer = ChunkingConfigSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         try:
-            config = NaiveRagDocumentConfig.objects.get(
+            NaiveRagDocumentConfig.objects.get(
                 naive_rag_document_id=document_config_id,
                 naive_rag_id=naive_rag_id,
             )
@@ -616,18 +626,19 @@ class CancelNaiveRagDocumentChunkingView(APIView):
             )
 
         target_request = PrechunkRequest(
-            rag_id=naive_rag_id,
             rag_strategy="naive",
-            document_id=config.document_id,
+            rag_id=naive_rag_id,
+            document_id=document_config_id,
+            **serializer.validated_data,
         ).model_dump()
         producer.send(
             settings.KNOWLEDGE_CANCEL_REQUEST_CHANNEL,
             Message(payload=CancelRequest(target_request=target_request).model_dump()),
         )
         logger.info(
-            "Sent prechunk cancellation rag_id=%s document_id=%s",
+            "Sent prechunk cancellation rag_id=%s document_config_id=%s",
             naive_rag_id,
-            config.document_id,
+            document_config_id,
         )
 
         return Response(
@@ -662,10 +673,14 @@ class NaiveRagChunkPreviewView(APIView):
     def get(self, request, naive_rag_id: int, document_config_id: int):
         # Validate document config exists and belongs to naive_rag
         try:
-            config = NaiveRagDocumentConfig.objects.get(
-                naive_rag_document_id=document_config_id,
-                naive_rag_id=naive_rag_id,
-            )
+            config = (
+                NaiveRagDocumentConfig.objects
+                .annotate(total_preview_chunks=Count("preview_chunks"))
+                .get(
+                    naive_rag_document_id=document_config_id,
+                    naive_rag_id=naive_rag_id,
+                )
+            )  # fmt: off
         except NaiveRagDocumentConfig.DoesNotExist:
             return Response(
                 {
@@ -687,35 +702,18 @@ class NaiveRagChunkPreviewView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Decide which chunks to return based on status
-        doc_status = config.status
-
-        if doc_status == NaiveRagDocumentConfig.NaiveRagDocumentStatus.COMPLETED:
-            # Return indexed chunks
-            chunks_qs = NaiveRagChunk.objects.filter(
-                naive_rag_document_config_id=document_config_id
-            ).order_by("chunk_index")
-            total_count = chunks_qs.count()
-            chunks = chunks_qs[offset : offset + limit]
-            serializer = NaiveRagChunkSerializer(chunks, many=True)
-        else:
-            # Return preview chunks (for CHUNKED or other statuses)
-            chunks_qs = NaiveRagPreviewChunk.objects.filter(
-                naive_rag_document_config_id=document_config_id
-            ).order_by("chunk_index")
-            total_count = chunks_qs.count()
-            chunks = chunks_qs[offset : offset + limit]
-            serializer = NaiveRagPreviewChunkSerializer(chunks, many=True)
+        chunks = config.preview_chunks.all()[offset:offset+limit]
+        chunks = NaiveRagPreviewChunkSerializer(chunks, many=True).data
 
         return Response(
             {
                 "naive_rag_id": naive_rag_id,
-                "document_config_id": document_config_id,
-                "status": doc_status,
-                "total_chunks": total_count,
+                "document_config_id": config.naive_rag_document_id,
+                "status": config.status,
+                "total_chunks": config.total_preview_chunks,
                 "limit": limit,
                 "offset": offset,
-                "chunks": serializer.data,
+                "chunks": chunks,
             },
             status=status.HTTP_200_OK,
         )

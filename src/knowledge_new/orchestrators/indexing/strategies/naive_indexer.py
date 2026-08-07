@@ -1,6 +1,6 @@
 from typing import cast
 
-from enums import DocumentStatusEnum
+from enums import DocumentStatusEnum, IndexStatusEnum
 from errors import (
     ChunksNotIndexedError,
     DocumentNotFoundError,
@@ -47,9 +47,6 @@ class NaiveIndexer(AbstractIndexer):
 
             try:
                 if not document.preview_chunks or document.has_config_changed():
-                    document.mark_as_chunking()
-                    await self._update_document(rag.id, document)
-
                     extractor = build_file_text_extractor(document.extension)
                     text = await extractor.extract(document.content)
 
@@ -60,11 +57,8 @@ class NaiveIndexer(AbstractIndexer):
                             document_id=document.id,
                             rag_id=rag.id,
                         )
-                    document.mark_as_chunked(preview_chunks)
-                    await self._update_document(rag.id, document)
+                    document.preview_chunks = preview_chunks
 
-                document.mark_as_indexing()
-                await self._update_document(rag.id, document)
                 # TODO: embed batch of chunks instead of one per time.
                 indexed_chunks = [
                     IndexedChunk(
@@ -105,12 +99,14 @@ class NaiveIndexer(AbstractIndexer):
         if (rag := self.state.get("rag")) is not None:
             rag = cast(Rag, rag)
             rag.mark_as_cancelled()
+            rag.finish_document(*request.document_ids)
             await self._update_rag(rag)
 
     async def on_error(self, request: IndexRequest, error: Exception):
         if (rag := self.state.get("rag")) is not None:
             rag = cast(Rag, rag)
             rag.mark_as_failed(error)
+            rag.finish_document(*request.document_ids)
             await self._update_rag(rag)
 
     async def _get_rag_under_uow(self, rag_id: int) -> Rag:
@@ -157,17 +153,25 @@ class NaiveIndexer(AbstractIndexer):
 
     async def _finish_rag(self, rag: Rag):
         async with self.uow:
-            has_completed_document = await self.uow.naive_rag_repo.has_completed_document(
-                rag_id=rag.id
-            )
-            has_failed_document = await self.uow.naive_rag_repo.has_failed_document(rag_id=rag.id)
+            has_outdated = await self.uow.naive_rag_repo.has_outdated_document(rag_id=rag.id)
+            has_completed = await self.uow.naive_rag_repo.has_completed_document(rag_id=rag.id)
+            has_failed = await self.uow.naive_rag_repo.has_failed_document(rag_id=rag.id)
 
-            if not has_completed_document:
-                rag.mark_as_failed("Failed to indexing all documents.")
-            elif has_failed_document:
-                rag.mark_as_warning()
-            else:
+            if has_outdated:
+                rag.mark_as_outdated()
+            elif rag.indexing_document_ids:
+                rag.status = IndexStatusEnum.PROCESSING
+            elif has_completed and has_failed:
+                rag.mark_as_partial()
+            elif has_completed:
                 rag.mark_as_completed()
+            elif has_failed:
+                rag.mark_as_failed("Failed to index all documents.")
+            else:
+                rag.mark_as_new()
+
+            if not has_outdated:
+                rag.outdated_reasons.clear()
 
             await self.uow.naive_rag_repo.update_rag(rag=rag)
             await self.uow.commit()

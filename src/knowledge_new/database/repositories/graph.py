@@ -1,5 +1,3 @@
-from typing import Literal
-
 from database.models import (
     DocumentMetadata,
     EmbeddingConfig,
@@ -14,6 +12,7 @@ from database.repositories.base import (
     AbstractGraphRagRepository,
     BaseSQLAlchemyRepository,
 )
+from enums import DocumentStatusEnum
 from graphrag.config.models.cluster_graph_config import ClusterGraphConfig
 from graphrag.config.models.extract_graph_config import ExtractGraphConfig
 from graphrag.config.models.graph_rag_config import GraphRagConfig
@@ -25,7 +24,7 @@ from graphrag_vectors.vector_store_config import VectorStoreConfig
 from models import Rag
 from services.file_text_extractors import build_file_text_extractor
 from settings import settings
-from sqlalchemy import select, update, exists
+from sqlalchemy import exists, select, update
 from sqlalchemy.orm import joinedload
 
 
@@ -40,9 +39,9 @@ class GraphRagSQLAlchemyRepository(
             return Rag(
                 id=data.graph_rag_id,
                 status=data.rag_status,
-                indexing_document_ids=data.indexing_document_config_ids,
+                indexing_document_ids=set(data.indexing_document_config_ids),
                 error_message=data.error_message,
-                reindex_reason=data.reindex_reason,
+                outdated_reasons=data.outdated_reasons or {},
             )
         return None
 
@@ -54,19 +53,14 @@ class GraphRagSQLAlchemyRepository(
                 rag_status=rag.status,
                 indexing_document_config_ids=list(rag.indexing_document_ids),
                 error_message=rag.error_message,
-                reindex_reason=rag.reindex_reason,
+                outdated_reasons=rag.outdated_reasons or {},
             )
         )
 
-    async def get_documents(
-        self, rag_id: int, ids: frozenset[int]
-    ) -> list[TextDocument]:
+    async def _get_documents(self, rag_id: int, *conditions) -> list[TextDocument]:
         result = await self._session.execute(
             select(GraphRagDocument)
-            .where(
-                GraphRagDocument.graph_rag_id == rag_id,
-                GraphRagDocument.graph_rag_document_id.in_(ids),
-            )
+            .where(GraphRagDocument.graph_rag_id == rag_id, *conditions)
             .options(
                 joinedload(GraphRagDocument.document).joinedload(
                     DocumentMetadata.document_content
@@ -74,7 +68,6 @@ class GraphRagSQLAlchemyRepository(
             )
         )
         rows = result.scalars().all()
-
         documents = []
         for row in rows:
             document = row.document
@@ -92,11 +85,28 @@ class GraphRagSQLAlchemyRepository(
             )
         return documents
 
+    async def get_documents(
+        self, rag_id: int, ids: frozenset[int]
+    ) -> list[TextDocument]:
+        return await self._get_documents(
+            rag_id,
+            GraphRagDocument.graph_rag_document_id.in_(ids),
+        )
+
+    async def get_indexed_documents_excluding(
+        self, rag_id: int, ids: frozenset[int]
+    ) -> list[TextDocument]:
+        return await self._get_documents(
+            rag_id,
+            GraphRagDocument.graph_rag_document_id.not_in(ids),
+            GraphRagDocument.status == DocumentStatusEnum.COMPLETED,
+        )
+
     async def update_status_of_documents(
         self,
         rag_id: int,
         ids: frozenset[int],
-        status: Literal["new", "indexed"],
+        status: DocumentStatusEnum,
     ):
         await self._session.execute(
             update(GraphRagDocument)
@@ -107,12 +117,34 @@ class GraphRagSQLAlchemyRepository(
             .values(status=status)
         )
 
-    async def has_indexed_document(self, rag_id: int) -> bool:
+    async def has_completed_document(self, rag_id: int) -> bool:
         result = await self._session.execute(
             select(
                 exists().where(
                     GraphRagDocument.graph_rag_id == rag_id,
-                    GraphRagDocument.status == "indexed",
+                    GraphRagDocument.status == DocumentStatusEnum.COMPLETED,
+                )
+            )
+        )
+        return result.scalar_one()
+
+    async def has_failed_document(self, rag_id: int) -> bool:
+        result = await self._session.execute(
+            select(
+                exists().where(
+                    GraphRagDocument.graph_rag_id == rag_id,
+                    GraphRagDocument.status == DocumentStatusEnum.FAILED,
+                )
+            )
+        )
+        return result.scalar_one()
+
+    async def has_outdated_document(self, rag_id: int) -> bool:
+        result = await self._session.execute(
+            select(
+                exists().where(
+                    GraphRagDocument.graph_rag_id == rag_id,
+                    GraphRagDocument.status == DocumentStatusEnum.OUTDATED,
                 )
             )
         )

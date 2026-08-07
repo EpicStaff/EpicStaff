@@ -10,13 +10,11 @@ Seams used:
   storage entirely.
 """
 
-import pytest
-
 import pandas
-from graphrag.config.models.graph_rag_config import GraphRagConfig
-
+import pytest
 from enums import GraphSearchMethodEnum
 from errors import UnsupportedError
+from graphrag.config.models.graph_rag_config import GraphRagConfig
 from models import SearchRequest, SearchResponse
 from orchestrators.searching.strategies.graph_search import (
     GraphSearch,
@@ -131,9 +129,6 @@ async def test_happy_path_correct_searcher_invoked(
     """Correct searcher is invoked; response.result == searcher's result; request is preserved."""
     fake = make_fake_searcher(expected_result)
     monkeypatch.setitem(GraphSearch._SEARCH_MAP, method, _make_spec_for(method, fake))
-
-    # _resolve_files returns only required files (no covariates for non-LOCAL methods)
-    specs = GraphSearch._SEARCH_MAP[method]
 
     async def fake_resolve_files(config, required_files, optional_files=None):
         files = {}

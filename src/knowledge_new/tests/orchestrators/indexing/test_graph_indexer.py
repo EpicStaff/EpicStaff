@@ -4,7 +4,7 @@ from typing import Literal
 
 import pandas
 import pytest
-from enums import IndexStatusEnum, RAGStrategy
+from enums import DocumentStatusEnum, IndexStatusEnum, RAGStrategy
 from errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
 from graphrag_input import TextDocument
 from models import IndexRequest, Rag
@@ -19,6 +19,10 @@ def _result(workflow: str, error: BaseException | None = None) -> types.SimpleNa
 
 def _new_rag(rag_id: int = 1) -> Rag:
     return Rag(id=rag_id, status=IndexStatusEnum.NEW, indexing_document_ids=set())
+
+
+def _completed_rag(rag_id: int = 1) -> Rag:
+    return Rag(id=rag_id, status=IndexStatusEnum.COMPLETED, indexing_document_ids=set())
 
 
 def _text_document(
@@ -76,6 +80,7 @@ class FakeGraphRagRepo:
         self.rag_status_log: list[IndexStatusEnum] = []
         self.status_updates: list[tuple[frozenset[int], str]] = []
         self.build_index_call_count: int = 0
+        self._document_statuses: dict[int, str] = {}
 
     async def get_rag(self, rag_id: int) -> Rag | None:
         if self._get_rag_raises is not None:
@@ -95,6 +100,11 @@ class FakeGraphRagRepo:
     async def has_indexed_document(self, rag_id: int) -> bool:
         return self._has_indexed_db
 
+    async def get_indexed_documents_excluding(
+        self, rag_id: int, ids: frozenset[int]
+    ) -> list[TextDocument]:
+        return [d for d in self._documents if int(d.id) not in ids]
+
     async def update_rag(self, rag: Rag) -> None:
         # Append only when status actually changes to avoid duplicate log entries.
         if not self.rag_status_log or self.rag_status_log[-1] != rag.status:
@@ -104,9 +114,26 @@ class FakeGraphRagRepo:
         self,
         rag_id: int,
         ids: frozenset[int],
-        status: Literal["new", "indexed"],
+        status: Literal["new", "completed", "failed"],
     ) -> None:
         self.status_updates.append((frozenset(ids), status))
+        for doc_id in ids:
+            self._document_statuses[doc_id] = status
+
+    async def has_completed_document(self, rag_id: int) -> bool:
+        return any(
+            s == DocumentStatusEnum.COMPLETED for s in self._document_statuses.values()
+        )
+
+    async def has_failed_document(self, rag_id: int) -> bool:
+        return any(
+            s == DocumentStatusEnum.FAILED for s in self._document_statuses.values()
+        )
+
+    async def has_outdated_document(self, rag_id: int) -> bool:
+        return any(
+            s == DocumentStatusEnum.OUTDATED for s in self._document_statuses.values()
+        )
 
 
 class FakeUoW:
@@ -165,7 +192,7 @@ async def test_index_success_full_flow_marks_documents_indexed_and_rag_completed
         IndexStatusEnum.PROCESSING,
         IndexStatusEnum.COMPLETED,
     ]
-    assert repo.status_updates == [(frozenset({7}), "indexed")]
+    assert repo.status_updates == [(frozenset({7}), DocumentStatusEnum.COMPLETED)]
     assert rag.indexing_document_ids == set()
     assert len(build_index_called) == 1
 
@@ -203,7 +230,7 @@ async def test_build_index_receives_documents_dataframe_and_config(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "has_indexed_db, request_has_indexed, expected_is_update_run",
+    "rag_completed, request_has_completed_doc, expected_is_update_run",
     [
         (True, False, True),
         (True, True, False),
@@ -211,30 +238,26 @@ async def test_build_index_receives_documents_dataframe_and_config(monkeypatch):
         (False, True, False),
     ],
     ids=[
-        "db_indexed_request_new_expect_update",
-        "db_indexed_request_indexed_expect_no_update",
-        "db_new_request_new_expect_no_update",
-        "db_new_request_indexed_expect_no_update",
+        "rag_completed_request_new_docs_expect_update",
+        "rag_completed_request_has_completed_doc_expect_no_update",
+        "rag_new_request_new_docs_expect_no_update",
+        "rag_new_request_has_completed_doc_expect_no_update",
     ],
 )
 async def test_is_update_run_computed_correctly(
     monkeypatch,
-    has_indexed_db: bool,
-    request_has_indexed: bool,
+    rag_completed: bool,
+    request_has_completed_doc: bool,
     expected_is_update_run: bool,
 ):
-    rag = _new_rag()
-    # When request_has_indexed is True, the document's raw_data status must be 'indexed'
-    # to satisfy: has_indexed_document_in_request = any(d.raw_data['status'] == 'indexed' ...)
-    doc_status = "indexed" if request_has_indexed else "new"
+    # is_update_run is True only when rag.status==COMPLETED AND none of the request
+    # documents has raw_data['status']=='completed'. The repo.has_indexed_document flag
+    # is not consulted by production code for this decision.
+    rag = _completed_rag() if rag_completed else _new_rag()
+    doc_status = "completed" if request_has_completed_doc else "new"
     document = _text_document(10, status=doc_status)
     config = object()
-    repo = FakeGraphRagRepo(
-        rag=rag,
-        config=config,
-        documents=[document],
-        has_indexed_db=has_indexed_db,
-    )
+    repo = FakeGraphRagRepo(rag=rag, config=config, documents=[document])
     uow = FakeUoW(repo)
 
     captured_is_update_run: list[bool] = []
@@ -271,8 +294,8 @@ async def test_indexing_errors_raise_exception_group_and_mark_rag_failed(monkeyp
     with pytest.raises(ExceptionGroup):
         await GraphIndexer(uow).execute(request)
 
-    # documents must NOT be marked indexed when indexing errors occurred
-    assert repo.status_updates == []
+    # documents are marked FAILED when indexing errors occurred
+    assert repo.status_updates == [(frozenset({7}), DocumentStatusEnum.FAILED)]
     # on_error ran after the ExceptionGroup was raised inside on_execute
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.FAILED]
 
@@ -406,3 +429,83 @@ async def test_cancellation_marks_rag_cancelled(monkeypatch, cancel_scenario: st
     else:
         # build_index never reached because commit raised before that point
         assert build_index_called == []
+
+
+async def test_graph_rag_never_resolves_to_partial_when_failed_doc_exists(monkeypatch):
+    """Regression guard: GraphRag has no PARTIAL status.
+
+    A pre-existing FAILED document combined with a newly COMPLETED document must
+    resolve to COMPLETED, not PARTIAL.  PARTIAL must never appear in rag_status_log.
+    """
+    rag = _new_rag()
+    document = _text_document(7)
+    config = object()
+    repo = FakeGraphRagRepo(rag=rag, config=config, documents=[document])
+    uow = FakeUoW(repo)
+
+    # Simulate a doc from a prior run that is already FAILED in the repository.
+    repo._document_statuses[99] = DocumentStatusEnum.FAILED
+
+    async def fake_build_index(**kwargs):
+        return [_result("extract_graph")]
+
+    monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
+
+    request = _make_request(frozenset({7}))
+    await GraphIndexer(uow).execute(request)
+
+    # After the run: doc 7 → COMPLETED, doc 99 → FAILED (pre-existing).
+    # _finish_rag priority: OUTDATED > PROCESSING > COMPLETED > FAILED.
+    # has_completed is True (doc 7), so the rag resolves to COMPLETED.
+    assert rag.status == IndexStatusEnum.COMPLETED
+    assert IndexStatusEnum.PARTIAL not in repo.rag_status_log
+
+
+async def test_outdated_doc_keeps_rag_outdated_and_preserves_reasons(monkeypatch):
+    """When a document outside the current request has OUTDATED status, the rag is
+    marked OUTDATED and outdated_reasons are preserved unchanged."""
+    rag = _new_rag()
+    rag.outdated_reasons = {"doc_99": "source_changed"}
+    document = _text_document(7)
+    config = object()
+    repo = FakeGraphRagRepo(rag=rag, config=config, documents=[document])
+    uow = FakeUoW(repo)
+
+    # Simulate a pre-existing OUTDATED doc (outside the current request).
+    repo._document_statuses[99] = DocumentStatusEnum.OUTDATED
+
+    async def fake_build_index(**kwargs):
+        return [_result("extract_graph")]
+
+    monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
+
+    request = _make_request(frozenset({7}))
+    await GraphIndexer(uow).execute(request)
+
+    # has_outdated is True → rag must be OUTDATED with reasons intact.
+    assert rag.status == IndexStatusEnum.OUTDATED
+    assert rag.outdated_reasons == {"doc_99": "source_changed"}
+
+
+async def test_outdated_reasons_cleared_when_no_outdated_document_remains(monkeypatch):
+    """When no document has OUTDATED status after a run, outdated_reasons is cleared."""
+    rag = _new_rag()
+    rag.outdated_reasons = {"x": "y"}
+    document = _text_document(7)
+    config = object()
+    repo = FakeGraphRagRepo(rag=rag, config=config, documents=[document])
+    uow = FakeUoW(repo)
+
+    # No OUTDATED docs seeded — only doc 7 will be COMPLETED after the run.
+
+    async def fake_build_index(**kwargs):
+        return [_result("extract_graph")]
+
+    monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
+
+    request = _make_request(frozenset({7}))
+    await GraphIndexer(uow).execute(request)
+
+    # No OUTDATED doc remains → reasons cleared → rag is COMPLETED (not OUTDATED).
+    assert rag.outdated_reasons == {}
+    assert rag.status == IndexStatusEnum.COMPLETED
