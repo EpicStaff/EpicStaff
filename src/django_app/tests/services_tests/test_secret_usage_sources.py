@@ -42,7 +42,12 @@ from tables.services.secrets.usage_sources import (
     CATEGORY_FLOWS,
     CATEGORY_LLM_CONFIGS,
     CATEGORY_TOOLS,
+    HITS_ASSEMBLERS,
     NODE_TYPE_TELEGRAM_TRIGGER,
+    SHAPE_EDGE,
+    SHAPE_NAMED,
+    SHAPE_NODE,
+    SHAPE_PROJECTIONS,
     USAGE_SOURCES,
 )
 from tables.services.secrets.python_code_sites import (
@@ -90,6 +95,21 @@ def ids(secret):
     return {secret.pk}
 
 
+def _hits(*, source, org_id, secret_ids):
+    """One source's hits, assembled exactly as the service assembles its group.
+
+    The service unions every source in a shape and assembles once; this is the
+    one-source case of the same projection and the same assembler, which is what keeps
+    these per-source tests honest about production behaviour. It lives here rather than
+    on UsageSource because only tests look at a single source in isolation.
+    """
+    shape = source.detail_shape
+    rows = getattr(source, SHAPE_PROJECTIONS[shape])(
+        org_id=org_id, secret_ids=secret_ids
+    )
+    return HITS_ASSEMBLERS[shape](rows=rows)
+
+
 @pytest.mark.django_db
 class TestForeignKeySources:
     def test_llm_config_reports_its_custom_name(self, org, secret, ids):
@@ -98,7 +118,7 @@ class TestForeignKeySources:
             custom_name="prod cfg", model=model, org=org, api_key_secret=secret
         )
 
-        hits = _source(model=LLMConfig).collect(org_id=org.id, secret_ids=ids)
+        hits = _hits(source=_source(model=LLMConfig), org_id=org.id, secret_ids=ids)
 
         assert len(hits) == 1
         assert hits[0].secret_id == secret.pk
@@ -113,7 +133,9 @@ class TestForeignKeySources:
         )
         LLMConfig.objects.create(custom_name="no key", model=model, org=org)
 
-        assert _source(model=LLMConfig).collect(org_id=org.id, secret_ids=ids) == []
+        assert (
+            _hits(source=_source(model=LLMConfig), org_id=org.id, secret_ids=ids) == []
+        )
 
     def test_another_orgs_config_is_not_reported(self, org, secret, ids):
         """Scoping is on the resource too, not only the secret: a config in another
@@ -126,7 +148,9 @@ class TestForeignKeySources:
             custom_name="foreign cfg", model=model, org=other, api_key_secret=secret
         )
 
-        assert _source(model=LLMConfig).collect(org_id=org.id, secret_ids=ids) == []
+        assert (
+            _hits(source=_source(model=LLMConfig), org_id=org.id, secret_ids=ids) == []
+        )
 
     def test_mcp_tool_reports_under_tools_by_name(self, org, secret, ids):
         McpTool.objects.create(
@@ -137,7 +161,7 @@ class TestForeignKeySources:
             auth_secret=secret,
         )
 
-        hits = _source(model=McpTool).collect(org_id=org.id, secret_ids=ids)
+        hits = _hits(source=_source(model=McpTool), org_id=org.id, secret_ids=ids)
 
         assert [(hit.category, hit.resource_name) for hit in hits] == [
             (CATEGORY_TOOLS, "search tool")
@@ -175,7 +199,9 @@ class TestForeignKeySources:
         ):
             found.extend(
                 hit.resource_name
-                for hit in _source(model=model).collect(org_id=org.id, secret_ids=ids)
+                for hit in _hits(
+                    source=_source(model=model), org_id=org.id, secret_ids=ids
+                )
             )
 
         assert sorted(found) == ["embed cfg", "rt cfg", "rtt cfg"]
@@ -191,7 +217,9 @@ class TestFlowForeignKeySource:
             telegram_bot_api_key_secret=secret,
         )
 
-        hits = _source(model=TelegramTriggerNode).collect(org_id=org.id, secret_ids=ids)
+        hits = _hits(
+            source=_source(model=TelegramTriggerNode), org_id=org.id, secret_ids=ids
+        )
 
         assert len(hits) == 1
         hit = hits[0]
@@ -211,7 +239,9 @@ class TestFlowForeignKeySource:
         )
 
         assert (
-            _source(model=TelegramTriggerNode).collect(org_id=org.id, secret_ids=ids)
+            _hits(
+                source=_source(model=TelegramTriggerNode), org_id=org.id, secret_ids=ids
+            )
             == []
         )
 
@@ -228,7 +258,7 @@ class TestDeclarationSources:
             graph=graph, node_name="charge_card", python_code=python_code
         )
 
-        hits = _source(model=PythonNode).collect(org_id=org.id, secret_ids=ids)
+        hits = _hits(source=_source(model=PythonNode), org_id=org.id, secret_ids=ids)
 
         assert len(hits) == 1
         hit = hits[0]
@@ -254,7 +284,9 @@ class TestDeclarationSources:
             python_code=PythonCode.objects.create(code=DECLARING_CODE),
         )
 
-        assert _source(model=PythonNode).collect(org_id=org.id, secret_ids=ids) == []
+        assert (
+            _hits(source=_source(model=PythonNode), org_id=org.id, secret_ids=ids) == []
+        )
 
     def test_a_declared_but_unreferenced_secret_is_usage(self, org, secret, ids):
         """Over-reporting is the safe direction for a deletion guard: being warned
@@ -269,7 +301,8 @@ class TestDeclarationSources:
         )
 
         assert (
-            len(_source(model=PythonNode).collect(org_id=org.id, secret_ids=ids)) == 1
+            len(_hits(source=_source(model=PythonNode), org_id=org.id, secret_ids=ids))
+            == 1
         )
 
     def test_webhook_trigger_node_is_reported(self, org, secret, ids):
@@ -280,7 +313,9 @@ class TestDeclarationSources:
             graph=graph, node_name="on_hook", python_code=python_code
         )
 
-        hits = _source(model=WebhookTriggerNode).collect(org_id=org.id, secret_ids=ids)
+        hits = _hits(
+            source=_source(model=WebhookTriggerNode), org_id=org.id, secret_ids=ids
+        )
 
         assert [(hit.node_name, hit.node_type) for hit in hits] == [
             ("on_hook", NODE_TYPE_WEBHOOK_TRIGGER)
@@ -310,8 +345,8 @@ class TestDeclarationSources:
             secret_path="post_python_code__secrets__id",
         )
 
-        assert len(pre.collect(org_id=org.id, secret_ids=ids)) == 1
-        assert len(post.collect(org_id=org.id, secret_ids=ids)) == 1
+        assert len(_hits(source=pre, org_id=org.id, secret_ids=ids)) == 1
+        assert len(_hits(source=post, org_id=org.id, secret_ids=ids)) == 1
         assert pre.node_type == post.node_type == NODE_TYPE_CLASSIFICATION_TABLE
 
     def test_a_cdt_with_no_pre_code_is_not_reported(self, org, ids):
@@ -328,7 +363,7 @@ class TestDeclarationSources:
             secret_path="pre_python_code__secrets__id",
         )
 
-        assert pre.collect(org_id=org.id, secret_ids=ids) == []
+        assert _hits(source=pre, org_id=org.id, secret_ids=ids) == []
 
 
 @pytest.mark.django_db
@@ -344,7 +379,9 @@ class TestPythonCodeToolSource:
             python_code=python_code,
         )
 
-        hits = _source(model=PythonCodeTool).collect(org_id=org.id, secret_ids=ids)
+        hits = _hits(
+            source=_source(model=PythonCodeTool), org_id=org.id, secret_ids=ids
+        )
 
         assert [(hit.category, hit.resource_name) for hit in hits] == [
             (CATEGORY_TOOLS, "Stripe refund")
@@ -367,7 +404,9 @@ class TestPythonCodeToolSource:
             python_code=python_code,
         )
 
-        hits = _source(model=PythonCodeTool).collect(org_id=org.id, secret_ids=ids)
+        hits = _hits(
+            source=_source(model=PythonCodeTool), org_id=org.id, secret_ids=ids
+        )
 
         assert [hit.resource_name for hit in hits] == ["Built-in fetcher"]
 
@@ -382,7 +421,8 @@ class TestPythonCodeToolSource:
         )
 
         assert (
-            _source(model=PythonCodeTool).collect(org_id=org.id, secret_ids=ids) == []
+            _hits(source=_source(model=PythonCodeTool), org_id=org.id, secret_ids=ids)
+            == []
         )
 
 
@@ -410,7 +450,7 @@ class TestConditionalEdgeSource:
 
         source = _source(model=ConditionalEdge)
         assert source.name_field is None
-        hits = source.collect(org_id=org.id, secret_ids=ids)
+        hits = _hits(source=source, org_id=org.id, secret_ids=ids)
 
         assert len(hits) == 1
         hit = hits[0]
@@ -430,7 +470,9 @@ class TestConditionalEdgeSource:
             graph=graph, source_node_id=None, python_code=edge_code
         )
 
-        hits = _source(model=ConditionalEdge).collect(org_id=org.id, secret_ids=ids)
+        hits = _hits(
+            source=_source(model=ConditionalEdge), org_id=org.id, secret_ids=ids
+        )
 
         assert [hit.node_name for hit in hits] == [f"Conditional edge #{edge.pk}"]
 
@@ -520,6 +562,67 @@ class TestCountPairs:
         ]
 
         assert list(first.union(*rest)) == []
+
+
+@pytest.mark.django_db
+class TestDetailShapes:
+    """The partition the detail union depends on.
+
+    summary() groups sources by detail_shape and unions each group with no padding,
+    which is only sound while sources in a shape project the same columns. A source
+    landing in the wrong group is a union that raises, and a shape gaining a column
+    only some of its members have is the same failure.
+    """
+
+    def test_every_source_lands_in_exactly_one_known_shape(self):
+        shapes = [source.detail_shape for source in USAGE_SOURCES]
+
+        assert set(shapes) == {SHAPE_NAMED, SHAPE_NODE, SHAPE_EDGE}
+        # 4 configs + McpTool + PythonCodeTool / 5 named flow nodes / ConditionalEdge.
+        assert shapes.count(SHAPE_NAMED) == 6
+        assert shapes.count(SHAPE_NODE) == 5
+        assert shapes.count(SHAPE_EDGE) == 1
+        assert set(HITS_ASSEMBLERS) == set(SHAPE_PROJECTIONS) == set(shapes)
+
+    def test_the_edge_shape_is_conditional_edge_alone(self):
+        edges = [s for s in USAGE_SOURCES if s.detail_shape == SHAPE_EDGE]
+
+        assert [source.model for source in edges] == [ConditionalEdge]
+        # It is its own shape because it has no name of its own to project.
+        assert edges[0].name_field is None
+
+    def test_no_named_source_is_a_flow_and_no_flow_source_is_named(self):
+        for source in USAGE_SOURCES:
+            is_flow = source.category == CATEGORY_FLOWS
+            assert (source.detail_shape == SHAPE_NAMED) is not is_flow, source.model
+
+    @pytest.mark.parametrize(
+        "shape,columns", [(SHAPE_NAMED, 3), (SHAPE_NODE, 5), (SHAPE_EDGE, 6)]
+    )
+    def test_a_shape_projects_a_consistent_column_count(self, org, ids, shape, columns):
+        """Differing column counts within a group make the union a hard error."""
+        for source in (s for s in USAGE_SOURCES if s.detail_shape == shape):
+            rows = getattr(source, SHAPE_PROJECTIONS[shape])(
+                org_id=org.id, secret_ids=ids
+            )
+            projected = len(rows.query.values_select) + len(
+                rows.query.annotation_select
+            )
+            assert projected == columns, f"{source.model.__name__}: {projected}"
+
+    def test_each_group_unions_and_executes(self, org, ids):
+        """Compiled *and* run: mixed CharField/TextField name columns raise at compile
+        time, an incompatible union at execution time."""
+        for shape in (SHAPE_NAMED, SHAPE_NODE, SHAPE_EDGE):
+            sources = [s for s in USAGE_SOURCES if s.detail_shape == shape]
+            first, *rest = [
+                getattr(source, SHAPE_PROJECTIONS[shape])(org_id=org.id, secret_ids=ids)
+                for source in sources
+            ]
+            rows = first.union(*rest) if rest else first
+
+            assert list(rows) == []
+            assert HITS_ASSEMBLERS[shape](rows=rows) == []
 
 
 @pytest.mark.django_db

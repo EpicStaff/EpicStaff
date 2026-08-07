@@ -1955,21 +1955,13 @@ class SecretViewSet(
         return Response(secret_usage_service.summary(secret=secret))
 
     def get_serializer_context(self):
-        """One lazily-computed usage-count map per request.
-
-        A SerializerMethodField runs per row, so this must be computed at most once
-        per request — and not at all for a request that never renders usage_count.
-        SimpleLazyObject proxies __getitem__, so the serializer indexes it exactly
-        like the plain dict it becomes on first use.
-
-        org_id is resolved eagerly, outside the lambda, on purpose: deferring it would
-        move a missing-org-context failure out of the request and into render time.
-        """
+        """Give the list response one prepared usage-count map."""
         context = super().get_serializer_context()
-        org_id = self.get_active_org_id()
-        context["usage_counts"] = SimpleLazyObject(
-            lambda: secret_usage_service.counts(org_id=org_id)
-        )
+        if self.action == "list":
+            org_id = self.get_active_org_id()
+            context["usage_counts"] = SimpleLazyObject(
+                lambda: secret_usage_service.counts(org_id=org_id)
+            )
         return context
 
 

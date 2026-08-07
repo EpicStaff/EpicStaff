@@ -14,10 +14,14 @@ expresses it in SQL. `test_summary_total_matches_counts_for_the_same_secret` fai
 they drift.
 """
 
+from collections import defaultdict
+
 from tables.models import Secret
 from tables.services.secrets.usage_sources import (
     CATEGORY_FLOWS,
     CATEGORY_ORDER,
+    HITS_ASSEMBLERS,
+    SHAPE_PROJECTIONS,
     USAGE_SOURCES,
     UsageHit,
 )
@@ -26,16 +30,12 @@ from tables.services.secrets.usage_sources import (
 class SecretUsageService:
     """Answers "what breaks if I delete this secret?" for one organization."""
 
-    def counts(self, *, org_id: int) -> dict[int, int]:
-        """secret_id -> number of distinct resources referencing it.
-
-        Two queries however many secrets the org holds: one for the id set, one
-        combined query for every reference. UNION (not UNION ALL) is already DISTINCT
-        and each source's key embeds its category, so the combined result set *is* the
-        set of distinct (secret, resource) pairs — nothing left to dedupe in Python,
-        and nothing fetched but the pairs themselves.
-        """
-        secret_ids = self._secret_ids(org_id=org_id)
+    def counts(
+        self, *, org_id: int, secret_ids: set[int] | None = None
+    ) -> dict[int, int]:
+        """secret_id -> number of distinct resources referencing it."""
+        if secret_ids is None:
+            secret_ids = self._secret_ids(org_id=org_id)
         if not secret_ids:
             return {}
 
@@ -48,6 +48,10 @@ class SecretUsageService:
         for secret_id, _ in first.union(*rest):
             counts[secret_id] += 1
         return counts
+
+    def count_for(self, *, secret: Secret) -> int:
+        """One secret's count, in a single query."""
+        return self.counts(org_id=secret.org_id, secret_ids={secret.pk})[secret.pk]
 
     def summary(self, *, secret: Secret) -> dict:
         """The usage payload for one secret.
@@ -90,12 +94,7 @@ class SecretUsageService:
 
     @staticmethod
     def _flow_items(*, hits: list[UsageHit]) -> list[dict]:
-        """One item per flow, carrying its secret-using nodes.
-
-        Nodes dedupe on (name, type): a decision table using the secret in both its
-        pre- and post-computation blocks is two sources but one node, and the
-        dialog must list it once.
-        """
+        """One item per flow, carrying its secret-using nodes."""
         flows: dict[int, dict] = {}
         for hit in hits:
             flow = flows.setdefault(
@@ -105,30 +104,15 @@ class SecretUsageService:
             node = {"name": hit.node_name, "node_type": hit.node_type}
             if node not in flow["nodes"]:
                 flow["nodes"].append(node)
-        return list(flows.values())
+
+        for flow in flows.values():
+            flow["nodes"].sort(key=lambda node: (node["name"] or "", node["node_type"]))
+        return sorted(flows.values(), key=lambda flow: (flow["name"] or "", flow["id"]))
 
     @staticmethod
     def _named_items(*, hits: list[UsageHit]) -> list[dict]:
-        """One item per distinct display name.
-
-        Deduped because these items carry nothing but a name and the dialog tracks
-        by it, so duplicates make Angular raise NG0955. Collisions are reachable
-        three ways: RealtimeConfig and RealtimeTranscriptionConfig have no per-org
-        uniqueness on custom_name at all; four different config models fold into the
-        single llm_configs category, where per-model constraints cannot prevent a
-        clash; and a built-in PythonCodeTool (org=NULL) may share a name with an
-        org-owned one.
-
-        The cost is a documented under-count: two distinct resources with the same
-        name are reported as one. Rendering them separately is impossible while the
-        item shape is {name} alone, so the alternative would be inventing a
-        disambiguating suffix the frontend never asked for.
-        """
-        names: list[str] = []
-        for hit in hits:
-            if hit.resource_name not in names:
-                names.append(hit.resource_name)
-        return [{"name": name} for name in names]
+        """One item per distinct display name."""
+        return [{"name": name} for name in sorted({hit.resource_name for hit in hits})]
 
     @staticmethod
     def _secret_ids(*, org_id: int) -> set[int]:
@@ -137,18 +121,23 @@ class SecretUsageService:
 
     @staticmethod
     def _collect(*, org_id: int, secret_ids: set[int]) -> list[UsageHit]:
-        """Every hit every registered source can see, in full detail.
-
-        The detail path only. Takes org_id explicitly and never resolves the org
-        itself. Returns early for an empty id set so none of the twelve source queries
-        run.
-        """
+        """Every hit every registered source can see, in one query per column shape."""
         if not secret_ids:
             return []
 
-        hits: list[UsageHit] = []
+        by_shape: dict[str, list] = defaultdict(list)
         for source in USAGE_SOURCES:
-            hits.extend(source.collect(org_id=org_id, secret_ids=secret_ids))
+            by_shape[source.detail_shape].append(source)
+
+        hits: list[UsageHit] = []
+        for shape, sources in by_shape.items():
+            projection = SHAPE_PROJECTIONS[shape]
+            first, *rest = [
+                getattr(source, projection)(org_id=org_id, secret_ids=secret_ids)
+                for source in sources
+            ]
+            rows = first.union(*rest) if rest else first
+            hits.extend(HITS_ASSEMBLERS[shape](rows=rows))
         return hits
 
 

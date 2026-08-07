@@ -46,6 +46,13 @@ CATEGORY_ORDER = (CATEGORY_FLOWS, CATEGORY_TOOLS, CATEGORY_LLM_CONFIGS)
 #: than in python_code_sites.
 NODE_TYPE_TELEGRAM_TRIGGER = "telegram-trigger"
 
+# The three column shapes the twelve sources fall into. Sources sharing a shape share
+# a column list, so the detail path unions each group as-is instead of padding every
+# branch out to one common shape with typed NULLs.
+SHAPE_NAMED = "named"
+SHAPE_NODE = "node"
+SHAPE_EDGE = "edge"
+
 
 @dataclass(frozen=True)
 class UsageHit:
@@ -95,18 +102,70 @@ class UsageSource:
             .values_list(self.secret_path, "usage_key")
         )
 
-    def collect(self, *, org_id: int, secret_ids: set[int]) -> list[UsageHit]:
-        """Every reference this source can see inside one organization, in full.
+    @property
+    def detail_shape(self) -> str:
+        """Which projection this source contributes to in the detail union.
 
-        This is the detail path, for summary(). counts() deliberately does not come
-        through here — it uses count_pairs(), which is why the secrets list no longer
-        pays for graph names and node-name resolution it never renders.
+        Sources sharing a shape share a column list, which is what lets the service
+        union them without padding anything. See SHAPE_* below.
         """
         if self.category != CATEGORY_FLOWS:
-            return self._named_hits(org_id=org_id, secret_ids=secret_ids)
-        if self.name_field is None:
-            return self._edge_hits(org_id=org_id, secret_ids=secret_ids)
-        return self._node_hits(org_id=org_id, secret_ids=secret_ids)
+            return SHAPE_NAMED
+        return SHAPE_EDGE if self.name_field is None else SHAPE_NODE
+
+    def named_rows(self, *, org_id: int, secret_ids: set[int]):
+        """(secret_id, category, name) for a standalone resource.
+
+        category travels as a column because this shape spans both llm_configs and
+        tools, so the assembler cannot infer it from the group.
+        """
+        return (
+            self._scoped(org_id=org_id, secret_ids=secret_ids)
+            .annotate(
+                usage_category=Value(self.category, output_field=TextField()),
+                usage_name=Cast(self.name_field, output_field=TextField()),
+            )
+            .values_list(self.secret_path, "usage_category", "usage_name")
+        )
+
+    def node_rows(self, *, org_id: int, secret_ids: set[int]):
+        """(secret_id, node_type, graph_id, graph_name, node_name) for a named node."""
+        return (
+            self._scoped(org_id=org_id, secret_ids=secret_ids)
+            .annotate(
+                usage_node_type=Value(self.node_type, output_field=TextField()),
+                usage_graph_name=Cast("graph__name", output_field=TextField()),
+                usage_node_name=Cast(self.name_field, output_field=TextField()),
+            )
+            .values_list(
+                self.secret_path,
+                "usage_node_type",
+                "graph_id",
+                "usage_graph_name",
+                "usage_node_name",
+            )
+        )
+
+    def edge_rows(self, *, org_id: int, secret_ids: set[int]):
+        """(secret_id, node_type, graph_id, graph_name, source_node_id, edge_id).
+
+        No casts: ConditionalEdge is the only source in this shape, so there is no
+        union to make column types agree across. node_type still travels as a column
+        rather than being hardcoded in the assembler, so the registry stays the one
+        place it is declared.
+        """
+        return (
+            self._scoped(org_id=org_id, secret_ids=secret_ids)
+            .annotate(usage_node_type=Value(self.node_type, output_field=TextField()))
+            .values_list(
+                self.secret_path,
+                "usage_node_type",
+                "graph_id",
+                "graph__name",
+                "source_node_id",
+                "id",
+            )
+        )
 
     def _scoped(self, *, org_id: int, secret_ids: set[int]):
         """Rows of this source in this org that point at one of these secrets.
@@ -143,77 +202,85 @@ class UsageSource:
             output_field=TextField(),
         )
 
-    def _named_hits(self, *, org_id: int, secret_ids: set[int]) -> list[UsageHit]:
-        """A standalone resource, reported by its own name."""
-        rows = self._scoped(org_id=org_id, secret_ids=secret_ids).values_list(
-            self.secret_path, self.name_field
+
+def hits_from_named_rows(*, rows) -> list[UsageHit]:
+    """Standalone resources, reported by their own names.
+
+    Takes rows rather than a source because the service feeds it a union of every
+    named source at once; a single source's rows are just the one-source case.
+    """
+    return [
+        UsageHit(secret_id=secret_id, category=category, resource_name=name)
+        for secret_id, category, name in rows
+    ]
+
+
+def hits_from_node_rows(*, rows) -> list[UsageHit]:
+    """Named graph nodes, reported under `flows` beneath their own flow."""
+    return [
+        UsageHit(
+            secret_id=secret_id,
+            category=CATEGORY_FLOWS,
+            resource_id=graph_id,
+            resource_name=graph_name,
+            node_name=node_name,
+            node_type=node_type,
         )
-        return [
-            UsageHit(
-                secret_id=secret_id,
-                category=self.category,
-                resource_name=name,
-            )
-            for secret_id, name in rows
-        ]
+        for secret_id, node_type, graph_id, graph_name, node_name in rows
+    ]
 
-    def _node_hits(self, *, org_id: int, secret_ids: set[int]) -> list[UsageHit]:
-        """A named graph node, reported under `flows` beneath its own flow."""
-        rows = self._scoped(org_id=org_id, secret_ids=secret_ids).values_list(
-            self.secret_path, "graph_id", "graph__name", self.name_field
+
+def hits_from_edge_rows(*, rows) -> list[UsageHit]:
+    """Conditional edges, which have no name of their own — only source_node_id.
+
+    Their display name comes from the node they branch off, the same identity
+    converter_service.convert_conditional_edge_to_pydantic uses via
+    resolver(conditional_edge.source_node_id). That second lookup is why this shape
+    stays its own query instead of joining the node union.
+    """
+    rows = list(rows)
+    if not rows:
+        return []
+
+    # One batched cross-table resolution for every source node at once —
+    # resolve_node_names issues a single UNION query plus one SELECT per matching
+    # table, so this stays bounded however many edges match.
+    formatted_names = resolve_node_names(
+        ids=[source_node_id for _, _, _, _, source_node_id, _ in rows]
+    )
+
+    return [
+        UsageHit(
+            secret_id=secret_id,
+            category=CATEGORY_FLOWS,
+            resource_id=graph_id,
+            resource_name=graph_name,
+            node_name=(
+                _plain_node_name(
+                    formatted=formatted_names.get(source_node_id),
+                    node_id=source_node_id,
+                )
+                or f"Conditional edge #{edge_id}"
+            ),
+            node_type=node_type,
         )
-        return [
-            UsageHit(
-                secret_id=secret_id,
-                category=CATEGORY_FLOWS,
-                resource_id=graph_id,
-                resource_name=graph_name,
-                node_name=node_name,
-                node_type=self.node_type,
-            )
-            for secret_id, graph_id, graph_name, node_name in rows
-        ]
+        for secret_id, node_type, graph_id, graph_name, source_node_id, edge_id in rows
+    ]
 
-    def _edge_hits(self, *, org_id: int, secret_ids: set[int]) -> list[UsageHit]:
-        """A ConditionalEdge, which has no name of its own — only source_node_id.
 
-        Its display name comes from the node it branches off, the same identity
-        converter_service.convert_conditional_edge_to_pydantic uses via
-        resolver(conditional_edge.source_node_id). This is the one shape that needs a
-        second query, which is why it is a branch rather than the common path.
-        """
-        rows = list(
-            self._scoped(org_id=org_id, secret_ids=secret_ids).values_list(
-                self.secret_path, "graph_id", "graph__name", "source_node_id", "id"
-            )
-        )
-        if not rows:
-            return []
+#: Assembler per shape, so the service can group, union and assemble without a branch.
+HITS_ASSEMBLERS = {
+    SHAPE_NAMED: hits_from_named_rows,
+    SHAPE_NODE: hits_from_node_rows,
+    SHAPE_EDGE: hits_from_edge_rows,
+}
 
-        # One batched cross-table resolution for every source node at once —
-        # resolve_node_names issues a single UNION query plus one SELECT per matching
-        # table, so this stays bounded however many edges match.
-        formatted_names = resolve_node_names(
-            ids=[source_node_id for _, _, _, source_node_id, _ in rows]
-        )
-
-        return [
-            UsageHit(
-                secret_id=secret_id,
-                category=CATEGORY_FLOWS,
-                resource_id=graph_id,
-                resource_name=graph_name,
-                node_name=(
-                    _plain_node_name(
-                        formatted=formatted_names.get(source_node_id),
-                        node_id=source_node_id,
-                    )
-                    or f"Conditional edge #{edge_id}"
-                ),
-                node_type=self.node_type,
-            )
-            for secret_id, graph_id, graph_name, source_node_id, edge_id in rows
-        ]
+#: Projection method name per shape, paired with the assembler above.
+SHAPE_PROJECTIONS = {
+    SHAPE_NAMED: "named_rows",
+    SHAPE_NODE: "node_rows",
+    SHAPE_EDGE: "edge_rows",
+}
 
 
 def _plain_node_name(*, formatted: str | None, node_id: int | None) -> str | None:

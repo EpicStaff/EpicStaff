@@ -180,6 +180,84 @@ class TestUsageCountOnList:
         assert len(unions) == 1, f"{len(unions)} union queries for 6 secrets"
 
 
+def _unions(captured):
+    return [
+        query for query in captured.captured_queries if "UNION" in query["sql"].upper()
+    ]
+
+
+@pytest.mark.django_db
+class TestSingleObjectResponsesDoNotSweepTheOrg:
+    """A response that renders one secret must not compute the org's whole map.
+
+    The list endpoint needs the batch; retrieve and create need one integer. Before
+    this split they paid the same price, which grew with the organisation.
+    """
+
+    def test_retrieve_issues_exactly_one_union(self, admin_client, org, used_secret):
+        for index in range(5):
+            secret_service.create(text=f"sk-r{index}", org=org, name=f"R_KEY_{index}")
+
+        with CaptureQueriesContext(connection) as captured:
+            resp = admin_client.get(f"/api/secrets/{used_secret.pk}/")
+
+        assert resp.status_code == 200, resp.content
+        assert resp.data["usage_count"] == 3
+        assert len(_unions(captured)) == 1
+
+    def test_retrieve_is_cheaper_than_list(self, admin_client, org, used_secret):
+        """The property that matters, asserted as a comparison rather than a pinned
+        number: rendering one secret must cost strictly less than rendering all."""
+        for index in range(5):
+            secret_service.create(text=f"sk-c{index}", org=org, name=f"C_KEY_{index}")
+
+        with CaptureQueriesContext(connection) as listed:
+            admin_client.get("/api/secrets/")
+        with CaptureQueriesContext(connection) as one:
+            admin_client.get(f"/api/secrets/{used_secret.pk}/")
+
+        assert len(one) < len(listed)
+
+    def test_retrieve_and_list_report_the_same_count(
+        self, admin_client, org, used_secret
+    ):
+        """Two code paths, one answer. If the scoped union ever disagreed with the
+        batch one, the same secret would show a different chip depending on which
+        screen you opened."""
+        listed = admin_client.get("/api/secrets/")
+        row = next(item for item in _results(listed) if item["id"] == used_secret.pk)
+        retrieved = admin_client.get(f"/api/secrets/{used_secret.pk}/")
+
+        assert retrieved.data["usage_count"] == row["usage_count"] == 3
+
+    def test_create_counts_its_own_secret_rather_than_assuming_zero(
+        self, admin_client, org
+    ):
+        """A brand-new secret cannot be referenced yet, but it is counted, not
+        assumed — so the field stays correct if creation ever attaches references."""
+        for index in range(5):
+            secret_service.create(text=f"sk-p{index}", org=org, name=f"P_KEY_{index}")
+
+        with CaptureQueriesContext(connection) as captured:
+            resp = admin_client.post(
+                "/api/secrets/",
+                {"name": "FRESH", "value": "sk-fresh"},
+                format="json",
+            )
+
+        assert resp.status_code == 201, resp.content
+        assert resp.data["usage_count"] == 0
+        assert len(_unions(captured)) == 1
+
+    def test_delete_computes_no_usage_at_all(self, admin_client, used_secret):
+        """Nothing renders usage_count on a 204, so nothing should be computed."""
+        with CaptureQueriesContext(connection) as captured:
+            resp = admin_client.delete(f"/api/secrets/{used_secret.pk}/")
+
+        assert resp.status_code == 204, resp.content
+        assert _unions(captured) == []
+
+
 @pytest.fixture
 def viewer_client(db, django_user_model, org):
     return _client(

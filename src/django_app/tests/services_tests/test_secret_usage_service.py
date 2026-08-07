@@ -8,6 +8,8 @@ tests below are what hold the two dedup rules together.
 """
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from tables.models import EmbeddingConfig, LLMConfig, McpTool, PythonCode
 from tables.models.embedding_models import EmbeddingModel
@@ -109,6 +111,99 @@ class TestCounts:
         )
 
         assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 0
+
+
+@pytest.mark.django_db
+class TestScopedCounts:
+    """Answering for one secret must not cost the whole org.
+
+    The list endpoint renders every secret and wants the batch; retrieve and create
+    render one. Both go through counts() with a different id set rather than through
+    two implementations that have to agree.
+    """
+
+    def test_an_explicit_id_set_costs_one_query(
+        self, org, secret, django_assert_num_queries
+    ):
+        """One, not two: a caller holding the ids has nothing to look up, so the
+        seed query counts() otherwise needs is skipped entirely."""
+        for index in range(5):
+            secret_service.create(text=f"sk-s{index}", org=org, name=f"SCOPED_{index}")
+
+        with django_assert_num_queries(1):
+            counts = secret_usage_service.counts(org_id=org.id, secret_ids={secret.pk})
+
+        # Only what was asked for, even though the org holds six secrets.
+        assert set(counts) == {secret.pk}
+
+    def test_count_for_costs_one_query(self, org, secret, django_assert_num_queries):
+        with django_assert_num_queries(1):
+            assert secret_usage_service.count_for(secret=secret) == 0
+
+    def test_an_empty_id_set_costs_nothing(self, org, django_assert_num_queries):
+        with django_assert_num_queries(0):
+            assert secret_usage_service.counts(org_id=org.id, secret_ids=set()) == {}
+
+    def test_count_for_agrees_with_the_org_wide_map(self, org, secret):
+        """The invariant that makes the two modes interchangeable. Asserted across
+        several categories at once, because the scoped union has to reproduce the
+        batch union's dedup, not just its filtering."""
+        graph = Graph.objects.create(name="Scoped flow", org=org)
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        python_code.secrets.set([secret])
+        PythonNode.objects.create(
+            graph=graph, node_name="node", python_code=python_code
+        )
+        McpTool.objects.create(
+            name="scoped tool",
+            transport="https://example.com/sse",
+            tool_name="search",
+            org=org,
+            auth_secret=secret,
+        )
+        LLMConfig.objects.create(
+            custom_name="scoped cfg",
+            model=LLMModel.objects.create(
+                name="gpt-4o-scoped", llm_provider=None, org=org
+            ),
+            org=org,
+            api_key_secret=secret,
+        )
+        unused = secret_service.create(text="sk-su", org=org, name="SCOPED_UNUSED")
+
+        whole = secret_usage_service.counts(org_id=org.id)
+
+        assert secret_usage_service.count_for(secret=secret) == whole[secret.pk] == 3
+        assert secret_usage_service.count_for(secret=unused) == whole[unused.pk] == 0
+
+    def test_a_flow_still_counts_once_when_scoped_to_one_secret(self, org, secret):
+        """Narrowing the id set must not change the dedup rule."""
+        graph = Graph.objects.create(name="Scoped multi-node", org=org)
+        for node_name in ("first", "second", "third"):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            PythonNode.objects.create(
+                graph=graph, node_name=node_name, python_code=python_code
+            )
+
+        assert secret_usage_service.count_for(secret=secret) == 1
+
+    def test_scoping_does_not_weaken_org_isolation(self, org, secret):
+        """The id set narrows; it must not replace the per-source org filter. A
+        same-named secret elsewhere declaring its own node stays invisible."""
+        other = Organization.objects.create(name="Org SecretUsageService ScopedOther")
+        other_secret = secret_service.create(
+            text="sk-other-scoped", org=other, name="USAGE_KEY"
+        )
+        other_graph = Graph.objects.create(name="Other scoped flow", org=other)
+        other_code = PythonCode.objects.create(code=DECLARING_CODE)
+        other_code.secrets.set([other_secret])
+        PythonNode.objects.create(
+            graph=other_graph, node_name="other node", python_code=other_code
+        )
+
+        assert secret_usage_service.count_for(secret=secret) == 0
+        assert secret_usage_service.count_for(secret=other_secret) == 1
 
 
 @pytest.mark.django_db
@@ -295,6 +390,153 @@ class TestSummary:
             secret_usage_service.summary(secret=secret)["total"]
             == secret_usage_service.counts(org_id=org.id)[secret.pk]
         )
+
+
+@pytest.mark.django_db
+class TestSummaryQueryCost:
+    """summary() unions by column shape instead of querying each source in turn.
+
+    Twelve sources, three shapes (named / node / edge), so three queries — plus the
+    one extra resolve_node_names pass a conditional edge needs, which is why the
+    ceilings below differ.
+    """
+
+    def _used_everywhere(self, *, org, secret):
+        """One secret referenced in all three shapes at once."""
+        graph = Graph.objects.create(name="Shape flow", org=org)
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        python_code.secrets.set([secret])
+        PythonNode.objects.create(
+            graph=graph, node_name="node", python_code=python_code
+        )
+        McpTool.objects.create(
+            name="shape tool",
+            transport="https://example.com/sse",
+            tool_name="search",
+            org=org,
+            auth_secret=secret,
+        )
+        return graph
+
+    def test_three_queries_when_no_conditional_edge_matches(
+        self, org, secret, django_assert_num_queries
+    ):
+        self._used_everywhere(org=org, secret=secret)
+
+        with django_assert_num_queries(3):
+            summary = secret_usage_service.summary(secret=secret)
+
+        assert summary["total"] == 2
+
+    def test_three_queries_for_an_unused_secret(
+        self, org, secret, django_assert_num_queries
+    ):
+        """The old per-source loop paid twelve even to answer "nothing"."""
+        with django_assert_num_queries(3):
+            assert secret_usage_service.summary(secret=secret) == {
+                "total": 0,
+                "categories": [],
+            }
+
+    def test_a_matching_conditional_edge_adds_only_its_resolve_pass(
+        self, org, secret, django_assert_num_queries
+    ):
+        """resolve_node_names is one UNION plus one SELECT per node table, and it runs
+        only when an edge actually matches — it is no longer paid on every call."""
+        graph = Graph.objects.create(name="Edge shape flow", org=org)
+        router = PythonNode.objects.create(
+            graph=graph,
+            node_name="route",
+            python_code=PythonCode.objects.create(
+                code="def main(**kwargs):\n    return 1\n"
+            ),
+        )
+        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
+        edge_code.secrets.set([secret])
+        ConditionalEdge.objects.create(
+            graph=graph, source_node_id=router.pk, python_code=edge_code
+        )
+
+        with CaptureQueriesContext(connection) as captured:
+            summary = secret_usage_service.summary(secret=secret)
+
+        assert summary["categories"][0]["items"][0]["nodes"] == [
+            {"name": "route", "node_type": "edge"}
+        ]
+        # Three shape queries plus the resolve pass; nowhere near the old twelve.
+        assert 3 < len(captured) < 12, len(captured)
+
+
+@pytest.mark.django_db
+class TestSummaryIsDeterministic:
+    """A UNION guarantees no row order, so the payload must be sorted explicitly.
+
+    Before the union, hits arrived in registry order and the items inherited it. Now
+    ordering has to be imposed, or the same secret's dialog reorders between refreshes.
+    """
+
+    def test_repeated_calls_return_an_identical_payload(self, org, secret):
+        graph_b = Graph.objects.create(name="B flow", org=org)
+        graph_a = Graph.objects.create(name="A flow", org=org)
+        for graph, node_name in ((graph_b, "zeta"), (graph_a, "alpha")):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            PythonNode.objects.create(
+                graph=graph, node_name=node_name, python_code=python_code
+            )
+        for name in ("z tool", "a tool"):
+            McpTool.objects.create(
+                name=name,
+                transport="https://example.com/sse",
+                tool_name="search",
+                org=org,
+                auth_secret=secret,
+            )
+
+        first = secret_usage_service.summary(secret=secret)
+
+        for _ in range(5):
+            assert secret_usage_service.summary(secret=secret) == first
+
+    def test_flows_and_named_items_come_back_sorted_by_name(self, org, secret):
+        graph_b = Graph.objects.create(name="B flow", org=org)
+        graph_a = Graph.objects.create(name="A flow", org=org)
+        for graph in (graph_b, graph_a):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            PythonNode.objects.create(
+                graph=graph, node_name="n", python_code=python_code
+            )
+        for name in ("z tool", "a tool"):
+            McpTool.objects.create(
+                name=name,
+                transport="https://example.com/sse",
+                tool_name="search",
+                org=org,
+                auth_secret=secret,
+            )
+
+        summary = secret_usage_service.summary(secret=secret)
+        by_key = {
+            category["key"]: category["items"] for category in summary["categories"]
+        }
+
+        assert [flow["name"] for flow in by_key["flows"]] == ["A flow", "B flow"]
+        assert by_key["tools"] == [{"name": "a tool"}, {"name": "z tool"}]
+
+    def test_nodes_within_a_flow_come_back_sorted(self, org, secret):
+        graph = Graph.objects.create(name="Sorted nodes flow", org=org)
+        for node_name in ("zeta", "alpha", "mid"):
+            python_code = PythonCode.objects.create(code=DECLARING_CODE)
+            python_code.secrets.set([secret])
+            PythonNode.objects.create(
+                graph=graph, node_name=node_name, python_code=python_code
+            )
+
+        summary = secret_usage_service.summary(secret=secret)
+        nodes = summary["categories"][0]["items"][0]["nodes"]
+
+        assert [node["name"] for node in nodes] == ["alpha", "mid", "zeta"]
 
 
 @pytest.mark.django_db
