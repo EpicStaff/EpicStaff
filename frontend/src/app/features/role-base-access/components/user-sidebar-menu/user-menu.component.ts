@@ -102,7 +102,7 @@ export class UserMenuComponent {
             .logout()
             .pipe(
                 catchError(() => {
-                    this.authService.removeTokensAndNavToLogin();
+                    this.authService.removeTokenAndNavToLogin();
                     return EMPTY;
                 })
             )

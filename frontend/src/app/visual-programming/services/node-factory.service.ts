@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { ScheduleTriggerNodeData } from '../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
 import { DEFAULT_NODE_DATA } from '../core/constants/default-node-data';
@@ -20,7 +20,7 @@ export class NodeFactoryService {
     private readonly flowSettings = inject(FlowSettingsService);
 
     createNode(type: NodeType, overrides?: Partial<NodeModel>): NodeModel {
-        const id = uuidv4();
+        const id = generateUuid();
         const nodeData = (overrides?.data ?? DEFAULT_NODE_DATA[type]?.() ?? {}) as NodeModel['data'];
 
         if (type === NodeType.SCHEDULE_TRIGGER && nodeData) {

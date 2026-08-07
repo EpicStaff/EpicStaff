@@ -35,7 +35,6 @@ class Session(models.Model):
     variables = models.JSONField(default=dict)
     created_at = models.DateTimeField(default=timezone.now)
     graph_schema = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
-    # TODO: rbac refactor
     graph_user = models.ForeignKey(
         GraphOrganizationUser, on_delete=models.SET_NULL, default=None, null=True
     )
@@ -75,30 +74,6 @@ class Session(models.Model):
         get_latest_by = ["id"]
 
 
-# class SessionStatusHistoryItem(models.Model):
-#     class SessionStatus(models.TextChoices):
-#         RUN = "run"
-#         PENDING = "pending"
-#         WAIT_FOR_USER = "wait_for_user"
-#         END = "end"
-#         ERROR = "error"
-#         EXPIRED = "expired"
-
-#     session = models.ForeignKey("Session", on_delete=models.CASCADE)
-
-#     status = models.CharField(
-#         choices=SessionStatus.choices, max_length=255, blank=False, null=False
-#     )
-#     setted_at = models.DateTimeField(default=timezone.now)
-
-#     def get_last_status(self, session):
-#         # filter
-#         return SessionStatusHistoryItem.objects.filter(session=session).last()
-
-#     class Meta:
-#         get_latest_by = ["setted_at"]
-
-
 class UserSessionMessage(CrewSessionMessage):
     text = models.TextField()
 
@@ -129,3 +104,76 @@ class SessionWarningMessage(models.Model):
     )
     messages = models.JSONField(default=dict)
     created_at = models.DateTimeField(default=timezone.now)
+
+
+class SessionTrigger(models.Model):
+    class TriggerType(models.TextChoices):
+        MANUAL = "manual"
+        SCHEDULE = "schedule"
+        WEBHOOK = "webhook"
+        TELEGRAM = "telegram"
+        PARENT_FLOW = "parent_flow"
+
+    session = models.OneToOneField(
+        Session, on_delete=models.CASCADE, related_name="trigger"
+    )
+    trigger_type = models.CharField(
+        max_length=32, choices=TriggerType.choices, db_index=True
+    )
+
+    # snapshot — survives node/graph deletion, which the FKs do not
+    node_name = models.CharField(max_length=255, null=True, default=None)
+
+    schedule_trigger_node = models.ForeignKey(
+        "ScheduleTriggerNode",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="+",
+    )
+    webhook_trigger_node = models.ForeignKey(
+        "WebhookTriggerNode",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="+",
+    )
+    telegram_trigger_node = models.ForeignKey(
+        "TelegramTriggerNode",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="+",
+    )
+    triggered_by_session = models.ForeignKey(
+        Session,
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="+",
+    )
+    triggered_by_user = models.ForeignKey(
+        GraphOrganizationUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="+",
+    )
+
+    # non-relational bits: telegram chat_id, webhook path, ngrok config name
+    extra = models.JSONField(default=dict)
+
+    _TRIGGER_ID_ATTNAME = {
+        TriggerType.SCHEDULE: "schedule_trigger_node_id",
+        TriggerType.WEBHOOK: "webhook_trigger_node_id",
+        TriggerType.TELEGRAM: "telegram_trigger_node_id",
+        TriggerType.PARENT_FLOW: "triggered_by_session_id",
+    }
+
+    @property
+    def trigger_id(self) -> int | None:
+        """Id of the entity that started the session, per trigger_type. None for MANUAL."""
+        attname = self._TRIGGER_ID_ATTNAME.get(self.trigger_type)
+        if attname is None:
+            return None
+        return getattr(self, attname, None)

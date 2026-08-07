@@ -1,0 +1,15 @@
+{
+  "title": "S3GlobArgs",
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "description": "fnmatch-style glob pattern to match against full org-relative paths, e.g. '*.py', 'src/**/*.json'. '*' and '**' both match across '/' path segments."
+    },
+    "path": {
+      "type": "string",
+      "description": "Folder to search under. Must be within your flow's allowed files (the files attached to this flow); root/whole-bucket listing is not available - pass one of your allowed paths."
+    }
+  },
+  "required": ["pattern"]
+}

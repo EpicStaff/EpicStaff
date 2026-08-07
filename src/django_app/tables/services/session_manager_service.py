@@ -1,3 +1,7 @@
+from dataclasses import replace
+
+from django.db import transaction
+
 from tables.exceptions import GraphEntryPointException
 from tables.models import (
     AudioTranscriptionNode,
@@ -6,17 +10,8 @@ from tables.models import (
     Edge,
     FileExtractorNode,
     Graph,
-    GraphOrganizationUser,
     PythonNode,
     Session,
-    CrewNode,
-    Session,
-    Edge,
-    Graph,
-    PythonNode,
-    FileExtractorNode,
-    AudioTranscriptionNode,
-    GraphOrganizationUser,
 )
 from tables.models.graph_models import (
     AgentNode,
@@ -35,31 +30,28 @@ from tables.models.graph_models import (
 )
 from src.shared.models import (
     AgentNodeData,
-    AudioTranscriptionNodeData,
     CodeAgentNodeData,
     ConditionalEdgeData,
-    CrewNodeData,
-    DecisionTableNodeData,
     EdgeData,
-    FileExtractorNodeData,
     GraphData,
     GraphSessionMessageData,
-    PythonNodeData,
     SessionData,
     SubGraphData,
     SubGraphNodeData,
     TaskNodeData,
-    TelegramTriggerNodeData,
 )
+from tables.models.session_models import SessionTrigger, SessionWarningMessage
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
+from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.trigger_spec import TriggerSpec
 from tables.services.task_node_payload_service import TaskNodePayloadService
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
-from utils.graph_utils import NodeNameResolver, resolve_node_names
+from utils.graph_utils import NodeNameResolver, generate_node_name, resolve_node_names
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
 
@@ -75,6 +67,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         self.file_node_validator: FileNodeValidator = FileNodeValidator()
         self.end_node_validator: EndNodeValidator = EndNodeValidator()
         self.subgraph_validator = SubGraphValidator()
+        self.persistent_variables_service = PersistentVariablesService()
 
     def get_session(self, session_id: int) -> Session:
         return Session.objects.get(id=session_id)
@@ -119,9 +112,13 @@ class SessionManagerService(metaclass=SingletonMeta):
     def create_session(
         self,
         graph_id: int,
+        *,
         variables: dict | None = None,
-        user=None,
+        graph_user=None,
+        trigger: TriggerSpec,
         entrypoint: str | None = None,
+        parent_session_id: int | None = None,
+        token_budget: int | None = None,
     ) -> Session:
         if variables is None:
             variables = dict()
@@ -136,7 +133,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 )
                 start_node_variables = self._get_actual_variables(resolved_start_vars)
                 if variables:
-                    variables = self._deep_merge_dicts(start_node_variables, variables)
+                    variables = self.persistent_variables_service.deep_merge(
+                        start_node_variables, variables
+                    )
                 else:
                     variables = start_node_variables
 
@@ -146,66 +145,87 @@ class SessionManagerService(metaclass=SingletonMeta):
         variables_for_db = {k: v for k, v in variables.items() if k != "shared"}
 
         graph = Graph.objects.get(pk=graph_id)
-        time_to_live = graph.time_to_live
-        # Per-user persistent state is resolved from the authenticated user and
-        # the flow's organization. Superadmin (or unauthenticated trigger runs)
-        # have no membership row, so graph_user stays None.
-        graph_user = None
-        if user is not None and not getattr(user, "is_superadmin", False):
-            # TODO: refactor in scope of persistant variables story
-            graph_user = GraphOrganizationUser.objects.filter(
-                organization_user__user=user,
-                organization_user__org_id=graph.org_id,
-                graph_id=graph_id,
-            ).first()
-
-        session = Session.objects.create(
-            graph_id=graph_id,
-            status=Session.SessionStatus.PENDING,
-            variables=variables_for_db,
-            time_to_live=time_to_live,
-            graph_user=graph_user,
-            entrypoint=entrypoint,
+        status_data = {"token_budget": token_budget} if token_budget is not None else {}
+        # Trigger nodes name the entrypoint; manual/parent-flow triggers have no
+        # node id, so generate_node_name returns None and an explicitly passed
+        # entrypoint wins.
+        entrypoint = (
+            generate_node_name(trigger.node_id, trigger.node_name) or entrypoint
         )
+
+        with transaction.atomic():
+            session = Session.objects.create(
+                graph_id=graph_id,
+                status=Session.SessionStatus.PENDING,
+                variables=variables_for_db,
+                time_to_live=graph.time_to_live,
+                graph_user=graph_user,
+                entrypoint=entrypoint,
+                parent_session_id=parent_session_id,
+                status_data=status_data,
+            )
+            SessionTrigger.objects.create(session=session, **trigger.to_fields())
         return session
 
     def create_session_data(
         self,
         session: Session,
+        token_budget: int | None = None,
     ) -> SessionData:
         self.subgraph_validator.validate(session.graph)
 
         unique_subgraphs: dict[int, SubGraphData] = {}
         graph_data = self._build_graph_data(session.graph, unique_subgraphs, session)
 
+        initial_state = dict(session.variables)
+        if token_budget is not None:
+            # See TOKEN_BUDGET_STATE_KEY in
+            # crew/services/graph/graph_session_manager_service.py -- popped
+            # back out before it becomes a live flow variable.
+            initial_state["__token_budget__"] = token_budget
+
         return SessionData(
             id=session.pk,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
-            initial_state=session.variables,
+            initial_state=initial_state,
         )
 
     def run_session(
         self,
         graph_id: int,
+        *,
         variables: dict | None = None,
         user=None,
+        trigger: TriggerSpec,
         entrypoint: str | None = None,
+        parent_session_id: int | None = None,
+        token_budget: int | None = None,
     ) -> int:
         variables = self._get_actual_variables(variables)
         logger.info(f"'run_session' got variables: {variables=}")
 
-        # Choose to use variables from previous flow or left 'variables' param None
-        variables = self.choose_variables(graph_id, variables)
+        graph = Graph.objects.get(pk=graph_id)
+        run_vars = self.persistent_variables_service.build_run_variables(
+            graph=graph, user=user, payload=variables
+        )
+
+        if trigger.trigger_type == SessionTrigger.TriggerType.MANUAL:
+            trigger = replace(trigger, triggered_by_user=run_vars.graph_user)
 
         session: Session = self.create_session(
             graph_id=graph_id,
-            variables=variables,
-            user=user,
+            variables=run_vars.variables,
+            graph_user=run_vars.graph_user,
+            trigger=trigger,
             entrypoint=entrypoint,
+            parent_session_id=parent_session_id,
+            token_budget=token_budget,
         )
         try:
-            session_data: SessionData = self.create_session_data(session=session)
+            session_data: SessionData = self.create_session_data(
+                session=session, token_budget=token_budget
+            )
             # TODO: add ping or waiting for crew to accept connections
 
             session.graph_schema = session_data.graph.model_dump(mode="json")
@@ -231,10 +251,21 @@ class SessionManagerService(metaclass=SingletonMeta):
             raise e
         finally:
             session.save()
+
+        if run_vars.warnings:
+            SessionWarningMessage.objects.create(
+                session_id=session.pk, messages=run_vars.warnings
+            )
         return session.pk
 
+    # message_type values handled generically by the branch below: this is a
+    # plain GraphSessionMessage row + redis republish. "user" is the original
+    # AnswerToLLM path (kept byte-for-byte). Adding a message_type here never
+    # requires a migration -- message_data is a free-form JSONField.
+    _GENERIC_MESSAGE_TYPES = ("user",)
+
     def register_message(self, data: dict, created_at_dt) -> None:
-        if data["message_data"]["message_type"] == "user":
+        if data["message_data"]["message_type"] in self._GENERIC_MESSAGE_TYPES:
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
             session = Session.objects.get(id=graph_session_message_data.session_id)
             GraphSessionMessage.objects.create(
@@ -255,86 +286,10 @@ class SessionManagerService(metaclass=SingletonMeta):
                 f"Unsupported message_type: {data['message_data']['message_type']}"
             )
 
-    def choose_variables(
-        self, graph_id: int, variables: dict | None = None
-    ) -> dict | None:
-        """
-        Function returns variables ether from previous session which ended successfully
-        (with status: 'end') if 'persistent_variables' field in graph_obj is True and there
-        is at least one session.
-        OR
-        Returns an emtpy dict
-        """
-
-        use_prev_vars = Graph.objects.filter(pk=graph_id, persistent_variables=True)
-        m1 = "This run will be using variables from the last flow ended with status: 'end'"
-        m2 = "This run will be using new variables"
-        logger.info(f"{m1 if use_prev_vars else m2}")
-
-        if use_prev_vars:
-            # Get last session which ended successfully
-            latest_ended_session_id = (
-                Session.objects.filter(
-                    graph_id=graph_id, status=Session.SessionStatus.END
-                )
-                .order_by("-id")
-                .values_list("id", flat=True)
-                .first()
-            )
-            if not latest_ended_session_id:
-                logger.warning(
-                    "There are no sessions for this graph which ended successfully"
-                )
-                return variables
-
-            logger.info(f"LAST SESSION /W STATUS: END ID IS: {latest_ended_session_id}")
-
-            try:
-                # Retrieve variables from previous session
-                message = (
-                    GraphSessionMessage.objects.filter(
-                        session_id=latest_ended_session_id
-                    )
-                    .order_by("-created_at")
-                    .first()
-                )
-                prev_session_vars = message.message_data["state"]["variables"]
-                logger.info(f"prev_session_var: {prev_session_vars}")
-                # Merge: previous session vars as base, incoming trigger vars override
-                if variables:
-                    prev_session_vars.update(variables)
-                variables = prev_session_vars
-                logger.info(
-                    f"Variables from previous session merged with trigger vars: {list(variables.keys())}"
-                )
-            except Exception as e:
-                logger.error(
-                    f"Error while retrieving variables from previous session. {e}"
-                )
-                return variables
-
-        return variables
-
     def _get_actual_variables(self, variables: dict) -> dict:
         actual_variables = variables.get(DOMAIN_VARIABLES_KEY)
         output = actual_variables if actual_variables else variables
         return output
-
-    def _deep_merge_dicts(self, base: dict, updates: dict) -> dict:
-        """Merge updates into base, recursively merging nested dicts."""
-        result = base.copy()
-
-        for key, value in updates.items():
-            if (
-                key in result
-                and isinstance(result[key], dict)
-                and isinstance(value, dict)
-            ):
-                result[key] = self._deep_merge_dicts(result[key], value)
-            else:
-                result[key] = value
-
-        return result
 
     def _build_graph_data(
         self,

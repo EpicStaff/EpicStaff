@@ -34,6 +34,7 @@ export enum MessageType {
     CLASSIFICATION_PROMPT = 'classification_prompt',
     CONDITION_GROUP_MANIPULATION = 'condition_group_manipulation',
     CODE_AGENT_STREAM = 'code_agent_stream',
+    FINDINGS = 'findings',
     TASK_NODE_STREAM = 'task_node_stream',
     AGENT_NODE_STREAM = 'agent_node_stream',
 }
@@ -216,7 +217,7 @@ export interface ClassificationPromptMessageData {
 
 export interface ConditionGroupManipulationMessageData {
     group_name: string;
-    state: Record<string, unknown>;
+    state: Record<string, Record<string, unknown>>;
     changed_variables: Record<string, unknown>;
     message_type: MessageType.CONDITION_GROUP_MANIPULATION;
 }
@@ -234,6 +235,28 @@ export interface CodeAgentStreamMessageData {
     is_final: boolean;
     step_id?: number;
     message_type: MessageType.CODE_AGENT_STREAM;
+}
+
+export type FindingSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
+
+export interface Finding {
+    title: string;
+    severity: FindingSeverity;
+    category: string | null;
+    file: string | null;
+    line: number | null;
+    detail: string | null;
+}
+
+export interface FindingsMessageData {
+    title: string | null;
+    summary: string | null;
+    findings: Finding[];
+    total_submitted: number;
+    total_returned: number;
+    truncated: boolean;
+    message: string;
+    message_type: MessageType.FINDINGS;
 }
 
 // TaskNode / AgentNode stream events (task_start / tool_call / tool_result / task_finish) —
@@ -315,5 +338,6 @@ export type MessageData =
     | ClassificationPromptMessageData
     | ConditionGroupManipulationMessageData
     | CodeAgentStreamMessageData
+    | FindingsMessageData
     | TaskNodeStreamMessageData
     | AgentNodeStreamMessageData;

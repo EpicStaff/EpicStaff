@@ -12,7 +12,6 @@ from fastapi import (
     HTTPException,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from twilio.request_validator import RequestValidator
 from src.shared.models import RealtimeAgentChatData
 from application.conversation_service import ConversationService
 from application.voice_call_service import VoiceCallService
@@ -35,6 +34,7 @@ from infrastructure.transcription.transcription_client_factory import (
 from utils.instructions_concatenator import generate_instruction
 from core.config import settings
 from utils.auth import introspect_token
+from utils.twilio_signature import validate_twilio_signature
 
 
 from infrastructure.persistence.database import get_db, engine
@@ -263,7 +263,6 @@ async def twilio_voice_webhook(request: Request):
     vs = await get_voice_settings()
     auth_token = vs.get("twilio_auth_token")
     if auth_token:
-        validator = RequestValidator(auth_token)
         signature = request.headers.get("X-Twilio-Signature", "")
         proto = request.headers.get("x-forwarded-proto", "https")
         host = request.headers.get("x-forwarded-host") or request.headers.get(
@@ -274,7 +273,7 @@ async def twilio_voice_webhook(request: Request):
         url = f"{proto}://{host}{path}{query}"
         form_data = dict(await request.form())
         logger.debug(f"Twilio validation URL: {url}")
-        if not validator.validate(url, form_data, signature):
+        if not validate_twilio_signature(url, form_data, signature, auth_token):
             logger.warning(
                 f"Invalid Twilio signature from {request.client.host}, url={url}"
             )

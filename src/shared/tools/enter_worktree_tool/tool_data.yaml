@@ -1,0 +1,7 @@
+tool-data:
+  name: "Enter Worktree Tool"
+  description: "Creates an isolated git worktree on a new branch for a repository inside the sandbox, so an agent can make changes without touching the checked-out working copy."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

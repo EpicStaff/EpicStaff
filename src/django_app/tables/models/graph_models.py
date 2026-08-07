@@ -59,7 +59,7 @@ class Graph(OrgScopedModel, TimestampMixin):
     time_to_live = models.IntegerField(
         default=3600, help_text="Session lifitime duration in seconds."
     )
-    persistent_variables = models.BooleanField(
+    enable_persistent_variables = models.BooleanField(
         default=False, help_text="If 'True' -> use variables from last session."
     )
     epicchat_enabled = models.BooleanField(
@@ -473,7 +473,7 @@ class Condition(ContentHashMixin, models.Model):
 # GraphOrganizationUser below now hold per-flow persistent variables scoped to
 # those RBAC entities.
 #
-# - GraphOrganization(graph, organization)          -> org-level persistent vars
+# - GraphOrganization(graph)                         -> org-level persistent vars
 #   .user_variables                                 -> seed template for new
 #                                                      GraphOrganizationUser rows
 # - GraphOrganizationUser(graph, organization_user) -> per-membership persistent
@@ -492,11 +492,9 @@ class BasePersistentEntity(models.Model):
 
 
 class GraphOrganization(BasePersistentEntity):
-    organization = models.ForeignKey(
-        "Organization",
-        on_delete=models.CASCADE,
-        related_name="graph_persistent_states",
-    )
+    # Org is derived from graph.org (a flow has exactly one owning org), so this
+    # row is a 1:1 extension of Graph holding org-level persistent variables.
+    # TODO refactor to use user_variable for persistent variables
     user_variables = models.JSONField(
         default=dict,
         help_text="Seed template of variables copied into each user's GraphOrganizationUser row",
@@ -505,8 +503,8 @@ class GraphOrganization(BasePersistentEntity):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["graph", "organization"],
-                name="unique_organization_per_flow",
+                fields=["graph"],
+                name="unique_persistent_state_per_flow",
             )
         ]
 
@@ -514,6 +512,7 @@ class GraphOrganization(BasePersistentEntity):
 class GraphOrganizationUser(BasePersistentEntity):
     # FK points at RBAC OrganizationUser (User x Org membership), so per-user
     # persistent state is scoped per-org as well
+    # TODO refactor to use user_variable for persistent variables
     organization_user = models.ForeignKey(
         "OrganizationUser",
         on_delete=models.CASCADE,

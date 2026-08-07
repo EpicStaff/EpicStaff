@@ -54,6 +54,7 @@ class PythonCodeData(BaseModel):
     storage_allowed_paths: list[str] | None = None
     storage_org_prefix: str | None = None
     session_id: int | None = None
+    org_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -156,5 +157,6 @@ class CodeTaskData(BaseModel):
     storage_allowed_paths: list[str] | None = None
     storage_org_prefix: str | None = None
     session_id: int | None = None
+    org_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)

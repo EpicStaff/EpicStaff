@@ -175,6 +175,11 @@ function buildCdtNodePayload(
                 group_name: g.group_name,
                 order: typeof g.order === 'number' ? g.order : idx + 1,
                 expression: g.expression || null,
+                // Link the group to its prompt by prompt_key (g.prompt_id holds the
+                // key). The backend resolves it node-locally, so a prompt created in
+                // this same save connects in one payload. `prompt` (numeric id) is
+                // still sent for back-compat; the backend prefers prompt_key.
+                prompt_key: g.prompt_id ?? null,
                 prompt: (tableData?.prompts?.[g.prompt_id ?? ''] as PromptConfig | undefined)?.backendId ?? null,
                 manipulation: g.manipulation || null,
                 continue_flag: !!(g.continue_flag ?? g.continue),

@@ -6,6 +6,7 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedUniqueValidator,
 )
 from tables.serializers.utils.mixins import TagHandlingMixin
+from tables.serializers.utils.secret_fields import SecretCharField
 from tables.models.embedding_models import (
     EmbeddingConfig,
     EmbeddingModel,
@@ -28,6 +29,7 @@ class EmbeddingModelSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
 
 class EmbeddingConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
+    api_key = SecretCharField()
     tags = EmbeddingConfigTagSerializer(many=True, required=False)
     tag_model = EmbeddingConfigTag
     # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.

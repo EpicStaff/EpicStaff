@@ -4,7 +4,6 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from tables.models.rbac_models import (
-    ApiKey,
     Organization,
     OrganizationUser,
     Role,
@@ -187,29 +186,23 @@ class TestPermissionsOrgAdmin:
 class TestPermissionsApiKey:
     """API key bound to a user inherits exactly that user's permissions."""
 
-    def test_member_api_key_blocked_on_users_list(self, member_acme):
-        raw = ApiKey.generate_raw_key()
-        key = ApiKey(name="test-member", created_by=member_acme)
-        key.set_key(raw)
-        key.save()
+    def test_member_api_key_blocked_on_users_list(self, member_acme, issue_api_key):
+        raw, _ = issue_api_key(user=member_acme, name="test-member")
 
         client = APIClient()
         client.credentials(HTTP_X_API_KEY=raw)
         resp = client.get(USERS_LIST)
         assert resp.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_env_seeded_api_key_blocked(self):
-        """API key with created_by=None resolves to AnonymousUser; should
-        fail every Story 5 permission class."""
-        raw = ApiKey.generate_raw_key()
-        key = ApiKey(name="env-seeded", created_by=None)
-        key.set_key(raw)
-        key.save()
+    def test_system_api_key_acts_as_superadmin(self, issue_api_key):
+        """System keys resolve to SystemServicePrincipal (is_superadmin=True)
+        and pass superadmin-gated endpoints."""
+        raw, _ = issue_api_key(user=None, name="system-test")
 
         client = APIClient()
         client.credentials(HTTP_X_API_KEY=raw)
         resp = client.get(USERS_LIST)
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
+        assert resp.status_code == status.HTTP_200_OK
 
 
 # ============================================================================

@@ -134,7 +134,7 @@ class PromptConfigData(BaseModel):
     llm_data: LLMData | None = None         # resolved at runtime
 ```
 
-The prompt is rendered with `str.format(**variables)` and sent via `litellm.acompletion`. When `output_schema` is non-empty it is applied as a `response_format` of `{"type": "json_schema", "json_schema": {"name": ..., "schema": <output_schema>, "strict": True}}` (takes precedence over the LLM config's own `response_format`); a string schema is JSON-parsed first. The response is parsed via `extract_first_json_object`, stored at `result_variable`, and `variable_mappings` extract individual fields into other state variables.
+The prompt is rendered with `str.format(**variables)` and sent via `litellm.acompletion`. When `output_schema` is non-empty it is applied as a `response_format` of `{"type": "json_schema", "json_schema": {"name": ..., "schema": <output_schema>, "strict": True}}`; a string schema is JSON-parsed first. If `output_schema` is empty or invalid JSON, the request is sent without `response_format`. The response is parsed via `extract_first_json_object`, stored at `result_variable`, and `variable_mappings` extract individual fields into other state variables.
 
 ## Message Ordering
 

@@ -45,7 +45,6 @@ from tables.views.model_view_sets import (
     RealtimeAgentViewSet,
     RealtimeAgentDefinitionViewSet,
     RealtimeAgentChatViewSet,
-    GraphOrganizationViewSet,
     GraphOrganizationUserViewSet,
     VoiceSettingsView,
     TwilioPhoneNumbersView,
@@ -58,6 +57,7 @@ from tables.views.model_view_sets import (
 
 from tables.views.views import (
     AnswerToLLM,
+    NotifyEmailView,
     InitRealtimeAPIView,
     RegisterTelegramTriggerApiView,
     ProcessRagIndexingView,
@@ -136,7 +136,9 @@ router.register(r"agents", AgentViewSet)
 router.register(r"crews", CrewReadWriteViewSet)
 router.register(r"tasks", TaskReadWriteViewSet)
 router.register(r"python-code-tool", PythonCodeToolViewSet)
-router.register(r"python-code-result", PythonCodeResultReadViewSet)
+router.register(
+    r"python-code-result", PythonCodeResultReadViewSet, basename="python-code-result"
+)
 router.register(
     r"source-collections", SourceCollectionViewSet, basename="sourcecollection"
 )
@@ -184,7 +186,6 @@ router.register(
 
 router.register(r"sessions", SessionViewSet, basename="session")
 router.register(r"mcp-tools", McpToolViewSet)
-router.register(r"graph-organizations", GraphOrganizationViewSet)
 router.register(r"graph-organization-users", GraphOrganizationUserViewSet)
 router.register(r"naive-rag-document-chunks", NaiveRagChunkViewSet)
 router.register(r"webhook-trigger-nodes", WebhookTriggerNodeViewSet)
@@ -243,6 +244,7 @@ urlpatterns = [
         name="get-updates",
     ),
     path("sessions/<int:session_id>/stop/", StopSession.as_view(), name="stop-session"),
+    path("notify/email/", NotifyEmailView.as_view(), name="notify-email"),
     path(
         "run-python-code/",
         RunPythonCodeAPIView.as_view(),

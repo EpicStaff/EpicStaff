@@ -80,6 +80,20 @@ RUN_SESSION_POST = dict(
         "variables are applied on top of request variables before the session is dispatched."
     ),
     request=RunSessionSerializer,
+    examples=[
+        OpenApiExample(
+            "Run session",
+            value={
+                "graph_id": 0,
+                "variables": {
+                    "variables": {"context": {}},
+                    "persistent_variables": {},
+                },
+                "files": {},
+            },
+            request_only=True,
+        ),
+    ],
     responses={
         201: OpenApiResponse(
             response=OpenApiTypes.STR,

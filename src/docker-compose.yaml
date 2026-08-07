@@ -74,7 +74,9 @@ services:
     volumes:
       - media_data:/app/src/django_app/media
     networks:
-      - backend-network
+      backend-network:
+        aliases:
+          - djangoapp
     depends_on:
       crewdb:
         condition: service_started
@@ -224,9 +226,9 @@ services:
       MANAGER_HOST: ${MANAGER_HOST}
       MANAGER_PORT: ${MANAGER_PORT:-8001}
       CODE_CONTAINER_URL: http://code:${CODE_MANAGER_PORT:-4080}
-      HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED}
-      ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY}
-      EC_TELEMETRY: ${EC_TELEMETRY}
+      HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED:-False}
+      ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY:-False}
+      EC_TELEMETRY: ${EC_TELEMETRY:-False}
       MEM0_TELEMETRY: ${MEM0_TELEMETRY:-False}
       MONITORING_MODE: ${MONITORING_MODE}
       DB_CREW_USER: ${DB_CREW_USER}
@@ -235,6 +237,7 @@ services:
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT}
       GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT}
+      LLM_HEADERS: ${LLM_HEADERS:-}
       AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:-agent.requests}
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:-agent.results}
       AGENT_RESULT_TIMEOUT_S: ${AGENT_RESULT_TIMEOUT_S:-600}
@@ -280,6 +283,7 @@ services:
       - backend-network
     tty: true
     stdin_open: true
+    mem_limit: "2g"
     depends_on:
       redis:
         condition: service_healthy
@@ -326,7 +330,9 @@ services:
       KNOWLEDGE_SOURCES_CHANNEL: knowledge_sources
       DB_KNOWLEDGE_USER: ${DB_KNOWLEDGE_USER}
       DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
+      EMBEDDING_HEADERS: ${EMBEDDING_HEADERS:-}
       GRAPH_DATA_DIR: /home/user/root/app/graph_data
+
     volumes:
       - graph_data:/home/user/root/app/graph_data
     networks:

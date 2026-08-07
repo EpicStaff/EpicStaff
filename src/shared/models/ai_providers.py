@@ -1,6 +1,6 @@
 from pydantic import BaseModel
-from typing import Any, Literal
-from pydantic import ConfigDict, HttpUrl
+from typing import Literal
+from pydantic import ConfigDict
 
 
 class LLMConfigData(BaseModel):
@@ -13,7 +13,6 @@ class LLMConfigData(BaseModel):
     presence_penalty: float | None = None
     frequency_penalty: float | None = None
     logit_bias: dict[int, float] | None = None
-    response_format: dict[str, Any] | None = None
     seed: int | None = None
     base_url: str | None = None
     api_version: str | None = None
@@ -28,7 +27,7 @@ class LLMConfigData(BaseModel):
 class EmbedderConfigData(BaseModel):
     model: str
     deployment_name: str | None = None
-    base_url: HttpUrl | None = None
+    base_url: str | None = None
     api_key: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
