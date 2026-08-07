@@ -14,6 +14,7 @@ from tables.models.graph_models import (
     EndNode,
     FileExtractorNode,
     GraphNote,
+    KnowledgeNode,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
@@ -143,6 +144,39 @@ def copy_code_agent_node(graph: Graph, node: CodeAgentNode) -> CodeAgentNode:
         output_schema=node.output_schema,
         **get_base_node_fields(node),
     )
+
+
+# Node-bound OneToOne search configs; a new graph search method adds one entry.
+_KNOWLEDGE_SEARCH_CONFIG_RELATIONS = (
+    "naive_search_config",
+    "graph_basic_search_config",
+    "graph_local_search_config",
+)
+
+
+def copy_knowledge_node(graph: Graph, node: KnowledgeNode) -> KnowledgeNode:
+    new_node = KnowledgeNode.objects.create(
+        graph=graph,
+        source_collection=node.source_collection,
+        rag_type=node.rag_type,
+        query=node.query,
+        search_method=node.search_method,
+        last_rag_type=node.last_rag_type,
+        **get_base_node_fields(node),
+    )
+    for relation in _KNOWLEDGE_SEARCH_CONFIG_RELATIONS:
+        # Reverse OneToOne raises RelatedObjectDoesNotExist (a subclass of
+        # AttributeError) when absent, so getattr default returns None.
+        config = getattr(node, relation, None)
+        if config is None:
+            continue
+        field_values = {
+            f.name: getattr(config, f.name)
+            for f in config._meta.fields
+            if f.name not in ("id", "knowledge_node")
+        }
+        type(config).objects.create(knowledge_node=new_node, **field_values)
+    return new_node
 
 
 def copy_schedule_trigger_node(
@@ -300,5 +334,9 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
     NodeType.CODE_AGENT_NODE: (
         "code_agent_node_list",
         copy_code_agent_node,
+    ),
+    NodeType.KNOWLEDGE_NODE: (
+        "knowledge_node_list",
+        copy_knowledge_node,
     ),
 }
