@@ -12,7 +12,7 @@ from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.views.mixins import OrgScopedResolverMixin
-from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
+from tables.services.rbac.authentication import JwtAuthentication, ApiKeyAuthentication
 from tables.services.rbac.permissions import HasOrgPermission
 from tables.serializers.storage_serializers import (
     GraphStorageFileSerializer,
@@ -55,7 +55,7 @@ from tables.swagger_schemas.storage_schema import (
 
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FILES
     rbac_action_map = {
@@ -415,8 +415,8 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         )
         return Response(GraphStorageFileSerializer(qs, many=True).data)
 
+    @extend_schema(**STORAGE_FILES_BY_IDS_SWAGGER)
     @action(detail=False, methods=["get"], url_path="files")
-    @swagger_auto_schema(**STORAGE_FILES_BY_IDS_SWAGGER)
     def files_by_ids(self, request):
         org_id = self.get_active_org_id()
         params = StorageFilesByIdsQuerySerializer(data=request.query_params)

@@ -7,7 +7,6 @@ from tables.serializers.storage_serializers import (
     StorageBulkDeleteSerializer,
     StorageCopySerializer,
     StorageDownloadZipSerializer,
-    StorageFilesByIdsQuerySerializer,
     StorageFileSerializer,
     StorageFromToResponseSerializer,
     StorageInfoResponseSerializer,
@@ -212,13 +211,24 @@ STORAGE_TREE_SWAGGER = dict(
 )
 
 STORAGE_FILES_BY_IDS_SWAGGER = dict(
-    operation_summary="Bulk fetch storage files by id",
-    operation_description=(
+    summary="Bulk fetch storage files by id",
+    description=(
         "Returns StorageFile records for the given comma-separated `ids`. "
         "IDs that are missing or belong to another organization are silently omitted."
     ),
-    query_serializer=StorageFilesByIdsQuerySerializer,
-    responses={200: StorageFileSerializer(many=True), 400: "Invalid or empty ids"},
+    parameters=[
+        OpenApiParameter(
+            name="ids",
+            location=OpenApiParameter.QUERY,
+            description="Comma-separated list of storage file IDs",
+            type=OpenApiTypes.STR,
+            required=True,
+        ),
+    ],
+    responses={
+        200: StorageFileSerializer(many=True),
+        400: OpenApiResponse(description="Invalid or empty ids"),
+    },
 )
 
 STORAGE_SEARCH_SWAGGER = dict(
