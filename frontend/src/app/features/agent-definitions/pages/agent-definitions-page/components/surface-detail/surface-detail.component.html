@@ -6,7 +6,8 @@
     [isShared]="isShared()"
     [showMeta]="showMeta()"
     [currentPlace]="currentPlace()"
-    [agents]="agents()"
+    [surfacePlaces]="surfacePlaces()"
+    [placesBusy]="placesBusy()"
     [expanded]="true"
     (renameSurface)="rename.emit($event)"
     (createDraft)="create.emit($event)"
@@ -15,7 +16,7 @@
     (detach)="detach.emit()"
     (makeShared)="makeShared.emit()"
     (makeAgentSpecificCopy)="makeAgentSpecificCopy.emit()"
-    (moveSurfacePlace)="moveSurfacePlace.emit($event)"
+    (placesChange)="setSurfacePlaces.emit($event)"
     (duplicate)="duplicate.emit()"
     (deleteSurface)="deleteSurface.emit()"
 />

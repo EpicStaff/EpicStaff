@@ -35,6 +35,14 @@
                             class="surface-category__icon"
                         />
                         <span class="surface-category__label">{{ category.label }}</span>
+                        @if (category.hint) {
+                            <app-help-tooltip
+                                class="surface-category__hint-icon"
+                                [text]="category.hint"
+                                position="right"
+                                size="14px"
+                            />
+                        }
                     </div>
 
                     <div class="surface-category__actions">
@@ -59,10 +67,10 @@
                             selectionMode="single"
                             searchPlaceholder="Search shared surface..."
                             emptyText="No shared surfaces available"
-                            [minPanelWidth]="240"
-                            [items]="addableSharedItems()"
+                            [minPanelWidth]="280"
+                            [items]="addableSharedFor(category.id)"
                             [selected]="[]"
-                            (selectionChange)="onAddFromShared($event)"
+                            (selectionChange)="onAddFromShared($event, category.id)"
                         >
                             <button
                                 type="button"
@@ -96,16 +104,6 @@
                         </button>
                     </div>
                 </div>
-
-                @if (category.hint) {
-                    <div class="surface-category__hint">
-                        <app-svg-icon
-                            icon="help"
-                            size="12px"
-                        />
-                        <span>{{ category.hint }}</span>
-                    </div>
-                }
 
                 @if (isDrafting(category.id)) {
                     <div class="surface-item surface-item--expanded">
@@ -182,6 +180,8 @@
                                 [isShared]="isShared(surface)"
                                 [readOnly]="isShared(surface)"
                                 [currentPlace]="category.id"
+                                [surfacePlaces]="placesForSurface(surface.id)"
+                                [placesBusy]="saving()"
                                 [expanded]="isExpanded(surface)"
                                 (expandedChange)="onCardExpanded(surface, $event)"
                                 (renameSurface)="renameSurface.emit({ id: surface.id, name: $event })"
@@ -190,7 +190,7 @@
                                 (detach)="detachSurface.emit(surface.id)"
                                 (makeShared)="makeSharedSurface.emit(surface.id)"
                                 (makeAgentSpecificCopy)="makeAgentSpecificCopy.emit(surface.id)"
-                                (moveSurfacePlace)="moveSurfacePlace.emit({ id: surface.id, place: $event })"
+                                (placesChange)="setSurfacePlaces.emit({ surfaceId: surface.id, places: $event })"
                                 (duplicate)="duplicateSurface.emit(surface.id)"
                                 (deleteSurface)="deleteSurface.emit(surface.id)"
                             />

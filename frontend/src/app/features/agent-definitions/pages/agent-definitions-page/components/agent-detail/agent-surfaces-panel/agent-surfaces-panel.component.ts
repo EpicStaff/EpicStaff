@@ -13,15 +13,17 @@ import {
 import { FormsModule } from '@angular/forms';
 import {
     AppSvgIconComponent,
+    HelpTooltipComponent,
     SelectDropdownComponent,
     SelectDropdownListItem,
     SelectDropdownTriggerDirective,
 } from '@shared/components';
 import { CollapseOnOverflowDirective, EnterBlurDirective } from '@shared/directives';
 
-import { AgentDefaultSurface } from '../../../../../models/agent-definition.model';
+import { AgentDefaultSurface, AgentSurfacePlace } from '../../../../../models/agent-definition.model';
 import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../../models/surface.model';
 import {
+    categoryToPlace,
     placeToCategory,
     SURFACE_CATEGORIES,
     SurfaceCategoryConfig,
@@ -41,6 +43,7 @@ import { SurfaceCardComponent } from './surface-card/surface-card.component';
         SelectDropdownComponent,
         SelectDropdownTriggerDirective,
         CollapseOnOverflowDirective,
+        HelpTooltipComponent,
     ],
     templateUrl: './agent-surfaces-panel.component.html',
     styleUrls: ['./agent-surfaces-panel.component.scss'],
@@ -53,11 +56,12 @@ export class AgentSurfacesPanelComponent {
     agentId = input<number | null>(null);
     defaultSurfaces = input<AgentDefaultSurface[]>([]);
     sharedSurfaceIds = input<ReadonlySet<number>>(new Set<number>());
+    saving = input<boolean>(false);
 
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
-    readonly addFromShared = output<number>();
+    readonly addFromShared = output<{ surfaceId: number; category: SurfaceCategoryId }>();
     readonly dropSharedSurface = output<{ surfaceId: number; category: SurfaceCategoryId }>();
-    readonly moveSurfacePlace = output<{ id: number; place: SurfaceCategoryId }>();
+    readonly setSurfacePlaces = output<{ surfaceId: number; places: AgentSurfacePlace[] }>();
     readonly makeSharedSurface = output<number>();
     readonly detachSurface = output<number>();
     readonly deleteSurface = output<number>();
@@ -139,10 +143,31 @@ export class AgentSurfacesPanelComponent {
         this.dropSharedSurface.emit({ surfaceId: dragged.id, category });
     }
 
+    placesForSurface(surfaceId: number): AgentSurfacePlace[] {
+        return this.defaultSurfaces()
+            .filter((ds) => ds.surface === surfaceId)
+            .map((ds) => ds.place);
+    }
+
+    // Move-instance DnD with invariant guardrails: dropping into Every-Place collapses to
+    // ['all']; dragging out of Every-Place replaces 'all' with the target concrete; otherwise
+    // the source place is removed and the target added.
     onSurfaceDropped(event: CdkDragDrop<SurfaceCategoryId>, target: SurfaceCategoryId): void {
         const surface = event.item.data as Surface;
         if (event.previousContainer === event.container) return;
-        this.moveSurfacePlace.emit({ id: surface.id, place: target });
+        const from = event.previousContainer.data;
+        let next: AgentSurfacePlace[];
+        if (target === 'every-place') {
+            next = ['all'];
+        } else if (from === 'every-place') {
+            next = [categoryToPlace(target)];
+        } else {
+            const fromPlace = categoryToPlace(from);
+            const targetPlace = categoryToPlace(target);
+            const kept = this.placesForSurface(surface.id).filter((p) => p !== fromPlace && p !== 'all');
+            next = kept.includes(targetPlace) ? kept : [...kept, targetPlace];
+        }
+        this.setSurfacePlaces.emit({ surfaceId: surface.id, places: next });
     }
 
     onViewSummary(category: SurfaceCategoryId): void {
@@ -154,17 +179,25 @@ export class AgentSurfacesPanelComponent {
         return this.sharedSurfaceIds().has(surface.id);
     }
 
-    readonly addableSharedItems = computed<SelectDropdownListItem<number>[]>(() => {
+    // Per-category "Add From Shared" list. Concrete blocks exclude a surface that already
+    // has that place or 'all'; Every-Place excludes anything assigned at all (so we never
+    // create an 'all'+concrete combination).
+    addableSharedFor(category: SurfaceCategoryId): SelectDropdownListItem<number>[] {
         const shared = this.sharedSurfaceIds();
-        const assigned = new Set(this.defaultSurfaces().map((ds) => ds.surface));
+        const targetPlace = categoryToPlace(category);
         return this.surfaces()
-            .filter((s) => shared.has(s.id) && !assigned.has(s.id))
+            .filter((s) => {
+                if (!shared.has(s.id)) return false;
+                const rows = this.placesForSurface(s.id);
+                if (category === 'every-place') return rows.length === 0;
+                return !rows.some((p) => p === targetPlace || p === 'all');
+            })
             .map((s) => ({ name: s.name, value: s.id }));
-    });
+    }
 
-    onAddFromShared(values: unknown[]): void {
+    onAddFromShared(values: unknown[], category: SurfaceCategoryId): void {
         const id = values[0] as number | undefined;
-        if (id != null) this.addFromShared.emit(id);
+        if (id != null) this.addFromShared.emit({ surfaceId: id, category });
     }
 
     isExpanded(surface: Surface): boolean {
