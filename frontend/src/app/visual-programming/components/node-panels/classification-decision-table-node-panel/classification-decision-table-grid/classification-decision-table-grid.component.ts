@@ -577,6 +577,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         suppressRowTransform: true,
         suppressCellFocus: false,
         stopEditingWhenCellsLoseFocus: true,
+        popupParent: document.body,
         domLayout: 'autoHeight',
         rowDragManaged: false,
         animateRows: true,
@@ -1241,7 +1242,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                     this.openPromptLibrary.emit({ action: 'edit', promptId });
                 },
             }),
-            cellEditorPopup: false,
+            cellEditorPopup: true,
+            cellEditorPopupPosition: 'under',
             cellStyle: {
                 fontSize: '14px',
             },

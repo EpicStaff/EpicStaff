@@ -52,6 +52,9 @@ import { SidePanelService } from '../../services/side-panel.service';
                 border-radius: 6px;
                 box-shadow: 0 0 0 4px color-mix(in srgb, var(--field-lock-color) 20%, transparent);
             }
+            :host.ws-connecting {
+                pointer-events: none;
+            }
             .lock-indicator {
                 position: absolute;
                 top: -8px;
@@ -84,6 +87,7 @@ import { SidePanelService } from '../../services/side-panel.service';
     host: {
         '[class.locked-by-other]': 'isLockedByOther()',
         '[class.locked-by-me]': 'isLockedByMe()',
+        '[class.ws-connecting]': '!isConnected()',
         '[style.--field-lock-color]': 'lockColor()',
     },
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -96,6 +100,8 @@ export class LockableFieldComponent implements OnDestroy {
     private readonly profileService = inject(ProfileService);
     private readonly sidePanelService = inject(SidePanelService);
     private readonly el = inject(ElementRef<HTMLElement>);
+
+    protected readonly isConnected = computed(() => this.wsService.isConnected());
 
     protected readonly fieldLock = computed(
         () => this.wsService.lockedNodeFields().get(this.nodeId())?.get(this.fieldId()) ?? null
@@ -127,14 +133,14 @@ export class LockableFieldComponent implements OnDestroy {
 
     @HostListener('focusin')
     onFocusIn(): void {
-        if (!this.isLockedByOther()) {
+        if (this.isConnected() && !this.isLockedByOther()) {
             this.wsService.sendNodeLocked(this.nodeId(), this.fieldId());
         }
     }
 
     @HostListener('pointerdown')
     onPointerDown(): void {
-        if (!this.isLockedByOther()) {
+        if (this.isConnected() && !this.isLockedByOther()) {
             this.wsService.sendNodeLocked(this.nodeId(), this.fieldId());
         }
     }
@@ -164,7 +170,7 @@ export class LockableFieldComponent implements OnDestroy {
     onWindowFocus(): void {
         // User returned from Alt+Tab — re-assert lock if our field is still the active element.
         const hasFocusedChild = this.el.nativeElement.contains(document.activeElement);
-        if (hasFocusedChild && !this.isLockedByOther()) {
+        if (hasFocusedChild && this.isConnected() && !this.isLockedByOther()) {
             this.wsService.sendNodeLocked(this.nodeId(), this.fieldId());
         }
     }

@@ -514,6 +514,7 @@ export class GraphCollaborationWsService {
 
     public editors = signal<EditorInfo[]>([]);
     public connectionStatus = signal<ConnectionStatus>('disconnected');
+    public readonly isConnected = computed(() => this.connectionStatus() === 'connected');
     public readonly lockedNodeFields = signal<Map<string, Map<string, EditorInfo>>>(new Map());
     public readonly currentUserId = computed(() => this.profileService.currentUserSignal()?.id ?? null);
 

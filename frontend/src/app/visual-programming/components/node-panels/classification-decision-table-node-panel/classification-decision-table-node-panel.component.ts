@@ -109,6 +109,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
+    private initialPreCode: string = '';
+    private initialPostCode: string = '';
+    private initialConditionGroupsSignature: string = '';
+    private initialPromptsSignature: string = '';
     private readonly codeChange$ = new Subject<void>();
     private readonly reinitDestroy$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
@@ -282,10 +286,6 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.initializeInputMapArray(form, 'pre_input_map', preComp.input_map || {});
         this.initializeInputMapArray(form, 'post_input_map', postComp.input_map || {});
 
-        const groupsCopy = this.cloneConditionGroups(tableData.condition_groups || []);
-        this.conditionGroups.set(groupsCopy);
-        this.prompts.set({ ...(tableData.prompts || {}) });
-
         if (this.lastFormNodeId !== node.id) {
             this.activeTab.set('table');
             this.lastFormNodeId = node.id;
@@ -301,6 +301,18 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         const form = this.form;
         this.preCode = form.get('pre_computation_code')?.value || '';
         this.postCode = form.get('post_computation_code')?.value || '';
+        this.initialPreCode = this.preCode;
+        this.initialPostCode = this.postCode;
+
+        const node = this.node();
+        const tableData: ClassificationDecisionTableData =
+            (node.data as { table?: ClassificationDecisionTableData }).table ?? this.getDefaultTableData();
+        const groupsCopy = this.cloneConditionGroups(tableData.condition_groups || []);
+        const promptsCopy = { ...(tableData.prompts || {}) };
+        this.conditionGroups.set(groupsCopy);
+        this.prompts.set(promptsCopy);
+        this.initialConditionGroupsSignature = JSON.stringify(groupsCopy);
+        this.initialPromptsSignature = JSON.stringify(promptsCopy);
 
         // Build sub-forms for InputMapComponent.
         // InputMapComponent uses ControlContainer to find its parent FormGroup and then
@@ -348,6 +360,40 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                     });
             }
         );
+    }
+
+    protected override onRemoteFormMerged(): void {
+        const remotePreCode = this.form.get('pre_computation_code')?.value || '';
+        if (this.preCode === this.initialPreCode) {
+            this.preCode = remotePreCode;
+        }
+        this.initialPreCode = remotePreCode;
+
+        const remotePostCode = this.form.get('post_computation_code')?.value || '';
+        if (this.postCode === this.initialPostCode) {
+            this.postCode = remotePostCode;
+        }
+        this.initialPostCode = remotePostCode;
+
+        const node = this.node();
+        const tableData: ClassificationDecisionTableData =
+            (node.data as { table?: ClassificationDecisionTableData }).table ?? this.getDefaultTableData();
+
+        const remoteGroups = this.cloneConditionGroups(tableData.condition_groups || []);
+        const remoteGroupsSignature = JSON.stringify(remoteGroups);
+        const localGroupsSignature = untracked(() => JSON.stringify(this.conditionGroups()));
+        if (localGroupsSignature === this.initialConditionGroupsSignature) {
+            this.conditionGroups.set(remoteGroups);
+        }
+        this.initialConditionGroupsSignature = remoteGroupsSignature;
+
+        const remotePrompts = { ...(tableData.prompts || {}) };
+        const remotePromptsSignature = JSON.stringify(remotePrompts);
+        const localPromptsSignature = untracked(() => JSON.stringify(this.prompts()));
+        if (localPromptsSignature === this.initialPromptsSignature) {
+            this.prompts.set(remotePrompts);
+        }
+        this.initialPromptsSignature = remotePromptsSignature;
     }
 
     createUpdatedNode(): ClassificationDecisionTableNodeModel {
@@ -450,6 +496,11 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                 3000,
                 'bottom-right'
             );
+            return;
+        }
+
+        if (LOCKABLE_TABS.has(tab) && !this.wsService.isConnected()) {
+            this.toastService.warning('Connecting to server, please wait…', 3000, 'bottom-right');
             return;
         }
 
