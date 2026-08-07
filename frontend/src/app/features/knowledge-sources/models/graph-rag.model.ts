@@ -10,7 +10,10 @@ export interface CollectionDetailsGraphRag {
     message: string | null;
     rag_id: number;
     rag_type: RagType;
+    require_reindexing: boolean;
+    reindex_reason: Record<string, string>;
     status: RagStatus;
+    processing_document_ids: number[];
     created_at: string;
     updated_at: string;
 }
@@ -22,13 +25,13 @@ export interface CollectionGraphRag {
     embedder_name: string;
     llm: number;
     llm_name: string;
+    processing_document_ids: number[];
     rag_status: RagStatus;
     collection_id: number;
     collection_name: string;
     index_config: GraphRagIndexConfig;
     total_documents_in_collection: number;
     documents_in_graph_rag: number;
-    documents: GraphRagDocument[];
     error_message: string | null;
     created_at: string;
     updated_at: string;
@@ -44,15 +47,6 @@ export interface GraphRagIndexConfig {
     entity_types: string[];
     max_gleanings: number;
     max_cluster_size: number;
-}
-
-export interface GraphRagDocument {
-    graph_rag_document_id: number;
-    document_id: number;
-    file_name: string;
-    file_type: string;
-    file_size: number;
-    created_at: string;
 }
 
 export interface CreateGraphRagForCollectionResponse {

@@ -8,6 +8,7 @@ import {
     CreateGraphRagForCollectionResponse,
     CreateGraphRagIndexConfigRequest,
 } from '../models/graph-rag.model';
+import { GraphRagDocumentListResponse } from '../models/graph-rag-document.model';
 
 @Injectable({
     providedIn: 'root',
@@ -41,6 +42,10 @@ export class GraphRagService {
         return this.http.get<CollectionGraphRag>(`${this.apiUrl}${ragId}/`);
     }
 
+    getRagDocuments(ragId: number): Observable<GraphRagDocumentListResponse> {
+        return this.http.get<GraphRagDocumentListResponse>(`${this.apiUrl}${ragId}/documents/list/`);
+    }
+
     updateRagIndexConfigs(
         ragId: number,
         dto: CreateGraphRagIndexConfigRequest
@@ -50,6 +55,11 @@ export class GraphRagService {
 
     deleteFileById(ragId: number, fileId: number): Observable<void> {
         return this.http.delete<void>(`${this.apiUrl}${ragId}/documents/${fileId}/`);
+    }
+
+    bulkDeleteDocuments(ragId: number, fileIds: number[]): Observable<{ document_ids: number[] }> {
+        const body = { document_ids: fileIds };
+        return this.http.post<{ document_ids: number[] }>(`${this.apiUrl}${ragId}/documents/bulk-delete/`, body);
     }
 
     reIncludeFiles(ragId: number): Observable<void> {

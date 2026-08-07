@@ -20,9 +20,10 @@
             } @else {
                 <app-button
                     type="primary"
+                    [disabled]="indexingDisabled()"
                     (click)="runIndexing()"
                 >
-                    Run indexing
+                    {{ runButtonLabel() }}
                 </app-button>
             }
         </div>

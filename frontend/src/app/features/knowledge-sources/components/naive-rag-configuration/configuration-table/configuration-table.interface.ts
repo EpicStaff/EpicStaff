@@ -10,10 +10,3 @@ export interface TableDocument extends NaiveRagDocumentConfig {
 export type NormalizedDocumentErrors = {
     [K in keyof TableDocument]?: Partial<UpdateNaiveRagDocumentConfigError>;
 };
-
-export type DocFieldChange = {
-    documentId: number;
-    documentName: string;
-    field: keyof NaiveRagDocumentConfig;
-    value: string | number | null;
-};

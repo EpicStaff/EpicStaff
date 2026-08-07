@@ -1,17 +1,10 @@
 import { NaiveRagChunkStrategy } from '../enums/naive-rag-chunk-strategy';
 
-export type NaiveRagDocumentStatus = 'new' | 'chunking' | 'chunked' | 'indexing' | 'completed' | 'warning' | 'failed';
+export type NaiveRagDocumentStatus = 'new' | 'processing' | 'completed' | 'outdated' | 'failed';
 
 export type NaiveRagAdditionalParams = {
     [key in NaiveRagChunkStrategy]: Record<string, unknown>;
 };
-
-export type NaiveRagDocumentErrorCode =
-    | 'chunking_failed'
-    | 'embedder_auth'
-    | 'embedder_rate_limit'
-    | 'embedding_failed'
-    | 'unknown';
 
 export interface NaiveRagDocumentConfig {
     naive_rag_document_id: number;
@@ -22,8 +15,8 @@ export interface NaiveRagDocumentConfig {
     chunk_overlap: number;
     additional_params: NaiveRagAdditionalParams;
     status: NaiveRagDocumentStatus;
-    error_message: string | null;
-    error_code: NaiveRagDocumentErrorCode | null;
+    outdated_reasons: string | null;
+    error_message: Record<string, string>;
     failed_at: string | null;
     total_chunks: number;
     total_embeddings: number;
@@ -44,15 +37,18 @@ export interface GetNaiveRagDocumentConfigsResponse {
     configs: NaiveRagDocumentConfig[];
 }
 
+export interface RunNaiveRagDocumentChunkingRequest {
+    chunk_size: number;
+    chunk_overlap: number;
+    chunk_strategy: NaiveRagChunkStrategy;
+    additional_params?: Partial<NaiveRagAdditionalParams>;
+}
+
 export interface UpdateNaiveRagDocumentDtoRequest {
     chunk_size?: number;
     chunk_overlap?: number;
     chunk_strategy?: NaiveRagChunkStrategy;
-    additional_params?: {};
-}
-
-export interface BulkUpdateNaiveRagDocumentDtoRequest extends UpdateNaiveRagDocumentDtoRequest {
-    config_ids: number[];
+    additional_params?: Partial<NaiveRagAdditionalParams>;
 }
 
 export interface UpdateNaiveRagDocumentConfigError {
@@ -61,7 +57,7 @@ export interface UpdateNaiveRagDocumentConfigError {
     reason: string;
 }
 
-interface UpdatedNaiveRagDocumentConfig extends NaiveRagDocumentConfig {
+export interface UpdatedNaiveRagDocumentConfig extends NaiveRagDocumentConfig {
     errors: UpdateNaiveRagDocumentConfigError[];
 }
 
@@ -82,7 +78,13 @@ export interface BulkDeleteNaiveRagDocumentDtoResponse {
     message: string;
 }
 
-export interface UpdateNaiveRagDocumentResponse {
+export interface BulkUpdateNaiveRagDocumentsRequest extends UpdateNaiveRagDocumentDtoRequest {
+    id: number;
+}
+
+export interface BulkUpdateNaiveRagDocumentsResponse {
+    configs: UpdatedNaiveRagDocumentConfig[];
+    failed_count: number;
     message: string;
-    config: NaiveRagDocumentConfig;
+    updated_count: number;
 }

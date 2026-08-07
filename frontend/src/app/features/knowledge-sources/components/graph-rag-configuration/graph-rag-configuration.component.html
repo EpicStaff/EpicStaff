@@ -2,6 +2,21 @@
     <div class="files-section">
         <div class="files-header">
             <div class="header-title">
+                Index Mode
+                <app-help-tooltip
+                    class="tooltip-icon"
+                    text="Update new: only re-index files that were not indexed before, and keep existing configuration. Total re-index: re-index all files with potentially new configuration."
+                    position="right"
+                />
+            </div>
+            <app-radio-button
+                [(value)]="indexMode"
+                [options]="indexModeOptions"
+            />
+        </div>
+
+        <div class="files-header">
+            <div class="header-title">
                 Convert to Format
                 <app-help-tooltip
                     class="tooltip-icon"
@@ -28,10 +43,19 @@
         }
 
         <div class="files-content">
-            <app-graph-rag-files-list
-                [ragId]="graphRag().graph_rag_id"
-                [(documents)]="documents"
-            />
+            @if (documentsLoading()) {
+                <app-loading-spinner size="md" />
+            } @else {
+                <app-graph-rag-files-list
+                    [ragId]="graphRag().graph_rag_id"
+                    [documents]="documents()"
+                    [checkedDocIds]="checkedDocIds()"
+                    [indexMode]="indexMode()"
+                    (toggleDoc)="toggleDoc($event)"
+                    (pendingDelete)="markPendingDelete($event)"
+                    (reIncludeFiles)="onReIncludeFiles()"
+                />
+            }
         </div>
     </div>
 
@@ -40,6 +64,8 @@
             #indexParameters
             [selectedFormat]="selectedFormat()"
             [indexConfig]="graphRag().index_config"
+            [readonly]="isReadonly()"
+            (reset)="clearPendingDeletes()"
         />
     </div>
 </div>

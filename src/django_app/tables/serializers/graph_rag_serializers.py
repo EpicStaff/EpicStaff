@@ -308,7 +308,7 @@ class GraphBasicSearchConfigInputSerializer(serializers.Serializer):
     max_context_tokens = serializers.IntegerField(
         required=False,
         min_value=100,
-        max_value=100000,
+        max_value=2000000,
         help_text="Maximum context tokens (100-100000)",
     )
 

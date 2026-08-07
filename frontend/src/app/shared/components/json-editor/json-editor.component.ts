@@ -39,6 +39,7 @@ export class JsonEditorComponent implements OnChanges {
     @Input() public collapsible: boolean = false;
     @Input() public collapsed: boolean = true;
     @Input() public allowCopy: boolean = false;
+    @Input() public readonly: boolean = false;
     @Input() public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',
         language: 'json',
@@ -77,6 +78,11 @@ export class JsonEditorComponent implements OnChanges {
     ) {}
 
     ngOnChanges(changes: SimpleChanges): void {
+        // TODO allow to update any param
+        if (changes['readonly'] && this.monacoEditor) {
+            this.monacoEditor.updateOptions({ readOnly: this.readonly });
+        }
+
         if (!changes['jsonData']) {
             return;
         }
@@ -99,7 +105,10 @@ export class JsonEditorComponent implements OnChanges {
         this.editorLoaded = true;
         this.monacoEditor = editor;
         this.lastExternalValue = this.jsonData;
-        this.monacoEditor.updateOptions(this.editorOptions);
+        this.monacoEditor.updateOptions({
+            ...this.editorOptions,
+            readOnly: this.readonly || this.editorOptions.readOnly,
+        });
         this.setValueAndFormat(this.jsonData || '{}');
         this.editorReady.emit(editor);
         this.cdr.markForCheck();

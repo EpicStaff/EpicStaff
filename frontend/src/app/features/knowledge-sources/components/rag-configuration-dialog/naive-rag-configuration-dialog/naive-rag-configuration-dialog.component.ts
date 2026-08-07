@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent } from '@shared/components';
+import { EMPTY, Observable, of } from 'rxjs';
 import { filter, switchMap } from 'rxjs/operators';
 
 import { getIndexingConfirmationData } from '../../../helpers/get-indexing-confirmation-data.util';
@@ -20,7 +21,10 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
     private collectionsStorage = inject(CollectionsStorageService);
     private documentsStorage = inject(NaiveRagDocumentsStorageService);
     private ragConfiguration = viewChild.required(NaiveRagConfigurationComponent);
-    indexingDisabled = computed(() => !this.ragConfiguration().filteredAndCheckedDocIds().length);
+    hasUnsavedChanges = computed(() => this.ragConfiguration().hasUnsavedChanges());
+    indexingDisabled = computed(
+        () => !this.ragConfiguration().filteredAndCheckedDocIds().length && !this.hasUnsavedChanges()
+    );
 
     processingDocIds = computed(() => {
         const processing = this.collectionsStorage.processingConfigIds();
@@ -33,26 +37,55 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
     isIndexing = computed(() => this.processingDocIds().length > 0);
 
     onClose(): void {
-        this.dialogRef.close();
+        if (!this.hasUnsavedChanges()) {
+            this.dialogRef.close();
+            return;
+        }
+
+        this.confirmation
+            .confirm({
+                title: 'Unsaved Changes',
+                message: 'You have unsaved changes in your Naive RAG Configuration. Would you like to leave?',
+                type: 'warning',
+                cancelText: 'Cancel',
+                confirmText: 'Leave',
+            })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((result) => {
+                if (result === true) this.dialogRef.close();
+            });
     }
 
     runIndexing(): void {
-        const { configIds, fileNames } = this.ragConfiguration().getDocumentsForIndexing();
-        if (!fileNames.length) return;
+        const config = this.ragConfiguration();
+        const indexingDocs = config.getIndexingDocuments();
+        const configIds = indexingDocs.map((d) => d.configId);
+        const hasPendingDeletes = config.getPendingDeleteDocumentIds().length > 0;
+        if (!configIds.length && !hasPendingDeletes) return;
 
-        const indexingDocs = this.ragConfiguration().getIndexingDocuments();
+        const delete$: Observable<unknown> = hasPendingDeletes ? config.bulkDeletePending() : of(null);
 
         this.confirmation
             .confirm(getIndexingConfirmationData(indexingDocs))
             .pipe(
                 filter((result) => result === true),
-                switchMap(() =>
-                    this.ragIndexingService.startIndexing({
+                switchMap(() => delete$),
+                switchMap(() => config.uploadPendingForChecked()),
+                switchMap(() => {
+                    if (config.hasFailedSavesForChecked()) {
+                        this.toast.error('Some documents failed to save. Fix the errors and retry.');
+                        return EMPTY;
+                    }
+                    if (!configIds.length) {
+                        this.toast.success('Changes saved');
+                        return EMPTY;
+                    }
+                    return this.ragIndexingService.startIndexing({
                         rag_id: this.data.ragId,
                         rag_type: 'naive',
                         document_config_ids: configIds,
-                    })
-                ),
+                    });
+                }),
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({

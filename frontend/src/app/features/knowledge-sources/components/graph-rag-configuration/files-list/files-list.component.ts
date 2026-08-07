@@ -1,81 +1,53 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, model } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import {
-    AppSvgIconComponent,
-    ButtonComponent,
-    ListActionsComponent,
-    ListComponent,
-    ListRowComponent,
-} from '@shared/components';
-import { switchMap, tap } from 'rxjs/operators';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { AppSvgIconComponent, ButtonComponent, CheckboxComponent } from '@shared/components';
 
-import { ToastService } from '../../../../../services/notifications';
 import { FileSizePipe } from '../../../../../shared/pipes/file-size.pipe';
-import { GraphRagDocument } from '../../../models/graph-rag.model';
-import { GraphRagService } from '../../../services/graph-rag.service';
+import { GraphRagDocument } from '../../../models/graph-rag-document.model';
+import { CollectionsStorageService } from '../../../services/collections-storage.service';
+
+export type GraphRagIndexMode = 'update_new' | 'total_reindex';
+interface GraphRagDocumentWithDisabled extends GraphRagDocument {
+    disabled: boolean;
+}
 
 @Component({
     selector: 'app-graph-rag-files-list',
     templateUrl: './files-list.component.html',
     styleUrls: ['./files-list.component.scss'],
-    imports: [
-        ButtonComponent,
-        FileSizePipe,
-        ListActionsComponent,
-        ListComponent,
-        ListRowComponent,
-        AppSvgIconComponent,
-    ],
+    imports: [ButtonComponent, FileSizePipe, AppSvgIconComponent, CheckboxComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphRagFilesListComponent {
-    private toastService = inject(ToastService);
-    private graphRagService = inject(GraphRagService);
-    private destroyRef = inject(DestroyRef);
+    private collectionsStorage = inject(CollectionsStorageService);
 
     ragId = input.required<number>();
-    documents = model.required<GraphRagDocument[]>();
+    documents = input.required<GraphRagDocument[]>();
+    checkedDocIds = input.required<Set<number>>();
+    indexMode = input<GraphRagIndexMode>('update_new');
 
-    reIncludeFiles(): void {
-        const ragId = this.ragId();
-        this.graphRagService
-            .reIncludeFiles(ragId)
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                switchMap(() => this.graphRagService.getRagById(ragId)),
-                tap((graphRag) => this.documents.set(graphRag.documents))
-            )
-            .subscribe({
-                next: () => {
-                    this.toastService.success('Files reinitialized successfully.');
-                },
-                error: (err) => {
-                    this.toastService.error('Files re-including failed.');
-                    console.error('Error re-including files:', err);
-                },
-            });
+    toggleDoc = output<number>();
+    pendingDelete = output<number>();
+    reIncludeFiles = output<void>();
+
+    documentsWithDisabled = computed<GraphRagDocumentWithDisabled[]>(() =>
+        this.documents().map((d) => ({
+            ...d,
+            disabled: this.indexMode() === 'update_new' && d.status === 'indexed',
+        }))
+    );
+
+    processingIds = this.collectionsStorage.processingConfigIds;
+
+    isProcessing(docId: number): boolean {
+        return this.processingIds().has(docId);
     }
 
-    onDelete(id: number): void {
-        const ragId = this.ragId();
-        this.graphRagService
-            .deleteFileById(ragId, id)
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                tap(() =>
-                    this.documents.update((prev) => {
-                        return prev.filter((d) => d.document_id !== id);
-                    })
-                )
-            )
-            .subscribe({
-                next: () => {
-                    this.toastService.success('File deleted successfully.');
-                },
-                error: (e) => {
-                    this.toastService.error('File delete failed.');
-                    console.log('File deleting error:', e);
-                },
-            });
+    onReIncludeFiles(): void {
+        this.reIncludeFiles.emit();
+    }
+
+    onDelete(item: GraphRagDocumentWithDisabled): void {
+        if (item.disabled) return;
+        this.pendingDelete.emit(item.graph_rag_document_id);
     }
 }
