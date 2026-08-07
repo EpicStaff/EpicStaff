@@ -26,11 +26,13 @@ from tables.models import (
     SessionStorageFile,
     StorageFile,
 )
+from tables.models.session_models import SessionTrigger
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.services.schedule_trigger_service import ScheduleTriggerService
+from tables.services.trigger_spec import TriggerSpec
 from src.shared.models import (
     CodeResultData,
     GraphSessionMessageData,
@@ -566,6 +568,16 @@ class RedisPubSub:
 
             exec_id_to_session_id[exec_id] = session.pk
             created_sessions.append((exec_id, session, finish_data))
+
+        SessionTrigger.objects.bulk_create(
+            [
+                SessionTrigger(
+                    session=session,
+                    **TriggerSpec.parent_flow(session.parent_session_id).to_fields(),
+                )
+                for _, session, _ in created_sessions
+            ]
+        )
 
         # Copy messages to each subgraph session via buffer,
         # and keep source messages per exec_id for token calculation.
