@@ -25,7 +25,7 @@ export type Rag = {
     };
 }[RagName];
 
-export type RagStatus = 'new' | 'processing' | 'completed' | 'failed' | 'canceled' | 'partial' | 'outdated';
+export type RagStatus = 'new' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'partial' | 'outdated';
 
 export type RagType = RagValueMap[keyof RagValueMap];
 

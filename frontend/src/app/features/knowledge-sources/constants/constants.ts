@@ -24,7 +24,7 @@ export const RAG_STATUS_CONFIG: Record<RagStatus, { color: string; icon: string;
     processing: { color: 'var(--color-ks-status-processing)', icon: 'processing', text: 'Processing' },
     completed: { color: 'var(--color-ks-status-completed)', icon: 'check', text: 'Completed' },
     outdated: { color: 'var(--color-ks-status-warning)', icon: 'clock', text: 'Outdated' },
-    canceled: { color: 'var(--color-ks-status-warning)', icon: 'x', text: 'Canceled' },
+    cancelled: { color: 'var(--color-ks-status-warning)', icon: 'x', text: 'Cancelled' },
     partial: { color: 'var(--color-ks-status-warning)', icon: 'check', text: 'Partial' },
     failed: { color: 'var(--color-ks-status-failed)', icon: 'x', text: 'Failed' },
 };

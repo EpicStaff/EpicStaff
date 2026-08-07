@@ -104,7 +104,7 @@ export class GraphRagStrategy implements RagCreationStrategy {
                 document_config_ids: this.indexingConfigIds,
             })
             .pipe(
-                tap(() => this.toastService.success('Indexing stop triggered')),
+                tap(() => this.toastService.success('Indexing stop requested')),
                 map(() => true)
             );
     }

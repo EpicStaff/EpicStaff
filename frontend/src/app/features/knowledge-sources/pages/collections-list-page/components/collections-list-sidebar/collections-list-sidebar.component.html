@@ -20,7 +20,7 @@
                     class="collections-sidebar__item"
                     [collection]="collection"
                     [selected]="selectedCollectionId() === collection.collection_id"
-                    (click)="selectedCollectionId.set(collection.collection_id)"
+                    (click)="selectCollection(collection.collection_id)"
                 />
             }
         </div>

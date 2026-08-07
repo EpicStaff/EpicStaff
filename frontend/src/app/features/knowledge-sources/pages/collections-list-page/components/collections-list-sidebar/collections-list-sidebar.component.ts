@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { ButtonComponent, SelectComponent, SelectItem } from '@shared/components';
 
 import { FilesSearchService } from '../../../../../files/services/files-search.service';
 import { RagType } from '../../../../models/base-rag.model';
 import { GetCollectionRequest } from '../../../../models/collection.model';
+import { CollectionsStorageService } from '../../../../services/collections-storage.service';
 import { CollectionComponent } from './collection/collection.component';
 
 @Component({
@@ -16,8 +17,14 @@ import { CollectionComponent } from './collection/collection.component';
 })
 export class CollectionsListItemSidebarComponent {
     private readonly filesSearchService = inject(FilesSearchService);
+    private readonly collectionsStorage = inject(CollectionsStorageService);
 
     collections = input<GetCollectionRequest[]>([]);
+    selectedCollectionId = this.collectionsStorage.selectedCollectionId;
+
+    selectCollection(id: number): void {
+        this.collectionsStorage.setSelectedCollectionId(id);
+    }
 
     ragTypeItems: SelectItem[] = [
         { name: 'All', value: null },
@@ -37,8 +44,6 @@ export class CollectionsListItemSidebarComponent {
             return matchesSearch && matchesRag;
         });
     });
-
-    selectedCollectionId = model<number | null>();
 
     onCreateCollection = output();
 }
