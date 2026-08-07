@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormArray, FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
@@ -197,7 +197,7 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
             this.loadRagsForCollection(data.source_collection);
         }
 
-        this.rebuildSearchConfigsFormGroup(data.search_configs);
+        this.rebuildSearchConfigsFormGroup(data.search_configs, form);
 
         return form;
     }
@@ -209,10 +209,16 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
 
         const choice: RagChoice | null = this.form.value.rag_type ?? null;
         const kind = this.selectedRagKind();
-        const searchConfigs = this.serializeSearchConfigs(kind);
+        const rawConfigs = this.form.value.search_configs;
 
-        const graphMethod: GraphSearchMethod | null =
-            kind === 'graph' && searchConfigs?.graph?.search_method ? searchConfigs.graph.search_method : null;
+        let searchConfigs: AgentSearchConfigs | null = null;
+        let graphMethod: GraphSearchMethod | null = null;
+        if (kind === 'naive' && rawConfigs) {
+            searchConfigs = { naive: rawConfigs };
+        } else if (kind === 'graph' && rawConfigs) {
+            searchConfigs = { graph: rawConfigs };
+            graphMethod = rawConfigs.search_method ?? null;
+        }
 
         return {
             ...node,
@@ -284,16 +290,23 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
         this.form.get('rag_type')!.setValue({ rag_id: match.rag_id, rag_type: savedKind });
     }
 
-    private rebuildSearchConfigsFormGroup(existing: AgentSearchConfigs | null): void {
+    private rebuildSearchConfigsFormGroup(existing: AgentSearchConfigs | null, form: FormGroup = this.form): void {
         const kind = this.selectedRagKind();
         if (kind === 'naive') {
             const cfg = existing?.naive ?? NAIVE_DEFAULTS;
             this.searchConfigsFormGroup = this.fb.group({
-                search_limit: [cfg.search_limit ?? NAIVE_DEFAULTS.search_limit],
-                similarity_threshold: [cfg.similarity_threshold ?? NAIVE_DEFAULTS.similarity_threshold],
+                search_limit: [
+                    cfg.search_limit ?? NAIVE_DEFAULTS.search_limit,
+                    [Validators.required, Validators.min(1), Validators.max(1000)],
+                ],
+                similarity_threshold: [
+                    cfg.similarity_threshold ?? NAIVE_DEFAULTS.similarity_threshold,
+                    [Validators.required, Validators.min(0), Validators.max(1)],
+                ],
             });
             this.textUnitPropControl = null;
             this.communityPropControl = null;
+            form.setControl('search_configs', this.searchConfigsFormGroup);
             return;
         }
         if (kind === 'graph') {
@@ -302,70 +315,57 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
             const localCfg = graph?.local ?? GRAPH_LOCAL_DEFAULTS;
             const method: GraphSearchMethod = graph?.search_method ?? 'basic';
 
-            this.textUnitPropControl = this.fb.control(localCfg.text_unit_prop ?? GRAPH_LOCAL_DEFAULTS.text_unit_prop);
-            this.communityPropControl = this.fb.control(localCfg.community_prop ?? GRAPH_LOCAL_DEFAULTS.community_prop);
+            this.textUnitPropControl = this.fb.control(localCfg.text_unit_prop ?? GRAPH_LOCAL_DEFAULTS.text_unit_prop, [
+                Validators.required,
+                Validators.min(0),
+                Validators.max(1),
+            ]);
+            this.communityPropControl = this.fb.control(
+                localCfg.community_prop ?? GRAPH_LOCAL_DEFAULTS.community_prop,
+                [Validators.required, Validators.min(0), Validators.max(1)]
+            );
 
             this.searchConfigsFormGroup = this.fb.group({
-                search_method: [method],
+                search_method: [method, [Validators.required]],
                 basic: this.fb.group({
-                    prompt: [basicCfg.prompt ?? null],
-                    k: [basicCfg.k ?? GRAPH_BASIC_DEFAULTS.k],
-                    max_context_tokens: [basicCfg.max_context_tokens ?? GRAPH_BASIC_DEFAULTS.max_context_tokens],
+                    prompt: [basicCfg.prompt ?? null, [Validators.maxLength(1000)]],
+                    k: [
+                        basicCfg.k ?? GRAPH_BASIC_DEFAULTS.k,
+                        [Validators.required, Validators.min(1), Validators.max(100)],
+                    ],
+                    max_context_tokens: [
+                        basicCfg.max_context_tokens ?? GRAPH_BASIC_DEFAULTS.max_context_tokens,
+                        [Validators.required, Validators.min(100), Validators.max(100000)],
+                    ],
                 }),
                 local: this.fb.group({
-                    prompt: [localCfg.prompt ?? null],
+                    prompt: [localCfg.prompt ?? null, [Validators.maxLength(1000)]],
                     text_unit_prop: this.textUnitPropControl,
                     community_prop: this.communityPropControl,
                     conversation_history_max_turns: [
                         localCfg.conversation_history_max_turns ?? GRAPH_LOCAL_DEFAULTS.conversation_history_max_turns,
+                        [Validators.required, Validators.min(1), Validators.max(50)],
                     ],
-                    max_context_tokens: [localCfg.max_context_tokens ?? GRAPH_LOCAL_DEFAULTS.max_context_tokens],
-                    top_k_entities: [localCfg.top_k_entities ?? GRAPH_LOCAL_DEFAULTS.top_k_entities],
-                    top_k_relationships: [localCfg.top_k_relationships ?? GRAPH_LOCAL_DEFAULTS.top_k_relationships],
+                    max_context_tokens: [
+                        localCfg.max_context_tokens ?? GRAPH_LOCAL_DEFAULTS.max_context_tokens,
+                        [Validators.required, Validators.min(100), Validators.max(100000)],
+                    ],
+                    top_k_entities: [
+                        localCfg.top_k_entities ?? GRAPH_LOCAL_DEFAULTS.top_k_entities,
+                        [Validators.required, Validators.min(1), Validators.max(100)],
+                    ],
+                    top_k_relationships: [
+                        localCfg.top_k_relationships ?? GRAPH_LOCAL_DEFAULTS.top_k_relationships,
+                        [Validators.required, Validators.min(1), Validators.max(100)],
+                    ],
                 }),
             });
+            form.setControl('search_configs', this.searchConfigsFormGroup);
             return;
         }
         this.searchConfigsFormGroup = null;
         this.textUnitPropControl = null;
         this.communityPropControl = null;
-    }
-
-    private serializeSearchConfigs(kind: RagKind | null): AgentSearchConfigs | null {
-        if (!kind || !this.searchConfigsFormGroup) return null;
-        const value = this.searchConfigsFormGroup.value;
-        if (kind === 'naive') {
-            return {
-                naive: {
-                    search_limit: Number(value.search_limit) || NAIVE_DEFAULTS.search_limit,
-                    similarity_threshold: Number(value.similarity_threshold) || NAIVE_DEFAULTS.similarity_threshold,
-                },
-            };
-        }
-        const method: GraphSearchMethod = value.search_method ?? 'basic';
-        return {
-            graph: {
-                search_method: method,
-                basic: {
-                    prompt: value.basic?.prompt ?? null,
-                    k: Number(value.basic?.k) || GRAPH_BASIC_DEFAULTS.k,
-                    max_context_tokens:
-                        Number(value.basic?.max_context_tokens) || GRAPH_BASIC_DEFAULTS.max_context_tokens,
-                },
-                local: {
-                    prompt: value.local?.prompt ?? null,
-                    text_unit_prop: Number(value.local?.text_unit_prop) || GRAPH_LOCAL_DEFAULTS.text_unit_prop,
-                    community_prop: Number(value.local?.community_prop) || GRAPH_LOCAL_DEFAULTS.community_prop,
-                    conversation_history_max_turns:
-                        Number(value.local?.conversation_history_max_turns) ||
-                        GRAPH_LOCAL_DEFAULTS.conversation_history_max_turns,
-                    max_context_tokens:
-                        Number(value.local?.max_context_tokens) || GRAPH_LOCAL_DEFAULTS.max_context_tokens,
-                    top_k_entities: Number(value.local?.top_k_entities) || GRAPH_LOCAL_DEFAULTS.top_k_entities,
-                    top_k_relationships:
-                        Number(value.local?.top_k_relationships) || GRAPH_LOCAL_DEFAULTS.top_k_relationships,
-                },
-            },
-        };
+        form.removeControl('search_configs');
     }
 }
