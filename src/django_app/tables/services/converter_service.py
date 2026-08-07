@@ -1010,22 +1010,58 @@ class ConverterService(metaclass=SingletonMeta):
         self,
         file_extractor_node: FileExtractorNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        graph_id: int | None = None,
+        session_id: int | None = None,
     ) -> FileExtractorNodeData:
+        storage_allowed_paths = None
+        storage_org_prefix = None
+        if graph_id is not None:
+            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None:
+                storage_allowed_paths.append(f"sessions/{session_id}/")
+            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
+        org_id = None
+        if graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
         return FileExtractorNodeData(
             node_name=resolver(file_extractor_node.id),
             input_map=file_extractor_node.input_map,
             output_variable_path=file_extractor_node.output_variable_path,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
+            org_id=org_id,
         )
 
     def convert_audio_transcription_node_to_pydantic(
         self,
         audio_transcription_node: AudioTranscriptionNode,
         resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
+        graph_id: int | None = None,
+        session_id: int | None = None,
     ) -> AudioTranscriptionNodeData:
+        storage_allowed_paths = None
+        storage_org_prefix = None
+        if graph_id is not None:
+            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if session_id is not None:
+                storage_allowed_paths.append(f"sessions/{session_id}/")
+            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
+        org_id = None
+        if graph_id is not None:
+            org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
+
         return AudioTranscriptionNodeData(
             node_name=resolver(audio_transcription_node.id),
             input_map=audio_transcription_node.input_map,
             output_variable_path=audio_transcription_node.output_variable_path,
+            storage_allowed_paths=storage_allowed_paths,
+            storage_org_prefix=storage_org_prefix,
+            session_id=session_id,
+            org_id=org_id,
         )
 
     def convert_subgraph_node_to_pydantic(
