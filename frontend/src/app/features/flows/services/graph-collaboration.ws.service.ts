@@ -807,7 +807,7 @@ export class GraphCollaborationWsService {
                     node: partial,
                     list_key,
                     changed_fields,
-                    op_id: crypto.randomUUID(),
+                    op_id,
                     editor,
                 };
                 if (withExpected) {

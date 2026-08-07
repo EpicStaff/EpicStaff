@@ -408,6 +408,14 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
 
         this.wsService.opRejected$.pipe(takeUntil(this.destroy$)).subscribe((msg) => {
+            if (msg.reason === 'stale_id_recreate' && msg.op_type === 'node_created') {
+                this.recreateNodeWithFreshId(msg.node_ref.id);
+                return;
+            }
+            if (msg.reason === 'stale_id_recreate' && msg.op_type === 'connection_created') {
+                this.recreateConnectionWithFreshId(msg.node_ref.id);
+                return;
+            }
             if (msg.reason !== 'precondition_failed' || !msg.op_id) return;
             const pending = this.pendingUndoOps.get(msg.op_id);
             if (!pending) return;
@@ -2146,6 +2154,41 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 if (ref) this.wsService.sendNodesDeleted([ref]);
             }
         }
+    }
+
+    // A node_created carrying a real backendId gets rejected (stale_id_recreate) once that
+    // id's delete has already flushed — the backend refuses to resurrect a dead pk. The node
+    // is already showing locally (optimistic addNode from applyUndoEntry), so recover by
+    // dropping the stale backendId and resending as a genuine new create (temp_id only).
+    private recreateNodeWithFreshId(staleBackendId: number | null): void {
+        if (staleBackendId == null) return;
+        const node = this.flowService.nodes().find((n) => n.backendId === staleBackendId);
+        if (!node) return;
+        const fresh = { ...node, backendId: null };
+        this.flowService.updateNode(fresh);
+        this.wsService.sendNodeCreated(
+            fresh,
+            this.currentFlowId!,
+            this.flowService.nodes(),
+            this.flowService.connections()
+        );
+    }
+
+    // Same recovery as recreateNodeWithFreshId, but for connection_created. Currently a no-op
+    // in practice: the backend's op_rejected doesn't yet populate node_ref for connection
+    // messages (they carry `.connection`, not `.node`), so staleBackendId always arrives null
+    // until that's fixed BE-side.
+    private recreateConnectionWithFreshId(staleBackendId: number | null): void {
+        if (staleBackendId == null) return;
+        const conn = this.flowService.connections().find((c) => c.data?.id === staleBackendId);
+        if (!conn) return;
+        const nodes = this.flowService.nodes();
+        const src = nodes.find((n) => n.id === conn.sourceNodeId);
+        const tgt = nodes.find((n) => n.id === conn.targetNodeId);
+        if (!src || !tgt) return;
+        const fresh = { ...conn, data: null } as ConnectionModel;
+        this.flowService.updateConnectionsInBatch([fresh]);
+        this.wsService.sendConnectionCreated(fresh, this.getConnectionListKey(fresh), src, tgt, this.currentFlowId!);
     }
 
     private resolveTableOverlaps(node: NodeModel): string[] {

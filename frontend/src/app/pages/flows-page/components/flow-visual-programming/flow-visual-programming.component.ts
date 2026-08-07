@@ -277,7 +277,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         });
 
         this.wsService.opRejected$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
-            if (msg.reason === 'precondition_failed') return;
+            if (msg.reason === 'precondition_failed' || msg.reason === 'stale_id_recreate') return;
             const text =
                 msg.reason === 'target_not_found'
                     ? 'This node was deleted by other user. Your changes not applied'
