@@ -1,7 +1,7 @@
 import { NaiveRagChunkStrategy } from '../enums/naive-rag-chunk-strategy';
 import { NaiveRagAdditionalParams } from './naive-rag-document.model';
 
-export type DocumentChunkingProcessStatus = 'completed' | 'canceled' | 'failed' | 'timeout';
+export type DocumentChunkingProcessStatus = 'completed' | 'cancelled' | 'failed' | 'timeout';
 
 export type DocumentStatus = 'new' | 'chunking' | 'chunked' | 'indexing' | 'completed' | 'failed';
 

@@ -15,21 +15,21 @@
             />
         </div>
 
-        <div class="files-header">
-            <div class="header-title">
-                Convert to Format
-                <app-help-tooltip
-                    class="tooltip-icon"
-                    text="Select format"
-                    position="right"
-                />
-            </div>
-            <app-radio-button
-                [(value)]="selectedFormat"
-                [options]="formatOptions"
-                [disabled]="true"
-            />
-        </div>
+        <!--        <div class="files-header">-->
+        <!--            <div class="header-title">-->
+        <!--                Convert to Format-->
+        <!--                <app-help-tooltip-->
+        <!--                    class="tooltip-icon"-->
+        <!--                    text="Select format"-->
+        <!--                    position="right"-->
+        <!--                />-->
+        <!--            </div>-->
+        <!--            <app-radio-button-->
+        <!--                [(value)]="selectedFormat"-->
+        <!--                [options]="formatOptions"-->
+        <!--                [disabled]="true"-->
+        <!--            />-->
+        <!--        </div>-->
 
         @if (hasNonTxtDocuments()) {
             <div class="non-txt-warning">

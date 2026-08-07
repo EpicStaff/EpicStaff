@@ -1,4 +1,4 @@
-export type GraphRagDocumentStatus = 'new' | 'indexed' | 'failed';
+export type GraphRagDocumentStatus = 'new' | 'completed' | 'failed';
 
 export interface GraphRagDocumentListResponse {
     graph_rag_id: number;

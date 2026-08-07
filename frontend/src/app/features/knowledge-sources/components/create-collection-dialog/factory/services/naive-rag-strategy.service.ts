@@ -84,7 +84,7 @@ export class NaiveRagStrategy implements RagCreationStrategy {
             })
             .pipe(
                 tap(() => {
-                    this.toastService.success('Indexing stop triggered');
+                    this.toastService.success('Indexing stop requested');
                     this.pollingService.discardTrackedProcessingIds(configIds);
                 }),
                 map(() => true)
