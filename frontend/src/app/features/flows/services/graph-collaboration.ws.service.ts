@@ -824,21 +824,30 @@ export class GraphCollaborationWsService {
         return null;
     }
 
-    public sendNodePositionDuringDrag(
-        node: NodeModel,
-        graphId: number,
-        allNodes: NodeModel[] = [],
-        connections: ConnectionModel[] = []
-    ): void {
+    public sendNodePositionDuringDrag(node: NodeModel): void {
         const now = Date.now();
         if (now - this.lastNodeDragSendAt < 150) return;
         this.lastNodeDragSendAt = now;
+        this.sendNodeMetadataUpdated(node);
+    }
+
+    // Metadata-only node_updated (position/color/icon/size) — used for drag ticks and for
+    // the final commit on drag-end, so a move never re-broadcasts the whole node payload.
+    public sendNodeMetadataUpdated(node: NodeModel): void {
         const list_key = nodeTypeToListKey(node.type);
         if (!list_key) return;
-        const payload = buildNodeBackendPayload(node, graphId, allNodes, connections);
-        if (!payload) return;
         const editor = this.buildEditorInfo();
-        if (editor) this.sendRaw({ type: 'node_updated', node: payload, list_key, editor });
+        if (!editor) return;
+        const idField = node.backendId != null ? { id: node.backendId } : { temp_id: node.id };
+        const message: NodeUpdatedMessage = {
+            type: 'node_updated',
+            node: { ...idField, metadata: toNodeMetadata(node) },
+            list_key,
+            changed_fields: ['metadata'],
+            op_id: crypto.randomUUID(),
+            editor,
+        };
+        this.sendRaw(message);
     }
 
     public sendNodesDeleted(refs: EntryDeleteRef[]): void {

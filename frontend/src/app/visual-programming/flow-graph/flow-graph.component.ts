@@ -280,6 +280,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private isDragging = false;
     private dragStartCanvasPos: IPoint | null = null;
     private readonly dragStartPositions = new Map<string, IPoint>();
+    private dragUndoBeforeSnapshot: FlowModel | null = null;
     protected readonly connectionRenderVersions = signal<Record<string, number>>({});
     private readonly hiddenConnectionIds = signal<Set<string>>(new Set<string>());
 
@@ -1024,7 +1025,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
 
-        this.recordAfterChange();
+        this.dragUndoBeforeSnapshot = JSON.parse(JSON.stringify(this.flowService.getFlowState())) as FlowModel;
     }
 
     private rerouteSegmentConnections(): void {
@@ -1161,25 +1162,25 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             );
 
             if (freePos.x !== current.position.x || freePos.y !== current.position.y) {
-                this.flowService.updateNode({ ...current, position: freePos });
-                this.wsService.sendNodeUpdated(
-                    { ...current, position: freePos },
-                    this.currentFlowId!,
-                    this.flowState.nodes,
-                    this.flowService.connections()
-                );
+                const aligned = { ...current, position: freePos };
+                this.flowService.updateNode(aligned);
+                this.wsService.sendNodeMetadataUpdated(aligned);
                 autoAlignedNodeIds.add(id);
             } else {
-                this.wsService.sendNodeUpdated(
-                    current,
-                    this.currentFlowId!,
-                    this.flowState.nodes,
-                    this.flowService.connections()
-                );
+                this.wsService.sendNodeMetadataUpdated(current);
             }
         }
 
         this.draggedNodeIds.clear();
+
+        if (this.dragUndoBeforeSnapshot) {
+            const before = this.dragUndoBeforeSnapshot;
+            this.dragUndoBeforeSnapshot = null;
+            queueMicrotask(() => {
+                const after = this.flowService.getFlowState();
+                this.undoRedoService.record(this.buildUndoEntry(before, after));
+            });
+        }
 
         setTimeout(() => {
             this.isDragging = false;
@@ -1212,12 +1213,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         };
 
         this.flowService.updateNode(updatedNode);
-        this.wsService.sendNodePositionDuringDrag(
-            updatedNode,
-            this.currentFlowId!,
-            this.flowState.nodes,
-            this.flowService.connections()
-        );
+        this.wsService.sendNodePositionDuringDrag(updatedNode);
     }
 
     public onZoomInNode(node: NodeModel): void {
@@ -1262,15 +1258,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     const startPos = this.dragStartPositions.get(id);
                     const node = nodes.find((n) => n.id === id);
                     if (startPos && node) {
-                        this.wsService.sendNodePositionDuringDrag(
-                            {
-                                ...node,
-                                position: { x: startPos.x + delta.x, y: startPos.y + delta.y },
-                            },
-                            this.currentFlowId!,
-                            this.flowState.nodes,
-                            this.flowService.connections()
-                        );
+                        this.wsService.sendNodePositionDuringDrag({
+                            ...node,
+                            position: { x: startPos.x + delta.x, y: startPos.y + delta.y },
+                        });
                     }
                 }
             }

@@ -70,6 +70,7 @@ export class DecisionTableGridComponent implements OnInit {
                     node.type !== NodeType.START &&
                     node.type !== NodeType.WEBHOOK_TRIGGER &&
                     node.type !== NodeType.TELEGRAM_TRIGGER &&
+                    node.type !== NodeType.SCHEDULE_TRIGGER &&
                     node.id !== currentId
             )
             .map((node) => ({
