@@ -115,6 +115,12 @@ class BaseNode(BaseGraphEntity, BaseGlobalNode):
 
 
 class CrewNode(BaseNode):
+    """
+    DEPRECATED: CrewNode is deprecated. Use AgentNode or TaskNode instead.
+    New flows must not create CrewNodes; this model exists only for backward
+    compatibility with existing graphs.
+    """
+
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="crew_node_list"
     )
@@ -213,6 +219,12 @@ class SubGraphNode(BaseNode):
 
 
 class CodeAgentNode(BaseNode):
+    """
+    DEPRECATED: CodeAgentNode is deprecated. Use AgentNode or TaskNode instead.
+    New flows must not create CodeAgentNodes; this model exists only for backward
+    compatibility with existing graphs.
+    """
+
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="code_agent_node_list"
     )

@@ -2,6 +2,14 @@
     display: block;
     height: 100%;
     width: 100%;
+    // Dialog renders in the CDK overlay (outside the page root), so re-anchor Inter here.
+    font-family:
+        'Inter',
+        -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        Roboto,
+        sans-serif;
 }
 
 .usage-dialog {
@@ -19,7 +27,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1.25rem 1.5rem;
+    padding: 1.25rem 40px;
     flex-shrink: 0;
     border-bottom: 1px solid var(--color-divider-subtle);
 }
@@ -55,9 +63,8 @@
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
-    padding: 1.5rem;
+    padding: 1.5rem 40px;
     overflow-y: auto;
-    scrollbar-gutter: stable;
 }
 .usage-section__heading {
     display: flex;

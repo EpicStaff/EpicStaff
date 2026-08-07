@@ -93,3 +93,21 @@ class Emitter(ABC):
         successfully. Default is a no-op.
         """
         return None
+
+    def register_knowledge_tool(self, name: str) -> None:
+        """Optional hook: record that ``name`` is a knowledge-search tool.
+
+        Called by ``ToolRegistryBuilder`` while assembling the tool registry.
+        Default is a no-op; implementations that suppress live tool events
+        for knowledge tools (e.g. ``RedisStreamToolEventEmitter``) override it.
+        """
+        return None
+
+    async def on_knowledge_search(self, response: object) -> None:
+        """Optional hook: called after a knowledge-search executor gets a
+        successful response, carrying the full structured search result.
+
+        Default is a no-op; implementations that publish a dedicated
+        ``agent.knowledge_search`` envelope override it.
+        """
+        return None

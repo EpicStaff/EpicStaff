@@ -99,7 +99,9 @@ class FakeResolver:
     def __init__(self) -> None:
         self.resolve_calls = 0
 
-    async def resolve(self, agent: AgentSpec, request: AgentRequest) -> ResolvedAgent:
+    async def resolve(
+        self, agent: AgentSpec, request: AgentRequest, knowledge_sink=None
+    ) -> ResolvedAgent:
         self.resolve_calls += 1
         context = AgentContext(
             agent=agent,

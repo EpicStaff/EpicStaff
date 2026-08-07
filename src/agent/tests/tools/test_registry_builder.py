@@ -568,3 +568,67 @@ async def test_knowledge_tools_without_client_raises():
 
     with pytest.raises(AgentServiceError, match="KnowledgeClient"):
         builder.add_knowledge_tools(collection)
+
+
+# ---------------------------------------------------------------------------
+# add_knowledge_tools: knowledge_sink registration
+# ---------------------------------------------------------------------------
+
+
+def _fake_knowledge_sink() -> MagicMock:
+    return MagicMock()
+
+
+async def test_naive_tool_registers_final_name_with_sink():
+    collection = _collection_spec(name="docs", entries=[_naive_entry()])
+    sink = _fake_knowledge_sink()
+    builder = ToolRegistryBuilder(
+        _fake_sandbox(),
+        knowledge_client=_fake_knowledge_client(),
+        knowledge_sink=sink,
+    )
+    builder.add_knowledge_tools(collection).build()
+
+    sink.register_knowledge_tool.assert_called_once_with("search_docs_naive")
+
+
+async def test_graph_tool_registers_final_name_with_sink():
+    collection = _collection_spec(name="wiki", entries=[_graph_basic_entry(rag_id=2)])
+    sink = _fake_knowledge_sink()
+    builder = ToolRegistryBuilder(
+        _fake_sandbox(),
+        knowledge_client=_fake_knowledge_client(),
+        knowledge_sink=sink,
+    )
+    builder.add_knowledge_tools(collection).build()
+
+    sink.register_knowledge_tool.assert_called_once_with("search_wiki_graph")
+
+
+async def test_collision_suffixed_names_registered_with_sink():
+    """Two naive rags with the same collection collide -> the second gets a
+    '_{rag_id}' suffix; the sink must be registered with that final name."""
+    entries = [_naive_entry(rag_id=1), _naive_entry(rag_id=2)]
+    collection = _collection_spec(name="corp", entries=entries)
+    sink = _fake_knowledge_sink()
+    builder = ToolRegistryBuilder(
+        _fake_sandbox(),
+        knowledge_client=_fake_knowledge_client(),
+        knowledge_sink=sink,
+    )
+    builder.add_knowledge_tools(collection).build()
+
+    registered_names = {
+        call.args[0] for call in sink.register_knowledge_tool.call_args_list
+    }
+    assert registered_names == {"search_corp_naive", "search_corp_naive_2"}
+
+
+async def test_no_sink_registration_when_sink_is_none():
+    collection = _collection_spec(name="docs", entries=[_naive_entry()])
+    builder = ToolRegistryBuilder(
+        _fake_sandbox(), knowledge_client=_fake_knowledge_client(), knowledge_sink=None
+    )
+
+    # Must not raise even though no sink was supplied.
+    builder.add_knowledge_tools(collection).build()

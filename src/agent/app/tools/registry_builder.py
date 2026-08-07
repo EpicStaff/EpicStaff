@@ -10,6 +10,7 @@ from shared.models.tools import McpToolData, PythonCodeToolData
 
 from app.exceptions import AgentServiceError, DuplicateToolNameError
 from app.knowledge.client import KnowledgeClient
+from app.knowledge.events import KnowledgeEventSink
 from app.knowledge.target import KnowledgeSearchTarget
 from app.sandbox.client import SandboxClient
 from app.tools.executors.knowledge_search import (
@@ -100,10 +101,12 @@ class ToolRegistryBuilder:
         sandbox: SandboxClient,
         mcp_gateway: McpToolGateway | None = None,
         knowledge_client: KnowledgeClient | None = None,
+        knowledge_sink: KnowledgeEventSink | None = None,
     ) -> None:
         self._sandbox = sandbox
         self._mcp_gateway = mcp_gateway
         self._knowledge_client = knowledge_client
+        self._knowledge_sink = knowledge_sink
         self._registry = ToolRegistry()
         self._names: set[str] = set()
         self._built = False
@@ -234,8 +237,13 @@ class ToolRegistryBuilder:
             description=description,
             parameters_schema=_QUERY_ONLY_SCHEMA,
         )
-        executor = KnowledgeSearchExecutor(self._knowledge_client, target)  # type: ignore[arg-type]
+        executor = KnowledgeSearchExecutor(
+            self._knowledge_client, target, self._knowledge_sink
+        )  # type: ignore[arg-type]
         self._registry.register(spec, executor)
+
+        if self._knowledge_sink is not None:
+            self._knowledge_sink.register_knowledge_tool(candidate)
 
     def _register_graph_tool(
         self,
@@ -276,9 +284,12 @@ class ToolRegistryBuilder:
             name=candidate, description=description, parameters_schema=schema
         )
         executor = GraphKnowledgeSearchExecutor(
-            self._knowledge_client, targets, default_method
+            self._knowledge_client, targets, default_method, self._knowledge_sink
         )  # type: ignore[arg-type]
         self._registry.register(spec, executor)
+
+        if self._knowledge_sink is not None:
+            self._knowledge_sink.register_knowledge_tool(candidate)
 
     def _make_candidate(self, collection_name: str, suffix: str, rag_id: int) -> str:
         max_base_len = 64 - len(suffix)

@@ -13,7 +13,7 @@
         [ngClass]="group.role === 'user' ? 'message-user' : 'message-assistant'"
     >
         <div class="message-role">
-            {{ group?.role === 'user' ? 'You' : agent?.role || 'Assistant' }}
+            {{ group?.role === 'user' ? 'You' : agentTitle || 'Assistant' }}
         </div>
 
         <div class="message-content">

@@ -131,6 +131,7 @@ router.register(r"llm-models", LLMModelReadWriteViewSet)
 router.register(r"llm-configs", LLMConfigReadWriteViewSet)
 router.register(r"embedding-models", EmbeddingModelReadWriteViewSet)
 router.register(r"embedding-configs", EmbeddingConfigReadWriteViewSet)
+# DEPRECATED: agents/crews/tasks routes are deprecated. Use agentnodes/tasknodes instead.
 router.register(r"agents", AgentViewSet)
 router.register(r"crews", CrewReadWriteViewSet)
 router.register(r"tasks", TaskReadWriteViewSet)
@@ -145,6 +146,7 @@ collection_documents_viewset = CollectionDocumentsViewSet.as_view({"get": "list"
 
 # Graphs
 router.register(r"graphs", GraphViewSet, basename="graphs")
+# DEPRECATED: crewnodes route is deprecated. Use agentnodes/tasknodes instead.
 router.register(r"crewnodes", CrewNodeViewSet)
 router.register(r"pythonnodes", PythonNodeViewSet)
 router.register(r"file-extractor-nodes", FileExtractorNodeViewSet)
@@ -152,6 +154,7 @@ router.register(r"audio-transcription-nodes", AudioTranscriptionNodeViewSet)
 router.register(r"startnodes", StartNodeModelViewSet)
 router.register(r"endnodes", EndNodeModelViewSet)
 router.register(r"subgraph-nodes", SubGraphNodeModelViewSet)
+# DEPRECATED: code-agent-nodes route is deprecated. Use agentnodes/tasknodes instead.
 router.register(r"code-agent-nodes", CodeAgentNodeViewSet)
 router.register(r"tasknodes", TaskNodeViewSet)
 router.register(r"agentnodes", AgentNodeViewSet)

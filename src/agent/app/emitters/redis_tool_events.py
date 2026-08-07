@@ -17,6 +17,7 @@ from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.llm.client import LLMChunk
 from app.usage import TokenUsageAccumulator
 from shared.models.agent_service import LoopResult, ToolResult
+from shared.models.knowledge import BaseKnowledgeSearchMessageResponse
 from shared.redis_streams import RedisStreamClient, StreamEnvelope
 
 LIVE_ARGUMENTS_MAX_CHARS = 2000
@@ -53,6 +54,7 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         self._call_names: dict[str, str] = {}
         self._current_task: dict | None = None
         self._usage = TokenUsageAccumulator()
+        self._knowledge_tools: set[str] = set()
 
     async def _publish_live(self, event_type: str, payload: dict) -> None:
         envelope = StreamEnvelope(
@@ -107,10 +109,19 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         await super().on_chunk(chunk)
 
     async def on_tool_call(self, call: dict) -> None:
-        """Publish a live ``agent.tool_call`` envelope, then buffer as usual."""
+        """Publish a live ``agent.tool_call`` envelope, then buffer as usual.
+
+        Suppressed for knowledge tools — ``agent.knowledge_search`` carries
+        the richer payload instead, and the live-publish path is skipped
+        entirely so ``self._usage`` keeps the delta for the next event.
+        """
         call_id = call.get("id")
         name = call.get("name")
         self._call_names[call_id] = name
+
+        if name in self._knowledge_tools:
+            await super().on_tool_call(call)
+            return
 
         arguments, truncated = _truncate(
             call.get("arguments", ""), LIVE_ARGUMENTS_MAX_CHARS
@@ -130,13 +141,22 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         await super().on_tool_call(call)
 
     async def on_tool_result(self, result: ToolResult) -> None:
-        """Publish a live ``agent.tool_result`` envelope, then buffer as usual."""
+        """Publish a live ``agent.tool_result`` envelope, then buffer as usual.
+
+        Suppressed for knowledge tools — see ``on_tool_call``.
+        """
+        name = self._call_names.get(result.tool_call_id)
+
+        if name in self._knowledge_tools:
+            await super().on_tool_result(result)
+            return
+
         content, truncated = _truncate(result.content, LIVE_CONTENT_MAX_CHARS)
         await self._publish_live(
             "agent.tool_result",
             {
                 "tool_call_id": result.tool_call_id,
-                "name": self._call_names.get(result.tool_call_id),
+                "name": name,
                 "content": content,
                 "is_error": result.is_error,
                 "truncated": truncated,
@@ -146,3 +166,29 @@ class RedisStreamToolEventEmitter(RedisStreamBatchEmitter):
         )
 
         await super().on_tool_result(result)
+
+    def register_knowledge_tool(self, name: str) -> None:
+        """Record ``name`` as a knowledge-search tool whose live tool-call/
+        tool-result envelopes must be suppressed in favour of
+        ``agent.knowledge_search``."""
+        self._knowledge_tools.add(name)
+
+    async def on_knowledge_search(
+        self, response: BaseKnowledgeSearchMessageResponse
+    ) -> None:
+        """Publish a live ``agent.knowledge_search`` envelope carrying the
+        full structured knowledge response (crew parity with
+        ``extracted_chunks``)."""
+        await self._publish_live(
+            "agent.knowledge_search",
+            {
+                "collection_id": response.collection_id,
+                "rag_id": response.rag_id,
+                "rag_type": response.rag_type,
+                "retrieved_chunks": response.retrieved_chunks,
+                "knowledge_query": response.query,
+                "rag_search_config": response.rag_search_config.model_dump(),
+                "chunks": [chunk.model_dump() for chunk in response.chunks],
+                "token_usage": response.token_usage,
+            },
+        )

@@ -19,7 +19,7 @@
 
     &__chevron {
         flex-shrink: 0;
-        color: var(--color-text-secondary);
+        color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
         transition: transform 0.15s ease;
 
         &--rotated {
@@ -29,12 +29,12 @@
 
     &__icon {
         flex-shrink: 0;
-        color: var(--color-text-secondary);
+        color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
     }
 
     &__label {
         font-size: 14px;
-        font-weight: 600;
+        font-weight: 400;
         letter-spacing: 0.04em;
         text-transform: uppercase;
         white-space: nowrap;
@@ -42,7 +42,7 @@
         text-overflow: ellipsis;
         min-width: 0;
         flex: 0 1 auto;
-        color: var(--color-text-primary);
+        color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
     }
 
     &__actions {

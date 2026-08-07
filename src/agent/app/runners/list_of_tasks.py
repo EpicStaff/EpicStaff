@@ -92,7 +92,9 @@ class ListOfTasksRunner(Runner):
                 [task.name for task in tasks],
             )
 
-            resolved = await self._deps.resolver.resolve(agent, request)
+            resolved = await self._deps.resolver.resolve(
+                agent, request, knowledge_sink=emitter
+            )
             logger.debug(
                 "resolved tools={} attachments={}",
                 [spec.name for spec in resolved.tools.tool_specs()],

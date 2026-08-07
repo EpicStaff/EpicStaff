@@ -265,3 +265,34 @@ async def test_agent_result_payload_key_set_includes_tasks():
         "warnings",
         "tasks",
     }
+
+
+# ---------------------------------------------------------------------------
+# Live envelope types (agent -> crew wire contract)
+# ---------------------------------------------------------------------------
+
+LIVE_EVENT_TYPES = frozenset(
+    {
+        "agent.tool_call",
+        "agent.tool_result",
+        "agent.task_start",
+        "agent.task_finish",
+        "agent.knowledge_search",
+    }
+)
+"""Mirrors ``LIVE_EVENT_TYPES`` in ``src/crew/services/agent_task_service.py``
+— envelope types forwarded live to crew's ``on_event`` callback instead of
+ending the wait. Keep both lists in sync when adding a new live envelope."""
+
+
+def test_live_event_types_include_knowledge_search():
+    """Pins 'agent.knowledge_search' as a recognized live envelope type
+    alongside the existing tool-call/tool-result/task-start/task-finish set."""
+    assert "agent.knowledge_search" in LIVE_EVENT_TYPES
+    assert LIVE_EVENT_TYPES == {
+        "agent.tool_call",
+        "agent.tool_result",
+        "agent.task_start",
+        "agent.task_finish",
+        "agent.knowledge_search",
+    }

@@ -30,7 +30,10 @@
                     [size]="'18px'"
                 ></app-svg-icon>
             }
-            <span class="selector__text">
+            <span
+                class="selector__text"
+                [attr.title]="selectedItem()?.name || null"
+            >
                 {{ selectedItem() ? selectedItem()!.name : placeholder() }}
             </span>
 
@@ -61,6 +64,7 @@
                 class="selector__option selector__option--exists"
                 [ngClass]="'selector__option--' + mod()"
                 [class.selector__option--selected]="item.value === selectedValue()"
+                [attr.title]="item.name"
                 (click)="select(item)"
             >
                 @if (item.icon) {

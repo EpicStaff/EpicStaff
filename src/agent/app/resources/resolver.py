@@ -25,6 +25,7 @@ from app.exceptions import (
     UnknownToolRefError,
 )
 from app.knowledge.client import KnowledgeClient
+from app.knowledge.events import KnowledgeEventSink
 from app.loop.context import AgentContext
 from app.sandbox.client import SandboxClient
 from app.tools.mcp.gateway import McpToolGateway
@@ -85,8 +86,18 @@ class AgentResolver:
         self._mcp_gateway = mcp_gateway
         self._knowledge_client = knowledge_client
 
-    async def resolve(self, agent: AgentSpec, request: AgentRequest) -> ResolvedAgent:
-        """Resolve all refs for ``agent`` against the pools in ``request``."""
+    async def resolve(
+        self,
+        agent: AgentSpec,
+        request: AgentRequest,
+        knowledge_sink: KnowledgeEventSink | None = None,
+    ) -> ResolvedAgent:
+        """Resolve all refs for ``agent`` against the pools in ``request``.
+
+        ``knowledge_sink`` is per-request (typically the run's ``Emitter``)
+        and must be passed as a parameter rather than stored on the resolver,
+        which is built once at startup and shared across concurrent requests.
+        """
         tool_pool: dict[str, BaseToolData] = {
             entry.unique_name: entry for entry in request.tools
         }
@@ -95,7 +106,9 @@ class AgentResolver:
         }
         s3_pool: dict[int, S3FileSpec] = {spec.id: spec for spec in request.s3_files}
 
-        registry = await self._build_tool_registry(agent, tool_pool, collection_pool)
+        registry = await self._build_tool_registry(
+            agent, tool_pool, collection_pool, knowledge_sink
+        )
         names = [s.name for s in registry.tool_specs()]
         logger.debug("agent_id={} resolved {} tool(s): {}", agent.id, len(names), names)
 
@@ -127,11 +140,13 @@ class AgentResolver:
         agent: AgentSpec,
         tool_pool: dict[str, BaseToolData],
         collection_pool: dict[str, CollectionSpec],
+        knowledge_sink: KnowledgeEventSink | None = None,
     ) -> ToolRegistry:
         builder = ToolRegistryBuilder(
             self._sandbox,
             self._mcp_gateway,
             self._knowledge_client,
+            knowledge_sink,
         ).add_system_tools()
 
         for ref in agent.tool_refs:

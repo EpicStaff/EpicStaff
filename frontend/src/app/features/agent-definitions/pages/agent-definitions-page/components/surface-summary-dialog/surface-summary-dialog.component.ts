@@ -10,6 +10,7 @@ export interface SurfaceSummaryDialogData {
     combined: CombinedSurface;
     placeLabel: string;
     hideInstructions?: boolean;
+    hideDescriptions?: boolean;
 }
 
 @Component({
@@ -26,6 +27,7 @@ export class SurfaceSummaryDialogComponent {
 
     readonly placeLabel = this.data.placeLabel;
     readonly hideInstructions = this.data.hideInstructions ?? false;
+    readonly hideDescriptions = this.data.hideDescriptions ?? false;
 
     readonly summarySurface = computed<Surface>(() => {
         const c = this.data.combined;

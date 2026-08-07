@@ -1,6 +1,6 @@
 import { AgentSurfacePlace } from './agent-definition.model';
 
-export type SurfaceCategoryId = 'every-place' | 'flow' | 'chat';
+export type SurfaceCategoryId = 'every-place' | 'flow' | 'chat' | 'realtime';
 
 export function categoryToPlace(category: SurfaceCategoryId): AgentSurfacePlace {
     return category === 'every-place' ? 'all' : category;
@@ -16,6 +16,8 @@ export interface SurfaceCategoryConfig {
     moveLabel: string;
     icon: string;
     showViewSummary: boolean;
+    // Optional note shown under the category header (e.g. realtime limitations).
+    hint?: string;
 }
 
 export const SURFACE_CATEGORIES: readonly SurfaceCategoryConfig[] = [
@@ -39,5 +41,13 @@ export const SURFACE_CATEGORIES: readonly SurfaceCategoryConfig[] = [
         moveLabel: 'Use Only in Chat',
         icon: 'chats',
         showViewSummary: true,
+    },
+    {
+        id: 'realtime',
+        label: 'Realtime (Voice)',
+        moveLabel: 'Use Only in Realtime',
+        icon: 'microphone',
+        showViewSummary: true,
+        hint: 'In realtime, MCP tools are ignored and only the first knowledge collection is used.',
     },
 ] as const;

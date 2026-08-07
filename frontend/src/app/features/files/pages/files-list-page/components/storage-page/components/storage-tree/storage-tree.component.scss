@@ -160,8 +160,10 @@
         }
 
         // 3.5rem clears two 20px .storage-tree__hover-btn + 8px gap + 8px right offset.
-        &:hover .storage-tree__name,
-        &--hovered .storage-tree__name {
+        // Reserved on the row itself so both the plain name and the name + Empty
+        // badge shrink; the absolutely positioned actions stay put.
+        &:hover,
+        &--hovered {
             padding-right: 3.5rem;
         }
     }

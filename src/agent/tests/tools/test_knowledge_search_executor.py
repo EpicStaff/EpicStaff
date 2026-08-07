@@ -292,3 +292,93 @@ async def test_graph_executor_client_raises_returns_error():
     assert result.is_error is True
     assert "Knowledge search failed" in result.content
     assert "graph down" in result.content
+
+
+# ---------------------------------------------------------------------------
+# KnowledgeEventSink integration
+# ---------------------------------------------------------------------------
+
+
+def _fake_sink() -> MagicMock:
+    sink = MagicMock()
+    sink.on_knowledge_search = AsyncMock()
+    return sink
+
+
+async def test_sink_receives_response_object_on_success():
+    response = _make_response(
+        [
+            KnowledgeChunkResponse(
+                chunk_order=0,
+                chunk_similarity=0.9,
+                chunk_text="chunk",
+                chunk_source="doc.pdf",
+            )
+        ]
+    )
+    client = _fake_client(response)
+    sink = _fake_sink()
+    executor = KnowledgeSearchExecutor(client, _make_target(), sink=sink)
+
+    await executor({"query": "test"})
+
+    sink.on_knowledge_search.assert_awaited_once_with(response)
+
+
+async def test_sink_receives_response_even_with_no_chunks():
+    response = _make_response([])
+    client = _fake_client(response)
+    sink = _fake_sink()
+    executor = KnowledgeSearchExecutor(client, _make_target(), sink=sink)
+
+    await executor({"query": "test"})
+
+    sink.on_knowledge_search.assert_awaited_once_with(response)
+
+
+async def test_sink_not_called_when_client_raises():
+    client = _fake_client(raises=RuntimeError("connection refused"))
+    sink = _fake_sink()
+    executor = KnowledgeSearchExecutor(client, _make_target(), sink=sink)
+
+    result = await executor({"query": "test"})
+
+    assert result.is_error is True
+    sink.on_knowledge_search.assert_not_awaited()
+
+
+async def test_sink_raising_does_not_fail_tool_result():
+    response = _make_response([])
+    client = _fake_client(response)
+    sink = _fake_sink()
+    sink.on_knowledge_search.side_effect = RuntimeError("sink exploded")
+    executor = KnowledgeSearchExecutor(client, _make_target(), sink=sink)
+
+    result = await executor({"query": "test"})
+
+    assert result.is_error is False
+    assert result.content == "No relevant results found."
+
+
+async def test_sink_none_still_works():
+    response = _make_response([])
+    client = _fake_client(response)
+    executor = KnowledgeSearchExecutor(client, _make_target(), sink=None)
+
+    result = await executor({"query": "test"})
+
+    assert result.is_error is False
+
+
+async def test_graph_executor_sink_receives_response_object():
+    targets = _make_graph_targets()
+    response = _make_response([])
+    client = _fake_client(response)
+    sink = _fake_sink()
+    executor = GraphKnowledgeSearchExecutor(
+        client, targets, default_method="basic", sink=sink
+    )
+
+    await executor({"query": "test", "search_method": "local"})
+
+    sink.on_knowledge_search.assert_awaited_once_with(response)

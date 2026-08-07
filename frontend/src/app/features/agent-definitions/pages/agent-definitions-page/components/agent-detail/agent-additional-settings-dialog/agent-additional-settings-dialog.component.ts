@@ -16,6 +16,7 @@ import { AGENT_TOOL_DEFAULTS } from '../../../../../models/agent-definition.mode
 
 export interface AgentAdditionalSettingsData {
     fcm_llm_config: number | null;
+    realtime_config: number | null;
     max_iter: number | null;
     max_rpm: number | null;
     max_execution_time: number | null;
@@ -29,6 +30,7 @@ export interface AgentAdditionalSettingsData {
 
 export interface AgentAdditionalSettingsResult {
     fcm_llm_config: number | null;
+    realtime_config: number | null;
     max_iter: number;
     max_rpm: number;
     max_execution_time: number;
@@ -75,6 +77,7 @@ export class AgentAdditionalSettingsDialogComponent implements OnInit {
 
     readonly form: FormGroup = this.fb.group({
         fcm_llm_config: [this.data.fcm_llm_config],
+        realtime_config: [this.data.realtime_config],
         max_iter: [this.data.max_iter ?? 10, [Validators.min(1), Validators.max(30)]],
         max_rpm: [this.data.max_rpm ?? 10, [Validators.min(1), Validators.max(30)]],
         max_execution_time: [this.data.max_execution_time ?? 60, [Validators.min(1), Validators.max(600)]],

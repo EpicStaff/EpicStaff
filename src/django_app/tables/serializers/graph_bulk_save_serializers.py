@@ -40,10 +40,22 @@ class BulkSaveEntityMixin:
 
 
 class CodeAgentNodeBulkSerializer(BulkSaveEntityMixin, CodeAgentNodeSerializer):
+    """
+    DEPRECATED: CodeAgentNodeBulkSerializer is deprecated. Use
+    AgentNodeBulkSerializer or TaskNodeBulkSerializer instead. Exists only for
+    backward compatibility with existing CodeAgentNode rows.
+    """
+
     pass
 
 
 class CrewNodeBulkSerializer(BulkSaveEntityMixin, CrewNodeSerializer):
+    """
+    DEPRECATED: CrewNodeBulkSerializer is deprecated. Use
+    AgentNodeBulkSerializer or TaskNodeBulkSerializer instead. Exists only for
+    backward compatibility with existing CrewNode rows.
+    """
+
     pass
 
 

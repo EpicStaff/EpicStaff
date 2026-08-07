@@ -118,6 +118,8 @@ export class SurfaceCardComponent {
     hideHeader = input<boolean>(false);
     isCreating = input<boolean>(false);
     hideInstructions = input<boolean>(false);
+    hideDescriptions = input<boolean>(false);
+    flat = input<boolean>(false);
 
     readonly save = output<void>();
     readonly cancel = output<void>();

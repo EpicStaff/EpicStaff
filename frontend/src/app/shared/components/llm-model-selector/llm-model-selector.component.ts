@@ -1,5 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
+import { ComponentType } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
@@ -11,6 +12,7 @@ import {
     forwardRef,
     inject,
     Input,
+    input,
     OnDestroy,
     OnInit,
     Output,
@@ -18,12 +20,22 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
-import { DropdownManagerService, FullLLMConfig, FullLLMConfigService } from '@shared/services';
+import {
+    DropdownManagerService,
+    FullLLMConfig,
+    FullLLMConfigService,
+    FullRealtimeConfig,
+    FullRealtimeConfigService,
+} from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
+import { Observable } from 'rxjs';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
-import { LlmModelConfigDialogComponent } from '../llm-dialogs';
+import { LlmModelConfigDialogComponent, VoiceModelConfigDialogComponent } from '../llm-dialogs';
 import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component';
+
+export type ModelSelectorKind = 'llm' | 'realtime';
+type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
 
 @Component({
     selector: 'app-llm-model-selector',
@@ -117,7 +129,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                             class="create-btn"
                             (click)="onCreateLlm()"
                         >
-                            Create LLM Model
+                            {{ createButtonLabel() }}
                         </button>
                     </div>
 
@@ -342,30 +354,43 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     @Input() placeholder: string = 'Select LLM model';
     @Input() loading: boolean = false;
 
+    // Which pool of model configs to offer. Defaults to 'llm' so every existing
+    // consumer keeps its current behaviour unchanged.
+    readonly kind = input<ModelSelectorKind>('llm');
+
     @Output() modelSelected = new EventEmitter<number>();
 
     private readonly fullLLMConfigService = inject(FullLLMConfigService);
+    private readonly fullRealtimeConfigService = inject(FullRealtimeConfigService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly dropdownManager = inject(DropdownManagerService);
     private readonly dialog = inject(Dialog);
     private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
-
-    public readonly llmConfigs = this.fullLLMConfigService.fullLLMConfigs;
 
     public readonly searchTerm = signal('');
     public readonly selectedConfigId = signal<number | null>(null);
     public readonly isDropdownOpen = signal(false);
     public readonly triggerWidth = signal(0);
 
-    public readonly selectedConfig = computed<FullLLMConfig | null>(() => {
+    public readonly configs = computed<SelectorConfig[]>(() =>
+        this.kind() === 'realtime'
+            ? this.fullRealtimeConfigService.fullRealtimeConfigs()
+            : this.fullLLMConfigService.fullLLMConfigs()
+    );
+
+    public readonly createButtonLabel = computed<string>(() =>
+        this.kind() === 'realtime' ? 'Create Realtime Model' : 'Create LLM Model'
+    );
+
+    public readonly selectedConfig = computed<SelectorConfig | null>(() => {
         const id = this.selectedConfigId();
         if (id == null) return null;
-        return this.llmConfigs().find((c) => c.id === id) ?? null;
+        return this.configs().find((c) => c.id === id) ?? null;
     });
 
-    public readonly filteredConfigs = computed<FullLLMConfig[]>(() => {
+    public readonly filteredConfigs = computed<SelectorConfig[]>(() => {
         const term = this.searchTerm().trim().toLowerCase();
-        const configs = this.llmConfigs();
+        const configs = this.configs();
         if (!term) return [...configs];
         return configs.filter((config) => {
             const modelName = config.modelDetails?.name?.toLowerCase() || '';
@@ -390,11 +415,17 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     constructor() {
         // Generate unique ID for this dropdown instance
         this.dropdownId = `llm-selector-${Math.random().toString(36).substr(2, 9)}`;
-
-        this.fullLLMConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     ngOnInit(): void {
+        // Load the pool matching this selector's kind. Both loaders are idempotent
+        // (they hydrate root storage signals), so repeated instances are cheap.
+        const load$: Observable<unknown> =
+            this.kind() === 'realtime'
+                ? this.fullRealtimeConfigService.getFullRealtimeConfigs()
+                : this.fullLLMConfigService.getFullLLMConfigs();
+        load$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+
         // Subscribe to dropdown manager to close this dropdown when another opens
         this.dropdownManager.activeDropdown$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((activeId) => {
             if (activeId !== this.dropdownId && this.isDropdownOpen()) {
@@ -454,7 +485,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
         this.closeDropdown();
     }
 
-    selectConfig(config: FullLLMConfig): void {
+    selectConfig(config: SelectorConfig): void {
         this.selectedConfigId.set(config.id);
         this.onChange(config.id);
         this.onTouched();
@@ -462,7 +493,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
         this.closeDropdown();
     }
 
-    getProviderIcon(config: FullLLMConfig): string {
+    getProviderIcon(config: SelectorConfig): string {
         if (!config || !config.providerDetails?.name) {
             return 'provider-default';
         }
@@ -470,7 +501,9 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     }
 
     onCreateLlm(): void {
-        this.dialog.open(LlmModelConfigDialogComponent, {
+        const component: ComponentType<unknown> =
+            this.kind() === 'realtime' ? VoiceModelConfigDialogComponent : LlmModelConfigDialogComponent;
+        this.dialog.open(component, {
             height: '90vh',
             width: '600px',
         });
