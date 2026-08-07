@@ -33,6 +33,13 @@ export class CollectionsStorageService implements StorageService {
     private processingConfigIdsSignal = signal<Set<number>>(new Set());
     public readonly processingConfigIds = this.processingConfigIdsSignal.asReadonly();
 
+    private selectedCollectionIdSignal = signal<number | null>(null);
+    public readonly selectedCollectionId = this.selectedCollectionIdSignal.asReadonly();
+
+    setSelectedCollectionId(id: number | null): void {
+        this.selectedCollectionIdSignal.set(id);
+    }
+
     readonly collectionDeleted$ = new Subject<number>();
 
     markConfigsAsProcessing(configIds: number[]): void {
@@ -194,6 +201,7 @@ export class CollectionsStorageService implements StorageService {
         this.fullCollectionsSignal.set([]);
         this.fullCollectionsLoaded.set(false);
         this.processingConfigIdsSignal.set(new Set());
+        this.selectedCollectionIdSignal.set(null);
     }
 
     private deleteCollectionFromCache(id: number) {

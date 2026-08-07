@@ -1,4 +1,4 @@
-import { inject, Injectable, Signal } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { forkJoin, Observable, of, Subscription, timer } from 'rxjs';
 import { catchError, filter, repeat, switchMap, takeUntil, tap } from 'rxjs/operators';
 
@@ -37,13 +37,15 @@ export class KnowledgeSourcesPollingService {
     // timer + repeat: the next 5s countdown starts only after the previous refresh fully finished.
     // takeUntil(collectionDeleted$): if a collection is deleted during an in-flight tick, drop the
     // tick entirely so its stale taps can't re-add the just-deleted collection to the cache.
-    startPagePolling(selectedCollectionId: Signal<number | null>): void {
+    startPagePolling(): void {
         this.stopPagePolling();
         this.pagePollingSub = timer(POLL_INTERVAL_MS)
             .pipe(
                 filter(() => document.visibilityState === 'visible'),
                 switchMap(() =>
-                    this.refreshAll(selectedCollectionId()).pipe(takeUntil(this.collectionsStorage.collectionDeleted$))
+                    this.refreshAll(this.collectionsStorage.selectedCollectionId()).pipe(
+                        takeUntil(this.collectionsStorage.collectionDeleted$)
+                    )
                 ),
                 repeat()
             )

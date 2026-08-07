@@ -114,7 +114,9 @@ export class NaiveRagDocumentsStorageService implements StorageService {
     }
 
     public stopChunking(ragId: number, documentId: number): Observable<CancelNaiveNaiveRagChunkingResponse> {
-        return this.chunkPreview.stopChunking(ragId, documentId);
+        const body = this.buildFullParamsBody(documentId);
+        if (!body) return EMPTY;
+        return this.chunkPreview.stopChunking(ragId, documentId, body);
     }
 
     public runChunking(ragId: number, documentId: number): Observable<NaiveRagChunkingResponse> {

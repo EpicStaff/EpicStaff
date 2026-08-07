@@ -202,7 +202,7 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
         return this.selectedDocs().map((d) => ({
             configId: d.graph_rag_document_id,
             fileName: d.file_name,
-            wasIndexed: d.status === 'indexed',
+            wasIndexed: d.status === 'completed',
         }));
     }
 
@@ -234,7 +234,7 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
 
         const indexedIds = new Set(
             this.allDocuments()
-                .filter((d) => d.status === 'indexed')
+                .filter((d) => d.status === 'completed')
                 .map((d) => d.graph_rag_document_id)
         );
         if (indexedIds.size === 0) return;

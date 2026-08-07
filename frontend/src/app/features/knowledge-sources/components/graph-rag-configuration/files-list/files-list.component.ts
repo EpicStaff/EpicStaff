@@ -32,7 +32,7 @@ export class GraphRagFilesListComponent {
     documentsWithDisabled = computed<GraphRagDocumentWithDisabled[]>(() =>
         this.documents().map((d) => ({
             ...d,
-            disabled: this.indexMode() === 'update_new' && d.status === 'indexed',
+            disabled: this.indexMode() === 'update_new' && d.status === 'completed',
         }))
     );
 

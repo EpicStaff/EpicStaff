@@ -88,10 +88,14 @@ export class NaiveRagService {
         );
     }
 
-    stopChunkingByDocumentId(ragId: number, documentId: number): Observable<CancelNaiveNaiveRagChunkingResponse> {
+    stopChunkingByDocumentId(
+        ragId: number,
+        documentId: number,
+        body: RunNaiveRagDocumentChunkingRequest
+    ): Observable<CancelNaiveNaiveRagChunkingResponse> {
         return this.http.post<CancelNaiveNaiveRagChunkingResponse>(
             `${this.apiUrl}${ragId}/document-configs/${documentId}/process-chunking/cancel/`,
-            {}
+            body
         );
     }
 

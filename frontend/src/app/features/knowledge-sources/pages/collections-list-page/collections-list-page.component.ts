@@ -30,12 +30,11 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
 
     isLoading = signal<boolean>(true);
     collections = this.collectionsStorageService.collections;
-    selectedCollectionId = signal<number | null>(null);
 
     ngOnInit(): void {
         this.deepLinkService.initFromUrl();
         this.getCollections();
-        this.pollingService.startPagePolling(this.selectedCollectionId);
+        this.pollingService.startPagePolling();
     }
 
     ngOnDestroy(): void {
@@ -71,7 +70,7 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
             return;
         }
 
-        this.selectedCollectionId.set(params.collectionId);
+        this.collectionsStorageService.setSelectedCollectionId(params.collectionId);
 
         this.collectionsStorageService
             .getFullCollection(params.collectionId, true)
@@ -119,6 +118,7 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
             .subscribe({
                 next: ({ collection_id }) => {
                     if (!collection_id) return;
+                    this.collectionsStorageService.setSelectedCollectionId(collection_id);
                     this.openCreateModal(collection_id);
                 },
                 error: () => this.toastService.error('Failed to create collection'),
@@ -126,8 +126,6 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
     }
 
     private openCreateModal(collection_id: number): void {
-        this.selectedCollectionId.set(collection_id);
-
         const dialog = this.dialog.open(CreateCollectionDialogComponent, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',
@@ -145,7 +143,7 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
             )
             .subscribe({
                 next: () => {
-                    this.selectedCollectionId.set(collection_id);
+                    this.collectionsStorageService.setSelectedCollectionId(collection_id);
                 },
                 error: () => {
                     this.toastService.error('Failed to get collection data');

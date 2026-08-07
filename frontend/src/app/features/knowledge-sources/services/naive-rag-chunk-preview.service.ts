@@ -196,9 +196,13 @@ export class NaiveRagChunkPreviewService {
         );
     }
 
-    public stopChunking(ragId: number, documentId: number): Observable<CancelNaiveNaiveRagChunkingResponse> {
+    public stopChunking(
+        ragId: number,
+        documentId: number,
+        body: RunNaiveRagDocumentChunkingRequest
+    ): Observable<CancelNaiveNaiveRagChunkingResponse> {
         this.updateDocState(documentId, (s) => ({ ...s, status: 'new' }));
-        return this.naiveRagService.stopChunkingByDocumentId(ragId, documentId);
+        return this.naiveRagService.stopChunkingByDocumentId(ragId, documentId, body);
     }
 
     public runChunking(
@@ -225,7 +229,7 @@ export class NaiveRagChunkPreviewService {
                         }));
                         return;
                     }
-                    case 'canceled': {
+                    case 'cancelled': {
                         return;
                     }
                     case 'failed': {

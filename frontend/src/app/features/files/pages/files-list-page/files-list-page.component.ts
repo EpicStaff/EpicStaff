@@ -98,6 +98,7 @@ export class FilesListPageComponent {
             .subscribe({
                 next: ({ collection_id }) => {
                     if (!collection_id) return;
+                    this.collectionsStorageService.setSelectedCollectionId(collection_id);
                     this.openCreateCollectionModal(collection_id);
                 },
                 error: () => this.toastService.error('Failed to create collection'),

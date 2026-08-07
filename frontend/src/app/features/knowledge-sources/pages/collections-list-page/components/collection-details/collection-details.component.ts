@@ -5,11 +5,9 @@ import {
     DestroyRef,
     effect,
     inject,
-    model,
-    OnChanges,
     OnInit,
     signal,
-    SimpleChanges,
+    untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -54,7 +52,7 @@ import { CollectionRagsComponent } from './collection-rags/collection-rags.compo
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CollectionDetailsComponent implements OnInit, OnChanges {
+export class CollectionDetailsComponent implements OnInit {
     private destroyRef = inject(DestroyRef);
     private dialog = inject(Dialog);
     private confirmationDialogService = inject(ConfirmationDialogService);
@@ -64,7 +62,7 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
     private fileListService = inject(FileListService);
     private toastService = inject(ToastService);
 
-    selectedCollectionId = model<number | null>(null);
+    selectedCollectionId = this.collectionsStorageService.selectedCollectionId;
 
     loadingCollection = signal<boolean>(false);
     loadingDocuments = signal<boolean>(false);
@@ -109,21 +107,22 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
 
             this.documents.set([...realDocs, ...uploading]);
         });
-    }
 
-    ngOnChanges(changes: SimpleChanges) {
-        const id = changes['selectedCollectionId'].currentValue;
-        if (!id) return;
-
-        this.getCollectionData(id);
-        this.getCollectionDocuments(id);
+        effect(() => {
+            const id = this.selectedCollectionId();
+            if (!id) return;
+            untracked(() => {
+                this.getCollectionData(id);
+                this.getCollectionDocuments(id);
+            });
+        });
     }
 
     ngOnInit() {
         this.collectionName.valueChanges
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                debounceTime(400),
+                debounceTime(600),
                 distinctUntilChanged(),
                 filter(() => this.collectionName.valid),
                 filter(() => !!this.fullCollection()),
@@ -183,7 +182,7 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
                 next: () => {
                     this.toastService.success('Collection deleted successfully');
                     if (this.selectedCollectionId() === deletedId) {
-                        this.selectedCollectionId.set(null);
+                        this.collectionsStorageService.setSelectedCollectionId(null);
                         this.fullCollection.set(null);
                     }
                 },

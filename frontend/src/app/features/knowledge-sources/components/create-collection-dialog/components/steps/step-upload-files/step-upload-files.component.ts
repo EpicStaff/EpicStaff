@@ -136,7 +136,7 @@ export class StepUploadFilesComponent implements OnInit {
         this.collectionName?.valueChanges
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                debounceTime(400),
+                debounceTime(600),
                 distinctUntilChanged(),
                 filter(() => this.collectionName.valid),
                 switchMap((collection_name: string) => {
