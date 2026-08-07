@@ -46,6 +46,12 @@ class SecretSerializer(serializers.ModelSerializer):
         return secret_service.create(text=text, **validated_data)
 
     def get_usage_count(self, secret) -> int:
-        """Distinct resources referencing this secret."""
+        """Distinct resources referencing this secret.
 
-        return self.context["usage_count_provider"].count_for(secret_id=secret.pk)
+        Indexed directly rather than .get(pk, 0): counts() enumerates every secret in
+        the org, so an absent key means the service is broken, and a KeyError says so
+        loudly instead of rendering a broken sweep as "unused" — the dangerous
+        direction for a deletion guard.
+        """
+
+        return self.context["usage_counts"][secret.pk]

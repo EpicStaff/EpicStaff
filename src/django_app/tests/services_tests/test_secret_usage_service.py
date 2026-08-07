@@ -1,8 +1,10 @@
-"""Aggregation: how a flat UsageHit stream becomes the two surfaces.
+"""Aggregation: how the sources become the two surfaces.
 
 The load-bearing property is that counts() and summary() agree — usage_count on
 the list must always equal the detail endpoint's total for the same secret, or the
-table chip and the dialog headline contradict each other.
+table chip and the dialog headline contradict each other. They now reach that answer
+by different routes (one union query vs. a full UsageHit sweep), so the agreement
+tests below are what hold the two dedup rules together.
 """
 
 import pytest
@@ -11,16 +13,14 @@ from tables.models import EmbeddingConfig, LLMConfig, McpTool, PythonCode
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
+    ConditionalEdge,
     Graph,
     PythonNode,
 )
 from tables.models.llm_models import LLMModel, RealtimeConfig, RealtimeModel
 from tables.models.rbac_models import Organization
 from tables.services.secrets import secret_service
-from tables.services.secrets.usage_service import (
-    SecretUsageCountProvider,
-    secret_usage_service,
-)
+from tables.services.secrets.usage_service import secret_usage_service
 
 DECLARING_CODE = 'def main(**kwargs):\n    return get_secret("USAGE_KEY")\n'
 
@@ -298,21 +298,128 @@ class TestSummary:
 
 
 @pytest.mark.django_db
-class TestSecretUsageCountProvider:
-    def test_computes_once_and_serves_repeated_lookups(self, org, secret):
-        unused = secret_service.create(text="sk-p", org=org, name="PROVIDER_KEY")
-        provider = SecretUsageCountProvider(org_id=org.id)
+class TestCountsQueryCost:
+    """The reason counts() stopped going through collect().
 
-        assert provider.count_for(secret_id=secret.pk) == 0
-        assert provider.count_for(secret_id=unused.pk) == 0
-        assert provider.count_for(secret_id=secret.pk) == 0
+    Before this, the list endpoint paid twelve source sweeps plus node-name
+    resolution (a UNION query and one SELECT per node table) to render a column of
+    integers it could get from two.
+    """
 
-    def test_an_unknown_secret_id_raises_rather_than_reading_as_unused(
-        self, org, secret
+    def test_two_queries_regardless_of_how_many_secrets_the_org_holds(
+        self, org, secret, django_assert_num_queries
     ):
-        """counts() enumerates every secret in the org, so an absent key means the
-        service is broken. Failing loudly beats rendering a broken sweep as "0"."""
-        provider = SecretUsageCountProvider(org_id=org.id)
+        for index in range(10):
+            secret_service.create(text=f"sk-{index}", org=org, name=f"BULK_{index}")
 
-        with pytest.raises(KeyError):
-            provider.count_for(secret_id=secret.pk + 10_000)
+        # One for the id set, one combined query for every reference.
+        with django_assert_num_queries(2):
+            secret_usage_service.counts(org_id=org.id)
+
+    def test_two_queries_even_with_a_conditional_edge_in_play(
+        self, org, secret, django_assert_num_queries
+    ):
+        """The specific regression. A ConditionalEdge is the only source whose detail
+        path needs resolve_node_names, and that ran on the counts path too — so this
+        case was the expensive one and must now cost the same as any other."""
+        graph = Graph.objects.create(name="Edge cost flow", org=org)
+        router = PythonNode.objects.create(
+            graph=graph,
+            node_name="route",
+            python_code=PythonCode.objects.create(
+                code="def main(**kwargs):\n    return 1\n"
+            ),
+        )
+        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
+        edge_code.secrets.set([secret])
+        ConditionalEdge.objects.create(
+            graph=graph, source_node_id=router.pk, python_code=edge_code
+        )
+
+        with django_assert_num_queries(2):
+            counts = secret_usage_service.counts(org_id=org.id)
+
+        assert counts[secret.pk] == 1
+
+    def test_an_empty_org_costs_one_query(self, db, django_assert_num_queries):
+        """No secrets means nothing can reference them, so the union never runs."""
+        empty = Organization.objects.create(name="Org SecretUsageService NoQueries")
+
+        with django_assert_num_queries(1):
+            assert secret_usage_service.counts(org_id=empty.id) == {}
+
+
+@pytest.mark.django_db
+class TestCountsDedupInSql:
+    """Dedup moved from a Python set into UNION's DISTINCT, so each collapsing rule
+    is a new code path even where summary() already asserted the same outcome."""
+
+    def test_two_configs_of_one_type_sharing_a_name_count_once(self, org, secret):
+        realtime_model = RealtimeModel.objects.create(name="rt-sql-dupe", org=org)
+        for _ in range(2):
+            RealtimeConfig.objects.create(
+                custom_name="same name",
+                realtime_model=realtime_model,
+                org=org,
+                api_key_secret=secret,
+            )
+
+        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 1
+
+    def test_different_config_types_sharing_a_name_count_once(self, org, secret):
+        """The category prefix in the key is what folds four models into one
+        namespace; without it these would count as two."""
+        LLMConfig.objects.create(
+            custom_name="prod",
+            model=LLMModel.objects.create(
+                name="gpt-4o-sql-cross", llm_provider=None, org=org
+            ),
+            org=org,
+            api_key_secret=secret,
+        )
+        EmbeddingConfig.objects.create(
+            custom_name="prod",
+            model=EmbeddingModel.objects.create(name="embed-sql-cross", org=org),
+            org=org,
+            api_key_secret=secret,
+        )
+
+        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 1
+
+    def test_two_different_sources_in_one_flow_count_once(self, org, secret):
+        """Cross-source, not just cross-row: a PythonNode and a ConditionalEdge are
+        separate registry entries and separate union branches, so collapsing them
+        relies on the key being the graph rather than the node."""
+        graph = Graph.objects.create(name="Cross source flow", org=org)
+        node_code = PythonCode.objects.create(code=DECLARING_CODE)
+        node_code.secrets.set([secret])
+        router = PythonNode.objects.create(
+            graph=graph, node_name="route", python_code=node_code
+        )
+        edge_code = PythonCode.objects.create(code=DECLARING_CODE)
+        edge_code.secrets.set([secret])
+        ConditionalEdge.objects.create(
+            graph=graph, source_node_id=router.pk, python_code=edge_code
+        )
+
+        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 1
+
+    def test_a_config_and_a_tool_sharing_a_name_count_separately(self, org, secret):
+        """The other direction: the prefix must not over-collapse across categories."""
+        LLMConfig.objects.create(
+            custom_name="shared",
+            model=LLMModel.objects.create(
+                name="gpt-4o-sql-sep", llm_provider=None, org=org
+            ),
+            org=org,
+            api_key_secret=secret,
+        )
+        McpTool.objects.create(
+            name="shared",
+            transport="https://example.com/sse",
+            tool_name="search",
+            org=org,
+            auth_secret=secret,
+        )
+
+        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 2

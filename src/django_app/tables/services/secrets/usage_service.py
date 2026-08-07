@@ -1,8 +1,17 @@
-"""Aggregates the UsageHit stream into the two Secret Usage surfaces.
+"""The two Secret Usage surfaces: a count per secret, and the detail for one secret.
 
-Both public methods read the same registry, so the count shown on the secrets
-list and the total shown in the usage dialog are the same arithmetic rather than
-two implementations that happen to agree.
+They are answered differently on purpose. `counts()` needs only integers for every
+secret in the org, so it is a single combined query over two-column projections —
+flat in the number of secrets and free of the node-name resolution it would never
+render. `summary()` needs graph names and node names for one secret, so it sweeps the
+sources for their full UsageHit stream, which only happens when a user opens the
+dialog.
+
+Both must nonetheless agree on one rule: a flow counts once however many of its
+nodes reference the secret, and everything else counts by display name. `_flow_items`
+and `_named_items` below express that in Python; `UsageSource._key_expression`
+expresses it in SQL. `test_summary_total_matches_counts_for_the_same_secret` fails if
+they drift.
 """
 
 from tables.models import Secret
@@ -14,52 +23,40 @@ from tables.services.secrets.usage_sources import (
 )
 
 
-def _resource_key(*, hit: UsageHit):
-    """The identity `total` counts by.
-
-    A flow counts once regardless of how many of its nodes reference the secret;
-    everything else counts by display name. These are exactly the rules summary()
-    renders, which is what makes usage_count always equal the detail total.
-    """
-    if hit.category == CATEGORY_FLOWS:
-        return (CATEGORY_FLOWS, hit.resource_id)
-    return (hit.category, hit.resource_name)
-
-
 class SecretUsageService:
     """Answers "what breaks if I delete this secret?" for one organization."""
 
     def counts(self, *, org_id: int) -> dict[int, int]:
         """secret_id -> number of distinct resources referencing it.
 
-        Every secret in the org gets an entry, including 0 for unused ones. A
-        sparse dict would push a .get(id, 0) into the serializer, where a missing
-        key and a genuine zero become indistinguishable — so a bug in _collect
-        would silently render as "unused", the dangerous direction for a deletion
-        guard.
+        Two queries however many secrets the org holds: one for the id set, one
+        combined query for every reference. UNION (not UNION ALL) is already DISTINCT
+        and each source's key embeds its category, so the combined result set *is* the
+        set of distinct (secret, resource) pairs — nothing left to dedupe in Python,
+        and nothing fetched but the pairs themselves.
         """
-        secret_names = self._secret_names(org_id=org_id)
-        hits = self._collect(org_id=org_id, secret_names=secret_names)
+        secret_ids = self._secret_ids(org_id=org_id)
+        if not secret_ids:
+            return {}
 
-        resources: dict[int, set] = {
-            secret_id: set() for secret_id in secret_names.values()
-        }
-        for hit in hits:
-            resources[hit.secret_id].add(_resource_key(hit=hit))
+        first, *rest = [
+            source.count_pairs(org_id=org_id, secret_ids=secret_ids)
+            for source in USAGE_SOURCES
+        ]
 
-        return {secret_id: len(keys) for secret_id, keys in resources.items()}
+        counts = dict.fromkeys(secret_ids, 0)
+        for secret_id, _ in first.union(*rest):
+            counts[secret_id] += 1
+        return counts
 
     def summary(self, *, secret: Secret) -> dict:
         """The usage payload for one secret.
 
-        The org comes from secret.org_id, so this cannot be called with a
-        mismatched secret/org pair. Only this secret's name is passed to the
-        sources, so they narrow to it in SQL rather than sweeping the org and
-        filtering afterwards.
+        The org comes from secret.org_id, so this cannot be called with a mismatched
+        secret/org pair. Only this secret's id is passed to the sources, so they narrow
+        to it in SQL rather than sweeping the org and filtering afterwards.
         """
-        hits = self._collect(
-            org_id=secret.org_id, secret_names={secret.name: secret.pk}
-        )
+        hits = self._collect(org_id=secret.org_id, secret_ids={secret.pk})
 
         categories = []
         for key in CATEGORY_ORDER:
@@ -134,52 +131,25 @@ class SecretUsageService:
         return [{"name": name} for name in names]
 
     @staticmethod
-    def _secret_names(*, org_id: int) -> dict[str, int]:
-        """name -> id for the org.
-
-        Unambiguous because Secret has UniqueConstraint(org, name).
-        """
-        return dict(Secret.objects.filter(org_id=org_id).values_list("name", "id"))
+    def _secret_ids(*, org_id: int) -> set[int]:
+        """Every secret id in the org."""
+        return set(Secret.objects.filter(org_id=org_id).values_list("id", flat=True))
 
     @staticmethod
-    def _collect(*, org_id: int, secret_names: dict[str, int]) -> list[UsageHit]:
-        """Every hit every registered source can see.
+    def _collect(*, org_id: int, secret_ids: set[int]) -> list[UsageHit]:
+        """Every hit every registered source can see, in full detail.
 
-        Takes org_id explicitly and never resolves the org itself. Returns early
-        for an org with no secrets so none of the twelve source queries run.
+        The detail path only. Takes org_id explicitly and never resolves the org
+        itself. Returns early for an empty id set so none of the twelve source queries
+        run.
         """
-        if not secret_names:
+        if not secret_ids:
             return []
 
         hits: list[UsageHit] = []
         for source in USAGE_SOURCES:
-            hits.extend(source.collect(org_id=org_id, secret_names=secret_names))
+            hits.extend(source.collect(org_id=org_id, secret_ids=secret_ids))
         return hits
 
 
 secret_usage_service = SecretUsageService()
-
-
-class SecretUsageCountProvider:
-    """Computes every secret's usage count once, then serves lookups.
-
-    A SerializerMethodField runs per row, so without this the list endpoint would
-    repeat the whole source sweep once per secret. The viewset puts one of these in
-    the serializer context per request; the first lookup computes and the rest are
-    dict hits.
-    """
-
-    def __init__(self, *, org_id: int):
-        self._org_id = org_id
-        self._counts: dict[int, int] | None = None
-
-    def count_for(self, *, secret_id: int) -> int:
-        """Indexed directly on purpose.
-
-        counts() enumerates every secret in the org, so an absent key means the
-        service is broken. A KeyError says so loudly instead of rendering a broken
-        sweep as "unused" — the dangerous direction for a deletion guard.
-        """
-        if self._counts is None:
-            self._counts = secret_usage_service.counts(org_id=self._org_id)
-        return self._counts[secret_id]

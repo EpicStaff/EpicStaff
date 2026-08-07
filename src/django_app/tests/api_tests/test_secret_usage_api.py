@@ -137,6 +137,48 @@ class TestUsageCountOnList:
 
         assert len(many) == len(few)
 
+    def test_the_whole_list_request_stays_in_single_digits(
+        self, admin_client, used_secret
+    ):
+        """An absolute ceiling alongside the no-growth property above.
+
+        No-growth alone would still pass if usage went back to a twelve-source sweep
+        per request, since that cost is also flat in the number of secrets. Usage
+        contributes two queries now; the rest is auth, org resolution and the page
+        itself.
+        """
+        with CaptureQueriesContext(connection) as captured:
+            resp = admin_client.get("/api/secrets/")
+
+        assert resp.status_code == 200, resp.content
+        assert len(captured) < 10, "\n".join(
+            query["sql"] for query in captured.captured_queries
+        )
+
+    def test_the_usage_sweep_runs_exactly_once_per_request(
+        self, admin_client, org, used_secret
+    ):
+        """What replacing the provider class had to preserve.
+
+        get_usage_count is a SerializerMethodField, so it runs once per row. The
+        context holds a SimpleLazyObject that memoises on first use — if that
+        memoisation broke, this would be one union per secret rather than one per
+        request, and the no-growth test above is too coarse to notice.
+        """
+        for index in range(5):
+            secret_service.create(text=f"sk-once{index}", org=org, name=f"ONCE_{index}")
+
+        with CaptureQueriesContext(connection) as captured:
+            resp = admin_client.get("/api/secrets/")
+
+        assert len(_results(resp)) == 6
+        unions = [
+            query
+            for query in captured.captured_queries
+            if "UNION" in query["sql"].upper()
+        ]
+        assert len(unions) == 1, f"{len(unions)} union queries for 6 secrets"
+
 
 @pytest.fixture
 def viewer_client(db, django_user_model, org):

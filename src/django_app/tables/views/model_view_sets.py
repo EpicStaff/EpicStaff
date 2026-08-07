@@ -5,6 +5,7 @@ import urllib.parse
 import urllib.request
 
 from django.utils import timezone
+from django.utils.functional import SimpleLazyObject
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpResponse
@@ -204,7 +205,7 @@ from tables.services.rbac.permissions import (
 )
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
-from tables.services.secrets import SecretUsageCountProvider, secret_usage_service
+from tables.services.secrets import secret_usage_service
 from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     validate_classification_condition_group_names,
@@ -1954,15 +1955,20 @@ class SecretViewSet(
         return Response(secret_usage_service.summary(secret=secret))
 
     def get_serializer_context(self):
-        """Give the serializer one lazily-computed usage provider per request.
+        """One lazily-computed usage-count map per request.
 
-        PAGE_SIZE is 500000, so the org-wide count set and the page's are the same
-        rows in practice; computing once org-wide keeps the query count flat as the
-        number of secrets grows.
+        A SerializerMethodField runs per row, so this must be computed at most once
+        per request — and not at all for a request that never renders usage_count.
+        SimpleLazyObject proxies __getitem__, so the serializer indexes it exactly
+        like the plain dict it becomes on first use.
+
+        org_id is resolved eagerly, outside the lambda, on purpose: deferring it would
+        move a missing-org-context failure out of the request and into render time.
         """
         context = super().get_serializer_context()
-        context["usage_count_provider"] = SecretUsageCountProvider(
-            org_id=self.get_active_org_id()
+        org_id = self.get_active_org_id()
+        context["usage_counts"] = SimpleLazyObject(
+            lambda: secret_usage_service.counts(org_id=org_id)
         )
         return context
 
