@@ -19,6 +19,7 @@ import { AppSvgIconComponent } from '@shared/components';
 
 import { AgentNodeTaskUi } from '../../../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { ToastService } from '../../../../../services/notifications';
+import { isValidOutputSchema } from '../../../../utils/validation/output-schema.validator';
 import { VariableHighlightTextareaComponent } from '../../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 
 interface ContextRef {
@@ -105,19 +106,29 @@ export class AgentTasksTableComponent {
         const trimmed = draft.trim();
         try {
             const parsed = trimmed === '' ? {} : JSON.parse(trimmed);
-            this.invalidSchemaIds.update((set) => {
-                if (!set.has(task.tempId)) return set;
-                const next = new Set(set);
-                next.delete(task.tempId);
-                return next;
-            });
+            this.setInvalid(task.tempId, !isValidOutputSchema(parsed));
             this.schemaDrafts.update((drafts) =>
                 Object.fromEntries(Object.entries(drafts).filter(([key]) => key !== task.tempId))
             );
-            this.updateTask(index, { output_schema: parsed });
+            this.updateTask(index, { output_schema: parsed, output_schema_invalid: false });
         } catch {
-            this.invalidSchemaIds.update((set) => new Set(set).add(task.tempId));
+            this.setInvalid(task.tempId, true);
+            this.updateTask(index, { output_schema_invalid: true });
         }
+    }
+
+    private setInvalid(tempId: string, invalid: boolean): void {
+        this.invalidSchemaIds.update((set) => {
+            const has = set.has(tempId);
+            if (has === invalid) return set;
+            const next = new Set(set);
+            if (invalid) {
+                next.add(tempId);
+            } else {
+                next.delete(tempId);
+            }
+            return next;
+        });
     }
 
     onExpandCell(taskIndex: number, field: 'instructions' | 'schema', event: MouseEvent): void {

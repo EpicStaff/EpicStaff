@@ -165,7 +165,11 @@
                                 [title]="'JSON Editor'"
                                 [subtitle]="'Output Schema — Task ' + selectedTaskNumber()"
                                 [fullHeight]="true"
+                                [exampleHint]="outputSchemaExampleHint"
                             ></app-json-editor>
+                            @if (rightSchemaError()) {
+                                <div class="task-error">{{ rightSchemaError() }}</div>
+                            }
                         } @else {
                             <div class="main-editor-pane__header">
                                 <div class="main-editor-pane__title-group">

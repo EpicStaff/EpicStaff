@@ -53,6 +53,7 @@
     max-width: 480px;
     height: 100%;
     overflow-y: auto;
+    padding-right: 1rem;
 }
 
 .field {
@@ -164,6 +165,10 @@
         border-color: var(--accent-color-hover);
         color: var(--accent-color-hover);
     }
+}
+
+.task-section {
+    padding-bottom: 1rem;
 }
 
 .add-task-btn {
@@ -302,6 +307,11 @@
         padding: 1rem;
         color: var(--text-secondary-60, rgba(217, 217, 222, 0.6));
         font-size: 0.875rem;
+    }
+
+    > .task-error {
+        flex: 0 0 auto;
+        padding: 0.4rem 0.75rem;
     }
 }
 

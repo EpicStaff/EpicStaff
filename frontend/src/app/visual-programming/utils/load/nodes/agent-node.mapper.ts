@@ -21,6 +21,7 @@ export function mapAgentNodeToModel(an: AgentNode): AgentNodeModel {
             name: task.name,
             instructions: task.instructions,
             output_schema: task.output_schema ?? {},
+            output_schema_invalid: false,
             contextRefs: (task.context_tasks ?? []).map((id) => ({ id })),
         }));
 

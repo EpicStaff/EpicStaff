@@ -113,6 +113,18 @@
                             [activeColor]="activeColor"
                         ></app-custom-input>
 
+                        <div class="field field--row">
+                            <div class="field__label-row">
+                                <label class="field__label">Remember output</label>
+                                <app-help-tooltip
+                                    text="When enabled, this task's output is remembered for the run and passed as context to task nodes that run later in the same session."
+                                    position="right"
+                                    size="18px"
+                                />
+                            </div>
+                            <app-toggle-switch formControlName="remember_output" />
+                        </div>
+
                         @if (mainView() === 'instructions') {
                             <div class="output-schema-section">
                                 <button
@@ -139,6 +151,9 @@
                                         (expand)="toggleMainView()"
                                         [editorHeight]="220"
                                     ></app-json-editor>
+                                    @if (outputSchemaError) {
+                                        <div class="task-error">{{ outputSchemaError }}</div>
+                                    }
                                 }
                             </div>
                         } @else {
@@ -242,7 +257,11 @@
                                 [allowExpand]="true"
                                 (expand)="toggleMainView()"
                                 [fullHeight]="true"
+                                [exampleHint]="outputSchemaExampleHint"
                             ></app-json-editor>
+                            @if (outputSchemaError) {
+                                <div class="task-error">{{ outputSchemaError }}</div>
+                            }
                         }
                     </div>
                 </div>
@@ -354,6 +373,18 @@
                         [activeColor]="activeColor"
                     ></app-custom-input>
 
+                    <div class="field field--row">
+                        <div class="field__label-row">
+                            <label class="field__label">Remember output</label>
+                            <app-help-tooltip
+                                text="When enabled, this task's output is remembered for the run and passed as context to task nodes that run later in the same session."
+                                position="right"
+                                size="18px"
+                            />
+                        </div>
+                        <app-toggle-switch formControlName="remember_output" />
+                    </div>
+
                     <app-variable-highlight-textarea
                         label="Instructions"
                         [required]="true"
@@ -391,6 +422,9 @@
                                 [allowExpand]="true"
                                 (expand)="expandPanel()"
                             ></app-json-editor>
+                            @if (outputSchemaError) {
+                                <div class="task-error">{{ outputSchemaError }}</div>
+                            }
                         }
                     </div>
                 </div>

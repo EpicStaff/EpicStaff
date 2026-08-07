@@ -17,6 +17,7 @@ export function mapTaskNodeToModel(tn: TaskNode): TaskNodeModel {
             name: tn.node_name,
             instructions: tn.instructions,
             output_schema: tn.output_schema ?? {},
+            output_schema_invalid: false,
             remember_output: tn.remember_output ?? false,
             agent_definition: tn.agent_definition ?? null,
             content_hash: tn.content_hash,

@@ -52,12 +52,20 @@
     max-width: 400px;
     height: 100%;
     overflow-y: auto;
+    padding-right: 1rem;
 }
 
 .field {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+
+    &--row {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
 
     &__label-row {
         display: flex;
@@ -172,6 +180,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    padding-bottom: 1rem;
+}
+
+.task-error {
+    font-size: 0.75rem;
+    color: #ff6b6b;
 }
 
 .output-schema-toggle {
@@ -329,6 +343,11 @@
     &__validation {
         flex: 0 0 auto;
         padding: 0 0.75rem 0.5rem;
+    }
+
+    > .task-error {
+        flex: 0 0 auto;
+        padding: 0.4rem 0.75rem;
     }
 }
 

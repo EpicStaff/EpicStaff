@@ -102,6 +102,7 @@ import {
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
 } from '../../../../visual-programming/utils/save';
+import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
 import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
@@ -415,6 +416,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (!taskNode.node_name?.trim()) missingFields.push('node name');
             if (taskNode.data?.agent_definition == null) missingFields.push('agent');
             if (!taskNode.data?.instructions?.trim()) missingFields.push('instructions');
+            if (taskNode.data?.output_schema_invalid || !isValidOutputSchema(taskNode.data?.output_schema)) {
+                missingFields.push('a valid output schema');
+            }
 
             if (missingFields.length === 0) return;
 
@@ -444,6 +448,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 let hasBlankName = false;
                 let hasDuplicateName = false;
                 let hasBlankInstructions = false;
+                let hasInvalidSchema = false;
 
                 for (const task of tasks) {
                     const trimmedName = (task.name ?? '').trim();
@@ -458,11 +463,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     if (!(task.instructions ?? '').trim()) {
                         hasBlankInstructions = true;
                     }
+
+                    if (task.output_schema_invalid || !isValidOutputSchema(task.output_schema)) {
+                        hasInvalidSchema = true;
+                    }
                 }
 
                 if (hasBlankName) missingFields.push('a task name');
                 if (hasDuplicateName) missingFields.push('unique task names');
                 if (hasBlankInstructions) missingFields.push('a task description');
+                if (hasInvalidSchema) missingFields.push('a valid task output schema');
             }
 
             if (missingFields.length === 0) return;

@@ -50,6 +50,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     @Input() public allowExpand: boolean = false;
     @Input() public jsonSchema?: object;
     @Input() public extraValidate?: (json: string) => { message: string; startOffset: number; endOffset: number }[];
+    @Input() public exampleHint: string = '';
     @Input() public editorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
         theme: 'vs-dark',
         language: 'json',
@@ -75,6 +76,7 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     public collapsed: boolean = true;
     public editorLoaded = false;
     public jsonIsValid = true;
+    public exampleCollapsed = false;
 
     private monacoEditor: MonacoEditor.IStandaloneCodeEditor | null = null;
     private isProgrammaticChange: boolean = false;
@@ -83,6 +85,14 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
     private static schemaSeq = 0;
     private readonly schemaId = `inmemory://json-editor-schema/${JsonEditorComponent.schemaSeq++}.json`;
     private markersDisposable: { dispose(): void } | null = null;
+
+    // Font metrics mirrored once from the live Monaco instance
+    public hintFontFamily: string = '';
+    public hintFontSize: number = 14;
+
+    public get showExampleHint(): boolean {
+        return !!this.exampleHint && this.editorLoaded;
+    }
 
     private get monacoGlobal(): typeof import('monaco-editor') | null {
         return (window as unknown as { monaco?: typeof import('monaco-editor') }).monaco ?? null;
@@ -140,6 +150,9 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
             this.runExtraValidation();
             this.emitMarkers();
         }
+        if (this.exampleHint) {
+            this.captureHintMetrics();
+        }
         this.cdr.markForCheck();
     }
 
@@ -179,6 +192,10 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
 
     public onToggle(): void {
         this.collapsed = !this.collapsed;
+    }
+
+    public onToggleExample(): void {
+        this.exampleCollapsed = !this.exampleCollapsed;
     }
 
     private buildJsonError(raw: string, err: unknown): JsonError {
@@ -322,6 +339,20 @@ export class JsonEditorComponent implements OnChanges, OnDestroy {
             };
         });
         monaco.editor.setModelMarkers(model, 'json-editor-extra', markers);
+    }
+
+    private captureHintMetrics(): void {
+        const monaco = this.monacoGlobal;
+        if (!monaco?.editor?.EditorOption || !this.monacoEditor) {
+            return;
+        }
+        const fontInfo = this.monacoEditor.getOption(monaco.editor.EditorOption.fontInfo) as {
+            fontFamily: string;
+            fontSize: number;
+        };
+        this.hintFontFamily = fontInfo.fontFamily;
+        this.hintFontSize = fontInfo.fontSize;
+        this.cdr.markForCheck();
     }
 
     private setValueAndFormat(value: string): void {

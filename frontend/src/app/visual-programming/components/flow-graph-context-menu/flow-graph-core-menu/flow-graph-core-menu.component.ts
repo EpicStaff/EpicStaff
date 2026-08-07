@@ -257,6 +257,7 @@ export class FlowGraphCoreMenuComponent {
                 name: 'Task Node',
                 instructions: '',
                 output_schema: {},
+                output_schema_invalid: false,
                 remember_output: false,
                 agent_definition: null,
                 surface_list: [],

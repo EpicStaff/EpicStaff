@@ -37,11 +37,17 @@ import { AgentNodeTaskUi } from '../../../../pages/flows-page/components/flow-vi
 import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
 import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
+import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { NodeType } from '../../../core/enums/node-type';
 import { AgentNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import {
+    isValidOutputSchema,
+    OUTPUT_SCHEMA_JSON_ERROR,
+    OUTPUT_SCHEMA_RULE_ERROR,
+} from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
@@ -91,6 +97,8 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     public readonly rightPane = signal<RightPaneSelection | null>(null);
 
     private readonly rightSchemaDrafts = signal<Record<string, string>>({});
+    private readonly rightSchemaErrors = signal<Record<string, string>>({});
+    public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
 
     public readonly agentItems = computed<SelectDropdownListItem<number>[]>(() =>
         this.agentDefinitions().map((agent) => ({ name: agent.name, value: agent.id }))
@@ -379,6 +387,12 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         return draft !== undefined ? draft : this.stringifySchema(task.output_schema);
     }
 
+    rightSchemaError(): string {
+        const task = this.selectedTask();
+        if (!task) return '';
+        return this.rightSchemaErrors()[task.tempId] ?? '';
+    }
+
     onRightSchemaChange(json: string): void {
         const task = this.selectedTask();
         if (!task) return;
@@ -388,13 +402,25 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         const trimmed = json.trim();
         try {
             const parsed = trimmed === '' ? {} : JSON.parse(trimmed);
-            this.updateSelectedTaskField(task.tempId, { output_schema: parsed });
+            this.updateSelectedTaskField(task.tempId, { output_schema: parsed, output_schema_invalid: false });
             this.rightSchemaDrafts.update((drafts) =>
                 Object.fromEntries(Object.entries(drafts).filter(([key]) => key !== task.tempId))
             );
+            this.setRightSchemaError(task.tempId, isValidOutputSchema(parsed) ? '' : OUTPUT_SCHEMA_RULE_ERROR);
         } catch {
-            // Invalid JSON — keep the staged draft visible, leave the committed schema alone.
+            this.updateSelectedTaskField(task.tempId, { output_schema_invalid: true });
+            this.setRightSchemaError(task.tempId, OUTPUT_SCHEMA_JSON_ERROR);
         }
+    }
+
+    private setRightSchemaError(tempId: string, message: string): void {
+        this.rightSchemaErrors.update((errors) => {
+            if (!message) {
+                if (!(tempId in errors)) return errors;
+                return Object.fromEntries(Object.entries(errors).filter(([key]) => key !== tempId));
+            }
+            return { ...errors, [tempId]: message };
+        });
     }
 
     addTask(): void {
@@ -403,6 +429,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
             name: '',
             instructions: '',
             output_schema: {},
+            output_schema_invalid: false,
             contextRefs: [],
         };
         this.onTasksChange([...this.tasks(), newTask]);
@@ -427,6 +454,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         this.tasks.set(this.cloneTasks(data.tasks ?? []));
         this.rightPane.set(null);
         this.rightSchemaDrafts.set({});
+        this.rightSchemaErrors.set({});
 
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],

@@ -65,6 +65,7 @@ export interface AgentNodeTaskUi {
     name: string;
     instructions: string;
     output_schema: Record<string, unknown>;
+    output_schema_invalid?: boolean;
     contextRefs: Array<{ id?: number; tempId?: string }>;
 }
 

@@ -84,6 +84,7 @@ export interface TaskNodeData {
     name: string;
     instructions: string;
     output_schema: Record<string, unknown>;
+    output_schema_invalid?: boolean;
     remember_output: boolean;
     agent_definition: number | null;
     content_hash?: string;

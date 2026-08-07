@@ -62,16 +62,47 @@
     class="editor-container"
     [class.collapsed]="collapsible && collapsed"
     [class.expanded]="collapsible && !collapsed"
+    [class.has-example]="showExampleHint"
     #editorContainer
 >
     @if (!collapsible || !collapsed) {
+        @if (showExampleHint) {
+            <div class="example-block">
+                <button
+                    type="button"
+                    class="example-block__toggle"
+                    [attr.aria-expanded]="!exampleCollapsed"
+                    [attr.aria-label]="exampleCollapsed ? 'Show example' : 'Hide example'"
+                    (click)="onToggleExample()"
+                >
+                    <app-svg-icon
+                        class="example-block__chevron"
+                        [class.example-block__chevron--open]="!exampleCollapsed"
+                        icon="chevron-down-filled"
+                        size="8px"
+                    />
+                    <span class="example-block__caption">Example</span>
+                </button>
+                @if (!exampleCollapsed) {
+                    <pre
+                        class="example-block__code"
+                        tabindex="-1"
+                        [style.fontFamily]="hintFontFamily"
+                        [style.fontSize.px]="hintFontSize"
+                        >{{ exampleHint }}</pre
+                    >
+                }
+            </div>
+        }
+
         <ngx-monaco-editor
             [options]="editorOptions"
             [(ngModel)]="jsonData"
             (ngModelChange)="onJsonChange($event)"
             (onInit)="onEditorInit($event)"
             class="monaco-editor"
-            [style.height]="fullHeight ? '100%' : editorHeight + 'px'"
+            [class.shrink-for-example]="showExampleHint && fullHeight"
+            [style.height]="showExampleHint && fullHeight ? null : fullHeight ? '100%' : editorHeight + 'px'"
         ></ngx-monaco-editor>
     }
 

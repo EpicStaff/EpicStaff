@@ -36,10 +36,17 @@ import { SurfacesApiService } from '../../../../features/agent-definitions/servi
 import { InlineSurface } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { ToastService } from '../../../../services/notifications';
 import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
+import { ToggleSwitchComponent } from '../../../../shared/components/form-controls/toggle-switch/toggle-switch.component';
+import { OUTPUT_SCHEMA_EXAMPLE_HINT } from '../../../core/constants/output-schema-example-hint';
 import { TaskNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { NodeSurfaceCombineApiService } from '../../../services/node-surface-combine-api.service';
 import { SidePanelService } from '../../../services/side-panel.service';
+import {
+    isValidOutputSchema,
+    OUTPUT_SCHEMA_JSON_ERROR,
+    OUTPUT_SCHEMA_RULE_ERROR,
+} from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
@@ -62,6 +69,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         AppSvgIconComponent,
         TooltipComponent,
         ValidationErrorsComponent,
+        ToggleSwitchComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -79,11 +87,12 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     private readonly pendingAutoSelectAgentId = signal<number | null>(null);
 
     public readonly mainView = signal<'instructions' | 'schema'>('instructions');
-
+    public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
     private readonly surfaceMultiSelects = viewChildren(MultiSelectComponent);
 
     outputSchemaText = '{}';
     outputSchemaError = '';
+    private outputSchemaDraftInvalid = false;
 
     public readonly agentItems = computed<SelectDropdownListItem<number>[]>(() =>
         this.agentDefinitions().map((agent) => ({ name: agent.name, value: agent.id }))
@@ -314,6 +323,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     }
 
     expandPanel(): void {
+        this.mainView.set('schema');
         this.sidePanelService.requestExpand();
     }
 
@@ -334,12 +344,33 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
     onSchemaEditorChange(json: string): void {
         this.outputSchemaText = json;
+        this.recomputeOutputSchemaValidity(json);
         this.sidePanelService.triggerAutosave();
         this.notifyExternalChange();
     }
 
     onSchemaValidChange(isValid: boolean): void {
-        this.outputSchemaError = isValid ? '' : 'Invalid JSON';
+        if (isValid) return;
+        this.outputSchemaDraftInvalid = true;
+        this.outputSchemaError = OUTPUT_SCHEMA_JSON_ERROR;
+    }
+
+    /** Combined JSON-syntax + Output Schema rule (1–3) check on the current draft text. */
+    private recomputeOutputSchemaValidity(json: string): void {
+        const trimmed = json.trim();
+        if (!trimmed) {
+            this.outputSchemaDraftInvalid = false;
+            this.outputSchemaError = '';
+            return;
+        }
+        try {
+            const parsed = JSON.parse(trimmed);
+            this.outputSchemaDraftInvalid = false;
+            this.outputSchemaError = isValidOutputSchema(parsed) ? '' : OUTPUT_SCHEMA_RULE_ERROR;
+        } catch {
+            this.outputSchemaDraftInvalid = true;
+            this.outputSchemaError = OUTPUT_SCHEMA_JSON_ERROR;
+        }
     }
 
     initializeForm(): FormGroup {
@@ -355,6 +386,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             input_map: this.fb.array([]),
             output_variable_path: [this.node().output_variable_path || ''],
+            remember_output: [data.remember_output ?? false],
             instructions: [data.instructions || '', Validators.required],
             agent_definition: [data.agent_definition ?? null, Validators.required],
         });
@@ -363,6 +395,8 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
         const schema = data.output_schema;
         this.outputSchemaText = schema && Object.keys(schema).length > 0 ? JSON.stringify(schema, null, 2) : '{}';
+        this.outputSchemaDraftInvalid = false;
+        this.outputSchemaError = '';
 
         return form;
     }
@@ -381,8 +415,8 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
                 name: this.form.value.node_name || 'Task Node',
                 instructions: this.form.value.instructions || '',
                 output_schema: this.parsedOutputSchema(),
-                // `remember_output` has no control in the current Figma design — kept as-is.
-                remember_output: this.node().data.remember_output ?? false,
+                output_schema_invalid: this.outputSchemaDraftInvalid,
+                remember_output: this.form.value.remember_output ?? false,
                 agent_definition: this.agentDefinitionId(),
                 surface_list: this.selectedSurfaceIds(),
                 inline_surface: this.inlineSurface(),
