@@ -1,9 +1,11 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { computed, inject, Injectable } from '@angular/core';
 import { StorageService } from '@shared/services';
 import { EMPTY, Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 
 import { TableDocument } from '../components/naive-rag-configuration/configuration-table/configuration-table.interface';
+import { normalizeBulkUpdateErrors } from '../helpers/normalize-bulk-update-errors.util';
 import {
     CancelNaiveNaiveRagChunkingResponse,
     ChunkedWithParams,
@@ -16,6 +18,7 @@ import {
     BulkUpdateNaiveRagDocumentsResponse,
     NaiveRagDocumentConfig,
     RunNaiveRagDocumentChunkingRequest,
+    UpdateNaiveRagDocumentConfigError,
     UpdateNaiveRagDocumentDtoRequest,
 } from '../models/naive-rag-document.model';
 import { NaiveRagService } from './naive-rag.service';
@@ -122,7 +125,12 @@ export class NaiveRagDocumentsStorageService implements StorageService {
     public runChunking(ragId: number, documentId: number): Observable<NaiveRagChunkingResponse> {
         const body = this.buildFullParamsBody(documentId);
         if (!body) return EMPTY;
-        return this.chunkPreview.runChunking(ragId, documentId, body);
+        return this.chunkPreview.runChunking(ragId, documentId, body).pipe(
+            catchError((err) => {
+                this.handleRunChunkingError(documentId, err);
+                return throwError(() => err);
+            })
+        );
     }
 
     private buildFullParamsBody(documentId: number): RunNaiveRagDocumentChunkingRequest | undefined {
@@ -228,6 +236,19 @@ export class NaiveRagDocumentsStorageService implements StorageService {
         for (const docId of configMap.keys()) {
             this.reconcileChunkStatus(docId);
         }
+    }
+
+    private handleRunChunkingError(documentId: number, err: unknown): void {
+        const errors = this.extractValidationErrors(err);
+        if (!errors) return;
+        this.catalog.setDocErrors(documentId, normalizeBulkUpdateErrors(errors));
+    }
+
+    private extractValidationErrors(err: unknown): UpdateNaiveRagDocumentConfigError[] | null {
+        if (!(err instanceof HttpErrorResponse)) return null;
+        const errors = err.error?.errors;
+        if (!Array.isArray(errors) || errors.length === 0) return null;
+        return errors as UpdateNaiveRagDocumentConfigError[];
     }
 
     private applyBulkDeleteToRelatedState(deletedIds: number[]): void {

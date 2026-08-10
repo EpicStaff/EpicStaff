@@ -242,9 +242,11 @@ export class NaiveRagChunkPreviewService {
                     }
                 }
             }),
-            catchError(() => {
-                this.updateDocState(documentId, (s) => ({ ...s, status: 'chunking_failed' }));
-                return EMPTY;
+            catchError((err) => {
+                this.updateDocState(documentId, (s) =>
+                    s.status === 'chunking' ? { ...s, status: initialState.status } : s
+                );
+                return throwError(() => err);
             })
         );
     }
