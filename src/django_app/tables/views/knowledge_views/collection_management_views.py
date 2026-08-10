@@ -238,8 +238,8 @@ class SourceCollectionViewSet(viewsets.ModelViewSet):
             # Get all RAG configurations for this collection
             rag_configs = CollectionManagementService.get_rag_configurations(int(pk))
 
-            # Get status filter from query params (default to completed,warning)
-            status_filter = request.query_params.get("status", "completed,warning,new")
+            # Get status filter from query params (default to completed,new)
+            status_filter = request.query_params.get("status", "completed,new")
             allowed_statuses = [
                 s.strip() for s in status_filter.split(",") if s.strip()
             ]
