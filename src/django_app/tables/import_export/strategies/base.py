@@ -57,16 +57,29 @@ class EntityImportExportStrategy(ABC):
             existing = self.get_instance(existing_id)
             return existing
 
+        # The exported created_by references a user id from the source
+        # system; it may not exist here (e.g. its org was deleted), which
+        # would otherwise fail FK validation in create_entity. Drop it and
+        # stamp the importing user on the freshly created instance instead.
+        data = {k: v for k, v in data.items() if k != "created_by"}
+
         settings_kwargs = vars(settings) if settings is not None else {}
         create_kwargs = {**settings_kwargs, **kwargs}
         if is_main:
-            return self.create_entity(data, id_mapper, **create_kwargs)
+            instance = self.create_entity(data, id_mapper, **create_kwargs)
+        else:
+            existing = self.find_existing(data, id_mapper, org_id=kwargs.get("org_id"))
+            if existing:
+                return existing
 
-        existing = self.find_existing(data, id_mapper, org_id=kwargs.get("org_id"))
-        if existing:
-            return existing
+            instance = self.create_entity(data, id_mapper, **create_kwargs)
 
-        return self.create_entity(data, id_mapper, **create_kwargs)
+        user = kwargs.get("user")
+        if user is not None and hasattr(instance, "created_by_id"):
+            instance.created_by = user
+            instance.save(update_fields=["created_by"])
+
+        return instance
 
     def find_existing(
         self, data: dict, id_mapper: IDMapper, org_id: int = None

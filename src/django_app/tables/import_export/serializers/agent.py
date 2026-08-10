@@ -23,6 +23,7 @@ class AgentImportSerializer(serializers.ModelSerializer):
         exclude = [
             "tags",
             "knowledge_collection",
+            "created_by",
         ]
 
     def to_representation(self, instance):
