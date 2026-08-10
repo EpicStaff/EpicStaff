@@ -82,7 +82,7 @@ class AgentStrategy(EntityImportExportStrategy):
 
         agent = self._create_agent(data, org_id)
         self._assign_tools(agent, python_tools, mcp_tools)
-        self._create_realtime_agent(agent, realtime_data, id_mapper)
+        self._create_realtime_agent(agent, realtime_data, id_mapper, org_id)
         self._create_naive_search_config(agent, naive_search_config_data)
 
         agent.llm_config = llm_config
@@ -227,7 +227,9 @@ class AgentStrategy(EntityImportExportStrategy):
             [AgentMcpTools(agent=agent, mcptool_id=tool.id) for tool in mcp_tools]
         )
 
-    def _create_realtime_agent(self, agent, data, id_mapper: IDMapper):
+    def _create_realtime_agent(
+        self, agent, data, id_mapper: IDMapper, org_id: int = None
+    ):
         if not data:
             return
 
@@ -242,11 +244,15 @@ class AgentStrategy(EntityImportExportStrategy):
         old_elevenlabs_id = data.pop("elevenlabs_config", None)
         old_gemini_id = data.pop("gemini_config", None)
 
+        # Defense-in-depth: even though the IDMapper only maps IDs created/reused
+        # within this same import (already org-scoped upstream), require the
+        # resolved config to belong to the target org before attaching it.
         openai_config = (
             OpenAIRealtimeConfig.objects.filter(
                 id=id_mapper.get_or_none(
                     EntityType.OPENAI_REALTIME_CONFIG, old_openai_id
-                )
+                ),
+                org_id=org_id,
             ).first()
             if old_openai_id
             else None
@@ -256,7 +262,8 @@ class AgentStrategy(EntityImportExportStrategy):
             ElevenLabsRealtimeConfig.objects.filter(
                 id=id_mapper.get_or_none(
                     EntityType.ELEVENLABS_REALTIME_CONFIG, old_elevenlabs_id
-                )
+                ),
+                org_id=org_id,
             ).first()
             if old_elevenlabs_id
             else None
@@ -266,7 +273,8 @@ class AgentStrategy(EntityImportExportStrategy):
             GeminiRealtimeConfig.objects.filter(
                 id=id_mapper.get_or_none(
                     EntityType.GEMINI_REALTIME_CONFIG, old_gemini_id
-                )
+                ),
+                org_id=org_id,
             ).first()
             if old_gemini_id
             else None

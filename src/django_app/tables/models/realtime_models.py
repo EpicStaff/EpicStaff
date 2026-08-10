@@ -3,6 +3,7 @@ from django.db import models
 from django.utils import timezone
 
 from tables.models import AbstractDefaultFillableModel, DefaultBaseModel
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
 class AudioFormatChoices(models.TextChoices):
@@ -16,8 +17,9 @@ class AudioFormatChoices(models.TextChoices):
 # ---------------------------------------------------------------------------
 
 
-class OpenAIRealtimeConfig(models.Model):
-    class Meta:
+class OpenAIRealtimeConfig(OrgScopedModel, models.Model):
+    class Meta(OrgScopedModel.Meta):
+        abstract = False
         db_table = "openai_realtime_config"
 
     custom_name = models.CharField(max_length=250)
@@ -33,8 +35,9 @@ class OpenAIRealtimeConfig(models.Model):
         return self.custom_name
 
 
-class ElevenLabsRealtimeConfig(models.Model):
-    class Meta:
+class ElevenLabsRealtimeConfig(OrgScopedModel, models.Model):
+    class Meta(OrgScopedModel.Meta):
+        abstract = False
         db_table = "elevenlabs_realtime_config"
 
     custom_name = models.CharField(max_length=250)
@@ -51,8 +54,9 @@ class ElevenLabsRealtimeConfig(models.Model):
         return self.custom_name
 
 
-class GeminiRealtimeConfig(models.Model):
-    class Meta:
+class GeminiRealtimeConfig(OrgScopedModel, models.Model):
+    class Meta(OrgScopedModel.Meta):
+        abstract = False
         db_table = "gemini_realtime_config"
 
     custom_name = models.CharField(max_length=250)

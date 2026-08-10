@@ -187,23 +187,35 @@ class BaseProviderRealtimeConfigStrategy(EntityImportExportStrategy):
     def export_entity(self, instance) -> dict:
         return self.serializer_class(instance).data
 
+    def get_org_scope_q(self, org_id: int) -> Q:
+        if org_id is None:
+            return Q()
+        return Q(org_id=org_id)
+
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs):
-        existing_names = self.config_model.objects.values_list("custom_name", flat=True)
+        org_id = kwargs.get("org_id")
+        existing_names = self.config_model.objects.filter(
+            org_id=org_id
+        ).values_list("custom_name", flat=True)
         data["custom_name"] = ensure_unique_identifier(
             base_name=data["custom_name"],
             existing_names=existing_names,
         )
-        serializer = self.serializer_class(data=data)
+        serializer = self.serializer_class(data={**data, "org": org_id})
         serializer.is_valid(raise_exception=True)
         return serializer.save()
 
-    def find_existing(self, data: dict, id_mapper: IDMapper):
+    def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int = None):
         custom_name = data.get("custom_name")
         model_name = data.get("model_name")
         if custom_name and model_name:
-            return self.config_model.objects.filter(
-                custom_name=custom_name, model_name=model_name
-            ).first()
+            return (
+                self.config_model.objects.filter(
+                    custom_name=custom_name, model_name=model_name
+                )
+                .filter(self.get_org_scope_q(org_id))
+                .first()
+            )
         return None
 
 

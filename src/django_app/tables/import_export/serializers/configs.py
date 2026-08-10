@@ -102,15 +102,18 @@ class OpenAIRealtimeConfigImportSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def create(self, validated_data):
+        org = validated_data.get("org")
         if not validated_data.get("api_key"):
-            validated_data["api_key"] = OpenAIRealtimeConfig.objects.values_list(
-                "api_key", flat=True
-            ).first()
+            validated_data["api_key"] = (
+                OpenAIRealtimeConfig.objects.filter(org=org)
+                .values_list("api_key", flat=True)
+                .first()
+            )
         if not validated_data.get("transcription_api_key"):
             validated_data["transcription_api_key"] = (
-                OpenAIRealtimeConfig.objects.values_list(
-                    "transcription_api_key", flat=True
-                ).first()
+                OpenAIRealtimeConfig.objects.filter(org=org)
+                .values_list("transcription_api_key", flat=True)
+                .first()
             )
         return super().create(validated_data)
 
@@ -125,10 +128,13 @@ class ElevenLabsRealtimeConfigImportSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def create(self, validated_data):
+        org = validated_data.get("org")
         if not validated_data.get("api_key"):
-            validated_data["api_key"] = ElevenLabsRealtimeConfig.objects.values_list(
-                "api_key", flat=True
-            ).first()
+            validated_data["api_key"] = (
+                ElevenLabsRealtimeConfig.objects.filter(org=org)
+                .values_list("api_key", flat=True)
+                .first()
+            )
         return super().create(validated_data)
 
 
@@ -142,8 +148,11 @@ class GeminiRealtimeConfigImportSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def create(self, validated_data):
+        org = validated_data.get("org")
         if not validated_data.get("api_key"):
-            validated_data["api_key"] = GeminiRealtimeConfig.objects.values_list(
-                "api_key", flat=True
-            ).first()
+            validated_data["api_key"] = (
+                GeminiRealtimeConfig.objects.filter(org=org)
+                .values_list("api_key", flat=True)
+                .first()
+            )
         return super().create(validated_data)

@@ -60,9 +60,13 @@ class QuickstartService(metaclass=SingletonMeta):
                 )
 
                 if provider == "openai":
-                    self._create_openai_realtime_config(api_key, config_name)
+                    self._create_openai_realtime_config(
+                        api_key, config_name, org_id=org_id
+                    )
                 elif provider == "gemini":
-                    self._create_gemini_realtime_config(api_key, config_name)
+                    self._create_gemini_realtime_config(
+                        api_key, config_name, org_id=org_id
+                    )
 
                 self._apply_quickstart_tag(llm_config, embedding_config)
 
@@ -185,23 +189,23 @@ class QuickstartService(metaclass=SingletonMeta):
             org_id=org_id,
         )
 
-    # TODO(RBAC): scope provider-specific realtime configs to org once
-    # OpenAIRealtimeConfig / GeminiRealtimeConfig gain an `org` column.
     def _create_openai_realtime_config(
-        self, api_key: str, config_name: str
+        self, api_key: str, config_name: str, org_id: int
     ) -> OpenAIRealtimeConfig:
         return OpenAIRealtimeConfig.objects.create(
-            custom_name=config_name, api_key=api_key, transcription_api_key=api_key
+            custom_name=config_name,
+            api_key=api_key,
+            transcription_api_key=api_key,
+            org_id=org_id,
         )
 
-    # TODO(RBAC): scope provider-specific realtime configs to org once
-    # OpenAIRealtimeConfig / GeminiRealtimeConfig gain an `org` column.
     def _create_gemini_realtime_config(
-        self, api_key: str, config_name: str
+        self, api_key: str, config_name: str, org_id: int
     ) -> GeminiRealtimeConfig:
         return GeminiRealtimeConfig.objects.create(
             custom_name=config_name,
             api_key=api_key,
+            org_id=org_id,
         )
 
     def _get_or_create_llm_model(self, provider: Provider):

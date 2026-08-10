@@ -52,18 +52,21 @@ class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = OpenAIRealtimeConfig
         fields = "__all__"
+        read_only_fields = ["org", "created_by"]
 
 
 class ElevenLabsRealtimeConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = ElevenLabsRealtimeConfig
         fields = "__all__"
+        read_only_fields = ["org", "created_by"]
 
 
 class GeminiRealtimeConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = GeminiRealtimeConfig
         fields = "__all__"
+        read_only_fields = ["org", "created_by"]
 
 
 class TwilioChannelSerializer(serializers.ModelSerializer):
@@ -103,6 +106,12 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
 
 class RealtimeChannelSerializer(serializers.ModelSerializer):
     twilio = _TwilioChannelReadSerializer(read_only=True)
+    realtime_agent = OrgScopedPrimaryKeyRelatedField(
+        queryset=RealtimeAgent.objects.all(),
+        org_lookup="agent__org_id",
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = RealtimeChannel
@@ -141,6 +150,17 @@ class RealtimeAgentReadSerializer(serializers.ModelSerializer):
 
 class RealtimeAgentWriteSerializer(serializers.ModelSerializer):
     voice = serializers.CharField(allow_blank=True, default="alloy")
+    openai_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=OpenAIRealtimeConfig.objects.all(), required=False, allow_null=True
+    )
+    elevenlabs_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=ElevenLabsRealtimeConfig.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    gemini_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=GeminiRealtimeConfig.objects.all(), required=False, allow_null=True
+    )
 
     class Meta:
         model = RealtimeAgent

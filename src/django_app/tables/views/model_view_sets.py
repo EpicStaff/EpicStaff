@@ -1534,7 +1534,9 @@ class RealtimeAgentViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         write_serializer.is_valid(raise_exception=True)
         instance = write_serializer.save()
 
-        read_serializer = RealtimeAgentReadSerializer(instance)
+        read_serializer = RealtimeAgentReadSerializer(
+            instance, context={"request": self.request}
+        )
         return Response(read_serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
@@ -1550,7 +1552,9 @@ class RealtimeAgentViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         if getattr(instance, "_prefetched_objects_cache", None):
             instance._prefetched_objects_cache = {}
 
-        read_serializer = RealtimeAgentReadSerializer(instance)
+        read_serializer = RealtimeAgentReadSerializer(
+            instance, context={"request": self.request}
+        )
         return Response(read_serializer.data)
 
 
@@ -1602,17 +1606,26 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         return Response({"detail": "Updated"})
 
 
-class OpenAIRealtimeConfigViewSet(viewsets.ModelViewSet):
+class OpenAIRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
     queryset = OpenAIRealtimeConfig.objects.all()
     serializer_class = OpenAIRealtimeConfigSerializer
 
 
-class ElevenLabsRealtimeConfigViewSet(viewsets.ModelViewSet):
+class ElevenLabsRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
     queryset = ElevenLabsRealtimeConfig.objects.all()
     serializer_class = ElevenLabsRealtimeConfigSerializer
 
 
-class GeminiRealtimeConfigViewSet(viewsets.ModelViewSet):
+class GeminiRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
     queryset = GeminiRealtimeConfig.objects.all()
     serializer_class = GeminiRealtimeConfigSerializer
 
