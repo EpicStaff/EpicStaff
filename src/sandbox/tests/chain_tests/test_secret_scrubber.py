@@ -61,6 +61,35 @@ class TestLengthIsNotConsidered:
         assert scrub(text=SECRET_VALUE, secrets=SECRETS) == MASK
 
 
+class TestRegexMetacharactersInValues:
+    """The literal-vs-pattern switch is the actual risk in moving from str.replace
+    to a compiled regex: a value containing regex syntax must still be matched as
+    plain text, or scrubbing silently stops working for exactly the values most
+    likely to appear in a real credential."""
+
+    def test_a_value_containing_dot_star_is_matched_literally(self):
+        value = "sk-live.*anything"
+
+        assert scrub(text=value, secrets={"K": value}) == MASK
+
+    def test_a_value_that_looks_like_a_character_class_is_matched_literally(self):
+        value = "sk-live[0-9]+end"
+
+        assert scrub(text=value, secrets={"K": value}) == MASK
+
+    def test_a_value_containing_a_backslash_is_matched_literally(self):
+        value = "sk-live\\d+token"
+
+        assert scrub(text=value, secrets={"K": value}) == MASK
+
+    def test_metacharacters_do_not_make_the_pattern_match_unrelated_text(self):
+        """If '.' were left unescaped it would match any character, masking text
+        that never contained the secret at all."""
+        value = "sk-live.end"
+
+        assert scrub(text="sk-liveXend", secrets={"K": value}) == "sk-liveXend"
+
+
 class TestJsonEscapedForms:
     """result_data is the user's return value under json.dumps, so a value holding a
     quote, a backslash, or a non-ASCII character appears there only escaped."""

@@ -5,7 +5,6 @@ import urllib.parse
 import urllib.request
 
 from django.utils import timezone
-from django.utils.functional import SimpleLazyObject
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpResponse
@@ -1953,16 +1952,6 @@ class SecretViewSet(
         """
         secret = self.get_object()
         return Response(secret_usage_service.summary(secret=secret))
-
-    def get_serializer_context(self):
-        """Give the list response one prepared usage-count map."""
-        context = super().get_serializer_context()
-        if self.action == "list":
-            org_id = self.get_active_org_id()
-            context["usage_counts"] = SimpleLazyObject(
-                lambda: secret_usage_service.counts(org_id=org_id)
-            )
-        return context
 
 
 class VoiceSettingsView(generics.RetrieveUpdateAPIView):

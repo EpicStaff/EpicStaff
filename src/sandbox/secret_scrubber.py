@@ -13,6 +13,7 @@ or by sending it out over the network. This is a safety net, not a boundary.
 """
 
 import json
+import re
 
 # One fixed marker rather than one naming each secret: the name would then travel
 # into stdout, the SSE stream, and the tool observation handed to the LLM, and none
@@ -20,27 +21,28 @@ import json
 MASK = "[REDACTED]"
 
 
-def _literals(*, secrets: dict[str, str]) -> list[str]:
-    """Every form a secret value can appear in, longest first.
-
-    Longest first is load-bearing, not tidiness: when one value is a substring of
-    another, replacing the shorter one first would leave the rest of the longer value
-    sitting in the output next to the mask.
-    """
+def _pattern(*, secrets: dict[str, str]) -> re.Pattern | None:
+    """One compiled pattern matching every form every secret value can appear in."""
     literals: set[str] = set()
     for value in secrets.values():
         if not value:
             continue
         literals.add(value)
         literals.add(json.dumps(value)[1:-1])
-    return sorted(literals, key=len, reverse=True)
+
+    if not literals:
+        return None
+
+    ordered = sorted(literals, key=len, reverse=True)
+    return re.compile("|".join(re.escape(literal) for literal in ordered))
 
 
 def scrub(*, text: str | None, secrets: dict[str, str]) -> str | None:
-    """`text` with every injected secret value replaced by MASK."""
+    """`text` with every injected secret value replaced by MASK, in one pass."""
     if not text or not secrets:
         return text
 
-    for literal in _literals(secrets=secrets):
-        text = text.replace(literal, MASK)
-    return text
+    pattern = _pattern(secrets=secrets)
+    if pattern is None:
+        return text
+    return pattern.sub(MASK, text)

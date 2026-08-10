@@ -1,8 +1,20 @@
+from django.utils.functional import SimpleLazyObject
 from rest_framework import serializers
 
 from tables.models import Secret
 from tables.serializers.org_scoped_fields import OrgScopedUniqueTogetherValidator
 from tables.services.secrets import secret_service, secret_usage_service
+
+
+class SecretUsageCountListSerializer(serializers.ListSerializer):
+    """Prepares one usage-count map for a list response; nothing else does."""
+
+    def to_representation(self, data):
+        org_id = self.context["view"].get_active_org_id()
+        self.context["usage_counts"] = SimpleLazyObject(
+            lambda: secret_usage_service.counts(org_id=org_id)
+        )
+        return super().to_representation(data)
 
 
 class SecretSerializer(serializers.ModelSerializer):
@@ -13,6 +25,7 @@ class SecretSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Secret
+        list_serializer_class = SecretUsageCountListSerializer
         fields = [
             "id",
             "name",
@@ -46,9 +59,15 @@ class SecretSerializer(serializers.ModelSerializer):
         return secret_service.create(text=text, **validated_data)
 
     def get_usage_count(self, secret) -> int:
-        """Distinct resources referencing this secret."""
+        """Distinct resources referencing this secret.
 
+        many=True renders through SecretUsageCountListSerializer, which puts the
+        org's map in context before any row is read — that's the "usage_counts"
+        key below. A single-object response (retrieve, create) never goes
+        through it, so there's nothing to key into and this counts just the one
+        secret it was given.
+        """
         counts = self.context.get("usage_counts")
-        if counts is None:
-            return secret_usage_service.count_for(secret=secret)
-        return counts[secret.pk]
+        if counts is not None:
+            return counts[secret.pk]
+        return secret_usage_service.count_for(secret=secret)
