@@ -10,8 +10,7 @@ import {
     output,
     signal,
 } from '@angular/core';
-
-import { getLabelColorOption, LABEL_COLOR_OPTIONS, LabelColor, LabelColorOption } from '../../models/label.model';
+import { getLabelColorOption, LABEL_COLOR_OPTIONS, LabelColor, LabelColorOption } from '@shared/models';
 
 @Component({
     selector: 'app-label-color-picker',
@@ -51,7 +50,7 @@ export class LabelColorPickerComponent implements OnChanges {
             if (trigger) {
                 const rect = trigger.getBoundingClientRect();
                 const spaceBelow = window.innerHeight - rect.bottom;
-                const openUpward = spaceBelow < 220; // panel is ~210px tall (6 options)
+                const openUpward = spaceBelow < 220;
                 this.openUpward.set(openUpward);
                 const left = rect.left + rect.width / 2;
                 if (openUpward) {

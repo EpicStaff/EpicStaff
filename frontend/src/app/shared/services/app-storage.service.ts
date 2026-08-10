@@ -9,6 +9,7 @@ import { NaiveRagDocumentsStorageService } from '../../features/knowledge-source
 import { ProjectsStorageService } from '../../features/projects/services/projects-storage.service';
 import { OrganizationsStorageService } from '../../features/role-base-access/services/admin/organizations-storage.service';
 import { RolesService } from '../../features/role-base-access/services/admin/roles.service';
+import { ToolsLabelsStorageService } from '../../features/tools/services/tools-labels-storage.service';
 import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import {
@@ -37,6 +38,7 @@ export class AppStorageService {
         inject(OrganizationsStorageService),
         inject(DefaultModelsStorageService),
         inject(LabelsStorageService),
+        inject(ToolsLabelsStorageService),
         inject(FlowsStorageService),
         inject(CollectionsStorageService),
         inject(DocumentsStorageService),

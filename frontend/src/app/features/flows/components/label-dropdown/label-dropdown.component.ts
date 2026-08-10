@@ -15,13 +15,10 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent, ButtonComponent, CheckboxComponent, LabelColorPickerComponent } from '@shared/components';
+import { LabelColor } from '@shared/models';
 
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { CheckboxComponent } from '../../../../shared/components/checkbox/checkbox.component';
-import { LabelColor } from '../../models/label.model';
 import { LabelsStorageService, LabelTreeNode } from '../../services/labels-storage.service';
-import { LabelColorPickerComponent } from '../label-color-picker/label-color-picker.component';
 
 interface FlatLabelNode {
     node: LabelTreeNode;

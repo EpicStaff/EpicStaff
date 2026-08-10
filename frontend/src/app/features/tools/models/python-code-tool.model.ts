@@ -19,11 +19,15 @@ export interface GetPythonCodeToolRequest {
     python_code: GetPythonCodeRequest;
     name: string;
     description: string;
+    //TODO check is args_schema needed
     args_schema: ArgsSchema;
     built_in: boolean;
     variables?: unknown[];
     use_storage?: boolean;
+    favorite: boolean;
+    label_ids: number[];
 }
+
 export interface CreatePythonCodeToolRequest {
     python_code: CreatePythonCodeRequest;
     name: string;
@@ -38,8 +42,10 @@ export interface UpdatePythonCodeToolRequest {
     name: string; // Required, minLength: 1
     description: string;
     args_schema: ArgsSchema; // Now an object rather than a JSON string
-    use_storage?: boolean;    
+    use_storage?: boolean;
 }
+
+export interface GetPythonCodeToolUsage {}
 
 /**
  * Nested `python_code` body accepted by the V2 Python Code Tool create

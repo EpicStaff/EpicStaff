@@ -14,9 +14,9 @@
 </div>
 
 <div class="sidebar-content">
-    <!-- All Flows row -->
+    <!-- All items row -->
     <div
-        class="tree-item all-flows-item"
+        class="tree-item all-items-item"
         [class.active]="activeLabelFilter() === 'all'"
         (click)="selectAll()"
     >
@@ -24,7 +24,7 @@
             icon="home"
             size="0.9rem"
         />
-        <span>All Flows</span>
+        <span>{{ allItemsLabel() }}</span>
     </div>
 
     <!-- Labels section header -->
@@ -37,7 +37,7 @@
             <span class="section-label">Labels</span>
         </div>
         <button
-            *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
+            *appHasPermission="[resourceCode(), ActionCode.Create]"
             class="add-btn"
             (click)="startAddRootLabel()"
             matTooltip="Add label"
@@ -97,7 +97,6 @@
 
     <!-- Label tree (flat rendered) -->
     @for (item of flatTree(); track item.node.id) {
-        <!-- Label row -->
         <div
             class="tree-item label-item"
             [class.active]="activeLabelFilter() === item.node.id"
@@ -105,7 +104,6 @@
             [style.--label-color]="getLabelIconColor(item.node)"
             (click)="selectLabel(item.node.id)"
         >
-            <!-- Expand/collapse toggle -->
             <button
                 class="toggle-btn"
                 (click)="$event.stopPropagation(); toggleExpand(item.node.id)"
@@ -126,7 +124,6 @@
                 class="label-icon"
             />
 
-            <!-- Label name or rename input -->
             @if (editingLabelId() === item.node.id) {
                 <input
                     class="rename-input"
@@ -167,10 +164,9 @@
             } @else {
                 <span class="label-name">{{ item.node.name }}</span>
 
-                <!-- Action buttons (shown on hover) -->
                 <div class="item-actions">
                     <button
-                        *appHasPermission="[ResourceCode.Flows, ActionCode.Create]"
+                        *appHasPermission="[resourceCode(), ActionCode.Create]"
                         class="action-btn"
                         (click)="$event.stopPropagation(); startAddChildLabel(item.node.id)"
                         matTooltip="Add sublabel"
@@ -182,7 +178,7 @@
                         />
                     </button>
                     <button
-                        *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
+                        *appHasPermission="[resourceCode(), ActionCode.Update]"
                         class="action-btn edit-label-btn"
                         (click)="$event.stopPropagation(); startRename(item.node)"
                         matTooltip="Rename"
@@ -194,7 +190,7 @@
                         />
                     </button>
                     <button
-                        *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]"
+                        *appHasPermission="[resourceCode(), ActionCode.Delete]"
                         class="action-btn danger"
                         (click)="$event.stopPropagation(); openDeleteDialog(item.node)"
                         matTooltip="Delete"
@@ -219,7 +215,6 @@
             </div>
         }
 
-        <!-- Child add input row (shown below its parent) -->
         @if (addingChildOf() === item.node.id) {
             <div
                 class="add-label-row child-add"

@@ -8,6 +8,7 @@ import {
     CreatePythonCodeToolPayload,
     CreatePythonCodeToolRequest,
     GetPythonCodeToolRequest,
+    GetPythonCodeToolUsage,
     UpdatePythonCodeToolRequest,
 } from '../../models/python-code-tool.model';
 
@@ -72,6 +73,12 @@ export class CustomToolsService {
 
     getPythonCodeToolById(id: number): Observable<GetPythonCodeToolRequest> {
         return this.http.get<GetPythonCodeToolRequest>(`${this.baseUrl}${id}/`, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    getUsageDetail(toolId: number): Observable<GetPythonCodeToolUsage> {
+        return this.http.get<GetPythonCodeToolUsage>(`${this.baseUrl}${toolId}/usage-detail/`, {
             headers: this.httpHeaders,
         });
     }

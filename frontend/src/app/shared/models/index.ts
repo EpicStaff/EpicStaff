@@ -5,6 +5,7 @@ export * from './crew_run_message.model';
 export * from './embeddings/embedding.model';
 export * from './embeddings/embedding-config.model';
 export * from './http-status.enum';
+export * from './label.model';
 export * from './llms/llm.model';
 export * from './llms/llm-config.model';
 export * from './llms/llm-library-model.interface';

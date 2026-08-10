@@ -16,8 +16,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { AppSvgIconComponent, ButtonComponent, SearchComponent, TabButtonComponent } from '@shared/components';
+import { LabelSidebarComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { LabelTreeNode } from '@shared/models';
 import {
     AppStorageService,
     EmbeddingConfigStorageService,
@@ -31,15 +34,13 @@ import {
     TranscriptionConfigStorageService,
     TranscriptionModelsStorageService,
 } from '@shared/services';
+import { LABELS_STORE } from '@shared/services';
 import { forkJoin, Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged, take } from 'rxjs/operators';
 
 import { EntityTypeResult, ImportResult, ImportResultItem } from '../../../../core/models/import-result.model';
 import { ImportExportService } from '../../../../core/services/import-export.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
-import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
 import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
 import { CreateFlowDialogComponent } from '../../components/create-flow-dialog/create-flow-dialog.component';
 import {
@@ -65,7 +66,6 @@ import { FlowsStorageService } from '../../services/flows-storage.service';
 import { ImportFlowSettingsService } from '../../services/import-flow-settings.service';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { parseFilterFromParams, serializeFilterToParams } from '../../utils/flow-filter-url.utils';
-import { FlowsLabelSidebarComponent } from './components/flows-label-sidebar/flows-label-sidebar.component';
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 type JsonObject = { [key: string]: JsonValue };
@@ -92,15 +92,17 @@ type ImportFileData = Record<string, ImportFileEntity[]>;
         TabButtonComponent,
         FormsModule,
         AppSvgIconComponent,
-        FlowsLabelSidebarComponent,
+        LabelSidebarComponent,
         HideInlineSubtitleOnOverflowDirective,
         ImportFlowOptionsPopoverComponent,
         OverlayModule,
         FlowsFilterMenuComponent,
         HasPermissionDirective,
         MatTooltipModule,
+        SearchComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
 })
 export class FlowsListPageComponent implements OnInit, OnDestroy {
     public tabs = [
@@ -163,6 +165,60 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
 
     public toggleSidebar(): void {
         this.showSidebar.update((v) => !v);
+    }
+
+    public readonly deleteMessageForLabel = (label: LabelTreeNode): string => {
+        return `Are you sure you want to delete <strong>${label.name}</strong> label? This will remove it from all flows and sublabels.`;
+    };
+
+    public readonly deleteCautionForLabel = (label: LabelTreeNode): string | undefined => {
+        const flows = this.flowStorageService.flows();
+        const sublabelCount = this.countAllDescendants(label);
+        const sublabelIds = this.getAllDescendantIds(label);
+
+        const directFlowCount = flows.filter((f) => (f.label_ids || []).includes(label.id)).length;
+        const sublabelFlowCount =
+            sublabelIds.length > 0
+                ? flows.filter((f) => (f.label_ids || []).some((id) => sublabelIds.includes(id))).length
+                : 0;
+
+        if (directFlowCount === 0 && sublabelCount === 0) return undefined;
+
+        const parts: string[] = [];
+        if (directFlowCount > 0) {
+            parts.push(`<strong>${directFlowCount} flow${directFlowCount !== 1 ? 's' : ''}</strong>`);
+        }
+        if (sublabelCount > 0) {
+            const sublabelPart = `<strong>${sublabelCount} sublabel${sublabelCount !== 1 ? 's' : ''}</strong>`;
+            if (sublabelFlowCount > 0) {
+                parts.push(
+                    `${sublabelPart} containing <strong>${sublabelFlowCount} flow${sublabelFlowCount !== 1 ? 's' : ''}</strong>`
+                );
+            } else {
+                parts.push(sublabelPart);
+            }
+        }
+        return `The label is used in ${parts.join(' and ')}.`;
+    };
+
+    public onLabelDeleted(): void {
+        this.flowStorageService.getFlows(true).subscribe();
+    }
+
+    private countAllDescendants(node: LabelTreeNode): number {
+        return node.children.reduce((acc, child) => acc + 1 + this.countAllDescendants(child), 0);
+    }
+
+    private getAllDescendantIds(node: LabelTreeNode): number[] {
+        const ids: number[] = [];
+        const collect = (n: LabelTreeNode) => {
+            for (const child of n.children) {
+                ids.push(child.id);
+                collect(child);
+            }
+        };
+        collect(node);
+        return ids;
     }
 
     public selectAllLabels(): void {

@@ -52,3 +52,21 @@ export interface PatchLabelRequest {
     metadata?: { color?: LabelColor };
     name?: string;
 }
+
+export interface LabelTreeNode extends LabelDto {
+    children: LabelTreeNode[];
+}
+
+export function buildLabelTree(labels: LabelDto[]): LabelTreeNode[] {
+    function getChildren(parentId: number | null): LabelTreeNode[] {
+        return labels
+            .filter((label) => label.parent === parentId)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((label) => ({
+                ...label,
+                children: getChildren(label.id),
+            }));
+    }
+
+    return getChildren(null);
+}

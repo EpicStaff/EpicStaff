@@ -1,6 +1,7 @@
+import { LabelDto } from '@shared/models';
+
 import { CustomFilterClause, CustomFilterCondition, FilterOperator, FlowSortOrder } from '../models/flow-filter.model';
 import { GetGraphLightRequest } from '../models/graph.model';
-import { LabelDto } from '../models/label.model';
 
 export function matchesOperator(haystack: string, operator: FilterOperator, needle: string): boolean {
     const h = haystack.toLowerCase();

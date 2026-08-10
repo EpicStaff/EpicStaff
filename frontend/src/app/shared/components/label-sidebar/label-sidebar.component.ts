@@ -7,6 +7,7 @@ import {
     computed,
     ElementRef,
     inject,
+    input,
     OnInit,
     output,
     signal,
@@ -14,25 +15,27 @@ import {
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, getLabelColorOption, LabelColor, LabelDto, LabelTreeNode, ResourceCode } from '@shared/models';
+import { LABELS_STORE } from '@shared/services';
 
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import {
-    ConfirmationDialogComponent,
-    DialogResult,
-} from '../../../../../../shared/components/cofirm-dialog/confirmation-dialog.component';
-import { LabelColorPickerComponent } from '../../../../components/label-color-picker/label-color-picker.component';
-import { getLabelColorOption, LabelColor, LabelDto } from '../../../../models/label.model';
-import { FlowsStorageService } from '../../../../services/flows-storage.service';
-import { LabelsStorageService, LabelTreeNode } from '../../../../services/labels-storage.service';
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
+import { ConfirmationDialogComponent, DialogResult } from '../cofirm-dialog';
+import { LabelColorPickerComponent } from '../label-color-picker/label-color-picker.component';
 
 interface FlatLabelNode {
     node: LabelTreeNode;
     depth: number;
 }
 
+/**
+ * Reusable label branches sidebar. Consumers must provide the LABELS_STORE
+ * injection token (see @shared/services/labels-store.token). Feature-specific
+ * wording, permissions, and delete-confirmation caution copy are passed in
+ * as inputs. A `labelDeleted` output is emitted so parents can trigger any
+ * post-delete side effects (e.g. refreshing their item list).
+ */
 @Component({
-    selector: 'app-flows-label-sidebar',
+    selector: 'app-label-sidebar',
     imports: [
         CommonModule,
         FormsModule,
@@ -42,37 +45,43 @@ interface FlatLabelNode {
         MatTooltipModule,
         HasPermissionDirective,
     ],
-    templateUrl: './flows-label-sidebar.component.html',
-    styleUrls: ['./flows-label-sidebar.component.scss'],
+    templateUrl: './label-sidebar.component.html',
+    styleUrls: ['./label-sidebar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class FlowsLabelSidebarComponent implements OnInit {
-    closeSidebar = output<void>();
+export class LabelSidebarComponent implements OnInit {
+    // Wording
+    readonly allItemsLabel = input<string>('All Items');
+    // Optional callback that returns caution HTML for the delete confirmation
+    // dialog. Return `undefined` for no caution row.
+    readonly deleteCaution = input<((node: LabelTreeNode) => string | undefined) | null>(null);
+    // Delete confirmation message (HTML). Falls back to a generic message
+    // if not provided.
+    readonly deleteMessage = input<((node: LabelTreeNode) => string) | null>(null);
+    // Permission ResourceCode used to gate add/edit/delete buttons.
+    readonly resourceCode = input<ResourceCode>(ResourceCode.Flows);
 
-    private readonly labelsStorage = inject(LabelsStorageService);
-    private readonly flowsStorageService = inject(FlowsStorageService);
+    closeSidebar = output<void>();
+    labelDeleted = output<number>();
+
+    private readonly labelsStorage = inject(LABELS_STORE);
     private readonly dialog = inject(Dialog);
     private readonly el = inject(ElementRef);
 
-    // Expose from storage
     readonly labelTree = this.labelsStorage.labelTree;
     readonly activeLabelFilter = this.labelsStorage.activeLabelFilter;
 
-    // Local UI state
     readonly expandedNodes = signal<Set<number>>(new Set());
     readonly addingRootLabel = signal<boolean>(false);
     readonly addingChildOf = signal<number | null>(null);
     readonly editingLabelId = signal<number | null>(null);
 
-    // Plain properties for ngModel bindings
     readonly newLabelNameValue = signal<string>('');
     readonly editingLabelNameValue = signal<string>('');
 
-    // Color picker state
     readonly newLabelColor = signal<LabelColor>(LabelColor.Default);
     readonly editingLabelColor = signal<LabelColor>(LabelColor.Default);
 
-    // Validation error messages
     readonly newLabelError = signal<string>('');
     readonly renameLabelError = signal<string>('');
 
@@ -212,41 +221,18 @@ export class FlowsLabelSidebarComponent implements OnInit {
     }
 
     openDeleteDialog(label: LabelTreeNode): void {
-        const flows = this.flowsStorageService.flows();
-        const sublabelCount = this.countAllDescendants(label);
-        const sublabelIds = this.getAllDescendantIds(label);
-
-        const directFlowCount = flows.filter((f) => (f.label_ids || []).includes(label.id)).length;
-
-        const sublabelFlowCount =
-            sublabelIds.length > 0
-                ? flows.filter((f) => (f.label_ids || []).some((id) => sublabelIds.includes(id))).length
-                : 0;
-
-        let caution: string | undefined;
-        if (directFlowCount > 0 || sublabelCount > 0) {
-            const parts: string[] = [];
-            if (directFlowCount > 0) {
-                parts.push(`<strong>${directFlowCount} flow${directFlowCount !== 1 ? 's' : ''}</strong>`);
-            }
-            if (sublabelCount > 0) {
-                const sublabelPart = `<strong>${sublabelCount} sublabel${sublabelCount !== 1 ? 's' : ''}</strong>`;
-                if (sublabelFlowCount > 0) {
-                    parts.push(
-                        `${sublabelPart} containing <strong>${sublabelFlowCount} flow${sublabelFlowCount !== 1 ? 's' : ''}</strong>`
-                    );
-                } else {
-                    parts.push(sublabelPart);
-                }
-            }
-            caution = `The label is used in ${parts.join(' and ')}.`;
-        }
+        const cautionFn = this.deleteCaution();
+        const messageFn = this.deleteMessage();
+        const caution = cautionFn ? cautionFn(label) : undefined;
+        const message = messageFn
+            ? messageFn(label)
+            : `Are you sure you want to delete <strong>${label.name}</strong> label?`;
 
         const dialogRef = this.dialog.open<DialogResult>(ConfirmationDialogComponent, {
             width: '500px',
             data: {
                 title: 'Delete labels',
-                message: `Are you sure you want to delete <strong>${label.name}</strong> label? This will remove it from all flows and sublabels.`,
+                message,
                 confirmText: 'Delete',
                 type: 'danger',
                 isShownBorder: true,
@@ -258,7 +244,7 @@ export class FlowsLabelSidebarComponent implements OnInit {
             if (result === 'confirm') {
                 this.labelsStorage.deleteLabel(label.id).subscribe({
                     next: () => {
-                        this.flowsStorageService.getFlows(true).subscribe();
+                        this.labelDeleted.emit(label.id);
                     },
                     error: (err) => {
                         console.error('Error deleting label', err);
@@ -266,22 +252,6 @@ export class FlowsLabelSidebarComponent implements OnInit {
                 });
             }
         });
-    }
-
-    private countAllDescendants(node: LabelTreeNode): number {
-        return node.children.reduce((acc, child) => acc + 1 + this.countAllDescendants(child), 0);
-    }
-
-    private getAllDescendantIds(node: LabelTreeNode): number[] {
-        const ids: number[] = [];
-        const collect = (n: LabelTreeNode) => {
-            for (const child of n.children) {
-                ids.push(child.id);
-                collect(child);
-            }
-        };
-        collect(node);
-        return ids;
     }
 
     getLabelIconColor(node: LabelTreeNode): string {
@@ -319,5 +289,4 @@ export class FlowsLabelSidebarComponent implements OnInit {
     }
 
     protected readonly ActionCode = ActionCode;
-    protected readonly ResourceCode = ResourceCode;
 }
