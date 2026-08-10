@@ -488,7 +488,11 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     }
 
     public setActiveTab(tab: TabType): void {
-        if (tab === this.activeTab()) return;
+        // activeTab() only flips once a deferred switch (below) actually runs, so while one is
+        // pending this can still equal the tab being left. Bail out only when there's nothing
+        // in flight — otherwise a quick click back to the original tab would silently leave the
+        // stale switch scheduled and lock the wrong tab once it fires.
+        if (tab === this.activeTab() && this.pendingTabSwitchTimer === null) return;
 
         const lock = this.lockedByOther(tab);
         if (lock) {

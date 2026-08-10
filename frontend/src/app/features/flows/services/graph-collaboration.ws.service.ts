@@ -516,6 +516,9 @@ export class GraphCollaborationWsService {
     public connectionStatus = signal<ConnectionStatus>('disconnected');
     public readonly isConnected = computed(() => this.connectionStatus() === 'connected');
     public readonly lockedNodeFields = signal<Map<string, Map<string, EditorInfo>>>(new Map());
+    // Wire id used when a field was locked, keyed by `${node_id}:${field}` — reused on unlock so a
+    // mid-edit backendId assignment (temp id -> stableNodeId) can't desync the unlock from its lock.
+    private readonly activeLockWireIds = new Map<string, string>();
     public readonly currentUserId = computed(() => this.profileService.currentUserSignal()?.id ?? null);
 
     public graphFilesChanged$ = new Subject<GraphFilesChangedMessage>();
@@ -907,6 +910,7 @@ export class GraphCollaborationWsService {
         const editor = this.buildEditorInfo();
         if (!editor) return;
         const wireId = this.lockWireId(node_id);
+        this.activeLockWireIds.set(`${node_id}:${field}`, wireId);
         this.lockedNodeFields.update((m) => {
             const next = new Map(m);
             const nodeFields = new Map(next.get(node_id) ?? []);
@@ -920,7 +924,11 @@ export class GraphCollaborationWsService {
     public sendNodeUnlocked(node_id: string, field: string): void {
         const editor = this.buildEditorInfo();
         if (!editor) return;
-        const wireId = this.lockWireId(node_id);
+        const lockKey = `${node_id}:${field}`;
+        // Reuse the wire id captured at lock time — recomputing it here could resolve to a
+        // different id if the node's backendId got assigned in the meantime, orphaning the lock.
+        const wireId = this.activeLockWireIds.get(lockKey) ?? this.lockWireId(node_id);
+        this.activeLockWireIds.delete(lockKey);
         this.lockedNodeFields.update((m) => {
             const next = new Map(m);
             const nodeFields = new Map(next.get(node_id) ?? []);
