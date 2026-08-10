@@ -95,7 +95,11 @@ async def get_channel_config(channel_token: str) -> dict:
         logger.debug(f"[channel_config] cache hit for token={channel_token}")
         return cached[0]
 
-    url = f"{settings.DJANGO_API_BASE_URL}/realtime-channels/"
+    # Dedicated by-token lookup action (RealtimeChannelViewSet.lookup_by_token) —
+    # unscoped by org, API-key-only. This request comes from Twilio via us with
+    # no logged-in user and no org context, so it cannot use the normal
+    # org-scoped list endpoint (that 400s with org_context_required).
+    url = f"{settings.DJANGO_API_BASE_URL}/realtime-channels/lookup-by-token/"
     logger.info(f"[channel_config] fetching from Django: {url}?token={channel_token}")
     try:
         async with httpx.AsyncClient() as client:
@@ -109,13 +113,8 @@ async def get_channel_config(channel_token: str) -> dict:
                 f"[channel_config] Django response: status={r.status_code} body={r.text[:300]}"
             )
             if r.is_success:
-                results = r.json()
-                # Router returns a list; token is unique so take first
-                if isinstance(results, list) and results:
-                    data = results[0]
-                elif isinstance(results, dict) and "results" in results:
-                    data = results["results"][0] if results["results"] else {}
-                else:
+                data = r.json()
+                if not isinstance(data, dict):
                     data = {}
                 _channel_cache[channel_token] = (data, now)
                 logger.info(
@@ -486,23 +485,24 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
 
     twilio_cfg = channel.get("twilio") or {}
     auth_token = twilio_cfg.get("auth_token")
-    ngrok_cfg = twilio_cfg.get("ngrok_config") or {}
-    live_url = ngrok_cfg.get("live_url") or ""
+    webhook_trigger = twilio_cfg.get("webhook_trigger") or {}
+    ngrok_cfg = webhook_trigger.get("ngrok_config") or {}
+    live_url = webhook_trigger.get("live_url") or ""
     ngrok_domain = ngrok_cfg.get("domain") or ""
     logger.info(
         f"[voice/{channel_token}] twilio_cfg keys={list(twilio_cfg.keys())} ngrok_cfg={ngrok_cfg} live_url={live_url} ngrok_domain={ngrok_domain}"
     )
 
-    if live_url:
-        base = (
-            live_url.rstrip("/")
-            .replace("https://", "wss://")
-            .replace("http://", "wss://")
-        )
-        voice_stream_url = f"{base}/voice/{channel_token}/stream"
-    elif ngrok_domain:
+    if ngrok_domain:
+        # Bare domain — the correct source for the Media Stream WS URL.
         voice_stream_url = f"wss://{ngrok_domain}/voice/{channel_token}/stream"
     else:
+        # NOTE: `live_url` is intentionally NOT used here. It belongs to the
+        # generic webhook-trigger microservice and already carries a
+        # `/webhooks/{path}` prefix (e.g. `/webhooks/twilio`). nginx's
+        # `^~ /webhooks/` location block would intercept a WS URL built from
+        # it and route it to the unrelated `webhook` stub service, which has
+        # no WebSocket handler — breaking the Twilio Media Stream handshake.
         voice_stream_url = (
             settings.VOICE_STREAM_URL.replace(
                 "/voice/stream", f"/voice/{channel_token}/stream"

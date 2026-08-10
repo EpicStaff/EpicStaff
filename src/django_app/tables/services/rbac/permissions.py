@@ -96,6 +96,22 @@ class HasOrgPermission(BasePermission):
         return True
 
 
+class IsApiKeyAuthenticated(BasePermission):
+    """Allows only requests authenticated via a valid ApiKey (system or user).
+
+    For internal-service lookup endpoints that intentionally bypass org-context
+    scoping (e.g. by-token webhook resolution for inbound Twilio calls, where
+    the caller structurally cannot supply an `X-Organization-Id` header). A
+    regular JWT session must not be able to use these org-bypass paths — pair
+    this alone in `permission_classes` (no `IsAuthenticated`/`HasOrgPermission`).
+    """
+
+    message = "This endpoint requires API key authentication."
+
+    def has_permission(self, request, view) -> bool:
+        return isinstance(request.auth, ApiKey)
+
+
 class DenyApiKeyAuth(BasePermission):
     """Blocks API-key-authenticated callers.
 

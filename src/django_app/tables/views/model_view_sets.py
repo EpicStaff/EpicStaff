@@ -4,6 +4,7 @@ import logging
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +207,11 @@ from tables.views.mixins import (
     SuperadminWriteMixin,
 )
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
-from tables.services.rbac.permissions import HasOrgPermission, IsSuperadmin
+from tables.services.rbac.permissions import (
+    HasOrgPermission,
+    IsSuperadmin,
+    IsApiKeyAuthenticated,
+)
 from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
@@ -250,6 +255,7 @@ from tables.serializers.model_serializers import (
     RealtimeAgentChatSerializer,
     RealtimeAgentReadSerializer,
     RealtimeAgentWriteSerializer,
+    RealtimeChannelInternalSerializer,
     RealtimeChannelSerializer,
     RealtimeConfigSerializer,
     RealtimeModelSerializer,
@@ -292,6 +298,7 @@ from tables.services.redis_service import RedisService
 from tables.swagger_schemas.twilio_schemas import (
     TWILIO_PHONE_NUMBERS_GET,
     TWILIO_CONFIGURE_WEBHOOK_POST,
+    REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET,
 )
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.models.rbac_models.rbac_enums import ResourceType
@@ -1643,6 +1650,53 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     serializer_class = RealtimeChannelSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["realtime_agent", "channel_type", "is_active", "token"]
+
+    @extend_schema(**REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET)
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="lookup-by-token",
+        permission_classes=[IsApiKeyAuthenticated],
+    )
+    def lookup_by_token(self, request):
+        """Resolve a channel by its unique `token`, unscoped by org.
+
+        Used only by the `realtime`/`voice_app` services to route an inbound
+        Twilio call (POST /voice/{token}) to the right agent — that caller has
+        no logged-in user and cannot supply `X-Organization-Id`. The token
+        itself (an unguessable UUID) is the lookup/authorization key, so the
+        normal `HasOrgPermission` + `OrgScopedViewSetMixin.get_queryset` org
+        filter is deliberately bypassed here. Restricted to API-key callers
+        (`IsApiKeyAuthenticated`) — do not widen this to `IsAuthenticated`,
+        that would let any JWT-session user resolve another org's channel by
+        guessing/observing its token.
+        """
+        raw_token = request.query_params.get("token")
+        if not raw_token:
+            return Response(
+                {"error": "token is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            token = uuid.UUID(str(raw_token))
+        except (ValueError, AttributeError, TypeError):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        channel = (
+            RealtimeChannel.objects.select_related(
+                "twilio__webhook_trigger__ngrok",
+                "twilio__webhook_trigger__localhost",
+            )
+            .filter(token=token)
+            .first()
+        )
+        if channel is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        # Internal-only serializer: includes twilio.auth_token so the trusted
+        # realtime/voice_app caller (IsApiKeyAuthenticated) can validate Twilio's
+        # inbound X-Twilio-Signature header. Never use self.get_serializer here —
+        # that resolves to the user-facing RealtimeChannelSerializer, which
+        # deliberately omits auth_token (EST-3633).
+        return Response(RealtimeChannelInternalSerializer(channel).data)
 
 
 class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):

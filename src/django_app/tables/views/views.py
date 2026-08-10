@@ -95,6 +95,7 @@ from tables.views.mixins import (
     OrgScopedServiceViewSetMixin,
 )
 from tables.models.knowledge_models import NaiveRag, GraphRag
+from tables.models.rbac_models import ApiKey
 from tables.services.rbac.permissions import (
     HasOrgPermission,
     IsSuperadmin,
@@ -700,22 +701,39 @@ class InitRealtimeAPIView(APIView):
         agent_id = serializer.validated_data["agent_id"]
         config = serializer.validated_data.get("config", {})
 
-        # Org isolation: starting a realtime session is a read/use of an agent,
-        # so require AGENTS.READ and reject an agent_id outside the active org
-        # (rejected like a missing id — existence never leaks).
-        org_id = self._org_context.resolve(
-            request=request, view_kwargs=getattr(self, "kwargs", {})
-        )
-        assert_org_permission(
-            user=request.user,
-            org_id=org_id,
-            resource_type=ResourceType.AGENTS,
-            action=Permission.READ,
-        )
-        if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
-            raise ValidationError(
-                {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
+        if isinstance(request.auth, ApiKey):
+            # Trusted internal caller (realtime's Twilio MediaStream bridge, see
+            # _voice_stream_handler) has no end-user session and therefore no
+            # X-Organization-Id to send. It already resolved agent_id server-side
+            # (via RealtimeChannelViewSet.lookup_by_token, itself scoped by the
+            # channel's own org), so org is derived here from the agent's own
+            # `org` FK instead of requiring a header — same approach as
+            # lookup_by_token. This branch never runs for a JWT/user session:
+            # request.auth is only an ApiKey instance for API-key-authenticated
+            # requests (see IsApiKeyAuthenticated / ApiKeyAuthentication).
+            agent = Agent.objects.filter(id=agent_id).first()
+            if agent is None:
+                raise ValidationError(
+                    {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
+                )
+            org_id = agent.org_id
+        else:
+            # Org isolation: starting a realtime session is a read/use of an
+            # agent, so require AGENTS.READ and reject an agent_id outside the
+            # active org (rejected like a missing id — existence never leaks).
+            org_id = self._org_context.resolve(
+                request=request, view_kwargs=getattr(self, "kwargs", {})
             )
+            assert_org_permission(
+                user=request.user,
+                org_id=org_id,
+                resource_type=ResourceType.AGENTS,
+                action=Permission.READ,
+            )
+            if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
+                raise ValidationError(
+                    {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
+                )
 
         try:
             connection_key = realtime_service.init_realtime(

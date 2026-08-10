@@ -76,7 +76,14 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TwilioChannel
-        fields = "__all__"
+        fields = [
+            "channel",
+            "account_sid",
+            "auth_token",
+            "phone_number",
+            "webhook_trigger",
+        ]
+        extra_kwargs = {"auth_token": {"write_only": True}}
 
     def validate(self, attrs):
         wt = attrs.get("webhook_trigger")
@@ -101,7 +108,7 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TwilioChannel
-        fields = "__all__"
+        fields = ["channel", "account_sid", "phone_number", "webhook_trigger"]
 
 
 class RealtimeChannelSerializer(serializers.ModelSerializer):
@@ -117,6 +124,31 @@ class RealtimeChannelSerializer(serializers.ModelSerializer):
         model = RealtimeChannel
         fields = "__all__"
         read_only_fields = ["org", "created_by"]
+
+
+class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
+    """Internal-only variant of `_TwilioChannelReadSerializer` that includes `auth_token`.
+
+    Used exclusively by `RealtimeChannelViewSet.lookup_by_token`, which is gated by
+    `IsApiKeyAuthenticated` (the trusted `realtime`/`voice_app` services only, never a
+    logged-in user). That caller needs `auth_token` to validate the `X-Twilio-Signature`
+    header on inbound Twilio webhook requests. Do NOT reuse this serializer for any
+    user-facing endpoint — that would reopen the EST-3633 leak.
+    """
+
+    class Meta(_TwilioChannelReadSerializer.Meta):
+        fields = _TwilioChannelReadSerializer.Meta.fields + ["auth_token"]
+
+
+class RealtimeChannelInternalSerializer(RealtimeChannelSerializer):
+    """Internal-only variant of `RealtimeChannelSerializer` used by `lookup_by_token`.
+
+    Nests `_TwilioChannelInternalSerializer` so the response includes `twilio.auth_token`.
+    Only ever instantiated behind `IsApiKeyAuthenticated` — see
+    `RealtimeChannelViewSet.lookup_by_token`.
+    """
+
+    twilio = _TwilioChannelInternalSerializer(read_only=True)
 
 
 class ConversationRecordingSerializer(serializers.ModelSerializer):

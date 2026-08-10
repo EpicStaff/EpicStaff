@@ -1,4 +1,4 @@
-from drf_spectacular.utils import OpenApiResponse, OpenApiExample
+from drf_spectacular.utils import OpenApiResponse, OpenApiExample, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
@@ -48,6 +48,52 @@ TWILIO_PHONE_NUMBERS_GET = dict(
                     response_only=True,
                 ),
             ],
+        ),
+    },
+)
+
+REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET = dict(
+    summary="Resolve a RealtimeChannel by its unique token (internal, API-key only).",
+    description="Looks up a RealtimeChannel directly by its unique `token` field, "
+    "bypassing org-context scoping. The token is an unguessable UUID that is "
+    "itself the authorization/lookup key — used by the `realtime` service to "
+    "resolve which agent answers an inbound Twilio call, a request Twilio makes "
+    "with no logged-in user and no `X-Organization-Id` header. Restricted to "
+    "API-key-authenticated callers (`IsApiKeyAuthenticated`); a JWT session "
+    "cannot use this endpoint.",
+    parameters=[
+        OpenApiParameter(
+            name="token",
+            type=OpenApiTypes.UUID,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description="The RealtimeChannel's unique token.",
+        ),
+    ],
+    responses={
+        200: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Channel found and returned.",
+        ),
+        400: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Bad Request - missing token query param.",
+            examples=[
+                OpenApiExample(
+                    "Missing token",
+                    value={"error": "token is required"},
+                    response_only=True,
+                ),
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        403: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Forbidden - caller is not API-key-authenticated.",
+        ),
+        404: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="No channel exists for the given token.",
         ),
     },
 )
