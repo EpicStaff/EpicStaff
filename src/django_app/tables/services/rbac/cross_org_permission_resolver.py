@@ -35,3 +35,16 @@ class CrossOrgPermissionResolver:
             OrgScope(org=m.org, effective=EffectivePermissions.from_role(m.role))
             for m in memberships
         ]
+
+    def resolve_all_cached(self, request) -> list[OrgScope]:
+        """Per-request memoization of `resolve_all` for the request's user.
+
+        The cross-org door gate and the roles list both need the caller's
+        scopes within a single request; caching them on the request object
+        computes `resolve_all` once instead of twice.
+        Superadmin never reaches here — the gate short-circuits before it."""
+        cached = getattr(request, "_rbac_org_scopes", None)
+        if cached is None:
+            cached = self.resolve_all(user=request.user)
+            request._rbac_org_scopes = cached
+        return cached

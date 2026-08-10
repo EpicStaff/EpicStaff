@@ -148,5 +148,5 @@ class HasResourcePermissionAnywhere(BaseRbacPermission):
     _resolver = CrossOrgPermissionResolver()
 
     def _authorize(self, request, view, resource_type, required) -> bool:
-        scopes = self._resolver.resolve_all(user=request.user)
+        scopes = self._resolver.resolve_all_cached(request)
         return any(scope.effective.can(resource_type, required) for scope in scopes)

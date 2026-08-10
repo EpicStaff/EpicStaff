@@ -59,7 +59,10 @@ class RoleAdminViewSet(viewsets.ViewSet):
     @extend_schema(**ROLES_LIST_GET)
     def list(self, request):
         org_ids = self._parse_org_ids(request.query_params.get("org_ids"))
-        custom_qs = self._service.list_custom_roles(actor=request.user, org_ids=org_ids)
+        scopes = getattr(request, "_rbac_org_scopes", None)
+        custom_qs = self._service.list_custom_roles(
+            actor=request.user, org_ids=org_ids, scopes=scopes
+        )
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(custom_qs, request, view=self)
         self._service.attach_role_display(roles=page)

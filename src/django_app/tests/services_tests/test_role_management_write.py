@@ -35,6 +35,11 @@ def role_member(db):
 
 
 @pytest.fixture
+def role_viewer(db):
+    return Role.objects.get(name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True)
+
+
+@pytest.fixture
 def org(db):
     return Organization.objects.create(name="Acme-write")
 
@@ -135,8 +140,8 @@ def test_update_builtin_rejected(service, org_admin, role_member):
 
 
 @pytest.mark.django_db
-def test_delete_reassigns_members_to_member(
-    service, org_admin, org, role_member, django_user_model
+def test_delete_reassigns_members_to_viewer(
+    service, org_admin, org, role_viewer, django_user_model
 ):
     custom = service.create_role(
         actor=org_admin, org_id=org.id, name="Temp", description=None, permissions=[]
@@ -151,7 +156,33 @@ def test_delete_reassigns_members_to_member(
     assert count == 1
     assert not Role.objects.filter(pk=custom.id).exists()
     membership = OrganizationUser.objects.get(user=victim, org=org)
-    assert membership.role_id == role_member.id  # reassigned, not evicted
+    assert membership.role_id == role_viewer.id  # reassigned to Viewer, not evicted
+
+
+@pytest.mark.django_db
+def test_update_role_cross_org_is_404(service, django_user_model, org, role_member):
+    other_org = Organization.objects.create(name="Other-write-upd")
+    stranger = django_user_model.objects.create_user(
+        email="stranger-upd@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=stranger, org=other_org, role=role_member)
+    secret_role = Role.objects.create(name="SecretUpd", org=org, is_built_in=False)
+    with pytest.raises(RoleNotFoundError):
+        service.update_role(
+            actor=stranger, role_id=secret_role.id, changes={"name": "X"}
+        )
+
+
+@pytest.mark.django_db
+def test_delete_role_cross_org_is_404(service, django_user_model, org, role_member):
+    other_org = Organization.objects.create(name="Other-write-del")
+    stranger = django_user_model.objects.create_user(
+        email="stranger-del@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=stranger, org=other_org, role=role_member)
+    secret_role = Role.objects.create(name="SecretDel", org=org, is_built_in=False)
+    with pytest.raises(RoleNotFoundError):
+        service.delete_role(actor=stranger, role_id=secret_role.id)
 
 
 @pytest.mark.django_db

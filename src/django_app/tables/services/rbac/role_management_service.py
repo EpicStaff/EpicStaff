@@ -75,7 +75,7 @@ class RoleManagementService:
         with transaction.atomic():
             role = self._get_locked_role(role_id=role_id)
             self.assert_mutable(role)
-            effective = self._resolver.resolve(user=actor, org_id=role.org_id)
+            effective = self._resolve_for_write(actor=actor, role=role)
             self._assert_can(effective=effective, action=Permission.UPDATE)
             if "permissions" in changes:
                 self._assert_within_ceiling(
@@ -98,7 +98,7 @@ class RoleManagementService:
 
     def preview_delete(self, actor, role_id) -> dict:
         """Dry-run: report the memberships that a delete would reassign to
-        Member. No mutation."""
+        Viewer. No mutation."""
         role, effective = self._get_role_with_read_access(actor=actor, role_id=role_id)
         self.assert_mutable(role)
         if (
@@ -123,19 +123,19 @@ class RoleManagementService:
         }
 
     def delete_role(self, actor, role_id) -> int:
-        """Reassign every member to the built-in Member role, then delete
+        """Reassign every member to the built-in Viewer role, then delete
         the role. Members are never evicted. Returns the reassigned count.
         Atomic + row-locked."""
         with transaction.atomic():
             role = self._get_locked_role(role_id=role_id)
             self.assert_mutable(role)
-            effective = self._resolver.resolve(user=actor, org_id=role.org_id)
+            effective = self._resolve_for_write(actor=actor, role=role)
             self._assert_can(effective=effective, action=Permission.DELETE)
-            member_role = Role.objects.get(
-                name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True
+            viewer_role = Role.objects.get(
+                name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True
             )
             reassigned = OrganizationUser.objects.filter(role_id=role.id).update(
-                role_id=member_role.id
+                role_id=viewer_role.id
             )
             role.delete()
         return reassigned
@@ -210,18 +210,22 @@ class RoleManagementService:
         self.attach_role_display(roles=roles)
         return roles
 
-    def list_custom_roles(self, actor, org_ids):
+    def list_custom_roles(self, actor, org_ids, scopes=None):
         """Return a queryset of custom roles across the orgs the actor may
         READ. `org_ids` (list) restricts to those orgs — a forbidden id
         raises PermissionDenied (fail-loud). `org_ids=None` means every
-        readable org. Superadmin reads all orgs."""
+        readable org. Superadmin reads all orgs. `scopes` is the caller's
+        pre-resolved cross-org scopes (from the door gate's per-request
+        cache); when None the service resolves them itself."""
         is_superadmin = getattr(actor, "is_superadmin", False)
         if is_superadmin:
             readable = None  # all
         else:
+            if scopes is None:
+                scopes = self._org_access.resolve_all(user=actor)
             readable = {
                 scope.org.id
-                for scope in self._org_access.resolve_all(user=actor)
+                for scope in scopes
                 if scope.effective.can(ResourceType.ROLES.value, Permission.READ)
             }
 
@@ -274,6 +278,20 @@ class RoleManagementService:
         try:
             return Role.objects.select_for_update().get(pk=pk)
         except Role.DoesNotExist as exc:
+            raise RoleNotFoundError() from exc
+
+    def _resolve_for_write(self, actor, role):
+        """Resolve the actor's permissions in the role's org for a write.
+
+        A non-member (or inactive org) surfaces as RoleNotFoundError (404 —
+        no existence leak), matching a role the caller cannot see, rather
+        than a 403 that reveals the row exists in another org. Superadmin
+        short-circuits inside the resolver. Note: this gates on membership,
+        not READ — a role granting only CREATE/UPDATE/DELETE (without READ)
+        can still be written by its holder."""
+        try:
+            return self._resolver.resolve(user=actor, org_id=role.org_id)
+        except OrgMembershipRequiredError as exc:
             raise RoleNotFoundError() from exc
 
     def _assert_can(self, effective, action) -> None:

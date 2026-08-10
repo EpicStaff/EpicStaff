@@ -24,6 +24,11 @@ def role_member(db):
 
 
 @pytest.fixture
+def role_viewer(db):
+    return Role.objects.get(name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True)
+
+
+@pytest.fixture
 def auth_client():
     def _make(user):
         client = APIClient()
@@ -132,7 +137,7 @@ def test_update_builtin_is_403(auth_client, admin_acme, role_member):
 
 @pytest.mark.django_db
 def test_delete_dry_run_then_real(
-    auth_client, admin_acme, acme, role_member, django_user_model
+    auth_client, admin_acme, acme, role_viewer, django_user_model
 ):
     custom = Role.objects.create(name="Temp-api", org=acme, is_built_in=False)
     victim = django_user_model.objects.create_user(
@@ -149,7 +154,7 @@ def test_delete_dry_run_then_real(
     assert real.status_code == status.HTTP_200_OK
     assert real.json()["reassigned_count"] == 1
     assert not Role.objects.filter(pk=custom.id).exists()
-    assert OrganizationUser.objects.get(user=victim, org=acme).role_id == role_member.id
+    assert OrganizationUser.objects.get(user=victim, org=acme).role_id == role_viewer.id
 
 
 @pytest.mark.django_db

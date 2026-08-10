@@ -43,7 +43,7 @@ def test_denied_when_no_roles_permission_anywhere(django_user_model, role_member
     )
     org = Organization.objects.create(name="Acme-any")
     OrganizationUser.objects.create(user=user, org=org, role=role_member)
-    req = MagicMock(user=user)
+    req = MagicMock(user=user, _rbac_org_scopes=None)
     assert HasResourcePermissionAnywhere().has_permission(req, _view("list")) is False
 
 
@@ -54,7 +54,7 @@ def test_allowed_when_roles_read_in_one_org(django_user_model, role_org_admin):
     )
     org = Organization.objects.create(name="Acme-any-2")
     OrganizationUser.objects.create(user=user, org=org, role=role_org_admin)
-    req = MagicMock(user=user)
+    req = MagicMock(user=user, _rbac_org_scopes=None)
     assert HasResourcePermissionAnywhere().has_permission(req, _view("list")) is True
     # Org Admin has ROLES CRUD, so create is also allowed "anywhere".
     assert HasResourcePermissionAnywhere().has_permission(req, _view("create")) is True

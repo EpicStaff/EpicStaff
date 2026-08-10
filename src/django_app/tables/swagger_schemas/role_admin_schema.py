@@ -171,7 +171,7 @@ ROLES_DESTROY_DELETE = dict(
     summary="Delete a custom role — or preview with ?dry_run=true",
     description=(
         "Deletes a custom role and reassigns its members to the built-in "
-        "Member role (never evicts them). With ?dry_run=true nothing is "
+        "Viewer role (never evicts them). With ?dry_run=true nothing is "
         "deleted and the affected members are returned so the UI can warn "
         "first. Built-in roles are immutable."
     ),
