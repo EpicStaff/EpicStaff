@@ -301,9 +301,21 @@ async def test_internal_deactivate_path_broadcasts_schedule_node_deactivated(
     test_graph, base_snapshot, schedule_trigger_service
 ):
     """Exercises the other call site (_deactivate, reached from
-    handle_schedule_trigger's end-date/max-runs terminal conditions) to prove
-    both paths share the same notification, not just deactivate_node."""
-    node = await _create_schedule_trigger_node(test_graph)
+    handle_schedule_trigger's end-date terminal condition) to prove both
+    paths share the same notification, not just deactivate_node."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    # end_type=ON_DATE with an end_date_time already in the past makes
+    # get_end_condition_strategy select OnDateEndStrategy, whose
+    # is_end_date_passed() is True on the first check — handle_schedule_trigger
+    # then calls _deactivate and returns before ever starting a session.
+    node = await _create_schedule_trigger_node(
+        test_graph,
+        end_type=ScheduleTriggerNode.EndType.ON_DATE,
+        end_date_time=timezone.now() - timedelta(days=1),
+    )
     await graph_state_service.seed(
         test_graph.id, base_snapshot(save_version=test_graph.save_version)
     )
@@ -312,11 +324,8 @@ async def test_internal_deactivate_path_broadcasts_schedule_node_deactivated(
     channel_name = await channel_layer.new_channel()
     await channel_layer.group_add(graph_group_name(test_graph.id), channel_name)
 
-    # TODO: exercise via handle_schedule_trigger's end-date/max-runs
-    # terminal path instead of calling _deactivate directly
     service = schedule_trigger_service
-    node_instance = await get_node("schedule_trigger_node_list", node.id)
-    await sync_to_async(service._deactivate)(node_instance, "test reason")
+    await sync_to_async(service.handle_schedule_trigger)(node.id)
 
     message = await asyncio.wait_for(channel_layer.receive(channel_name), timeout=1.0)
     assert message["type"] == "schedule_node_deactivated"
