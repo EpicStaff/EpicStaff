@@ -460,7 +460,7 @@ path — the default org is only for bootstrap and data migrations.
 | Profile + avatar + 2-step password change | `services/rbac/user_profile_service.py`, `views/user_profile_views.py` |
 | Org CRUD (superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |
 | User & membership admin | `services/rbac/user_management_service.py`, `user_management_guards.py`, `views/user_management_views.py` |
-| Roles read + immutability guard | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
+| Roles CRUD + ceiling + immutability guard | `services/rbac/role_management_service.py`, `views/role_admin_views.py` |
 | Permission gate (ViewSet) | `services/rbac/permissions.py` (`HasOrgPermission`, `IsSuperadmin`, `IsSuperadminOrReadOnly`) |
 | Permission gate (APIView) | `services/rbac/permission_assert.py` |
 | Session/SSE authorization | `services/rbac/session_access.py`, `views/sse_views.py` |

@@ -384,7 +384,7 @@ when `permissions` is included. Built-in roles always reject with
 ## `DELETE /api/admin/roles/{id}/`
 
 Delete a custom role. Every member currently on the role is
-reassigned to the built-in **Member** role first — deleting a role
+reassigned to the built-in **Viewer** role first — deleting a role
 never evicts a member from the organization.
 
 **Auth:** DELETE on ROLES in the role's own org. Built-in roles always
@@ -414,17 +414,6 @@ reject with `403 built_in_role_immutable`. **Header:** none.
 
 ---
 
-## Copying a role
-
-There is no dedicated "copy" endpoint. The FE composes it from two
-calls already documented above: `GET /api/admin/roles/{id}/` to read
-the source role's `permissions[]`, then `POST /api/admin/roles/` with
-those same `permissions`, the target `org_id`, and a new `name`. The
-ceiling rule still applies to the create call — copying a role whose
-permissions exceed the caller's own in the target org is rejected the
-same as any other over-broad create.
-
----
 
 ## Built-in immutability
 
