@@ -46,6 +46,7 @@ import { CollectionsStorageService } from '../../../../../../../knowledge-source
 import { McpToolDialogComponent } from '../../../../../../../tools/components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../../../../../../tools/models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../../../../../../tools/models/python-code-tool.model';
+import { AgentSurfacePlace } from '../../../../../../models/agent-definition.model';
 import {
     CreateSurfaceRequest,
     PartialUpdateSurfaceRequest,
@@ -66,7 +67,6 @@ import {
     SurfaceTabId,
     SurfaceToolOption,
 } from '../../../../../../models/surface-card.model';
-import { AgentSurfacePlace } from '../../../../../../models/agent-definition.model';
 import { categoryToPlace, SurfaceCategoryId } from '../../../../../../models/surface-category.model';
 import { StorageFileMeta, SurfaceCatalogsStore } from '../../../../../../services/surface-catalogs-store.service';
 import { DELETE_CONFIRM_DIALOG_WIDTH } from '../../../../../../utils/delete-confirmation.util';

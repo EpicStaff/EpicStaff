@@ -33,8 +33,8 @@ npm run lint:fix          # check with autofix
 
 **Prettier (`.ts`, `.html`, `.scss`, `.json`):**
 ```powershell
-npm run format                                              # format files in place
 npx prettier --check "src/**/*.{ts,html,scss,json}"         # check only, no writes
+npm run format                                              # format files in place
 ```
 
 **TypeScript type-check:**

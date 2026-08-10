@@ -6,7 +6,7 @@ import { MarkdownModule } from 'ngx-markdown';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
-import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-message.model';
+import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-task-message',
@@ -401,7 +401,7 @@ export class TaskMessageComponent implements OnInit {
     }
 
     get taskMessageData(): TaskMessageData | null {
-        if (this.message.message_data && this.message.message_data.message_type === 'task') {
+        if (this.message.message_data && this.message.message_data.message_type === MessageType.TASK) {
             return this.message.message_data as TaskMessageData;
         }
         return null;

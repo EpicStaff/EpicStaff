@@ -85,14 +85,10 @@
                             [apiBaseUrl]="apiBaseUrl"
                             [accessToken]="accessToken"
                             [organizationId]="activeOrgService.activeOrgId()?.toString() ?? ''"
-                            [attr.chat-left]="
-                                epicChatService.isDocked() ? epicChatService.dockLeftPx() + 'px' : '68px'
-                            "
+                            [attr.chat-left]="epicChatService.isDocked() ? epicChatService.dockLeftPx() + 'px' : '68px'"
                             [attr.chat-bottom]="epicChatService.isDocked() ? '0px' : '10px'"
                             [attr.chat-top]="epicChatService.isDocked() ? '0px' : null"
-                            [attr.chat-width]="
-                                epicChatService.isDocked() ? epicChatService.dockWidth() + 'px' : null
-                            "
+                            [attr.chat-width]="epicChatService.isDocked() ? epicChatService.dockWidth() + 'px' : null"
                             [attr.chat-height]="epicChatService.isDocked() ? '100vh' : null"
                             [dockEnabled]="true"
                             [fileAttachmentDisabled]="false"

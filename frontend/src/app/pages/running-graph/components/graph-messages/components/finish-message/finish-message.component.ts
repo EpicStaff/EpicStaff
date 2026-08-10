@@ -7,7 +7,12 @@ import { GetProjectRequest } from '../../../../../../features/projects/models/pr
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
-import { FinishMessageData, FinishStopReason, GraphMessage } from '../../../../models/graph-session-message.model';
+import {
+    FinishMessageData,
+    FinishStopReason,
+    GraphMessage,
+    MessageType,
+} from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-finish-message',
@@ -307,7 +312,7 @@ export class FinishMessageComponent implements OnInit {
     }
 
     getFinishData(): FinishMessageData | null {
-        if (this.message.message_data && this.message.message_data.message_type === 'finish') {
+        if (this.message.message_data && this.message.message_data.message_type === MessageType.FINISH) {
             return this.message.message_data as FinishMessageData;
         }
         return null;

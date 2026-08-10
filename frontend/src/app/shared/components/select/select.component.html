@@ -8,35 +8,35 @@
         />
     }
 
-<div class="selector">
-    <button
-        #triggerBtn
-        class="selector__btn"
-        [disabled]="isDisabled()"
-        [ngClass]="'selector__btn--' + mod()"
-        [class.selector__btn--invalid]="invalid()"
-        [class.selector__btn--open]="open()"
-        [class.selector__btn--placeholder]="!selectedItem()"
-        (click)="toggle()"
-    >
-        @if (loading()) {
-            <div
-                class="selector__spinner"
-                [ngClass]="'selector__spinner--' + mod()"
-            ></div>
-        } @else {
-            @if (selectedItem()?.icon) {
-                <app-svg-icon
-                    [icon]="selectedItem()!.icon!"
-                    [size]="'18px'"
-                ></app-svg-icon>
-            }
-            <span
-                class="selector__text"
-                [attr.title]="selectedItem()?.name || null"
-            >
-                {{ selectedItem() ? selectedItem()!.name : placeholder() }}
-            </span>
+    <div class="selector">
+        <button
+            #triggerBtn
+            class="selector__btn"
+            [disabled]="isDisabled()"
+            [ngClass]="'selector__btn--' + mod()"
+            [class.selector__btn--invalid]="invalid()"
+            [class.selector__btn--open]="open()"
+            [class.selector__btn--placeholder]="!selectedItem()"
+            (click)="toggle()"
+        >
+            @if (loading()) {
+                <div
+                    class="selector__spinner"
+                    [ngClass]="'selector__spinner--' + mod()"
+                ></div>
+            } @else {
+                @if (selectedItem()?.icon) {
+                    <app-svg-icon
+                        [icon]="selectedItem()!.icon!"
+                        [size]="'18px'"
+                    ></app-svg-icon>
+                }
+                <span
+                    class="selector__text"
+                    [attr.title]="selectedItem()?.name || null"
+                >
+                    {{ selectedItem() ? selectedItem()!.name : placeholder() }}
+                </span>
 
                 <svg
                     class="selector__chevron"

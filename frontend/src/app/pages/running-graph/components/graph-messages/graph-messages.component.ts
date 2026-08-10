@@ -39,12 +39,12 @@ import { TasksService } from '../../../../features/tasks/services/tasks.service'
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
+    AgentNodeStreamMessageData,
     CodeAgentStreamMessageData,
     GraphMessage,
+    MessageData,
     MessageType,
     StartSubflowMessageData,
-    AgentNodeStreamMessageData,
-    MessageData,
     TaskNodeStreamMessageData,
 } from '../../models/graph-session-message.model';
 import { SessionStatusMessageData } from '../../models/update-session-status.model';
@@ -188,6 +188,8 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
     providers: [RunSessionSSEService],
 })
 export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, AfterViewInit {
+    readonly MessageType = MessageType;
+
     @Input() graphId: number | null = null;
     @Input() sessionId: string | null = null;
     @Input() compact: boolean = false;
@@ -652,7 +654,10 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         if (messages.length > 0) {
             const lastMessage: GraphMessage = messages[messages.length - 1];
 
-            if (lastMessage.message_data && lastMessage.message_data.message_type === 'update_session_status') {
+            if (
+                lastMessage.message_data &&
+                lastMessage.message_data.message_type === MessageType.UPDATE_SESSION_STATUS
+            ) {
                 // Cast the message_data to SessionStatusMessageData interface
                 this.updateSessionStatusData = lastMessage.message_data as SessionStatusMessageData;
 
@@ -770,7 +775,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             if (
                 sameTimeMessages.some(
                     (msg) =>
-                        msg.message_data.message_type === 'update_session_status' &&
+                        msg.message_data.message_type === MessageType.UPDATE_SESSION_STATUS &&
                         msg.message_data.status === GraphSessionStatus.WAITING_FOR_USER
                 ) &&
                 sessionStatus === GraphSessionStatus.WAITING_FOR_USER
@@ -802,7 +807,8 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         if (!message.message_data) return null;
 
         if (
-            (message.message_data.message_type === 'agent' || message.message_data.message_type === 'agent_finish') &&
+            (message.message_data.message_type === MessageType.AGENT ||
+                message.message_data.message_type === MessageType.AGENT_FINISH) &&
             'agent_id' in message.message_data
         ) {
             const agentId = message.message_data.agent_id;
@@ -955,23 +961,23 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private isRenderableNestedMessage(ctx: MessageContext): boolean {
         const type = this.messages[ctx.index]?.message_data?.message_type;
         switch (type) {
-            case 'start':
-            case 'user':
-            case 'agent':
-            case 'agent_finish':
-            case 'python':
-            case 'llm':
-            case 'extracted_chunks':
-            case 'error':
-            case 'task':
-            case 'condition_group':
-            case 'classification_prompt':
-            case 'condition_group_manipulation':
-            case 'finish':
-            case 'code_agent_stream':
-            case 'subgraph_start':
-            case 'subgraph_finish':
-            case 'findings':
+            case MessageType.START:
+            case MessageType.USER:
+            case MessageType.AGENT:
+            case MessageType.AGENT_FINISH:
+            case MessageType.PYTHON:
+            case MessageType.LLM:
+            case MessageType.EXTRACTED_CHUNKS:
+            case MessageType.ERROR:
+            case MessageType.TASK:
+            case MessageType.CONDITION_GROUP:
+            case MessageType.CLASSIFICATION_PROMPT:
+            case MessageType.CONDITION_GROUP_MANIPULATION:
+            case MessageType.FINISH:
+            case MessageType.CODE_AGENT_STREAM:
+            case MessageType.SUBGRAPH_START:
+            case MessageType.SUBGRAPH_FINISH:
+            case MessageType.FINDINGS:
                 return true;
             default:
                 return false;
@@ -1603,7 +1609,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private getMessageKey(message: GraphMessage): string {
         const type = message.message_data?.message_type;
         // Stable key for code_agent_stream: one component per node name
-        if (type === 'code_agent_stream') {
+        if (type === MessageType.CODE_AGENT_STREAM) {
             return `ca_stream_${message.name}`;
         }
         // Stable key for task_node_stream / agent_node_stream: one component per node name+type
