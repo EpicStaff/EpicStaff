@@ -12,6 +12,8 @@ from asgiref.sync import sync_to_async
 from tables.graph_collab.flush_service import FlushStatus
 from tables.graph_collab.graph_state_service import graph_state_service
 
+from tests.graph_collab.conftest import get_node
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,13 +75,6 @@ def _create_schedule_trigger_node(graph):
     )
 
 
-@sync_to_async
-def _get_schedule_trigger_node(node_id: int):
-    from tables.models.graph_models import ScheduleTriggerNode
-
-    return ScheduleTriggerNode.objects.get(pk=node_id)
-
-
 # ---------------------------------------------------------------------------
 # End-to-end regression: solo editor, two flushes in a row, zero concurrency.
 # ---------------------------------------------------------------------------
@@ -139,7 +134,7 @@ async def test_apply_id_remap_refreshes_stale_schedule_trigger_content_hash(
     overwritten with the real, freshly-computed value — and the node's
     substantive config must survive the remap untouched."""
     seed_node = await _create_schedule_trigger_node(graph)
-    persisted_node = await _get_schedule_trigger_node(seed_node.id)
+    persisted_node = await get_node("schedule_trigger_node_list", seed_node.id)
     real_hash = persisted_node.content_hash
 
     stale_snapshot = base_snapshot(

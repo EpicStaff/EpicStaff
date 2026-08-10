@@ -9,9 +9,9 @@ import pytest
 from pydantic import ValidationError
 
 from tables.graph_collab.graph_state_service import OpResult, OpStatus
-from tables.graph_collab.protocol import NodeUpdatedMessage
+from tables.graph_collab.protocol import NodeUpdatedMessage, EditorInfo
 
-from tests.graph_collab.conftest import _drain_connect, _editor, _make_communicator
+from tests.graph_collab.conftest import _drain_connect, _make_communicator
 
 
 # ---------------------------------------------------------------------------
@@ -24,12 +24,13 @@ def _partial_update(
     list_key: str,
     changed_fields: list[str],
     expected: dict | None = None,
+    editor=EditorInfo,
     op_id: str | None = None,
 ) -> NodeUpdatedMessage:
     return NodeUpdatedMessage(
         node=node,
         list_key=list_key,
-        editor=_editor(),
+        editor=editor,
         changed_fields=changed_fields,
         expected=expected,
         op_id=op_id,
@@ -42,7 +43,7 @@ def _partial_update(
 
 
 @pytest.mark.asyncio
-async def test_cas_pass_applies(live_state_service, base_snapshot):
+async def test_cas_pass_applies(live_state_service, base_snapshot, editor):
     await live_state_service.seed(
         1,
         base_snapshot(
@@ -55,6 +56,7 @@ async def test_cas_pass_applies(live_state_service, base_snapshot):
         list_key="crew_node_list",
         changed_fields=["node_name"],
         expected={"node_name": "Old Name"},
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
@@ -70,7 +72,7 @@ async def test_cas_pass_applies(live_state_service, base_snapshot):
 
 @pytest.mark.asyncio
 async def test_cas_scalar_mismatch_rejects_without_mutating_snapshot(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     await live_state_service.seed(
         1,
@@ -85,6 +87,7 @@ async def test_cas_scalar_mismatch_rejects_without_mutating_snapshot(
         list_key="crew_node_list",
         changed_fields=["node_name"],
         expected={"node_name": "Stale Name"},
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
@@ -105,7 +108,7 @@ async def test_cas_scalar_mismatch_rejects_without_mutating_snapshot(
 
 @pytest.mark.asyncio
 async def test_cas_position_mismatch_reports_wire_name_ignores_sibling_metadata(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     await live_state_service.seed(
         1,
@@ -129,6 +132,7 @@ async def test_cas_position_mismatch_reports_wire_name_ignores_sibling_metadata(
         list_key="crew_node_list",
         changed_fields=["position"],
         expected={"position": {"x": 999, "y": 999}},
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
@@ -147,7 +151,7 @@ async def test_cas_position_mismatch_reports_wire_name_ignores_sibling_metadata(
 
 @pytest.mark.asyncio
 async def test_cas_validates_declared_field_absent_from_node_payload(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     """A field can be declared in changed_fields (and therefore carried in
     expected) while the op's node payload doesn't actually include it — the
@@ -165,6 +169,7 @@ async def test_cas_validates_declared_field_absent_from_node_payload(
         list_key="crew_node_list",
         changed_fields=["node_name"],
         expected={"node_name": "stale"},
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
@@ -180,7 +185,7 @@ async def test_cas_validates_declared_field_absent_from_node_payload(
 
 @pytest.mark.asyncio
 async def test_cas_non_dict_base_metadata_does_not_crash(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     """metadata is a JSONField whose content is externally controllable via
     the REST API — a corrupted/legacy row could carry a non-dict value.
@@ -203,6 +208,7 @@ async def test_cas_non_dict_base_metadata_does_not_crash(
         list_key="crew_node_list",
         changed_fields=["position"],
         expected={"position": {"x": 0, "y": 0}},
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
@@ -218,7 +224,7 @@ async def test_cas_non_dict_base_metadata_does_not_crash(
 
 @pytest.mark.asyncio
 async def test_cas_missing_base_key_equals_expected_none_applies(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     await live_state_service.seed(
         1,
@@ -230,6 +236,7 @@ async def test_cas_missing_base_key_equals_expected_none_applies(
         list_key="crew_node_list",
         changed_fields=["output_variable_path"],
         expected={"output_variable_path": None},
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
@@ -245,7 +252,7 @@ async def test_cas_missing_base_key_equals_expected_none_applies(
 
 @pytest.mark.asyncio
 async def test_cas_input_map_whole_value_mismatch_rejects(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     await live_state_service.seed(
         1,
@@ -267,6 +274,7 @@ async def test_cas_input_map_whole_value_mismatch_rejects(
         # Client believes the base has no "b" key — but the base does, so
         # the whole-value compare must reject the op.
         expected={"input_map": {"a": "1"}},
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
@@ -283,33 +291,33 @@ async def test_cas_input_map_whole_value_mismatch_rejects(
 # ---------------------------------------------------------------------------
 
 
-def test_expected_requires_changed_fields():
+def test_expected_requires_changed_fields(editor):
     with pytest.raises(ValidationError):
         NodeUpdatedMessage(
             node={"id": 1, "node_name": "X"},
             list_key="crew_node_list",
-            editor=_editor(),
+            editor=editor,
             changed_fields=None,
             expected={"node_name": "Y"},
         )
 
 
-def test_expected_keys_must_be_subset_of_changed_fields():
+def test_expected_keys_must_be_subset_of_changed_fields(editor):
     with pytest.raises(ValidationError):
         NodeUpdatedMessage(
             node={"id": 1, "node_name": "X"},
             list_key="crew_node_list",
-            editor=_editor(),
+            editor=editor,
             changed_fields=["node_name"],
             expected={"node_name": "Y", "crew_id": 7},
         )
 
 
-def test_expected_subset_of_changed_fields_is_valid():
+def test_expected_subset_of_changed_fields_is_valid(editor):
     msg = NodeUpdatedMessage(
         node={"id": 1, "node_name": "X", "crew_id": 8},
         list_key="crew_node_list",
-        editor=_editor(),
+        editor=editor,
         changed_fields=["node_name", "crew_id"],
         expected={"node_name": "Y"},
     )

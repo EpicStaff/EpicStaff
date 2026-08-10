@@ -28,6 +28,7 @@ from tables.graph_collab.presence_service import (
     GraphPresenceService,
 )
 from tables.graph_collab.protocol import EditorInfo
+from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
 from tables.services.schedule_trigger_service import ScheduleTriggerService
 
 
@@ -96,6 +97,13 @@ def _base_snapshot(**overrides) -> dict:
     base["deleted"] = _empty_deleted()
     base.update(overrides)
     return base
+
+
+PYTHON_CODE_DATA = {
+    "code": "def main(): return 42",
+    "entrypoint": "main",
+    "libraries": [],
+}
 
 
 @pytest.fixture(autouse=True)
@@ -294,6 +302,47 @@ def schedule_trigger_service():
     injected one, so returning the singleton as-is is sufficient.
     """
     return ScheduleTriggerService()
+
+
+def _model_for(list_key: str):
+    return next(c.model_class for c in NODE_TYPE_REGISTRY if c.list_key == list_key)
+
+
+@sync_to_async
+def count_nodes(list_key: str, graph_id: int) -> int:
+    return _model_for(list_key).objects.filter(graph_id=graph_id).count()
+
+
+@sync_to_async
+def get_node(list_key: str, node_id: int):
+    return _model_for(list_key).objects.get(pk=node_id)
+
+
+@sync_to_async
+def first_node(list_key: str, graph_id: int):
+    return _model_for(list_key).objects.filter(graph_id=graph_id).first()
+
+
+@sync_to_async
+def _create_start_node(graph):
+    """Create a StartNode row for the given graph and return it."""
+    from tables.models.graph_models import StartNode
+
+    return StartNode.objects.create(
+        graph=graph,
+        variables={"variables": {"greeting": "hello"}, "persistent": {}},
+    )
+
+
+@sync_to_async
+def _create_end_node(graph):
+    """Create an EndNode row for the given graph and return it."""
+    from tables.models.graph_models import EndNode
+
+    return EndNode.objects.create(
+        graph=graph,
+        output_map={"context": "variables"},
+    )
 
 
 @pytest.fixture

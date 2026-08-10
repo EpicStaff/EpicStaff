@@ -1,18 +1,7 @@
-"""Regression tests for the scheduler-vs-collab-autosave wedge: scheduler
-deactivation must broadcast via the channel layer, not mutate the live
-snapshot directly, so it never races autosave's content_hash CAS.
-
-The fix (DB-is-authority, collab-layer-is-follower):
- - ``ScheduleTriggerService._persist_deactivation`` writes the DB
-   unconditionally, then — via ``transaction.on_commit`` — calls
-   ``GraphEditNotifier.notify_schedule_node_deactivated``.
- - That notifier only broadcasts a ``schedule_node_deactivated`` channel-layer
-   event (no snapshot mutation — the scheduler runs in a separate OS process
-   from the ASGI workers that own the live snapshot's per-graph asyncio lock).
- - ``GraphEditConsumer.schedule_node_deactivated`` (in the ASGI process, under
-   the real lock) mutates the snapshot via
-   ``GraphLiveStateService.apply_scheduler_deactivation``, then pushes a
-   display-only ``node_updated`` to the connected client.
+"""Regression tests for out-of-band DB writers: something outside the
+collaborative op channel (the scheduler process, an ORM cascade delete)
+mutates the DB directly, and the live Redis snapshot + channel-layer
+broadcast must still stay in sync with it.
 """
 
 import asyncio
@@ -24,9 +13,15 @@ from channels.layers import get_channel_layer
 from tables.graph_collab.graph_state_service import graph_state_service
 from tables.graph_collab.flush_service import FlushStatus, GraphFlushService
 from tables.graph_collab.groups import graph_group_name
-from tables.models.graph_models import ScheduleTriggerNode
+from tables.models.crew_models import Crew
+from tables.models.graph_models import CrewNode, ScheduleTriggerNode
 
-from tests.graph_collab.conftest import _drain_connect, _make_communicator
+from tests.graph_collab.conftest import _drain_connect, _make_communicator, get_node
+
+
+# ---------------------------------------------------------------------------
+# Scheduler deactivation — helpers
+# ---------------------------------------------------------------------------
 
 
 @sync_to_async
@@ -34,11 +29,6 @@ def _create_schedule_trigger_node(graph, **overrides) -> ScheduleTriggerNode:
     fields = {"graph": graph, "node_name": "schedule-1", "is_active": True}
     fields.update(overrides)
     return ScheduleTriggerNode.objects.create(**fields)
-
-
-@sync_to_async
-def _get_schedule_trigger_node(node_id: int) -> ScheduleTriggerNode:
-    return ScheduleTriggerNode.objects.get(pk=node_id)
 
 
 @sync_to_async
@@ -137,7 +127,7 @@ async def test_deactivation_with_no_live_session_still_persists_and_skips_broadc
     service = schedule_trigger_service
     await sync_to_async(service.deactivate_node)(node.id)
 
-    persisted = await _get_schedule_trigger_node(node.id)
+    persisted = await get_node("schedule_trigger_node_list", node.id)
     assert persisted.is_active is False
     assert persisted.next_run_date_time is None
 
@@ -322,8 +312,10 @@ async def test_internal_deactivate_path_broadcasts_schedule_node_deactivated(
     channel_name = await channel_layer.new_channel()
     await channel_layer.group_add(graph_group_name(test_graph.id), channel_name)
 
+    # TODO: exercise via handle_schedule_trigger's end-date/max-runs
+    # terminal path instead of calling _deactivate directly
     service = schedule_trigger_service
-    node_instance = await _get_schedule_trigger_node(node.id)
+    node_instance = await get_node("schedule_trigger_node_list", node.id)
     await sync_to_async(service._deactivate)(node_instance, "test reason")
 
     message = await asyncio.wait_for(channel_layer.receive(channel_name), timeout=1.0)
@@ -331,3 +323,109 @@ async def test_internal_deactivate_path_broadcasts_schedule_node_deactivated(
     assert message["graph_id"] == test_graph.id
     assert message["node_id"] == node.id
     assert message["list_key"] == "schedule_trigger_node_list"
+
+
+# ---------------------------------------------------------------------------
+# Crew cascade delete — helpers
+# ---------------------------------------------------------------------------
+
+
+@sync_to_async
+def _create_crew_node(graph, crew: Crew, node_name: str) -> CrewNode:
+    """Attach an additional CrewNode to an already-created Crew — used by the
+    multi-graph test, where the same crew is placed on two graphs."""
+    return CrewNode.objects.create(graph=graph, node_name=node_name, crew=crew)
+
+
+@sync_to_async
+def _delete_crew(crew):
+    crew.delete()
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_crew_delete_broadcasts_nodes_deleted_per_graph_and_updates_snapshots(
+    test_graph, second_graph, default_org, make_crew_node, base_snapshot
+):
+    """A crew placed on two graphs triggers one nodes_deleted broadcast per
+    graph, scoped to that graph's own channel group, and removes the node
+    from both graphs' live snapshots."""
+    crew, _ = await make_crew_node(default_org, graph=None)
+    node_on_first_graph = await _create_crew_node(test_graph, crew, "Crew-Node #1")
+    node_on_second_graph = await _create_crew_node(second_graph, crew, "Crew-Node #2")
+
+    await graph_state_service.seed(
+        test_graph.id,
+        base_snapshot(
+            save_version=test_graph.save_version,
+            crew_node_list=[
+                {
+                    "id": node_on_first_graph.id,
+                    "graph": test_graph.id,
+                    "node_name": "Crew-Node #1",
+                    "crew_id": crew.id,
+                }
+            ],
+        ),
+    )
+    await graph_state_service.seed(
+        second_graph.id,
+        base_snapshot(
+            save_version=second_graph.save_version,
+            crew_node_list=[
+                {
+                    "id": node_on_second_graph.id,
+                    "graph": second_graph.id,
+                    "node_name": "Crew-Node #2",
+                    "crew_id": crew.id,
+                }
+            ],
+        ),
+    )
+
+    channel_layer = get_channel_layer()
+    first_channel = await channel_layer.new_channel()
+    second_channel = await channel_layer.new_channel()
+    await channel_layer.group_add(f"graph_edit_{test_graph.id}", first_channel)
+    await channel_layer.group_add(f"graph_edit_{second_graph.id}", second_channel)
+
+    await _delete_crew(crew)
+
+    first_message = await channel_layer.receive(first_channel)
+    second_message = await channel_layer.receive(second_channel)
+
+    assert first_message["type"] == "nodes_deleted"
+    assert first_message["refs"] == [
+        {"list_key": "crew_node_list", "id": node_on_first_graph.id, "temp_id": None}
+    ]
+    assert second_message["type"] == "nodes_deleted"
+    assert second_message["refs"] == [
+        {"list_key": "crew_node_list", "id": node_on_second_graph.id, "temp_id": None}
+    ]
+
+    first_snapshot = await graph_state_service.get_snapshot(test_graph.id)
+    assert first_snapshot["crew_node_list"] == []
+    second_snapshot = await graph_state_service.get_snapshot(second_graph.id)
+    assert second_snapshot["crew_node_list"] == []
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_crew_delete_with_no_live_snapshot_is_a_no_op(
+    test_graph, default_org, make_crew_node
+):
+    """When the graph has no live snapshot in Redis (no active collab
+    session), broadcast_nodes_deleted must skip silently — no message, no
+    crash."""
+    crew, _crew_node = await make_crew_node(default_org, graph=test_graph)
+
+    assert await graph_state_service.get_snapshot(test_graph.id) is None
+
+    channel_layer = get_channel_layer()
+    channel_name = await channel_layer.new_channel()
+    await channel_layer.group_add(f"graph_edit_{test_graph.id}", channel_name)
+
+    await _delete_crew(crew)
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(channel_layer.receive(channel_name), timeout=0.5)
