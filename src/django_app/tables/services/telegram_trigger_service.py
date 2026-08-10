@@ -7,7 +7,7 @@ from requests.exceptions import ConnectionError, Timeout
 
 from tables.exceptions import RegisterTelegramTriggerError
 from tables.models.graph_models import TelegramTriggerNode
-from tables.models.webhook_models import WebhookTrigger
+from tables.models.webhook_models import LOCAL_ONLY_PROVIDERS, WebhookTrigger
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from utils.graph_utils import generate_node_name
@@ -74,6 +74,11 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                 f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: webhook_trigger has no tunnel config."
             )
             return
+        if webhook_trigger.provider_type in LOCAL_ONLY_PROVIDERS:
+            raise RegisterTelegramTriggerError(
+                "Localhost webhook provider is not reachable by Telegram. "
+                "Use ngrok or a publicly accessible provider."
+            )
         try:
             webhook_tunnel_url = (
                 self.webhook_trigger_service.get_tunnel_url_for_trigger(webhook_trigger)

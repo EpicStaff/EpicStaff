@@ -14,7 +14,7 @@ from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerValidator,
 )
 from tables.services.schedule_trigger_service import ScheduleTriggerService
-from tables.models.webhook_models import WebhookTrigger
+from tables.models.webhook_models import LOCAL_ONLY_PROVIDERS, WebhookTrigger
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
@@ -85,6 +85,21 @@ class TelegramTriggerNodeSerializer(
             "fields",
             "webhook_trigger",
         ] + BaseGraphEntityMixin.Meta.common_fields
+
+    def validate(self, attrs):
+        wt = attrs.get("webhook_trigger")
+        provider_type = wt.provider_type if wt else None
+
+        if provider_type and provider_type in LOCAL_ONLY_PROVIDERS:
+            raise serializers.ValidationError(
+                {
+                    "webhook_trigger": (
+                        "Localhost webhook provider is not reachable by Telegram. "
+                        "Use ngrok or a publicly accessible provider."
+                    )
+                }
+            )
+        return attrs
 
     def create(self, validated_data):
         fields_data = validated_data.pop("fields", [])
