@@ -2,7 +2,10 @@ import { inject, Injectable, signal } from '@angular/core';
 import { Observable, throwError } from 'rxjs';
 import { catchError, map, tap } from 'rxjs/operators';
 
-import { TableDocument } from '../components/naive-rag-configuration/configuration-table/configuration-table.interface';
+import {
+    NormalizedDocumentErrors,
+    TableDocument,
+} from '../components/naive-rag-configuration/configuration-table/configuration-table.interface';
 import { normalizeBulkUpdateErrors } from '../helpers/normalize-bulk-update-errors.util';
 import { transformToTableDocuments } from '../helpers/transform-to-table-document.util';
 import { NaiveRagDocumentConfig, UpdatedNaiveRagDocumentConfig } from '../models/naive-rag-document.model';
@@ -52,6 +55,12 @@ export class NaiveRagDocumentsCatalogService {
                     errors: normalizeBulkUpdateErrors(updated.errors),
                 };
             })
+        );
+    }
+
+    public setDocErrors(documentId: number, errors: NormalizedDocumentErrors): void {
+        this.savedDocsSignal.update((items) =>
+            items.map((item) => (item.naive_rag_document_id === documentId ? { ...item, errors } : item))
         );
     }
 
