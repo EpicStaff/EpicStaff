@@ -31,8 +31,8 @@ class PythonNodeData(BaseModel):
 
 class KnowledgeNodeData(BaseModel):
     node_name: str
-    collection_id: int
-    rag_type_id: str
+    collection_id: int | None = None
+    rag_type_id: str | None = None
     query: str
     rag_search_config: RagSearchConfig | None = None
     input_map: dict[str, Any]

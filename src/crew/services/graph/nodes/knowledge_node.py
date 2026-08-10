@@ -20,8 +20,8 @@ class KnowledgeNode(BaseNode):
         stop_event: StopEvent,
         input_map: dict,
         output_variable_path: str | None,
-        collection_id: int,
-        rag_type_id: str,
+        collection_id: int | None,
+        rag_type_id: str | None,
         query: str,
         rag_search_config: RagSearchConfig | None,
         knowledge_search_service: KnowledgeSearchService,
@@ -42,6 +42,11 @@ class KnowledgeNode(BaseNode):
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
     ) -> str:
+        if self.collection_id is None or self.rag_type_id is None:
+            raise ValueError(
+                f"Knowledge node '{self.node_name}' is not configured: "
+                "select a knowledge collection and RAG type."
+            )
         if self.query_template:
             try:
                 query = self.query_template.format(**input_)
@@ -49,11 +54,15 @@ class KnowledgeNode(BaseNode):
                 query = self.query_template
         else:
             query = "\n".join(str(v) for v in input_.values())
-        # None = no per-node config rows → let the search service apply RAG defaults.
+
+        if not query.strip():
+            raise ValueError(
+                f"Knowledge node '{self.node_name}' received an empty search query: "
+                "set a query or map an input that resolves to non-empty text."
+            )
         rag_search_config = (
             self.rag_search_config.model_dump() if self.rag_search_config else {}
         )
-        # search_knowledges blocks on a Redis pub/sub poll → offload off the event loop.
         chunks = await asyncio.to_thread(
             self.knowledge_search_service.search_knowledges,
             sender="node",
@@ -63,4 +72,6 @@ class KnowledgeNode(BaseNode):
             rag_search_config=rag_search_config,
             stop_event=self.stop_event,
         )
+        if not chunks:
+            return "No relevant results were found in the knowledge collection."
         return "\n\n".join(chunks)

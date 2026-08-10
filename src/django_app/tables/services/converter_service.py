@@ -90,7 +90,6 @@ from tables.models.llm_models import (
     RealtimeConfig,
     RealtimeTranscriptionConfig,
 )
-from tables.exceptions import KnowledgeNodeConfigurationError
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import RealtimeAgentChat
@@ -165,29 +164,18 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_knowledge_node_to_pydantic(
         self, knowledge_node: KnowledgeNode, resolver
     ) -> KnowledgeNodeData:
-        # rag_type is a BaseRagType; the search service keys on the concrete
-        # implementation id (naive_rag_id / graph_rag_id), NOT BaseRagType.pk —
-        # they only coincide for naive by chance. Resolve it like the agent does.
         base = knowledge_node.rag_type
         collection_id = knowledge_node.source_collection_id
-        # FKs are SET_NULL/nullable, so a half-configured (or orphaned) node reaches
-        # here; fail with a clear 400 instead of an opaque AttributeError downstream.
-        if base is None or collection_id is None:
-            raise KnowledgeNodeConfigurationError(
-                f"KnowledgeNode '{knowledge_node.node_name}' has no source_collection or rag_type set."
-            )
-        # order_by keeps the pick deterministic (one impl per collection/type in practice).
-        if base.rag_type == "naive":
-            impl = base.naive_rags.order_by("naive_rag_id").first()
-            rag_type_id = f"naive:{impl.naive_rag_id}" if impl else None
-        else:
-            impl = base.graph_rags.order_by("graph_rag_id").first()
-            rag_type_id = f"graph:{impl.graph_rag_id}" if impl else None
-        if rag_type_id is None:
-            raise KnowledgeNodeConfigurationError(
-                f"KnowledgeNode '{knowledge_node.node_name}': rag_type '{base.rag_type}' "
-                f"has no built implementation for collection {collection_id}."
-            )
+
+        rag_type_id = None
+        if base is not None:
+            # order_by keeps the pick deterministic (one impl per collection/type in practice).
+            if base.rag_type == "naive":
+                impl = base.naive_rags.order_by("naive_rag_id").first()
+                rag_type_id = f"naive:{impl.naive_rag_id}" if impl else None
+            else:
+                impl = base.graph_rags.order_by("graph_rag_id").first()
+                rag_type_id = f"graph:{impl.graph_rag_id}" if impl else None
         all_search_configs = SearchConfigService.get_node_search_configs(knowledge_node)
         rag_search_config = self.build_rag_search_config(
             rag_type_id, all_search_configs

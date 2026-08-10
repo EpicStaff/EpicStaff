@@ -27,6 +27,7 @@ _NODE_ENTITY_TYPES = {
     EntityType.NOTE_NODE,
     EntityType.CODE_AGENT_NODE,
     EntityType.SCHEDULE_TRIGGER_NODE,
+    EntityType.KNOWLEDGE_NODE,
 }
 
 

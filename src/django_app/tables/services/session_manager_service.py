@@ -375,19 +375,12 @@ class SessionManagerService(metaclass=SingletonMeta):
             )
             for item in python_node_list
         ]
-        knowledge_node_data_list: list[KnowledgeNodeData] = []
-        for item in knowledge_node_list:
-            if item.rag_type_id is None or item.source_collection_id is None:
-                logger.warning(
-                    f"KnowledgeNode {item.pk} is missing rag_type or "
-                    "source_collection, skipping."
-                )
-                continue
-            knowledge_node_data_list.append(
-                cv.convert_knowledge_node_to_pydantic(
-                    knowledge_node=item, resolver=resolver
-                )
+        knowledge_node_data_list: list[KnowledgeNodeData] = [
+            cv.convert_knowledge_node_to_pydantic(
+                knowledge_node=item, resolver=resolver
             )
+            for item in knowledge_node_list
+        ]
         webhook_trigger_node_data_list = [
             cv.convert_webhook_trigger_node_to_pydantic(
                 webhook_trigger_node=item, resolver=resolver
