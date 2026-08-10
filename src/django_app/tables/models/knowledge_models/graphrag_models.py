@@ -22,7 +22,6 @@ class GraphRag(models.Model):
         NEW = "new"
         PROCESSING = "processing"
         COMPLETED = "completed"
-        WARNING = "warning"  # deprecated
         FAILED = "failed"
         CANCELLED = "cancelled"
         OUTDATED = "outdated"

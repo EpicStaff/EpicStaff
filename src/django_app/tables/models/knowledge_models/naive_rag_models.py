@@ -26,7 +26,6 @@ class NaiveRag(models.Model):
         NEW = "new"
         PROCESSING = "processing"
         COMPLETED = "completed"
-        WARNING = "warning"  # deprecated
         FAILED = "failed"
         CANCELLED = "cancelled"
         PARTIAL = "partial"
@@ -140,11 +139,7 @@ class NaiveRagDocumentConfig(models.Model):
 
         NEW = "new"
         PROCESSING = "processing"
-        CHUNKING = "chunking"  # deprecated
-        CHUNKED = "chunked"  # deprecated
-        INDEXING = "indexing"  # deprecated
         COMPLETED = "completed"
-        WARNING = "warning"  # deprecated
         FAILED = "failed"
         OUTDATED = "outdated"
 
