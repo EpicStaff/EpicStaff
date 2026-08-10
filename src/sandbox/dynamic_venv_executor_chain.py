@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
+from secret_scrubber import scrub
 from src.shared.models import CodeResultData
 from utils.logger import logger
 
@@ -339,8 +340,13 @@ except Exception:
         stderr = stderr.decode("utf-8", errors="replace")
         stdout = stdout.decode("utf-8", errors="replace")
         returncode = process.returncode
+
+        secrets = context.get("secrets") or {}
+        stderr = scrub(text=stderr, secrets=secrets)
+        stdout = scrub(text=stdout, secrets=secrets)
+
         if stderr:
-            logger.info(f"Error: {stderr}")
+            logger.info("Error: {}", stderr)
 
         result_file_path: Path | str = context["result_file_path"]
         if isinstance(result_file_path, Path):
@@ -351,7 +357,7 @@ except Exception:
         if returncode == 0:
             try:
                 with open(result_file_path, "r", encoding="utf-8") as file:
-                    result_data = file.read()
+                    result_data = scrub(text=file.read(), secrets=secrets)
             except Exception:
                 logger.exception("Exception reading result file")
 
