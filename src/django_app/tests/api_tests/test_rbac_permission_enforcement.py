@@ -178,83 +178,46 @@ def test_is_superadmin_or_org_admin_class_removed():
     assert not hasattr(permission_module, "IsSuperadminOrOrgAdmin")
 
 
-# ---- Roles endpoints ----
+# ---- Roles endpoints (flat, permission-gated) ----
 
 
 @pytest.mark.django_db
-def test_admin_roles_list_requires_header(auth_client, member_user):
+def test_admin_roles_list_denied_for_member(auth_client, member_user):
+    # Member has roles=0 everywhere → door gate 403.
     response = auth_client(member_user).get("/api/admin/roles/")
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == "org_context_required"
+    assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.django_db
-def test_admin_roles_list_returns_builtins(auth_client, member_user, org_acme):
-    response = auth_client(member_user).get(
-        "/api/admin/roles/", HTTP_X_ORGANIZATION_ID=str(org_acme.id)
-    )
+def test_admin_roles_list_org_admin_shape(auth_client, org_admin_user, org_acme):
+    response = auth_client(org_admin_user).get("/api/admin/roles/")
     assert response.status_code == status.HTTP_200_OK
-    names = [r["name"] for r in response.json()]
-    assert {"Superadmin", "Org Admin", "Member", "Viewer"}.issubset(set(names))
-
-
-@pytest.mark.django_db
-def test_admin_roles_list_org_admin_role_has_permissions(
-    auth_client, member_user, org_acme
-):
-    response = auth_client(member_user).get(
-        "/api/admin/roles/", HTTP_X_ORGANIZATION_ID=str(org_acme.id)
-    )
     body = response.json()
-    org_admin = next(r for r in body if r["name"] == "Org Admin")
+    assert "built_in_roles" in body and "results" in body
+    org_admin = next(r for r in body["built_in_roles"] if r["name"] == "Org Admin")
     flows = next(p for p in org_admin["permissions"] if p["resource_type"] == "flows")
     assert set(flows["actions"]) == {"create", "read", "update", "delete", "export"}
 
 
 @pytest.mark.django_db
-def test_admin_role_detail(auth_client, member_user, role_member):
-    response = auth_client(member_user).get(f"/api/admin/roles/{role_member.id}/")
+def test_admin_roles_list_no_header_needed(auth_client, org_admin_user):
+    # The roles list no longer consults X-Organization-Id.
+    response = auth_client(org_admin_user).get("/api/admin/roles/")
     assert response.status_code == status.HTTP_200_OK
-    body = response.json()
-    assert body["name"] == "Member"
-    assert body["is_built_in"] is True
 
 
 @pytest.mark.django_db
-def test_admin_org_roles_target_context(auth_client, superadmin_user, org_acme):
-    response = auth_client(superadmin_user).get(
-        f"/api/admin/organizations/{org_acme.id}/roles/"
-    )
+def test_admin_role_detail_org_admin(auth_client, org_admin_user, role_member):
+    response = auth_client(org_admin_user).get(f"/api/admin/roles/{role_member.id}/")
     assert response.status_code == status.HTTP_200_OK
-    names = [r["name"] for r in response.json()]
-    assert "Org Admin" in names
+    assert response.json()["name"] == "Member"
 
 
 @pytest.mark.django_db
-def test_admin_org_roles_member_denied(auth_client, member_user, db):
-    other = Organization.objects.create(name="Other Inc (role tests)")
-    response = auth_client(member_user).get(
-        f"/api/admin/organizations/{other.id}/roles/"
-    )
-    assert response.status_code == status.HTTP_403_FORBIDDEN
-
-
-@pytest.mark.django_db
-def test_admin_role_detail_non_int_pk_returns_404(auth_client, member_user):
-    response = auth_client(member_user).get("/api/admin/roles/test/")
+def test_admin_role_detail_non_int_pk_returns_404(auth_client, org_admin_user):
+    # Router regex rejects non-numeric pk before dispatch.
+    response = auth_client(org_admin_user).get("/api/admin/roles/test/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["code"] == "role_not_found"
-
-
-@pytest.mark.django_db
-def test_admin_org_roles_nonexistent_org_returns_404(auth_client, superadmin_user):
-    # Superadmin bypasses the membership gate, so a non-existent (but
-    # well-formed) org id must 404 rather than silently return the built-ins.
-    response = auth_client(superadmin_user).get(
-        "/api/admin/organizations/999999/roles/"
-    )
-    assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["code"] == "organization_not_found"
 
 
 # ---- Built-in immutability guard ----
