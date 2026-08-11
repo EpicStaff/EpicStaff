@@ -101,6 +101,17 @@ class OrgScopedPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
         return queryset.filter(**{self.org_lookup: resolve_active_org_id(request)})
 
 
+class OrganizationScopedPrimaryKeyRelatedField(OrgScopedPrimaryKeyRelatedField):
+    """``OrgScopedPrimaryKeyRelatedField`` defaulted to ``org_lookup="organization_id"``.
+
+    For the newer ``agents`` app models (e.g. ``AgentDefinition``, ``Surface``)
+    whose org FK is named ``organization`` rather than ``org`` — see the
+    ``tables`` vs ``agents`` naming split noted on ``OrgScopedPrimaryKeyRelatedField``.
+    """
+
+    org_lookup = "organization_id"
+
+
 class OrgVisiblePrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
     """A ``PrimaryKeyRelatedField`` for **hybrid** org-scoped targets — models that
     are either shared built-ins (visible to every org) or an org's own custom rows

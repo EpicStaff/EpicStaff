@@ -1683,7 +1683,10 @@ class RealtimeAgentViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     serializer_class = RealtimeAgentSerializer
 
 
-class RealtimeAgentDefinitionViewSet(viewsets.ModelViewSet):
+class RealtimeAgentDefinitionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.AGENTS
+    org_filter_path = "agent_definition__organization_id"
     queryset = RealtimeAgentDefinition.objects.all()
     serializer_class = RealtimeAgentDefinitionSerializer
 

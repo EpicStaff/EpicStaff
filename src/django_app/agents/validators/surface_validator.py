@@ -7,9 +7,12 @@ from tables.models.knowledge_models.collection_models import BaseRagType
 
 
 class SurfaceValidator:
-    # NOTE: PythonCodeTool and McpTool have no org field (they are global/built-in).
-    # StorageFile scopes by `org` FK. SourceCollection scopes by `user_id` only
-    # (no org FK in current model) — org check is skipped for collections.
+    # NOTE: cross-org rejection for python_tool/mcp_tool/collection/storage_file
+    # pks is enforced at the serializer layer (OrgScopedPrimaryKeyRelatedField /
+    # OrgVisiblePrimaryKeyRelatedField in surface_serializers.py) — a cross-org
+    # pk is rejected there before it ever reaches these validators. PythonCodeTool
+    # and SourceCollection own an `org` FK (PythonCodeTool is hybrid via
+    # `built_in`); McpTool and StorageFile own a strict `org` FK.
 
     @staticmethod
     def _find_duplicate_ids(ids: list) -> list:

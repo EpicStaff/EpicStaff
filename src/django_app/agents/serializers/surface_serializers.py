@@ -20,6 +20,11 @@ from tables.models.python_models import PythonCodeTool
 from tables.models.graph_models import StorageFile
 from agents.services.surface_service import SurfaceService
 from agents.validators.surface_validator import SurfaceValidator
+from tables.serializers.org_scoped_fields import (
+    OrganizationScopedPrimaryKeyRelatedField,
+    OrgScopedPrimaryKeyRelatedField,
+    OrgVisiblePrimaryKeyRelatedField,
+)
 
 
 class SurfacePythonToolReadSerializer(serializers.ModelSerializer):
@@ -86,21 +91,19 @@ class SurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
 
 
 class SurfacePythonToolWriteSerializer(serializers.Serializer):
-    python_tool = serializers.PrimaryKeyRelatedField(
+    python_tool = OrgVisiblePrimaryKeyRelatedField(
         queryset=PythonCodeTool.objects.all()
     )
     mode = serializers.ChoiceField(choices=ToolMode.choices)
 
 
 class SurfaceMcpToolWriteSerializer(serializers.Serializer):
-    mcp_tool = serializers.PrimaryKeyRelatedField(queryset=McpTool.objects.all())
+    mcp_tool = OrgScopedPrimaryKeyRelatedField(queryset=McpTool.objects.all())
     mode = serializers.ChoiceField(choices=ToolMode.choices)
 
 
 class SurfaceStorageItemWriteSerializer(serializers.Serializer):
-    storage_file = serializers.PrimaryKeyRelatedField(
-        queryset=StorageFile.objects.all()
-    )
+    storage_file = OrgScopedPrimaryKeyRelatedField(queryset=StorageFile.objects.all())
     can_list = serializers.ChoiceField(
         choices=StorageAccess.choices, default=StorageAccess.UNSET
     )
@@ -139,7 +142,7 @@ class SurfaceGraphLocalSearchConfigWriteSerializer(serializers.Serializer):
 
 
 class SurfaceKnowledgeWriteSerializer(serializers.Serializer):
-    collection = serializers.PrimaryKeyRelatedField(
+    collection = OrgScopedPrimaryKeyRelatedField(
         queryset=SourceCollection.objects.all()
     )
     naive_search_config = SurfaceNaiveSearchConfigWriteSerializer(
@@ -193,7 +196,7 @@ class SurfaceWriteSerializer(serializers.Serializer):
         super().__init__(*args, **kwargs)
         from agents.models.agent_models import AgentDefinition
 
-        self.fields["owner_agent"] = serializers.PrimaryKeyRelatedField(
+        self.fields["owner_agent"] = OrganizationScopedPrimaryKeyRelatedField(
             queryset=AgentDefinition.objects.all(),
             required=False,
             allow_null=True,

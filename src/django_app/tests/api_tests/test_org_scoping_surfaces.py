@@ -2,11 +2,23 @@ import pytest
 from rest_framework.test import APIClient
 
 from agents.models import AgentDefinition
+from agents.models.agent_models import SurfacePlace
 from agents.models.surface_models import Surface
 from tables.models import Graph
-from tables.models.graph_models import AgentNode, AgentNodeTask, TaskNode
+from tables.models.graph_models import AgentNode, AgentNodeTask, StorageFile, TaskNode
+from tables.models.knowledge_models.collection_models import SourceCollection
+from tables.models.llm_models import (
+    LLMConfig,
+    RealtimeConfig,
+    RealtimeModel,
+    RealtimeTranscriptionConfig,
+    RealtimeTranscriptionModel,
+)
+from tables.models.mcp_models import McpTool
+from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
+from tables.models.realtime_models import RealtimeAgentDefinition
 
 
 @pytest.fixture
@@ -177,3 +189,221 @@ def test_agentdef_cross_org_detail_404(client_a, org_b):
     other = AgentDefinition.objects.create(name="adb", organization=org_b)
     resp = client_a.get(f"/api/agent-definitions/{other.id}/")
     assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_agentdef_llm_config_cross_org_rejected(client_a, org_b):
+    other_llm_config = LLMConfig.objects.create(org=org_b, custom_name="other")
+    resp = client_a.post(
+        "/api/agent-definitions/",
+        {"name": "ad", "llm_config": other_llm_config.id},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "llm_config" in resp.data["message"]
+
+
+@pytest.mark.django_db
+def test_agentdef_fcm_llm_config_cross_org_rejected(client_a, org_b):
+    other_llm_config = LLMConfig.objects.create(org=org_b, custom_name="other")
+    resp = client_a.post(
+        "/api/agent-definitions/",
+        {"name": "ad", "fcm_llm_config": other_llm_config.id},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "fcm_llm_config" in resp.data["message"]
+
+
+@pytest.mark.django_db
+def test_agentdef_default_surfaces_cross_org_surface_rejected(client_a, org_b):
+    other_surface = Surface.objects.create(name="sb", organization=org_b)
+    resp = client_a.post(
+        "/api/agent-definitions/",
+        {
+            "name": "ad",
+            "default_surfaces": [
+                {"surface": other_surface.id, "place": SurfacePlace.ALL}
+            ],
+        },
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "default_surfaces" in resp.data["message"]
+
+
+@pytest.mark.django_db
+def test_surface_owner_agent_cross_org_rejected(client_a, org_b):
+    other_agent_definition = AgentDefinition.objects.create(
+        name="adb", organization=org_b
+    )
+    resp = client_a.post(
+        "/api/surfaces/",
+        {"name": "s1", "owner_agent": other_agent_definition.id},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "owner_agent" in resp.data["message"]
+
+
+@pytest.mark.django_db
+def test_surface_python_tool_cross_org_rejected(client_a, org_b):
+    code = PythonCode.objects.create(code="def main(): pass")
+    other_tool = PythonCodeTool.objects.create(
+        name="other-tool", description="t", python_code=code, org=org_b
+    )
+    resp = client_a.post(
+        "/api/surfaces/",
+        {
+            "name": "s1",
+            "python_tools": [{"python_tool": other_tool.id, "mode": "allow"}],
+        },
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "python_tools" in resp.data["message"]
+
+
+@pytest.mark.django_db
+def test_surface_mcp_tool_cross_org_rejected(client_a, org_b):
+    other_tool = McpTool.objects.create(
+        name="other-mcp",
+        transport="http://example.com",
+        tool_name="t",
+        org=org_b,
+    )
+    resp = client_a.post(
+        "/api/surfaces/",
+        {"name": "s1", "mcp_tools": [{"mcp_tool": other_tool.id, "mode": "allow"}]},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "mcp_tools" in resp.data["message"]
+
+
+@pytest.mark.django_db
+def test_surface_storage_file_cross_org_rejected(client_a, org_b):
+    other_file = StorageFile.objects.create(org=org_b, path="a.txt", name="a.txt")
+    resp = client_a.post(
+        "/api/surfaces/",
+        {"name": "s1", "storage_items": [{"storage_file": other_file.id}]},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "storage_items" in resp.data["message"]
+
+
+@pytest.mark.django_db
+def test_surface_knowledge_collection_cross_org_rejected(client_a, org_b):
+    other_collection = SourceCollection.objects.create(
+        org=org_b, collection_name="other-collection"
+    )
+    resp = client_a.post(
+        "/api/surfaces/",
+        {"name": "s1", "knowledge": [{"collection": other_collection.pk}]},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "knowledge" in resp.data["message"]
+
+
+@pytest.fixture
+def realtime_config_factory():
+    def make(org):
+        model = RealtimeModel.objects.create(name="m")
+        return RealtimeConfig.objects.create(
+            custom_name="c", realtime_model=model, org=org
+        )
+
+    return make
+
+
+@pytest.fixture
+def realtime_transcription_config_factory():
+    def make(org):
+        model = RealtimeTranscriptionModel.objects.create(name="m")
+        return RealtimeTranscriptionConfig.objects.create(
+            custom_name="c", realtime_transcription_model=model, org=org
+        )
+
+    return make
+
+
+@pytest.mark.django_db
+def test_realtime_agent_definition_create_rejects_cross_org_realtime_config(
+    client_a, org_a, org_b, realtime_config_factory
+):
+    agent_definition = AgentDefinition.objects.create(name="ad", organization=org_a)
+    other_config = realtime_config_factory(org_b)
+    resp = client_a.post(
+        "/api/realtime-agent-definitions/",
+        {"agent_definition": agent_definition.id, "realtime_config": other_config.id},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "realtime_config" in resp.data["message"]
+
+
+@pytest.mark.django_db
+def test_realtime_agent_definition_create_rejects_cross_org_transcription_config(
+    client_a, org_a, org_b, realtime_transcription_config_factory
+):
+    agent_definition = AgentDefinition.objects.create(name="ad", organization=org_a)
+    other_config = realtime_transcription_config_factory(org_b)
+    resp = client_a.post(
+        "/api/realtime-agent-definitions/",
+        {
+            "agent_definition": agent_definition.id,
+            "realtime_transcription_config": other_config.id,
+        },
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "realtime_transcription_config" in resp.data["message"]
+
+
+@pytest.mark.django_db
+def test_realtime_agent_definition_create_rejects_cross_org_agent_definition(
+    client_a, org_b
+):
+    other_agent_definition = AgentDefinition.objects.create(
+        name="adb", organization=org_b
+    )
+    resp = client_a.post(
+        "/api/realtime-agent-definitions/",
+        {"agent_definition": other_agent_definition.id},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "agent_definition" in resp.data["message"]
+
+
+@pytest.mark.django_db
+def test_realtime_agent_definition_viewset_cross_org_detail_404(client_a, org_b):
+    other_agent_definition = AgentDefinition.objects.create(
+        name="adb", organization=org_b
+    )
+    other_rt_agent_definition = RealtimeAgentDefinition.objects.create(
+        agent_definition=other_agent_definition
+    )
+    resp = client_a.get(
+        f"/api/realtime-agent-definitions/{other_rt_agent_definition.pk}/"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_realtime_agent_definition_viewset_list_only_active_org(client_a, org_a, org_b):
+    agent_definition_a = AgentDefinition.objects.create(name="ada", organization=org_a)
+    agent_definition_b = AgentDefinition.objects.create(name="adb", organization=org_b)
+    RealtimeAgentDefinition.objects.create(agent_definition=agent_definition_a)
+    RealtimeAgentDefinition.objects.create(agent_definition=agent_definition_b)
+
+    resp = client_a.get("/api/realtime-agent-definitions/")
+
+    assert resp.status_code == 200
+    body = resp.data
+    rows = body["results"] if isinstance(body, dict) and "results" in body else body
+    ids = {row["agent_definition"] for row in rows}
+    assert agent_definition_a.id in ids
+    assert agent_definition_b.id not in ids

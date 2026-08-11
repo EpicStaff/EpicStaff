@@ -13,6 +13,10 @@ from agents.models.surface_models import Surface
 from tables.models.llm_models import LLMConfig
 from agents.services.surface_service import AgentDefinitionSurfaceService
 from agents.validators.surface_validator import SurfaceValidator
+from tables.serializers.org_scoped_fields import (
+    OrganizationScopedPrimaryKeyRelatedField,
+    OrgScopedPrimaryKeyRelatedField,
+)
 
 
 class AgentDefaultSurfaceReadSerializer(serializers.ModelSerializer):
@@ -22,7 +26,7 @@ class AgentDefaultSurfaceReadSerializer(serializers.ModelSerializer):
 
 
 class AgentDefaultSurfaceWriteSerializer(serializers.Serializer):
-    surface = serializers.PrimaryKeyRelatedField(queryset=Surface.objects.all())
+    surface = OrganizationScopedPrimaryKeyRelatedField(queryset=Surface.objects.all())
     place = serializers.ChoiceField(choices=SurfacePlace.choices)
 
 
@@ -69,12 +73,12 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
 
 
 class AgentDefinitionWriteSerializer(serializers.ModelSerializer):
-    llm_config = serializers.PrimaryKeyRelatedField(
+    llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(),
         required=False,
         allow_null=True,
     )
-    fcm_llm_config = serializers.PrimaryKeyRelatedField(
+    fcm_llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(),
         required=False,
         allow_null=True,
