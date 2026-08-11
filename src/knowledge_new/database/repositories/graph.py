@@ -16,11 +16,10 @@ from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_chunking.chunking_config import ChunkingConfig
 from graphrag_input import TextDocument
 from graphrag_llm.config import ModelConfig
-from graphrag_storage import StorageConfig
-from graphrag_vectors.vector_store_config import VectorStoreConfig
 from models import Rag
 from services.file_text_extractors import build_file_text_extractor
-from settings import settings
+from services.graphrag.storages import create_storage_config
+from services.graphrag.vector_stores import create_vector_store_config
 from sqlalchemy import exists, select, update
 from sqlalchemy.orm import joinedload
 
@@ -160,7 +159,6 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
         return None
 
     def _to_graph_rag_config(self, rag: GraphRag) -> GraphRagConfig:
-        graph_root = settings.GRAPHRAG_ROOT / f"graph_{rag.graph_rag_id}"
         llm_config: LLMConfig = rag.llm
         embedding_config: EmbeddingConfig = rag.embedder
         index_config: GraphRagIndexConfig = rag.index_config
@@ -174,13 +172,13 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepository, AbstractGraphRagRep
             chunking=self._build_chunking_config(index_config),
             extract_graph=self._build_extract_graph_config(index_config),
             cluster_graph=self._build_cluster_graph_config(index_config),
-            input_storage=StorageConfig(base_dir=str(graph_root / "input")),
-            output_storage=StorageConfig(base_dir=str(graph_root / "output")),
-            update_output_storage=StorageConfig(base_dir=str(graph_root / "update_output")),
-            vector_store=VectorStoreConfig(
-                vector_size=1536,
-                db_uri=str(graph_root / "lancedb"),
+            input_storage=create_storage_config(rag_id=rag.graph_rag_id, subdir="input"),
+            output_storage=create_storage_config(rag_id=rag.graph_rag_id, subdir="output"),
+            update_output_storage=create_storage_config(
+                rag_id=rag.graph_rag_id,
+                subdir="update_output",
             ),
+            vector_store=create_vector_store_config(rag_id=rag.graph_rag_id),
         )
 
     @staticmethod
