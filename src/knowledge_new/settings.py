@@ -43,7 +43,12 @@ class MainSettings(BaseSettings):
     INDEX_REQUEST_CHANNEL: str
     CANCEL_REQUEST_CHANNEL: str
 
-    GRAPHRAG_ROOT: Path = BASE_DIR / "graph_data"
+    MINIO_HOST: str = "http://minio:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin_secret"
+    MINIO_BUCKET: str = "knowledge"
+
+    GRAPHRAG_ENCODING: str = "utf-8"
 
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / "../.env",
