@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from app.controllers import health_routes, ingest_routes
+from app.controllers import export_routes, health_routes, ingest_routes, query_routes
 from app.core.settings import settings
 from app.repositories.factory import build_session_audit_repository
 
@@ -45,5 +45,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_routes.router)
     app.include_router(ingest_routes.router)
+    app.include_router(query_routes.router)
+    app.include_router(export_routes.router)
 
     return app
