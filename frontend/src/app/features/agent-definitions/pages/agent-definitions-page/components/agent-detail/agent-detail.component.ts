@@ -152,6 +152,7 @@ export class AgentDetailComponent implements OnInit {
         if (n > AgentDetailComponent.BOOT_SUGGEST_AT) return 'suggest';
         return 'none';
     });
+    readonly bootAtMaxHeight = signal<boolean>(false);
 
     readonly sections = signal<Record<AgentSectionId, boolean>>({
         basics: true,
@@ -181,6 +182,7 @@ export class AgentDetailComponent implements OnInit {
             }
             this.savedSnapshot = this.form.getRawValue();
             this.bootLength.set((this.form.controls.instructions.value ?? '').length);
+            this.bootAtMaxHeight.set(false);
             this.dirtyChange.emit(this.form.dirty);
         });
 
@@ -216,6 +218,10 @@ export class AgentDetailComponent implements OnInit {
     }
 
     autosaveName(): void {
+        if (!this.form.controls.name.value.trim() && this.agent()?.id != null) {
+            this.form.controls.name.setValue(this.savedSnapshot.name);
+            this.toast.info("Agent name can't be empty — kept the previous name");
+        }
         this.persist(true);
     }
 
@@ -224,19 +230,24 @@ export class AgentDetailComponent implements OnInit {
     }
 
     private persist(fromNameBlur: boolean): void {
-        if (this.saving() || this.form.invalid) return;
+        if (this.saving()) return;
+        if (this.form.controls.name.hasError('maxlength')) return;
+
         const v = this.form.getRawValue();
-        if (!v.name.trim()) return;
+        const effectiveName = v.name.trim() || this.savedSnapshot.name;
+        if (!effectiveName) return;
 
         const a = this.agent();
         const creating = a?.id == null;
         if (creating && !fromNameBlur) return;
-        if (this.sameAsSnapshot(v)) return;
 
-        this.savedSnapshot = v;
+        const candidate: AgentFormValue = { ...v, name: effectiveName };
+        if (this.sameAsSnapshot(candidate)) return;
+
+        this.savedSnapshot = candidate;
         this.save.emit({
             id: a?.id ?? null,
-            name: v.name.trim(),
+            name: effectiveName,
             description: v.description ?? '',
             instructions: v.instructions ?? '',
             llm_config: v.llm_config,
@@ -278,8 +289,11 @@ export class AgentDetailComponent implements OnInit {
     }
 
     private revertToSnapshot(): void {
-        this.form.reset(this.savedSnapshot);
-        this.bootLength.set((this.savedSnapshot.instructions ?? '').length);
+        const a = this.agent();
+        const target = a ? this.valueFromAgent(a) : this.emptyValue();
+        this.savedSnapshot = target;
+        this.form.reset(target);
+        this.bootLength.set((target.instructions ?? '').length);
     }
 
     openAdditionalSettings(): void {
@@ -448,11 +462,18 @@ export class AgentDetailComponent implements OnInit {
             });
     }
 
-    adjustTextareaHeight(textarea: HTMLTextAreaElement, maxPx: number): void {
+    adjustTextareaHeight(textarea: HTMLTextAreaElement, maxPx: number): number {
         textarea.style.height = 'auto';
         const full = textarea.scrollHeight;
         textarea.style.height = `${Math.min(full, maxPx)}px`;
         textarea.style.overflowY = full > maxPx ? 'auto' : 'hidden';
+        return full;
+    }
+
+    adjustBootHeight(textarea: HTMLTextAreaElement): void {
+        const maxPx = window.innerHeight * 0.5;
+        const full = this.adjustTextareaHeight(textarea, maxPx);
+        this.bootAtMaxHeight.set(full > maxPx);
     }
 
     onDelete(): void {
