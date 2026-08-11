@@ -216,6 +216,10 @@ export class AgentDetailComponent implements OnInit {
     }
 
     autosaveName(): void {
+        if (!this.form.controls.name.value.trim() && this.agent()?.id != null) {
+            this.form.controls.name.setValue(this.savedSnapshot.name);
+            this.toast.info("Agent name can't be empty — kept the previous name");
+        }
         this.persist(true);
     }
 
@@ -224,19 +228,24 @@ export class AgentDetailComponent implements OnInit {
     }
 
     private persist(fromNameBlur: boolean): void {
-        if (this.saving() || this.form.invalid) return;
+        if (this.saving()) return;
+        if (this.form.controls.name.hasError('maxlength')) return;
+
         const v = this.form.getRawValue();
-        if (!v.name.trim()) return;
+        const effectiveName = v.name.trim() || this.savedSnapshot.name;
+        if (!effectiveName) return;
 
         const a = this.agent();
         const creating = a?.id == null;
         if (creating && !fromNameBlur) return;
-        if (this.sameAsSnapshot(v)) return;
 
-        this.savedSnapshot = v;
+        const candidate: AgentFormValue = { ...v, name: effectiveName };
+        if (this.sameAsSnapshot(candidate)) return;
+
+        this.savedSnapshot = candidate;
         this.save.emit({
             id: a?.id ?? null,
-            name: v.name.trim(),
+            name: effectiveName,
             description: v.description ?? '',
             instructions: v.instructions ?? '',
             llm_config: v.llm_config,
