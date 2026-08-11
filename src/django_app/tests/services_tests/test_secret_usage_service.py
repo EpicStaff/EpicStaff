@@ -18,6 +18,7 @@ from tables.models.graph_models import (
     ConditionalEdge,
     Graph,
     PythonNode,
+    TelegramTriggerNode,
 )
 from tables.models.llm_models import LLMModel, RealtimeConfig, RealtimeModel
 from tables.models.rbac_models import Organization
@@ -260,8 +261,13 @@ class TestSummary:
             "llm_configs",
         ]
 
-    def test_cdt_pre_and_post_collapse_to_one_node(self, org, secret):
-        """Two sources see the same node. The dialog must list it once."""
+    def test_cdt_pre_and_post_are_reported_as_separate_blocks(self, org, secret):
+        """Two independent declarations on one node, so the dialog must say which
+        block uses the secret rather than just naming the node.
+
+        The flow is still one item and the total is still 1 — the count answers "how
+        many resources break if I delete this", and both blocks live in the same flow.
+        """
         graph = Graph.objects.create(name="CDT agg flow", org=org)
         pre_code = PythonCode.objects.create(code=DECLARING_CODE)
         pre_code.secrets.set([secret])
@@ -280,9 +286,74 @@ class TestSummary:
         assert flows["key"] == "flows"
         assert len(flows["items"]) == 1
         assert flows["items"][0]["nodes"] == [
-            {"name": "classify", "node_type": "classification-decision-table"}
+            {
+                "name": "classify",
+                "node_type": "classification-decision-table",
+                "code_field": "post_python_code",
+            },
+            {
+                "name": "classify",
+                "node_type": "classification-decision-table",
+                "code_field": "pre_python_code",
+            },
         ]
         assert summary["total"] == 1
+
+    def test_a_cdt_declaring_in_only_one_block_reports_only_that_block(
+        self, org, secret
+    ):
+        """The case that makes the field worth having: post is untouched, so the
+        dialog points at pre alone instead of at the node in general."""
+        graph = Graph.objects.create(name="CDT pre only", org=org)
+        pre_code = PythonCode.objects.create(code=DECLARING_CODE)
+        pre_code.secrets.set([secret])
+        ClassificationDecisionTableNode.objects.create(
+            graph=graph,
+            node_name="classify",
+            pre_python_code=pre_code,
+            post_python_code=PythonCode.objects.create(code=DECLARING_CODE),
+        )
+
+        summary = secret_usage_service.summary(secret=secret)
+
+        assert summary["categories"][0]["items"][0]["nodes"] == [
+            {
+                "name": "classify",
+                "node_type": "classification-decision-table",
+                "code_field": "pre_python_code",
+            }
+        ]
+
+    def test_a_single_code_block_node_reports_its_own_field(self, org, secret):
+        """Every flow node carries the key, so the frontend never has to branch on
+        node type to know whether to look for it. A python node has one block, and
+        names it."""
+        graph = Graph.objects.create(name="Plain python flow", org=org)
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        python_code.secrets.set([secret])
+        PythonNode.objects.create(
+            graph=graph, node_name="charge", python_code=python_code
+        )
+
+        summary = secret_usage_service.summary(secret=secret)
+
+        assert summary["categories"][0]["items"][0]["nodes"] == [
+            {"name": "charge", "node_type": "python", "code_field": "python_code"}
+        ]
+
+    def test_an_fk_site_reports_a_null_code_field(self, org, secret):
+        """A Telegram trigger node references the secret by FK, declaring nothing in
+        code, so there is no block to name."""
+        graph = Graph.objects.create(name="TG flow", org=org)
+        TelegramTriggerNode.objects.create(
+            graph=graph, node_name="tg", telegram_bot_api_key_secret=secret
+        )
+
+        summary = secret_usage_service.summary(secret=secret)
+
+        assert summary["categories"][0]["items"][0]["nodes"] == [
+            {"name": "tg", "node_type": "telegram-trigger", "code_field": None}
+        ]
 
     def test_one_flow_with_several_nodes_is_one_item_with_several_nodes(
         self, org, secret
@@ -461,7 +532,7 @@ class TestSummaryQueryCost:
             summary = secret_usage_service.summary(secret=secret)
 
         assert summary["categories"][0]["items"][0]["nodes"] == [
-            {"name": "route", "node_type": "edge"}
+            {"name": "route", "node_type": "edge", "code_field": "python_code"}
         ]
         # Three shape queries plus the resolve pass; nowhere near the old twelve.
         assert 3 < len(captured) < 12, len(captured)

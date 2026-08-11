@@ -55,6 +55,8 @@ class UsageHit:
     """Flows only."""
     node_type: str | None = None
     """Flows only — one of the NODE_TYPE_* values."""
+    code_field: str | None = None
+    """Which code block declares the secret, for nodes that own more than one."""
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,9 @@ class UsageSource:
     which borrows the identity of the node it branches off."""
     node_type: str | None = None
     """A NODE_TYPE_* value for flow nodes; None for standalone resources."""
+    code_field: str | None = None
+    """The PythonCode field this source reads, reported so the payload can name the
+    block. None for FK sites, which declare nothing in code."""
 
     def count_pairs(self, *, org_id: int, secret_ids: set[int]):
         """(secret_id, resource_key) as a queryset, for the union in counts()."""
@@ -103,13 +108,14 @@ class UsageSource:
         )
 
     def node_rows(self, *, org_id: int, secret_ids: set[int]):
-        """(secret_id, node_type, graph_id, graph_name, node_name) for a named node."""
+        """(secret_id, node_type, graph_id, graph_name, node_name, code_field)."""
         return (
             self._scoped(org_id=org_id, secret_ids=secret_ids)
             .annotate(
                 usage_node_type=Value(self.node_type, output_field=TextField()),
                 usage_graph_name=Cast("graph__name", output_field=TextField()),
                 usage_node_name=Cast(self.name_field, output_field=TextField()),
+                usage_code_field=Value(self.code_field, output_field=TextField()),
             )
             .values_list(
                 self.secret_path,
@@ -117,14 +123,19 @@ class UsageSource:
                 "graph_id",
                 "usage_graph_name",
                 "usage_node_name",
+                "usage_code_field",
             )
         )
 
     def edge_rows(self, *, org_id: int, secret_ids: set[int]):
-        """(secret_id, node_type, graph_id, graph_name, source_node_id, edge_id)."""
+        """(secret_id, node_type, graph_id, graph_name, source_node_id, edge_id,
+        code_field)."""
         return (
             self._scoped(org_id=org_id, secret_ids=secret_ids)
-            .annotate(usage_node_type=Value(self.node_type, output_field=TextField()))
+            .annotate(
+                usage_node_type=Value(self.node_type, output_field=TextField()),
+                usage_code_field=Value(self.code_field, output_field=TextField()),
+            )
             .values_list(
                 self.secret_path,
                 "usage_node_type",
@@ -132,6 +143,7 @@ class UsageSource:
                 "graph__name",
                 "source_node_id",
                 "id",
+                "usage_code_field",
             )
         )
 
@@ -179,8 +191,9 @@ def hits_from_node_rows(*, rows) -> list[UsageHit]:
             resource_name=graph_name,
             node_name=node_name,
             node_type=node_type,
+            code_field=code_field,
         )
-        for secret_id, node_type, graph_id, graph_name, node_name in rows
+        for secret_id, node_type, graph_id, graph_name, node_name, code_field in rows
     ]
 
 
@@ -194,7 +207,7 @@ def hits_from_edge_rows(*, rows) -> list[UsageHit]:
     # resolve_node_names issues a single UNION query plus one SELECT per matching
     # table, so this stays bounded however many edges match.
     formatted_names = resolve_node_names(
-        ids=[source_node_id for _, _, _, _, source_node_id, _ in rows]
+        ids=[source_node_id for _, _, _, _, source_node_id, _, _ in rows]
     )
 
     return [
@@ -211,8 +224,17 @@ def hits_from_edge_rows(*, rows) -> list[UsageHit]:
                 or f"Conditional edge #{edge_id}"
             ),
             node_type=node_type,
+            code_field=code_field,
         )
-        for secret_id, node_type, graph_id, graph_name, source_node_id, edge_id in rows
+        for (
+            secret_id,
+            node_type,
+            graph_id,
+            graph_name,
+            source_node_id,
+            edge_id,
+            code_field,
+        ) in rows
     ]
 
 
@@ -248,6 +270,7 @@ def _from_python_code_site(*, site: PythonCodeSite) -> UsageSource:
         org_path=site.org_path,
         name_field=site.name_field,
         node_type=site.node_type,
+        code_field=site.code_field,
     )
 
 

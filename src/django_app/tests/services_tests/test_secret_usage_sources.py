@@ -597,7 +597,7 @@ class TestDetailShapes:
             assert (source.detail_shape == SHAPE_NAMED) is not is_flow, source.model
 
     @pytest.mark.parametrize(
-        "shape,columns", [(SHAPE_NAMED, 3), (SHAPE_NODE, 5), (SHAPE_EDGE, 6)]
+        "shape,columns", [(SHAPE_NAMED, 3), (SHAPE_NODE, 6), (SHAPE_EDGE, 7)]
     )
     def test_a_shape_projects_a_consistent_column_count(self, org, ids, shape, columns):
         """Differing column counts within a group make the union a hard error."""

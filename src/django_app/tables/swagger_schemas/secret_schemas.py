@@ -29,10 +29,26 @@ SECRET_USAGE_GET = dict(
                                             {
                                                 "name": "charge_card",
                                                 "node_type": "python",
+                                                "code_field": "python_code",
+                                            },
+                                            {
+                                                "name": "classify_tier",
+                                                "node_type": (
+                                                    "classification-decision-table"
+                                                ),
+                                                "code_field": "post_python_code",
+                                            },
+                                            {
+                                                "name": "classify_tier",
+                                                "node_type": (
+                                                    "classification-decision-table"
+                                                ),
+                                                "code_field": "pre_python_code",
                                             },
                                             {
                                                 "name": "route_by_tier",
                                                 "node_type": "edge",
+                                                "code_field": "python_code",
                                             },
                                         ],
                                     },
@@ -43,6 +59,7 @@ SECRET_USAGE_GET = dict(
                                             {
                                                 "name": "notify",
                                                 "node_type": "telegram-trigger",
+                                                "code_field": None,
                                             }
                                         ],
                                     },

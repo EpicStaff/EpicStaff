@@ -12,7 +12,11 @@ from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
 from tables.models import LLMConfig, McpTool, PythonCode
-from tables.models.graph_models import Graph, PythonNode
+from tables.models.graph_models import (
+    ClassificationDecisionTableNode,
+    Graph,
+    PythonNode,
+)
 from tables.models.llm_models import LLMModel
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
@@ -286,6 +290,35 @@ class TestUsageDetailEndpoint:
         assert resp.status_code == 200, resp.content
         assert resp.data == {"total": 0, "categories": []}
 
+    def test_a_decision_table_reports_pre_and_post_as_separate_blocks(
+        self, admin_client, org, secret
+    ):
+        """What the Secret Usage page needs to say *where* the secret is used: one
+        node, two independent declarations, each named by its code block."""
+        graph = Graph.objects.create(name="CDT flow", org=org)
+        pre_code = PythonCode.objects.create(code=DECLARING_CODE)
+        pre_code.secrets.set([secret])
+        post_code = PythonCode.objects.create(code=DECLARING_CODE)
+        post_code.secrets.set([secret])
+        ClassificationDecisionTableNode.objects.create(
+            graph=graph,
+            node_name="classify",
+            pre_python_code=pre_code,
+            post_python_code=post_code,
+        )
+
+        resp = admin_client.get(f"/api/secrets/{secret.pk}/usage/")
+
+        assert resp.status_code == 200, resp.content
+        nodes = resp.data["categories"][0]["items"][0]["nodes"]
+        assert [node["code_field"] for node in nodes] == [
+            "post_python_code",
+            "pre_python_code",
+        ]
+        assert {node["name"] for node in nodes} == {"classify"}
+        # One flow to lose, so the count the list endpoint shows is unchanged.
+        assert resp.data["total"] == 1
+
     def test_payload_shape_across_all_three_categories(self, admin_client, used_secret):
         resp = admin_client.get(f"/api/secrets/{used_secret.pk}/usage/")
 
@@ -300,7 +333,13 @@ class TestUsageDetailEndpoint:
         flows = resp.data["categories"][0]["items"]
         assert len(flows) == 1
         assert flows[0]["name"] == "API flow"
-        assert flows[0]["nodes"] == [{"name": "charge_card", "node_type": "python"}]
+        assert flows[0]["nodes"] == [
+            {
+                "name": "charge_card",
+                "node_type": "python",
+                "code_field": "python_code",
+            }
+        ]
 
         assert resp.data["categories"][1]["items"] == [{"name": "api tool"}]
         assert resp.data["categories"][2]["items"] == [{"name": "api cfg"}]

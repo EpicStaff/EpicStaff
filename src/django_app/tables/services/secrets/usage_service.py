@@ -74,12 +74,22 @@ class SecretUsageService:
                 hit.resource_id,
                 {"id": hit.resource_id, "name": hit.resource_name, "nodes": []},
             )
-            node = {"name": hit.node_name, "node_type": hit.node_type}
+            node = {
+                "name": hit.node_name,
+                "node_type": hit.node_type,
+                "code_field": hit.code_field,
+            }
             if node not in flow["nodes"]:
                 flow["nodes"].append(node)
 
         for flow in flows.values():
-            flow["nodes"].sort(key=lambda node: (node["name"] or "", node["node_type"]))
+            flow["nodes"].sort(
+                key=lambda node: (
+                    node["name"] or "",
+                    node["node_type"],
+                    node["code_field"] or "",
+                )
+            )
         return sorted(flows.values(), key=lambda flow: (flow["name"] or "", flow["id"]))
 
     @staticmethod
