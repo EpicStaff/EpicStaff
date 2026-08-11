@@ -111,7 +111,10 @@ from tables.views.flow_assistant_views import (
     FlowAssistantStreamView,
 )
 
-from tables.views.organization_admin_views import OrganizationAdminViewSet
+from tables.views.organization_admin_views import (
+    OrganizationAdminViewSet,
+    OrganizationSelfServiceViewSet,
+)
 from tables.views.role_admin_views import (
     OrgScopedRoleAdminViewSet,
     RoleAdminViewSet,
@@ -222,6 +225,11 @@ urlpatterns = [
         "admin/organizations/<int:org_id>/roles/",
         OrgScopedRoleAdminViewSet.as_view({"get": "list"}),
         name="admin-org-roles-list",
+    ),
+    path(
+        "organizations/me/settings/",
+        OrganizationSelfServiceViewSet.as_view({"patch": "partial_update"}),
+        name="organization-self-settings",
     ),
     path("admin/", include(admin_router.urls)),
     path("", include(router.urls)),
