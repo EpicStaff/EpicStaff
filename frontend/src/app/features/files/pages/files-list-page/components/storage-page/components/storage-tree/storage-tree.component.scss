@@ -80,7 +80,7 @@
     &__list {
         flex: 1;
         overflow-y: auto;
-        overflow-x: hidden;
+        overflow-x: auto;
 
         &--drop-target-root {
             background-color: rgba(104, 95, 255, 0.05);
@@ -90,8 +90,8 @@
     }
 
     &__list-content {
+        width: max-content;
         min-width: 100%;
-        width: 100%;
     }
 
     &__item {
@@ -100,8 +100,8 @@
         gap: 0.375rem;
         padding: 0 0.75rem;
         padding-right: 0;
-        min-width: 0;
-        width: 100%;
+        min-width: 100%;
+        width: max-content;
         box-sizing: border-box;
         cursor: pointer;
         user-select: none;
@@ -159,13 +159,6 @@
             }
         }
 
-        // 3.5rem clears two 20px .storage-tree__hover-btn + 8px gap + 8px right offset.
-        // Reserved on the row itself so both the plain name and the name + Empty
-        // badge shrink; the absolutely positioned actions stay put.
-        &:hover,
-        &--hovered {
-            padding-right: 3.5rem;
-        }
     }
 
     &__chevron-btn {
@@ -301,10 +294,9 @@
         align-items: center;
         justify-content: flex-end;
         gap: 8px;
-        position: absolute;
-        right: 0.5rem;
-        top: 50%;
-        transform: translateY(-50%);
+        margin-left: auto;
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
         height: 20px;
         flex-shrink: 0;
         z-index: 2;
