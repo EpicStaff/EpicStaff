@@ -1,7 +1,8 @@
-﻿import { computed, inject, Injectable, signal } from '@angular/core';
+﻿import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { computeUniqueCopyName } from '@shared/utils';
-import { forkJoin, Observable, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { forkJoin, Observable, of, Subject } from 'rxjs';
+import { catchError, debounceTime, groupBy, mergeMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../services/notifications/toast.service';
 import {
@@ -37,6 +38,8 @@ export interface SurfaceView {
 
 const VISIBLE_SECTIONS_STORAGE_KEY = 'agents-explorer/visibleSections';
 
+const SURFACE_PATCH_DEBOUNCE_MS = 400;
+
 function loadVisibleSections(): Set<ExplorerSectionId> {
     const all = EXPLORER_SECTIONS.map((s) => s.id);
     try {
@@ -57,6 +60,20 @@ export class AgentsPageStore {
     private readonly agentsApi: AgentDefinitionsApiService = inject(AgentDefinitionsApiService);
     private readonly surfacesApi: SurfacesApiService = inject(SurfacesApiService);
     private readonly toast: ToastService = inject(ToastService);
+    private readonly destroyRef = inject(DestroyRef);
+
+    private readonly pendingSurfacePatch = new Map<number, PartialUpdateSurfaceRequest>();
+    private readonly surfacePatch$ = new Subject<number>();
+
+    constructor() {
+        this.surfacePatch$
+            .pipe(
+                groupBy((id) => id),
+                mergeMap((group) => group.pipe(debounceTime(SURFACE_PATCH_DEBOUNCE_MS))),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((id) => this.flushSurfacePatch(id));
+    }
 
     readonly agents = signal<AgentDefinition[]>([]);
     readonly surfaces = signal<Surface[]>([]);
@@ -653,7 +670,19 @@ export class AgentsPageStore {
     }
 
     updateSurface(id: number, patch: PartialUpdateSurfaceRequest): void {
+        // Coalesce rapid edits of the same surface (e.g. deleting several collections in a
+        // row) into one debounced PATCH. Sending them concurrently made the backend's
+        // full-replace of surface knowledge race itself into a duplicate-key 500.
+        const merged = { ...(this.pendingSurfacePatch.get(id) ?? {}), ...patch };
+        this.pendingSurfacePatch.set(id, merged);
         this.saving.set(true);
+        this.surfacePatch$.next(id);
+    }
+
+    private flushSurfacePatch(id: number): void {
+        const patch = this.pendingSurfacePatch.get(id);
+        if (!patch) return;
+        this.pendingSurfacePatch.delete(id);
         this.surfacesApi.partialUpdate(id, patch).subscribe({
             next: (updated) => {
                 this.surfaces.update((list) => list.map((s) => (s.id === id ? updated : s)));
