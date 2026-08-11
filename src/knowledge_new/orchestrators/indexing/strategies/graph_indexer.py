@@ -29,9 +29,11 @@ class GraphIndexer(AbstractIndexer):
         rag.mark_as_processing(request.document_ids)
         await self._update_rag(rag)
 
+        input_documents = pandas.DataFrame(data=[asdict(d) for d in documents])
+        input_documents["human_readable_id"] = input_documents.index
         results = await build_index(
             config=config,
-            input_documents=pandas.DataFrame(data=[asdict(d) for d in documents]),
+            input_documents=input_documents,
             verbose=True,
             is_update_run=is_update_run,
         )
