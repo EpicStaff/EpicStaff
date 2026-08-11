@@ -20,8 +20,6 @@ class KnowledgeNodeStrategy(EntityImportExportStrategy):
     entity_type = EntityType.KNOWLEDGE_NODE
     serializer_class = KnowledgeNodeImportSerializer
 
-    # export key -> node-bound config model. Same extension point as the bulk
-    # saveable: a new graph search method adds one entry here.
     _CONFIG_MODELS = {
         "naive_search_config": KnowledgeNodeNaiveRagSearchConfig,
         "graph_basic_search_config": KnowledgeNodeGraphRagBasicSearchConfig,
@@ -42,12 +40,9 @@ class KnowledgeNodeStrategy(EntityImportExportStrategy):
 
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> KnowledgeNode:
         graph_id = id_mapper.get_or_none(EntityType.GRAPH, data.pop("graph", None))
-        # source_collection / rag_type are org-scoped knowledge entities outside
-        # the flow export graph — their raw ids are preserved (same-DB round-trip).
+
         configs = {key: data.pop(key, None) for key in self._CONFIG_MODELS}
 
-        # Dangling FK ids (referent deleted since export) degrade to null to match
-        # the model's on_delete=SET_NULL — otherwise validation crashes on import.
         if not SourceCollection.objects.filter(
             pk=data.get("source_collection")
         ).exists():

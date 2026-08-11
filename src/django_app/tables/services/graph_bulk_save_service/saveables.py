@@ -464,13 +464,11 @@ class KnowledgeNodeSaveable:
     only its config model added here plus the matching payload key in the factory.
     """
 
-    # nested payload key -> node-bound config model (FK field is always knowledge_node)
     _CONFIG_MODELS = {
         "naive_search_config": KnowledgeNodeNaiveRagSearchConfig,
         "graph_basic_search_config": KnowledgeNodeGraphRagBasicSearchConfig,
         "graph_local_search_config": KnowledgeNodeGraphRagLocalSearchConfig,
     }
-    # Never let a client-sent id/FK reach the row create.
     _CONFIG_EXCLUDED_FIELDS = frozenset({"id", "knowledge_node"})
 
     def __init__(self, serializer, nested_configs, instance=None):

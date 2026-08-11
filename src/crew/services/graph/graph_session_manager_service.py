@@ -234,12 +234,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         except Exception as e:
             logger.exception(f"Failed to start session: {e}")
 
-            # A node error aborts the run before the success-path graph_end is
-            # published. Without graph_end django flushes the buffered per-node error
-            # row to the DB only on its periodic timer, so the frontend's one-shot
-            # terminal reconcile races it and shows no error. Emit graph_end here
-            # (mirroring the success path) to force the flush + terminal signal
-            # before the status flips to error.
             graph_end_data = GraphMessage(
                 session_id=session_id,
                 name="",

@@ -31,8 +31,6 @@ class KnowledgeNodeImportSerializer(serializers.ModelSerializer):
     graph = serializers.PrimaryKeyRelatedField(
         queryset=Graph.objects.all(), write_only=True
     )
-    # Reverse OneToOne configs — read_only so they appear in export output; the
-    # strategy pops and recreates them on import.
     naive_search_config = _NaiveSearchConfigImportSerializer(read_only=True)
     graph_basic_search_config = _GraphBasicSearchConfigImportSerializer(read_only=True)
     graph_local_search_config = _GraphLocalSearchConfigImportSerializer(read_only=True)

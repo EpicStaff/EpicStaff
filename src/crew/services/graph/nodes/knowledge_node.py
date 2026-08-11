@@ -42,9 +42,6 @@ class KnowledgeNode(BaseNode):
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
     ) -> str:
-        # Raise plainly on misuse: BaseNode.run wraps execute in a try/except that
-        # emits exactly one per-node error message (add_error_message) and re-raises,
-        # like every other node. Emitting here too would duplicate the error.
         if self.collection_id is None or self.rag_type_id is None:
             raise ValueError(
                 f"Knowledge node '{self.node_name}' is not configured: "
@@ -61,8 +58,6 @@ class KnowledgeNode(BaseNode):
         else:
             query = str(input_)
 
-        # Empty query → the embedder 400s with an opaque "input cannot be an empty
-        # string"; surface a clear cause instead of leaking the provider error.
         if not query.strip():
             raise ValueError(
                 f"Knowledge node '{self.node_name}' received an empty search query: "
@@ -72,7 +67,6 @@ class KnowledgeNode(BaseNode):
         rag_search_config = (
             self.rag_search_config.model_dump() if self.rag_search_config else {}
         )
-        # search_knowledges blocks on a Redis pub/sub poll → offload off the event loop.
         chunks = await asyncio.to_thread(
             self.knowledge_search_service.search_knowledges,
             sender="node",
