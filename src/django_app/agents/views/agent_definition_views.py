@@ -20,7 +20,7 @@ class AgentDefinitionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
     queryset = AgentDefinition.objects.select_related(
-        "organization", "llm_config", "fcm_llm_config"
+        "organization", "llm_config", "fcm_llm_config", "realtime_agent"
     ).prefetch_related("default_surfaces__surface", "owned_surfaces")
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["llm_config", "fcm_llm_config"]

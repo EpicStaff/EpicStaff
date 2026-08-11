@@ -28,9 +28,18 @@ class AgentDefaultSurfaceWriteSerializer(serializers.Serializer):
 
 class AgentDefinitionReadSerializer(serializers.ModelSerializer):
     default_surfaces = serializers.SerializerMethodField()
+    agent_definition_realtime_config_id = serializers.SerializerMethodField()
 
     def get_default_surfaces(self, obj):
         return AgentDefinitionSurfaceService.get_default_surfaces(obj)
+
+    def get_agent_definition_realtime_config_id(self, obj):
+        try:
+            realtime_agent = obj.realtime_agent
+        except AgentDefinition.realtime_agent.RelatedObjectDoesNotExist:
+            return None
+
+        return realtime_agent.realtime_config_id
 
     class Meta:
         model = AgentDefinition
@@ -54,6 +63,7 @@ class AgentDefinitionReadSerializer(serializers.ModelSerializer):
             "schema_max_retries",
             "metadata",
             "default_surfaces",
+            "agent_definition_realtime_config_id",
         ]
         read_only_fields = fields
 
