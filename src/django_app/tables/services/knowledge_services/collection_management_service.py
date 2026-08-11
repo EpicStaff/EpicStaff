@@ -441,6 +441,8 @@ class CollectionManagementService:
             "llm_name": graph_rag.llm.custom_name if graph_rag.llm else None,
             "llm_id": graph_rag.llm.id if graph_rag.llm else None,
             "documents_count": documents_count,
+            "processing_document_ids": list(graph_rag.indexing_document_config_ids),
+            "message": graph_rag.error_message,
             "indexed_at": graph_rag.indexed_at,
             "created_at": graph_rag.created_at,
             "updated_at": graph_rag.updated_at,

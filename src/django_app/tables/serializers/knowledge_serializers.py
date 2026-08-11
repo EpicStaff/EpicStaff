@@ -55,6 +55,11 @@ class RagConfigurationSummarySerializer(serializers.Serializer):
         required=False,
         help_text="IDs of document configs included in the current/last indexing run",
     )
+    processing_document_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text="IDs of documents in the current/last graph rag indexing run",
+    )
     message = serializers.CharField(
         required=False,
         allow_null=True,
