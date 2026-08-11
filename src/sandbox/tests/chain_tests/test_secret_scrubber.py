@@ -7,11 +7,24 @@ consumer, including this container's own log, can read them.
 
 import json
 
-from secret_scrubber import MASK, scrub
+import pytest
+from secret_scrubber import MASK, MASK_SECRET_ENV_VAR, masking_enabled, scrub
 
 SECRET_NAME = "STRIPE KEY"
 SECRET_VALUE = "sk-live-must-not-escape-7a21"
 SECRETS = {SECRET_NAME: SECRET_VALUE}
+
+
+@pytest.fixture(autouse=True)
+def masking_on_by_default(monkeypatch):
+    """Start every test from an unset MASK_SECRET.
+
+    Without this the suite would inherit whoever's shell it runs in: a developer
+    with MASK_SECRET=false exported would see the masking tests fail for a reason
+    that has nothing to do with the code. Tests that care about the switch set it
+    themselves.
+    """
+    monkeypatch.delenv(MASK_SECRET_ENV_VAR, raising=False)
 
 
 class TestScrubbing:
@@ -180,3 +193,71 @@ class TestPassThrough:
         )
 
         assert scrubbed == f"key {MASK}"
+
+
+class TestMaskingEnabledDefaultsToOn:
+    """Absent configuration must mask. A deployment that never heard of this
+    variable is the common case and has to be the safe one.
+
+    These cover the env parsing only. Whether the gate is honoured is asserted
+    against the real handler in
+    test_execute_code_handler_env.py::TestMaskSecretSwitchEndToEnd -- scrub() itself
+    always masks, so testing the switch through it here would prove nothing.
+    """
+
+    def test_an_unset_variable_enables_masking(self):
+        assert masking_enabled() is True
+
+    def test_an_empty_value_enables_masking(self, monkeypatch):
+        """`MASK_SECRET=` in an .env file reads as empty, not as false."""
+        monkeypatch.setenv(MASK_SECRET_ENV_VAR, "")
+
+        assert masking_enabled() is True
+
+    @pytest.mark.parametrize("value", ["flase", "fasle", "maybe", "off?", "2", "-1"])
+    def test_an_unrecognised_value_enables_masking(self, monkeypatch, value):
+        """Fail-secure: only an explicit, correctly-spelled false disables masking.
+        A typo must not silently start publishing credentials."""
+        monkeypatch.setenv(MASK_SECRET_ENV_VAR, value)
+
+        assert masking_enabled() is True
+
+
+class TestMaskingEnabledParsesTheValue:
+    @pytest.mark.parametrize("value", ["true", "True", "TRUE", "1", "yes", " true "])
+    def test_a_truthy_value_enables_masking(self, monkeypatch, value):
+        monkeypatch.setenv(MASK_SECRET_ENV_VAR, value)
+
+        assert masking_enabled() is True
+
+    @pytest.mark.parametrize(
+        "value", ["false", "False", "FALSE", "0", "no", "off", "f", "n", " false "]
+    )
+    def test_a_falsey_value_disables_masking(self, monkeypatch, value):
+        monkeypatch.setenv(MASK_SECRET_ENV_VAR, value)
+
+        assert masking_enabled() is False
+
+    def test_the_value_is_read_per_call_not_cached_at_import(self, monkeypatch):
+        """Read from the environment on each call, so the setting reflects the
+        running configuration rather than module load order -- which is also what
+        lets these tests use monkeypatch.setenv instead of reimporting."""
+        monkeypatch.setenv(MASK_SECRET_ENV_VAR, "true")
+        assert masking_enabled() is True
+
+        monkeypatch.setenv(MASK_SECRET_ENV_VAR, "false")
+        assert masking_enabled() is False
+
+        monkeypatch.setenv(MASK_SECRET_ENV_VAR, "true")
+        assert masking_enabled() is True
+
+
+class TestScrubIgnoresTheSwitch:
+    """scrub() is unconditional by design: the gate lives at the call site in
+    ExecuteCodeHandler.handle. Pinned so nobody re-adds the check here and leaves
+    two places to reason about."""
+
+    def test_it_still_masks_with_masking_disabled(self, monkeypatch):
+        monkeypatch.setenv(MASK_SECRET_ENV_VAR, "false")
+
+        assert scrub(text=SECRET_VALUE, secrets=SECRETS) == MASK

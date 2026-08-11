@@ -6,6 +6,7 @@ from pathlib import Path
 from src.shared.models import CodeTaskData
 from services.redis_service import RedisService
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
+from secret_scrubber import MASK_SECRET_ENV_VAR, masking_enabled
 from utils.logger import logger
 
 
@@ -52,8 +53,22 @@ def sweep_output_path():
     )
 
 
+def log_secret_masking_state():
+    """Announce the MASK_SECRET setting once per process."""
+    if masking_enabled():
+        logger.info("Secret masking is ON: secret values are redacted from output.")
+    else:
+        logger.warning(
+            "Secret masking is OFF ({}=false): plaintext secret values will appear "
+            "in stdout, stderr, execution results and these logs. Do not use this "
+            "with real credentials.",
+            MASK_SECRET_ENV_VAR,
+        )
+
+
 async def init():
     sweep_output_path()
+    log_secret_masking_state()
     await redis_service.connect()
 
 

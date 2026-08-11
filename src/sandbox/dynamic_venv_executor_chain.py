@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
-from secret_scrubber import scrub
+from secret_scrubber import masking_enabled, scrub
 from src.shared.models import CodeResultData
 from utils.logger import logger
 
@@ -342,8 +342,10 @@ except Exception:
         returncode = process.returncode
 
         secrets = context.get("secrets") or {}
-        stderr = scrub(text=stderr, secrets=secrets)
-        stdout = scrub(text=stdout, secrets=secrets)
+        mask_secrets = masking_enabled()
+        if mask_secrets:
+            stderr = scrub(text=stderr, secrets=secrets)
+            stdout = scrub(text=stdout, secrets=secrets)
 
         if stderr:
             logger.info("Error: {}", stderr)
@@ -357,7 +359,12 @@ except Exception:
         if returncode == 0:
             try:
                 with open(result_file_path, "r", encoding="utf-8") as file:
-                    result_data = scrub(text=file.read(), secrets=secrets)
+                    raw_result = file.read()
+                result_data = (
+                    scrub(text=raw_result, secrets=secrets)
+                    if mask_secrets
+                    else raw_result
+                )
             except Exception:
                 logger.exception("Exception reading result file")
 

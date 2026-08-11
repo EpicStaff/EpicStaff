@@ -10,15 +10,40 @@ no change in Django or crew.
 Scope: accidental disclosure by an author who is already permitted to read the
 secret. A determined author can still exfiltrate by encoding or chunking the value,
 or by sending it out over the network. This is a safety net, not a boundary.
+
+Gated by the MASK_SECRET environment variable, which defaults to on. When it is
+false ExecuteCodeHandler skips these functions entirely, so debugging can see real
+values -- and plaintext credentials then reach every consumer listed above,
+including persisted rows and container logs. It is a development affordance, not
+something to carry into an environment holding real credentials. masking_enabled()
+reports the setting; scrub() itself always masks.
 """
 
 import json
+import os
 import re
 
 # One fixed marker rather than one naming each secret: the name would then travel
 # into stdout, the SSE stream, and the tool observation handed to the LLM, and none
 # of those need it to understand that something was withheld.
 MASK = "[REDACTED]"
+
+MASK_SECRET_ENV_VAR = "MASK_SECRET"
+
+_DISABLING_VALUES = frozenset({"false", "0", "no", "off", "f", "n"})
+
+
+def masking_enabled() -> bool:
+    """Whether secret values should be scrubbed from execution output.
+
+    Reads the environment on each call rather than caching at import, so the
+    setting is a property of the running configuration and not of module load
+    order.
+    """
+    raw = os.environ.get(MASK_SECRET_ENV_VAR)
+    if raw is None:
+        return True
+    return raw.strip().lower() not in _DISABLING_VALUES
 
 
 def _pattern(*, secrets: dict[str, str]) -> re.Pattern | None:

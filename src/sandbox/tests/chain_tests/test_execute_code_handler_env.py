@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from dynamic_venv_executor_chain import CreateVenvHandler, ExecuteCodeHandler
-from secret_scrubber import MASK
+from secret_scrubber import MASK, MASK_SECRET_ENV_VAR
 
 SECRET_VALUE = "sk-live-must-not-touch-disk-7a21"
 TEST_VENV_BASE_PATH = Path("/tmp/epicstaff-test-venvs")
@@ -264,6 +264,79 @@ class TestOutputStaysClean:
         assert result.stdout == "plain output\n"
         assert result.result_data == '{"a": 1}'
         assert result.returncode == 0
+
+
+class TestMaskSecretSwitchEndToEnd:
+    """The switch, driven through the real handler and a real subprocess.
+
+    The unit tests pin scrub()'s behaviour; these pin that ExecuteCodeHandler
+    actually consults it, so a future refactor cannot leave the flag wired to
+    nothing. MASK_SECRET is read by the sandbox process, not the child, so
+    monkeypatch.setenv on this process is what the handler sees.
+    """
+
+    @pytest.fixture(autouse=True)
+    def shared_libs_on_path(self, monkeypatch):
+        monkeypatch.setenv("PYTHONPATH", str(SHARED_PATH))
+
+    def test_masking_on_redacts_every_stream(self, monkeypatch):
+        monkeypatch.setenv(MASK_SECRET_ENV_VAR, "true")
+
+        result = _execute(
+            code=(
+                "def main(**kwargs):\n"
+                '    print(get_secret("K"))\n'
+                '    return get_secret("K")'
+            ),
+            secrets={"K": SECRET_VALUE},
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert SECRET_VALUE not in result.stdout
+        assert SECRET_VALUE not in result.result_data
+        assert MASK in result.stdout
+
+    def test_masking_off_lets_plaintext_through_every_stream(self, monkeypatch):
+        """The documented debugging mode: the value the child printed and returned
+        arrives verbatim."""
+        monkeypatch.setenv(MASK_SECRET_ENV_VAR, "false")
+
+        result = _execute(
+            code=(
+                "def main(**kwargs):\n"
+                '    print(get_secret("K"))\n'
+                '    return get_secret("K")'
+            ),
+            secrets={"K": SECRET_VALUE},
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert SECRET_VALUE in result.stdout
+        assert SECRET_VALUE in result.result_data
+        assert MASK not in result.stdout
+
+    def test_masking_off_does_not_change_the_return_code(self, monkeypatch):
+        monkeypatch.setenv(MASK_SECRET_ENV_VAR, "false")
+
+        result = _execute(
+            code='def main(**kwargs):\n    raise RuntimeError(get_secret("K"))',
+            secrets={"K": SECRET_VALUE},
+        )
+
+        assert result.returncode != 0
+        assert SECRET_VALUE in result.stderr
+
+    def test_an_unset_variable_still_redacts(self, monkeypatch):
+        """The default reaching all the way through the handler, not just scrub()."""
+        monkeypatch.delenv(MASK_SECRET_ENV_VAR, raising=False)
+
+        result = _execute(
+            code='def main(**kwargs):\n    print(get_secret("K"))\n    return 1',
+            secrets={"K": SECRET_VALUE},
+        )
+
+        assert SECRET_VALUE not in result.stdout
+        assert MASK in result.stdout
 
 
 class TestLibraryRegistration:
