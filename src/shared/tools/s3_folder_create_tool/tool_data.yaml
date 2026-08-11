@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 Folder Create Tool"
+  description: "Create a folder in S3 storage (mkdir semantics). Params: folder_path (required). If the folder already exists, this is a no-op that reports it already exists rather than erroring - safe to call repeatedly (mkdir -p style idempotency)."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

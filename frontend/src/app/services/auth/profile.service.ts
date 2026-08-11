@@ -1,11 +1,14 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import {
+    AccessToken,
+    CreateApiKeyRequest,
+    CreateApiKeyResponse,
     GetMeResponse,
+    GetMyApiKeyResponse,
     PasswordChangeConfirmRequest,
     PasswordChangeVerifyRequest,
     PasswordChangeVerifyResponse,
-    TokenPair,
     UpdateMeRequest,
     UserRole,
 } from '@shared/models';
@@ -96,8 +99,8 @@ export class ProfileService {
         return this.http.post<PasswordChangeVerifyResponse>(`${this.baseUrl}password-change/request/`, dto);
     }
 
-    confirmPasswordChange(dto: PasswordChangeConfirmRequest): Observable<TokenPair> {
-        return this.http.post<TokenPair>(`${this.baseUrl}password-change/confirm/`, dto);
+    confirmPasswordChange(dto: PasswordChangeConfirmRequest): Observable<AccessToken> {
+        return this.http.post<AccessToken>(`${this.baseUrl}password-change/confirm/`, dto, { withCredentials: true });
     }
 
     /** Switches the active organization: clears all caches, sets the new org,
@@ -110,6 +113,22 @@ export class ProfileService {
 
     clearCurrentUser(): void {
         this.currentUser.set(null);
+    }
+
+    createApiKey(dto: CreateApiKeyRequest): Observable<CreateApiKeyResponse> {
+        return this.http.post<CreateApiKeyResponse>(`${this.baseUrl}api-keys/`, dto);
+    }
+
+    getMyApiKeys(): Observable<GetMyApiKeyResponse[]> {
+        return this.http.get<GetMyApiKeyResponse[]>(`${this.baseUrl}api-keys/`);
+    }
+
+    revokeApiKey(id: number): Observable<GetMyApiKeyResponse> {
+        return this.http.post<GetMyApiKeyResponse>(`${this.baseUrl}api-keys/${id}/revoke/`, {});
+    }
+
+    deleteApiKey(id: number): Observable<void> {
+        return this.http.delete<void>(`${this.baseUrl}api-keys/${id}/`);
     }
 
     private setUser(user: GetMeResponse): void {

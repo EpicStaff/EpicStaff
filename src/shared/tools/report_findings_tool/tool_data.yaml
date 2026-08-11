@@ -1,0 +1,7 @@
+tool-data:
+  name: "Report Findings Tool"
+  description: "Reports a structured list of findings (e.g. from a code review, audit, or QA pass) with a title, severity, and optional file/line/category/detail per finding. Use this instead of describing findings in plain text when you want the report to show up as a native findings table/card list in the UI. Returns a short confirmation string."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

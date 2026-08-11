@@ -1,0 +1,7 @@
+tool-data:
+  name: "Schema Validate Tool"
+  description: "Cooperative JSON-Schema validator for structured-output retry loops: give it your draft output (a JSON string or an already-structured value) and a JSON Schema, and it tells you PASS or FAIL with a compact, actionable list of every violation (path + message). This is NOT an engine-enforced guarantee -- nothing re-runs the agent automatically. The agent must read the result itself: on FAIL, correct the draft using the listed errors and call this tool again (repeat until PASS or out of attempts). Use 'max_attempts' only as an informational hint echoed back in the message; the tool never loops on its own."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

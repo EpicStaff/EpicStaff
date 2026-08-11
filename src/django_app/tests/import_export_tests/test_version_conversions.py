@@ -160,6 +160,35 @@ class TestJsonSchemaNodeToNestedVariable:
 
 
 # ──────────────────────────────────────────
+# args_schema_to_variables — per-property input_type
+# ──────────────────────────────────────────
+
+
+class TestArgsSchemaToVariablesInputType:
+    def test_property_input_type_overrides_default(self):
+        args_schema = {
+            "type": "object",
+            "required": ["api_key"],
+            "properties": {
+                "api_key": {"type": "string", "input_type": "user_input"},
+            },
+        }
+        variables = args_schema_to_variables(args_schema, input_type="agent_input")
+        assert variables[0]["input_type"] == "user_input"
+
+    def test_invalid_property_input_type_raises_value_error(self):
+        args_schema = {
+            "type": "object",
+            "required": ["api_key"],
+            "properties": {
+                "api_key": {"type": "string", "input_type": "user_inpt"},
+            },
+        }
+        with pytest.raises(ValueError, match="api_key"):
+            args_schema_to_variables(args_schema)
+
+
+# ──────────────────────────────────────────
 # v1_to_v2 converter — full bundle
 # ──────────────────────────────────────────
 

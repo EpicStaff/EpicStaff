@@ -1,0 +1,16 @@
+{
+  "title": "ExitWorktreeToolArgs",
+  "type": "object",
+  "properties": {
+    "worktree_path": {
+      "type": "string",
+      "description": "Path to the worktree to remove, relative to the sandbox root."
+    },
+    "keep": {
+      "type": "boolean",
+      "description": "If true, keep the worktree instead of removing it. If false (default), remove it — discarding uncommitted changes if git otherwise refuses.",
+      "default": false
+    }
+  },
+  "required": ["worktree_path"]
+}

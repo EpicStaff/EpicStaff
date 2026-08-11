@@ -2,14 +2,14 @@
   "title": "S3FileCopyArgs",
   "type": "object",
   "properties": {
-    "src": {
+    "from_path": {
       "type": "string",
-      "description": "Source S3 file path."
+      "description": "Source S3 file path to copy from."
     },
-    "dst": {
+    "to_path": {
       "type": "string",
-      "description": "Destination S3 file path."
+      "description": "Destination S3 file path to copy to."
     }
   },
-  "required": ["src", "dst"]
+  "required": ["from_path", "to_path"]
 }

@@ -1,0 +1,53 @@
+tool-data:
+  name: "S3 Bash Tool"
+  description: >-
+    A bash-like escape hatch for S3 storage: pass one command string and it is
+    parsed and mapped onto S3 storage operations. Params: command (required)
+    - the full command line, e.g. "ls -l reports/" or "grep -n TODO a.py".
+    All path arguments must be within your flow's allowed files (the files
+    attached to this flow); root/whole-bucket paths (e.g. bare "ls" or "find"
+    with no path) are not available - pass one of your allowed paths.
+    Supported commands: ls [-l] [-R] [path] (list, -l adds size/modified,
+    -R recurses); cat [-n] file... (print file contents, -n numbers lines,
+    multiple files get "==> file <==" headers); head [-n N] file / tail
+    [-n N] file (default N=10); wc [-l] [-w] [-c] file... (line/word/byte
+    counts, default all three, adds a total line for multiple files); grep
+    [-r] [-i] [-n] [-l] PATTERN [path] (regex search, -r recurses into
+    folders, -i ignores case, -n shows line numbers, -l lists only matching
+    file paths, capped at 250 matches); find [path] [-name PATTERN]
+    [-type f|d] (list files/folders under path, optionally filtered by
+    basename glob or type); mkdir [-p] path... (create a folder; without -p,
+    errors if the parent folder does not exist); rm [-r] [-f] path...
+    (delete files, -r required to delete a folder, -f suppresses
+    not-found errors; refuses to delete the root path); mv src dst (move a
+    single file; moving a folder is not supported - use cp -r then rm -r);
+    cp [-r] src... dst (copy files; -r copies a folder's contents
+    recursively; multiple sources require dst to be a folder); touch
+    path... (create an empty file if missing, no-op if it already exists);
+    stat path (show file size/content-type/modified, or folder entry
+    count); du [-s] [path] (recursive size totals per top-level entry,
+    -s shows only the grand total); diff [-u] a b (unified diff between two
+    files); echo TEXT [> file | >> file] (print text; when redirected to a
+    file, a trailing newline is appended after TEXT just like real bash
+    echo, so repeated "echo a >> f" / "echo b >> f" calls land as separate
+    lines - the plain returned value with no redirect has no added
+    newline); test -e path / [ -e path ] (prints "true" or "false" for
+    whether the path exists). Path arguments to
+    cat/rm/mv/cp/wc/stat/du/grep/head/tail/diff/ls containing * ? [ are
+    expanded as a glob against matching files, with shell semantics: * and
+    ? never cross a / boundary (e.g. "dir/*.txt" matches "dir/a.txt" but
+    not "dir/sub/b.txt"); there is no "**" recursive-across-folders glob
+    here - for that, use the dedicated s3_glob_tool. A glob that matches
+    nothing is an error. Only trailing "> file" / ">> file" redirection is
+    supported, and only for echo and cat. Limits: no pipes, no variables,
+    no subshells/backticks, no command chaining (&&, ||, ;), no input
+    redirection (<), and exactly one command per call - for multi-step
+    workflows call this tool multiple times, or use the dedicated
+    s3_grep_tool / s3_glob_tool / other single-purpose s3_* tools instead.
+    Output is capped at roughly 30,000 characters; errors are returned as
+    readable text instead of raising.
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

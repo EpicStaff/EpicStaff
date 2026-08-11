@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 Grep Tool"
+  description: "Search file contents in S3 storage with a regular expression (grep semantics). Params: pattern (required, Python re syntax); path - a single file or a folder to search; path must be within your flow's allowed files (the files attached to this flow) - root/whole-bucket search is not available, pass one of your allowed paths; recursive (default true) - descend into nested folders when path is a folder; ignore_case (default false); show_line_numbers (default true); files_with_matches (default false) - return only matching file paths instead of matching lines. Files over the storage read-size limit and files that fail to decode as UTF-8 are skipped and counted rather than erroring the whole search. Output is capped at roughly 250 matches and 30,000 characters - narrow path or pattern if truncated. Invalid regex patterns return a readable error instead of raising."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

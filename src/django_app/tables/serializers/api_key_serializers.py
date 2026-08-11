@@ -46,9 +46,13 @@ class ApiKeyCreateResponseSerializer(ApiKeySerializer):
 
 
 class ApiKeyOwnerSerializer(serializers.ModelSerializer):
+    # `avatar_url` is built by DRF's ImageField when `request` is in the
+    # serializer context, matching the convention used elsewhere (e.g. AdminNestedSerializer).
+    avatar_url = serializers.ImageField(source="avatar", use_url=True, read_only=True)
+
     class Meta:
         model = get_user_model()
-        fields = ["id", "email", "display_name"]
+        fields = ["id", "email", "display_name", "avatar_url"]
 
 
 class ApiKeyAdminSerializer(ApiKeySerializer):

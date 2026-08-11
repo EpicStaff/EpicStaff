@@ -72,6 +72,9 @@
                     @case ('extracted_chunks') {
                         <app-extracted-chunks-message [message]="entry.message"></app-extracted-chunks-message>
                     }
+                    @case ('findings') {
+                        <app-findings-message [message]="entry.message"></app-findings-message>
+                    }
                     @case ('error') {
                         <app-error-message [message]="entry.message"></app-error-message>
                     }
@@ -255,6 +258,11 @@
                                                     <app-extracted-chunks-message
                                                         [message]="nestedEntry.message"
                                                     ></app-extracted-chunks-message>
+                                                }
+                                                @case ('findings') {
+                                                    <app-findings-message
+                                                        [message]="nestedEntry.message"
+                                                    ></app-findings-message>
                                                 }
                                                 @case ('error') {
                                                     <app-error-message
