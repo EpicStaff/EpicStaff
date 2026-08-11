@@ -1,16 +1,3 @@
-"""Where a Secret can be referenced, declared once for both usage surfaces.
-
-Two mechanisms sit behind one shape: a direct `*_secret` ForeignKey, and a
-`PythonCode.secrets` declaration. The differences between the twelve sites are all
-data — which model, which ORM path reaches the secret, how the row reaches its org —
-so they are dataclass fields rather than subclasses, the same way PythonCodeSite is
-written in the sibling module.
-
-The six declaration sites are *derived* from PYTHON_CODE_SITES rather than repeated
-here, so a new Python-carrying model cannot appear in the allow-list validator while
-staying invisible to the deletion dialog.
-"""
-
 from dataclasses import dataclass
 
 from django.db.models import F, TextField, Value
@@ -90,12 +77,7 @@ class UsageSource:
     """A NODE_TYPE_* value for flow nodes; None for standalone resources."""
 
     def count_pairs(self, *, org_id: int, secret_ids: set[int]):
-        """(secret_id, resource_key) as a queryset, for the union in counts().
-
-        Two columns, no names and no node resolution: everything counts() needs and
-        nothing it does not. The key embeds the category, so UNION's own DISTINCT
-        performs the whole dedup — see _key_expression.
-        """
+        """(secret_id, resource_key) as a queryset, for the union in counts()."""
         return (
             self._scoped(org_id=org_id, secret_ids=secret_ids)
             .annotate(usage_key=self._key_expression())
@@ -104,21 +86,13 @@ class UsageSource:
 
     @property
     def detail_shape(self) -> str:
-        """Which projection this source contributes to in the detail union.
-
-        Sources sharing a shape share a column list, which is what lets the service
-        union them without padding anything. See SHAPE_* below.
-        """
+        """Which projection this source contributes to in the detail union."""
         if self.category != CATEGORY_FLOWS:
             return SHAPE_NAMED
         return SHAPE_EDGE if self.name_field is None else SHAPE_NODE
 
     def named_rows(self, *, org_id: int, secret_ids: set[int]):
-        """(secret_id, category, name) for a standalone resource.
-
-        category travels as a column because this shape spans both llm_configs and
-        tools, so the assembler cannot infer it from the group.
-        """
+        """(secret_id, category, name) for a standalone resource."""
         return (
             self._scoped(org_id=org_id, secret_ids=secret_ids)
             .annotate(
@@ -147,13 +121,7 @@ class UsageSource:
         )
 
     def edge_rows(self, *, org_id: int, secret_ids: set[int]):
-        """(secret_id, node_type, graph_id, graph_name, source_node_id, edge_id).
-
-        No casts: ConditionalEdge is the only source in this shape, so there is no
-        union to make column types agree across. node_type still travels as a column
-        rather than being hardcoded in the assembler, so the registry stays the one
-        place it is declared.
-        """
+        """(secret_id, node_type, graph_id, graph_name, source_node_id, edge_id)."""
         return (
             self._scoped(org_id=org_id, secret_ids=secret_ids)
             .annotate(usage_node_type=Value(self.node_type, output_field=TextField()))
@@ -168,12 +136,7 @@ class UsageSource:
         )
 
     def _scoped(self, *, org_id: int, secret_ids: set[int]):
-        """Rows of this source in this org that point at one of these secrets.
-
-        Filtered on the resource's org as well as the secret's: a row in another org
-        stays invisible here even if it somehow points at this org's secret, so usage
-        never reports something the caller cannot see.
-        """
+        """Rows of this source in this org that point at one of these secrets."""
         rows = (
             self.model.objects.filter(**{self.org_path: org_id})
             if self.org_path is not None
@@ -184,12 +147,7 @@ class UsageSource:
         return rows.filter(**{f"{self.secret_path}__in": secret_ids}).order_by()
 
     def _key_expression(self):
-        """The text expression whose distinct values ARE the resources counted.
-
-        A flow counts once however many of its nodes reference the secret, so flow
-        keys are the graph. Everything else counts by display name, and the category
-        prefix is what folds the four config models into one llm_configs namespace.
-        """
+        """The text expression whose distinct values ARE the resources counted."""
         if self.category == CATEGORY_FLOWS:
             return Concat(
                 Value(f"{CATEGORY_FLOWS}:"),
@@ -204,11 +162,7 @@ class UsageSource:
 
 
 def hits_from_named_rows(*, rows) -> list[UsageHit]:
-    """Standalone resources, reported by their own names.
-
-    Takes rows rather than a source because the service feeds it a union of every
-    named source at once; a single source's rows are just the one-source case.
-    """
+    """Standalone resources, reported by their own names."""
     return [
         UsageHit(secret_id=secret_id, category=category, resource_name=name)
         for secret_id, category, name in rows
@@ -231,13 +185,7 @@ def hits_from_node_rows(*, rows) -> list[UsageHit]:
 
 
 def hits_from_edge_rows(*, rows) -> list[UsageHit]:
-    """Conditional edges, which have no name of their own — only source_node_id.
-
-    Their display name comes from the node they branch off, the same identity
-    converter_service.convert_conditional_edge_to_pydantic uses via
-    resolver(conditional_edge.source_node_id). That second lookup is why this shape
-    stays its own query instead of joining the node union.
-    """
+    """Conditional edges, which have no name of their own — only source_node_id."""
     rows = list(rows)
     if not rows:
         return []
@@ -284,12 +232,7 @@ SHAPE_PROJECTIONS = {
 
 
 def _plain_node_name(*, formatted: str | None, node_id: int | None) -> str | None:
-    """Strip the " #<id>" that resolve_node_names() appends.
-
-    That suffix is the platform's node identity format for logs and langgraph.
-    Every other flow source here reports node_name verbatim, so stripping keeps one
-    category from reading differently in the dialog.
-    """
+    """Strip the " #<id>" that resolve_node_names() appends."""
     if formatted is None or node_id is None:
         return None
     suffix = f" #{node_id}"
@@ -297,16 +240,7 @@ def _plain_node_name(*, formatted: str | None, node_id: int | None) -> str | Non
 
 
 def _from_python_code_site(*, site: PythonCodeSite) -> UsageSource:
-    """A PythonCode declaration site, read as a usage source.
-
-    Derived rather than re-declared. python_code_sites owns which models carry
-    Python; a site missing from that tuple is a hole in the allow-list, and a site
-    missing here would be a wrong number on the deletion dialog. Deriving makes the
-    second failure impossible rather than merely documented.
-
-    node_type is what distinguishes the two: a flow node has one, and PythonCodeTool
-    (the only org-owned site) does not.
-    """
+    """A PythonCode declaration site, read as a usage source."""
     return UsageSource(
         model=site.model,
         secret_path=f"{site.code_field}__secrets__id",

@@ -18,12 +18,7 @@ def create_python_code(*, python_code_data: dict) -> PythonCode:
 def apply_python_code_fields(
     *, python_code: PythonCode, python_code_data: dict
 ) -> None:
-    """Apply serializer data to an existing PythonCode, honouring the M2M.
-
-    `secrets` cannot go through setattr either, and it must be applied only when the
-    payload actually carried it — hence _UNSET rather than None, since [] is a
-    meaningful value that clears the declaration.
-    """
+    """Apply serializer data to an existing PythonCode, honouring the M2M."""
     declared = python_code_data.pop("secrets", _UNSET)
     for attr, value in python_code_data.items():
         setattr(python_code, attr, value)

@@ -260,11 +260,7 @@ class QuickstartService(metaclass=SingletonMeta):
 
     def _bundle_secret_name(self, *, bundle_name: str) -> str:
         """Name the bundle's Secret after the bundle it backs, not after one of the
-        config types that reference it — a single Secret serves them all.
-
-        Uniqueness rides on _generate_unique_quickstart_config_name, which never
-        reuses a bundle name, so the (org, name) constraint on Secret holds.
-        """
+        config types that reference it — a single Secret serves them all."""
         return f"{bundle_name.replace('_', '-')}-api-key"
 
     def _create_llm_model_config(

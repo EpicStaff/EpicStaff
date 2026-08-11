@@ -1,15 +1,3 @@
-"""Session-start enforcement of the secret allow-list.
-
-Save-time validation in PythonCodeSerializer is convenient but bypassable: import,
-copy services, management commands and direct DB writes all reach PythonCode
-without it. This is the boundary that actually holds.
-
-It lives here rather than in converter_service because
-convert_python_code_to_pydantic receives only a PythonCode and could not name the
-offending node without a new argument at seven call sites. Walking the graph gives
-node names for free and reports every violation at once.
-"""
-
 from dataclasses import dataclass
 
 from tables.services.secrets.parse_code import GET_SECRET_FUNC, parse_secret_names
@@ -44,8 +32,7 @@ class SecretDeclarationValidator:
 
         Only the graph-owned sites are walked. A PythonCodeTool is org-owned rather
         than graph-owned, so it is not reachable from a graph id — it is gated in
-        the converter instead (see assert_tool_secrets_declared), which already
-        receives exactly the tools the session will use.
+        the converter instead.
         """
         violations: list[DeclarationViolation] = []
         for site in GRAPH_PYTHON_CODE_SITES:
@@ -83,11 +70,7 @@ class SecretDeclarationValidator:
 
 
 def _node_name(*, row, site) -> str:
-    """A human-usable identity for the offending row.
-
-    ConditionalEdge has no name field, so it falls back to its own id — the
-    session-abort message has to be actionable and "unknown node" is not.
-    """
+    """A human-usable identity for the offending row."""
     if site.name_field is None:
         return f"Conditional edge #{row.pk}"
     return getattr(row, site.name_field) or f"{site.model.__name__} #{row.pk}"
@@ -96,17 +79,7 @@ def _node_name(*, row, site) -> str:
 def assert_tool_secrets_declared(
     *, tool_name: str, code: str, declared: set[str]
 ) -> None:
-    """Gate a custom tool's code against its declaration, by name.
-
-    A PythonCodeTool is org-owned rather than graph-owned, so the graph walk above
-    cannot reach it. Rather than traverse graph -> crews -> agents/tasks -> tools
-    (four join tables plus recursive subgraphs, where every missed path is a silent
-    hole), the converter calls this: it already holds exactly the tools the session
-    will use, and a tool has a name, so the error can identify it.
-
-    Raised inside create_session_data, hence inside run_session's try block, so it
-    inherits the same session-ERROR-and-publish-nothing handling.
-    """
+    """Gate a custom tool's code against its declaration, by name."""
     parsed = parse_secret_names(code=code)
     undeclared = parsed - declared
     if not undeclared:

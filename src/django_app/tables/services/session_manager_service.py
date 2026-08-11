@@ -184,9 +184,6 @@ class SessionManagerService(metaclass=SingletonMeta):
         try:
             violations = secret_declaration_validator.violations(graph_id=graph_id)
             if violations:
-                # Raised inside the try so the existing handler marks the session
-                # ERROR, records the reason and publishes nothing. Every violation
-                # is reported, so one run tells the user everything to fix.
                 raise UndeclaredSecretError(
                     "Session aborted: "
                     + " ".join(violation.describe() for violation in violations)

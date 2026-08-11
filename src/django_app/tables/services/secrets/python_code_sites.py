@@ -1,11 +1,5 @@
 """The six places Python code lives, declared once.
 
-Both features that reason about node code read this: the session-start declaration
-validator, and the Secret Usage sources. Duplicating the list is the failure this
-prevents, and the risk is asymmetric — a site missed by the usage sources is a
-wrong number on a dashboard, while a site missed by the validator is a hole in the
-allow-list.
-
 PythonCode is not OrgScopedModel and has no org column, which is why every entry
 declares how it reaches the org.
 """
@@ -20,10 +14,6 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 
-# Frontend NodeType values, from
-# frontend/src/app/visual-programming/core/enums/node-type.ts. The backend's own
-# NodeType (tables/import_export/enums.py) uses Django class names ("PythonNode")
-# and is deliberately not reused: these strings are a wire contract.
 NODE_TYPE_PYTHON = "python"
 NODE_TYPE_WEBHOOK_TRIGGER = "webhook-trigger"
 NODE_TYPE_CLASSIFICATION_TABLE = "classification-decision-table"

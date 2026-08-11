@@ -34,11 +34,7 @@ class SealedValue:
 
 
 class SecretEncryption:
-    """The only place a Secret's text value is encrypted or decrypted.
-
-    The key is HKDF-derived from settings.SECRET_KEY — see the design doc
-    for the accepted SECRET_KEY-rotation trade-off.
-    """
+    """The only place a Secret's text value is encrypted or decrypted."""
 
     @cached_property
     def _fernet(self) -> Fernet:

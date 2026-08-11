@@ -10,11 +10,6 @@ class SecretCharField(serializers.CharField):
     Write: if a mask is received (the client returned it as is), the field is skipped.
     (SkipField), so on update, the old secret is preserved in the database.
     On create, the field is missing and the model default (null) is used.
-
-    Used only by plaintext credential columns that were never FK-wired to
-    `Secret` — `NgrokWebhookConfig.auth_token` and `VoiceSettings.twilio_auth_token`
-    (see webhook_serializers.py). Config credentials are referenced by id via
-    OrgScopedPrimaryKeyRelatedField instead; they never accept plaintext.
     """
 
     def __init__(self, *args, visible_tail: int = 4, **kwargs):

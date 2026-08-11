@@ -1930,11 +1930,7 @@ class SecretViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    """Create / read / delete only — a Secret's name and value are immutable.
-
-    Rotating a credential means creating a new Secret and repointing the configs
-    at it, so PUT and PATCH are deliberately not exposed.
-    """
+    """Create / read / delete only — a Secret's name and value are immutable."""
 
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
     rbac_resource_type = ResourceType.SECRETS
@@ -1945,11 +1941,7 @@ class SecretViewSet(
     @extend_schema(**SECRET_USAGE_GET)
     @action(detail=True, methods=["get"], url_path="usage")
     def usage(self, request, pk=None):
-        """Where this secret is referenced, for the deletion-safety dialog.
-
-        get_object() goes through OrgScopedViewSetMixin, so another org's secret
-        is a 404 rather than a 403 — a 403 would confirm the row exists.
-        """
+        """Where this secret is referenced, for the deletion-safety dialog."""
         secret = self.get_object()
         return Response(secret_usage_service.summary(secret=secret))
 

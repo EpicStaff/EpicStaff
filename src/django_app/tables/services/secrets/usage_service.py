@@ -1,19 +1,3 @@
-"""The two Secret Usage surfaces: a count per secret, and the detail for one secret.
-
-They are answered differently on purpose. `counts()` needs only integers for every
-secret in the org, so it is a single combined query over two-column projections —
-flat in the number of secrets and free of the node-name resolution it would never
-render. `summary()` needs graph names and node names for one secret, so it sweeps the
-sources for their full UsageHit stream, which only happens when a user opens the
-dialog.
-
-Both must nonetheless agree on one rule: a flow counts once however many of its
-nodes reference the secret, and everything else counts by display name. `_flow_items`
-and `_named_items` below express that in Python; `UsageSource._key_expression`
-expresses it in SQL. `test_summary_total_matches_counts_for_the_same_secret` fails if
-they drift.
-"""
-
 from collections import defaultdict
 
 from tables.models import Secret
@@ -54,12 +38,7 @@ class SecretUsageService:
         return self.counts(org_id=secret.org_id, secret_ids={secret.pk})[secret.pk]
 
     def summary(self, *, secret: Secret) -> dict:
-        """The usage payload for one secret.
-
-        The org comes from secret.org_id, so this cannot be called with a mismatched
-        secret/org pair. Only this secret's id is passed to the sources, so they narrow
-        to it in SQL rather than sweeping the org and filtering afterwards.
-        """
+        """The usage payload for one secret."""
         hits = self._collect(org_id=secret.org_id, secret_ids={secret.pk})
 
         categories = []
@@ -74,13 +53,7 @@ class SecretUsageService:
         }
 
     def _category(self, *, key: str, hits: list[UsageHit]) -> dict | None:
-        """One category, or None when it has no items.
-
-        A category is emitted only when it has something in it. That is also why
-        the frontend's ngrok_config and voice_twilio never appear — nothing
-        produces hits for them, because those credentials are still plaintext
-        CharFields rather than Secrets.
-        """
+        """One category, or None when it has no items."""
         relevant = [hit for hit in hits if hit.category == key]
         if not relevant:
             return None

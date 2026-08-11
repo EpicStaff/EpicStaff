@@ -59,14 +59,7 @@ class SecretSerializer(serializers.ModelSerializer):
         return secret_service.create(text=text, **validated_data)
 
     def get_usage_count(self, secret) -> int:
-        """Distinct resources referencing this secret.
-
-        many=True renders through SecretUsageCountListSerializer, which puts the
-        org's map in context before any row is read — that's the "usage_counts"
-        key below. A single-object response (retrieve, create) never goes
-        through it, so there's nothing to key into and this counts just the one
-        secret it was given.
-        """
+        """Distinct resources referencing this secret."""
         counts = self.context.get("usage_counts")
         if counts is not None:
             return counts[secret.pk]
