@@ -10,6 +10,7 @@ from tables.models.rbac_models import (
 from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
 from tables.services.rbac.rbac_exceptions import (
     BuiltInRoleImmutableError,
+    OrganizationNotFoundError,
     PermissionEscalationError,
     RoleNameConflictError,
     RoleNotFoundError,
@@ -118,6 +119,20 @@ def test_create_role_superadmin_bypasses_ceiling(service, superadmin, org):
         permissions=[_perm("secrets", int(Permission.CREATE | Permission.DELETE))],
     )
     assert role.pk is not None
+
+
+@pytest.mark.django_db
+def test_create_role_superadmin_nonexistent_org_is_404(service, superadmin):
+    # Superadmin bypasses the membership check, so a bad org_id must be turned
+    # into a 404 rather than an FK IntegrityError (500).
+    with pytest.raises(OrganizationNotFoundError):
+        service.create_role(
+            actor=superadmin,
+            org_id=999999,
+            name="Ghost",
+            description=None,
+            permissions=[],
+        )
 
 
 @pytest.mark.django_db

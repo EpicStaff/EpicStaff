@@ -9,7 +9,12 @@ from django.db import transaction
 from django.db.models import Count
 from rest_framework.exceptions import PermissionDenied
 
-from tables.models.rbac_models import OrganizationUser, Role, RolePermission
+from tables.models.rbac_models import (
+    Organization,
+    OrganizationUser,
+    Role,
+    RolePermission,
+)
 from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
 from tables.services.rbac.cross_org_permission_resolver import (
     CrossOrgPermissionResolver,
@@ -17,6 +22,7 @@ from tables.services.rbac.cross_org_permission_resolver import (
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.services.rbac.rbac_exceptions import (
     BuiltInRoleImmutableError,
+    OrganizationNotFoundError,
     OrgMembershipRequiredError,
     PermissionEscalationError,
     RoleNameConflictError,
@@ -63,6 +69,12 @@ class RoleManagementService:
             self._assert_can(effective=effective, action=Permission.CREATE)
             self._assert_within_ceiling(effective=effective, permissions=permissions)
             self._assert_name_available(org_id=org_id, name=name, exclude_role_id=None)
+            # For non-superadmin callers the resolve() above already proved
+            # membership (hence the org exists). Superadmin skips that check, so
+            # guard here to turn a bad org_id into a 404 instead of an FK
+            # IntegrityError (500).
+            if not Organization.objects.filter(pk=org_id).exists():
+                raise OrganizationNotFoundError()
             role = Role.objects.create(
                 name=name, description=description, org_id=org_id, is_built_in=False
             )
