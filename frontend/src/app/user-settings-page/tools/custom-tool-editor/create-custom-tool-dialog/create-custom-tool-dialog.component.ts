@@ -278,7 +278,7 @@ export class CreateCustomToolDialogComponent {
         }
 
         const tableView = this.parametersTableView();
-        if (tableView && !tableView.isValid()) {
+        if (tableView && !this.isBuiltIn() && !tableView.isValid()) {
             tableView.validate();
             this.confirmDialog
                 .confirm({
@@ -303,8 +303,12 @@ export class CreateCustomToolDialogComponent {
 
     private applyDisableTableMode(): void {
         this.parametersTableMode.set(false);
-        this.form.controls.variablesJson.setValue(JSON.stringify(serializeVariables(this.tableVariables()), null, 2));
-        this.form.controls.variablesJson.markAsDirty();
+        if (!this.isBuiltIn()) {
+            this.form.controls.variablesJson.setValue(
+                JSON.stringify(serializeVariables(this.tableVariables()), null, 2)
+            );
+            this.form.controls.variablesJson.markAsDirty();
+        }
         this.isJsonValid.set(true);
         this.tableImportWasInvalid = false;
         this.jsonSectionExpanded.set(true);
@@ -467,7 +471,7 @@ export class CreateCustomToolDialogComponent {
             return;
         }
 
-        if (this.parametersTableMode()) {
+        if (this.parametersTableMode() && !this.isBuiltIn()) {
             this.parametersTableView()?.validate();
             this.form.controls.variablesJson.setValue(
                 JSON.stringify(serializeVariables(this.tableVariables()), null, 2)
@@ -496,7 +500,11 @@ export class CreateCustomToolDialogComponent {
         const editingTool = this.selectedTool();
         const action: SaveAction = editingTool === null ? 'create' : editingTool.built_in ? 'fork' : 'update';
         if (editingTool?.built_in) {
-            payload = { ...payload, name: this.forkName(payload.name, editingTool.name) };
+            payload = {
+                ...payload,
+                name: this.forkName(payload.name, editingTool.name),
+                variables: Array.isArray(editingTool.variables) ? editingTool.variables : [],
+            };
         }
 
         this.isSaving.set(true);
@@ -588,7 +596,7 @@ export class CreateCustomToolDialogComponent {
         if (this.form.invalid) {
             return 'Please fill in all required fields';
         }
-        if (this.parametersTableMode() && !(this.parametersTableView()?.isValid() ?? true)) {
+        if (this.parametersTableMode() && !this.isBuiltIn() && !(this.parametersTableView()?.isValid() ?? true)) {
             return 'Please fix the parameter errors before saving';
         }
         if (!this.isJsonValid()) {
