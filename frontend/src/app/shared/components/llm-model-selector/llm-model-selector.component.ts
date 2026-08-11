@@ -28,7 +28,7 @@ import {
     FullRealtimeConfigService,
 } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
-import { Observable } from 'rxjs';
+import { finalize, Observable } from 'rxjs';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { LlmModelConfigDialogComponent, VoiceModelConfigDialogComponent } from '../llm-dialogs';
@@ -55,13 +55,13 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                 cdkOverlayOrigin
                 class="selected-model"
                 [class.placeholder]="!selectedConfig()"
-                [class.loading]="loading"
-                (click)="!loading && toggleDropdown($event)"
+                [class.loading]="isLoading"
+                (click)="!isLoading && toggleDropdown($event)"
             >
-                @if (loading) {
+                @if (isLoading) {
                     <div class="loading-spinner"></div>
                 }
-                @if (selectedConfig() && !loading) {
+                @if (selectedConfig() && !isLoading) {
                     <div class="model-info">
                         <app-svg-icon
                             [icon]="getProviderIcon(selectedConfig()!)"
@@ -79,7 +79,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                         </div>
                     </div>
                 } @else {
-                    @if (!loading) {
+                    @if (!isLoading) {
                         <div class="placeholder-text">
                             {{ placeholder }}
                         </div>
@@ -371,6 +371,13 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     public readonly selectedConfigId = signal<number | null>(null);
     public readonly isDropdownOpen = signal(false);
     public readonly triggerWidth = signal(0);
+    // Self-managed spinner during the selector's own initial pool load, OR'd with the
+    // external `loading` input so consumers don't need to load the data just to drive it.
+    private readonly configsLoading = signal(false);
+
+    get isLoading(): boolean {
+        return this.loading || this.configsLoading();
+    }
 
     public readonly configs = computed<SelectorConfig[]>(() =>
         this.kind() === 'realtime'
@@ -424,7 +431,13 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
             this.kind() === 'realtime'
                 ? this.fullRealtimeConfigService.getFullRealtimeConfigs()
                 : this.fullLLMConfigService.getFullLLMConfigs();
-        load$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.configsLoading.set(true);
+        load$
+            .pipe(
+                finalize(() => this.configsLoading.set(false)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
 
         // Subscribe to dropdown manager to close this dropdown when another opens
         this.dropdownManager.activeDropdown$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((activeId) => {

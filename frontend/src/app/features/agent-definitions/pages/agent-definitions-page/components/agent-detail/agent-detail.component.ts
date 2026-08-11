@@ -18,7 +18,6 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService, LlmModelSelectorComponent } from '@shared/components';
 import { EnterBlurDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
-import { FullLLMConfigService } from '@shared/services';
 
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { StorageItem } from '../../../../../files/models/storage.models';
@@ -88,7 +87,6 @@ interface AgentFormValue {
 })
 export class AgentDetailComponent implements OnInit {
     private readonly fb: FormBuilder = inject(FormBuilder);
-    private readonly fullLlmConfigService: FullLLMConfigService = inject(FullLLMConfigService);
     private readonly destroyRef: DestroyRef = inject(DestroyRef);
     private readonly dialog: Dialog = inject(Dialog);
     private readonly confirm: ConfirmationDialogService = inject(ConfirmationDialogService);
@@ -137,11 +135,9 @@ export class AgentDetailComponent implements OnInit {
         llm_config: [null as number | null],
     });
 
-    readonly llmLoading = signal<boolean>(true);
-
-    private realtimeLoadedForAgentId: number | null = null;
-    // Cached RealtimeAgentDefinition row (null = none / not loaded). Used to seed
-    // Additional Settings and to decide create vs patch when saving realtime_config.
+    // RealtimeAgentDefinition row for the current agent, loaded lazily when Additional
+    // Settings opens (null = no realtime row / voice off). Seeds the dialog and decides
+    // create-vs-patch when saving realtime_config.
     private realtimeDef: RealtimeAgentDefinition | null = null;
 
     readonly bootAsDoc = signal<boolean>(false);
@@ -193,19 +189,6 @@ export class AgentDetailComponent implements OnInit {
             untracked(() => this.revertToSnapshot());
         });
 
-        // Load RealtimeAgentDefinition once per agent (for Additional Settings seed).
-        effect(() => {
-            const a = this.agent();
-            if (!a || this.isCreating()) {
-                this.realtimeLoadedForAgentId = null;
-                this.realtimeDef = null;
-                return;
-            }
-            if (a.id === this.realtimeLoadedForAgentId) return;
-            this.realtimeLoadedForAgentId = a.id;
-            untracked(() => this.loadRealtimeState(a.id));
-        });
-
         // While a storage item or shared surface is being dragged, an agent shown in the
         // preview opens straight on its Surfaces section (Basics collapsed) — it's the drop area.
         effect(() => {
@@ -216,14 +199,9 @@ export class AgentDetailComponent implements OnInit {
     }
 
     ngOnInit(): void {
-        this.fullLlmConfigService
-            .getFullLLMConfigs()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: () => this.llmLoading.set(false),
-                error: () => this.llmLoading.set(false),
-            });
-
+        // The LLM data (configs/models/providers) is loaded by the embedded
+        // app-llm-model-selector itself, which also shows its own loading spinner — so no
+        // redundant load here.
         this.form.valueChanges
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.dirtyChange.emit(this.form.dirty));
@@ -304,29 +282,26 @@ export class AgentDetailComponent implements OnInit {
         this.bootLength.set((this.savedSnapshot.instructions ?? '').length);
     }
 
-    private loadRealtimeState(agentId: number): void {
-        this.realtimeApi
-            .getByAgentId(agentId)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (rt) => {
-                    if (this.agent()?.id !== agentId) return;
-                    this.realtimeDef = rt;
-                },
-                error: () => {
-                    if (this.agent()?.id !== agentId) return;
-                    this.realtimeLoadedForAgentId = null;
-                    this.realtimeDef = null;
-                },
-            });
-    }
-
     openAdditionalSettings(): void {
         const a = this.agent();
         if (!a || this.saving()) return;
+        // Realtime lives on a separate RealtimeAgentDefinition resource, so fetch it lazily
+        // here (only when the gear is actually opened) rather than probing on every agent
+        // selection. 404 = no realtime row yet → null (getByAgentId maps it).
+        this.realtimeApi
+            .getByAgentId(a.id)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (rt) => this.openSettingsDialog(a, rt),
+                error: () => this.openSettingsDialog(a, null),
+            });
+    }
+
+    private openSettingsDialog(a: AgentDefinition, realtimeDef: RealtimeAgentDefinition | null): void {
+        this.realtimeDef = realtimeDef;
         const data: AgentAdditionalSettingsData = {
             fcm_llm_config: a.fcm_llm_config,
-            realtime_config: this.realtimeDef?.realtime_config ?? null,
+            realtime_config: realtimeDef?.realtime_config ?? null,
             max_iter: a.max_iter,
             max_rpm: a.max_rpm,
             max_execution_time: a.max_execution_time,
