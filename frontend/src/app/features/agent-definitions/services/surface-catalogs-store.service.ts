@@ -1,4 +1,5 @@
-import { inject, Injectable, signal } from '@angular/core';
+import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SelectDropdownTreeNode } from '@shared/components';
 import { Observable, of } from 'rxjs';
 import { finalize, map, shareReplay, tap } from 'rxjs/operators';
@@ -34,6 +35,7 @@ export class SurfaceCatalogsStore {
     private readonly mcpToolService = inject(McpToolsService);
     private readonly collectionsService = inject(CollectionsApiService);
     private readonly storageApi = inject(StorageApiService);
+    private readonly destroyRef = inject(DestroyRef);
 
     private readonly pythonSignal = signal<SurfaceToolOption[]>([]);
     private readonly mcpSignal = signal<SurfaceToolOption[]>([]);
@@ -56,6 +58,19 @@ export class SurfaceCatalogsStore {
     private mcpRequest$?: Observable<SurfaceToolOption[]>;
     private collectionsRequest$?: Observable<SurfaceCollectionOption[]>;
     private storageTreeRequest$?: Observable<SelectDropdownTreeNode[]>;
+
+    constructor() {
+        let seen = false;
+        effect(() => {
+            this.storageApi.refreshTick();
+            if (!seen) {
+                seen = true;
+                return;
+            }
+            if (!this.storageTreeLoaded && !this.storageTreeRequest$) return;
+            this.reloadStorageTree().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        });
+    }
 
     loadPythonTools(): Observable<SurfaceToolOption[]> {
         if (this.pythonLoaded) return of(this.pythonSignal());

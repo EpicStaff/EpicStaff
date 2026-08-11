@@ -52,6 +52,7 @@ export class StorageTreeFacade {
     afterTreeLoad: (() => void) | null = null;
 
     private watchRefreshTick = false;
+    private suppressNextTick = false;
 
     private readonly blockedUploadExtensions = new Set([
         'exe',
@@ -89,6 +90,10 @@ export class StorageTreeFacade {
     constructor() {
         effect(() => {
             this.storageApiService.refreshTick();
+            if (this.suppressNextTick) {
+                this.suppressNextTick = false;
+                return;
+            }
             if (!this.watchRefreshTick) return;
             this.loadTree();
         });
@@ -96,6 +101,11 @@ export class StorageTreeFacade {
 
     init(options: { watchRefreshTick: boolean }): void {
         this.watchRefreshTick = options.watchRefreshTick;
+    }
+
+    private notifyStorageChanged(): void {
+        this.suppressNextTick = true;
+        this.storageApiService.triggerRefresh();
     }
 
     loadTree(): void {
@@ -130,6 +140,7 @@ export class StorageTreeFacade {
                 next: (items) => {
                     this.treeData.set(this.withPaths(Array.isArray(items) ? items : [], ''));
                     if (all.size) this.restoreExpandedPaths([...all]);
+                    this.notifyStorageChanged();
                 },
                 error: () => this.toastService.error('Failed to load storage files'),
             });
@@ -342,6 +353,7 @@ export class StorageTreeFacade {
                 next: () => {
                     this.toastService.success(`${validFiles.length} file(s) uploaded`);
                     this.loadTree();
+                    this.notifyStorageChanged();
                 },
                 error: () => this.toastService.error('Failed to upload files'),
             });
