@@ -68,6 +68,9 @@ services:
       DJANGO_ADMIN_PASSWORD: ${DJANGO_ADMIN_PASSWORD:-}
       DEFAULT_ORGANIZATION_NAME: ${DEFAULT_ORGANIZATION_NAME:-}
       DJANGO_API_KEY: ${DJANGO_API_KEY:-}
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:-False}
+      AUDITOR_URL: ${AUDITOR_URL:-http://auditor:8060}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY}
       PASSWORD_CHANGE_TICKET_TTL_SECONDS: ${PASSWORD_CHANGE_TICKET_TTL_SECONDS:-300}
       AVATAR_MAX_BYTES: ${AVATAR_MAX_BYTES:-5242880}
       AVATAR_ALLOWED_FORMATS: ${AVATAR_ALLOWED_FORMATS:-JPEG,PNG}
@@ -233,6 +236,9 @@ services:
       EC_TELEMETRY: ${EC_TELEMETRY:-False}
       MEM0_TELEMETRY: ${MEM0_TELEMETRY:-False}
       MONITORING_MODE: ${MONITORING_MODE}
+      AUDIT_TRAIL_ENABLED: ${AUDIT_TRAIL_ENABLED:-False}
+      AUDITOR_URL: ${AUDITOR_URL:-http://auditor:8060}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY}
       DB_CREW_USER: ${DB_CREW_USER}
       DB_CREW_PASSWORD: ${DB_CREW_PASSWORD}
       MAX_CONCURRENT_SESSIONS: ${MAX_CONCURRENT_SESSIONS}
@@ -476,6 +482,67 @@ services:
     networks:
       - backend-network
 
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    container_name: opensearch
+    profiles:
+      - audit
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: "true"
+      OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:--Xms1g -Xmx1g}
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_PASSWORD}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      - backend-network
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sk -u admin:${OPENSEARCH_PASSWORD} https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  auditor:
+    image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:-latest}
+    container_name: auditor
+    profiles:
+      - audit
+    build:
+      context: .
+      dockerfile: ./auditor/Dockerfile.auditor
+    command: ./entrypoint.sh
+    environment:
+      AUDITOR_PORT: ${AUDITOR_PORT:-8060}
+      LOG_LEVEL: ${AUDITOR_LOG_LEVEL:-INFO}
+      AUDIT_STORAGE_BACKEND: ${AUDIT_STORAGE_BACKEND:-opensearch}
+      OPENSEARCH_HOST: ${OPENSEARCH_HOST:-opensearch}
+      OPENSEARCH_PORT: ${OPENSEARCH_PORT:-9200}
+      OPENSEARCH_USER: ${OPENSEARCH_USER:-admin}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
+      AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY}
+      JWT_SECRET: ${JWT_SECRET:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200}
+    networks:
+      - backend-network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${AUDITOR_PORT:-8060}/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 5s
+
 volumes:
   sandbox_venvs:
     external: true
@@ -483,6 +550,7 @@ volumes:
     external: true
   media_data:
     external: true
+  opensearch_data: {}
   redis_data: {}
   code_instances: {}
   minio_data: {}

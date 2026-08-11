@@ -1,0 +1,24 @@
+FROM python:3.12-slim
+
+WORKDIR /app/src/auditor
+
+RUN pip install poetry
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_NO_INTERACTION=1 \
+    PYTHONPATH=/app
+
+COPY ./auditor/poetry.lock ./auditor/pyproject.toml ./
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-root --no-interaction && \
+    rm -rf /root/.cache
+
+COPY ./auditor .
+COPY ./shared /app/src/shared
+
+RUN chmod +x ./entrypoint.sh
+
+EXPOSE 8060
+
+CMD ["./entrypoint.sh"]

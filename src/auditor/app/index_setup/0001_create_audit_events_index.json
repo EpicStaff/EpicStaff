@@ -1,0 +1,29 @@
+{
+  "settings": {
+    "number_of_shards": 3,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "org_id": { "type": "long" },
+      "session_message_id": { "type": "keyword" },
+      "parent_id": { "type": "keyword" },
+      "session_id": { "type": "long" },
+
+      "kind": { "type": "keyword" },
+      "name": { "type": "keyword" },
+      "flow_name": { "type": "keyword" },
+      "node_type": { "type": "keyword" },
+      "status": { "type": "keyword" },
+
+      "input": { "type": "object", "enabled": true },
+      "output": { "type": "object", "enabled": true },
+      "error": { "type": "object", "enabled": true },
+      "details": { "type": "object", "enabled": true },
+
+      "event_time": { "type": "date" },
+      "record_time": { "type": "date" }
+    }
+  }
+}

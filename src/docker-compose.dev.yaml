@@ -28,6 +28,10 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:${REDIS_PORT:-6379}"
 
+  opensearch:
+    ports:
+      - "${OPENSEARCH_PORT:-9200}:9200"
+
   realtime:
     ports:
       - "${REALTIME_PORT:-8050}:${REALTIME_PORT:-8050}"
