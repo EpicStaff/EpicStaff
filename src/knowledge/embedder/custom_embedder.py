@@ -34,4 +34,8 @@ class CustomEmbedder(BaseEmbedder):
             json={"model": self.model_name, "input": [text]},
         )
         response.raise_for_status()
-        return response.json()["embeddings"][0]
+        payload = response.json()
+        # Hotfix specifically for OpenAI-compatible endpoints ({"data": [{"embedding": [...]}]})
+        if "data" in payload:
+            return payload["data"][0]["embedding"]
+        return payload["embeddings"][0]
