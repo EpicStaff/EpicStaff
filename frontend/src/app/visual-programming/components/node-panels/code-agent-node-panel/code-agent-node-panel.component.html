@@ -10,7 +10,11 @@
                     [class.code-editor-fullwidth]="isCodeEditorFullWidth()"
                 >
                     @if (!isCodeEditorFullWidth()) {
-                        <div class="form-fields">
+                        <div
+                            #formColumn
+                            class="form-fields"
+                            [style.flex-basis.px]="leftColumnWidth.width()"
+                        >
                             <app-custom-input
                                 label="Node Name"
                                 tooltipText="Unique identifier for this Code Agent node within the flow."
@@ -141,9 +145,21 @@
                                 [activeColor]="activeColor"
                             ></app-custom-input>
                         </div>
+
+                        <app-column-resize-divider
+                            ariaLabel="Resize form and editor columns"
+                            [column]="formColumn"
+                            [opposite]="editorColumn"
+                            [width]="leftColumnWidth.width()"
+                            [defaultWidth]="leftColumnWidth.defaultWidth"
+                            (widthChange)="leftColumnWidth.set($event)"
+                        />
                     }
 
-                    <div class="editor-panel-wrapper">
+                    <div
+                        #editorColumn
+                        class="editor-panel-wrapper"
+                    >
                         <button
                             type="button"
                             class="toggle-icon-button"
