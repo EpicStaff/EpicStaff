@@ -152,6 +152,7 @@ export class AgentDetailComponent implements OnInit {
         if (n > AgentDetailComponent.BOOT_SUGGEST_AT) return 'suggest';
         return 'none';
     });
+    readonly bootAtMaxHeight = signal<boolean>(false);
 
     readonly sections = signal<Record<AgentSectionId, boolean>>({
         basics: true,
@@ -181,6 +182,7 @@ export class AgentDetailComponent implements OnInit {
             }
             this.savedSnapshot = this.form.getRawValue();
             this.bootLength.set((this.form.controls.instructions.value ?? '').length);
+            this.bootAtMaxHeight.set(false);
             this.dirtyChange.emit(this.form.dirty);
         });
 
@@ -460,11 +462,18 @@ export class AgentDetailComponent implements OnInit {
             });
     }
 
-    adjustTextareaHeight(textarea: HTMLTextAreaElement, maxPx: number): void {
+    adjustTextareaHeight(textarea: HTMLTextAreaElement, maxPx: number): number {
         textarea.style.height = 'auto';
         const full = textarea.scrollHeight;
         textarea.style.height = `${Math.min(full, maxPx)}px`;
         textarea.style.overflowY = full > maxPx ? 'auto' : 'hidden';
+        return full;
+    }
+
+    adjustBootHeight(textarea: HTMLTextAreaElement): void {
+        const maxPx = window.innerHeight * 0.5;
+        const full = this.adjustTextareaHeight(textarea, maxPx);
+        this.bootAtMaxHeight.set(full > maxPx);
     }
 
     onDelete(): void {

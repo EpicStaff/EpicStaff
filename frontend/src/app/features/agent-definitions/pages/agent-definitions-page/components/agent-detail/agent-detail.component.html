@@ -115,20 +115,15 @@
                                 appEnterBlur
                                 placeholder="Enter the core role and instructions your agent will read every time it boots..."
                                 rows="2"
-                                (input)="bootLength.set(instrTa.value.length); adjustTextareaHeight(instrTa, 440)"
-                                (focus)="adjustTextareaHeight(instrTa, 440)"
+                                (input)="bootLength.set(instrTa.value.length); adjustBootHeight(instrTa)"
+                                (focus)="adjustBootHeight(instrTa)"
                                 (blur)="autosave()"
                             ></textarea>
 
-                            @if (bootHintLevel() !== 'none') {
+                            @if (bootAtMaxHeight()) {
                                 <p class="boot-hint">
-                                    @if (bootHintLevel() === 'urge') {
-                                        Too much for one field. Click 'Create Doc' to
-                                        <span class="boot-hint__strong">move</span>
-                                        this text to a file so your team can edit it.
-                                    } @else {
-                                        Long instructions are easier to manage as a doc.
-                                    }
+                                    We recommend creating a document because this text is very long. Click 'Create
+                                    Markdown' so your team can edit it easily.
                                 </p>
                             }
 
@@ -154,7 +149,7 @@
                                         icon="create-doc"
                                         size="12px"
                                     />
-                                    Create markdown
+                                    Create Markdown
                                 </button>
                                 <button
                                     type="button"
