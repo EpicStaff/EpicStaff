@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { CreateSecretRequest, Secret } from '@shared/models';
+import { CreateSecretRequest, Secret, SecretUsageResponse } from '@shared/models';
 import { map, Observable } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
@@ -27,6 +27,10 @@ export class SecretsApiService {
 
     getSecretById(id: number): Observable<Secret> {
         return this.http.get<Secret>(this.apiUrl + id + '/');
+    }
+
+    getSecretUsage(id: number): Observable<SecretUsageResponse> {
+        return this.http.get<SecretUsageResponse>(this.apiUrl + id + '/usage/');
     }
 
     deleteSecret(id: number): Observable<void> {

@@ -39,10 +39,13 @@ export class CodeEditorComponent implements OnDestroy {
 
     @Input() public pythonCode: string = '';
     @Input() public showHeader: boolean = true;
+    @Input() public secretNames: string[] = [];
+    @Input() public inputMapKeys: string[] = [];
     @Output() public pythonCodeChange = new EventEmitter<string>();
     @Output() public errorChange = new EventEmitter<boolean>();
 
     private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;
+    private completionDisposable: import('monaco-editor').IDisposable | null = null;
     private readonly lintCode$ = new Subject<string>();
     private lintSubscription: Subscription | null = null;
 
@@ -84,6 +87,7 @@ export class CodeEditorComponent implements OnDestroy {
 
     ngOnDestroy(): void {
         this.lintSubscription?.unsubscribe();
+        this.completionDisposable?.dispose();
     }
 
     private applyRuffDiagnostics(diagnostics: RuffDiagnostic[]): void {
@@ -113,8 +117,51 @@ export class CodeEditorComponent implements OnDestroy {
             });
         }
 
+        this.registerSecretCompletions();
+
         this.lintCode$.next(this.pythonCode);
         this.cdr.markForCheck();
+    }
+
+    private registerSecretCompletions(): void {
+        const monaco = (window as unknown as { monaco?: typeof import('monaco-editor') }).monaco;
+        if (!monaco) return;
+
+        this.completionDisposable = monaco.languages.registerCompletionItemProvider('python', {
+            provideCompletionItems: (model, position) => {
+                if (
+                    (!this.secretNames.length && !this.inputMapKeys.length) ||
+                    model !== this.monacoEditor?.getModel()
+                ) {
+                    return { suggestions: [] };
+                }
+                const word = model.getWordUntilPosition(position);
+                const range = {
+                    startLineNumber: position.lineNumber,
+                    endLineNumber: position.lineNumber,
+                    startColumn: word.startColumn,
+                    endColumn: word.endColumn,
+                };
+                return {
+                    suggestions: [
+                        ...this.inputMapKeys.map((name) => ({
+                            label: name,
+                            kind: monaco.languages.CompletionItemKind.Variable,
+                            detail: 'Input List argument',
+                            insertText: name,
+                            range,
+                        })),
+                        ...this.secretNames.map((name) => ({
+                            label: name,
+                            kind: monaco.languages.CompletionItemKind.Constant,
+                            detail: `get_secret("${name}")`,
+                            insertText: `get_secret("${name}")`,
+                            range,
+                        })),
+                    ],
+                };
+            },
+        });
     }
 
     public copyCode(): void {

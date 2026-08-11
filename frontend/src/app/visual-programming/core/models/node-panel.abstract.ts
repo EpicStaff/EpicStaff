@@ -58,10 +58,6 @@ export abstract class BaseSidePanel<T extends NodeModel> {
 
     public onSave(): T | null {
         if (this.form && this.form.invalid) {
-            const originalNode = this.node();
-            if (originalNode) {
-                return originalNode;
-            }
             return null;
         }
         const updatedNode = this.createUpdatedNode();
@@ -85,6 +81,12 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     }
 
     protected notifyExternalChange(): void {
+        this.dirtyCheckTick.update((v) => v + 1);
+    }
+
+    protected resetBaseline(): void {
+        if (!this.form) return;
+        this.initialNodeSnapshot = JSON.stringify(this.createUpdatedNode());
         this.dirtyCheckTick.update((v) => v + 1);
     }
 

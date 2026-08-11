@@ -20,6 +20,7 @@ export * from './realtime-llms/real-time-model-config.service';
 export * from './realtime-llms/real-time-models.service';
 export * from './realtime-llms/realtime-config-storage.service';
 export * from './realtime-llms/realtime-models-storage.service';
+export * from './secrets/secret-declaration-index.service';
 export * from './secrets/secrets-api.service';
 export * from './secrets/secrets-storage.service';
 export * from './transcription-llms/transcription-config.service';

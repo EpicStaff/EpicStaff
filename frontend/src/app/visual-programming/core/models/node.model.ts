@@ -118,8 +118,6 @@ export interface TelegramTriggerNodeModel extends BaseNodeModel {
         telegram_bot_api_key_secret_id: number | null;
         webhook_trigger: WebhookTriggerModel | null;
         fields: TelegramTriggerNodeField[];
-        // TODO: no backend field to receive this yet (frontend-only, see CustomPythonCode.secret_ids).
-        secret_ids?: number[];
     };
 }
 

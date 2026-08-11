@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
 import { Subject, switchMap } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -10,6 +11,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { NodeType } from '../../../core/enums/node-type';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import {
@@ -161,6 +163,8 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                     class="code-editor-section"
                                     [class.no-bottom-radius]="isOpenTestMode()"
                                     [pythonCode]="pythonCode"
+                                    [secretNames]="secretNames()"
+                                    [inputMapKeys]="inputMapKeys()"
                                     (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onCodeErrorChange($event)"
                                 ></app-code-editor>
@@ -442,6 +446,20 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly useStorage = signal<boolean>(false);
 
     public readonly selectedSecretIds = signal<number[]>([]);
+    public readonly secretNames = computed(() => {
+        const selected = new Set(this.selectedSecretIds());
+        return this.secretsStorageService
+            .secrets()
+            .filter((secret) => selected.has(secret.id))
+            .map((secret) => secret.name);
+    });
+    public readonly inputMapKeys = computed(() => {
+        this.formDirtyTick();
+        if (!this.form) return [];
+        return getValidInputPairs(this.inputMapPairs)
+            .map((control) => (control.value.key as string)?.trim())
+            .filter((key): key is string => !!key);
+    });
 
     isOpenTestMode = signal(false);
     testResult = signal<PythonCodeResult | null>(null);
@@ -482,10 +500,13 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     });
     public readonly isSaving = computed(() => this.sidePanelService.savingNodeId() === this.node().id);
     private wasSaving = false;
+    private secretsRestoredFromDeclaration = false;
 
     constructor(
         private readonly sidePanelService: SidePanelService,
-        private readonly pythonCodeRunService: PythonCodeRunService
+        private readonly pythonCodeRunService: PythonCodeRunService,
+        private readonly secretDeclarationIndexService: SecretDeclarationIndexService,
+        private readonly secretsStorageService: SecretsStorageService
     ) {
         super();
         this.pythonCodeChange$.pipe(debounceTime(300), takeUntilDestroyed()).subscribe(() => {
@@ -508,6 +529,31 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 this.resetDirtyAfterSave();
             }
             this.wasSaving = saving;
+        });
+        effect(() => {
+            const graphId = this.graphId();
+            if (this.secretsRestoredFromDeclaration || graphId == null) return;
+            if (this.node().data.secret_ids !== undefined) {
+                this.secretsRestoredFromDeclaration = true;
+                return;
+            }
+            this.secretsRestoredFromDeclaration = true;
+            this.secretDeclarationIndexService
+                .getIndex()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((index) => {
+                    const declared = this.secretDeclarationIndexService.lookup(
+                        index,
+                        graphId,
+                        this.node().node_name,
+                        NodeType.PYTHON,
+                        'python_code'
+                    );
+                    if (declared.length) {
+                        this.selectedSecretIds.set(declared);
+                        this.resetDirtyAfterSave();
+                    }
+                });
         });
         this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed()).subscribe(() => this.resetDirtyAfterGraphSave());
     }
@@ -534,6 +580,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         const stripped = {
             ...raw,
             test_input: testInput.map((p) => ({ key: p.key, value: '' })),
+            secret_ids: [...this.selectedSecretIds()].sort(),
         };
         return JSON.stringify(stripped);
     }
@@ -568,6 +615,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     onSecretsChange(values: number[]): void {
         this.selectedSecretIds.set(values);
+        this.formDirtyTick.update((v) => v + 1);
         this.sidePanelService.triggerAutosave();
     }
 

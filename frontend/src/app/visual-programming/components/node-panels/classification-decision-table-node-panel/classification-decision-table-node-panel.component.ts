@@ -16,6 +16,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -107,12 +108,17 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     public postCode: string = '';
     public readonly preSelectedSecretIds = signal<number[]>([]);
     public readonly postSelectedSecretIds = signal<number[]>([]);
+    public readonly preSecretNames = computed(() => this.namesFor(this.preSelectedSecretIds()));
+    public readonly postSecretNames = computed(() => this.namesFor(this.postSelectedSecretIds()));
     private readonly codeChange$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly importExportService = inject(ImportExportService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
+    private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
+    private secretsRestoredFromDeclaration = false;
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -124,11 +130,20 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     });
 
     private preInputMapVersion = signal(0);
+    private postInputMapVersion = signal(0);
 
     public preInputMapKeys = computed(() => {
         this.preInputMapVersion();
         if (!this.form) return [];
         const arr = this.form.get('pre_input_map') as FormArray;
+        if (!arr) return [];
+        return arr.controls.map((ctrl) => ctrl.value?.key?.trim()).filter((k: string) => !!k);
+    });
+
+    public postInputMapKeys = computed(() => {
+        this.postInputMapVersion();
+        if (!this.form) return [];
+        const arr = this.form.get('post_input_map') as FormArray;
         if (!arr) return [];
         return arr.controls.map((ctrl) => ctrl.value?.key?.trim()).filter((k: string) => !!k);
     });
@@ -189,6 +204,54 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.sidePanelService.triggerAutosave());
         this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+
+        effect(() => {
+            const graphId = this.graphId();
+            if (this.secretsRestoredFromDeclaration || graphId == null) return;
+
+            const tableData = (this.node().data as { table?: ClassificationDecisionTableData })?.table;
+            const preComp = tableData?.pre_computation;
+            const postComp = tableData?.post_computation;
+            if (preComp?.secret_ids !== undefined && postComp?.secret_ids !== undefined) {
+                this.secretsRestoredFromDeclaration = true;
+                return;
+            }
+            this.secretsRestoredFromDeclaration = true;
+
+            this.secretDeclarationIndexService
+                .getIndex()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((index) => {
+                    const nodeName = this.node().node_name;
+                    const preIds = this.secretDeclarationIndexService.lookup(
+                        index,
+                        graphId,
+                        nodeName,
+                        NodeType.CLASSIFICATION_TABLE,
+                        'pre_python_code'
+                    );
+                    const postIds = this.secretDeclarationIndexService.lookup(
+                        index,
+                        graphId,
+                        nodeName,
+                        NodeType.CLASSIFICATION_TABLE,
+                        'post_python_code'
+                    );
+
+                    let changed = false;
+                    if (preComp?.secret_ids === undefined && preIds.length) {
+                        this.preSelectedSecretIds.set(preIds);
+                        changed = true;
+                    }
+                    if (postComp?.secret_ids === undefined && postIds.length) {
+                        this.postSelectedSecretIds.set(postIds);
+                        changed = true;
+                    }
+                    if (changed) {
+                        this.resetBaseline();
+                    }
+                });
+        });
     }
 
     public availableNodeItems = computed<SelectItem[]>(() => {
@@ -311,6 +374,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((pairs: { key: string; value: string }[]) => {
                 this.syncSubFormToMainArray(form, 'post_input_map', pairs);
+                this.postInputMapVersion.update((v) => v + 1);
                 this.codeChange$.next();
             });
 
@@ -648,6 +712,14 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.postSelectedSecretIds.set(values);
         this.notifyExternalChange();
         this.codeChange$.next();
+    }
+
+    private namesFor(ids: number[]): string[] {
+        const selected = new Set(ids);
+        return this.secretsStorageService
+            .secrets()
+            .filter((secret) => selected.has(secret.id))
+            .map((secret) => secret.name);
     }
 
     // ── Input map helpers ──

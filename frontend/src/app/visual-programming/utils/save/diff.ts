@@ -322,6 +322,8 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
             tableData?.post_computation?.output_variable_path || tableData?.post_output_variable_path || null,
         pre_libraries: tableData?.pre_computation?.libraries || [],
         post_libraries: tableData?.post_computation?.libraries || [],
+        pre_secret_ids: [...(tableData?.pre_computation?.secret_ids || [])].sort(),
+        post_secret_ids: [...(tableData?.post_computation?.secret_ids || [])].sort(),
         metadata: toNodeMetadata(node),
     };
 }

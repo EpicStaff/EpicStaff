@@ -28,6 +28,7 @@
                                 [items]="secretItems()"
                                 [showSearch]="true"
                                 searchPlaceholder="Search a secret..."
+                                (changed)="notifyExternalChange()"
                             />
                             @if (!form.get('telegram_bot_api_key_secret_id')?.value) {
                                 <div class="secret-hint">
@@ -54,13 +55,6 @@
                             formControlName="ngrok_webhook_config"
                             [items]="ngrokConfigSelectItems()"
                             (changed)="onNgrokConfigChanged($event)"
-                        />
-
-                        <app-node-secrets-field
-                            [activeColor]="activeColor"
-                            [value]="selectedSecretIds()"
-                            tooltipText="Secrets this Telegram trigger can access at runtime — create and manage secrets under Settings → Secrets."
-                            (valueChange)="onSecretsChange($event)"
                         />
                     </div>
 

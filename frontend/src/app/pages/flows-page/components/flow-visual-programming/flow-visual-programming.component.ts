@@ -22,7 +22,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
 import { GetLlmConfigRequest } from '@shared/models';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { LlmConfigStorageService } from '@shared/services';
+import { LlmConfigStorageService, SecretDeclarationIndexService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
 import {
     catchError,
@@ -121,6 +121,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly destroyRef = inject(DestroyRef);
     private readonly wsService = inject(GraphCollaborationWsService);
     private readonly profileService = inject(ProfileService);
+    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly injector = inject(Injector);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
@@ -455,6 +456,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 }
                 this.savedFlowState.set(cloneFlowState(buildCdtSavedBaseline(patchedFlow, graph)));
                 this.sidePanelService.notifyGraphSaved();
+                this.secretDeclarationIndexService.invalidate();
                 if (showSuccessToast) {
                     this.toastService.success('Graph saved successfully');
                     this.warnIfCdtMissingLlmConfig(patchedFlow);
@@ -535,6 +537,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     this.savedFlowState.set(cloneFlowState({ nodes: nextNodes, connections: prev.connections }));
                 }
 
+                this.secretDeclarationIndexService.invalidate();
                 this.toastService.success('Node saved');
             }),
             map(() => void 0),
@@ -969,6 +972,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 this.restoreWarnings.set(response.warnings);
                 this.undoRedoService.setUndoStack([]);
                 this.undoRedoService.setRedoStack([]);
+                this.secretDeclarationIndexService.invalidate();
                 this.refreshCurrentFlow();
             });
     }

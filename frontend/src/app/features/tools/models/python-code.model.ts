@@ -26,8 +26,5 @@ export interface CustomPythonCode {
     code: string;
     entrypoint: string;
     use_storage?: boolean;
-    // TODO: PythonNode has no secrets relation on the backend yet (unlike LLMConfig's
-    // api_key_secret). This is stored here so the UI has somewhere to hold the selection,
-    // but the backend currently has no field to receive it — it won't actually persist.
     secret_ids?: number[];
 }

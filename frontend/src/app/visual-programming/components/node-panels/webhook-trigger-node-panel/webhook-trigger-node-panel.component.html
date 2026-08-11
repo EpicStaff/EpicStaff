@@ -112,6 +112,7 @@
                         <div class="code-editor-section">
                             <app-code-editor
                                 [pythonCode]="pythonCode"
+                                [secretNames]="secretNames()"
                                 (pythonCodeChange)="onPythonCodeChange($event)"
                                 (errorChange)="onCodeErrorChange($event)"
                             ></app-code-editor>
@@ -121,6 +122,7 @@
                     <div class="code-editor-section">
                         <app-code-editor
                             [pythonCode]="pythonCode"
+                            [secretNames]="secretNames()"
                             (pythonCodeChange)="onPythonCodeChange($event)"
                             (errorChange)="onCodeErrorChange($event)"
                         ></app-code-editor>

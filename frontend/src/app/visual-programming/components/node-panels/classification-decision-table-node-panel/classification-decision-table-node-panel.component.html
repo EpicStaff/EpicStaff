@@ -158,6 +158,8 @@
                         <div class="code-editor-section">
                             <app-code-editor
                                 [pythonCode]="preCode"
+                                [secretNames]="preSecretNames()"
+                                [inputMapKeys]="preInputMapKeys()"
                                 (pythonCodeChange)="onPreCodeChange($event)"
                             ></app-code-editor>
                         </div>
@@ -198,6 +200,8 @@
                         <div class="code-editor-section">
                             <app-code-editor
                                 [pythonCode]="postCode"
+                                [secretNames]="postSecretNames()"
+                                [inputMapKeys]="postInputMapKeys()"
                                 (pythonCodeChange)="onPostCodeChange($event)"
                             ></app-code-editor>
                         </div>

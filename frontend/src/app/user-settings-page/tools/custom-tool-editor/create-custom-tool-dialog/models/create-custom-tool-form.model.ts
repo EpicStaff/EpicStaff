@@ -15,7 +15,7 @@ export interface CreateCustomToolFormValue {
  * Throws if `variablesJson` is not valid JSON. Caller should guard with the
  * editor's own validity flag before invoking.
  */
-export function toCreatePayload(form: CreateCustomToolFormValue): CreatePythonCodeToolPayload {
+export function toCreatePayload(form: CreateCustomToolFormValue, secretIds: number[]): CreatePythonCodeToolPayload {
     const parsedVariables = JSON.parse(form.variablesJson) as unknown;
 
     return {
@@ -27,6 +27,7 @@ export function toCreatePayload(form: CreateCustomToolFormValue): CreatePythonCo
             entrypoint: 'main',
             libraries: form.libraries,
             global_kwargs: {},
+            secret_ids: secretIds,
         },
     };
 }

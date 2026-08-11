@@ -25,7 +25,6 @@ import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
 import { WEBHOOK_NAME_PATTERN } from '../webhook-trigger-node-panel/webhook-trigger-node-panel.component';
 import { WebhookStatus } from './webhook-status.model';
@@ -43,7 +42,6 @@ import { WebhookStatus } from './webhook-status.model';
         MATERIAL_FORMS,
         JsonEditorComponent,
         SelectComponent,
-        NodeSecretsFieldComponent,
         ValidationErrorsComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -64,7 +62,6 @@ export class TelegramTriggerNodePanelComponent
     ngrokConfigId = signal<number | null | undefined>(null);
     selectedFields = signal<DisplayedTelegramField[]>([]);
     webhookPath = signal<string | null>(null);
-    public readonly selectedSecretIds = signal<number[]>([]);
 
     selectedNgrokConfigValid = computed<boolean>(() => {
         const config = this.ngrokConfigs().find((c) => c.id === this.ngrokConfigId());
@@ -162,7 +159,6 @@ export class TelegramTriggerNodePanelComponent
 
     initializeForm(): FormGroup {
         this.setSelectedFields(this.node().data.fields);
-        this.selectedSecretIds.set(this.node().data.secret_ids ?? []);
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
             telegram_bot_api_key_secret_id: [
@@ -207,7 +203,6 @@ export class TelegramTriggerNodePanelComponent
                 telegram_bot_api_key_secret_id: this.form.value.telegram_bot_api_key_secret_id,
                 webhook_trigger,
                 fields: this.form.value.fields,
-                secret_ids: this.selectedSecretIds(),
             },
         };
     }
@@ -239,11 +234,6 @@ export class TelegramTriggerNodePanelComponent
     private updateFieldsControl(items: TelegramTriggerNodeField[]) {
         const control = this.form.get('fields');
         control?.setValue(items);
-    }
-
-    onSecretsChange(values: number[]): void {
-        this.selectedSecretIds.set(values);
-        this.notifyExternalChange();
     }
 
     onNgrokConfigChanged(value: unknown): void {

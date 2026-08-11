@@ -208,28 +208,33 @@ function buildCdtNodePayload(
     const defaultRef = resolveNodeRef(defaultTargetUuid, allNodes, idMap);
     const errorRef = resolveNodeRef(errorTargetUuid, allNodes, idMap);
 
+    const preSecretIds = preComp.secret_ids || [];
+    const postSecretIds = postComp.secret_ids || [];
+
     return {
         graph: graphId,
         node_name: node.node_name,
         pre_python_code:
-            preCodeValue.trim() === ''
+            preCodeValue.trim() === '' && !preSecretIds.length
                 ? null
                 : {
                       code: preCodeValue,
                       libraries: preComp.libraries || [],
                       entrypoint: 'main',
                       global_kwargs: {},
+                      secret_ids: preSecretIds,
                   },
         pre_input_map: preComp.input_map || tableData?.pre_input_map || {},
         pre_output_variable_path: preComp.output_variable_path || tableData?.pre_output_variable_path || null,
         post_python_code:
-            postCodeValue.trim() === ''
+            postCodeValue.trim() === '' && !postSecretIds.length
                 ? null
                 : {
                       code: postCodeValue,
                       libraries: postComp.libraries || [],
                       entrypoint: 'main',
                       global_kwargs: {},
+                      secret_ids: postSecretIds,
                   },
         post_input_map: postComp.input_map || tableData?.post_input_map || {},
         post_output_variable_path: postComp.output_variable_path || tableData?.post_output_variable_path || null,

@@ -31,7 +31,6 @@ import { forkJoin } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
-import { getSecretUsage, getSecretUsageCount } from '../../models/secret-usage.model';
 import { SETTINGS_DIALOG_SIZE } from '../../services/configure-models-dialog.service';
 import { AddSecretDialogComponent } from '../add-secret-dialog/add-secret-dialog.component';
 import { SecretUsageDialogComponent } from '../secret-usage-dialog/secret-usage-dialog.component';
@@ -90,7 +89,7 @@ export class SecretsSectionComponent implements OnInit {
             // No "deactivated" concept exists on the Secret model yet — always empty until it does.
             secrets = [];
         } else if (usedByFilter === 'unused') {
-            secrets = secrets.filter((secret) => getSecretUsageCount(secret.id) === 0);
+            secrets = secrets.filter((secret) => secret.usage_count === 0);
         }
 
         return secrets.map(
@@ -98,7 +97,7 @@ export class SecretsSectionComponent implements OnInit {
                 id: secret.id,
                 name: secret.name,
                 preview: this.secretsStorageService.maskTail(secret.tail),
-                usedByCount: getSecretUsageCount(secret.id),
+                usedByCount: secret.usage_count,
                 updatedLabel: getRelativeTime(new Date(secret.updated_at)),
             })
         );
@@ -232,7 +231,7 @@ export class SecretsSectionComponent implements OnInit {
 
         this.dialog.open(SecretUsageDialogComponent, {
             ...SETTINGS_DIALOG_SIZE,
-            data: { secretName: name, usage: getSecretUsage(id) },
+            data: { secretId: id, secretName: name },
         });
     }
 }

@@ -1,3 +1,10 @@
+import {
+    SecretUsageCategoryDto,
+    SecretUsageFlowItemDto,
+    SecretUsageNamedItemDto,
+    SecretUsageResponse,
+} from '@shared/models';
+
 import { NodeType } from '../../../visual-programming/core/enums/node-type';
 
 export type SecretUsageCategoryIcon =
@@ -28,7 +35,7 @@ export interface SecretUsageFlowCategory {
 }
 
 export interface SecretUsageSimpleCategory {
-    key: 'tools' | 'llmConfigs' | 'ngrokConfig' | 'voiceTwilio';
+    key: 'tools' | 'llm_configs';
     label: string;
     icon: SecretUsageCategoryIcon;
     items: SecretUsageResourceItem[];
@@ -41,14 +48,41 @@ export interface SecretUsageSummary {
     categories: SecretUsageCategory[];
 }
 
-// TODO: there's no backend endpoint yet for "which resources reference this secret" —
-// both always report zero/empty until a real "secret usage" endpoint exists to call instead.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function getSecretUsageCount(secretId: number): number {
-    return 0;
-}
+const CATEGORY_DISPLAY: Record<SecretUsageCategoryDto['key'], { label: string; icon: SecretUsageCategoryIcon }> = {
+    flows: { label: 'Flows', icon: { kind: 'svg', value: 'flows' } },
+    tools: { label: 'Tools', icon: { kind: 'svg', value: 'tools' } },
+    llm_configs: { label: 'LLM Configs', icon: { kind: 'tabler', value: 'ti ti-robot' } },
+};
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function getSecretUsage(secretId: number): SecretUsageSummary {
-    return { total: 0, categories: [] };
+export function toSecretUsageSummary(response: SecretUsageResponse): SecretUsageSummary {
+    return {
+        total: response.total,
+        categories: response.categories.map((category): SecretUsageCategory => {
+            const { label, icon } = CATEGORY_DISPLAY[category.key];
+
+            if (category.key === 'flows') {
+                const items = category.items as SecretUsageFlowItemDto[];
+                return {
+                    key: 'flows',
+                    label,
+                    icon,
+                    items: items.map((item) => ({
+                        id: item.id,
+                        name: item.name,
+                        nodes: item.nodes.map((node) => ({
+                            name: node.name,
+                            nodeType: node.node_type as NodeType,
+                        })),
+                    })),
+                };
+            }
+
+            return {
+                key: category.key,
+                label,
+                icon,
+                items: category.items as SecretUsageNamedItemDto[],
+            };
+        }),
+    };
 }

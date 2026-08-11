@@ -7,10 +7,37 @@ export interface Secret {
     created_by: number | null;
     created_at: string;
     updated_at: string;
+    usage_count: number;
 }
 
 export interface CreateSecretRequest {
     name: string;
     value: string;
     metadata?: Record<string, unknown>;
+}
+
+export interface SecretUsageNodeDto {
+    name: string;
+    node_type: string;
+    code_field: string | null;
+}
+
+export interface SecretUsageFlowItemDto {
+    id: number;
+    name: string;
+    nodes: SecretUsageNodeDto[];
+}
+
+export interface SecretUsageNamedItemDto {
+    name: string;
+}
+
+export interface SecretUsageCategoryDto {
+    key: 'flows' | 'tools' | 'llm_configs';
+    items: SecretUsageFlowItemDto[] | SecretUsageNamedItemDto[];
+}
+
+export interface SecretUsageResponse {
+    total: number;
+    categories: SecretUsageCategoryDto[];
 }

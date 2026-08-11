@@ -1,12 +1,22 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, viewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    effect,
+    inject,
+    signal,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
@@ -27,6 +37,7 @@ import { CustomInputComponent } from '../../../../shared/components/form-input/f
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { JsonEditorComponent, JsonError } from '../../../../shared/components/json-editor/json-editor.component';
 import { TextareaComponent } from '../../../../shared/components/textarea/textarea.component';
+import { NodeSecretsFieldComponent } from '../../../../visual-programming/components/node-secrets-field/node-secrets-field.component';
 import { CodeEditorComponent } from '../code-editor/code-editor.component';
 import {
     DrillStep,
@@ -75,6 +86,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
         ToggleSwitchComponent,
         ParametersTableViewComponent,
         HasPermissionDirective,
+        NodeSecretsFieldComponent,
     ],
     templateUrl: './create-custom-tool-dialog.component.html',
     styleUrls: ['./create-custom-tool-dialog.component.scss'],
@@ -88,6 +100,8 @@ export class CreateCustomToolDialogComponent {
     private readonly toast = inject(ToastService);
     private readonly confirmDialog = inject(ConfirmationDialogService);
     private readonly toolsEvents = inject(ToolsEventsService);
+    private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly dialogData = inject<CreateCustomToolDialogData | null>(DIALOG_DATA, { optional: true });
 
     public readonly selectedTool: GetPythonCodeToolRequest | null = this.dialogData?.selectedTool ?? null;
@@ -111,6 +125,14 @@ export class CreateCustomToolDialogComponent {
 
     public readonly tableVariables = signal<ToolVariable[]>([]);
     public readonly tableDrillStack = signal<DrillStep[]>([]);
+    public readonly selectedSecretIds = signal<number[]>([]);
+    public readonly secretNames = computed(() => {
+        const selected = new Set(this.selectedSecretIds());
+        return this.secretsStorageService
+            .secrets()
+            .filter((secret) => selected.has(secret.id))
+            .map((secret) => secret.name);
+    });
 
     public readonly activeEditor = signal<ActiveEditor>(ActiveEditor.Python);
     public readonly pythonSectionExpanded = signal(false);
@@ -145,6 +167,20 @@ export class CreateCustomToolDialogComponent {
         const initialJson = this.form.controls.variablesJson.value;
         if (isToolJsonSchemaValid(initialJson)) {
             this.lastValidJson.set(initialJson);
+        }
+
+        if (this.selectedTool) {
+            const toolName = this.selectedTool.name;
+            this.secretDeclarationIndexService
+                .getIndex()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((index) => {
+                    const declared = this.secretDeclarationIndexService.lookupTool(index, toolName);
+                    if (declared.length) {
+                        this.selectedSecretIds.set(declared);
+                        this.initialSnapshot = this.computeSnapshot();
+                    }
+                });
         }
 
         this.dialogRef.disableClose = true;
@@ -325,6 +361,10 @@ export class CreateCustomToolDialogComponent {
         this.tableDrillStack.set(stack);
     }
 
+    public onSecretsChange(values: number[]): void {
+        this.selectedSecretIds.set(values);
+    }
+
     public closeEditorPane(): void {
         this.activeEditor.set(ActiveEditor.None);
     }
@@ -451,6 +491,7 @@ export class CreateCustomToolDialogComponent {
         request$
             .pipe(
                 tap((result) => {
+                    this.secretDeclarationIndexService.invalidate();
                     this.toast.success(successMessage);
                     this.dialogRef.close(result);
                 }),
@@ -473,6 +514,7 @@ export class CreateCustomToolDialogComponent {
             pythonCode,
             libraries: [...libraries].sort(),
             variables: this.snapshotVariables(),
+            secretIds: [...this.selectedSecretIds()].sort(),
         });
     }
 
@@ -509,7 +551,7 @@ export class CreateCustomToolDialogComponent {
     }
 
     private buildPayload(): CreatePythonCodeToolPayload {
-        return toCreatePayload(this.form.getRawValue());
+        return toCreatePayload(this.form.getRawValue(), this.selectedSecretIds());
     }
 
     protected readonly ResourceCode = ResourceCode;
