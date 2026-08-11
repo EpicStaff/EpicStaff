@@ -519,6 +519,10 @@ services:
       KNOWLEDGE_INDEX_REQUEST_CHANNEL: ${KNOWLEDGE_INDEX_REQUEST_CHANNEL}
       KNOWLEDGE_CANCEL_REQUEST_CHANNEL: ${KNOWLEDGE_CANCEL_REQUEST_CHANNEL}
 
+      KNOWLEDGE_MINIO_HOST: ${STORAGE_ENDPOINT:-http://minio:9000}
+      KNOWLEDGE_MINIO_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
+      KNOWLEDGE_MINIO_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
+
 
   communication_redis_broker:
     container_name: communication_redis_broker
