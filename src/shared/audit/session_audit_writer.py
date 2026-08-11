@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from cachetools import TTLCache
+from loguru import logger
 
 from src.shared.audit.client import AuditClient
 from src.shared.audit.writer import derive_root_id, safe_emit
@@ -42,6 +43,25 @@ class SessionAuditWriter:
         """No row emitted yet - cached until the matching finish/error resolves it."""
         self._start_cache[(session_id, node_name, execution_order)] = input_
 
+    def _pop_start_input(
+        self, session_id: int, node_name: str, execution_order: int
+    ) -> dict | None:
+        """
+        A miss here (TTL expiry past 1h, or maxsize=5000 eviction under high
+        concurrency) means this node's finish/error event silently loses its
+        input - logged so that loss is visible instead of silent, not fixed
+        outright (the alternative, an unbounded cache, is worse).
+        """
+        key = (session_id, node_name, execution_order)
+        if key not in self._start_cache:
+            logger.warning(
+                f"No cached start input for session={session_id} node={node_name} "
+                f"execution_order={execution_order} - TTL expiry or cache eviction; "
+                "this node's audit event will have input=None."
+            )
+            return None
+        return self._start_cache.pop(key)
+
     async def add_finish_message(
         self,
         *,
@@ -53,7 +73,7 @@ class SessionAuditWriter:
         event_id: str,
         additional_data: dict | None = None,
     ) -> None:
-        input_ = self._start_cache.pop((session_id, node_name, execution_order), None)
+        input_ = self._pop_start_input(session_id, node_name, execution_order)
         await self._emit_node_or_event(
             session_id=session_id,
             org_id=org_id,
@@ -81,7 +101,7 @@ class SessionAuditWriter:
         real ErrorMessageData.details on the primary pipeline is a plain
         str(error), but SessionAuditEvent.error is dict-shaped.
         """
-        input_ = self._start_cache.pop((session_id, node_name, execution_order), None)
+        input_ = self._pop_start_input(session_id, node_name, execution_order)
         await self._emit_node_or_event(
             session_id=session_id,
             org_id=org_id,
@@ -175,10 +195,14 @@ class SessionAuditWriter:
             parent_id="",
             session_id=session_id,
             session_message_id=session_message_id,
-            name=flow_name or "",
+            flow_name=flow_name or "",
             status=status,
             event_time=datetime.now(timezone.utc),
             output=output,
             details=details or {},
         )
         await safe_emit(self._client, event)
+
+    async def shutdown(self) -> None:
+        """Delegates to the underlying AuditClient's best-effort drain-and-flush."""
+        await self._client.shutdown()

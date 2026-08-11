@@ -264,7 +264,9 @@ class SessionManagerService(metaclass=SingletonMeta):
     def register_message(self, data: dict, created_at_dt) -> None:
         if data["message_data"]["message_type"] in self._GENERIC_MESSAGE_TYPES:
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
-            session = Session.objects.get(id=graph_session_message_data.session_id)
+            session = Session.objects.select_related("graph").get(
+                id=graph_session_message_data.session_id
+            )
             GraphSessionMessage.objects.create(
                 session=session,
                 name=graph_session_message_data.name,

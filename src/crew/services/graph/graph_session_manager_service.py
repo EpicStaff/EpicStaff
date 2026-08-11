@@ -69,6 +69,21 @@ def _extract_finish_token_total(message_data: dict) -> int:
     return token_usage.get("total_tokens", 0) or 0
 
 
+# Fire-and-forget audit emission tasks (add_finish_message, add_session_end,
+# etc.) need a strong reference held somewhere for their lifetime - asyncio's
+# own docs warn a Task with no reference anywhere is only weakly tracked by
+# the loop and can be garbage-collected mid-execution. safe_emit swallows
+# exceptions internally, so a GC'd task here would fail with zero log output,
+# unlike every other designed failure mode in this feature.
+_audit_tasks: set[asyncio.Task] = set()
+
+
+def _track_audit_task(coro) -> None:
+    task = asyncio.create_task(coro)
+    _audit_tasks.add(task)
+    task.add_done_callback(_audit_tasks.discard)
+
+
 def _emit_session_audit_event(data: dict) -> None:
     """
     Dispatches one custom-stream chunk into the audit pipeline, reusing the
@@ -96,7 +111,7 @@ def _emit_session_audit_event(data: dict) -> None:
             session_id, node_name, execution_order, message_data.get("input") or {}
         )
     elif message_type == "finish":
-        asyncio.create_task(
+        _track_audit_task(
             writer.add_finish_message(
                 session_id=session_id,
                 org_id=org_id,
@@ -114,7 +129,7 @@ def _emit_session_audit_event(data: dict) -> None:
         error_detail = (
             message_data.get("details") or message_data.get("error") or "unknown error"
         )
-        asyncio.create_task(
+        _track_audit_task(
             writer.add_error_message(
                 session_id=session_id,
                 org_id=org_id,
@@ -125,7 +140,7 @@ def _emit_session_audit_event(data: dict) -> None:
             )
         )
     else:
-        asyncio.create_task(
+        _track_audit_task(
             writer.add_custom_message(
                 session_id=session_id,
                 org_id=org_id,
@@ -301,7 +316,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
                     assert isinstance(data, dict), "custom chunk must be a dict"
                     data["uuid"] = str(uuid.uuid4())
-                    _emit_session_audit_event(data)
+                    try:
+                        _emit_session_audit_event(data)
+                    except Exception as audit_exc:
+                        # Audit must never break the primary pipeline - this
+                        # dispatch call must never propagate, no matter what
+                        # goes wrong inside it.
+                        logger.warning(f"Audit dispatch failed, dropping: {audit_exc}")
 
                     if token_budget is not None:
                         token_usage_total += _extract_finish_token_total(
@@ -365,13 +386,14 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             org_id = get_session_org(session_id)
             if org_id is not None:
-                asyncio.create_task(
+                _track_audit_task(
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
                         status="completed",
                         session_message_id=graph_end_message_data["uuid"],
                         output=end_node_result,
+                        flow_name=session_data.graph.name,
                     )
                 )
 
@@ -390,12 +412,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             logger.warning(f"Session {session_id} was cancelled")
             org_id = get_session_org(session_id)
             if org_id is not None:
-                asyncio.create_task(
+                _track_audit_task(
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
                         status="failed",
                         details={"reason": "timeout"},
+                        flow_name=session_data.graph.name,
                     )
                 )
             clear_session_org(session_id)
@@ -406,12 +429,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             )
             org_id = get_session_org(session_id)
             if org_id is not None:
-                asyncio.create_task(
+                _track_audit_task(
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
                         status="failed",
                         details={"reason": e.reason or "stopped"},
+                        flow_name=session_data.graph.name,
                     )
                 )
             clear_session_org(session_id)
@@ -424,12 +448,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             )
             org_id = get_session_org(session_id)
             if org_id is not None:
-                asyncio.create_task(
+                _track_audit_task(
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
                         status="failed",
                         details={"error": str(e)},
+                        flow_name=session_data.graph.name,
                     )
                 )
             clear_session_org(session_id)
