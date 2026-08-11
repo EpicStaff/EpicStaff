@@ -39,6 +39,17 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
             next_error_node: null,
         },
     }),
+    [NodeType.CLASSIFICATION_TABLE]: () => ({
+        table: {
+            pre_computation_code: '',
+            condition_groups: [],
+            prompts: {},
+            output_variables: [],
+            route_variable_name: 'route_code',
+            default_next_node: null,
+            next_error_node: null,
+        },
+    }),
     [NodeType.NOTE]: () => ({
         content: 'Add your note here...',
         backgroundColor: NODE_COLORS[NodeType.NOTE],
