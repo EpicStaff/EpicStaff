@@ -30,6 +30,7 @@ export interface AgentDefinition {
     instructions: string;
     llm_config: number | null;
     fcm_llm_config: number | null;
+    agent_definition_realtime_config_id: number | null;
     default_surfaces: AgentDefaultSurface[];
     metadata: AgentMetadata;
     max_iter: number;

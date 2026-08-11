@@ -28,7 +28,6 @@ import {
     ExtractTextFromStorageDialogResult,
 } from '../../../../components/extract-text-from-storage-dialog/extract-text-from-storage-dialog.component';
 import { AgentDefinition, AgentSurfacePlace } from '../../../../models/agent-definition.model';
-import { RealtimeAgentDefinition } from '../../../../models/realtime-agent-definition.model';
 import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../models/surface.model';
 import { SurfaceCategoryId } from '../../../../models/surface-category.model';
 import { RealtimeAgentDefinitionsApiService } from '../../../../services/realtime-agent-definitions-api.service';
@@ -134,11 +133,6 @@ export class AgentDetailComponent implements OnInit {
         instructions: [''],
         llm_config: [null as number | null],
     });
-
-    // RealtimeAgentDefinition row for the current agent, loaded lazily when Additional
-    // Settings opens (null = no realtime row / voice off). Seeds the dialog and decides
-    // create-vs-patch when saving realtime_config.
-    private realtimeDef: RealtimeAgentDefinition | null = null;
 
     readonly bootAsDoc = signal<boolean>(false);
     readonly bootDocName = 'Boot_Instructions.md';
@@ -299,23 +293,13 @@ export class AgentDetailComponent implements OnInit {
     openAdditionalSettings(): void {
         const a = this.agent();
         if (!a || this.saving()) return;
-        // Realtime lives on a separate RealtimeAgentDefinition resource, so fetch it lazily
-        // here (only when the gear is actually opened) rather than probing on every agent
-        // selection. 404 = no realtime row yet → null (getByAgentId maps it).
-        this.realtimeApi
-            .getByAgentId(a.id)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (rt) => this.openSettingsDialog(a, rt),
-                error: () => this.openSettingsDialog(a, null),
-            });
+        this.openSettingsDialog(a);
     }
 
-    private openSettingsDialog(a: AgentDefinition, realtimeDef: RealtimeAgentDefinition | null): void {
-        this.realtimeDef = realtimeDef;
+    private openSettingsDialog(a: AgentDefinition): void {
         const data: AgentAdditionalSettingsData = {
             fcm_llm_config: a.fcm_llm_config,
-            realtime_config: realtimeDef?.realtime_config ?? null,
+            realtime_config: a.agent_definition_realtime_config_id,
             max_iter: a.max_iter,
             max_rpm: a.max_rpm,
             max_execution_time: a.max_execution_time,
@@ -331,56 +315,69 @@ export class AgentDetailComponent implements OnInit {
             .closed.pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (!result) return;
-                this.persistRealtimeConfig(a.id, result.realtime_config);
-                const v = this.form.getRawValue();
-                this.savedSnapshot = { ...v, name: v.name.trim() || a.name };
-                this.save.emit({
-                    id: a.id,
-                    name: v.name.trim() || a.name,
-                    description: v.description ?? '',
-                    instructions: v.instructions ?? '',
-                    llm_config: v.llm_config,
-                    fcm_llm_config: result.fcm_llm_config,
-                    max_iter: result.max_iter,
-                    max_rpm: result.max_rpm,
-                    max_execution_time: result.max_execution_time,
-                    cache: result.cache,
-                    max_retry_limit: result.max_retry_limit,
-                    default_temperature: a.default_temperature,
-                    max_tool_calls: result.max_tool_calls,
-                    tool_timeout: result.tool_timeout,
-                    max_consecutive_failures: result.max_consecutive_failures,
-                    schema_max_retries: result.schema_max_retries,
-                });
+                this.persistRealtimeConfig(a, result.realtime_config, () => this.emitAgentSave(a, result));
             });
     }
 
-    // realtime_config lives on RealtimeAgentDefinition, not AgentDefinition.
-    // Patch existing row, or create one when the agent first gets a realtime model
-    // (that is what makes the agent appear on Chats → Agents).
-    private persistRealtimeConfig(agentId: number, realtimeConfig: number | null): void {
-        const current = this.realtimeDef?.realtime_config ?? null;
-        if (realtimeConfig === current) return;
+    private emitAgentSave(a: AgentDefinition, result: AgentAdditionalSettingsResult): void {
+        const v = this.form.getRawValue();
+        this.savedSnapshot = { ...v, name: v.name.trim() || a.name };
+        this.save.emit({
+            id: a.id,
+            name: v.name.trim() || a.name,
+            description: v.description ?? '',
+            instructions: v.instructions ?? '',
+            llm_config: v.llm_config,
+            fcm_llm_config: result.fcm_llm_config,
+            max_iter: result.max_iter,
+            max_rpm: result.max_rpm,
+            max_execution_time: result.max_execution_time,
+            cache: result.cache,
+            max_retry_limit: result.max_retry_limit,
+            default_temperature: a.default_temperature,
+            max_tool_calls: result.max_tool_calls,
+            tool_timeout: result.tool_timeout,
+            max_consecutive_failures: result.max_consecutive_failures,
+            schema_max_retries: result.schema_max_retries,
+        });
+    }
 
-        if (this.realtimeDef) {
-            this.realtimeApi
-                .partialUpdate(agentId, { realtime_config: realtimeConfig })
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe({
-                    next: (rt) => (this.realtimeDef = rt),
-                    error: () => this.toast.error('Failed to save realtime config'),
-                });
+    private persistRealtimeConfig(a: AgentDefinition, realtimeConfig: number | null, onDone: () => void): void {
+        if (realtimeConfig === a.agent_definition_realtime_config_id) {
+            onDone();
             return;
         }
 
-        if (realtimeConfig == null) return;
+        this.realtimeApi
+            .partialUpdate(a.id, { realtime_config: realtimeConfig })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: () => onDone(),
+                error: (err) => {
+                    if (err?.status === 404) {
+                        this.createRealtimeConfig(a.id, realtimeConfig, onDone);
+                        return;
+                    }
+                    this.toast.error('Failed to save realtime config');
+                    onDone();
+                },
+            });
+    }
 
+    private createRealtimeConfig(agentId: number, realtimeConfig: number | null, onDone: () => void): void {
+        if (realtimeConfig == null) {
+            onDone();
+            return;
+        }
         this.realtimeApi
             .create({ agent_definition: agentId, realtime_config: realtimeConfig })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (rt) => (this.realtimeDef = rt),
-                error: () => this.toast.error('Failed to save realtime config'),
+                next: () => onDone(),
+                error: () => {
+                    this.toast.error('Failed to save realtime config');
+                    onDone();
+                },
             });
     }
 
