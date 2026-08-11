@@ -15,7 +15,7 @@
             </button>
         } @else {
             <div class="mcp-tools-grid">
-                @if (tools().length === 0) {
+                @if (cards().length === 0) {
                     <div class="empty-message">
                         <p>No MCP tools found.</p>
                     </div>
@@ -23,7 +23,11 @@
                     @for (card of cards(); track card.id) {
                         <app-tool-card
                             [tool]="card"
+                            [selected]="viewState.isSelected(card.id)"
+                            [showUsage]="viewState.showUsageAndUnused()"
                             (configure)="onCardConfigure($event)"
+                            (selectedChange)="onCardSelectedChange($event)"
+                            (labelsChange)="onCardLabelsChange($event)"
                             (menuAction)="onCardMenuAction($event)"
                         ></app-tool-card>
                     }

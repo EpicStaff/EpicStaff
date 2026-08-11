@@ -21,6 +21,6 @@ export interface ToolUsageItem {
 export interface GetBulkToolUsageItem {
     id: number;
     projects_count: number;
-    staffs_count: number;
+    staff_count: number;
     is_built_in: boolean;
 }

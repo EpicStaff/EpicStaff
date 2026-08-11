@@ -47,6 +47,14 @@ export interface UpdatePythonCodeToolRequest {
     use_storage?: boolean;
 }
 
+export interface PatchPythonCodeToolRequest {
+    name?: string;
+    description?: string;
+    labels?: number[];
+    favorite?: boolean;
+    use_storage?: boolean;
+}
+
 /**
  * Nested `python_code` body accepted by the V2 Python Code Tool create
  * endpoint. Mirrors the Django `PythonCodeSerializer` (libraries as string[],

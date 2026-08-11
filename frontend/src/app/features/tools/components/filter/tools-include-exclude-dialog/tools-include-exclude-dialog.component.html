@@ -1,0 +1,141 @@
+<div class="include-exclude-dialog">
+    <header class="dialog-header">
+        <h2 class="title">Include</h2>
+    </header>
+
+    <div class="tab-switch">
+        <button
+            type="button"
+            class="tab-btn"
+            [class.active]="activeTab() === 'tools'"
+            (click)="setActiveTab('tools')"
+        >
+            <app-svg-icon
+                icon="tools"
+                size="0.95rem"
+            />
+            <span>Tools</span>
+        </button>
+        <button
+            type="button"
+            class="tab-btn"
+            [class.active]="activeTab() === 'labels'"
+            (click)="setActiveTab('labels')"
+        >
+            <app-svg-icon
+                icon="label"
+                size="0.95rem"
+            />
+            <span>Labels</span>
+        </button>
+    </div>
+
+    @if (activeTab() === 'tools') {
+        <div class="selection-counter">
+            <span>Selected</span>
+            <span>
+                <span class="count-current">{{ selectedToolCount() }}</span>
+                <span class="count-total"> / {{ totalToolCount() }}</span>
+            </span>
+        </div>
+
+        <input
+            type="text"
+            class="search-input"
+            placeholder="Search tool..."
+            [ngModel]="toolSearch()"
+            (ngModelChange)="toolSearch.set($event)"
+        />
+
+        <div class="list">
+            @for (tool of filteredTools(); track tool.id) {
+                <label
+                    class="list-row"
+                    [title]="tool.name"
+                >
+                    <app-checkbox
+                        [checked]="isToolSelected(tool.id)"
+                        (changed)="toggleTool(tool.id)"
+                    />
+                    <span class="row-label">{{ tool.name }}</span>
+                </label>
+            }
+            @if (filteredTools().length === 0) {
+                <div class="empty">No tools match the search.</div>
+            }
+        </div>
+    } @else {
+        <div class="selection-counter">
+            <span>Selected</span>
+            <span>
+                <span class="count-current">{{ selectedLabelCount() }}</span>
+                <span class="count-total"> / {{ totalLabelCount() }}</span>
+            </span>
+        </div>
+
+        <input
+            type="text"
+            class="search-input"
+            placeholder="Search label..."
+            [ngModel]="labelSearch()"
+            (ngModelChange)="labelSearch.set($event)"
+        />
+
+        <div class="list">
+            @for (item of flatLabelTree(); track item.node.id) {
+                <div
+                    class="list-row label-row"
+                    [style.paddingLeft]="indentPadding(item.depth)"
+                    [title]="item.node.name"
+                >
+                    <button
+                        type="button"
+                        class="expand-btn"
+                        [style.visibility]="item.node.children.length > 0 ? 'visible' : 'hidden'"
+                        (click)="toggleExpand(item.node.id)"
+                    >
+                        <app-svg-icon
+                            icon="expand"
+                            size="0.6rem"
+                            class="expand-icon"
+                            [class.expanded]="isExpanded(item.node.id)"
+                        />
+                    </button>
+                    <label class="row-checkbox-wrap">
+                        <app-checkbox
+                            [checked]="isLabelSelected(item.node.id)"
+                            (changed)="toggleLabel(item.node.id)"
+                        />
+                        <span class="row-label">{{ item.node.name }}</span>
+                    </label>
+                </div>
+            }
+            @if (flatLabelTree().length === 0) {
+                <div class="empty">No labels match the search.</div>
+            }
+        </div>
+    }
+
+    <footer class="dialog-footer">
+        <app-button
+            type="outline-primary"
+            (click)="selectAll()"
+        >
+            Select All
+        </app-button>
+        <div class="footer-right">
+            <app-button
+                type="outline-primary"
+                (click)="cancel()"
+            >
+                Cancel
+            </app-button>
+            <app-button
+                type="primary"
+                (click)="save()"
+            >
+                Save Changes
+            </app-button>
+        </div>
+    </footer>
+</div>

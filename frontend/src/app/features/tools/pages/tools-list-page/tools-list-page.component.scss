@@ -211,6 +211,7 @@
 
     .menu-trigger {
         display: inline-flex;
+        flex-shrink: 0;
         align-items: center;
         gap: 0.75rem;
         height: 28px;
@@ -235,6 +236,28 @@
             &.open {
                 transform: rotate(180deg);
             }
+        }
+    }
+
+    .filter-clear {
+        display: inline-flex;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        background: transparent;
+        border: 1px solid var(--color-input-border);
+        border-radius: 4px;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition:
+            color 0.15s,
+            border-color 0.15s;
+
+        &:hover {
+            color: var(--accent-color);
+            border-color: var(--accent-color);
         }
     }
 

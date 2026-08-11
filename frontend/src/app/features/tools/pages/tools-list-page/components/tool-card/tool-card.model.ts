@@ -5,7 +5,6 @@
  */
 export type ToolKind = 'custom' | 'mcp';
 
-// TODO refactor this
 export interface ToolCardVM {
     id: number;
     kind: ToolKind;
@@ -14,11 +13,9 @@ export interface ToolCardVM {
     labelIds: number[];
     favorite: boolean;
     builtIn: boolean;
-    // Usage counters shown when the "Show usage & unused" toggle is on.
-    // Populated from `${toolId}/usage-detail/` once wired.
     projectsUsage?: number;
     agentsUsage?: number;
     unused?: boolean;
 }
 
-export type ToolCardMenuAction = 'duplicate' | 'add_label' | 'show_used_places' | 'delete';
+export type ToolCardMenuAction = 'duplicate' | 'show_used_places' | 'delete';

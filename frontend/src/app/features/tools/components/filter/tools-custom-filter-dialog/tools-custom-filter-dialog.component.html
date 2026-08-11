@@ -1,0 +1,174 @@
+<div class="custom-filter-dialog">
+    <header class="dialog-header">
+        <h2 class="title">Custom filter</h2>
+        <button
+            type="button"
+            class="close-btn"
+            (click)="cancel()"
+            aria-label="Close"
+        >
+            <app-svg-icon
+                icon="x"
+                size="1rem"
+            />
+        </button>
+    </header>
+
+    <div class="scope-tabs">
+        <button
+            type="button"
+            class="scope-tab"
+            [class.active]="scope() === 'tool_name'"
+            (click)="setScope('tool_name')"
+        >
+            <app-svg-icon
+                icon="tools"
+                size="0.95rem"
+            />
+            <span>Tools</span>
+        </button>
+        <span class="scope-sep">/</span>
+        <button
+            type="button"
+            class="scope-tab"
+            [class.active]="scope() === 'label_name'"
+            (click)="setScope('label_name')"
+        >
+            <app-svg-icon
+                icon="label"
+                size="0.95rem"
+            />
+            <span>Labels</span>
+        </button>
+    </div>
+
+    <div class="conditions">
+        <div class="condition-heading">{{ headingText() }}</div>
+
+        <div class="condition-row">
+            <div class="operator-select">
+                <button
+                    type="button"
+                    class="operator-btn"
+                    [class.open]="operatorOpenFor() === 'primary'"
+                    (click)="toggleOperator('primary')"
+                >
+                    <span>{{ operatorLabels[primaryOperator()] }}</span>
+                    <app-svg-icon
+                        icon="chevron-down"
+                        size="0.7rem"
+                        class="chevron"
+                        [class.open]="operatorOpenFor() === 'primary'"
+                    />
+                </button>
+                @if (operatorOpenFor() === 'primary') {
+                    <div class="operator-dropdown">
+                        @for (op of operatorOptions; track op) {
+                            <button
+                                type="button"
+                                class="operator-option"
+                                [class.selected]="op === primaryOperator()"
+                                (click)="selectOperator('primary', op)"
+                            >
+                                {{ operatorLabels[op] }}
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+
+            <input
+                type="text"
+                class="value-input"
+                placeholder="Enter value..."
+                [ngModel]="primaryValue()"
+                (ngModelChange)="primaryValue.set($event)"
+            />
+        </div>
+
+        <div class="combinator-row">
+            <div class="combinator-toggle">
+                <button
+                    type="button"
+                    class="combinator-btn"
+                    [class.active]="combinator() === 'AND'"
+                    (click)="setCombinator('AND')"
+                >
+                    AND
+                </button>
+                <button
+                    type="button"
+                    class="combinator-btn"
+                    [class.active]="combinator() === 'OR'"
+                    (click)="setCombinator('OR')"
+                >
+                    OR
+                </button>
+            </div>
+        </div>
+
+        <div class="condition-row">
+            <div class="operator-select">
+                <button
+                    type="button"
+                    class="operator-btn"
+                    [class.open]="operatorOpenFor() === 'secondary'"
+                    (click)="toggleOperator('secondary')"
+                >
+                    <span>{{ operatorLabels[secondaryOperator()] }}</span>
+                    <app-svg-icon
+                        icon="chevron-down"
+                        size="0.7rem"
+                        class="chevron"
+                        [class.open]="operatorOpenFor() === 'secondary'"
+                    />
+                </button>
+                @if (operatorOpenFor() === 'secondary') {
+                    <div class="operator-dropdown">
+                        @for (op of operatorOptions; track op) {
+                            <button
+                                type="button"
+                                class="operator-option"
+                                [class.selected]="op === secondaryOperator()"
+                                (click)="selectOperator('secondary', op)"
+                            >
+                                {{ operatorLabels[op] }}
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+
+            <input
+                type="text"
+                class="value-input"
+                placeholder="Enter value..."
+                [ngModel]="secondaryValue()"
+                (ngModelChange)="secondaryValue.set($event)"
+            />
+        </div>
+    </div>
+
+    <footer class="dialog-footer">
+        <app-button
+            type="outline-primary"
+            (click)="clearAll()"
+        >
+            Clear All Filters
+        </app-button>
+        <div class="footer-right">
+            <app-button
+                type="outline-primary"
+                (click)="cancel()"
+            >
+                Cancel
+            </app-button>
+            <app-button
+                type="primary"
+                (click)="apply()"
+            >
+                Apply Filters
+            </app-button>
+        </div>
+    </footer>
+</div>

@@ -7,17 +7,17 @@ import {
     Component,
     computed,
     DestroyRef,
+    effect,
     ElementRef,
     HostListener,
     inject,
-    Input,
     input,
-    OnChanges,
     OnInit,
     output,
     signal,
     TemplateRef,
-    ViewChild,
+    untracked,
+    viewChild,
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -61,9 +61,8 @@ interface FlatLabelNode {
     styleUrls: ['./label-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LabelDropdownComponent implements OnInit, OnChanges {
-    // TODO use signal decorators
-    @Input() selectedLabelIds: number[] = [];
+export class LabelDropdownComponent implements OnInit {
+    readonly selectedLabelIds = input<number[]>([]);
 
     /** When true the built-in trigger button is not rendered; the parent
      *  provides its own and calls openAt(element). */
@@ -88,41 +87,54 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
     readonly newLabelColor = signal<LabelColor>(LabelColor.Default);
     readonly addLabelError = signal<string>('');
 
+    readonly searchTerm = signal<string>('');
+
     readonly labelTree = this.labelsStorage.labelTree;
 
     readonly flatTree = computed<FlatLabelNode[]>(() => {
+        const term = this.searchTerm().trim().toLowerCase();
+        const expanded = this.expandedIds();
+        const searching = term.length > 0;
+
+        const keep = searching ? this.collectSearchMatches(this.labelTree(), term) : null;
+
         const result: FlatLabelNode[] = [];
         const flatten = (nodes: LabelTreeNode[], depth: number) => {
             for (const node of nodes) {
+                if (keep && !keep.has(node.id)) continue;
                 result.push({ node, depth });
-                if (this.isExpanded(node.id) && node.children.length > 0) {
-                    flatten(node.children, depth + 1);
-                }
+                const shouldRecurse = node.children.length > 0 && (searching || expanded.has(node.id));
+                if (shouldRecurse) flatten(node.children, depth + 1);
             }
         };
         flatten(this.labelTree(), 0);
         return result;
     });
-    // TODO use signal decorators
-    @ViewChild('triggerBtn') triggerBtn?: ElementRef<HTMLElement>;
-    @ViewChild('dropdownTemplate') dropdownTemplate!: TemplateRef<unknown>;
+
+    readonly triggerBtn = viewChild<ElementRef<HTMLElement>>('triggerBtn');
+    readonly dropdownTemplate = viewChild.required<TemplateRef<unknown>>('dropdownTemplate');
 
     private overlayRef?: OverlayRef;
 
+    constructor() {
+        effect(() => {
+            const ids = this.selectedLabelIds();
+            untracked(() => {
+                if (!this.isOpen()) {
+                    this.localSelectedIds.set(new Set(ids));
+                }
+            });
+        });
+    }
+
     get triggerLabel(): string {
-        const count = this.selectedLabelIds.length;
+        const count = this.selectedLabelIds().length;
         if (count === 0) return 'Select label';
         return `${count} label${count !== 1 ? 's' : ''} selected`;
     }
 
     ngOnInit(): void {
         this.labelsStorage.loadLabels().subscribe();
-    }
-
-    ngOnChanges(): void {
-        if (!this.isOpen()) {
-            this.localSelectedIds.set(new Set(this.selectedLabelIds));
-        }
     }
 
     @HostListener('document:keydown', ['$event'])
@@ -139,15 +151,14 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
 
     /** Open using the built-in trigger button as origin. */
     open(): void {
-        const el = this.triggerBtn?.nativeElement;
+        const el = this.triggerBtn()?.nativeElement;
         if (!el) return;
         this.openAt(el);
     }
 
-    // TODO fix width of dropdown
     /** Open the dropdown anchored to an arbitrary element (custom trigger mode). */
     openAt(originElement: HTMLElement): void {
-        this.localSelectedIds.set(new Set(this.selectedLabelIds));
+        this.localSelectedIds.set(new Set(this.selectedLabelIds()));
 
         if (this.overlayRef) {
             this.overlayRef.detach();
@@ -178,7 +189,7 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.close());
 
-        const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
+        const portal = new TemplatePortal(this.dropdownTemplate(), this.vcr);
         this.overlayRef.attach(portal);
         this.isOpen.set(true);
     }
@@ -188,6 +199,7 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
             this.overlayRef.detach();
         }
         this.isOpen.set(false);
+        this.searchTerm.set('');
         this.cancelAdd();
     }
 
@@ -201,6 +213,7 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
     }
 
     clear(): void {
+        this.searchTerm.set('');
         this.localSelectedIds.set(new Set());
     }
 
@@ -227,7 +240,31 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
     }
 
     isExpanded(id: number): boolean {
+        if (this.searchTerm().trim()) return true;
         return this.expandedIds().has(id);
+    }
+
+    /**
+     * Returns the set of label ids that should stay visible for the given search
+     * term: every node whose name matches, plus every ancestor of such a match
+     * so the hierarchy still reads correctly.
+     */
+    private collectSearchMatches(nodes: LabelTreeNode[], term: string): Set<number> {
+        const keep = new Set<number>();
+        const walk = (list: LabelTreeNode[]): boolean => {
+            let branchHasMatch = false;
+            for (const node of list) {
+                const selfMatch = node.name.toLowerCase().includes(term);
+                const childMatch = node.children.length > 0 && walk(node.children);
+                if (selfMatch || childMatch) {
+                    keep.add(node.id);
+                    branchHasMatch = true;
+                }
+            }
+            return branchHasMatch;
+        };
+        walk(nodes);
+        return keep;
     }
 
     startAddRoot(): void {

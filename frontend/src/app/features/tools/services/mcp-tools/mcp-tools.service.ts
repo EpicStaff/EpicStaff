@@ -61,8 +61,8 @@ export class McpToolsService {
         });
     }
 
-    copyMcpTool(toolId: number, tool: CreateMcpToolRequest): Observable<GetMcpToolRequest> {
-        return this.http.post<GetMcpToolRequest>(`${this.apiUrl}${toolId}/copy/`, tool, {
+    copyMcpTool(toolId: number, body: { name?: string } = {}): Observable<GetMcpToolRequest> {
+        return this.http.post<GetMcpToolRequest>(`${this.apiUrl}${toolId}/copy/`, body, {
             headers: this.httpHeaders,
         });
     }
@@ -100,10 +100,8 @@ export class McpToolsService {
 
     getBulkUsageDetailById(toolIds: number[]): Observable<GetBulkToolUsageItem[]> {
         const body = { ids: toolIds };
-        return this.http
-            .post<ApiGetRequest<GetBulkToolUsageItem>>(`${this.apiUrl}usage/`, body, {
-                headers: this.httpHeaders,
-            })
-            .pipe(map((response) => response.results));
+        return this.http.post<GetBulkToolUsageItem[]>(`${this.apiUrl}usage/`, body, {
+            headers: this.httpHeaders,
+        });
     }
 }

@@ -94,8 +94,8 @@
                     <div class="usage-toggle">
                         <span class="usage-toggle__label">Show usage & unused</span>
                         <app-toggle-switch
-                            [checked]="showUsageAndUnused()"
-                            (checkedChange)="showUsageAndUnused.set($event)"
+                            [checked]="viewState.showUsageAndUnused()"
+                            (checkedChange)="viewState.showUsageAndUnused.set($event)"
                         />
                     </div>
 
@@ -150,7 +150,7 @@
                         cdkOverlayOrigin
                         type="button"
                         class="menu-trigger"
-                        [class.active]="filterMenuOpen()"
+                        [class.active]="filterMenuOpen() || viewState.hasActiveFilter()"
                         (click)="toggleFilterMenu()"
                     >
                         <app-svg-icon
@@ -165,6 +165,20 @@
                             [class.open]="filterMenuOpen()"
                         />
                     </button>
+                    @if (viewState.hasActiveFilter()) {
+                        <button
+                            type="button"
+                            class="filter-clear"
+                            matTooltip="Clear all filters"
+                            matTooltipPosition="above"
+                            (click)="clearAllFilters()"
+                        >
+                            <app-svg-icon
+                                icon="x"
+                                size="0.85rem"
+                            />
+                        </button>
+                    }
                     <ng-template
                         cdkConnectedOverlay
                         [cdkConnectedOverlayOrigin]="filterTrigger"

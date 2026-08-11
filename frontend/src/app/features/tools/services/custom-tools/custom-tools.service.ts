@@ -8,6 +8,7 @@ import {
     CreatePythonCodeToolPayload,
     CreatePythonCodeToolRequest,
     GetPythonCodeToolRequest,
+    PatchPythonCodeToolRequest,
     UpdatePythonCodeToolRequest,
 } from '../../models/python-code-tool.model';
 import { GetBulkToolUsageItem, GetToolUsage } from '../../models/tool-config.model';
@@ -50,8 +51,8 @@ export class CustomToolsService {
         });
     }
 
-    copyPythonCodeTool(toolId: number, tool: CreatePythonCodeToolRequest): Observable<GetPythonCodeToolRequest> {
-        return this.http.post<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/copy/`, tool, {
+    copyPythonCodeTool(toolId: number, body: { name?: string } = {}): Observable<GetPythonCodeToolRequest> {
+        return this.http.post<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/copy/`, body, {
             headers: this.httpHeaders,
         });
     }
@@ -67,6 +68,12 @@ export class CustomToolsService {
 
     updatePythonCodeToolV2(toolId: number, tool: CreatePythonCodeToolPayload): Observable<GetPythonCodeToolRequest> {
         return this.http.put<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/`, tool, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    patchPythonCodeTool(toolId: number, updates: PatchPythonCodeToolRequest): Observable<GetPythonCodeToolRequest> {
+        return this.http.patch<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/`, updates, {
             headers: this.httpHeaders,
         });
     }
@@ -98,10 +105,8 @@ export class CustomToolsService {
 
     getBulkUsageDetailById(toolIds: number[]): Observable<GetBulkToolUsageItem[]> {
         const body = { ids: toolIds };
-        return this.http
-            .post<ApiGetRequest<GetBulkToolUsageItem>>(`${this.baseUrl}usage/`, body, {
-                headers: this.httpHeaders,
-            })
-            .pipe(map((response) => response.results));
+        return this.http.post<GetBulkToolUsageItem[]>(`${this.baseUrl}usage/`, body, {
+            headers: this.httpHeaders,
+        });
     }
 }

@@ -23,24 +23,26 @@
                     @if (tool().unused) {
                         <span class="unused">Unused</span>
                     } @else {
-                        @if (tool().projectsUsage) {
-                            <span class="usage-chip">
-                                <app-svg-icon
-                                    icon="project"
-                                    size="0.75rem"
-                                />
-                                <span>{{ tool().projectsUsage }}</span>
-                            </span>
-                        }
-                        @if (tool().agentsUsage) {
-                            <span class="usage-chip">
-                                <app-svg-icon
-                                    icon="agent"
-                                    size="0.75rem"
-                                />
-                                <span>{{ tool().agentsUsage }}</span>
-                            </span>
-                        }
+                        <div class="usage-chip">
+                            @if (tool().projectsUsage) {
+                                <span class="chip-item">
+                                    <app-svg-icon
+                                        icon="project"
+                                        size="1rem"
+                                    />
+                                    <span>{{ tool().projectsUsage }}</span>
+                                </span>
+                            }
+                            @if (tool().agentsUsage) {
+                                <span class="chip-item">
+                                    <app-svg-icon
+                                        icon="agent"
+                                        size="1rem"
+                                    />
+                                    <span>{{ tool().agentsUsage }}</span>
+                                </span>
+                            }
+                        </div>
                     }
                 }
             </div>
@@ -64,6 +66,8 @@
                     cdkOverlayOrigin
                     class="menu-btn"
                     aria-label="Tool actions"
+                    matTooltip="Options"
+                    matTooltipPosition="above"
                     [class.active]="menuOpen()"
                     (click)="toggleMenu($event)"
                 >

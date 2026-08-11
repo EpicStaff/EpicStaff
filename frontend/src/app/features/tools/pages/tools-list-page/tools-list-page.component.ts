@@ -1,9 +1,19 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, computed, inject, OnDestroy, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    OnDestroy,
+    OnInit,
+    signal,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import {
     AppSvgIconComponent,
     ButtonComponent,
@@ -15,16 +25,22 @@ import {
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
-import { tap } from 'rxjs/operators';
+import { filter, tap } from 'rxjs/operators';
 
 import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
 import { CreateCustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
+import {
+    ToolsCustomFilterDialogComponent,
+    ToolsCustomFilterDialogData,
+    ToolsCustomFilterDialogResult,
+} from '../../components/filter/tools-custom-filter-dialog/tools-custom-filter-dialog.component';
 import { McpToolDialogComponent } from '../../components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../models/python-code-tool.model';
 import { ToolsEventsService } from '../../services/tools-events.service';
 import { ToolsLabelsStorageService } from '../../services/tools-labels-storage.service';
 import { ToolsSearchService } from '../../services/tools-search.service';
+import { ToolsViewStateService } from '../../services/tools-view-state.service';
 import {
     ToolsBulkAction,
     ToolsBulkActionsMenuComponent,
@@ -59,7 +75,7 @@ import {
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [{ provide: LABELS_STORE, useExisting: ToolsLabelsStorageService }],
 })
-export class ToolsListPageComponent implements OnDestroy {
+export class ToolsListPageComponent implements OnDestroy, OnInit {
     public tabs = [
         { label: 'Custom', link: 'custom' },
         { label: 'MCP', link: 'mcp' },
@@ -70,66 +86,34 @@ export class ToolsListPageComponent implements OnDestroy {
     public showSidebar = signal<boolean>(true);
     public filterMenuOpen = signal<boolean>(false);
     public bulkMenuOpen = signal<boolean>(false);
-    public showUsageAndUnused = signal<boolean>(false);
 
-    // TODO: populate from card selection UI when it's wired up.
-    public readonly selectedToolIds = signal<number[]>([]);
+    private readonly dialog = inject(Dialog);
+    private readonly router = inject(Router);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly toolsEventsService = inject(ToolsEventsService);
+    private readonly toolsSearchService = inject(ToolsSearchService);
+    private readonly labelsStorage = inject(ToolsLabelsStorageService);
+    public readonly viewState = inject(ToolsViewStateService);
 
     private readonly noSelectionActions: ToolsBulkAction[] = [
-        {
-            label: 'Select All',
-            action: () => {
-                // TODO: wire select-all behavior once selection state is defined.
-            },
-        },
-        {
-            label: 'Delete All Unused',
-            action: () => {
-                // TODO: wire delete-all-unused once usage endpoint is available.
-            },
-        },
+        { label: 'Select All', kind: 'select-all' },
+        { label: 'Delete All Unused', kind: 'delete-unused' },
     ];
 
     // "Add Label" is rendered by the bulk-actions-menu itself (label-dropdown trigger),
     // not as a plain action here.
     private readonly selectionActions: ToolsBulkAction[] = [
-        {
-            label: 'Select All',
-            action: () => {
-                // TODO: wire select-all behavior once selection state is defined.
-            },
-        },
-        {
-            label: 'Make Favorite',
-            action: () => {
-                // TODO: wire bulk favorite once endpoint is available.
-            },
-        },
-        {
-            label: 'Duplicate',
-            action: () => {
-                // TODO: wire bulk duplicate once endpoint is available.
-            },
-        },
-        {
-            label: 'Delete All Selected',
-            action: () => {
-                // TODO: wire bulk delete once endpoint is available.
-            },
-        },
+        { label: 'Select All', kind: 'select-all' },
+        { label: 'Make Favorite', kind: 'favorite' },
+        { label: 'Duplicate', kind: 'duplicate' },
+        { label: 'Delete All Selected', kind: 'delete-selected' },
     ];
 
-    public readonly hasSelection = computed(() => this.selectedToolIds().length > 0);
+    public readonly hasSelection = this.viewState.hasSelection;
 
     public readonly bulkActions = computed<ToolsBulkAction[]>(() =>
         this.hasSelection() ? this.selectionActions : this.noSelectionActions
     );
-
-    private readonly dialog = inject(Dialog);
-    private readonly router = inject(Router);
-    private readonly toolsEventsService = inject(ToolsEventsService);
-    private readonly toolsSearchService = inject(ToolsSearchService);
-    private readonly labelsStorage = inject(ToolsLabelsStorageService);
 
     public readonly activeLabelFilterDisplay = computed(() => {
         const filter = this.labelsStorage.activeLabelFilter();
@@ -143,8 +127,35 @@ export class ToolsListPageComponent implements OnDestroy {
         return this.router.url.includes('/mcp');
     }
 
+    public ngOnInit(): void {
+        // Clear selection whenever the active tab changes (Custom <-> MCP).
+        let prevTab = this.currentTab();
+        this.router.events
+            .pipe(
+                filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => {
+                const nextTab = this.currentTab();
+                if (nextTab !== prevTab) {
+                    this.viewState.clear();
+                    prevTab = nextTab;
+                }
+            });
+    }
+
     public ngOnDestroy(): void {
         this.toolsSearchService.clearSearch();
+        this.viewState.clear();
+        this.viewState.showUsageAndUnused.set(false);
+        this.viewState.resetFilter();
+    }
+
+    private currentTab(): 'custom' | 'mcp' | null {
+        const url = this.router.url;
+        if (url.includes('/mcp')) return 'mcp';
+        if (url.includes('/custom')) return 'custom';
+        return null;
     }
 
     public onSearchTermChange(term: string): void {
@@ -173,10 +184,57 @@ export class ToolsListPageComponent implements OnDestroy {
         this.filterMenuOpen.set(false);
     }
 
-    public onFilterMenuAction(_action: ToolsFilterMenuAction): void {
-        void _action;
-        // TODO: wire filter actions once tool filter state model is defined.
+    public onFilterMenuAction(action: ToolsFilterMenuAction): void {
         this.closeFilterMenu();
+        switch (action) {
+            case 'show_favorite':
+                this.viewState.patchFilter({ showFavoriteOnly: !this.viewState.filter().showFavoriteOnly });
+                return;
+            case 'sort_asc':
+                this.viewState.patchFilter({ sortOrder: 'name_asc' });
+                return;
+            case 'sort_desc':
+                this.viewState.patchFilter({ sortOrder: 'name_desc' });
+                return;
+            case 'used_in_projects':
+                this.viewState.patchFilter({ sortOrder: 'used_in_projects' });
+                return;
+            case 'used_in_agents':
+                this.viewState.patchFilter({ sortOrder: 'used_in_agents' });
+                return;
+            case 'most_used':
+                this.viewState.patchFilter({ sortOrder: 'most_used' });
+                return;
+            case 'unused_first':
+                this.viewState.patchFilter({ sortOrder: 'unused_first' });
+                return;
+            case 'include_exclude':
+                // The active child list owns its tools; it opens the dialog.
+                this.viewState.dispatch({ kind: 'open-include-exclude', initialTab: 'tools' });
+                return;
+            case 'custom_filter':
+                this.openCustomFilterDialog();
+                return;
+        }
+    }
+
+    public clearAllFilters(): void {
+        this.viewState.resetFilter();
+    }
+
+    private openCustomFilterDialog(): void {
+        const data: ToolsCustomFilterDialogData = {
+            initialCondition: this.viewState.filter().customFilter,
+        };
+        const ref = this.dialog.open<ToolsCustomFilterDialogResult | undefined>(ToolsCustomFilterDialogComponent, {
+            data,
+            panelClass: 'tools-filter-dialog-panel',
+            hasBackdrop: true,
+        });
+        ref.closed.subscribe((result) => {
+            if (!result) return;
+            this.viewState.patchFilter({ customFilter: result.condition });
+        });
     }
 
     public toggleBulkMenu(): void {
@@ -187,17 +245,15 @@ export class ToolsListPageComponent implements OnDestroy {
         this.bulkMenuOpen.set(false);
     }
 
-    public onBulkAction(_action: ToolsBulkAction): void {
-        void _action;
-        // TODO: wire bulk actions once behavior is defined.
+    public onBulkAction(action: ToolsBulkAction): void {
         this.closeBulkMenu();
+        this.viewState.dispatch({ kind: action.kind });
     }
 
     public onBulkLabelsChanged(labelIds: number[]): void {
         this.closeBulkMenu();
-        // TODO: PATCH each selected tool with union of existing labels and chosen labelIds
-        // once a tools bulk-update endpoint is available.
-        void labelIds;
+        if (labelIds.length === 0) return;
+        this.viewState.dispatch({ kind: 'add-labels', labelIds });
     }
 
     public onCreateToolClick(): void {

@@ -1,9 +1,11 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { AppSvgIconComponent, LabelDropdownComponent } from '@shared/components';
 
+import { ToolsBulkActionKind } from '../../../../services/tools-view-state.service';
+
 export interface ToolsBulkAction {
     label: string;
-    action: () => void;
+    kind: ToolsBulkActionKind;
     hasSubmenu?: boolean;
 }
 
@@ -25,7 +27,6 @@ export class ToolsBulkActionsMenuComponent {
     public readonly labelsChanged = output<number[]>();
 
     public onSelect(action: ToolsBulkAction): void {
-        action.action();
         this.actionSelected.emit(action);
     }
 

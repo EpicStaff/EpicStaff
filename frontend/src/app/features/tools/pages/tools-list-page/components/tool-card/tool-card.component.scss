@@ -41,6 +41,7 @@
                 color: var(--transparent-white-16);
 
                 .unused {
+                    font-size: 0.75rem;
                     color: var(--text-secondary-60);
                 }
 
@@ -48,12 +49,18 @@
                     display: inline-flex;
                     align-items: center;
                     gap: 8px;
-                    padding: 8px;
+                    padding: 4px;
                     border: 1px solid var(--transparent-white-8);
                     border-radius: 4px;
                     color: var(--accent-color);
                     font-size: 10px;
                     white-space: nowrap;
+
+                    .chip-item {
+                        display: flex;
+                        align-items: center;
+                        gap: 4px;
+                    }
                 }
             }
 
@@ -79,7 +86,6 @@
                         color 0.1s ease;
 
                     &:hover {
-                        background: var(--color-ghost-btn-hover);
                         color: var(--color-text-primary);
                     }
 
@@ -127,11 +133,6 @@
                 gap: 4px;
                 overflow-x: auto;
                 overflow-y: hidden;
-                scrollbar-width: none;
-
-                &::-webkit-scrollbar {
-                    display: none;
-                }
 
                 .label-chip {
                     flex-shrink: 0;
@@ -149,6 +150,7 @@
         align-items: center;
         justify-content: flex-end;
         margin-top: auto;
+        gap: 4px;
         color: var(--text-secondary-60);
 
         .built-in-pill {

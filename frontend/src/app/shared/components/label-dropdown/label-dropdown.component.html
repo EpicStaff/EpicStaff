@@ -57,6 +57,31 @@
             }
         </div>
 
+        <div class="labels-search">
+            <input
+                class="labels-search__input"
+                type="text"
+                placeholder="Search labels..."
+                [ngModel]="searchTerm()"
+                (ngModelChange)="searchTerm.set($event)"
+                (keyup.escape)="searchTerm.set('')"
+            />
+            @if (searchTerm()) {
+                <button
+                    type="button"
+                    class="labels-search__clear"
+                    (click)="searchTerm.set('')"
+                    matTooltip="Clear search"
+                    matTooltipPosition="above"
+                >
+                    <app-svg-icon
+                        icon="x"
+                        size="1rem"
+                    />
+                </button>
+            }
+        </div>
+
         @if (addingRoot()) {
             <div class="add-label-row">
                 <input
