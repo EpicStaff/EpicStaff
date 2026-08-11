@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+from asgiref.sync import async_to_sync
 from django.db import transaction
 
 from tables.exceptions import GraphEntryPointException
@@ -41,6 +42,7 @@ from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
 from tables.services.converter_service import ConverterService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.session_audit_provider import get_session_audit_writer
 from tables.services.trigger_spec import TriggerSpec
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
@@ -180,6 +182,7 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         return SessionData(
             id=session.pk,
+            org_id=session.graph.org_id,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
             initial_state=initial_state,
@@ -269,6 +272,14 @@ class SessionManagerService(metaclass=SingletonMeta):
                 message_data=graph_session_message_data.message_data,
                 uuid=graph_session_message_data.uuid,
                 created_at=created_at_dt,
+            )
+
+            async_to_sync(get_session_audit_writer().add_custom_message)(
+                session_id=session.id,
+                org_id=session.graph.org_id,
+                node_name=graph_session_message_data.name,
+                message_data=graph_session_message_data.message_data,
+                event_id=str(graph_session_message_data.uuid),
             )
 
             self.redis_service.publish_user_graph_message(
