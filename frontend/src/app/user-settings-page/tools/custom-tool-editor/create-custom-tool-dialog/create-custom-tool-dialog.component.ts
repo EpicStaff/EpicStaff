@@ -79,9 +79,9 @@ const DEFAULT_PYTHON_CODE = `def main() -> dict:
     return {"status": "ok"}
 `;
 
-/** Explains why the built-in header button says "Save as copy" instead of just saving. */
+/** Explains why the built-in header button offers "Create Editable Copy" instead of editing in place. */
 const BUILT_IN_SAVE_TOOLTIP =
-    'Built-in tools are read-only. Saving creates your own editable copy and leaves the original untouched.';
+    'Built-in tools are read-only. Create an editable copy to make changes; the original stays untouched.';
 
 const VARIABLES_SCHEMA_TOOLTIP =
     'Variables must be a JSON array. Each item defines one parameter: name, type, description, input_type, required, and default_value. input_type can be agent_input (agent supplies it), user_input (configured/default value, hidden from the agent), or mixed (agent may override configured/default value).';
@@ -128,6 +128,26 @@ export class CreateCustomToolDialogComponent {
         }
         return this.isEditMode() ? 'Edit Custom Tool' : 'Create Custom Tool';
     });
+
+    private readonly baseJsonEditorOptions: MonacoEditor.IStandaloneEditorConstructionOptions = {
+        theme: 'vs-dark',
+        language: 'json',
+        automaticLayout: true,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        wordWrap: 'on',
+        wrappingIndent: 'indent',
+        wordWrapBreakAfterCharacters: ',',
+        wordWrapBreakBeforeCharacters: '}]',
+        formatOnPaste: true,
+        formatOnType: true,
+        tabSize: 2,
+    };
+
+    public readonly jsonEditorOptions = computed<MonacoEditor.IStandaloneEditorConstructionOptions>(() => ({
+        ...this.baseJsonEditorOptions,
+        readOnly: this.isBuiltIn(),
+    }));
 
     public readonly form = this.fb.group({
         name: this.fb.control(this.selectedTool()?.name ?? '', [Validators.required]),
@@ -522,7 +542,7 @@ export class CreateCustomToolDialogComponent {
         this.form.markAsPristine();
         this.initialSnapshot = this.computeSnapshot();
         this.toolsEvents.emitCustomToolCreated(created);
-        this.toast.success(`Saved as your own copy "${created.name}"`);
+        this.toast.success(`Editable copy "${created.name}" created`);
     }
 
     private forkName(desiredName: string, builtInName: string): string {

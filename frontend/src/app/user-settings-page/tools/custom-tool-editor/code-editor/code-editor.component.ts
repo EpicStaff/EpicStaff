@@ -7,8 +7,10 @@ import {
     EventEmitter,
     Input,
     NgZone,
+    OnChanges,
     OnDestroy,
     Output,
+    SimpleChanges,
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -34,11 +36,12 @@ const LINT_DEBOUNCE_MS = 400;
     changeDetection: ChangeDetectionStrategy.OnPush,
     standalone: true,
 })
-export class CodeEditorComponent implements OnDestroy {
+export class CodeEditorComponent implements OnChanges, OnDestroy {
     @ViewChild('editorContainer', { static: true }) editorContainer!: ElementRef;
 
     @Input() public pythonCode: string = '';
     @Input() public showHeader: boolean = true;
+    @Input() public readOnly: boolean = false;
     @Output() public pythonCodeChange = new EventEmitter<string>();
     @Output() public errorChange = new EventEmitter<boolean>();
 
@@ -109,11 +112,18 @@ export class CodeEditorComponent implements OnDestroy {
             this.monacoEditor.updateOptions({
                 wordWrapBreakAfterCharacters: ',:',
                 wordWrapBreakBeforeCharacters: '}])',
+                readOnly: this.readOnly,
             });
         }
 
         this.lintCode$.next(this.pythonCode);
         this.cdr.markForCheck();
+    }
+
+    public ngOnChanges(changes: SimpleChanges): void {
+        if (changes['readOnly'] && !changes['readOnly'].firstChange) {
+            this.monacoEditor?.updateOptions({ readOnly: this.readOnly });
+        }
     }
 
     public copyCode(): void {
