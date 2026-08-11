@@ -113,6 +113,7 @@ class RoleValidationService(BaseRBACValidator):
 
         cleaned: list[dict] = []
         errors: list[FieldError] = []
+        seen_resource_types: set = set()
         for index, entry in enumerate(value):
             field = f"permissions[{index}]"
             if not isinstance(entry, dict):
@@ -130,6 +131,16 @@ class RoleValidationService(BaseRBACValidator):
                     )
                 )
                 continue
+            if resource_type in seen_resource_types:
+                errors.append(
+                    FieldError(
+                        f"{field}.resource_type",
+                        resource_type,
+                        "Duplicate resource_type; list each resource at most once.",
+                    )
+                )
+                continue
+            seen_resource_types.add(resource_type)
             if not isinstance(actions, list):
                 errors.append(
                     FieldError(f"{field}.actions", actions, "Must be a list.")

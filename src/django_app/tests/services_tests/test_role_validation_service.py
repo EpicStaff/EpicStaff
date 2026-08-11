@@ -76,6 +76,37 @@ def test_validate_create_unknown_resource_rejected(validator):
         )
 
 
+def test_validate_create_duplicate_resource_type_rejected(validator):
+    # Two entries for the same resource_type would violate the
+    # (role, resource_type) unique constraint at write time — reject at 400
+    # rather than surfacing an IntegrityError (500).
+    with pytest.raises(FormValidationError) as exc:
+        validator.validate_create(
+            {
+                "org_id": 10,
+                "name": "Dup Resource",
+                "permissions": [
+                    {"resource_type": "secrets", "actions": ["read"]},
+                    {"resource_type": "secrets", "actions": ["update"]},
+                ],
+            }
+        )
+    assert any(e["field"] == "permissions[1].resource_type" for e in exc.value.errors)
+
+
+def test_validate_update_duplicate_resource_type_rejected(validator):
+    with pytest.raises(FormValidationError) as exc:
+        validator.validate_update(
+            {
+                "permissions": [
+                    {"resource_type": "flows", "actions": ["read"]},
+                    {"resource_type": "flows", "actions": ["create"]},
+                ]
+            }
+        )
+    assert any("resource_type" in e["field"] for e in exc.value.errors)
+
+
 def test_validate_update_partial_only_present_keys(validator):
     cleaned = validator.validate_update({"description": "new desc"})
     assert cleaned == {"description": "new desc"}
