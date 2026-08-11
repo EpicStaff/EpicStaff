@@ -6,6 +6,7 @@ from .graph_nodes import GraphData, SubGraphData
 
 class SessionData(BaseModel):
     id: int
+    org_id: int
     graph: "GraphData"
     unique_subgraph_list: list[SubGraphData] = []
     initial_state: dict[str, Any] = {}
