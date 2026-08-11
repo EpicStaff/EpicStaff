@@ -75,6 +75,7 @@ export class AgentSurfacesPanelComponent {
     readonly categories = SURFACE_CATEGORIES;
     readonly searchQuery = signal('');
     readonly expandedSurfaceId = signal<number | null>(null);
+    readonly dragging = signal<boolean>(false);
     readonly draftCategoryId = signal<SurfaceCategoryId | null>(null);
     readonly draftName = signal<string>('');
 
@@ -198,6 +199,11 @@ export class AgentSurfacesPanelComponent {
     onAddFromShared(values: unknown[], category: SurfaceCategoryId): void {
         const id = values[0] as number | undefined;
         if (id != null) this.addFromShared.emit({ surfaceId: id, category });
+    }
+
+    onDragStarted(): void {
+        window.getSelection()?.removeAllRanges();
+        this.dragging.set(true);
     }
 
     isExpanded(surface: Surface): boolean {

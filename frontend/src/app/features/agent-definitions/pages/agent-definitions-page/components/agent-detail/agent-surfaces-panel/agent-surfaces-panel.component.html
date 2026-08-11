@@ -16,6 +16,7 @@
 
     <div
         class="surfaces-panel__categories"
+        [class.surfaces-panel__categories--dragging]="dragging()"
         cdkDropListGroup
     >
         @for (category of categories; track categoryTrackBy($index, category)) {
@@ -171,8 +172,9 @@
                         <li
                             class="surface-item"
                             [cdkDragData]="surface"
-                            [cdkDragDisabled]="isExpanded(surface)"
                             cdkDrag
+                            (cdkDragStarted)="onDragStarted()"
+                            (cdkDragEnded)="dragging.set(false)"
                         >
                             <app-surface-card
                                 [surface]="surface"
