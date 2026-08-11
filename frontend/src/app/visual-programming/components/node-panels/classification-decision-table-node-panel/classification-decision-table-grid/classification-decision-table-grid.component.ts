@@ -73,6 +73,7 @@ import { PromptIdCellEditorComponent } from './prompt-id-cell-editor/prompt-id-c
 import { PromptTooltipRendererComponent } from './prompt-tooltip-renderer/prompt-tooltip-renderer.component';
 import { SelectionCellRendererComponent } from './selection-cell-renderer/selection-cell-renderer.component';
 import { SelectionCountHeaderComponent } from './selection-count-header/selection-count-header.component';
+import { OverlayMenuController } from './shared/overlay-menu.util';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -109,6 +110,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     private overlay = inject(Overlay);
     private vcr = inject(ViewContainerRef);
     private confirmDialog = inject(ConfirmationDialogService);
+    private hiddenBadgeMenuCtrl = new OverlayMenuController(this.overlay, this.vcr);
 
     private gridApi!: GridApi;
     private outsideClickUnlisten: (() => void) | null = null;
@@ -134,6 +136,21 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
 
     // Hidden-column restore badges: position computed from DOM
     public hiddenColumnBadges = signal<Array<{ colId: string; x: number; y: number; label: string }>>([]);
+
+    // Same badges, sorted left-to-right — drives the "Expand <Label>" menu item order
+    public sortedHiddenBadges = computed(() => [...this.hiddenColumnBadges()].sort((a, b) => a.x - b.x));
+
+    // Total number of hidden entries used to decide whether clicking a badge should expand instantly or open the picker menu.
+    public totalHiddenEntries = computed<number>(() => {
+        const groups = this.hiddenColumnGroups();
+        const groupedIds = new Set<string>();
+        groups.forEach((info) => info.colIds.forEach((id) => groupedIds.add(id)));
+        let ungroupedCount = 0;
+        this.hiddenColIds().forEach((id) => {
+            if (!groupedIds.has(id)) ungroupedCount++;
+        });
+        return ungroupedCount + groups.size;
+    });
 
     // Selection state for toolbar buttons
     public selectedRowCount = signal<number>(0);
@@ -394,6 +411,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     @ViewChild('exprMultiSelect') exprMultiSelect!: MultiSelectComponent;
     @ViewChild('manipMultiSelect') manipMultiSelect!: MultiSelectComponent;
     @ViewChild('groupMenuTemplate') groupMenuTemplate!: TemplateRef<unknown>;
+    @ViewChild('hiddenBadgeMenuTemplate') hiddenBadgeMenuTemplate!: TemplateRef<unknown>;
 
     public exprAddPos = signal<{ x: number; y: number } | null>(null);
     public manipAddPos = signal<{ x: number; y: number } | null>(null);
@@ -716,9 +734,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             nextGroups.delete(colId);
             this.hiddenColumnGroups.set(nextGroups);
 
-            this.gridApi?.applyColumnState({
-                state: info.colIds.map((id) => ({ colId: id, hide: false })),
-            });
+            this.applyUnhideState(info.colIds);
             this.saveGridState();
             setTimeout(() => this.updateAddButtonPositions(), 50);
             this.cdr.markForCheck();
@@ -727,12 +743,53 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         const current = new Set(this.hiddenColIds());
         current.delete(colId);
         this.hiddenColIds.set(current);
-        this.gridApi?.applyColumnState({
-            state: [{ colId, hide: false }],
-        });
+        this.applyUnhideState([colId]);
         this.saveGridState();
         setTimeout(() => this.updateAddButtonPositions(), 50);
         this.cdr.markForCheck();
+    }
+
+    public unhideAllColumns(): void {
+        const hiddenIds = this.hiddenColIds();
+        const groups = this.hiddenColumnGroups();
+        if (hiddenIds.size === 0 && groups.size === 0) return;
+
+        const allIds = new Set(hiddenIds);
+        groups.forEach((info) => info.colIds.forEach((id) => allIds.add(id)));
+
+        this.hiddenColIds.set(new Set());
+        this.hiddenColumnGroups.set(new Map());
+
+        this.applyUnhideState(allIds);
+        this.saveGridState();
+        setTimeout(() => this.updateAddButtonPositions(), 50);
+        this.cdr.markForCheck();
+    }
+
+    private applyUnhideState(colIds: Iterable<string>): void {
+        const ids = [...colIds];
+        if (ids.length === 0) return;
+        this.gridApi?.applyColumnState({
+            state: ids.map((colId) => ({ colId, hide: false })),
+        });
+    }
+    public onHiddenBadgeClick(event: MouseEvent, colId: string): void {
+        event.stopPropagation();
+        if (this.totalHiddenEntries() <= 1) {
+            this.unhideColumn(colId);
+            return;
+        }
+        this.hiddenBadgeMenuCtrl.toggle(event.currentTarget as HTMLElement, this.hiddenBadgeMenuTemplate);
+    }
+
+    public handleExpandHiddenEntry(colId: string): void {
+        this.hiddenBadgeMenuCtrl.close();
+        this.unhideColumn(colId);
+    }
+
+    public handleExpandAllHidden(): void {
+        this.hiddenBadgeMenuCtrl.close();
+        this.unhideAllColumns();
     }
 
     /** Freeze all columns from index 0 through the last colId in childColIds. */
@@ -1692,6 +1749,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         this.outsideClickUnlisten?.();
         this.positionResizeObserver?.disconnect();
         this.groupMenuOverlayRef?.dispose();
+        this.hiddenBadgeMenuCtrl.dispose();
         const hostEl = this.elRef.nativeElement;
         hostEl.removeEventListener('mousedown', this.rowDragMouseDown, true);
     }

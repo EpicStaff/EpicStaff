@@ -121,7 +121,7 @@
                 [style.left.px]="badge.x"
                 [style.top.px]="badge.y"
                 [title]="'Restore: ' + badge.label"
-                (click)="unhideColumn(badge.colId)"
+                (click)="onHiddenBadgeClick($event, badge.colId)"
             >
                 <i class="ti ti-arrows-horizontal"></i>
             </button>
@@ -209,6 +209,25 @@
             (click)="handleGroupMenuCollapseAll()"
         >
             Collapse All Row Groups
+        </div>
+    </div>
+</ng-template>
+
+<ng-template #hiddenBadgeMenuTemplate>
+    <div class="chm-dropdown">
+        @for (item of sortedHiddenBadges(); track item.colId) {
+            <div
+                class="chm-menu-item"
+                (click)="handleExpandHiddenEntry(item.colId)"
+            >
+                <span>Expand {{ item.label }}</span>
+            </div>
+        }
+        <div
+            class="chm-menu-item"
+            (click)="handleExpandAllHidden()"
+        >
+            <span>Expand All</span>
         </div>
     </div>
 </ng-template>
