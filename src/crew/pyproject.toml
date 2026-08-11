@@ -16,6 +16,8 @@ packages = [
 python = ">=3.12,<3.13"
 pandas = "2.2.3"
 ollama = "0.4.7"
+httpx = "0.28.1"
+cachetools = "^5.5.0"
 google-generativeai = "0.8.6"
 langchain-anthropic = "0.2.4"
 anthropic = "0.40.0"

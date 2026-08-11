@@ -25,6 +25,12 @@ from src.crew.services.graph.shared_variables import (
     SharedVariableScope,
     cleanup_session,
 )
+from src.crew.services.graph.session_audit_provider import (
+    clear_session_org,
+    get_session_audit_writer,
+    get_session_org,
+    register_session_org,
+)
 
 # Reserved key smuggled through SessionData.initial_state (a pre-existing
 # free-form dict[str, Any] field) to carry an optional per-run token-budget
@@ -61,6 +67,73 @@ def _extract_finish_token_total(message_data: dict) -> int:
         return 0
 
     return token_usage.get("total_tokens", 0) or 0
+
+
+def _emit_session_audit_event(data: dict) -> None:
+    """
+    Dispatches one custom-stream chunk into the audit pipeline, reusing the
+    same uuid already minted for the primary Redis-published message (data
+    is the same dict published via redis_service.publish("graph:messages", data)
+    right after this runs - one id, shared across both pipelines).
+
+    Never blocks the primary pipeline - fire-and-forget via create_task,
+    except add_start_message which is cache-only and synchronous.
+    """
+    session_id = data.get("session_id")
+    org_id = get_session_org(session_id) if session_id is not None else None
+    if org_id is None:
+        return
+
+    message_data = data.get("message_data") or {}
+    message_type = message_data.get("message_type")
+    node_name = data.get("name") or ""
+    execution_order = data.get("execution_order") or 0
+    event_id = data["uuid"]
+    writer = get_session_audit_writer()
+
+    if message_type == "start":
+        writer.add_start_message(
+            session_id, node_name, execution_order, message_data.get("input") or {}
+        )
+    elif message_type == "finish":
+        asyncio.create_task(
+            writer.add_finish_message(
+                session_id=session_id,
+                org_id=org_id,
+                node_name=node_name,
+                execution_order=execution_order,
+                output=message_data.get("output") or {},
+                event_id=event_id,
+                additional_data=message_data.get("additional_data"),
+            )
+        )
+    elif message_type == "error":
+        # Real ErrorMessageData serializes to "details"; the chunk-cleaning
+        # exception fallback (a few lines up in run_session) uses "error"
+        # instead - handle both since they're both real shapes in this file.
+        error_detail = (
+            message_data.get("details") or message_data.get("error") or "unknown error"
+        )
+        asyncio.create_task(
+            writer.add_error_message(
+                session_id=session_id,
+                org_id=org_id,
+                node_name=node_name,
+                execution_order=execution_order,
+                error=error_detail,
+                event_id=event_id,
+            )
+        )
+    else:
+        asyncio.create_task(
+            writer.add_custom_message(
+                session_id=session_id,
+                org_id=org_id,
+                node_name=node_name,
+                message_data=message_data,
+                event_id=event_id,
+            )
+        )
 
 
 @dataclass
@@ -115,6 +188,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
     async def run_session(self, session_data: SessionData, stop_event: StopEvent):
         try:
             session_id = session_data.id
+            register_session_org(session_id, session_data.org_id)
             # Copy so popping the reserved budget key never mutates the
             # pydantic SessionData model itself.
             initial_state = dict(session_data.initial_state)
@@ -227,6 +301,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
                     assert isinstance(data, dict), "custom chunk must be a dict"
                     data["uuid"] = str(uuid.uuid4())
+                    _emit_session_audit_event(data)
 
                     if token_budget is not None:
                         token_usage_total += _extract_finish_token_total(
@@ -288,6 +363,18 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             self.redis_service.publish("graph:messages", graph_end_message_data)
             await asyncio.sleep(0.05)
 
+            org_id = get_session_org(session_id)
+            if org_id is not None:
+                asyncio.create_task(
+                    get_session_audit_writer().add_session_end(
+                        session_id=session_id,
+                        org_id=org_id,
+                        status="completed",
+                        session_message_id=graph_end_message_data["uuid"],
+                        output=end_node_result,
+                    )
+                )
+
             await self.redis_service.aupdate_session_status(
                 session_id=session_id,
                 status="end",
@@ -296,15 +383,38 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             # Cleanup shared variables
             await cleanup_session(session_id, self.redis_service, status="completed")
+            clear_session_org(session_id)
 
         except asyncio.CancelledError:
             # Status updated in _handle_session_timeout
             logger.warning(f"Session {session_id} was cancelled")
+            org_id = get_session_org(session_id)
+            if org_id is not None:
+                asyncio.create_task(
+                    get_session_audit_writer().add_session_end(
+                        session_id=session_id,
+                        org_id=org_id,
+                        status="failed",
+                        details={"reason": "timeout"},
+                    )
+                )
+            clear_session_org(session_id)
         except StopSession as e:
             status_kwargs = {"reason": e.reason} if e.reason else {}
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status=stop_event.status, **status_kwargs
             )
+            org_id = get_session_org(session_id)
+            if org_id is not None:
+                asyncio.create_task(
+                    get_session_audit_writer().add_session_end(
+                        session_id=session_id,
+                        org_id=org_id,
+                        status="failed",
+                        details={"reason": e.reason or "stopped"},
+                    )
+                )
+            clear_session_org(session_id)
 
         except Exception as e:
             logger.exception(f"Failed to start session: {e}")
@@ -312,6 +422,17 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status="error", error=f"Unhandled error. \n{e}"
             )
+            org_id = get_session_org(session_id)
+            if org_id is not None:
+                asyncio.create_task(
+                    get_session_audit_writer().add_session_end(
+                        session_id=session_id,
+                        org_id=org_id,
+                        status="failed",
+                        details={"error": str(e)},
+                    )
+                )
+            clear_session_org(session_id)
 
     async def _listen_callback(self, message: dict[str, Any]):
         try:
