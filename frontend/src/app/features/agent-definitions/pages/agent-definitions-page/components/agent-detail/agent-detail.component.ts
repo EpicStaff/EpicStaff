@@ -287,8 +287,11 @@ export class AgentDetailComponent implements OnInit {
     }
 
     private revertToSnapshot(): void {
-        this.form.reset(this.savedSnapshot);
-        this.bootLength.set((this.savedSnapshot.instructions ?? '').length);
+        const a = this.agent();
+        const target = a ? this.valueFromAgent(a) : this.emptyValue();
+        this.savedSnapshot = target;
+        this.form.reset(target);
+        this.bootLength.set((target.instructions ?? '').length);
     }
 
     openAdditionalSettings(): void {
