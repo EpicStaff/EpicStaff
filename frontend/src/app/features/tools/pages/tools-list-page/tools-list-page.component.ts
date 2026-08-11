@@ -195,7 +195,7 @@ export class ToolsListPageComponent implements OnDestroy {
 
     public onBulkLabelsChanged(labelIds: number[]): void {
         this.closeBulkMenu();
-        // TODO: PATCH each selected tool with union of existing label_ids and chosen labelIds
+        // TODO: PATCH each selected tool with union of existing labels and chosen labelIds
         // once a tools bulk-update endpoint is available.
         void labelIds;
     }

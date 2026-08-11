@@ -25,13 +25,14 @@ export interface GetPythonCodeToolRequest {
     variables?: unknown[];
     use_storage?: boolean;
     favorite: boolean;
-    label_ids: number[];
+    labels: number[];
 }
 
 export interface CreatePythonCodeToolRequest {
     python_code: CreatePythonCodeRequest;
     name: string;
     description: string;
+    labels?: number[];
     args_schema: ArgsSchema;
     use_storage?: boolean;
 }
@@ -41,11 +42,10 @@ export interface UpdatePythonCodeToolRequest {
     python_code: UpdatePythonCodeRequest;
     name: string; // Required, minLength: 1
     description: string;
+    labels?: number[];
     args_schema: ArgsSchema; // Now an object rather than a JSON string
     use_storage?: boolean;
 }
-
-export interface GetPythonCodeToolUsage {}
 
 /**
  * Nested `python_code` body accepted by the V2 Python Code Tool create

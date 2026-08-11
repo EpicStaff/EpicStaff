@@ -63,7 +63,7 @@ export class CustomToolsComponent implements OnInit {
             kind: 'custom' as const,
             name: t.name,
             description: t.description,
-            labelIds: t.label_ids ?? [],
+            labelIds: t.labels ?? [],
             favorite: t.favorite,
             builtIn: t.built_in,
         }))

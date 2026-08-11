@@ -7,3 +7,20 @@ export interface ToolConfig {
     toolName?: string;
     toolDescription?: string;
 }
+
+export interface GetToolUsage {
+    projects: ToolUsageItem[];
+    staff: ToolUsageItem[];
+}
+
+export interface ToolUsageItem {
+    id: number;
+    name: string;
+}
+
+export interface GetBulkToolUsageItem {
+    id: number;
+    projects_count: number;
+    staffs_count: number;
+    is_built_in: boolean;
+}

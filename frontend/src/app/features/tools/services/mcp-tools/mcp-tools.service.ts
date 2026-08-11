@@ -6,6 +6,7 @@ import { map } from 'rxjs/operators';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config/config.service';
 import { CreateMcpToolRequest, GetMcpToolRequest, UpdateMcpToolRequest } from '../../models/mcp-tool.model';
+import { GetBulkToolUsageItem, GetToolUsage } from '../../models/tool-config.model';
 
 @Injectable({
     providedIn: 'root',
@@ -60,6 +61,12 @@ export class McpToolsService {
         });
     }
 
+    copyMcpTool(toolId: number, tool: CreateMcpToolRequest): Observable<GetMcpToolRequest> {
+        return this.http.post<GetMcpToolRequest>(`${this.apiUrl}${toolId}/copy/`, tool, {
+            headers: this.httpHeaders,
+        });
+    }
+
     updateMcpTool(id: number, tool: CreateMcpToolRequest): Observable<GetMcpToolRequest> {
         return this.http.put<GetMcpToolRequest>(`${this.apiUrl}${id}/`, tool, {
             headers: this.httpHeaders,
@@ -76,5 +83,27 @@ export class McpToolsService {
         return this.http.delete<void>(`${this.apiUrl}${id}/`, {
             headers: this.httpHeaders,
         });
+    }
+
+    bulkDeleteMcpTool(ids: number[]): Observable<void> {
+        const body = { ids };
+        return this.http.post<void>(`${this.apiUrl}bulk-delete/`, body, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    getUsageDetailById(toolId: number): Observable<GetToolUsage> {
+        return this.http.get<GetToolUsage>(`${this.apiUrl}${toolId}/usage-detail/`, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    getBulkUsageDetailById(toolIds: number[]): Observable<GetBulkToolUsageItem[]> {
+        const body = { ids: toolIds };
+        return this.http
+            .post<ApiGetRequest<GetBulkToolUsageItem>>(`${this.apiUrl}usage/`, body, {
+                headers: this.httpHeaders,
+            })
+            .pipe(map((response) => response.results));
     }
 }

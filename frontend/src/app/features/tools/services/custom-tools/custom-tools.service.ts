@@ -8,9 +8,9 @@ import {
     CreatePythonCodeToolPayload,
     CreatePythonCodeToolRequest,
     GetPythonCodeToolRequest,
-    GetPythonCodeToolUsage,
     UpdatePythonCodeToolRequest,
 } from '../../models/python-code-tool.model';
+import { GetBulkToolUsageItem, GetToolUsage } from '../../models/tool-config.model';
 
 @Injectable({
     providedIn: 'root',
@@ -50,6 +50,12 @@ export class CustomToolsService {
         });
     }
 
+    copyPythonCodeTool(toolId: number, tool: CreatePythonCodeToolRequest): Observable<GetPythonCodeToolRequest> {
+        return this.http.post<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/copy/`, tool, {
+            headers: this.httpHeaders,
+        });
+    }
+
     updatePythonCodeTool(
         toolId: string,
         updatedTool: UpdatePythonCodeToolRequest
@@ -71,15 +77,31 @@ export class CustomToolsService {
         });
     }
 
+    bulkDeletePythonCode(ids: number[]): Observable<void> {
+        const body = { ids };
+        return this.http.post<void>(`${this.baseUrl}bulk-delete/`, body, {
+            headers: this.httpHeaders,
+        });
+    }
+
     getPythonCodeToolById(id: number): Observable<GetPythonCodeToolRequest> {
         return this.http.get<GetPythonCodeToolRequest>(`${this.baseUrl}${id}/`, {
             headers: this.httpHeaders,
         });
     }
 
-    getUsageDetail(toolId: number): Observable<GetPythonCodeToolUsage> {
-        return this.http.get<GetPythonCodeToolUsage>(`${this.baseUrl}${toolId}/usage-detail/`, {
+    getUsageDetailById(toolId: number): Observable<GetToolUsage> {
+        return this.http.get<GetToolUsage>(`${this.baseUrl}${toolId}/usage-detail/`, {
             headers: this.httpHeaders,
         });
+    }
+
+    getBulkUsageDetailById(toolIds: number[]): Observable<GetBulkToolUsageItem[]> {
+        const body = { ids: toolIds };
+        return this.http
+            .post<ApiGetRequest<GetBulkToolUsageItem>>(`${this.baseUrl}usage/`, body, {
+                headers: this.httpHeaders,
+            })
+            .pipe(map((response) => response.results));
     }
 }
