@@ -12,28 +12,43 @@ import {
     signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
+import {
+    AppIncludeExcludeDialogComponent,
+    AppIncludeExcludeDialogData,
+    AppIncludeExcludeDialogResult,
+    ConfirmationDialogService,
+    IncludeExcludeTab,
+    LoadingSpinnerComponent,
+} from '@shared/components';
+import { LABELS_STORE } from '@shared/services';
 import { tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../services/notifications';
 import { CreateCustomToolDialogComponent } from '../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
-import {
-    IncludeExcludeTab,
-    ToolsIncludeExcludeDialogComponent,
-    ToolsIncludeExcludeDialogData,
-    ToolsIncludeExcludeDialogResult,
-} from '../../../../components/filter/tools-include-exclude-dialog/tools-include-exclude-dialog.component';
 import { GetPythonCodeToolRequest } from '../../../../models/python-code-tool.model';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
-import { evaluateCustomCondition } from '../../../../models/tool-filter.model';
 import { CustomToolsService } from '../../../../services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../services/tools-events.service';
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
 import { ToolsSearchService } from '../../../../services/tools-search.service';
 import { ToolsBulkActionEvent, ToolsViewStateService } from '../../../../services/tools-view-state.service';
-import { partitionSettled, settleAll } from '../../../../utils/settle-all';
+import { runBulkDeleteWithConfirm, runDeleteUnused, runSettledBulk } from '../../../../utils/bulk-tool-op.util';
+import {
+    compareTools,
+    matchesToolFilter,
+    ToolFilterAdapter,
+    toUsageVmFields,
+} from '../../../../utils/tools-cards.util';
 import { ToolCardComponent } from '../tool-card/tool-card.component';
 import { ToolCardMenuAction, ToolCardVM } from '../tool-card/tool-card.model';
+
+const CUSTOM_TOOL_ADAPTER: ToolFilterAdapter<GetPythonCodeToolRequest> = {
+    idOf: (t) => t.id,
+    nameOf: (t) => t.name,
+    labelIdsOf: (t) => t.labels ?? [],
+    favoriteOf: (t) => t.favorite,
+    searchableTextOf: (t) => [t.name, t.description],
+};
 
 @Component({
     selector: 'app-custom-tools',
@@ -80,75 +95,20 @@ export class CustomToolsComponent implements OnInit {
     }
 
     public readonly cards = computed<ToolCardVM[]>(() => {
-        const term = this.searchTerm().trim().toLowerCase();
-        const showUsage = this.viewState.showUsageAndUnused();
+        const ctx = {
+            filter: this.viewState.filter(),
+            sidebarLabelFilter: this.labelsStorage.activeLabelFilter(),
+            labelNameById: new Map(this.labelsStorage.labels().map((l) => [l.id, l.name] as const)),
+            searchTerm: this.searchTerm().trim().toLowerCase(),
+        };
         const usage = this.usageById();
-        const labelFilter = this.labelsStorage.activeLabelFilter();
-        const labels = this.labelsStorage.labels();
-        const filter = this.viewState.filter();
+        const showUsage = this.viewState.showUsageAndUnused();
 
-        const labelNameById = new Map(labels.map((l) => [l.id, l.name] as const));
-
-        const passesAll = (t: GetPythonCodeToolRequest): boolean => {
-            // Sidebar single-label filter.
-            if (labelFilter === 'unlabeled' && (t.labels ?? []).length > 0) return false;
-            if (typeof labelFilter === 'number' && !(t.labels ?? []).includes(labelFilter)) return false;
-            // Favorite-only.
-            if (filter.showFavoriteOnly && !t.favorite) return false;
-            // Include/Exclude sets.
-            if (filter.includedToolIds && !filter.includedToolIds.includes(t.id)) return false;
-            if (filter.includedLabelIds) {
-                const has = (t.labels ?? []).some((id) => filter.includedLabelIds!.includes(id));
-                if (!has) return false;
-            }
-            // Custom filter.
-            if (filter.customFilter) {
-                if (filter.customFilter.scope === 'tool_name') {
-                    if (!evaluateCustomCondition(t.name, filter.customFilter)) return false;
-                } else {
-                    const toolLabelNames = (t.labels ?? []).map((id) => labelNameById.get(id) ?? '');
-                    const anyMatch = toolLabelNames.some((n) => evaluateCustomCondition(n, filter.customFilter));
-                    if (!anyMatch) return false;
-                }
-            }
-            // Free-text search.
-            if (term && !t.name.toLowerCase().includes(term) && !t.description.toLowerCase().includes(term)) {
-                return false;
-            }
-            return true;
-        };
-
-        const filtered = this.allTools().filter(passesAll);
-
-        const usageOf = (id: number) => usage.get(id);
-        const usageSum = (id: number) => {
-            const u = usageOf(id);
-            return u ? u.projects_count + u.staff_count : 0;
-        };
-
-        const sorted = filtered.slice().sort((a, b) => {
-            switch (filter.sortOrder) {
-                case 'name_asc':
-                    return a.name.localeCompare(b.name);
-                case 'name_desc':
-                    return b.name.localeCompare(a.name);
-                case 'used_in_projects':
-                    return (usageOf(b.id)?.projects_count ?? 0) - (usageOf(a.id)?.projects_count ?? 0);
-                case 'used_in_agents':
-                    return (usageOf(b.id)?.staff_count ?? 0) - (usageOf(a.id)?.staff_count ?? 0);
-                case 'most_used':
-                    return usageSum(b.id) - usageSum(a.id);
-                case 'unused_first':
-                    return usageSum(a.id) - usageSum(b.id);
-                default:
-                    // Newest first (matches previous behaviour).
-                    return b.id - a.id;
-            }
-        });
-
-        return sorted.map((t) => {
-            const u = showUsage ? usage.get(t.id) : undefined;
-            return {
+        return this.allTools()
+            .filter((t) => matchesToolFilter(t, ctx, CUSTOM_TOOL_ADAPTER))
+            .slice()
+            .sort((a, b) => compareTools(a, b, ctx.filter.sortOrder, usage, CUSTOM_TOOL_ADAPTER))
+            .map((t) => ({
                 id: t.id,
                 kind: 'custom' as const,
                 name: t.name,
@@ -156,11 +116,8 @@ export class CustomToolsComponent implements OnInit {
                 labelIds: t.labels ?? [],
                 favorite: t.favorite,
                 builtIn: t.built_in,
-                projectsUsage: u?.projects_count || undefined,
-                agentsUsage: u?.staff_count || undefined,
-                unused: u?.projects_count === 0 && u?.staff_count === 0,
-            };
-        });
+                ...toUsageVmFields(usage, t.id, showUsage),
+            }));
     });
 
     private findToolById(id: number): GetPythonCodeToolRequest | undefined {
@@ -255,7 +212,19 @@ export class CustomToolsComponent implements OnInit {
                 this.viewState.selectMany(this.cards().map((c) => c.id));
                 return;
             case 'delete-unused':
-                this.handleDeleteUnused();
+                runDeleteUnused(
+                    this.cards().map((c) => c.id),
+                    {
+                        destroyRef: this.destroyRef,
+                        toast: this.toastService,
+                        confirmation: this.confirmationDialogService,
+                        viewState: this.viewState,
+                        allTools: this.allTools,
+                        getBulkUsage: (ids) => this.customToolsService.getBulkUsageDetailById(ids),
+                        bulkDelete: (ids) => this.customToolsService.bulkDeletePythonCode(ids),
+                        entityLabel: 'custom tool',
+                    }
+                );
                 return;
             case 'favorite':
                 this.handleBulkFavorite();
@@ -264,13 +233,22 @@ export class CustomToolsComponent implements OnInit {
                 this.handleBulkDuplicate();
                 return;
             case 'delete-selected':
-                this.handleBulkDeleteSelected();
+                runBulkDeleteWithConfirm(Array.from(this.viewState.selectedIds()), {
+                    destroyRef: this.destroyRef,
+                    toast: this.toastService,
+                    confirmation: this.confirmationDialogService,
+                    viewState: this.viewState,
+                    allTools: this.allTools,
+                    bulkDelete: (ids) => this.customToolsService.bulkDeletePythonCode(ids),
+                    entityLabel: 'custom tool',
+                    scopeLabel: 'selected',
+                });
                 return;
             case 'add-labels':
                 this.handleBulkAddLabels(event.labelIds ?? []);
                 return;
             case 'open-include-exclude':
-                this.openIncludeExcludeDialog(event.initialTab ?? 'tools');
+                this.openIncludeExcludeDialog(event.initialTab ?? 'primary');
                 return;
         }
     }
@@ -278,120 +256,62 @@ export class CustomToolsComponent implements OnInit {
     private openIncludeExcludeDialog(initialTab: IncludeExcludeTab): void {
         this.labelsStorage.loadLabels().subscribe(() => {
             const current = this.viewState.filter();
-            const data: ToolsIncludeExcludeDialogData = {
+            const data: AppIncludeExcludeDialogData = {
                 initialTab,
-                tools: this.allTools().map((t) => ({ id: t.id, name: t.name })),
-                selectedToolIds: current.includedToolIds,
+                primaryTab: {
+                    label: 'Tools',
+                    icon: 'tools',
+                    searchPlaceholder: 'Search tool...',
+                    emptyText: 'No tools match the search.',
+                },
+                items: this.allTools().map((t) => ({ id: t.id, name: t.name })),
+                selectedItemIds: current.includedToolIds,
                 selectedLabelIds: current.includedLabelIds,
             };
-            const ref = this.dialog.open<ToolsIncludeExcludeDialogResult | undefined>(
-                ToolsIncludeExcludeDialogComponent,
-                {
-                    data,
-                    panelClass: 'tools-filter-dialog-panel',
-                    hasBackdrop: true,
-                }
-            );
+            const ref = this.dialog.open<AppIncludeExcludeDialogResult | undefined>(AppIncludeExcludeDialogComponent, {
+                data,
+                panelClass: 'tools-filter-dialog-panel',
+                hasBackdrop: true,
+                providers: [{ provide: LABELS_STORE, useExisting: ToolsLabelsStorageService }],
+            });
             ref.closed.subscribe((result) => {
                 if (!result) return;
                 this.viewState.patchFilter({
-                    includedToolIds: result.includedToolIds,
+                    includedToolIds: result.includedItemIds,
                     includedLabelIds: result.includedLabelIds,
                 });
             });
         });
     }
 
-    private handleDeleteUnused(): void {
-        const filteredIds = this.cards().map((c) => c.id);
-        if (filteredIds.length === 0) return;
-
-        this.customToolsService
-            .getBulkUsageDetailById(filteredIds)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (items) => {
-                    const unusedIds = items
-                        .filter((i) => i.projects_count === 0 && i.staff_count === 0 && !i.is_built_in)
-                        .map((i) => i.id);
-                    if (unusedIds.length === 0) {
-                        this.toastService.info('No unused custom tools to delete.');
-                        return;
-                    }
-                    this.confirmationDialogService
-                        .confirm({
-                            title: 'Delete unused tools',
-                            message: `Are you sure you want to delete <strong>${unusedIds.length}</strong> unused custom tool(s)? <br> This action cannot be undone.`,
-                            confirmText: 'Delete',
-                            cancelText: 'Cancel',
-                            type: 'danger',
-                        })
-                        .pipe(takeUntilDestroyed(this.destroyRef))
-                        .subscribe((result) => {
-                            if (result !== true) return;
-                            this.bulkDelete(unusedIds, 'unused');
-                        });
-                },
-                error: (err: HttpErrorResponse) => {
-                    this.toastService.error(err.error?.message || 'Failed to load usage data.');
-                },
-            });
-    }
-
     private handleBulkFavorite(): void {
         const ids = Array.from(this.viewState.selectedIds());
-        if (ids.length === 0) return;
-        const requests = ids.map((id) => this.customToolsService.patchPythonCodeTool(id, { favorite: true }));
-        settleAll(requests)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((results) => {
-                const { successes, failures } = partitionSettled(results);
-                if (successes.length > 0) {
-                    this.replaceManyInState(successes);
-                    this.viewState.clear();
-                    this.toastService.success(`Marked ${successes.length} tool(s) as favorite.`);
-                }
-                if (failures.length > 0) {
-                    this.toastService.error(`Failed to update ${failures.length} tool(s).`);
-                }
-            });
+        runSettledBulk(
+            ids.map((id) => this.customToolsService.patchPythonCodeTool(id, { favorite: true })),
+            {
+                destroyRef: this.destroyRef,
+                toast: this.toastService,
+                viewState: this.viewState,
+                applySuccess: (updated) => this.replaceManyInState(updated),
+                successMessage: (n) => `Marked ${n} tool(s) as favorite.`,
+                failureMessage: (n) => `Failed to update ${n} tool(s).`,
+            }
+        );
     }
 
     private handleBulkDuplicate(): void {
         const ids = Array.from(this.viewState.selectedIds());
-        if (ids.length === 0) return;
-        const requests = ids.map((id) => this.customToolsService.copyPythonCodeTool(id));
-        settleAll(requests)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((results) => {
-                const { successes, failures } = partitionSettled(results);
-                if (successes.length > 0) {
-                    this.allTools.update((list) => [...successes, ...list]);
-                    this.viewState.clear();
-                    this.toastService.success(`Duplicated ${successes.length} tool(s).`);
-                }
-                if (failures.length > 0) {
-                    this.toastService.error(`Failed to duplicate ${failures.length} tool(s).`);
-                }
-            });
-    }
-
-    private handleBulkDeleteSelected(): void {
-        const ids = Array.from(this.viewState.selectedIds());
-        if (ids.length === 0) return;
-        this.confirmationDialogService
-            .confirm({
-                title: 'Confirm Deletion',
-                message: `Are you sure you want to delete <strong>${ids.length}</strong> custom tool(s)? <br> This action cannot be undone.`,
-                confirmText: 'Delete',
-                cancelText: 'Cancel',
-                type: 'danger',
-            })
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((result) => {
-                if (result !== true) return;
-                this.bulkDelete(ids, 'selected');
-            });
+        runSettledBulk(
+            ids.map((id) => this.customToolsService.copyPythonCodeTool(id)),
+            {
+                destroyRef: this.destroyRef,
+                toast: this.toastService,
+                viewState: this.viewState,
+                applySuccess: (copies) => this.allTools.update((list) => [...copies, ...list]),
+                successMessage: (n) => `Duplicated ${n} tool(s).`,
+                failureMessage: (n) => `Failed to duplicate ${n} tool(s).`,
+            }
+        );
     }
 
     private handleBulkAddLabels(labelIdsToAdd: number[]): void {
@@ -403,36 +323,14 @@ export class CustomToolsComponent implements OnInit {
             for (const l of labelIdsToAdd) union.add(l);
             return this.customToolsService.patchPythonCodeTool(id, { labels: Array.from(union) });
         });
-        settleAll(requests)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((results) => {
-                const { successes, failures } = partitionSettled(results);
-                if (successes.length > 0) {
-                    this.replaceManyInState(successes);
-                    this.viewState.clear();
-                    this.toastService.success(`Updated labels for ${successes.length} tool(s).`);
-                }
-                if (failures.length > 0) {
-                    this.toastService.error(`Failed to update labels for ${failures.length} tool(s).`);
-                }
-            });
-    }
-
-    private bulkDelete(ids: number[], scopeLabel: 'unused' | 'selected'): void {
-        this.customToolsService
-            .bulkDeletePythonCode(ids)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: () => {
-                    const idSet = new Set(ids);
-                    this.allTools.update((list) => list.filter((t) => !idSet.has(t.id)));
-                    this.viewState.clear();
-                    this.toastService.success(`Deleted ${ids.length} ${scopeLabel} tool(s).`);
-                },
-                error: (err: HttpErrorResponse) => {
-                    this.toastService.error(err.error?.message || `Failed to delete ${scopeLabel} tools.`);
-                },
-            });
+        runSettledBulk(requests, {
+            destroyRef: this.destroyRef,
+            toast: this.toastService,
+            viewState: this.viewState,
+            applySuccess: (updated) => this.replaceManyInState(updated),
+            successMessage: (n) => `Updated labels for ${n} tool(s).`,
+            failureMessage: (n) => `Failed to update labels for ${n} tool(s).`,
+        });
     }
 
     private replaceToolInState(updated: GetPythonCodeToolRequest): void {
@@ -471,10 +369,7 @@ export class CustomToolsComponent implements OnInit {
         dialogRef.closed
             .pipe(
                 tap((result) => {
-                    if (!result) {
-                        return;
-                    }
-
+                    if (!result) return;
                     const currentTools = this.allTools();
                     const index = currentTools.findIndex((t) => t.id === result.id);
                     if (index !== -1) {
@@ -503,7 +398,6 @@ export class CustomToolsComponent implements OnInit {
                             next: () => {
                                 const currentTools = this.allTools();
                                 this.allTools.set(currentTools.filter((t) => t.id !== tool.id));
-
                                 this.toastService.success(`Tool "${tool.name}" has been deleted successfully.`);
                             },
                             error: (err: HttpErrorResponse) => {
@@ -517,7 +411,6 @@ export class CustomToolsComponent implements OnInit {
     }
 
     public addNewTool(tool: GetPythonCodeToolRequest): void {
-        const currentTools = this.allTools();
-        this.allTools.set([tool, ...currentTools]);
+        this.allTools.update((current) => [tool, ...current]);
     }
 }

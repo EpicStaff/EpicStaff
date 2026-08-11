@@ -22,6 +22,11 @@ import {
     TabButtonComponent,
     ToggleSwitchComponent,
 } from '@shared/components';
+import {
+    AppCustomFilterDialogComponent,
+    AppCustomFilterDialogData,
+    AppCustomFilterDialogResult,
+} from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
@@ -29,11 +34,6 @@ import { filter, tap } from 'rxjs/operators';
 
 import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
 import { CreateCustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
-import {
-    ToolsCustomFilterDialogComponent,
-    ToolsCustomFilterDialogData,
-    ToolsCustomFilterDialogResult,
-} from '../../components/filter/tools-custom-filter-dialog/tools-custom-filter-dialog.component';
 import { McpToolDialogComponent } from '../../components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../models/mcp-tool.model';
 import { GetPythonCodeToolRequest } from '../../models/python-code-tool.model';
@@ -210,7 +210,7 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
                 return;
             case 'include_exclude':
                 // The active child list owns its tools; it opens the dialog.
-                this.viewState.dispatch({ kind: 'open-include-exclude', initialTab: 'tools' });
+                this.viewState.dispatch({ kind: 'open-include-exclude', initialTab: 'primary' });
                 return;
             case 'custom_filter':
                 this.openCustomFilterDialog();
@@ -223,17 +223,28 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     }
 
     private openCustomFilterDialog(): void {
-        const data: ToolsCustomFilterDialogData = {
+        const data: AppCustomFilterDialogData = {
+            scopes: [
+                { key: 'tool_name', label: 'Tools', icon: 'tools', heading: 'Show tools matching the name conditions' },
+                {
+                    key: 'label_name',
+                    label: 'Labels',
+                    icon: 'label',
+                    heading: 'Show tools matching the label conditions',
+                },
+            ],
             initialCondition: this.viewState.filter().customFilter,
         };
-        const ref = this.dialog.open<ToolsCustomFilterDialogResult | undefined>(ToolsCustomFilterDialogComponent, {
+        const ref = this.dialog.open<AppCustomFilterDialogResult | undefined>(AppCustomFilterDialogComponent, {
             data,
             panelClass: 'tools-filter-dialog-panel',
             hasBackdrop: true,
         });
         ref.closed.subscribe((result) => {
             if (!result) return;
-            this.viewState.patchFilter({ customFilter: result.condition });
+            this.viewState.patchFilter({
+                customFilter: result.condition as ReturnType<typeof this.viewState.filter>['customFilter'],
+            });
         });
     }
 

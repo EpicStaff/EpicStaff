@@ -1,6 +1,6 @@
 <div class="custom-filter-dialog">
     <header class="dialog-header">
-        <h2 class="title">Custom filter</h2>
+        <h2 class="title">{{ title }}</h2>
         <button
             type="button"
             class="close-btn"
@@ -15,31 +15,23 @@
     </header>
 
     <div class="scope-tabs">
-        <button
-            type="button"
-            class="scope-tab"
-            [class.active]="scope() === 'tool_name'"
-            (click)="setScope('tool_name')"
-        >
-            <app-svg-icon
-                icon="tools"
-                size="0.95rem"
-            />
-            <span>Tools</span>
-        </button>
-        <span class="scope-sep">/</span>
-        <button
-            type="button"
-            class="scope-tab"
-            [class.active]="scope() === 'label_name'"
-            (click)="setScope('label_name')"
-        >
-            <app-svg-icon
-                icon="label"
-                size="0.95rem"
-            />
-            <span>Labels</span>
-        </button>
+        @for (scope of scopes; track scope.key; let last = $last) {
+            <button
+                type="button"
+                class="scope-tab"
+                [class.active]="scopeKey() === scope.key"
+                (click)="setScope(scope.key)"
+            >
+                <app-svg-icon
+                    [icon]="scope.icon"
+                    size="0.95rem"
+                />
+                <span>{{ scope.label }}</span>
+            </button>
+            @if (!last) {
+                <span class="scope-sep">/</span>
+            }
+        }
     </div>
 
     <div class="conditions">

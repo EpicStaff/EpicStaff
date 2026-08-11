@@ -1,4 +1,5 @@
 import { computed, Injectable, signal } from '@angular/core';
+import { IncludeExcludeTab } from '@shared/components';
 import { Subject } from 'rxjs';
 
 import { EMPTY_TOOLS_FILTER, ToolsFilterState, USAGE_DEPENDENT_SORTS } from '../models/tool-filter.model';
@@ -11,8 +12,6 @@ export type ToolsBulkActionKind =
     | 'delete-selected'
     | 'add-labels'
     | 'open-include-exclude';
-
-export type IncludeExcludeTab = 'tools' | 'labels';
 
 export interface ToolsBulkActionEvent {
     kind: ToolsBulkActionKind;

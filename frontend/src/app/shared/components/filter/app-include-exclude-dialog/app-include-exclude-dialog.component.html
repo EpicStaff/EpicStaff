@@ -1,20 +1,20 @@
 <div class="include-exclude-dialog">
     <header class="dialog-header">
-        <h2 class="title">Include</h2>
+        <h2 class="title">{{ title }}</h2>
     </header>
 
     <div class="tab-switch">
         <button
             type="button"
             class="tab-btn"
-            [class.active]="activeTab() === 'tools'"
-            (click)="setActiveTab('tools')"
+            [class.active]="activeTab() === 'primary'"
+            (click)="setActiveTab('primary')"
         >
             <app-svg-icon
-                icon="tools"
+                [icon]="primaryTab.icon"
                 size="0.95rem"
             />
-            <span>Tools</span>
+            <span>{{ primaryTab.label }}</span>
         </button>
         <button
             type="button"
@@ -23,45 +23,45 @@
             (click)="setActiveTab('labels')"
         >
             <app-svg-icon
-                icon="label"
+                [icon]="labelsTab.icon"
                 size="0.95rem"
             />
-            <span>Labels</span>
+            <span>{{ labelsTab.label }}</span>
         </button>
     </div>
 
-    @if (activeTab() === 'tools') {
+    @if (activeTab() === 'primary') {
         <div class="selection-counter">
             <span>Selected</span>
             <span>
-                <span class="count-current">{{ selectedToolCount() }}</span>
-                <span class="count-total"> / {{ totalToolCount() }}</span>
+                <span class="count-current">{{ selectedItemCount() }}</span>
+                <span class="count-total"> / {{ totalItemCount() }}</span>
             </span>
         </div>
 
         <input
             type="text"
             class="search-input"
-            placeholder="Search tool..."
-            [ngModel]="toolSearch()"
-            (ngModelChange)="toolSearch.set($event)"
+            [placeholder]="primaryTab.searchPlaceholder ?? 'Search...'"
+            [ngModel]="primarySearch()"
+            (ngModelChange)="primarySearch.set($event)"
         />
 
         <div class="list">
-            @for (tool of filteredTools(); track tool.id) {
+            @for (item of filteredItems(); track item.id) {
                 <label
                     class="list-row"
-                    [title]="tool.name"
+                    [title]="item.name"
                 >
                     <app-checkbox
-                        [checked]="isToolSelected(tool.id)"
-                        (changed)="toggleTool(tool.id)"
+                        [checked]="isItemSelected(item.id)"
+                        (changed)="toggleItem(item.id)"
                     />
-                    <span class="row-label">{{ tool.name }}</span>
+                    <span class="row-label">{{ item.name }}</span>
                 </label>
             }
-            @if (filteredTools().length === 0) {
-                <div class="empty">No tools match the search.</div>
+            @if (filteredItems().length === 0) {
+                <div class="empty">{{ primaryTab.emptyText ?? 'No items match the search.' }}</div>
             }
         </div>
     } @else {
@@ -76,42 +76,42 @@
         <input
             type="text"
             class="search-input"
-            placeholder="Search label..."
+            [placeholder]="labelsTab.searchPlaceholder ?? 'Search label...'"
             [ngModel]="labelSearch()"
             (ngModelChange)="labelSearch.set($event)"
         />
 
         <div class="list">
-            @for (item of flatLabelTree(); track item.node.id) {
+            @for (entry of flatLabelTree(); track entry.node.id) {
                 <div
                     class="list-row label-row"
-                    [style.paddingLeft]="indentPadding(item.depth)"
-                    [title]="item.node.name"
+                    [style.paddingLeft]="indentPadding(entry.depth)"
+                    [title]="entry.node.name"
                 >
                     <button
                         type="button"
                         class="expand-btn"
-                        [style.visibility]="item.node.children.length > 0 ? 'visible' : 'hidden'"
-                        (click)="toggleExpand(item.node.id)"
+                        [style.visibility]="entry.node.children.length > 0 ? 'visible' : 'hidden'"
+                        (click)="toggleExpand(entry.node.id)"
                     >
                         <app-svg-icon
                             icon="expand"
                             size="0.6rem"
                             class="expand-icon"
-                            [class.expanded]="isExpanded(item.node.id)"
+                            [class.expanded]="isExpanded(entry.node.id)"
                         />
                     </button>
                     <label class="row-checkbox-wrap">
                         <app-checkbox
-                            [checked]="isLabelSelected(item.node.id)"
-                            (changed)="toggleLabel(item.node.id)"
+                            [checked]="isLabelSelected(entry.node.id)"
+                            (changed)="toggleLabel(entry.node.id)"
                         />
-                        <span class="row-label">{{ item.node.name }}</span>
+                        <span class="row-label">{{ entry.node.name }}</span>
                     </label>
                 </div>
             }
             @if (flatLabelTree().length === 0) {
-                <div class="empty">No labels match the search.</div>
+                <div class="empty">{{ labelsTab.emptyText }}</div>
             }
         </div>
     }

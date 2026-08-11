@@ -17,6 +17,7 @@ export * from './dual-slider/dual-slider.component';
 export * from './embedding-model-selector';
 export * from './expand-panel/expand-panel.component';
 export * from './file-uploader/file-uploader.component';
+export * from './filter';
 export * from './filters-list/filters-list.component';
 export * from './form-controls';
 export * from './llm-dialogs';
