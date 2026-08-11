@@ -15,11 +15,19 @@
     display: flex;
     align-items: center;
     gap: 1rem;
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
     border-bottom: 1px solid var(--color-divider-subtle);
+
+    > * {
+        flex-shrink: 0;
+    }
 
     app-tab-button ::ng-deep .tab-btn {
         color: var(--accent-color);
         font-weight: 500;
+        max-width: 160px;
 
         &:hover {
             color: var(--color-text-primary);
@@ -29,6 +37,10 @@
             color: var(--color-text-primary);
             border-bottom-color: var(--color-text-primary);
         }
+    }
+
+    app-tab-button ::ng-deep .tab-btn__label {
+        display: block;
     }
 }
 

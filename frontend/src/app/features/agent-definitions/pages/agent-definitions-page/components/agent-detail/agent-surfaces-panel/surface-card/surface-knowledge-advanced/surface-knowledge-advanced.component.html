@@ -6,7 +6,12 @@
             @for (c of collections(); track c.id; let last = $last) {
                 <app-tab-button
                     mod="sm"
+                    class="advanced__tab"
+                    appTooltipOnOverflow=".tab-btn__label"
                     [active]="c.id === activeCollectionId()"
+                    [matTooltip]="c.name"
+                    matTooltipPosition="above"
+                    matTooltipClass="custom-tooltip"
                     (click)="selectCollection(c.id)"
                 >
                     {{ c.name }}

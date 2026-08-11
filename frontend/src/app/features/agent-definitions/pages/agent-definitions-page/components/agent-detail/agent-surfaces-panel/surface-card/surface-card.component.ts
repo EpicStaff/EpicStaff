@@ -29,7 +29,7 @@ import {
     SelectDropdownTab,
     SelectDropdownTriggerDirective,
 } from '@shared/components';
-import { DragHoverDirective, EnterBlurDirective } from '@shared/directives';
+import { DragHoverDirective, EnterBlurDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { map, switchMap, take } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../../../services/notifications/toast.service';
@@ -92,6 +92,7 @@ import { SurfaceKnowledgeAdvancedComponent } from './surface-knowledge-advanced/
         SelectDropdownTriggerDirective,
         EnterBlurDirective,
         DragHoverDirective,
+        TooltipOnOverflowDirective,
         SurfaceKnowledgeAdvancedComponent,
         CheckboxComponent,
         OverlayModule,

@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     InputNumberComponent,
     RadioButtonComponent,
@@ -22,6 +23,7 @@ import {
     TabButtonComponent,
     TextareaComponent,
 } from '@shared/components';
+import { TooltipOnOverflowDirective } from '@shared/directives';
 import { Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -41,6 +43,8 @@ type RagKind = 'naive' | 'graph' | null;
         InputNumberComponent,
         SliderWithStepperComponent,
         TabButtonComponent,
+        MatTooltipModule,
+        TooltipOnOverflowDirective,
     ],
     templateUrl: './surface-knowledge-advanced.component.html',
     styleUrls: ['./surface-knowledge-advanced.component.scss'],

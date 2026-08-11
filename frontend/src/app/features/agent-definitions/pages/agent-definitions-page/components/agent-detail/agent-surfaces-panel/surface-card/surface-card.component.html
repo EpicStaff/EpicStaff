@@ -659,7 +659,14 @@
                         </div>
                         @for (col of selectedCollections(); track col.id) {
                             <div class="res-row res-row--simple">
-                                <span class="res-row__name">{{ col.name }}</span>
+                                <span
+                                    class="res-row__name"
+                                    appTooltipOnOverflow
+                                    [matTooltip]="col.name"
+                                    matTooltipPosition="above"
+                                    matTooltipClass="custom-tooltip"
+                                    >{{ col.name }}</span
+                                >
                                 @if (!readOnly()) {
                                     <button
                                         type="button"

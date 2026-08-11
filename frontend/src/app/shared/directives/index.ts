@@ -7,3 +7,4 @@ export * from './hide-inline-subtitle-on-overflow.directive';
 export * from './resizable-sidebar.directive';
 export * from './search-shortcut.directive';
 export * from './server-errors.directive';
+export * from './tooltip-on-overflow.directive';
