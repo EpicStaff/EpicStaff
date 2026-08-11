@@ -101,6 +101,13 @@ RESOURCE_TYPE_METADATA = [
         "description": "Provider API keys, credentials, sensitive config",
         "applicable_actions": ["create", "read", "update", "delete"],
     },
+    {
+        "code": ResourceType.AUDIT.value,
+        "label": "Audit",
+        "group": "admin",
+        "description": "Org-wide session execution trace: browse and export",
+        "applicable_actions": ["read", "export"],
+    },
 ]
 
 
