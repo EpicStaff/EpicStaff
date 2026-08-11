@@ -220,6 +220,42 @@ def test_preview_delete_lists_affected_without_mutating(
 
 
 @pytest.mark.django_db
+def test_preview_delete_uses_same_auth_as_delete_no_read_required(
+    service, django_user_model, org
+):
+    # A role holding ROLES.DELETE but NOT ROLES.READ can delete a role; the
+    # preview must accept the same caller instead of demanding READ (else the
+    # safe dry-run 404s while the destructive delete succeeds).
+    deleter_role = Role.objects.create(name="Deleter", org=org, is_built_in=False)
+    RolePermission.objects.create(
+        role=deleter_role, resource_type="roles", permissions=int(Permission.DELETE)
+    )
+    deleter = django_user_model.objects.create_user(
+        email="deleter-write@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=deleter, org=org, role=deleter_role)
+    target = Role.objects.create(name="TargetDel", org=org, is_built_in=False)
+
+    preview = service.preview_delete(actor=deleter, role_id=target.id)
+
+    assert preview["role_id"] == target.id
+    assert preview["assigned_count"] == 0
+    assert Role.objects.filter(pk=target.id).exists()  # preview did not mutate
+
+
+@pytest.mark.django_db
+def test_preview_delete_cross_org_is_404(service, django_user_model, org, role_member):
+    other_org = Organization.objects.create(name="Other-preview-del")
+    stranger = django_user_model.objects.create_user(
+        email="stranger-preview@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=stranger, org=other_org, role=role_member)
+    secret_role = Role.objects.create(name="SecretPreview", org=org, is_built_in=False)
+    with pytest.raises(RoleNotFoundError):
+        service.preview_delete(actor=stranger, role_id=secret_role.id)
+
+
+@pytest.mark.django_db
 def test_get_role_for_read_cross_org_is_404(
     service, django_user_model, org, role_member
 ):

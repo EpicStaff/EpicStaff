@@ -110,13 +110,16 @@ class RoleManagementService:
 
     def preview_delete(self, actor, role_id) -> dict:
         """Dry-run: report the memberships that a delete would reassign to
-        Viewer. No mutation."""
-        role, effective = self._get_role_with_read_access(actor=actor, role_id=role_id)
+        Viewer. No mutation.
+
+        Uses the same authorization as `delete_role` — membership in the
+        role's org (404 otherwise, no existence leak) plus the DELETE verb —
+        so the preview never disagrees with the real delete. Read-only, so
+        the role is fetched without a row lock."""
+        role = self._fetch_role_or_404(role_id=role_id)
         self.assert_mutable(role)
-        if (
-            effective is not None
-        ):  # None = superadmin / built-in (no per-org DELETE gate)
-            self._assert_can(effective=effective, action=Permission.DELETE)
+        effective = self._resolve_for_write(actor=actor, role=role)
+        self._assert_can(effective=effective, action=Permission.DELETE)
         memberships = OrganizationUser.objects.filter(role_id=role.id).select_related(
             "user"
         )
@@ -289,6 +292,18 @@ class RoleManagementService:
             raise RoleNotFoundError() from exc
         try:
             return Role.objects.select_for_update().get(pk=pk)
+        except Role.DoesNotExist as exc:
+            raise RoleNotFoundError() from exc
+
+    def _fetch_role_or_404(self, role_id) -> Role:
+        """Non-locking role fetch for read-only paths (e.g. preview_delete).
+        A bad or missing id surfaces as RoleNotFoundError (404)."""
+        try:
+            pk = int(role_id)
+        except (TypeError, ValueError) as exc:
+            raise RoleNotFoundError() from exc
+        try:
+            return Role.objects.get(pk=pk)
         except Role.DoesNotExist as exc:
             raise RoleNotFoundError() from exc
 
