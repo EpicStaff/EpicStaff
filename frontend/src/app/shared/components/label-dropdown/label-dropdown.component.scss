@@ -45,11 +45,7 @@
 }
 
 .dropdown-panel {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
     width: 100%;
-    z-index: 200;
     background: var(--color-sidenav-background);
     border: 1px solid var(--color-input-border);
     border-radius: 10px;
@@ -110,7 +106,6 @@
     overflow-x: auto;
     padding: 0 1.25rem 0.5rem;
 
-    // Custom scrollbar
     scrollbar-width: thin;
     scrollbar-color: var(--color-text-secondary) transparent;
 

@@ -20,12 +20,12 @@
                         <p>No custom tools found.</p>
                     </div>
                 } @else {
-                    @for (tool of tools(); track tool.id) {
-                        <app-custom-tool-card
-                            [tool]="tool"
-                            (configure)="onConfigure($event)"
-                            (delete)="onDelete($event)"
-                        ></app-custom-tool-card>
+                    @for (card of cards(); track card.id) {
+                        <app-tool-card
+                            [tool]="card"
+                            (configure)="onCardConfigure($event)"
+                            (menuAction)="onCardMenuAction($event)"
+                        ></app-tool-card>
                     }
                 }
             </div>

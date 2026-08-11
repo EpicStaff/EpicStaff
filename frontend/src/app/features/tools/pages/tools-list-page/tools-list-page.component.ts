@@ -1,14 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
-import {
-    ChangeDetectionStrategy,
-    ChangeDetectorRef,
-    Component,
-    computed,
-    inject,
-    OnDestroy,
-    signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnDestroy, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
@@ -41,6 +33,7 @@ import {
     ToolsFilterMenuAction,
     ToolsFilterMenuComponent,
 } from './components/tools-filter-menu/tools-filter-menu.component';
+
 @Component({
     selector: 'app-tools-list-page',
     imports: [
@@ -79,8 +72,60 @@ export class ToolsListPageComponent implements OnDestroy {
     public bulkMenuOpen = signal<boolean>(false);
     public showUsageAndUnused = signal<boolean>(false);
 
-    private readonly cdkDialog = inject(Dialog);
-    private readonly cdr = inject(ChangeDetectorRef);
+    // TODO: populate from card selection UI when it's wired up.
+    public readonly selectedToolIds = signal<number[]>([]);
+
+    private readonly noSelectionActions: ToolsBulkAction[] = [
+        {
+            label: 'Select All',
+            action: () => {
+                // TODO: wire select-all behavior once selection state is defined.
+            },
+        },
+        {
+            label: 'Delete All Unused',
+            action: () => {
+                // TODO: wire delete-all-unused once usage endpoint is available.
+            },
+        },
+    ];
+
+    // "Add Label" is rendered by the bulk-actions-menu itself (label-dropdown trigger),
+    // not as a plain action here.
+    private readonly selectionActions: ToolsBulkAction[] = [
+        {
+            label: 'Select All',
+            action: () => {
+                // TODO: wire select-all behavior once selection state is defined.
+            },
+        },
+        {
+            label: 'Make Favorite',
+            action: () => {
+                // TODO: wire bulk favorite once endpoint is available.
+            },
+        },
+        {
+            label: 'Duplicate',
+            action: () => {
+                // TODO: wire bulk duplicate once endpoint is available.
+            },
+        },
+        {
+            label: 'Delete All Selected',
+            action: () => {
+                // TODO: wire bulk delete once endpoint is available.
+            },
+        },
+    ];
+
+    public readonly hasSelection = computed(() => this.selectedToolIds().length > 0);
+
+    public readonly bulkActions = computed<ToolsBulkAction[]>(() =>
+        this.hasSelection() ? this.selectionActions : this.noSelectionActions
+    );
+
+    private readonly dialog = inject(Dialog);
     private readonly router = inject(Router);
     private readonly toolsEventsService = inject(ToolsEventsService);
     private readonly toolsSearchService = inject(ToolsSearchService);
@@ -96,10 +141,6 @@ export class ToolsListPageComponent implements OnDestroy {
 
     public get isMcpTabActive(): boolean {
         return this.router.url.includes('/mcp');
-    }
-
-    public get createButtonIcon(): string {
-        return 'plus';
     }
 
     public ngOnDestroy(): void {
@@ -152,6 +193,13 @@ export class ToolsListPageComponent implements OnDestroy {
         this.closeBulkMenu();
     }
 
+    public onBulkLabelsChanged(labelIds: number[]): void {
+        this.closeBulkMenu();
+        // TODO: PATCH each selected tool with union of existing label_ids and chosen labelIds
+        // once a tools bulk-update endpoint is available.
+        void labelIds;
+    }
+
     public onCreateToolClick(): void {
         if (this.isMcpTabActive) {
             this.openMcpToolDialog();
@@ -161,7 +209,7 @@ export class ToolsListPageComponent implements OnDestroy {
     }
 
     public openCustomToolDialog(): void {
-        const dialogRef = this.cdkDialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent);
+        const dialogRef = this.dialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent);
 
         dialogRef.closed
             .pipe(
@@ -169,7 +217,6 @@ export class ToolsListPageComponent implements OnDestroy {
                     if (result) {
                         this.toolsEventsService.emitCustomToolCreated(result);
                         this.router.navigate(['/tools/custom']);
-                        this.cdr.markForCheck();
                     }
                 })
             )
@@ -177,7 +224,7 @@ export class ToolsListPageComponent implements OnDestroy {
     }
 
     public openMcpToolDialog(): void {
-        const dialogRef = this.cdkDialog.open<GetMcpToolRequest>(McpToolDialogComponent, {
+        const dialogRef = this.dialog.open<GetMcpToolRequest>(McpToolDialogComponent, {
             data: {},
             maxWidth: '95vw',
             maxHeight: '90vh',
@@ -190,7 +237,6 @@ export class ToolsListPageComponent implements OnDestroy {
                     if (result) {
                         this.toolsEventsService.emitMcpToolCreated(result);
                         this.router.navigate(['/tools/mcp']);
-                        this.cdr.markForCheck();
                     }
                 })
             )

@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, output } from '@angular/core';
-
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { AppSvgIconComponent } from '@shared/components';
 
 // TODO: wire real actions once usage endpoints are available on the backend.
 export type ToolsFilterMenuAction =
@@ -16,7 +15,6 @@ export type ToolsFilterMenuAction =
 
 @Component({
     selector: 'app-tools-filter-menu',
-    standalone: true,
     imports: [AppSvgIconComponent],
     templateUrl: './tools-filter-menu.component.html',
     styleUrls: ['./tools-filter-menu.component.scss'],

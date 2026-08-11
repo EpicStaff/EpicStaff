@@ -8,7 +8,7 @@
 
 .mcp-tools-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(clamp(10vw, 100%, 335px), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(clamp(10vw, 100%, 280px), 1fr));
     gap: 1.5rem;
     width: 100%;
     contain: layout; /* Improve performance and prevent layout shifts */

@@ -3,16 +3,16 @@ import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
 
-import { ToastService } from '../../../../../../services/notifications/toast.service';
-import { ConfirmationDialogService } from '../../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
-import { LoadingSpinnerComponent } from '../../../../../../shared/components/loading-spinner/loading-spinner.component';
+import { ToastService } from '../../../../../../services/notifications';
 import { McpToolDialogComponent } from '../../../../components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../../../models/mcp-tool.model';
 import { McpToolsService } from '../../../../services/mcp-tools/mcp-tools.service';
 import { ToolsEventsService } from '../../../../services/tools-events.service';
 import { ToolsSearchService } from '../../../../services/tools-search.service';
-import { McpToolCardComponent } from './components/mcp-tool-card/mcp-tool-card.component';
+import { ToolCardComponent } from '../tool-card/tool-card.component';
+import { ToolCardMenuAction, ToolCardVM } from '../tool-card/tool-card.model';
 
 @Component({
     selector: 'app-mcp-tools',
@@ -20,7 +20,7 @@ import { McpToolCardComponent } from './components/mcp-tool-card/mcp-tool-card.c
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './mcp-tools.component.html',
     styleUrls: ['./mcp-tools.component.scss'],
-    imports: [LoadingSpinnerComponent, McpToolCardComponent, DialogModule, CommonModule],
+    imports: [LoadingSpinnerComponent, ToolCardComponent, DialogModule, CommonModule],
 })
 export class McpToolsComponent implements OnInit {
     private readonly mcpToolsService = inject(McpToolsService);
@@ -38,6 +38,8 @@ export class McpToolsComponent implements OnInit {
 
     public readonly error = signal<string | null>(null);
     public readonly isLoaded = signal<boolean>(false);
+
+    //TODO refactor into one computed
     public readonly tools = computed(() => {
         const tools = this.allTools()
             .slice()
@@ -56,6 +58,41 @@ export class McpToolsComponent implements OnInit {
                 tool.transport.toLowerCase().includes(searchLower)
         );
     });
+
+    public readonly cards = computed<ToolCardVM[]>(() =>
+        this.tools().map((t) => ({
+            id: t.id,
+            kind: 'mcp' as const,
+            name: t.name,
+            // MCP DTO has no description; surface tool_name + transport as a compact summary.
+            description: `${t.tool_name} · ${t.transport}${t.timeout ? ` · ${t.timeout}s` : ''}`,
+            labelIds: [],
+            favorite: false,
+            builtIn: false,
+        }))
+    );
+
+    private findToolById(id: number): GetMcpToolRequest | undefined {
+        return this.allTools().find((t) => t.id === id);
+    }
+
+    public onCardConfigure(vm: ToolCardVM): void {
+        const tool = this.findToolById(vm.id);
+        if (tool) this.onConfigure(tool);
+    }
+
+    public onCardDelete(vm: ToolCardVM): void {
+        const tool = this.findToolById(vm.id);
+        if (tool) this.onDelete(tool);
+    }
+
+    public onCardMenuAction(payload: { tool: ToolCardVM; action: ToolCardMenuAction }): void {
+        if (payload.action === 'delete') {
+            this.onCardDelete(payload.tool);
+            return;
+        }
+        // TODO: wire duplicate / add_label / show_used_places once endpoints are defined.
+    }
 
     public ngOnInit(): void {
         this.loadTools();

@@ -1,30 +1,51 @@
+import { Overlay, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
+import { TemplatePortal } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    DestroyRef,
     ElementRef,
     HostListener,
     inject,
     Input,
+    input,
     OnChanges,
     OnInit,
     output,
     signal,
+    TemplateRef,
+    ViewChild,
+    ViewContainerRef,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, ButtonComponent, CheckboxComponent, LabelColorPickerComponent } from '@shared/components';
-import { LabelColor } from '@shared/models';
+import { LabelColor, LabelTreeNode } from '@shared/models';
+import { LABELS_STORE } from '@shared/services';
 
-import { LabelsStorageService, LabelTreeNode } from '../../services/labels-storage.service';
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
+import { ButtonComponent } from '../buttons';
+import { CheckboxComponent } from '../checkbox/checkbox.component';
+import { LabelColorPickerComponent } from '../label-color-picker/label-color-picker.component';
 
 interface FlatLabelNode {
     node: LabelTreeNode;
     depth: number;
 }
 
+/**
+ * Feature-agnostic labels picker. Consumers must have LABELS_STORE provided in
+ * their injector (see @shared/services/labels-store.token).
+ *
+ * Trigger modes:
+ *   - Built-in trigger (default): a button styled as an input control.
+ *   - Custom trigger: set [hideTrigger]="true" and call `openAt(triggerEl)` from
+ *     your own click handler. The dropdown is portalled via CDK Overlay so its
+ *     position is independent of the component's location in the DOM.
+ */
 @Component({
     selector: 'app-label-dropdown',
     imports: [
@@ -41,11 +62,21 @@ interface FlatLabelNode {
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LabelDropdownComponent implements OnInit, OnChanges {
+    // TODO use signal decorators
     @Input() selectedLabelIds: number[] = [];
+
+    /** When true the built-in trigger button is not rendered; the parent
+     *  provides its own and calls openAt(element). */
+    readonly hideTrigger = input<boolean>(false);
+
     selectionChange = output<number[]>();
 
-    private readonly labelsStorage = inject(LabelsStorageService);
+    private readonly labelsStorage = inject(LABELS_STORE);
     private readonly elementRef = inject(ElementRef);
+    private readonly overlay = inject(Overlay);
+    private readonly overlayPositionBuilder = inject(OverlayPositionBuilder);
+    private readonly vcr = inject(ViewContainerRef);
+    private readonly destroyRef = inject(DestroyRef);
 
     readonly isOpen = signal<boolean>(false);
     readonly localSelectedIds = signal<Set<number>>(new Set());
@@ -72,6 +103,11 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
         flatten(this.labelTree(), 0);
         return result;
     });
+    // TODO use signal decorators
+    @ViewChild('triggerBtn') triggerBtn?: ElementRef<HTMLElement>;
+    @ViewChild('dropdownTemplate') dropdownTemplate!: TemplateRef<unknown>;
+
+    private overlayRef?: OverlayRef;
 
     get triggerLabel(): string {
         const count = this.selectedLabelIds.length;
@@ -89,24 +125,10 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
         }
     }
 
-    @HostListener('document:click', ['$event'])
-    onDocumentClick(event: MouseEvent): void {
-        if (!this.elementRef.nativeElement.contains(event.target)) {
-            if (this.isOpen()) {
-                this.close();
-            }
-        }
-    }
-
     @HostListener('document:keydown', ['$event'])
     onDocumentKeydown(event: KeyboardEvent): void {
-        if (!this.isOpen()) {
-            return;
-        }
-
-        if (this.addingRoot() || this.addingChildOf() !== null) {
-            return;
-        }
+        if (!this.isOpen()) return;
+        if (this.addingRoot() || this.addingChildOf() !== null) return;
 
         if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
             event.preventDefault();
@@ -115,28 +137,67 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
         }
     }
 
+    /** Open using the built-in trigger button as origin. */
     open(): void {
+        const el = this.triggerBtn?.nativeElement;
+        if (!el) return;
+        this.openAt(el);
+    }
+
+    // TODO fix width of dropdown
+    /** Open the dropdown anchored to an arbitrary element (custom trigger mode). */
+    openAt(originElement: HTMLElement): void {
         this.localSelectedIds.set(new Set(this.selectedLabelIds));
+
+        if (this.overlayRef) {
+            this.overlayRef.detach();
+            this.overlayRef.dispose();
+            this.overlayRef = undefined;
+        }
+
+        const positionStrategy = this.overlayPositionBuilder
+            .flexibleConnectedTo(originElement)
+            .withPositions([
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+            ])
+            .withPush(false)
+            .withViewportMargin(8);
+
+        this.overlayRef = this.overlay.create({
+            positionStrategy,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            hasBackdrop: true,
+            backdropClass: 'cdk-overlay-transparent-backdrop',
+        });
+
+        this.overlayRef
+            .backdropClick()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.close());
+
+        const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
+        this.overlayRef.attach(portal);
         this.isOpen.set(true);
     }
 
     close(): void {
+        if (this.overlayRef) {
+            this.overlayRef.detach();
+        }
         this.isOpen.set(false);
         this.cancelAdd();
     }
 
     toggle(): void {
-        if (this.isOpen()) {
-            this.close();
-        } else {
-            this.open();
-        }
+        this.isOpen() ? this.close() : this.open();
     }
 
     save(): void {
         this.selectionChange.emit(Array.from(this.localSelectedIds()));
-        this.isOpen.set(false);
-        this.cancelAdd();
+        this.close();
     }
 
     clear(): void {
@@ -146,11 +207,8 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
     toggleSelection(id: number): void {
         this.localSelectedIds.update((set) => {
             const next = new Set(set);
-            if (next.has(id)) {
-                next.delete(id);
-            } else {
-                next.add(id);
-            }
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
             return next;
         });
     }
@@ -158,11 +216,8 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
     toggleExpand(id: number): void {
         this.expandedIds.update((set) => {
             const next = new Set(set);
-            if (next.has(id)) {
-                next.delete(id);
-            } else {
-                next.add(id);
-            }
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
             return next;
         });
     }
@@ -228,17 +283,14 @@ export class LabelDropdownComponent implements OnInit, OnChanges {
     }
 
     public saveIfOpen(): void {
-        if (!this.isOpen()) {
-            return;
-        }
-
+        if (!this.isOpen()) return;
         this.save();
     }
 
     private scrollChildAddRowIntoView(): void {
         setTimeout(() => {
-            const input = this.elementRef.nativeElement.querySelector('.add-label-row.child-add input') as HTMLElement;
-            if (input) input.scrollIntoView({ block: 'nearest', inline: 'start' });
+            const el = document.querySelector('.dropdown-panel .add-label-row.child-add input') as HTMLElement | null;
+            if (el) el.scrollIntoView({ block: 'nearest', inline: 'start' });
         }, 0);
     }
 

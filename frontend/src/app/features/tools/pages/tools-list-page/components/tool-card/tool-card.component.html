@@ -1,0 +1,145 @@
+<div
+    class="tool-card"
+    [class.selected]="selected()"
+    (click)="onCardClick()"
+>
+    <div class="card-body">
+        <div
+            class="card-top-row"
+            (click)="$event.stopPropagation()"
+        >
+            <div class="card-top-left">
+                <app-checkbox
+                    color="secondary"
+                    [checked]="selected()"
+                    (changed)="onSelectToggle($event)"
+                />
+                <app-svg-icon
+                    icon="tools"
+                    size="1rem"
+                />
+
+                @if (showUsage()) {
+                    @if (tool().unused) {
+                        <span class="unused">Unused</span>
+                    } @else {
+                        @if (tool().projectsUsage) {
+                            <span class="usage-chip">
+                                <app-svg-icon
+                                    icon="project"
+                                    size="0.75rem"
+                                />
+                                <span>{{ tool().projectsUsage }}</span>
+                            </span>
+                        }
+                        @if (tool().agentsUsage) {
+                            <span class="usage-chip">
+                                <app-svg-icon
+                                    icon="agent"
+                                    size="0.75rem"
+                                />
+                                <span>{{ tool().agentsUsage }}</span>
+                            </span>
+                        }
+                    }
+                }
+            </div>
+
+            <div class="card-top-right">
+                <button
+                    class="star-btn"
+                    aria-label="Favorite"
+                    matTooltip="Add to favorites"
+                    matTooltipPosition="above"
+                    [class.active]="tool().favorite"
+                    (click)="onStarClick($event)"
+                >
+                    <app-svg-icon
+                        [icon]="tool().favorite ? 'star-filled' : 'star'"
+                        size="1.1rem"
+                    />
+                </button>
+                <button
+                    #menuTrigger="cdkOverlayOrigin"
+                    cdkOverlayOrigin
+                    class="menu-btn"
+                    aria-label="Tool actions"
+                    [class.active]="menuOpen()"
+                    (click)="toggleMenu($event)"
+                >
+                    <app-svg-icon
+                        icon="dots-vertical"
+                        size="1rem"
+                    />
+                </button>
+
+                <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="menuTrigger"
+                    [cdkConnectedOverlayOpen]="menuOpen()"
+                    [cdkConnectedOverlayHasBackdrop]="true"
+                    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                    [cdkConnectedOverlayOffsetX]="6"
+                    [cdkConnectedOverlayPositions]="[
+                        {
+                            originX: 'end',
+                            originY: 'top',
+                            overlayX: 'start',
+                            overlayY: 'top',
+                        },
+                        {
+                            originX: 'start',
+                            originY: 'top',
+                            overlayX: 'end',
+                            overlayY: 'top',
+                        },
+                    ]"
+                    (backdropClick)="closeMenu()"
+                    (detach)="closeMenu()"
+                >
+                    <app-tool-card-menu
+                        [toolLabelIds]="tool().labelIds"
+                        (actionSelected)="onMenuAction($event)"
+                        (labelsChanged)="onMenuLabelsChanged($event)"
+                    />
+                </ng-template>
+            </div>
+        </div>
+
+        <div class="card-main">
+            <div class="card-main-info">
+                <div class="card-name">{{ tool().name }}</div>
+                <div class="card-description">{{ tool().description }}</div>
+            </div>
+
+            @if (labels().length > 0) {
+                <div
+                    class="card-labels"
+                    (click)="$event.stopPropagation()"
+                    (wheel)="onLabelsWheel($event)"
+                >
+                    @for (label of labels(); track label.id) {
+                        <span
+                            class="label-chip"
+                            [style.background]="chipBg(label)"
+                            [style.color]="chipColor(label)"
+                            [title]="label.full_path || label.name"
+                        >
+                            {{ label.name }}
+                        </span>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card-footer">
+        <app-svg-icon
+            icon="python"
+            size="1rem"
+        />
+        @if (tool().builtIn) {
+            <span class="built-in-pill">Built in</span>
+        }
+    </div>
+</div>

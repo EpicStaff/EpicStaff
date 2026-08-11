@@ -15,7 +15,7 @@
                     *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
                     type="primary"
                     class="btn-primary create-btn"
-                    [leftIcon]="createButtonIcon"
+                    leftIcon="plus"
                     (click)="onCreateToolClick()"
                 >
                     Create Tool
@@ -108,13 +108,13 @@
                         (click)="toggleBulkMenu()"
                     >
                         <app-svg-icon
-                            icon="union"
-                            size="1rem"
+                            icon="menu"
+                            size="0.875rem"
                         />
                         <span>Bulk Actions</span>
                         <app-svg-icon
                             icon="chevron-down"
-                            size="0.7rem"
+                            size="0.875rem"
                             class="menu-chevron"
                             [class.open]="bulkMenuOpen()"
                         />
@@ -137,7 +137,12 @@
                         (backdropClick)="closeBulkMenu()"
                         (detach)="closeBulkMenu()"
                     >
-                        <app-tools-bulk-actions-menu (actionSelected)="onBulkAction($event)" />
+                        <app-tools-bulk-actions-menu
+                            [actions]="bulkActions()"
+                            [showAddLabel]="hasSelection()"
+                            (actionSelected)="onBulkAction($event)"
+                            (labelsChanged)="onBulkLabelsChanged($event)"
+                        />
                     </ng-template>
 
                     <button
@@ -150,12 +155,12 @@
                     >
                         <app-svg-icon
                             icon="filter-outline"
-                            size="1rem"
+                            size="0.875rem"
                         />
                         <span>Filter</span>
                         <app-svg-icon
                             icon="chevron-down"
-                            size="0.7rem"
+                            size="0.875rem"
                             class="menu-chevron"
                             [class.open]="filterMenuOpen()"
                         />

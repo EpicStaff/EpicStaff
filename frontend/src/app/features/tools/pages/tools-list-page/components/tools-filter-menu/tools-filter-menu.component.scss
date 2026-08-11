@@ -15,19 +15,19 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    text-align: left;
     width: 100%;
-    padding: 0.55rem 0.75rem;
+    padding: 0.5rem 1rem;
     background: transparent;
     border: none;
     border-radius: 6px;
     color: var(--color-text-primary);
-    font-size: 0.875rem;
-    text-align: left;
+    font-size: 0.75rem;
     cursor: pointer;
     transition: background 0.1s ease;
 
     &:hover {
-        background: var(--color-ghost-btn-hover, rgba(255, 255, 255, 0.05));
+        background: var(--color-ghost-btn-hover);
     }
 
     .label {

@@ -402,6 +402,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     public openCreateFlowDialog(): void {
         const dialogRef = this.dialog.open<GraphDto | undefined>(CreateFlowDialogComponent, {
             width: '500px',
+            providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
 
         dialogRef.closed.subscribe((result: GraphDto | undefined) => {

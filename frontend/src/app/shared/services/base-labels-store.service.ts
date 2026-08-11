@@ -5,6 +5,7 @@ import { catchError, shareReplay, tap } from 'rxjs/operators';
 
 import { LabelsApi, LabelsStore } from './labels-store.token';
 
+// TODO check is this can be removed
 // Local StorageService copy to avoid a circular import with app-storage.service.
 interface StorageService {
     clear(): void;
@@ -13,8 +14,7 @@ interface StorageService {
 /**
  * Reusable labels store. Feature-specific storage services extend this class
  * and only need to expose the HTTP api (matching {@link LabelsApi}). All state
- * management (signals, tree, cache, cascade delete) lives here so we don't
- * duplicate ~100 lines per feature.
+ * management (signals, tree, cache, cascade delete) lives here
  */
 @Injectable()
 export abstract class BaseLabelsStore implements LabelsStore, StorageService {

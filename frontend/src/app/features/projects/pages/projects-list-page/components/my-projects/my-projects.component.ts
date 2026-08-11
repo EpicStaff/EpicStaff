@@ -4,10 +4,12 @@ import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@ang
 import { Router } from '@angular/router';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { LABELS_STORE } from '@shared/services';
 
 import { ConfirmationDialogService } from '../../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
 import { LoadingSpinnerComponent } from '../../../../../../shared/components/loading-spinner/loading-spinner.component';
 import { FlowRenameDialogComponent } from '../../../../../flows/components/flow-rename-dialog/flow-rename-dialog.component';
+import { LabelsStorageService } from '../../../../../flows/services/labels-storage.service';
 import { CreateProjectComponent } from '../../../../components/create-project-form-dialog/create-project.component';
 import { ProjectCardComponent } from '../../../../components/project-card/project-card.component';
 import { GetProjectRequest } from '../../../../models/project.model';
@@ -164,6 +166,7 @@ export class MyProjectsComponent implements OnInit {
                 flowName: `${project.name} Copy`,
                 title: 'Copy Project',
             },
+            providers: [{ provide: LABELS_STORE, useExisting: LabelsStorageService }],
         });
     }
 

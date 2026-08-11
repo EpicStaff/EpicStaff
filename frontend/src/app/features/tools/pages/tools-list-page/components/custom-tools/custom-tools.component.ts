@@ -12,14 +12,15 @@ import { GetPythonCodeToolRequest } from '../../../../models/python-code-tool.mo
 import { CustomToolsService } from '../../../../services/custom-tools/custom-tools.service';
 import { ToolsEventsService } from '../../../../services/tools-events.service';
 import { ToolsSearchService } from '../../../../services/tools-search.service';
-import { CustomToolCardComponent } from './components/custom-tool-card/custom-tool-card.component';
+import { ToolCardComponent } from '../tool-card/tool-card.component';
+import { ToolCardMenuAction, ToolCardVM } from '../tool-card/tool-card.model';
 
 @Component({
     selector: 'app-custom-tools',
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './custom-tools.component.html',
     styleUrls: ['./custom-tools.component.scss'],
-    imports: [LoadingSpinnerComponent, CustomToolCardComponent, DialogModule, CommonModule],
+    imports: [LoadingSpinnerComponent, ToolCardComponent, DialogModule, CommonModule],
 })
 export class CustomToolsComponent implements OnInit {
     private readonly customToolsService = inject(CustomToolsService);
@@ -37,6 +38,8 @@ export class CustomToolsComponent implements OnInit {
 
     public readonly error = signal<string | null>(null);
     public readonly isLoaded = signal<boolean>(false);
+
+    //TODO refactor into one computed
     public readonly tools = computed(() => {
         const tools = this.allTools()
             .slice()
@@ -53,6 +56,40 @@ export class CustomToolsComponent implements OnInit {
                 tool.name.toLowerCase().includes(searchLower) || tool.description.toLowerCase().includes(searchLower)
         );
     });
+
+    public readonly cards = computed<ToolCardVM[]>(() =>
+        this.tools().map((t) => ({
+            id: t.id,
+            kind: 'custom' as const,
+            name: t.name,
+            description: t.description,
+            labelIds: t.label_ids ?? [],
+            favorite: t.favorite,
+            builtIn: t.built_in,
+        }))
+    );
+
+    private findToolById(id: number): GetPythonCodeToolRequest | undefined {
+        return this.allTools().find((t) => t.id === id);
+    }
+
+    public onCardConfigure(vm: ToolCardVM): void {
+        const tool = this.findToolById(vm.id);
+        if (tool) this.onConfigure(tool);
+    }
+
+    public onCardDelete(vm: ToolCardVM): void {
+        const tool = this.findToolById(vm.id);
+        if (tool) this.onDelete(tool);
+    }
+
+    public onCardMenuAction(payload: { tool: ToolCardVM; action: ToolCardMenuAction }): void {
+        if (payload.action === 'delete') {
+            this.onCardDelete(payload.tool);
+            return;
+        }
+        // TODO: wire duplicate / add_label / show_used_places once endpoints are defined.
+    }
 
     public ngOnInit(): void {
         this.loadTools();

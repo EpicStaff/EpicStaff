@@ -31,6 +31,7 @@ export * from './json-editor/json-editor-form-field.component';
 export * from './key-value-list/key-value-list.component';
 export * from './knowledge-selector/knowledge-selector.component';
 export * from './label-color-picker/label-color-picker.component';
+export * from './label-dropdown/label-dropdown.component';
 export * from './label-sidebar/label-sidebar.component';
 export * from './list';
 export * from './listbox/listbox.component';
