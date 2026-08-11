@@ -130,6 +130,7 @@
     flex-direction: column;
     gap: 8px;
     overflow-y: auto;
+    overflow-x: auto;
     min-height: 0;
     flex: 1 1 auto;
 }
@@ -161,8 +162,8 @@
     }
 
     &--tree {
-        // Same boxed look as the flat list; nested levels inset via margin-left.
-        width: auto;
+        width: max-content;
+        min-width: 100%;
     }
 
     &--disabled {
