@@ -65,6 +65,8 @@ class SurfaceService:
     @staticmethod
     @transaction.atomic
     def update_surface(*, instance, validated_data, partial):
+        instance = Surface.objects.select_for_update().get(pk=instance.pk)
+
         python_tools_data = validated_data.pop("python_tools", None)
         mcp_tools_data = validated_data.pop("mcp_tools", None)
         storage_items_data = validated_data.pop("storage_items", None)
