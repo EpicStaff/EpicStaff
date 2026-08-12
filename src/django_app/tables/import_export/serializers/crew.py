@@ -35,7 +35,7 @@ class CrewImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Crew
-        exclude = ["tags", "created_by"]
+        exclude = ["tags", "created_by", "org"]
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)

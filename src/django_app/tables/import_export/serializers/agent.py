@@ -24,6 +24,7 @@ class AgentImportSerializer(serializers.ModelSerializer):
             "tags",
             "knowledge_collection",
             "created_by",
+            "org",
         ]
 
     def to_representation(self, instance):
