@@ -9,9 +9,9 @@
     gap: 0.4rem;
     background: transparent;
     border: none;
-    color: var(--gray-300);
-    font-size: 0.875rem;
-    font-weight: 500;
+    color: var(--color-text-primary);
+    font-size: 1em;
+    font-weight: 600;
     cursor: pointer;
     padding: 0;
     white-space: nowrap;
@@ -38,7 +38,9 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-weight: 500;
+}
+.status-filter-dropdown-custom.open .dropdown-toggle {
+    color: var(--accent-color, #5e9eff);
 }
 .icon-multi {
     display: flex;
