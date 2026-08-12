@@ -4,12 +4,12 @@ from typing import Literal
 
 import pandas
 import pytest
-from enums import DocumentStatusEnum, IndexStatusEnum, RAGStrategy
-from errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
+from application.orchestrators.indexing.strategies import graph_indexer
+from application.orchestrators.indexing.strategies.graph_indexer import GraphIndexer
+from domain.enums import DocumentStatusEnum, IndexStatusEnum, RAGStrategy
+from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
+from domain.models import IndexRequest, Rag
 from graphrag_input import TextDocument
-from models import IndexRequest, Rag
-from orchestrators.indexing.strategies import graph_indexer
-from orchestrators.indexing.strategies.graph_indexer import GraphIndexer
 
 
 def _result(workflow: str, error: BaseException | None = None) -> types.SimpleNamespace:

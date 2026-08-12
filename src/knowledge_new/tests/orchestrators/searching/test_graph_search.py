@@ -12,11 +12,14 @@ Seams used:
 
 import pandas
 import pytest
-from enums import GraphSearchMethodEnum
-from errors import UnsupportedError
+from application.orchestrators.searching.strategies.graph_search import (
+    GraphSearch,
+    SearchSpecification,
+)
+from domain.enums import GraphSearchMethodEnum
+from domain.errors import UnsupportedError
+from domain.models import SearchRequest, SearchResponse
 from graphrag.config.models.graph_rag_config import GraphRagConfig
-from models import SearchRequest, SearchResponse
-from orchestrators.searching.strategies.graph_search import GraphSearch, SearchSpecification
 from src.shared.models.knowledge_new import (
     GraphBasicSearchConfig,
     GraphDriftSearchConfig,
@@ -431,7 +434,7 @@ async def test_result_propagation_string(uow, monkeypatch):
 
 async def test_result_propagation_structured(uow, monkeypatch):
     """A list result from the searcher (e.g. list of chunks) is surfaced in SearchResponse.result."""
-    from models import FoundChunk
+    from domain.models import FoundChunk
 
     chunks = [
         FoundChunk(order=0, similarity=0.9, text="chunk A", source="doc-1"),

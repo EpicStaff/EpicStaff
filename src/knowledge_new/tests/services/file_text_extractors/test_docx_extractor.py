@@ -3,8 +3,8 @@ from io import BytesIO
 
 import pytest
 from docx import Document
-from errors import FileTextExtractingError
-from services.file_text_extractors.strategies.docx_extractor import DOCXTextExtractor
+from domain.errors import FileTextExtractingError
+from infrastructure.file_text_extractors.strategies.docx_extractor import DOCXTextExtractor
 from tests.conftest import offload_to_process
 
 

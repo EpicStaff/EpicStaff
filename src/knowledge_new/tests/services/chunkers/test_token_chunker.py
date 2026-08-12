@@ -1,9 +1,9 @@
 import os
 
 import pytest
-from enums import ChunkStrategyEnum
-from errors import ChunkingError
-from services.chunkers.strategies.token_chunker import TokenChunker
+from domain.enums import ChunkStrategyEnum
+from domain.errors import ChunkingError
+from infrastructure.naive.chunkers.strategies.token_chunker import TokenChunker
 from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
 

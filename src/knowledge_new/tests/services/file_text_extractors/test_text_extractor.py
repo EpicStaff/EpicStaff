@@ -1,8 +1,8 @@
 import os
 
 import pytest
-from errors import FileTextExtractingError
-from services.file_text_extractors.strategies.text_extractor import FileTextExtractor
+from domain.errors import FileTextExtractingError
+from infrastructure.file_text_extractors.strategies.text_extractor import FileTextExtractor
 from tests.conftest import offload_to_process
 
 

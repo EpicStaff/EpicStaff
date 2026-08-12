@@ -1,10 +1,10 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from enums import EmbedderProviderEnum
-from errors import EmbeddingError
-from services.embedders.strategies import litellm_embedder
-from services.embedders.strategies.litellm_embedder import (
+from domain.enums import EmbedderProviderEnum
+from domain.errors import EmbeddingError
+from infrastructure.naive.embedders.strategies import litellm_embedder
+from infrastructure.naive.embedders.strategies.litellm_embedder import (
     CohereLiteLLMEmbedder,
     LiteLLMEmbedder,
 )
