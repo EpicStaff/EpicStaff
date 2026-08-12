@@ -172,6 +172,7 @@ class BaseNodePayloadService:
             unique_name=f"collection:{collection_id}",
             collection_id=collection_id,
             name=collection.collection_name,
+            description=collection.description or None,
             search_configs=search_configs,
         )
 

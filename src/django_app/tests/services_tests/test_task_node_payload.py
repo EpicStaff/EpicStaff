@@ -32,7 +32,14 @@ from agents.models.surface_models import (
     SurfaceStorageItem,
     ToolMode,
 )
-from tables.models.graph_models import Edge, Graph, StartNode, StorageFile, TaskNode
+from tables.models.graph_models import (
+    AgentNode,
+    Edge,
+    Graph,
+    StartNode,
+    StorageFile,
+    TaskNode,
+)
 from tables.models.knowledge_models.collection_models import (
     BaseRagType,
     SourceCollection,
@@ -43,6 +50,8 @@ from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.rbac_models import Organization
 from agents.services.node_surface_service import NodeSurfaceService
+from tables.services.agent_node_payload_service import AgentNodePayloadService
+from tables.services.converter_service import ConverterService
 from tables.services.session_manager_service import SessionManagerService
 from src.shared.models import (
     AgentRequest,
@@ -62,8 +71,8 @@ def org(db):
 
 
 @pytest.fixture
-def graph(db):
-    return Graph.objects.create(name="task-node-payload-graph")
+def graph(db, org):
+    return Graph.objects.create(name="task-node-payload-graph", org=org)
 
 
 @pytest.fixture
@@ -109,8 +118,9 @@ def storage_file(db, org):
 
 
 @pytest.fixture
-def mcp_tool(db):
+def mcp_tool(db, org):
     return McpTool.objects.create(
+        org=org,
         name="task-node-payload-mcp-tool",
         transport="https://example.com/mcp",
         tool_name="search",
@@ -327,10 +337,10 @@ class TestSessionDataRoundTrip:
 class TestSurfaceValidationErrorPropagation:
     @pytest.mark.django_db
     def test_conflicting_rag_configs_across_surfaces_raise(
-        self, graph, task_node, surface_a, surface_b
+        self, graph, task_node, surface_a, surface_b, org
     ):
         collection = SourceCollection.objects.create(
-            collection_name="task-node-payload-conflict-collection"
+            org=org, collection_name="task-node-payload-conflict-collection"
         )
         BaseRagType.objects.create(
             rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
@@ -358,10 +368,10 @@ class TestSurfaceValidationErrorPropagation:
 class TestDecimalCoercion:
     @pytest.mark.django_db
     def test_similarity_threshold_decimal_coerces_to_float(
-        self, graph, task_node, surface_a
+        self, graph, task_node, surface_a, org
     ):
         collection = SourceCollection.objects.create(
-            collection_name="task-node-payload-decimal-collection"
+            org=org, collection_name="task-node-payload-decimal-collection"
         )
         BaseRagType.objects.create(
             rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
@@ -520,10 +530,10 @@ class TestS3Pool:
 class TestCollectionPool:
     @pytest.mark.django_db
     def test_naive_collection_hydrated_with_rag_id_and_embedder(
-        self, graph, task_node, surface_a, embedding_config
+        self, graph, task_node, surface_a, embedding_config, org
     ):
         collection = SourceCollection.objects.create(
-            collection_name="task-node-payload-naive-collection"
+            org=org, collection_name="task-node-payload-naive-collection"
         )
         base_rag_type = BaseRagType.objects.create(
             rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
@@ -558,10 +568,10 @@ class TestCollectionPool:
 
     @pytest.mark.django_db
     def test_graph_basic_and_local_share_rag_id_with_search_method(
-        self, graph, task_node, surface_a, embedding_config
+        self, graph, task_node, surface_a, embedding_config, org
     ):
         collection = SourceCollection.objects.create(
-            collection_name="task-node-payload-graph-collection"
+            org=org, collection_name="task-node-payload-graph-collection"
         )
         base_rag_type = BaseRagType.objects.create(
             rag_type=BaseRagType.RagType.GRAPH, source_collection=collection
@@ -596,10 +606,10 @@ class TestCollectionPool:
 
     @pytest.mark.django_db
     def test_naive_rag_without_embedder_skipped_no_crash(
-        self, graph, task_node, surface_a
+        self, graph, task_node, surface_a, org
     ):
         collection = SourceCollection.objects.create(
-            collection_name="task-node-payload-no-embedder-collection"
+            org=org, collection_name="task-node-payload-no-embedder-collection"
         )
         base_rag_type = BaseRagType.objects.create(
             rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
@@ -620,11 +630,72 @@ class TestCollectionPool:
         assert task_data.collections == []
 
     @pytest.mark.django_db
-    def test_completed_rag_preferred_over_newer_non_completed(
-        self, graph, task_node, surface_a, embedding_config
+    def test_collection_description_populated_on_spec(
+        self, graph, task_node, surface_a, embedding_config, org
     ):
         collection = SourceCollection.objects.create(
-            collection_name="task-node-payload-completed-preference-collection"
+            org=org,
+            collection_name="task-node-payload-described-collection",
+            description="Product FAQ knowledge base.",
+        )
+        base_rag_type = BaseRagType.objects.create(
+            rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
+        )
+        NaiveRag.objects.create(
+            base_rag_type=base_rag_type,
+            embedder=embedding_config,
+            rag_status=NaiveRag.NaiveRagStatus.COMPLETED,
+        )
+        knowledge = SurfaceKnowledge.objects.create(
+            surface=surface_a, collection=collection
+        )
+        SurfaceNaiveSearchConfig.objects.create(
+            surface_knowledge=knowledge, search_limit=5, similarity_threshold="0.35"
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert task_data.collections[0].description == "Product FAQ knowledge base."
+
+    @pytest.mark.django_db
+    def test_blank_collection_description_yields_none_on_spec(
+        self, graph, task_node, surface_a, embedding_config, org
+    ):
+        collection = SourceCollection.objects.create(
+            org=org, collection_name="task-node-payload-blank-description-collection"
+        )
+        base_rag_type = BaseRagType.objects.create(
+            rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
+        )
+        NaiveRag.objects.create(
+            base_rag_type=base_rag_type,
+            embedder=embedding_config,
+            rag_status=NaiveRag.NaiveRagStatus.COMPLETED,
+        )
+        knowledge = SurfaceKnowledge.objects.create(
+            surface=surface_a, collection=collection
+        )
+        SurfaceNaiveSearchConfig.objects.create(
+            surface_knowledge=knowledge, search_limit=5, similarity_threshold="0.35"
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert task_data.collections[0].description is None
+
+    @pytest.mark.django_db
+    def test_completed_rag_preferred_over_newer_non_completed(
+        self, graph, task_node, surface_a, embedding_config, org
+    ):
+        collection = SourceCollection.objects.create(
+            org=org,
+            collection_name="task-node-payload-completed-preference-collection",
         )
         base_rag_type = BaseRagType.objects.create(
             rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
@@ -653,6 +724,50 @@ class TestCollectionPool:
         task_data = graph_data.task_node_list[0]
         entry = task_data.collections[0].search_configs[0]
         assert entry.rag_id == completed_rag.naive_rag_id
+
+
+class TestAgentNodeCollectionDescription:
+    """CollectionSpec.description flows through the agent-node payload path too,
+    since AgentNodePayloadService shares _build_collection_pool with TaskNode."""
+
+    @pytest.mark.django_db
+    def test_collection_description_populated_for_agent_node(
+        self, graph, surface_a, embedding_config, org
+    ):
+        agent_node = AgentNode.objects.create(
+            graph=graph, node_name="agent-node-payload-described"
+        )
+        collection = SourceCollection.objects.create(
+            org=org,
+            collection_name="agent-node-payload-described-collection",
+            description="Support runbooks.",
+        )
+        base_rag_type = BaseRagType.objects.create(
+            rag_type=BaseRagType.RagType.NAIVE, source_collection=collection
+        )
+        NaiveRag.objects.create(
+            base_rag_type=base_rag_type,
+            embedder=embedding_config,
+            rag_status=NaiveRag.NaiveRagStatus.COMPLETED,
+        )
+        knowledge = SurfaceKnowledge.objects.create(
+            surface=surface_a, collection=collection
+        )
+        SurfaceNaiveSearchConfig.objects.create(
+            surface_knowledge=knowledge, search_limit=5, similarity_threshold="0.35"
+        )
+        agent_node.surface_list.set([surface_a])
+
+        agent_node_data = AgentNodePayloadService(
+            ConverterService()
+        ).build_agent_node_data(
+            agent_node=agent_node,
+            node_name=agent_node.node_name,
+            graph_id=graph.pk,
+            session_id=None,
+        )
+
+        assert agent_node_data.collections[0].description == "Support runbooks."
 
 
 class TestPoolsContractCrossCheck:
