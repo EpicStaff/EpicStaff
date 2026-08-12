@@ -3,6 +3,7 @@ import unittest.mock
 
 import fakeredis
 import pytest
+import pytest_asyncio
 import fakeredis.aioredis
 
 from channels.routing import URLRouter
@@ -39,6 +40,9 @@ application = URLRouter(
 )
 
 
+_active_communicators: list[WebsocketCommunicator] = []
+
+
 def _make_communicator(graph_id: int, user=None):
     """Build a communicator with scope["user"] pre-set (bypasses ticket middleware)."""
     scope_user = user or AnonymousUser()
@@ -47,6 +51,7 @@ def _make_communicator(graph_id: int, user=None):
         f"ws/graphs/{graph_id}/edit/",
     )
     communicator.scope["user"] = scope_user
+    _active_communicators.append(communicator)
     return communicator
 
 
@@ -240,6 +245,26 @@ def reset_lock_store():
     _ls_module.lock_service._store.clear()
     yield
     _ls_module.lock_service._store.clear()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def disconnect_leaked_communicators(channel_layer_settings, patch_graph_state_redis):
+    """Safety net for tests whose explicit disconnect is skipped by an earlier failure.
+
+    Drains any communicator registered via `_make_communicator` whose explicit
+    `disconnect()` was skipped, by calling `disconnect()` on it here instead.
+    """
+    _active_communicators.clear()
+    yield
+    while _active_communicators:
+        communicator = _active_communicators.pop()
+        try:
+            await asyncio.wait_for(communicator.disconnect(), timeout=1.0)
+        except Exception:
+            # Cleanup net only: an already-closed communicator reaching teardown
+            # is the normal case, and this must never itself fail or hang an
+            # otherwise-passing test.
+            pass
 
 
 @pytest.fixture
