@@ -11,6 +11,7 @@ from tables.models.knowledge_models import (
     KnowledgeNodeNaiveRagSearchConfig,
 )
 from tables.services.graph_bulk_save_service.data_types import NodeRef
+from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 
 
 """
@@ -478,6 +479,7 @@ class KnowledgeNodeSaveable:
 
     def save(self):
         s = self._serializer
+        KnowledgeNodeValidator().validate_serializer(s)
         validated = dict(s.validated_data)
         _clean_for_write(validated)
         node = (

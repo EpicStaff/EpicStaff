@@ -20,6 +20,7 @@ from src.shared.models import (
     GraphRagSearchConfig,
     BaseKnowledgeSearchMessage,
     BaseKnowledgeSearchMessageResponse,
+    KnowledgeStatus,
 )
 
 
@@ -172,7 +173,7 @@ class KnowledgeSearchService:
                 )
 
                 results = knowledge_callback_receiver.results
-                if results.status == "failed":
+                if results.status == KnowledgeStatus.FAILED:
                     raise RuntimeError(
                         f"Knowledge search failed for {rag_type_id}: {results.message}"
                     )

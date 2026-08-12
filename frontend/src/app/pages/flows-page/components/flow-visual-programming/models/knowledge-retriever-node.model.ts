@@ -13,7 +13,7 @@ export interface GetKnowledgeRetrieverNodeRequest {
     output_variable_path: string | null;
     query: string;
     search_method: 'basic' | 'local' | null;
-    rag_type: number | null;
-    last_rag_type: 'naive' | 'graph' | null;
+    rag_type: 'naive' | 'graph' | null;
+    rag_id: number | null;
     content_hash: string | null;
 }

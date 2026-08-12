@@ -309,20 +309,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         except Exception as e:
             logger.exception(f"Failed to start session: {e}")
 
-            graph_end_data = GraphMessage(
-                session_id=session_id,
-                name="",
-                execution_order=0,
-                message_data={
-                    "message_type": "graph_end",
-                    "end_node_result": None,
-                },
-            )
-            graph_end_message_data = asdict(graph_end_data)
-            graph_end_message_data["uuid"] = str(uuid.uuid4())
-            self.redis_service.publish("graph:messages", graph_end_message_data)
-            await asyncio.sleep(0.05)
-
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status="error", error=f"Unhandled error. \n{e}"
             )

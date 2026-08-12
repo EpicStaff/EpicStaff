@@ -263,7 +263,7 @@ function toKnowledgeRetrieverComparable(node: KnowledgeRetrieverNodeModel): unkn
         output_variable_path: node.output_variable_path || null,
         source_collection: data?.source_collection ?? null,
         rag_type: data?.rag_type ?? null,
-        last_rag_type: data?.last_rag_type ?? null,
+        rag_id: data?.rag_id ?? null,
         query: data?.query ?? '',
         search_method: data?.search_method ?? null,
         search_configs: data?.search_configs ?? null,

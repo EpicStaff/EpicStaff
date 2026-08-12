@@ -159,9 +159,9 @@ def copy_knowledge_node(graph: Graph, node: KnowledgeNode) -> KnowledgeNode:
         graph=graph,
         source_collection=node.source_collection,
         rag_type=node.rag_type,
+        rag_id=node.rag_id,
         query=node.query,
         search_method=node.search_method,
-        last_rag_type=node.last_rag_type,
         **get_base_node_fields(node),
     )
     for relation in _KNOWLEDGE_SEARCH_CONFIG_RELATIONS:

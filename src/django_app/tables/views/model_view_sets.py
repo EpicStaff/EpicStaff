@@ -268,6 +268,7 @@ from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.classification_decision_table_node_service import (
     ClassificationDecisionTableNodeService,
 )
+from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.import_export.services.import_service import ImportSettings
 from tables.services.redis_service import RedisService
 from tables.swagger_schemas.twilio_schemas import (
@@ -875,7 +876,6 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
                     "knowledge_node_list",
                     queryset=KnowledgeNode.objects.select_related(
                         "source_collection",
-                        "rag_type",
                         "naive_search_config",
                         "graph_basic_search_config",
                         "graph_local_search_config",
@@ -1312,6 +1312,14 @@ class KnowledgeNodeViewSet(
         if self.action in ("list", "retrieve"):
             return KnowledgeNodeReadSerializer
         return KnowledgeNodeWriteSerializer
+
+    def perform_create(self, serializer):
+        KnowledgeNodeValidator().validate_serializer(serializer)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        KnowledgeNodeValidator().validate_serializer(serializer)
+        super().perform_update(serializer)
 
 
 class AudioTranscriptionNodeViewSet(

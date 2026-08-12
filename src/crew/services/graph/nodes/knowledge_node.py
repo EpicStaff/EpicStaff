@@ -5,8 +5,10 @@ from langgraph.types import StreamWriter
 
 from models.state import State
 from services.graph.events import StopEvent
+from services.graph.exceptions import KnowledgeSearchError
 from services.graph.nodes import BaseNode
 from services.knowledge_search_service import KnowledgeSearchService
+from services.graph.custom_message_writer import CustomSessionMessageWriter
 from src.shared.models import RagSearchConfig
 
 
@@ -25,6 +27,7 @@ class KnowledgeNode(BaseNode):
         query: str,
         rag_search_config: RagSearchConfig | None,
         knowledge_search_service: KnowledgeSearchService,
+        custom_session_message_writer: CustomSessionMessageWriter | None = None,
     ):
         super().__init__(
             session_id=session_id,
@@ -32,6 +35,7 @@ class KnowledgeNode(BaseNode):
             stop_event=stop_event,
             input_map=input_map,
             output_variable_path=output_variable_path,
+            custom_session_message_writer=custom_session_message_writer,
         )
         self.collection_id = collection_id
         self.rag_type_id = rag_type_id
@@ -67,15 +71,22 @@ class KnowledgeNode(BaseNode):
         rag_search_config = (
             self.rag_search_config.model_dump() if self.rag_search_config else {}
         )
-        chunks = await asyncio.to_thread(
-            self.knowledge_search_service.search_knowledges,
-            sender="node",
-            knowledge_collection_id=self.collection_id,
-            rag_type_id=self.rag_type_id,
-            query=query,
-            rag_search_config=rag_search_config,
-            stop_event=self.stop_event,
-        )
+        try:
+            chunks = await asyncio.to_thread(
+                self.knowledge_search_service.search_knowledges,
+                sender="node",
+                knowledge_collection_id=self.collection_id,
+                rag_type_id=self.rag_type_id,
+                query=query,
+                rag_search_config=rag_search_config,
+                stop_event=self.stop_event,
+            )
+        except (RuntimeError, TimeoutError, ValueError) as e:
+            raise KnowledgeSearchError(
+                f"Knowledge node '{self.node_name}' search failed: {e}"
+            ) from e
+
         if not chunks:
             return "No relevant results were found in the knowledge collection."
+
         return "\n\n".join(chunks)

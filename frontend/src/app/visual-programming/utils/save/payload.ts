@@ -439,7 +439,7 @@ export function buildBulkSavePayload(
             output_variable_path: n.output_variable_path || null,
             source_collection: n.data?.source_collection ?? null,
             rag_type: n.data?.rag_type ?? null,
-            last_rag_type: n.data?.last_rag_type ?? null,
+            rag_id: n.data?.rag_id ?? null,
             query: n.data?.query ?? '',
             search_method: n.data?.search_method ?? null,
             search_configs: n.data?.search_configs ?? null,

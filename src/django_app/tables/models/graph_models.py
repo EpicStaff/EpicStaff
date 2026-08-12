@@ -168,20 +168,20 @@ class KnowledgeNode(BaseNode):
     source_collection = models.ForeignKey(
         "SourceCollection", on_delete=models.SET_NULL, null=True, blank=True
     )
-    rag_type = models.ForeignKey(
-        "BaseRagType", on_delete=models.SET_NULL, null=True, blank=True
-    )
-    query = models.TextField(blank=True, default="")
-    search_method = models.CharField(
-        max_length=10,
-        choices=AgentGraphRag.SearchMethod.choices,
+    # RAG addressed the same way as the agent path and the knowledge service:
+    # a type name ("naive"/"graph") plus the impl id surfaced by /available-rags.
+    rag_type = models.CharField(
+        max_length=30,
+        choices=BaseRagType.RagType.choices,
         null=True,
         blank=True,
         default=None,
     )
-    last_rag_type = models.CharField(
-        max_length=30,
-        choices=BaseRagType.RagType.choices,
+    rag_id = models.IntegerField(null=True, blank=True, default=None)
+    query = models.TextField(blank=True, default="")
+    search_method = models.CharField(
+        max_length=10,
+        choices=AgentGraphRag.SearchMethod.choices,
         null=True,
         blank=True,
         default=None,

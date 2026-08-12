@@ -1,6 +1,15 @@
+from enum import Enum
 from pydantic import BaseModel
 from typing import Annotated, Literal, Union, List
 from pydantic import Field, ConfigDict
+
+
+class KnowledgeStatus(str, Enum):
+    """Shared knowledge search / job statuses used across knowledge and crew."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 # RAG Search Configuration Models
@@ -98,7 +107,7 @@ class BaseKnowledgeSearchMessageResponse(BaseModel):
     # Support backwards compatibility
     results: List[str] = []  # deprecated, use chunks instead
     token_usage: dict = {}
-    status: Literal["completed", "failed"] = "completed"
+    status: KnowledgeStatus = KnowledgeStatus.COMPLETED
     message: str | None = None  # error detail when status == "failed"
 
     model_config = ConfigDict(from_attributes=True)
@@ -137,7 +146,7 @@ class ChunkDocumentMessageResponse(BaseModel):
     chunking_job_id: str  # UUID
     rag_type: Literal["naive", "graph"]
     document_config_id: int
-    status: str  # "completed", "failed", "cancelled"
+    status: KnowledgeStatus
     chunk_count: int | None = None
     message: str | None = None
     elapsed_time: float | None = None

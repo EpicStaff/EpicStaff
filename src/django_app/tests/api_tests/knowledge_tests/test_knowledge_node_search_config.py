@@ -146,83 +146,103 @@ class TestKnowledgeNodeCreate:
         assert cfg["naive"]["search_limit"] == 4
         assert cfg["graph"]["basic"]["k"] == 5
 
-    def test_rag_type_without_collection_fails(self, auth_client, graph):
-        # rag_type is an impl id (naive_rag_id / graph_rag_id); it means nothing
-        # without a source_collection to resolve it in.
+    def test_rag_id_without_collection_fails(self, auth_client, graph):
+        # A concrete rag_id can only be validated against a source_collection.
         resp = auth_client.post(
             list_url(),
-            {"graph": graph.id, "rag_type": 1},
+            {"graph": graph.id, "rag_type": "naive", "rag_id": 1},
             format="json",
         )
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert "Required when rag_type is set." in str(resp.json())
+        assert "Required when a RAG is selected." in str(resp.json())
 
-    def test_rag_type_from_other_collection_fails(
+    def test_rag_id_without_type_fails(self, auth_client, graph, collection):
+        resp = auth_client.post(
+            list_url(),
+            {
+                "graph": graph.id,
+                "source_collection": collection.collection_id,
+                "rag_id": 1,
+            },
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Required when rag_id is set." in str(resp.json())
+
+    def test_rag_from_other_collection_fails(
         self, auth_client, graph, collection, other_collection_rag_type
     ):
-        # Impl id exists, but in a different collection than the node's → unresolvable.
+        # rag_id exists, but in a different collection than the node's.
         impl = NaiveRag.objects.create(base_rag_type=other_collection_rag_type)
         data = {
             "graph": graph.id,
             "source_collection": collection.collection_id,
-            "rag_type": impl.naive_rag_id,
+            "rag_type": "naive",
+            "rag_id": impl.naive_rag_id,
         }
         resp = auth_client.post(list_url(), data, format="json")
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert "No RAG with this id" in str(resp.json())
+        assert "does not belong" in str(resp.json())
 
-    def test_rag_type_naive_impl_id_resolves(
+    def test_rag_type_only_remembers_kind(self, auth_client, graph):
+        # rag_type without a concrete rag_id is allowed: it persists the last
+        # selected kind so the flow reopens on the right naive/graph tab.
+        resp = auth_client.post(
+            list_url(),
+            {"graph": graph.id, "rag_type": "naive"},
+            format="json",
+        )
+        assert resp.status_code == status.HTTP_201_CREATED, resp.content
+        node = KnowledgeNode.objects.get(id=resp.json()["id"])
+        assert node.rag_type == "naive"
+        assert node.rag_id is None
+
+    def test_naive_selection_persists(
         self, auth_client, graph, collection, naive_rag_type
     ):
         impl = NaiveRag.objects.create(base_rag_type=naive_rag_type)
         data = {
             "graph": graph.id,
             "source_collection": collection.collection_id,
-            "rag_type": impl.naive_rag_id,
+            "rag_type": "naive",
+            "rag_id": impl.naive_rag_id,
             "search_configs": {"naive": {"search_limit": 3}},
         }
         resp = auth_client.post(list_url(), data, format="json")
         assert resp.status_code == status.HTTP_201_CREATED, resp.content
         body = resp.json()
-        # Read-back mirrors the impl id (dropdown round-trip), not BaseRagType.pk.
-        assert body["rag_type"] == impl.naive_rag_id
-        # Top level echoes the last saved rag kind; search_method stays nested only.
-        assert body["last_rag_type"] == "naive"
+        # Stored and echoed verbatim — no resolution.
+        assert body["rag_type"] == "naive"
+        assert body["rag_id"] == impl.naive_rag_id
         assert "search_method" not in body
         node = KnowledgeNode.objects.get(id=body["id"])
-        assert node.rag_type_id == naive_rag_type.rag_type_id
-        assert node.last_rag_type == "naive"
+        assert node.rag_type == "naive"
+        assert node.rag_id == impl.naive_rag_id
 
-    def test_graph_impl_id_resolves_in_collection_with_both(
+    def test_graph_selection_persists(
         self, auth_client, graph, collection, naive_rag_type
     ):
-        # Reproduces the reported bug: a collection with BOTH rags where the naive
-        # and graph impl ids collide (separate AutoField sequences both start at 1).
-        # search_method must steer resolution to the graph BaseRagType.
+        # naive and graph impl ids may collide (separate AutoField sequences), but
+        # rag_type disambiguates explicitly — no resolution guesswork needed.
         graph_rag_type = BaseRagType.objects.create(
             source_collection=collection, rag_type=BaseRagType.RagType.GRAPH
         )
-        naive_impl = NaiveRag.objects.create(base_rag_type=naive_rag_type)
-        # Force the id collision explicitly — PostgreSQL AutoField sequences aren't
-        # reset by the per-test transaction rollback, so they rarely collide naturally.
-        graph_impl = GraphRag.objects.create(
-            base_rag_type=graph_rag_type, graph_rag_id=naive_impl.naive_rag_id
-        )
-        assert naive_impl.naive_rag_id == graph_impl.graph_rag_id  # collision
+        graph_impl = GraphRag.objects.create(base_rag_type=graph_rag_type)
         data = {
             "graph": graph.id,
             "source_collection": collection.collection_id,
-            "rag_type": graph_impl.graph_rag_id,
+            "rag_type": "graph",
+            "rag_id": graph_impl.graph_rag_id,
             "search_configs": {"graph": {"search_method": "basic", "basic": {"k": 5}}},
         }
         resp = auth_client.post(list_url(), data, format="json")
         assert resp.status_code == status.HTTP_201_CREATED, resp.content
         body = resp.json()
+        assert body["rag_type"] == "graph"
+        assert body["rag_id"] == graph_impl.graph_rag_id
         node = KnowledgeNode.objects.get(id=body["id"])
-        assert node.rag_type_id == graph_rag_type.rag_type_id
-        assert body["rag_type"] == graph_impl.graph_rag_id
-        assert body["last_rag_type"] == "graph"
-        assert node.last_rag_type == "graph"
+        assert node.rag_type == "graph"
+        assert node.rag_id == graph_impl.graph_rag_id
         # search_method survives nested, not at the top level.
         assert body["search_configs"]["graph"]["search_method"] == "basic"
         assert "search_method" not in body
@@ -391,3 +411,88 @@ class TestKnowledgeNodeGet:
             body["results"] if isinstance(body, dict) and "results" in body else body
         )
         assert any(i["id"] == node.id and i["search_configs"] for i in items)
+
+
+@pytest.mark.django_db
+class TestKnowledgeNodeRunValidation:
+    """Run-time completeness gate (validate_runnable). Save stays permissive;
+    an incompletely configured node must not be allowed to start a session."""
+
+    @pytest.fixture
+    def validator(self):
+        from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
+
+        return KnowledgeNodeValidator()
+
+    @pytest.fixture
+    def runnable_node(self, graph, collection, naive_rag_type):
+        impl = NaiveRag.objects.create(base_rag_type=naive_rag_type)
+        return KnowledgeNode.objects.create(
+            graph=graph,
+            source_collection=collection,
+            rag_type="naive",
+            rag_id=impl.naive_rag_id,
+            query="find me",
+        )
+
+    def _error(self):
+        from tables.exceptions import KnowledgeNodeRunValidationError
+
+        return KnowledgeNodeRunValidationError
+
+    def test_fully_configured_passes(self, validator, runnable_node):
+        validator.validate_runnable([runnable_node])  # no raise
+
+    def test_missing_collection_blocks_even_with_query(self, validator, graph):
+        node = KnowledgeNode.objects.create(
+            graph=graph, rag_type="naive", rag_id=1, query="find me"
+        )
+        with pytest.raises(self._error()) as exc:
+            validator.validate_runnable([node])
+        assert "source_collection" in str(exc.value.detail)
+
+    def test_incomplete_rag_blocks(self, validator, graph, collection):
+        node = KnowledgeNode.objects.create(
+            graph=graph, source_collection=collection, rag_type="naive", query="q"
+        )  # rag_id missing
+        with pytest.raises(self._error()) as exc:
+            validator.validate_runnable([node])
+        assert "rag_type/rag_id" in str(exc.value.detail)
+
+    def test_empty_query_and_no_input_blocks(
+        self, validator, graph, collection, naive_rag_type
+    ):
+        impl = NaiveRag.objects.create(base_rag_type=naive_rag_type)
+        node = KnowledgeNode.objects.create(
+            graph=graph,
+            source_collection=collection,
+            rag_type="naive",
+            rag_id=impl.naive_rag_id,
+            query="",
+            input_map={},
+        )
+        with pytest.raises(self._error()) as exc:
+            validator.validate_runnable([node])
+        assert "query or input" in str(exc.value.detail)
+
+    def test_empty_query_with_input_passes(
+        self, validator, graph, collection, naive_rag_type
+    ):
+        impl = NaiveRag.objects.create(base_rag_type=naive_rag_type)
+        node = KnowledgeNode.objects.create(
+            graph=graph,
+            source_collection=collection,
+            rag_type="naive",
+            rag_id=impl.naive_rag_id,
+            query="",
+            input_map={"text": "some_var"},
+        )
+        validator.validate_runnable([node])  # no raise
+
+    def test_all_offending_nodes_reported_together(self, validator, graph):
+        n1 = KnowledgeNode.objects.create(graph=graph, query="q")  # no collection/rag
+        n2 = KnowledgeNode.objects.create(graph=graph)  # empty everything
+        with pytest.raises(self._error()) as exc:
+            validator.validate_runnable([n1, n2])
+        reported = exc.value.detail["knowledge_nodes"]
+        assert len(reported) == 2

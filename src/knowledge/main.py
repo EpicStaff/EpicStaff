@@ -13,6 +13,7 @@ from src.shared.models import (
     ChunkDocumentMessageResponse,
     BaseKnowledgeSearchMessage,
     BaseKnowledgeSearchMessageResponse,
+    KnowledgeStatus,
     ProcessRagIndexingMessage,
 )
 
@@ -333,7 +334,7 @@ async def execute_search(
                 query=query,
                 chunks=[],
                 rag_search_config=rag_search_config,
-                status="failed",
+                status=KnowledgeStatus.FAILED,
                 message=error_message,
             )
             await redis_service.async_publish(

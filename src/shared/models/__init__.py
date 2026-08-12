@@ -43,6 +43,7 @@ from .graph_nodes import (
     ClassificationDecisionTableNodeData,
 )
 from .knowledge import (
+    KnowledgeStatus,
     BaseRagSearchConfig,
     NaiveRagSearchConfig,
     GraphRagSearchConfig,
@@ -144,6 +145,7 @@ __all__ = [
     "ClassificationConditionGroupData",
     "ClassificationDecisionTableNodeData",
     # knowledge
+    "KnowledgeStatus",
     "BaseRagSearchConfig",
     "NaiveRagSearchConfig",
     "GraphRagSearchConfig",

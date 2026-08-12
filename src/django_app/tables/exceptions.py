@@ -65,6 +65,11 @@ class FileNodeValidationError(CustomAPIExeption):
     default_detail = "FileExtractorNode requires input arguments"
 
 
+class KnowledgeNodeRunValidationError(CustomAPIExeption):
+    status_code = 400
+    default_detail = "KnowledgeNode is not fully configured to run"
+
+
 class InvalidTaskOrderError(CustomAPIExeption):
     status_code = 409
     default_detail = "A task cannot be placed before its context dependency. Please reorder the tasks or delete context."
@@ -351,6 +356,7 @@ class KnowledgeNodeConfigurationError(RagException):
     """Raised when a KnowledgeNode is not runnable: missing source_collection/rag_type,
     or the rag_type has no built implementation to search."""
 
+    status_code = 400
     default_code = "knowledge_node_misconfigured"
 
 

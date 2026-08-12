@@ -46,6 +46,7 @@ from tables.services.redis_service import RedisService
 from tables.services.trigger_spec import TriggerSpec
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
+from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
 from utils.graph_utils import NodeNameResolver, generate_node_name, resolve_node_names
 from utils.logger import logger
@@ -61,6 +62,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         self.redis_service = redis_service
         self.converter_service = converter_service
         self.file_node_validator: FileNodeValidator = FileNodeValidator()
+        self.knowledge_node_validator: KnowledgeNodeValidator = KnowledgeNodeValidator()
         self.end_node_validator: EndNodeValidator = EndNodeValidator()
         self.subgraph_validator = SubGraphValidator()
         self.persistent_variables_service = PersistentVariablesService()
@@ -305,16 +307,13 @@ class SessionManagerService(metaclass=SingletonMeta):
             .defer("test_input")
             .select_related("python_code")
         )
-        knowledge_node_list = (
-            KnowledgeNode.objects.filter(graph=graph.pk)
-            .select_related(
-                "source_collection",
-                "rag_type",
-                "naive_search_config",
-                "graph_basic_search_config",
-                "graph_local_search_config",
-            )
-            .prefetch_related("rag_type__naive_rags", "rag_type__graph_rags")
+        knowledge_node_list = KnowledgeNode.objects.filter(
+            graph=graph.pk
+        ).select_related(
+            "source_collection",
+            "naive_search_config",
+            "graph_basic_search_config",
+            "graph_local_search_config",
         )
         file_extractor_node_list = FileExtractorNode.objects.filter(graph=graph.pk)
         audio_transcription_node_list = AudioTranscriptionNode.objects.filter(
@@ -346,6 +345,8 @@ class SessionManagerService(metaclass=SingletonMeta):
             self.file_node_validator.validate_file_nodes(file_extractor_node_list)
         if audio_transcription_node_list:
             self.file_node_validator.validate_file_nodes(audio_transcription_node_list)
+        if knowledge_node_list:
+            self.knowledge_node_validator.validate_runnable(knowledge_node_list)
 
         condition_group_next_ids = list(
             ConditionGroup.objects.filter(
