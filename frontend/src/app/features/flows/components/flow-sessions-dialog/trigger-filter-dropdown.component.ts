@@ -9,20 +9,18 @@ import {
     Output,
     SimpleChanges,
 } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
+import { ClickOutsideDirective } from '@shared/directives';
 
-import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
+import { TriggerType } from '../../services/flows-sessions.service';
+import { getTriggerDisplay } from './trigger-display.constants';
 
-interface FlowOption {
-    id: number;
-    name: string;
-}
+const ALL_TRIGGER_TYPES: TriggerType[] = ['manual', 'schedule', 'webhook', 'telegram', 'parent_flow'];
 
 @Component({
-    selector: 'app-flow-name-filter-dropdown',
+    selector: 'app-trigger-filter-dropdown',
     standalone: true,
-    imports: [CommonModule, FormsModule, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
+    imports: [CommonModule, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     styles: [
         `
@@ -34,8 +32,7 @@ interface FlowOption {
                 justify-content: flex-start !important;
             }
             :host .dropdown-panel {
-                z-index: 1100 !important;
-                min-width: 350px !important;
+                z-index: 9999 !important;
             }
             :host .node-filter-dropdown {
                 margin-left: 0;
@@ -53,48 +50,30 @@ interface FlowOption {
                 (click)="toggleDropdown($event)"
             >
                 <span class="selected-label">
-                    Flow Name
+                    Trigger
                     <app-svg-icon
                         icon="menu"
                         size="16px"
                     ></app-svg-icon>
                 </span>
             </button>
+
             @if (open) {
                 <div class="dropdown-panel">
-                    <div class="search-box">
-                        <i class="ti ti-search search-icon"></i>
-                        <input
-                            type="text"
-                            class="search-input"
-                            placeholder="Search flows..."
-                            [ngModel]="searchQuery"
-                            (ngModelChange)="onSearchChange($event)"
-                            (click)="$event.stopPropagation()"
-                        />
-                        @if (searchQuery) {
-                            <button
-                                class="clear-search"
-                                (click)="clearSearch($event)"
-                            >
-                                <i class="ti ti-x"></i>
-                            </button>
-                        }
-                    </div>
                     <ul class="dropdown-menu">
-                        @for (flow of filteredFlows; track flow.id) {
+                        @for (type of ALL_TRIGGER_TYPES; track type) {
                             <li
                                 class="group-item"
-                                (click)="toggleFlow(flow.name)"
+                                (click)="toggleType(type)"
                             >
-                                <app-checkbox [checked]="isChecked(flow.name)"></app-checkbox>
-                                <span>{{ flow.name }}</span>
-                            </li>
-                        }
-                        @if (filteredFlows.length === 0) {
-                            <li class="no-results">
-                                <i class="ti ti-search-off"></i>
-                                No flows found
+                                <app-checkbox [checked]="isChecked(type)"></app-checkbox>
+                                @if (getIcon(type)) {
+                                    <i
+                                        [class]="getIcon(type)"
+                                        [style.color]="getColor(type)"
+                                    ></i>
+                                }
+                                <span>{{ getLabel(type) }}</span>
                             </li>
                         }
                     </ul>
@@ -125,52 +104,43 @@ interface FlowOption {
     `,
     styleUrls: ['./flow-session-node-filter-dropdown.component.scss'],
 })
-export class FlowNameFilterDropdownComponent implements OnChanges {
-    @Input() flows: FlowOption[] = [];
-    @Input() value: string[] = [];
-    @Output() valueChange = new EventEmitter<string[]>();
+export class TriggerFilterDropdownComponent implements OnChanges {
+    @Input() value: TriggerType[] = [];
+    @Output() valueChange = new EventEmitter<TriggerType[]>();
 
     public open = false;
-    public searchQuery = '';
-    public draftValue: string[] = [];
-    public filteredFlows: FlowOption[] = [];
+    public draftValue: TriggerType[] = [];
+    public readonly ALL_TRIGGER_TYPES = ALL_TRIGGER_TYPES;
 
     constructor(private cdr: ChangeDetectorRef) {}
 
     public ngOnChanges(changes: SimpleChanges): void {
-        if (changes['flows'] || changes['value']) {
+        if (changes['value']) {
             this.draftValue = [...this.value];
-            this.applySearch(this.searchQuery);
         }
     }
 
-    private applySearch(query: string): void {
-        const q = query.trim().toLowerCase();
-        this.filteredFlows = q ? this.flows.filter((f) => f.name.toLowerCase().includes(q)) : [...this.flows];
+    public getLabel(type: TriggerType): string {
+        return getTriggerDisplay(type).label;
     }
 
-    public onSearchChange(query: string): void {
-        this.searchQuery = query;
-        this.applySearch(query);
-        this.cdr.markForCheck();
+    public getIcon(type: TriggerType): string | null {
+        return getTriggerDisplay(type).icon;
     }
 
-    public clearSearch(event: Event): void {
-        event.stopPropagation();
-        this.searchQuery = '';
-        this.applySearch('');
-        this.cdr.markForCheck();
+    public getColor(type: TriggerType): string | null {
+        return getTriggerDisplay(type).color;
     }
 
-    public isChecked(name: string): boolean {
-        return this.draftValue.includes(name);
+    public isChecked(type: TriggerType): boolean {
+        return this.draftValue.includes(type);
     }
 
-    public toggleFlow(name: string): void {
-        if (this.isChecked(name)) {
-            this.draftValue = this.draftValue.filter((n) => n !== name);
+    public toggleType(type: TriggerType): void {
+        if (this.isChecked(type)) {
+            this.draftValue = this.draftValue.filter((t) => t !== type);
         } else {
-            this.draftValue = [...this.draftValue, name];
+            this.draftValue = [...this.draftValue, type];
         }
         this.cdr.markForCheck();
     }
@@ -180,7 +150,6 @@ export class FlowNameFilterDropdownComponent implements OnChanges {
         this.open = !this.open;
         if (this.open) {
             this.draftValue = [...this.value];
-            this.applySearch(this.searchQuery);
         }
         this.cdr.markForCheck();
     }
