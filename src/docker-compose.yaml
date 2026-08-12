@@ -76,7 +76,9 @@ services:
     volumes:
       - media_data:/app/src/django_app/media
     networks:
-      - backend-network
+      backend-network:
+        aliases:
+          - djangoapp
     depends_on:
       crewdb:
         condition: service_started
@@ -280,6 +282,7 @@ services:
       - backend-network
     tty: true
     stdin_open: true
+    mem_limit: "2g"
     depends_on:
       redis:
         condition: service_healthy

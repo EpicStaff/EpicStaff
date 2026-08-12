@@ -33,7 +33,7 @@
     overflow-y: hidden;
     border: 1px solid var(--color-divider-regular);
     background: var(--color-nodes-actionbar-bg);
-    min-height: 300px;
+    min-height: 520px;
 }
 
 table {
@@ -50,48 +50,58 @@ table {
         border-bottom: 1px solid var(--color-divider-subtle);
     }
 
-    th:nth-child(1),
-    td:nth-child(1) {
+    th.col-select,
+    td.col-select {
         width: 40px;
         min-width: 40px;
     }
 
-    th:nth-child(2),
-    td:nth-child(2) {
+    th.col-id,
+    td.col-id {
         width: 70px;
         min-width: 70px;
     }
 
-    th:nth-child(3),
-    td:nth-child(3) {
+    th.col-status,
+    td.col-status {
         width: 150px;
         min-width: 150px;
     }
 
-    th:nth-child(4),
-    td:nth-child(4) {
+    th.col-flow,
+    td.col-flow {
         width: 200px;
         min-width: 100px;
     }
 
-    td:nth-child(4) {
+    td.col-flow {
         overflow: hidden;
     }
 
-    th:nth-child(5),
-    td:nth-child(5) {
-        width: 150px;
-        min-width: 150px;
+    th.col-trigger,
+    td.col-trigger {
+        width: 130px;
+        min-width: 130px;
     }
 
-    th:nth-child(6),
-    td:nth-child(6) {
-        min-width: 110px;
-        width: 110px;
+    th.col-created,
+    td.col-created {
+        width: 190px;
+        min-width: 190px;
     }
 
-    th:nth-child(7),
-    td:nth-child(7) {
+    th.col-created app-svg-icon {
+        vertical-align: middle;
+    }
+
+    th.col-duration,
+    td.col-duration {
+        min-width: 90px;
+        width: 90px;
+    }
+
+    th.col-actions,
+    td.col-actions {
         min-width: 140px;
         width: 140px;
         text-align: center;
@@ -163,6 +173,24 @@ table {
                 position: relative;
                 top: -2px;
             }
+        }
+    }
+
+    .trigger-chip {
+        --trigger-color: var(--color-text-secondary);
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 5px;
+        border: 1px solid var(--trigger-color);
+        color: var(--trigger-color);
+        font-size: 0.85em;
+        white-space: nowrap;
+
+        i {
+            font-size: 1em;
+            line-height: 1;
         }
     }
 

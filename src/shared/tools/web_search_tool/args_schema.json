@@ -1,0 +1,31 @@
+{
+  "title": "WebSearchToolArgs",
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "The search query (minimum 2 characters)."
+    },
+    "allowed_domains": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Only return results from these domains."
+    },
+    "blocked_domains": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Never return results from these domains."
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Maximum number of results to return. 1-20, default 10.",
+      "default": 10
+    },
+    "api_key": {
+      "type": "string",
+      "description": "Serper API key (https://serper.dev). Set this in the tool configuration, not by the agent — the agent never sees or sets this value.",
+      "input_type": "user_input"
+    }
+  },
+  "required": ["query", "api_key"]
+}

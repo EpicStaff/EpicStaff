@@ -28,6 +28,13 @@ class RunPythonCodeService(metaclass=SingletonMeta):
 
         global_kwargs = python_code_data.global_kwargs or {}
 
+        merged_global_kwargs = {
+            **global_kwargs,
+            **additional_global_kwargs,
+        }
+        if python_code_data.org_id is not None:
+            merged_global_kwargs["org_id"] = python_code_data.org_id
+
         unique_task_id = str(uuid.uuid4())
         code_task_data = CodeTaskData(
             venv_name=venv_name,
@@ -36,15 +43,16 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             execution_id=unique_task_id,
             entrypoint=entrypoint,
             func_kwargs=inputs,
-            global_kwargs={
-                **global_kwargs,
-                **additional_global_kwargs,
-            },
+            global_kwargs=merged_global_kwargs,
             use_storage=python_code_data.use_storage,
             storage_allowed_paths=python_code_data.storage_allowed_paths,
             storage_org_prefix=python_code_data.storage_org_prefix,
             session_id=python_code_data.session_id,
+<<<<<<< HEAD
             secrets=python_code_data.secrets,
+=======
+            org_id=python_code_data.org_id,
+>>>>>>> main
         )
         callback_receiver = RunPythonCallbackReceiver(execution_id=unique_task_id)
 

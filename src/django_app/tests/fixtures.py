@@ -24,6 +24,7 @@ from tables.models.crew_models import (
 )
 from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_spec import TriggerSpec
 from tables.models import (
     LLMConfig,
     EmbeddingConfig,
@@ -264,7 +265,7 @@ def session_data(crew: Crew, graph: Graph) -> dict:
 @pytest.fixture
 def session(session_data) -> tuple[Session | dict]:
     session_manager = SessionManagerService()
-    return session_manager.create_session(**session_data)
+    return session_manager.create_session(**session_data, trigger=TriggerSpec.manual())
 
 
 @pytest.fixture

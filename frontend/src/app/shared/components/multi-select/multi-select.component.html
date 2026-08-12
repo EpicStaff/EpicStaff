@@ -19,6 +19,8 @@
 }
 
 @if (hideTrigger()) {
+    <!-- Projected custom trigger. Use [appMultiSelectTrigger]="msRef" to open the dropdown. -->
+    <ng-content></ng-content>
     <span
         #triggerBtn
         style="display: none"

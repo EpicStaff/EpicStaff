@@ -10,8 +10,8 @@ from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import WebhookTrigger
 from tables.services.secrets import secret_encryption
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
-from utils.graph_utils import generate_node_name
 from utils.singleton_meta import SingletonMeta
 
 
@@ -135,9 +135,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             self.session_manager_service.run_session(
                 graph_id=telegram_trigger_node.graph.pk,
                 variables={"telegram_payload": payload},
-                entrypoint=generate_node_name(
-                    telegram_trigger_node.id, telegram_trigger_node.node_name
-                ),
+                trigger=TriggerSpec.telegram(telegram_trigger_node, payload),
             )
 
     def get_trigger_info(self, telegram_bot_api_key: str):

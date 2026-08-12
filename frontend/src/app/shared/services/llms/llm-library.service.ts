@@ -78,7 +78,8 @@ export class LLMLibraryService {
         getModelId: (config: TConfig) => number,
         getProviderId: (model: TModel) => number,
         getTemperature: (config: TConfig) => number,
-        getTags: (config: TConfig) => Tag[]
+        getTags: (config: TConfig) => Tag[],
+        getIsDeprecated: (model: TModel) => boolean = () => false
     ): LlmLibraryProviderGroup[] {
         const modelMap = new Map(models.map((m) => [m.id, m]));
         const providerMap = new Map(providers.map((p) => [p.id, p]));
@@ -108,6 +109,7 @@ export class LLMLibraryService {
                 temperature: getTemperature(config),
                 usedByCount: null,
                 configType: type,
+                isDeprecated: getIsDeprecated(model),
             });
         }
 
@@ -126,7 +128,8 @@ export class LLMLibraryService {
                 (c) => c.model,
                 (m) => m.llm_provider,
                 (c) => c.temperature ?? 0,
-                (c) => c.tags
+                (c) => c.tags,
+                (m) => m.predefined && !m.is_visible
             ),
             ...this.buildProviderGroups(
                 this.embeddingConfigStorage.configs(),

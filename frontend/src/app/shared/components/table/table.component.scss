@@ -11,7 +11,7 @@
     flex-direction: column;
     width: 100%;
     max-height: 100%;
-    overflow: hidden;
+    overflow: auto;
     border: 1px solid var(--color-divider-subtle);
     border-radius: 8px;
 }
@@ -21,18 +21,22 @@
     display: grid;
     align-items: center;
     min-height: 2.25rem;
-    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    width: fit-content;
+    min-width: 100%;
+    background: var(--color-background-body);
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 
 .table-header-cell {
     display: flex;
     align-items: center;
-    font-size: 0.6875rem;
-    font-weight: 600;
+    font-size: 0.875rem;
+    font-weight: 700;
     color: var(--text-secondary-60);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
     padding: 0 0.5rem;
 
     &.center {
@@ -45,12 +49,24 @@
 }
 
 .col-label {
-    font-size: 0.6875rem;
-    font-weight: 600;
+    font-size: 0.875rem;
+    font-weight: 700;
     color: var(--text-secondary-60);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
     white-space: nowrap;
+
+    &--filter {
+        display: inline-flex;
+        align-items: center;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        gap: 0.25rem;
+
+        &:hover {
+            color: var(--text);
+        }
+    }
 }
 
 .col-label-group {
@@ -92,9 +108,8 @@
 .table-body {
     display: flex;
     flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+    width: fit-content;
+    min-width: 100%;
 }
 
 // ===== ROW =====
@@ -102,6 +117,8 @@
     display: grid;
     align-items: center;
     min-height: 3rem;
+    width: fit-content;
+    min-width: 100%;
     transition: background-color 0.15s ease;
     border-bottom: 1px solid var(--color-divider-subtle);
 
@@ -110,7 +127,7 @@
     }
 
     &.selected {
-        background: var(--transparent-white-8, rgba(255, 255, 255, 0.08));
+        background: var(--transparent-white-8);
     }
 
     &.selectable {
@@ -118,7 +135,7 @@
     }
 
     &:hover:not(.table-row--selected) {
-        background: var(--transparent-white-4, rgba(255, 255, 255, 0.04));
+        background: var(--transparent-white-4);
     }
 }
 
@@ -143,6 +160,98 @@
 
         > * {
             flex: none;
+        }
+    }
+}
+
+// ===== SHARED CELL PATTERNS =====
+// Common markup patterns that consumers use inside projected `appTableCell` templates.
+// ::ng-deep is required because projected content lives in the parent view's style scope.
+:host ::ng-deep {
+    .cell-text {
+        font-size: 0.875rem;
+        color: var(--text-secondary-60);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .empty-value {
+        color: var(--text-secondary-60);
+    }
+
+    .actions-cell {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .action-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border: 1px solid var(--color-divider-subtle);
+        background: transparent;
+        border-radius: 4px;
+        color: var(--text-secondary-60);
+        cursor: pointer;
+        transition:
+            background-color 0.15s ease,
+            color 0.15s ease,
+            border-color 0.15s ease;
+
+        &:hover {
+            background: var(--transparent-white-8);
+            color: var(--text);
+        }
+
+        &.warning {
+            border-color: var(--orange);
+            color: var(--orange);
+        }
+
+        &.danger {
+            border-color: var(--red);
+            color: var(--red);
+        }
+
+        &--muted {
+            color: var(--text-secondary-60);
+        }
+    }
+
+    .table-no-results {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        color: var(--text-secondary-60);
+        font-size: 14px;
+        text-align: center;
+    }
+
+    [tableEmpty] {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 32px 16px;
+        text-align: center;
+
+        .empty-title {
+            margin: 0;
+            font-size: 1.125rem;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .empty-subtitle {
+            margin: 0;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary-60);
         }
     }
 }

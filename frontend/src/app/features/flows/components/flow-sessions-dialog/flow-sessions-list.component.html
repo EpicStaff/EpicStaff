@@ -60,6 +60,8 @@
                 (stopSession)="onStopSession($event)"
                 [statusFilter]="statusFilter()"
                 (statusFilterChange)="onStatusFilterChange($event)"
+                [trigger]="triggerFilter()"
+                (triggerFilterChange)="onTriggerFilterChange($event)"
                 (selectedIdsChange)="onSelectedIdsChange($event)"
             >
             </app-flow-sessions-table>

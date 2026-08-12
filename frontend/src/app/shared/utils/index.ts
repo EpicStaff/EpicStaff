@@ -1,3 +1,4 @@
+export * from './days-until.util';
 export * from './deep-equal.util';
 export * from './generate-uuid.util';
 export * from './get-provider-icon';

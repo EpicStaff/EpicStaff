@@ -57,6 +57,7 @@ class PythonCodeData(BaseModel):
     storage_allowed_paths: list[str] | None = None
     storage_org_prefix: str | None = None
     session_id: int | None = None
+    org_id: int | None = None
 
     secret_names: list[str] = Field(default_factory=list, exclude=True)
     """Names this code is *allowed* to read — its declared allow-list.
@@ -181,6 +182,7 @@ class CodeTaskData(BaseModel):
     storage_allowed_paths: list[str] | None = None
     storage_org_prefix: str | None = None
     session_id: int | None = None
+    org_id: int | None = None
 
     secrets: dict[str, str] = {}
     """{name: plaintext} for the sandbox. NOT excluded: this message is never
