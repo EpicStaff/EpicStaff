@@ -400,6 +400,34 @@ class PromptNotFoundError(CustomAPIExeption):
         )
 
 
+class SectionIdConflictError(CustomAPIExeption):
+    """Raised when a section id in the payload already belongs to a different CDT node."""
+
+    status_code = 400
+    default_code = "section_id_conflict"
+
+    def __init__(self, value: str):
+        self.value = value
+        super().__init__(
+            f"Section {value} already belongs to another node.",
+            code=self.default_code,
+        )
+
+
+class SectionNotFoundError(CustomAPIExeption):
+    """Raised when a condition group references a section id not present among this node's sections."""
+
+    status_code = 400
+    default_code = "section_not_found"
+
+    def __init__(self, value: str):
+        self.value = value
+        super().__init__(
+            f"Section {value} doesn't exist on this node.",
+            code=self.default_code,
+        )
+
+
 class ClassificationDecisionTableNodeNotFoundError(CustomAPIExeption):
     """Raised when a CDT node id doesn't resolve within the caller's org (cross-org and nonexistent ids are indistinguishable)."""
 

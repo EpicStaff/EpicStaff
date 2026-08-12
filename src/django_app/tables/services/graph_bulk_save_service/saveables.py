@@ -1,5 +1,7 @@
+from tables.exceptions import SectionIdConflictError, SectionNotFoundError
 from tables.models.graph_models import (
     ClassificationConditionGroup,
+    ClassificationConditionGroupSection,
     ClassificationDecisionTableNode,
     Condition,
     ConditionGroup,
@@ -296,11 +298,13 @@ class ClassificationDecisionTableNodeSaveable:
         self,
         serializer,
         condition_groups_data,
+        sections_data,
         deferred_refs_saveable=None,
         instance=None,
     ):
         self._serializer = serializer
         self._condition_groups_data = condition_groups_data
+        self._sections_data = sections_data
         self._deferred = deferred_refs_saveable  # _ClassificationDecisionTableNodeRefsSaveable | None
         self._instance = instance
 
@@ -313,6 +317,8 @@ class ClassificationDecisionTableNodeSaveable:
             # prompt_key, or numeric pk fallback); never written as columns.
             "prompt",
             "prompt_key",
+            # section id is resolved to the `section` FK below; never written as-is.
+            "section",
         }
     )
 
@@ -332,6 +338,34 @@ class ClassificationDecisionTableNodeSaveable:
             self._deferred.set_node_id(node.id)
 
         created_groups = []
+
+        sections_by_id: dict = {}
+        if self._sections_data is not None:
+            incoming_section_ids = {s["id"] for s in self._sections_data}
+            node.sections.exclude(id__in=incoming_section_ids).delete()
+            for section_data in self._sections_data:
+                existing_section = ClassificationConditionGroupSection.objects.filter(
+                    id=section_data["id"]
+                ).first()
+                if (
+                    existing_section is not None
+                    and existing_section.classification_decision_table_node_id
+                    != node.id
+                ):
+                    raise SectionIdConflictError(section_data["id"])
+                section, _ = (
+                    ClassificationConditionGroupSection.objects.update_or_create(
+                        id=section_data["id"],
+                        defaults={
+                            "classification_decision_table_node": node,
+                            "name": section_data.get("name", ""),
+                            "color": section_data.get("color", "").lower(),
+                        },
+                    )
+                )
+                sections_by_id[str(section.id)] = section
+        elif self._instance is not None:
+            sections_by_id = {str(s.id): s for s in node.sections.all()}
 
         if self._condition_groups_data is not None:
             # Build prompt map keyed by old prompt ID → new prompt instance,
@@ -391,6 +425,18 @@ class ClassificationDecisionTableNodeSaveable:
                     gd["prompt"] = prompt_by_key.get(key)
                 elif old_prompt_id is not None:
                     gd["prompt"] = prompt_by_id.get(old_prompt_id)
+
+                # Resolve the section FK node-locally, mirroring the prompt
+                # resolution above: the section may have just been created in
+                # this same payload (see sections_by_id above).
+                section_id = group_data.get("section")
+                if section_id:
+                    section = sections_by_id.get(str(section_id))
+                    if section is None:
+                        raise SectionNotFoundError(section_id)
+                    gd["section"] = section
+                else:
+                    gd["section"] = None
 
                 rc = gd.get("route_code")
                 existing = (

@@ -533,7 +533,10 @@ class SessionManagerService(metaclass=SingletonMeta):
         for item in classification_decision_table_node_list:
             classification_dt_node_data_list.append(
                 cv.convert_classification_decision_table_node_to_pydantic(
-                    node=item, resolver=resolver
+                    node=item,
+                    resolver=resolver,
+                    graph_id=graph.pk,
+                    session_id=session.pk if session else None,
                 )
             )
 

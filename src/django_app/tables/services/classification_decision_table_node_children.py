@@ -17,9 +17,14 @@ Keying rules:
 
 from typing import Any
 
-from tables.exceptions import PromptNotFoundError
+from tables.exceptions import (
+    PromptNotFoundError,
+    SectionIdConflictError,
+    SectionNotFoundError,
+)
 from tables.models.graph_models import (
     ClassificationConditionGroup,
+    ClassificationConditionGroupSection,
     ClassificationDecisionTablePrompt,
 )
 from tables.serializers.utils.mixins import assert_node_ref_in_graph
@@ -39,29 +44,36 @@ _GROUP_UPDATE_FIELDS = [
     "section",
 ]
 
-# Keys never written as-is; `prompt_id` is resolved node-locally instead.
+# Keys never written as-is; `prompt_id`/`section` are resolved node-locally instead.
 _GROUP_EXCLUDED_INPUT = {
     "id",
     "classification_decision_table_node",
     "classification_decision_table_node_id",
     "prompt_key",
     "prompt_id",
+    "section",
 }
 
 
 def sync_classification_decision_table_children(
-    node, *, prompt_configs_data=None, condition_groups_data=None
+    node, *, prompt_configs_data=None, condition_groups_data=None, sections_data=None
 ):
-    """Reconcile a CDT node's prompt configs and condition groups from validated data.
+    """Reconcile a CDT node's prompt configs, sections, and condition groups
+    from validated data.
 
-    Prompt configs are synced first so condition groups can resolve their
-    ``prompt`` FK against the node's current prompts. ``None`` means "not in
-    this payload — leave untouched"; an empty list means "remove all".
+    Prompt configs and sections are synced first so condition groups can
+    resolve their ``prompt``/``section`` FKs against the node's current rows.
+    ``None`` means "not in this payload — leave untouched"; an empty list
+    means "remove all".
     """
     if prompt_configs_data is not None:
         _sync_prompt_configs(node, prompt_configs_data)
+    if sections_data is not None:
+        sections_by_id = _sync_condition_group_sections(node, sections_data)
+    else:
+        sections_by_id = {str(s.id): s for s in node.sections.all()}
     if condition_groups_data is not None:
-        _sync_condition_groups(node, condition_groups_data)
+        _sync_condition_groups(node, condition_groups_data, sections_by_id)
 
 
 def _sync_prompt_configs(node, prompt_configs_data):
@@ -76,6 +88,58 @@ def _sync_prompt_configs(node, prompt_configs_data):
             prompt_key=prompt_data["prompt_key"],
             defaults=defaults,
         )
+
+
+def _sync_condition_group_sections(node, sections_data):
+    """Reconcile a CDT node's condition-group sections (name + color).
+
+    Sections use a client-generated UUID as their real PK, so a section
+    referenced by a condition group in the same payload can be resolved
+    before it's ever been queried from the DB. ``id`` collisions across
+    nodes are surfaced as ``SectionIdConflictError`` rather than a raw
+    ``IntegrityError``.
+    """
+    incoming_ids = {s["id"] for s in sections_data}
+    node.sections.exclude(id__in=incoming_ids).delete()
+    sections_by_id = {}
+    for section_data in sections_data:
+        existing = ClassificationConditionGroupSection.objects.filter(
+            id=section_data["id"]
+        ).first()
+        if (
+            existing is not None
+            and existing.classification_decision_table_node_id != node.id
+        ):
+            raise SectionIdConflictError(section_data["id"])
+
+        section, _ = ClassificationConditionGroupSection.objects.update_or_create(
+            id=section_data["id"],
+            defaults={
+                "classification_decision_table_node": node,
+                "name": section_data.get("name", ""),
+                "color": section_data.get("color", "").lower(),
+            },
+        )
+        sections_by_id[str(section.id)] = section
+    return sections_by_id
+
+
+def _resolve_group_section(
+    group_data: dict[str, Any],
+    sections_by_id: dict[str, ClassificationConditionGroupSection],
+) -> ClassificationConditionGroupSection | None:
+    """Resolve a condition group's section among this node's sections.
+
+    Returns ``None`` if no section is referenced; raises
+    ``SectionNotFoundError`` if a reference is given but not found.
+    """
+    section_id = group_data.get("section")
+    if not section_id:
+        return None
+    section = sections_by_id.get(str(section_id))
+    if section is None:
+        raise SectionNotFoundError(section_id)
+    return section
 
 
 def _resolve_group_prompt(
@@ -107,13 +171,13 @@ def _resolve_group_prompt(
     return None
 
 
-def _sync_condition_groups(node, condition_groups_data):
+def _sync_condition_groups(node, condition_groups_data, sections_by_id):
     graph = node.graph
     node_prompts = list(ClassificationDecisionTablePrompt.objects.filter(cdt_node=node))
     prompt_by_id = {p.id: p for p in node_prompts}
     prompt_by_key = {p.prompt_key: p for p in node_prompts}
 
-    # Normalize payload rows once: strip non-column keys, resolve prompt FK.
+    # Normalize payload rows once: strip non-column keys, resolve prompt/section FKs.
     rows = []
     for group_data in condition_groups_data:
         gd = {k: v for k, v in group_data.items() if k not in _GROUP_EXCLUDED_INPUT}
@@ -123,6 +187,7 @@ def _sync_condition_groups(node, condition_groups_data):
             field="condition_groups.next_node_id",
         )
         gd["prompt"] = _resolve_group_prompt(group_data, prompt_by_id, prompt_by_key)
+        gd["section"] = _resolve_group_section(group_data, sections_by_id)
         rows.append(gd)
 
     routed = [gd for gd in rows if gd.get("route_code")]

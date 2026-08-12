@@ -11,6 +11,7 @@ from tables.models.graph_models import (
     StartNode,
     ClassificationDecisionTableNode,
     ClassificationConditionGroup,
+    ClassificationConditionGroupSection,
     ClassificationDecisionTablePrompt,
 )
 from tables.models.python_models import PythonCode
@@ -169,10 +170,16 @@ class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
         source="prompt_id", required=False, allow_null=True
     )
     prompt_key = serializers.CharField(required=False, allow_null=True, write_only=True)
+    # section links a same-payload ClassificationConditionGroupSection by its
+    # client-generated id; resolved node-locally in the sync service, same
+    # reason prompt_key can't be a PrimaryKeyRelatedField (see docstring on
+    # _resolve_group_section()).
+    section = serializers.CharField(required=False, allow_null=True, write_only=True)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data["prompt_key"] = instance.prompt.prompt_key if instance.prompt_id else None
+        data["section"] = str(instance.section_id) if instance.section_id else None
         return data
 
     def validate_group_name(self, value):
@@ -204,6 +211,12 @@ class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
         ]
 
 
+class ClassificationConditionGroupSectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ClassificationConditionGroupSection
+        fields = ["id", "name", "color"]
+
+
 class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
     llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(), required=False, allow_null=True
@@ -224,6 +237,7 @@ class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):
 
 class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
     condition_groups = ClassificationConditionGroupSerializer(many=True, required=False)
+    sections = ClassificationConditionGroupSectionSerializer(many=True, required=False)
     prompt_configs = ClassificationDecisionTablePromptSerializer(
         many=True, required=False
     )
@@ -246,6 +260,7 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
             "post_python_code",
             "post_input_map",
             "post_output_variable_path",
+            "use_storage",
             "default_llm_config",
             "default_next_node_id",
             "next_error_node_id",
@@ -253,6 +268,7 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
             "updated_at",
             "metadata",
             "condition_groups",
+            "sections",
             "prompt_configs",
         ]
 
@@ -265,6 +281,7 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         condition_groups_data = validated_data.pop("condition_groups", None)
+        sections_data = validated_data.pop("sections", None)
         prompt_configs_data = validated_data.pop("prompt_configs", None)
         pre_python_code_data = validated_data.pop("pre_python_code", None)
         post_python_code_data = validated_data.pop("post_python_code", None)
@@ -287,12 +304,14 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
             node,
             prompt_configs_data=prompt_configs_data,
             condition_groups_data=condition_groups_data,
+            sections_data=sections_data,
         )
 
         return node
 
     def update(self, instance, validated_data):
         condition_groups_data = validated_data.pop("condition_groups", None)
+        sections_data = validated_data.pop("sections", None)
         prompt_configs_data = validated_data.pop("prompt_configs", None)
 
         if "pre_python_code" in validated_data:
@@ -339,6 +358,7 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
             instance,
             prompt_configs_data=prompt_configs_data,
             condition_groups_data=condition_groups_data,
+            sections_data=sections_data,
         )
 
         return instance

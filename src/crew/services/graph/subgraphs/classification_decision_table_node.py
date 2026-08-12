@@ -389,6 +389,20 @@ def main(**kwargs) -> dict:
             **{**params, "messages": [{"role": "user", "content": prompt}]}
         )
 
+        try:
+            cost = litellm.completion_cost(completion_response=resp)
+        except Exception:
+            cost = 0.0  # litellm кидає для моделей без цінового запису — не крашити CDT
+
+        cached_tokens = 0
+        details = (
+            getattr(resp.usage, "prompt_tokens_details", None)
+            if hasattr(resp, "usage")
+            else None
+        )
+        if details is not None:
+            cached_tokens = getattr(details, "cached_tokens", 0) or 0
+
         usage = {
             "total_tokens": getattr(resp.usage, "total_tokens", 0)
             if hasattr(resp, "usage")
@@ -400,6 +414,8 @@ def main(**kwargs) -> dict:
             if hasattr(resp, "usage")
             else 0,
             "successful_requests": 1,
+            "cached_prompt_tokens": cached_tokens,
+            "total_cost_usd": cost,
         }
 
         content = resp.choices[0].message.content
