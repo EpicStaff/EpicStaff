@@ -27,6 +27,5 @@ class PythonCodeToolCopyService(BaseCopyService):
             description=tool.description,
             variables=tool.variables,
             python_code=new_code,
-            favorite=tool.favorite,
             org_id=org_id if org_id is not None else tool.org_id,
         )

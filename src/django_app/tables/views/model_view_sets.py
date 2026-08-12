@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpResponse
-from django.db.models import NOT_PROVIDED, IntegerField, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Exists, IntegerField, OuterRef, Prefetch, Q
 from django.db.models.functions import Cast
 from django_filters import rest_framework as filters
 from django_filters.rest_framework import (
@@ -123,8 +123,13 @@ from tables.swagger_schemas.partial_import_schemas import (
 from tables.swagger_schemas.tools_schemas import (
     MCP_TOOL_BULK_DELETE_POST,
     MCP_TOOL_COPY_POST,
+    MCP_TOOL_FAVORITE_DELETE,
+    MCP_TOOL_FAVORITE_POST,
     PYTHON_CODE_TOOL_BULK_DELETE_POST,
     PYTHON_CODE_TOOL_COPY_POST,
+    PYTHON_CODE_TOOL_FAVORITE_DELETE,
+    PYTHON_CODE_TOOL_FAVORITE_POST,
+    TOOL_ORDERING_PARAMETER,
 )
 from tables.swagger_schemas.tools_usage_schemas import (
     MCP_TOOL_USAGE_DETAIL_GET,
@@ -169,6 +174,7 @@ from tables.models.llm_models import (
 )
 from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag
 from tables.models.mcp_models import McpTool
+from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import (
     RealtimeAgent,
@@ -179,7 +185,9 @@ from tables.filters import (
     EmbeddingModelFilter,
     LabelFilterBackend,
     LLMModelFilter,
+    McpToolFilter,
     ProviderFilter,
+    PythonCodeToolFilter,
 )
 from tables.utils.helpers import natural_sort_key
 from tables.models.label_models import Label
@@ -727,9 +735,15 @@ class ContentHashPreconditionMixin:
         super().perform_update(serializer)
 
 
-@extend_schema_view(copy=extend_schema(**PYTHON_CODE_TOOL_COPY_POST))
+@extend_schema_view(
+    copy=extend_schema(**PYTHON_CODE_TOOL_COPY_POST),
+    list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
+)
 class PythonCodeToolViewSet(
-    OrgScopedHybridViewSetMixin, CopyActionMixin, ToolUsageActionsMixin, viewsets.ModelViewSet
+    OrgScopedHybridViewSetMixin,
+    CopyActionMixin,
+    ToolUsageActionsMixin,
+    viewsets.ModelViewSet,
 ):
     """
     A viewset for viewing and editing PythonCodeTool instances.
@@ -745,6 +759,7 @@ class PythonCodeToolViewSet(
         "bulk_delete": Permission.DELETE,
         "usage": Permission.READ,
         "usage_detail": Permission.READ,
+        "favorite": Permission.READ,
     }
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
@@ -755,13 +770,41 @@ class PythonCodeToolViewSet(
     queryset = PythonCodeTool.objects.all().select_related("python_code")
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["name", "python_code"]
+    filterset_class = PythonCodeToolFilter
+
+    def get_queryset(self):
+        queryset = (
+            super()
+            .get_queryset()
+            .annotate(
+                is_favorite=Exists(
+                    PythonCodeToolFavorite.objects.filter(
+                        user=self.request.user, tool=OuterRef("pk")
+                    )
+                )
+            )
+        )
+        ordering = ["-id"]
+        if self.request.query_params.get("ordering") == "favorite":
+            ordering = ["-is_favorite", "-id"]
+        return queryset.order_by(*ordering)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.built_in:
             raise BuiltInToolModificationError()
         return super().destroy(request, *args, **kwargs)
+
+    @extend_schema(methods=["POST"], **PYTHON_CODE_TOOL_FAVORITE_POST)
+    @extend_schema(methods=["DELETE"], **PYTHON_CODE_TOOL_FAVORITE_DELETE)
+    @action(detail=True, methods=["post", "delete"], url_path="favorite")
+    def favorite(self, request, pk=None):
+        tool = self.get_object()
+        if request.method == "POST":
+            PythonCodeToolFavorite.objects.get_or_create(user=request.user, tool=tool)
+        else:
+            PythonCodeToolFavorite.objects.filter(user=request.user, tool=tool).delete()
+        return Response(status=status.HTTP_200_OK)
 
     @extend_schema(**PYTHON_CODE_TOOL_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
@@ -1747,7 +1790,10 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
         return response
 
 
-@extend_schema_view(copy=extend_schema(**MCP_TOOL_COPY_POST))
+@extend_schema_view(
+    copy=extend_schema(**MCP_TOOL_COPY_POST),
+    list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
+)
 class McpToolViewSet(
     OrgScopedViewSetMixin, CopyActionMixin, ToolUsageActionsMixin, viewsets.ModelViewSet
 ):
@@ -1759,6 +1805,7 @@ class McpToolViewSet(
         "bulk_delete": Permission.DELETE,
         "usage": Permission.READ,
         "usage_detail": Permission.READ,
+        "favorite": Permission.READ,
     }
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
@@ -1766,7 +1813,35 @@ class McpToolViewSet(
     queryset = McpTool.objects.all()
     serializer_class = McpToolSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["name", "tool_name"]
+    filterset_class = McpToolFilter
+
+    def get_queryset(self):
+        queryset = (
+            super()
+            .get_queryset()
+            .annotate(
+                is_favorite=Exists(
+                    McpToolFavorite.objects.filter(
+                        user=self.request.user, tool=OuterRef("pk")
+                    )
+                )
+            )
+        )
+        ordering = ["-id"]
+        if self.request.query_params.get("ordering") == "favorite":
+            ordering = ["-is_favorite", "-id"]
+        return queryset.order_by(*ordering)
+
+    @extend_schema(methods=["POST"], **MCP_TOOL_FAVORITE_POST)
+    @extend_schema(methods=["DELETE"], **MCP_TOOL_FAVORITE_DELETE)
+    @action(detail=True, methods=["post", "delete"], url_path="favorite")
+    def favorite(self, request, pk=None):
+        tool = self.get_object()
+        if request.method == "POST":
+            McpToolFavorite.objects.get_or_create(user=request.user, tool=tool)
+        else:
+            McpToolFavorite.objects.filter(user=request.user, tool=tool).delete()
+        return Response(status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
         # PUT is a full-replace: any concrete field missing from the body is
@@ -1825,9 +1900,7 @@ class McpToolViewSet(
     @extend_schema(**MCP_TOOL_USAGE_DETAIL_GET)
     @action(detail=True, methods=["get"], url_path="usage-detail")
     def usage_detail(self, request, pk=None):
-        return self._usage_detail_response(
-            pk, get_mcp_tool_usage_detail, "McpTool"
-        )
+        return self._usage_detail_response(pk, get_mcp_tool_usage_detail, "McpTool")
 
 
 # TODO refactor to use user_variable for persistent variables

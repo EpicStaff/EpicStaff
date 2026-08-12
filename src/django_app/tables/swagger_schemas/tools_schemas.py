@@ -1,5 +1,6 @@
 from drf_spectacular.utils import (
     OpenApiExample,
+    OpenApiParameter,
     OpenApiResponse,
     inline_serializer,
 )
@@ -11,6 +12,18 @@ from tables.serializers.model_serializers import (
     PythonCodeToolSerializer,
 )
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+
+TOOL_ORDERING_PARAMETER = OpenApiParameter(
+    name="ordering",
+    type=OpenApiTypes.STR,
+    location=OpenApiParameter.QUERY,
+    required=False,
+    enum=["favorite"],
+    description=(
+        "Set to `favorite` to sort the current user's favorited tools "
+        "first. Omit for default ordering (unchanged)."
+    ),
+)
 
 _BULK_DELETE_REQUEST = inline_serializer(
     name="ToolBulkDeleteRequest",
@@ -130,6 +143,47 @@ MCP_TOOL_COPY_POST = _copy_post_schema(
     error_400_description="Copy failed (e.g. unexpected server-side error).",
     error_400_example=None,
 )
+
+def _favorite_post_schema(*, model_name: str) -> dict:
+    return dict(
+        summary=f"Favorite a {model_name}",
+        description=(
+            f"Marks the `{model_name}` identified by the id in the URL as a "
+            "favorite for the current user. This is a personal preference — "
+            "it is per-user, not shared across the org — and does not affect "
+            "other users' favorites. Idempotent: calling this again on a "
+            "tool that is already favorited succeeds without error."
+        ),
+        request=None,
+        responses={
+            200: OpenApiResponse(description="Tool favorited (or already was)."),
+            401: UNAUTHORIZED_401_RESPONSE,
+        },
+    )
+
+
+def _favorite_delete_schema(*, model_name: str) -> dict:
+    return dict(
+        summary=f"Unfavorite a {model_name}",
+        description=(
+            f"Removes the `{model_name}` identified by the id in the URL from "
+            "the current user's favorites. This is a personal preference — "
+            "it is per-user, not shared across the org — and does not affect "
+            "other users' favorites. Idempotent: calling this again on a "
+            "tool that is not currently favorited succeeds without error."
+        ),
+        request=None,
+        responses={
+            200: OpenApiResponse(description="Tool unfavorited (or already wasn't)."),
+            401: UNAUTHORIZED_401_RESPONSE,
+        },
+    )
+
+
+PYTHON_CODE_TOOL_FAVORITE_POST = _favorite_post_schema(model_name="PythonCodeTool")
+PYTHON_CODE_TOOL_FAVORITE_DELETE = _favorite_delete_schema(model_name="PythonCodeTool")
+MCP_TOOL_FAVORITE_POST = _favorite_post_schema(model_name="McpTool")
+MCP_TOOL_FAVORITE_DELETE = _favorite_delete_schema(model_name="McpTool")
 
 MCP_TOOL_BULK_DELETE_POST = dict(
     summary="Bulk delete MCP tools",

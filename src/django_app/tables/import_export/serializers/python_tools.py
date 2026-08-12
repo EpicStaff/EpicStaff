@@ -40,4 +40,4 @@ class PythonCodeToolImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PythonCodeTool
-        exclude = ["favorite"]
+        fields = "__all__"

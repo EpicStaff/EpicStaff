@@ -62,6 +62,7 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
 class PythonCodeToolSerializer(serializers.ModelSerializer):
     python_code = PythonCodeSerializer()
     built_in = serializers.ReadOnlyField()
+    is_favorite = serializers.BooleanField(read_only=True, default=False)
     # Per-org unique name → clean 400 instead of a DB IntegrityError (500).
     name = serializers.CharField(
         validators=[
@@ -85,7 +86,7 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             "description",
             "variables",
             "python_code",
-            "favorite",
+            "is_favorite",
             "built_in",
             "use_storage",
             "labels",

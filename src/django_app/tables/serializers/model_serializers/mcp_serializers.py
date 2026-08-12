@@ -12,6 +12,7 @@ from tables.serializers.org_scoped_fields import (
 
 class McpToolSerializer(serializers.ModelSerializer):
     auth = SecretCharField()
+    is_favorite = serializers.BooleanField(read_only=True, default=False)
     # Per-org unique name → clean 400 instead of a DB IntegrityError (500).
     name = serializers.CharField(
         validators=[

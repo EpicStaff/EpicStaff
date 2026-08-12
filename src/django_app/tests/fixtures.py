@@ -581,7 +581,6 @@ def python_code_tool(python_code) -> PythonCodeTool:
         description="Test PythonCodeTool",
         variables=[],
         python_code=python_code,
-        favorite=False,
         built_in=False,
     )
 
