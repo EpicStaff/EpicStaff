@@ -69,11 +69,16 @@ import { WaitForUserInputComponent } from './components/user-input-component/use
 import { UserMessageComponent } from './components/user-message/user-message.component';
 import { isMessageType } from './helper_functions/message-helper';
 
+type MessageGroupKind = 'subgraph' | 'cdt';
+
 interface MessageContext {
     key: string;
     index: number;
     depth: number;
     path: string[];
+    isGroupStart: boolean;
+    isGroupFinish: boolean;
+    groupKind: MessageGroupKind | null;
     isSubgraphStart: boolean;
     isSubgraphFinish: boolean;
 }
@@ -102,6 +107,12 @@ const RENDERABLE_MESSAGE_TYPES: ReadonlySet<string> = new Set([
     MessageType.FINDINGS,
 ]);
 
+const CDT_STEP_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+    MessageType.CONDITION_GROUP,
+    MessageType.CLASSIFICATION_PROMPT,
+    MessageType.CONDITION_GROUP_MANIPULATION,
+]);
+
 interface MessageViewEntry {
     key: string;
     message: GraphMessage;
@@ -119,6 +130,8 @@ interface MessageViewEntry {
 
 interface RootDrilldownView {
     rootKey: string;
+    groupKind: MessageGroupKind | null;
+    isSubgraph: boolean;
     breadcrumbs: { key: string; label: string }[];
     filteredBreadcrumbs: { key: string; label: string; index: number }[];
     drilldownEntries: MessageViewEntry[];
@@ -831,7 +844,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         }
 
         const context = this.getMessageContext(message);
-        if (!context || !context.isSubgraphStart) return;
+        if (!context || !context.isGroupStart) return;
         const rootKey = this.getRootKeyForContext(context);
         if (!rootKey) return;
         const nextPath = [...context.path, context.key];
@@ -873,7 +886,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     public isDrilldownRoot(message: GraphMessage): boolean {
         const context = this.getMessageContext(message);
-        return !!context && context.isSubgraphStart && context.path.length === 0 && this.drillPaths.has(context.key);
+        return !!context && context.isGroupStart && context.path.length === 0 && this.drillPaths.has(context.key);
     }
 
     public isDrilldownClosing(message: GraphMessage): boolean {
@@ -899,13 +912,14 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private getNestedMessagesCountForContext(context: MessageContext): number {
-        if (!context.isSubgraphStart) return 0;
+        if (!context.isGroupStart) return 0;
         const backendCount = this.getBackendNestedMessagesCount(context);
         const liveCount = this.getLiveNestedMessagesCount(context);
         return Math.max(backendCount, liveCount);
     }
 
     private getBackendNestedMessagesCount(context: MessageContext): number {
+        if (context.groupKind !== 'subgraph') return 0;
         const message = this.messages[context.index];
         const data = message?.message_data as StartSubflowMessageData | undefined;
         if (!data?.messages_count_by_subgraph || data.subgraph_id == null) return 0;
@@ -922,7 +936,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         const nestedPath = [...context.path, context.key];
         return this.messageContexts.reduce(
             (count, ctx) =>
-                this.pathsEqual(ctx.path, nestedPath) &&
+                this.pathStartsWith(ctx.path, nestedPath) &&
                 this.isRenderableNestedMessage(ctx) &&
                 this.isCodeAgentVisible(ctx)
                     ? count + 1
@@ -960,7 +974,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     }
 
     private isNestedMessagesOpenForContext(context: MessageContext): boolean {
-        if (!context.isSubgraphStart) return false;
+        if (!context.isGroupStart) return false;
         const rootKey = this.getRootKeyForContext(context);
         if (!rootKey) return false;
         if (this.closingRootKeys.has(rootKey)) return false;
@@ -1242,16 +1256,45 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         this.messageByKey.clear();
 
         const stack: string[] = [];
+        let pendingGroup: { key: string; name: string; context: MessageContext; pushed: boolean } | null = null;
+
         messages.forEach((message, index) => {
             const key = this.getMessageKey(message);
             const isSubgraphStart = isMessageType(message, MessageType.SUBGRAPH_START);
             const isSubgraphFinish = isMessageType(message, MessageType.SUBGRAPH_FINISH);
+            const isGenericStart = isMessageType(message, MessageType.START);
+            const isGenericFinish = isMessageType(message, MessageType.FINISH);
+            const messageType = message.message_data?.message_type;
+            const isCdtStepType = !!messageType && CDT_STEP_MESSAGE_TYPES.has(messageType);
+
+            if (pendingGroup && !pendingGroup.pushed && isCdtStepType) {
+                pendingGroup.context.isGroupStart = true;
+                pendingGroup.context.groupKind = 'cdt';
+                stack.push(pendingGroup.key);
+                pendingGroup.pushed = true;
+            }
+
+            let isCdtGroupFinish = false;
+            if (
+                pendingGroup?.pushed &&
+                isGenericFinish &&
+                message.name === pendingGroup.name &&
+                stack.length > 0 &&
+                stack[stack.length - 1] === pendingGroup.key
+            ) {
+                stack.pop();
+                isCdtGroupFinish = true;
+            }
+
             const path = [...stack];
             const context: MessageContext = {
                 key,
                 index,
                 depth: stack.length,
                 path,
+                isGroupStart: isSubgraphStart,
+                isGroupFinish: isSubgraphFinish || isCdtGroupFinish,
+                groupKind: isSubgraphStart || isSubgraphFinish ? 'subgraph' : isCdtGroupFinish ? 'cdt' : null,
                 isSubgraphStart,
                 isSubgraphFinish,
             };
@@ -1264,6 +1307,16 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 stack.push(key);
             } else if (isSubgraphFinish && stack.length > 0) {
                 stack.pop();
+            }
+
+            if (isGenericStart) {
+                if (!pendingGroup || !pendingGroup.pushed) {
+                    pendingGroup = { key, name: message.name, context, pushed: false };
+                }
+            } else if (isCdtGroupFinish) {
+                pendingGroup = null;
+            } else if (pendingGroup && !pendingGroup.pushed && isGenericFinish && message.name === pendingGroup.name) {
+                pendingGroup = null;
             }
         });
 
@@ -1435,8 +1488,11 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         if (this.visibleMessageEntries.length === 0) return;
         const rootViewsByKey = new Map<string, RootDrilldownView>();
         this.drillPaths.forEach((_path, rootKey) => {
+            const groupKind = this.messageContextByKey.get(rootKey)?.groupKind ?? null;
             rootViewsByKey.set(rootKey, {
                 rootKey,
+                groupKind,
+                isSubgraph: groupKind === 'subgraph',
                 breadcrumbs: this.breadcrumbsByRoot.get(rootKey) ?? [],
                 filteredBreadcrumbs: this.filteredBreadcrumbsByRoot.get(rootKey) ?? [],
                 drilldownEntries: this.drilldownEntriesByRoot.get(rootKey) ?? [],
@@ -1517,11 +1573,16 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             return context.path[0];
         }
 
-        return context.isSubgraphStart ? context.key : null;
+        return context.isGroupStart ? context.key : null;
     }
 
     private pathsEqual(left: string[], right: string[]): boolean {
         if (left.length !== right.length) return false;
         return left.every((value, index) => value === right[index]);
+    }
+
+    private pathStartsWith(path: string[], prefix: string[]): boolean {
+        if (path.length < prefix.length) return false;
+        return prefix.every((value, index) => value === path[index]);
     }
 }
