@@ -73,6 +73,7 @@ export class AuthService {
     }
 
     login(email: string, password: string, rememberMe: boolean = false): Observable<boolean> {
+        this.deleteLegacyRefreshCookie();
         return this.http
             .post<AccessToken>(`${this.baseUrl}login/`, { email, password }, { withCredentials: true })
             .pipe(
@@ -111,6 +112,8 @@ export class AuthService {
             return this.refreshInProgress$;
         }
 
+        this.deleteLegacyRefreshCookie();
+
         this.refreshInProgress$ = this.http
             .post<AccessToken>(`${this.baseUrl}refresh/`, {}, { withCredentials: true })
             .pipe(
@@ -134,6 +137,7 @@ export class AuthService {
 
     removeTokenAndNavToLogin(): void {
         this.deleteCookie(this.accessKey);
+        this.deleteLegacyRefreshCookie();
         this.accessTokenSignal.set(null);
         void this.router.navigate(['/login']);
     }
@@ -169,6 +173,25 @@ export class AuthService {
 
     private deleteCookie(name: string): void {
         document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax`;
+    }
+
+    /**
+     * Removes the legacy non-httpOnly `auth.refresh` cookie that older frontend versions wrote.
+     * The httpOnly cookie set by the backend is not accessible from JS and stays untouched.
+     */
+    private deleteLegacyRefreshCookie(): void {
+        const name = 'auth.refresh';
+        const paths = ['/', location.pathname];
+        const host = location.hostname;
+        const domains = ['', host, `.${host}`];
+        const expired = 'Thu, 01 Jan 1970 00:00:00 UTC';
+        for (const p of paths) {
+            for (const d of domains) {
+                const pathAttr = `; path=${p}`;
+                const domainAttr = d ? `; domain=${d}` : '';
+                document.cookie = `${name}=; expires=${expired}${pathAttr}${domainAttr}; SameSite=Lax`;
+            }
+        }
     }
 
     private getTokenExpiry(token: string): Date | undefined {
