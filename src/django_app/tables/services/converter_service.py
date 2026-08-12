@@ -254,9 +254,9 @@ class ConverterService(metaclass=SingletonMeta):
                 task=task, graph_id=graph_id, session_id=session_id
             )
             crew_base_tools.extend(base_tools)  # TODO: make it unique
-            assert not (crew.process == "sequential" and task.agent is None), (
-                f"Task {task.name} has no agent, but it's required for sequential process."
-            )
+            assert not (
+                crew.process == "sequential" and task.agent is None
+            ), f"Task {task.name} has no agent, but it's required for sequential process."
 
             task_data_list.append(
                 TaskData(
@@ -581,7 +581,6 @@ class ConverterService(metaclass=SingletonMeta):
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
-<<<<<<< HEAD
             # The declaration is the allow-list: everything selected is injected,
             # whether the code reads it or not. That is what makes a computed name
             # -- get_secret(f"KEY_{env}") -- work, since no static parse could see
@@ -589,9 +588,7 @@ class ConverterService(metaclass=SingletonMeta):
             # Names only: resolution happens in redis_service, on the copy that
             # goes to Redis -- never on the object that becomes graph_schema.
             secret_names=list(python_code.secrets.values_list("name", flat=True)),
-=======
             org_id=org_id,
->>>>>>> main
         )
 
     @staticmethod
@@ -661,16 +658,16 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool: PythonCodeTool = python_code_tool_config.tool
         python_configuration = python_code_tool_config.configuration
 
-        assert isinstance(python_configuration, dict), (
-            "Error reading python tool configuration. How did you even pass validation?"
-        )
+        assert isinstance(
+            python_configuration, dict
+        ), "Error reading python tool configuration. How did you even pass validation?"
 
         storage_allowed_paths = None
         storage_org_prefix = None
         if python_code_tool.use_storage and graph_id is not None:
             storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
             storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-        
+
         org_id = None
         if graph_id is not None:
             org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
@@ -806,7 +803,7 @@ class ConverterService(metaclass=SingletonMeta):
             if session_id is not None:
                 storage_allowed_paths.append(f"sessions/{session_id}/")
             storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-        
+
         org_id = None
         if graph_id is not None:
             org_id = self._resolve_authoritative_org_id_for_graph(graph_id)

@@ -10,7 +10,7 @@ class McpToolCopyService(BaseCopyService):
     Duplicates all scalar fields. No nested objects to clone.
     """
 
-    def copy(self, tool: McpTool, name: str, org_id: int| None = None) -> McpTool:
+    def copy(self, tool: McpTool, name: str, org_id: int | None = None) -> McpTool:
         existing_names = McpTool.objects.values_list("name", flat=True)
         new_name = ensure_unique_identifier(
             base_name=name if name else tool.name,
@@ -18,7 +18,6 @@ class McpToolCopyService(BaseCopyService):
         )
 
         return McpTool.objects.create(
-            org=tool.org,
             name=new_name,
             org=tool.org if org_id is None else Organization.objects.get(id=org_id),
             transport=tool.transport,
