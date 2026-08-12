@@ -87,10 +87,8 @@ services:
       MALLOC_ARENA_MAX: ${MALLOC_ARENA_MAX:-2}
       MALLOC_TRIM_INTERVAL_SECONDS: ${MALLOC_TRIM_INTERVAL_SECONDS:-60}
 
-      KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL: ${KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL}
-      KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL: ${KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL}
-      KNOWLEDGE_INDEX_REQUEST_CHANNEL: ${KNOWLEDGE_INDEX_REQUEST_CHANNEL}
-      KNOWLEDGE_CANCEL_REQUEST_CHANNEL: ${KNOWLEDGE_CANCEL_REQUEST_CHANNEL}
+      KNOWLEDGE_NEW_URL: ${KNOWLEDGE_NEW_URL:-http://knowledge_new:8000}
+
     volumes:
       - media_data:/app/src/django_app/media
     networks:
@@ -493,6 +491,7 @@ services:
 
   knowledge_new:
     container_name: knowledge_new
+    ports: ["8000:8000"]
 #    image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
     build:
       context: .
@@ -518,7 +517,12 @@ services:
       KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL: ${KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL}
       KNOWLEDGE_INDEX_REQUEST_CHANNEL: ${KNOWLEDGE_INDEX_REQUEST_CHANNEL}
       KNOWLEDGE_CANCEL_REQUEST_CHANNEL: ${KNOWLEDGE_CANCEL_REQUEST_CHANNEL}
-
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   communication_redis_broker:
     container_name: communication_redis_broker

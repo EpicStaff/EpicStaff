@@ -9,21 +9,27 @@ from settings import settings
 from src.shared.communication import Consumer, Producer, brokers, storages
 
 
-async def main():
-    process_pool = ProcessPoolExecutor(settings.MAX_PROCESS_WORKERS)
-    set_process_pool(process_pool)
-
+async def start_workers():
     broker = brokers.RedisPubSubBroker(settings.BROKER_DNS)
     storage = storages.RedisStorage(settings.STORAGE_DNS)
     producer = Producer(broker, storage)
     consumer = Consumer(broker, storage)
 
     handlers = [PrechunkHandler, IndexHandler, SearchHandler, CancelHandler]
-    logger.info("knowledge_new started; handlers: {}", [h.__name__ for h in handlers])
+    logger.info(
+        "knowledge_new workers started; handlers: {}", [h.__name__ for h in handlers]
+    )
 
     handler_tasks = [asyncio.create_task(h(producer, consumer).run()) for h in handlers]
 
     await asyncio.gather(*handler_tasks)
+
+
+async def main():
+    process_pool = ProcessPoolExecutor(settings.MAX_PROCESS_WORKERS)
+    set_process_pool(process_pool)
+
+    await start_workers()
 
 
 if __name__ == "__main__":

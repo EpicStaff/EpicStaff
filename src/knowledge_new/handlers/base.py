@@ -4,9 +4,7 @@ from typing import Any
 
 from loguru import logger
 from pydantic import BaseModel
-from services.task_register import task_register
 from src.shared.communication import Consumer, Message, Producer
-from utils import hash_dict
 
 type Payload = dict[str, Any]
 
@@ -68,12 +66,6 @@ class AbstractCancellableHandler[TRequest: BaseModel, TResponse: BaseModel](
     abc.ABC,
 ):
     async def _invoke(self, request: TRequest) -> TResponse | None:
-        key = hash_dict(request.model_dump())
-        if key in task_register:
-            task_register.cancel(key)
-            logger.info("Superseded previous request {} by a newer one.", request)
-        task_register.register(key, asyncio.current_task())
-        try:
-            return await self.handle(request)
-        finally:
-            task_register.discard(key)
+        from services.task_register import run_cancellable
+
+        return await run_cancellable(request, self.handle(request))

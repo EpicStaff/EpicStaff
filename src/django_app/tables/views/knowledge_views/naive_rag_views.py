@@ -1,4 +1,6 @@
 from pathlib import Path
+from django_app import knowledge_client
+import httpx
 
 from django.db.models import Case, When, Count, F
 from rest_framework import viewsets, status, mixins
@@ -567,21 +569,16 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
             **serializer.validated_data,
         )
 
-        producer.send(
-            settings.KNOWLEDGE_PRECHUNK_REQUEST_CHANNEL,
-            Message(payload=prechunk_request.model_dump(mode="json")),
-        )
-        logger.info(
-            "Sent prechunk request rag_id=%s document_id=%s",
-            naive_rag_id,
-            config.document_id,
+        prechunk_request = PrechunkRequest(
+            rag_strategy="naive",
+            rag_id=naive_rag_id,
+            document_id=document_config_id,
+            **serializer.validated_data,
         )
 
-        msg = consumer.receive(
-            settings.KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL,
-            timeout=CHUNKING_TIMEOUT,
-        )
-        if msg is None:
+        try:
+            response = knowledge_client.prechunk(prechunk_request)
+        except httpx.TimeoutException:
             return Response(
                 {
                     "naive_rag_id": naive_rag_id,
@@ -593,7 +590,12 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
                 status=status.HTTP_202_ACCEPTED,
             )
 
-        response = PrechunkResponse(**msg.payload)
+        logger.info(
+            "Sent prechunk request rag_id=%s document_id=%s",
+            naive_rag_id,
+            config.document_id,
+        )
+
         return Response(
             {
                 "naive_rag_id": naive_rag_id,
@@ -625,16 +627,17 @@ class CancelNaiveRagDocumentChunkingView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        target_request = PrechunkRequest(
-            rag_strategy="naive",
-            rag_id=naive_rag_id,
-            document_id=document_config_id,
-            **serializer.validated_data,
-        ).model_dump()
-        producer.send(
-            settings.KNOWLEDGE_CANCEL_REQUEST_CHANNEL,
-            Message(payload=CancelRequest(target_request=target_request).model_dump()),
+        cancel_request = CancelRequest(
+            target_request=PrechunkRequest(
+                rag_strategy="naive",
+                rag_id=naive_rag_id,
+                document_id=document_config_id,
+                **serializer.validated_data,
+            ).model_dump()
         )
+
+        knowledge_client.cancel(cancel_request)
+
         logger.info(
             "Sent prechunk cancellation rag_id=%s document_config_id=%s",
             naive_rag_id,
@@ -702,7 +705,7 @@ class NaiveRagChunkPreviewView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        chunks = config.preview_chunks.all()[offset:offset+limit]
+        chunks = config.preview_chunks.all()[offset : offset + limit]
         chunks = NaiveRagPreviewChunkSerializer(chunks, many=True).data
 
         return Response(

@@ -1,6 +1,8 @@
 import asyncio
+from pydantic import BaseModel
+from utils import hash_dict
 
-__all__ = ["TaskRegister", "task_register"]
+__all__ = ["TaskRegister", "task_register", "run_cancellable"]
 
 
 class TaskRegister:
@@ -30,3 +32,14 @@ class TaskRegister:
 
 
 task_register = TaskRegister()
+
+
+async def run_cancellable(request: BaseModel, coro):
+    key = hash_dict(request.model_dump())
+    if key in task_register:
+        task_register.cancel(key)
+    task_register.register(key, asyncio.current_task())
+    try:
+        return await coro
+    finally:
+        task_register.discard(key)

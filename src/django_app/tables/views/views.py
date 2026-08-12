@@ -4,6 +4,8 @@ from collections import defaultdict
 from drf_yasg.utils import swagger_auto_schema
 import uuid
 import base64
+from django_app import knowledge_client
+import httpx
 from tables.serializers.model_serializers.crew_serializers import (
     ToolSerializer,
 )
@@ -930,16 +932,12 @@ class ProcessRagIndexingView(APIView):
 
         IndexingService.validate_and_prepare_indexing(rag_id=rag_id, rag_type=rag_type)
 
-        producer.send(
-            settings.KNOWLEDGE_INDEX_REQUEST_CHANNEL,
-            Message(
-                payload=IndexRequest(
-                    rag_id=rag_id,
-                    rag_strategy=rag_type,
-                    document_ids=frozenset(document_config_ids),
-                ).model_dump()
-            ),
+        index_request = IndexRequest(
+            rag_id=rag_id,
+            rag_strategy=rag_type,
+            document_ids=frozenset(document_config_ids),
         )
+        knowledge_client.index(index_request)
 
         return Response(
             {
@@ -962,11 +960,12 @@ class CancelRagIndexingView(APIView):
         rag_type = serializer.validated_data["rag_type"]
         document_ids = serializer.validated_data["document_config_ids"]
 
-        target_request = IndexRequest(rag_id=rag_id, rag_strategy=rag_type, document_ids=document_ids).model_dump()
-        producer.send(
-            settings.KNOWLEDGE_CANCEL_REQUEST_CHANNEL,
-            Message(payload=CancelRequest(target_request=target_request).model_dump()),
+        cancel_request = CancelRequest(
+            target_request=IndexRequest(
+                rag_id=rag_id, rag_strategy=rag_type, document_ids=document_ids
+            ).model_dump()
         )
+        knowledge_client.cancel(cancel_request)
 
         return Response(
             {
