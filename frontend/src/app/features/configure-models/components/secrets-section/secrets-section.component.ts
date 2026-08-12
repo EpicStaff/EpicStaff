@@ -25,7 +25,7 @@ import {
     SelectItem,
     TableRow,
 } from '@shared/components';
-import { SecretsStorageService } from '@shared/services';
+import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
 import { extractHttpErrorMessage, getRelativeTime } from '@shared/utils';
 import { forkJoin } from 'rxjs';
 
@@ -62,6 +62,7 @@ const USED_BY_FILTER_ITEMS: SelectItem[] = [
 export class SecretsSectionComponent implements OnInit {
     private readonly dialog = inject(Dialog);
     private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly toastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
@@ -119,7 +120,10 @@ export class SecretsSectionComponent implements OnInit {
     ]);
 
     ngOnInit(): void {
-        this.loadSecrets();
+        // Force a refresh on every mount — usage_count/usages can change from a flow or tool
+        // editor visited between mounts, and the cached secrets list has no other invalidation
+        // hook to know that happened.
+        this.loadSecrets(true);
     }
 
     public refreshData(): void {
@@ -175,7 +179,10 @@ export class SecretsSectionComponent implements OnInit {
                     .deleteSecret(row['id'] as number)
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
-                        next: () => this.toastService.success('Secret deleted'),
+                        next: () => {
+                            this.secretDeclarationIndexService.invalidate();
+                            this.toastService.success('Secret deleted');
+                        },
                         error: (err: HttpErrorResponse) => this.toastService.error(extractHttpErrorMessage(err)),
                     });
             });
@@ -208,6 +215,7 @@ export class SecretsSectionComponent implements OnInit {
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: () => {
+                            this.secretDeclarationIndexService.invalidate();
                             this.toastService.success(`${ids.length} secret${ids.length === 1 ? '' : 's'} deleted`);
                             this.selectedRows.set([]);
                         },

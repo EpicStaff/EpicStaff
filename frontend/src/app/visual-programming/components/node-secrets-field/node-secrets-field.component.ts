@@ -37,7 +37,7 @@ export class NodeSecretsFieldComponent {
     public readonly activeColor = input<string>('#685fff');
     public readonly value = model<number[]>([]);
     public readonly tooltipText = input<string>(
-        'Secrets this node can access at runtime — create and manage secrets under Settings → Secrets.'
+        "Secrets this node can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
     );
     /** Dropdown width — narrow panels (e.g. CDT's 350px sidebar) need a smaller value than
      *  the 390px default so the panel doesn't overflow past the field's own column. */
@@ -55,7 +55,11 @@ export class NodeSecretsFieldComponent {
     );
 
     public readonly triggerLabel = computed(() => {
-        const count = this.value().length;
+        // Count only ids that still resolve to an existing secret — a since-deleted secret's id
+        // can still be sitting in value() (nothing prunes it), and counting it here would show a
+        // number the dropdown's checked rows can't match.
+        const existingIds = new Set(this.secretsStorageService.secrets().map((secret) => secret.id));
+        const count = this.value().filter((id) => existingIds.has(id)).length;
         return count > 0 ? `${count} selected` : 'Select a secret';
     });
 

@@ -54,6 +54,23 @@ const CATEGORY_DISPLAY: Record<SecretUsageCategoryDto['key'], { label: string; i
     llm_configs: { label: 'LLM Configs', icon: { kind: 'tabler', value: 'ti ti-robot' } },
 };
 
+/**
+ * A node with two PythonCode blocks (e.g. Classification Decision Table's pre/post computation)
+ * reports one usage hit per code_field — dedupe those back into a single row per node so a secret
+ * declared on both pre and post doesn't render (and count) as two separate nodes.
+ */
+function dedupeFlowNodes(nodes: SecretUsageFlowItemDto['nodes']): SecretUsageFlowNode[] {
+    const seen = new Set<string>();
+    const result: SecretUsageFlowNode[] = [];
+    for (const node of nodes) {
+        const key = `${node.name}:${node.node_type}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push({ name: node.name, nodeType: node.node_type as NodeType });
+    }
+    return result;
+}
+
 export function toSecretUsageSummary(response: SecretUsageResponse): SecretUsageSummary {
     return {
         total: response.total,
@@ -69,10 +86,7 @@ export function toSecretUsageSummary(response: SecretUsageResponse): SecretUsage
                     items: items.map((item) => ({
                         id: item.id,
                         name: item.name,
-                        nodes: item.nodes.map((node) => ({
-                            name: node.name,
-                            nodeType: node.node_type as NodeType,
-                        })),
+                        nodes: dedupeFlowNodes(item.nodes),
                     })),
                 };
             }

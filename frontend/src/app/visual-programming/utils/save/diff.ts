@@ -127,7 +127,10 @@ function toCrewComparable(node: ProjectNodeModel): unknown {
 function toPythonComparable(node: PythonNodeModel): unknown {
     return {
         node_name: node.node_name,
-        python_code: node.data,
+        // secret_ids order is incidental (which secret record happened to resolve first), not a
+        // real difference — sort it so two independent reconstructions of the same set don't
+        // register as a change.
+        python_code: { ...node.data, secret_ids: [...(node.data.secret_ids || [])].sort() },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         stream_config: node.stream_config ?? {},
@@ -184,7 +187,10 @@ function toSubgraphComparable(node: SubGraphNodeModel): unknown {
 function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
     return {
         node_name: node.node_name,
-        python_code: node.data.python_code,
+        python_code: {
+            ...node.data.python_code,
+            secret_ids: [...(node.data.python_code.secret_ids || [])].sort(),
+        },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         webhook_trigger_path: '',

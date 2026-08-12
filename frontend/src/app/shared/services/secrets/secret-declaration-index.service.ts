@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { SecretUsageCategoryDto, SecretUsageFlowItemDto, SecretUsageNamedItemDto } from '@shared/models';
-import { forkJoin, map, Observable, of, shareReplay, switchMap } from 'rxjs';
+import { catchError, forkJoin, map, Observable, of, shareReplay, switchMap } from 'rxjs';
 
 import { SecretsApiService } from './secrets-api.service';
 import { SecretsStorageService } from './secrets-storage.service';
@@ -60,9 +60,18 @@ export class SecretDeclarationIndexService {
                 secrets.length
                     ? forkJoin(
                           secrets.map((secret) =>
-                              this.secretsApiService
-                                  .getSecretUsage(secret.id)
-                                  .pipe(map((usage) => ({ secretId: secret.id, categories: usage.categories })))
+                              this.secretsApiService.getSecretUsage(secret.id).pipe(
+                                  map((usage) => ({ secretId: secret.id, categories: usage.categories })),
+                                  // One secret's usage request failing (deleted between the org
+                                  // list snapshot and this fetch, a transient error) must not
+                                  // poison the whole index — treat it as "no known usage" for
+                                  // that secret rather than erroring the entire forkJoin, which
+                                  // would leave every other secret's restoration silently broken
+                                  // for the rest of the session.
+                                  catchError(() =>
+                                      of({ secretId: secret.id, categories: [] as SecretUsageCategoryDto[] })
+                                  )
+                              )
                           )
                       )
                     : of([])

@@ -53,7 +53,7 @@ export class WebhookTriggerNodePanelComponent
     private readonly toastService = inject(ToastService);
     private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly secretsStorageService = inject(SecretsStorageService);
-    private secretsRestoredFromDeclaration = false;
+    private secretsRestoredForNodeId: string | null = null;
 
     public override readonly isExpanded = input<boolean>(false);
     public readonly graphId = input<number | null>(null);
@@ -100,26 +100,36 @@ export class WebhookTriggerNodePanelComponent
         super();
         effect(() => {
             const graphId = this.graphId();
-            if (this.secretsRestoredFromDeclaration || graphId == null) return;
-            if (this.node().data.python_code.secret_ids !== undefined) {
-                this.secretsRestoredFromDeclaration = true;
-                return;
-            }
-            this.secretsRestoredFromDeclaration = true;
+            const node = this.node();
+            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
+            this.secretsRestoredForNodeId = node.id;
+            if (node.data.python_code.secret_ids !== undefined) return;
+
+            const nodeId = node.id;
+            const nodeName = node.node_name;
             this.secretDeclarationIndexService
                 .getIndex()
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe((index) => {
+                    if (this.node().id !== nodeId) return;
                     const declared = this.secretDeclarationIndexService.lookup(
                         index,
                         graphId,
-                        this.node().node_name,
+                        nodeName,
                         NodeType.WEBHOOK_TRIGGER,
                         'python_code'
                     );
                     if (declared.length) {
                         this.selectedSecretIds.set(declared);
-                        this.resetBaseline();
+                        // Patch only secret_ids into the baseline — resetBaseline() would
+                        // recompute the whole node snapshot and bake in any other field the
+                        // user edited while this async lookup was in flight.
+                        if (this.initialNodeSnapshot) {
+                            const snapshot = JSON.parse(this.initialNodeSnapshot);
+                            snapshot.data.python_code.secret_ids = [...declared].sort();
+                            this.initialNodeSnapshot = JSON.stringify(snapshot);
+                            this.notifyExternalChange();
+                        }
                     }
                 });
         });

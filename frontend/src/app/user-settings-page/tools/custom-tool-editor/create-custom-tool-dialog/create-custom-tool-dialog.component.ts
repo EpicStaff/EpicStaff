@@ -178,7 +178,13 @@ export class CreateCustomToolDialogComponent {
                     const declared = this.secretDeclarationIndexService.lookupTool(index, toolName);
                     if (declared.length) {
                         this.selectedSecretIds.set(declared);
-                        this.initialSnapshot = this.computeSnapshot();
+                        // Patch only the secretIds field of the ORIGINAL baseline — recomputing
+                        // the whole snapshot here would bake in any edit the user made to name/
+                        // description/code while this request was in flight as if it were
+                        // already "clean", silently suppressing the unsaved-changes warning.
+                        const baseline = JSON.parse(this.initialSnapshot) as Record<string, unknown>;
+                        baseline['secretIds'] = [...declared].sort();
+                        this.initialSnapshot = JSON.stringify(baseline);
                     }
                 });
         }

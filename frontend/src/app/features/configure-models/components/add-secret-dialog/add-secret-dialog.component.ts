@@ -36,7 +36,10 @@ export class AddSecretDialogComponent {
     private readonly destroyRef = inject(DestroyRef);
 
     public readonly form: FormGroup = this.fb.group({
-        name: ['', Validators.required],
+        // Excludes characters that would inject HTML into the delete-confirmation dialog
+        // ([innerHTML]-bound) or break the get_secret("name") string literal it's inserted into
+        // by the code-editor autocomplete.
+        name: ['', [Validators.required, Validators.pattern(/^[^<>"'&\\]*$/)]],
         value: ['', Validators.required],
     });
 

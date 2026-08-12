@@ -80,7 +80,10 @@
             </div>
         }
 
-        <div class="selector__list">
+        <div
+            class="selector__list"
+            [class.selector__list--boxed]="variant() === 'boxed'"
+        >
             @for (item of filteredItems(); track item.name) {
                 <div
                     class="selector__option selector__option--exists"

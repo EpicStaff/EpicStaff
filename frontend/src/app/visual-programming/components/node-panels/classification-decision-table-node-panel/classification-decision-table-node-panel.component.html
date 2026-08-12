@@ -136,7 +136,7 @@
                             <app-node-secrets-field
                                 [activeColor]="activeColor"
                                 [value]="preSelectedSecretIds()"
-                                tooltipText="Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets."
+                                tooltipText="Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
                                 panelWidth="346px"
                                 (valueChange)="onPreSecretsChange($event)"
                             />
@@ -178,7 +178,7 @@
                             <app-node-secrets-field
                                 [activeColor]="activeColor"
                                 [value]="postSelectedSecretIds()"
-                                tooltipText="Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets."
+                                tooltipText="Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
                                 panelWidth="346px"
                                 (valueChange)="onPostSecretsChange($event)"
                             />

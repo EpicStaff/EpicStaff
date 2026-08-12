@@ -1,6 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { CreateSecretRequest, Secret } from '@shared/models';
-import { Observable, of, tap } from 'rxjs';
+import { finalize, Observable, of, shareReplay, tap } from 'rxjs';
 
 import { SecretsApiService } from './secrets-api.service';
 
@@ -13,13 +13,25 @@ export class SecretsStorageService {
     private secretsSignal = signal<Secret[]>([]);
     public readonly secrets = this.secretsSignal.asReadonly();
     public secretsLoaded = signal<boolean>(false);
+    // Every node-secrets-field, config dialog, and SecretDeclarationIndexService independently
+    // calls getSecrets() on their own mount/build — without sharing the in-flight request, opening
+    // e.g. a CDT panel (pre + post secrets fields mounting at once) fires one duplicate GET
+    // /secrets/ per concurrent caller before the first response lands.
+    private pendingRequest$: Observable<Secret[]> | null = null;
 
     getSecrets(forceRefresh = false): Observable<Secret[]> {
         if (this.secretsLoaded() && !forceRefresh) {
             return of(this.secretsSignal());
         }
 
-        return this.secretsApiService.getSecrets().pipe(tap((secrets) => this.createSecretsInCache(secrets)));
+        if (!this.pendingRequest$) {
+            this.pendingRequest$ = this.secretsApiService.getSecrets().pipe(
+                tap((secrets) => this.createSecretsInCache(secrets)),
+                finalize(() => (this.pendingRequest$ = null)),
+                shareReplay({ bufferSize: 1, refCount: false })
+            );
+        }
+        return this.pendingRequest$;
     }
 
     createSecret(dto: CreateSecretRequest): Observable<Secret> {

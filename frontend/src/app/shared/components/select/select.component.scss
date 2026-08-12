@@ -166,11 +166,18 @@
     }
 
     &__list {
-        scrollbar-gutter: stable;
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
         overflow-y: auto;
+        overflow-x: hidden;
+        border-radius: inherit;
+
+        // Boxed items are separate cards and need breathing room between them; the flat
+        // (default) list relies on each row's own border-bottom divider instead, so a gap here
+        // would show as an unstyled seam between rows.
+        &--boxed {
+            gap: 0.5rem;
+        }
     }
 
     &__option-body {
@@ -237,6 +244,8 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        width: 100%;
+        box-sizing: border-box;
 
         &--default {
             padding: 0.5rem 0.75rem;

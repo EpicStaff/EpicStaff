@@ -118,7 +118,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly toastService = inject(ToastService);
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
-    private secretsRestoredFromDeclaration = false;
+    private secretsRestoredForNodeId: string | null = null;
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -207,22 +207,22 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         effect(() => {
             const graphId = this.graphId();
-            if (this.secretsRestoredFromDeclaration || graphId == null) return;
+            const node = this.node();
+            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
+            this.secretsRestoredForNodeId = node.id;
 
-            const tableData = (this.node().data as { table?: ClassificationDecisionTableData })?.table;
+            const tableData = (node.data as { table?: ClassificationDecisionTableData })?.table;
             const preComp = tableData?.pre_computation;
             const postComp = tableData?.post_computation;
-            if (preComp?.secret_ids !== undefined && postComp?.secret_ids !== undefined) {
-                this.secretsRestoredFromDeclaration = true;
-                return;
-            }
-            this.secretsRestoredFromDeclaration = true;
+            if (preComp?.secret_ids !== undefined && postComp?.secret_ids !== undefined) return;
 
+            const nodeId = node.id;
+            const nodeName = node.node_name;
             this.secretDeclarationIndexService
                 .getIndex()
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe((index) => {
-                    const nodeName = this.node().node_name;
+                    if (this.node().id !== nodeId) return;
                     const preIds = this.secretDeclarationIndexService.lookup(
                         index,
                         graphId,
@@ -247,8 +247,19 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                         this.postSelectedSecretIds.set(postIds);
                         changed = true;
                     }
-                    if (changed) {
-                        this.resetBaseline();
+                    // Patch only the restored secret_ids into the baseline — resetBaseline()
+                    // would recompute the whole node snapshot and bake in any other field the
+                    // user edited while this async lookup was in flight.
+                    if (changed && this.initialNodeSnapshot) {
+                        const snapshot = JSON.parse(this.initialNodeSnapshot);
+                        if (preComp?.secret_ids === undefined && preIds.length) {
+                            snapshot.data.table.pre_computation.secret_ids = [...preIds].sort();
+                        }
+                        if (postComp?.secret_ids === undefined && postIds.length) {
+                            snapshot.data.table.post_computation.secret_ids = [...postIds].sort();
+                        }
+                        this.initialNodeSnapshot = JSON.stringify(snapshot);
+                        this.notifyExternalChange();
                     }
                 });
         });

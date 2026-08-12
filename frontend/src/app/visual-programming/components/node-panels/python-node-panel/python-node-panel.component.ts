@@ -91,7 +91,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                             <app-node-secrets-field
                                 [activeColor]="activeColor"
                                 [value]="selectedSecretIds()"
-                                tooltipText="Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets."
+                                tooltipText="Secrets this Python code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
                                 (valueChange)="onSecretsChange($event)"
                             />
 
@@ -500,7 +500,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     });
     public readonly isSaving = computed(() => this.sidePanelService.savingNodeId() === this.node().id);
     private wasSaving = false;
-    private secretsRestoredFromDeclaration = false;
+    private secretsRestoredForNodeId: string | null = null;
 
     constructor(
         private readonly sidePanelService: SidePanelService,
@@ -532,26 +532,28 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         });
         effect(() => {
             const graphId = this.graphId();
-            if (this.secretsRestoredFromDeclaration || graphId == null) return;
-            if (this.node().data.secret_ids !== undefined) {
-                this.secretsRestoredFromDeclaration = true;
-                return;
-            }
-            this.secretsRestoredFromDeclaration = true;
+            const node = this.node();
+            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
+            this.secretsRestoredForNodeId = node.id;
+            if (node.data.secret_ids !== undefined) return;
+
+            const nodeId = node.id;
+            const nodeName = node.node_name;
             this.secretDeclarationIndexService
                 .getIndex()
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe((index) => {
+                    if (this.node().id !== nodeId) return;
                     const declared = this.secretDeclarationIndexService.lookup(
                         index,
                         graphId,
-                        this.node().node_name,
+                        nodeName,
                         NodeType.PYTHON,
                         'python_code'
                     );
                     if (declared.length) {
                         this.selectedSecretIds.set(declared);
-                        this.resetDirtyAfterSave();
+                        this.resetSecretsBaseline();
                     }
                 });
         });
@@ -564,6 +566,20 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.initialPythonCode = this.pythonCode;
         this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
         this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();
+        this.formDirtyTick.update((v) => v + 1);
+    }
+
+    /**
+     * Patches only secret_ids into the dirty-tracking baseline, instead of recomputing the whole
+     * signature like resetDirtyAfterSave() does — the secret-restoration effect resolves
+     * asynchronously, and recomputing the full baseline at that point would bake in any other
+     * field the user edited in the meantime as if it were already saved.
+     */
+    private resetSecretsBaseline(): void {
+        if (!this.form || !this.initialFormSignatureExceptTestValues) return;
+        const baseline = JSON.parse(this.initialFormSignatureExceptTestValues) as Record<string, unknown>;
+        baseline['secret_ids'] = [...this.selectedSecretIds()].sort();
+        this.initialFormSignatureExceptTestValues = JSON.stringify(baseline);
         this.formDirtyTick.update((v) => v + 1);
     }
 
