@@ -183,10 +183,6 @@ def test_assign_multiple_tool_labels_to_python_code_tool(
 
 @pytest.mark.django_db
 def test_assign_multiple_tool_labels_to_mcp_tool(client_a, org_a, mcp_tool_a):
-    # NOTE: PUT, not PATCH — McpToolViewSet.update() is a full-replace-only
-    # override that back-fills every concrete field missing from the request
-    # body (a pre-existing quirk, unrelated to this change), so a bare PATCH
-    # with only `labels` 400s on the other required fields being nulled out.
     l1 = Label.objects.create(name="M1", org=org_a, scope=Label.Scope.TOOL)
     l2 = Label.objects.create(name="M2", org=org_a, scope=Label.Scope.TOOL)
 
@@ -203,6 +199,46 @@ def test_assign_multiple_tool_labels_to_mcp_tool(client_a, org_a, mcp_tool_a):
     assert resp.status_code == 200, resp.data
     mcp_tool_a.refresh_from_db()
     assert set(mcp_tool_a.labels.values_list("id", flat=True)) == {l1.id, l2.id}
+
+
+@pytest.mark.django_db
+def test_patch_with_only_labels_on_python_code_tool(
+    client_a, org_a, python_code_tool_a
+):
+    l1 = Label.objects.create(name="PL1", org=org_a, scope=Label.Scope.TOOL)
+    l2 = Label.objects.create(name="PL2", org=org_a, scope=Label.Scope.TOOL)
+
+    resp = client_a.patch(
+        f"/api/python-code-tool/{python_code_tool_a.id}/",
+        {"labels": [l1.id, l2.id]},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+    python_code_tool_a.refresh_from_db()
+    assert set(python_code_tool_a.labels.values_list("id", flat=True)) == {l1.id, l2.id}
+
+
+@pytest.mark.django_db
+def test_patch_with_only_labels_on_mcp_tool(client_a, org_a, mcp_tool_a):
+    # Regression test: McpToolViewSet.update() is a full-replace-only override
+    # that back-fills every concrete field missing from the request body. It
+    # must not run for PATCH — partial_update() bypasses it so a bare PATCH
+    # with only `labels` doesn't null out the other required fields (name,
+    # transport, tool_name) and 400.
+    l1 = Label.objects.create(name="M1", org=org_a, scope=Label.Scope.TOOL)
+    l2 = Label.objects.create(name="M2", org=org_a, scope=Label.Scope.TOOL)
+
+    resp = client_a.patch(
+        f"/api/mcp-tools/{mcp_tool_a.id}/",
+        {"labels": [l1.id, l2.id]},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+    mcp_tool_a.refresh_from_db()
+    assert set(mcp_tool_a.labels.values_list("id", flat=True)) == {l1.id, l2.id}
+    assert mcp_tool_a.name == "McpA"
+    assert mcp_tool_a.transport == "https://example.com/mcp"
+    assert mcp_tool_a.tool_name == "do_thing"
 
 
 @pytest.mark.django_db

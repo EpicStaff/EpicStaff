@@ -94,7 +94,7 @@ def test_python_code_tool_bulk_delete_deletes_non_builtin_and_skips_builtin(
     custom_2 = _make_python_tool(built_in=False, org=org_a, name="custom2")
 
     resp = client_a.post(
-        "/api/python-code-tool/bulk_delete/",
+        "/api/python-code-tool/bulk-delete/",
         {"ids": [builtin.id, custom_1.id, custom_2.id]},
         format="json",
     )
@@ -113,7 +113,7 @@ def test_python_code_tool_bulk_delete_cross_org_not_deleted(client_a, org_a, org
     foreign = _make_python_tool(built_in=False, org=org_b, name="theirs")
 
     resp = client_a.post(
-        "/api/python-code-tool/bulk_delete/", {"ids": [foreign.id]}, format="json"
+        "/api/python-code-tool/bulk-delete/", {"ids": [foreign.id]}, format="json"
     )
 
     assert resp.status_code == 200, resp.data
@@ -124,7 +124,7 @@ def test_python_code_tool_bulk_delete_cross_org_not_deleted(client_a, org_a, org
 @pytest.mark.django_db
 def test_python_code_tool_bulk_delete_invalid_ids_returns_400(client_a):
     resp = client_a.post(
-        "/api/python-code-tool/bulk_delete/", {"ids": "not-a-list"}, format="json"
+        "/api/python-code-tool/bulk-delete/", {"ids": "not-a-list"}, format="json"
     )
     assert resp.status_code == 400
 
@@ -133,7 +133,7 @@ def test_python_code_tool_bulk_delete_invalid_ids_returns_400(client_a):
 def test_python_code_tool_bulk_delete_denied_for_viewer(viewer_client_a, org_a):
     tool = _make_python_tool(built_in=False, org=org_a, name="mine")
     resp = viewer_client_a.post(
-        "/api/python-code-tool/bulk_delete/", {"ids": [tool.id]}, format="json"
+        "/api/python-code-tool/bulk-delete/", {"ids": [tool.id]}, format="json"
     )
     assert resp.status_code == 403
     assert PythonCodeTool.objects.filter(id=tool.id).exists()
@@ -148,7 +148,7 @@ def test_mcp_tool_bulk_delete_deletes_everything_requested(client_a, org_a):
     mcp_2 = _make_mcp_tool(org=org_a, name="mine2")
 
     resp = client_a.post(
-        "/api/mcp-tools/bulk_delete/", {"ids": [mcp_1.id, mcp_2.id]}, format="json"
+        "/api/mcp-tools/bulk-delete/", {"ids": [mcp_1.id, mcp_2.id]}, format="json"
     )
 
     assert resp.status_code == 200, resp.data
@@ -162,7 +162,7 @@ def test_mcp_tool_bulk_delete_cross_org_not_deleted(client_a, org_a, org_b):
     foreign = _make_mcp_tool(org=org_b, name="theirs")
 
     resp = client_a.post(
-        "/api/mcp-tools/bulk_delete/", {"ids": [foreign.id]}, format="json"
+        "/api/mcp-tools/bulk-delete/", {"ids": [foreign.id]}, format="json"
     )
 
     assert resp.status_code == 200, resp.data
@@ -174,7 +174,7 @@ def test_mcp_tool_bulk_delete_cross_org_not_deleted(client_a, org_a, org_b):
 def test_mcp_tool_bulk_delete_denied_for_viewer(viewer_client_a, org_a):
     mcp_tool = _make_mcp_tool(org=org_a, name="mine")
     resp = viewer_client_a.post(
-        "/api/mcp-tools/bulk_delete/", {"ids": [mcp_tool.id]}, format="json"
+        "/api/mcp-tools/bulk-delete/", {"ids": [mcp_tool.id]}, format="json"
     )
     assert resp.status_code == 403
     assert McpTool.objects.filter(id=mcp_tool.id).exists()

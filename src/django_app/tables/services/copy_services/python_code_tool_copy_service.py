@@ -5,7 +5,12 @@ from tables.services.copy_services.helpers import copy_python_code
 
 
 class PythonCodeToolCopyService(BaseCopyService):
-    def copy(self, tool: PythonCodeTool, name: str | None = None) -> PythonCodeTool:
+    def copy(
+        self,
+        tool: PythonCodeTool,
+        name: str | None = None,
+        org_id: int | None = None,
+    ) -> PythonCodeTool:
         if tool.built_in:
             raise ValueError("Cannot copy a built-in tool.")
 
@@ -23,4 +28,5 @@ class PythonCodeToolCopyService(BaseCopyService):
             variables=tool.variables,
             python_code=new_code,
             favorite=tool.favorite,
+            org_id=org_id if org_id is not None else tool.org_id,
         )

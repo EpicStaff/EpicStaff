@@ -122,7 +122,9 @@ from tables.swagger_schemas.partial_import_schemas import (
 )
 from tables.swagger_schemas.tools_schemas import (
     MCP_TOOL_BULK_DELETE_POST,
+    MCP_TOOL_COPY_POST,
     PYTHON_CODE_TOOL_BULK_DELETE_POST,
+    PYTHON_CODE_TOOL_COPY_POST,
 )
 from tables.swagger_schemas.tools_usage_schemas import (
     MCP_TOOL_USAGE_DETAIL_GET,
@@ -725,6 +727,7 @@ class ContentHashPreconditionMixin:
         super().perform_update(serializer)
 
 
+@extend_schema_view(copy=extend_schema(**PYTHON_CODE_TOOL_COPY_POST))
 class PythonCodeToolViewSet(
     OrgScopedHybridViewSetMixin, CopyActionMixin, ToolUsageActionsMixin, viewsets.ModelViewSet
 ):
@@ -738,6 +741,7 @@ class PythonCodeToolViewSet(
     rbac_resource_type = ResourceType.TOOLS
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        "copy": Permission.CREATE,
         "bulk_delete": Permission.DELETE,
         "usage": Permission.READ,
         "usage_detail": Permission.READ,
@@ -760,7 +764,7 @@ class PythonCodeToolViewSet(
         return super().destroy(request, *args, **kwargs)
 
     @extend_schema(**PYTHON_CODE_TOOL_BULK_DELETE_POST)
-    @action(detail=False, methods=["post"], url_path="bulk_delete")
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
         ids = request.data.get("ids", [])
         if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
@@ -1743,6 +1747,7 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
         return response
 
 
+@extend_schema_view(copy=extend_schema(**MCP_TOOL_COPY_POST))
 class McpToolViewSet(
     OrgScopedViewSetMixin, CopyActionMixin, ToolUsageActionsMixin, viewsets.ModelViewSet
 ):
@@ -1750,6 +1755,7 @@ class McpToolViewSet(
     rbac_resource_type = ResourceType.TOOLS
     rbac_action_map = {
         **DEFAULT_ACTION_MAP,
+        "copy": Permission.CREATE,
         "bulk_delete": Permission.DELETE,
         "usage": Permission.READ,
         "usage_detail": Permission.READ,
@@ -1763,6 +1769,13 @@ class McpToolViewSet(
     filterset_fields = ["name", "tool_name"]
 
     def update(self, request, *args, **kwargs):
+        # PUT is a full-replace: any concrete field missing from the body is
+        # explicitly back-filled with its model default (or None) so a bare
+        # PUT clears unspecified fields instead of silently keeping stale
+        # values. This must NOT run for PATCH — partial_update overrides it
+        # below so a partial body (e.g. {"labels": [...]}) isn't forced
+        # through this full-replace path and doesn't get its other required
+        # fields nulled out.
         instance = self.get_object()
         data = request.data.copy()
         for field in self.serializer_class.Meta.model._meta.get_fields():
@@ -1774,8 +1787,15 @@ class McpToolViewSet(
         self.perform_update(serializer)
         return Response(serializer.data)
 
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
     @extend_schema(**MCP_TOOL_BULK_DELETE_POST)
-    @action(detail=False, methods=["post"], url_path="bulk_delete")
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
         ids = request.data.get("ids", [])
         if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):

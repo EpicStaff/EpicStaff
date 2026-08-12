@@ -184,3 +184,59 @@ def test_pythoncode_unattached_is_hidden(client_a):
     orphan = PythonCode.objects.create(code="orphan", entrypoint="main")
     ids = {c["id"] for c in _results(client_a.get("/api/python-code/"))}
     assert orphan.id not in ids
+
+
+# ---- copy action: CopyActionMixin always forwards org_id for org-scoped
+# viewsets (get_active_org_id present) — PythonCodeToolCopyService and
+# McpToolCopyService must accept + apply it. ----
+
+
+@pytest.mark.django_db
+def test_pythoncodetool_copy_lands_in_active_org(client_a, org_a):
+    tool = _make_tool(built_in=False, org=org_a, name="mine")
+    resp = client_a.post(f"/api/python-code-tool/{tool.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+    new_tool = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert new_tool.id != tool.id
+    assert new_tool.org_id == org_a.id
+    assert new_tool.built_in is False
+    assert new_tool.python_code_id != tool.python_code_id
+
+
+@pytest.mark.django_db
+def test_pythoncodetool_copy_with_custom_name(client_a, org_a):
+    tool = _make_tool(built_in=False, org=org_a, name="mine")
+    resp = client_a.post(
+        f"/api/python-code-tool/{tool.id}/copy/", {"name": "renamed"}, format="json"
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["name"] == "renamed"
+
+
+@pytest.mark.django_db
+def test_pythoncodetool_copy_rejects_built_in(client_a):
+    tool = _make_tool(built_in=True, org=None, name="bt")
+    resp = client_a.post(f"/api/python-code-tool/{tool.id}/copy/", {}, format="json")
+    assert resp.status_code == 400
+    assert "built-in" in resp.data["message"].lower()
+
+
+@pytest.mark.django_db
+def test_mcptool_copy_lands_in_active_org(client_a, org_a):
+    tool = McpTool.objects.create(
+        name="mine", transport="t", tool_name="x", org=org_a
+    )
+    resp = client_a.post(f"/api/mcp-tools/{tool.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+    new_tool = McpTool.objects.get(id=resp.data["id"])
+    assert new_tool.id != tool.id
+    assert new_tool.org_id == org_a.id
+
+
+@pytest.mark.django_db
+def test_mcptool_copy_cross_org_404(client_a, org_b):
+    other = McpTool.objects.create(
+        name="theirs", transport="t", tool_name="x", org=org_b
+    )
+    resp = client_a.post(f"/api/mcp-tools/{other.id}/copy/", {}, format="json")
+    assert resp.status_code == 404
