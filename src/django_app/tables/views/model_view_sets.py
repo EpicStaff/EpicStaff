@@ -122,13 +122,19 @@ from tables.swagger_schemas.partial_import_schemas import (
 )
 from tables.swagger_schemas.tools_schemas import (
     MCP_TOOL_BULK_DELETE_POST,
+    MCP_TOOL_BULK_EXPORT_POST,
     MCP_TOOL_COPY_POST,
+    MCP_TOOL_EXPORT_GET,
     MCP_TOOL_FAVORITE_DELETE,
     MCP_TOOL_FAVORITE_POST,
+    MCP_TOOL_IMPORT_POST,
     PYTHON_CODE_TOOL_BULK_DELETE_POST,
+    PYTHON_CODE_TOOL_BULK_EXPORT_POST,
     PYTHON_CODE_TOOL_COPY_POST,
+    PYTHON_CODE_TOOL_EXPORT_GET,
     PYTHON_CODE_TOOL_FAVORITE_DELETE,
     PYTHON_CODE_TOOL_FAVORITE_POST,
+    PYTHON_CODE_TOOL_IMPORT_POST,
     TOOL_ORDERING_PARAMETER,
 )
 from tables.swagger_schemas.tools_usage_schemas import (
@@ -760,6 +766,9 @@ class PythonCodeToolViewSet(
         "usage": Permission.READ,
         "usage_detail": Permission.READ,
         "favorite": Permission.READ,
+        "export": Permission.EXPORT,
+        "bulk_export": Permission.EXPORT,
+        "import_entity": Permission.CREATE,
     }
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
@@ -771,6 +780,14 @@ class PythonCodeToolViewSet(
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = PythonCodeToolFilter
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.PYTHON_CODE_TOOL,
+            export_prefix="python_code_tool",
+            filename_attr="name",
+        )
 
     def get_queryset(self):
         queryset = (
@@ -845,6 +862,48 @@ class PythonCodeToolViewSet(
         return self._usage_detail_response(
             pk, get_python_code_tool_usage_detail, "PythonCodeTool"
         )
+
+    @extend_schema(**PYTHON_CODE_TOOL_EXPORT_GET)
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk: int):
+        return self.import_export_service.export_entity(self.get_object())
+
+    @extend_schema(**PYTHON_CODE_TOOL_BULK_EXPORT_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-export")
+    def bulk_export(self, request):
+        serializer = BulkExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity_ids = serializer.validated_data["ids"]
+
+        # Built-in tools (org_id=None) are globally visible and must be
+        # exportable like any org's own tool, mirroring get_org_scope_q()
+        # used by the import/export strategy and the get_queryset() scoping
+        # that export/get_object() already relies on.
+        existing_ids = PythonCodeTool.objects.filter(
+            Q(built_in=True) | Q(org_id=self.get_active_org_id()),
+            id__in=entity_ids,
+        ).values_list("id", flat=True)
+        if len(existing_ids) != len(entity_ids):
+            return Response(
+                {"message": "Some entity IDs do not exist"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return self.import_export_service.bulk_export(entity_ids)
+
+    @extend_schema(**PYTHON_CODE_TOOL_IMPORT_POST)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_entity(self, request):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        vd = file_serializer.validated_data
+        data = self.import_export_service.import_entity(
+            vd["file"],
+            user=request.user,
+            settings=ImportSettings(import_labels=vd["import_labels"]),
+            org_id=self.get_active_org_id(),
+        )
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
@@ -1806,6 +1865,9 @@ class McpToolViewSet(
         "usage": Permission.READ,
         "usage_detail": Permission.READ,
         "favorite": Permission.READ,
+        "export": Permission.EXPORT,
+        "bulk_export": Permission.EXPORT,
+        "import_entity": Permission.CREATE,
     }
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
@@ -1814,6 +1876,14 @@ class McpToolViewSet(
     serializer_class = McpToolSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = McpToolFilter
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.MCP_TOOL,
+            export_prefix="mcp_tool",
+            filename_attr="name",
+        )
 
     def get_queryset(self):
         queryset = (
@@ -1901,6 +1971,43 @@ class McpToolViewSet(
     @action(detail=True, methods=["get"], url_path="usage-detail")
     def usage_detail(self, request, pk=None):
         return self._usage_detail_response(pk, get_mcp_tool_usage_detail, "McpTool")
+
+    @extend_schema(**MCP_TOOL_EXPORT_GET)
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk: int):
+        return self.import_export_service.export_entity(self.get_object())
+
+    @extend_schema(**MCP_TOOL_BULK_EXPORT_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-export")
+    def bulk_export(self, request):
+        serializer = BulkExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity_ids = serializer.validated_data["ids"]
+
+        existing_ids = McpTool.objects.filter(
+            id__in=entity_ids, org_id=self.get_active_org_id()
+        ).values_list("id", flat=True)
+        if len(existing_ids) != len(entity_ids):
+            return Response(
+                {"message": "Some entity IDs do not exist"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return self.import_export_service.bulk_export(entity_ids)
+
+    @extend_schema(**MCP_TOOL_IMPORT_POST)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_entity(self, request):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        vd = file_serializer.validated_data
+        data = self.import_export_service.import_entity(
+            vd["file"],
+            user=request.user,
+            settings=ImportSettings(import_labels=vd["import_labels"]),
+            org_id=self.get_active_org_id(),
+        )
+        return Response(data, status=status.HTTP_200_OK)
 
 
 # TODO refactor to use user_variable for persistent variables

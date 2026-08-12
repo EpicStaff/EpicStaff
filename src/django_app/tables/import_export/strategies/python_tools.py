@@ -4,6 +4,7 @@ from django.db.models import Q
 
 from tables.models import PythonCode, PythonCodeTool
 from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.strategies.tool_labels import attach_tool_labels
 from tables.import_export.serializers.python_tools import (
     PythonCodeImportSerializer,
     PythonCodeToolImportSerializer,
@@ -29,10 +30,12 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         return {"id": instance.id, "name": instance.name}
 
     def extract_dependencies_from_instance(self, instance) -> dict[str, list[int]]:
-        return {}
+        return {EntityType.LABEL: list(instance.labels.values_list("id", flat=True))}
 
     def export_entity(self, instance: PythonCodeTool) -> dict:
-        return self.serializer_class(instance).data
+        data = self.serializer_class(instance).data
+        data["labels"] = list(instance.labels.values_list("id", flat=True))
+        return data
 
     def get_org_scope_q(self, org_id: int) -> Q:
         if org_id is None:
@@ -43,8 +46,10 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
         self, data: dict, id_mapper: IDMapper, **kwargs
     ) -> PythonCodeTool:
         org_id = kwargs.get("org_id")
+        import_labels = kwargs.get("import_labels", True)
         python_code_data = data.pop("python_code", {})
         python_tool_config_data = data.pop("python_code_tool_config", [])
+        labels_data = data.pop("labels", [])
 
         if "name" in data:
             existing_names = PythonCodeTool.objects.filter(org_id=org_id).values_list(
@@ -72,12 +77,16 @@ class PythonCodeToolStrategy(EntityImportExportStrategy):
             python_code_tool, python_tool_config_data, org_id
         )
 
+        if import_labels and labels_data:
+            attach_tool_labels(python_code_tool, id_mapper, labels_data)
+
         return python_code_tool
 
     def find_existing(self, data, id_mapper, org_id: int = None):
         data_copy = deepcopy(data)
         data_copy.pop("id", None)
         data_copy.pop("python_code_tool_config", None)
+        data_copy.pop("labels", None)
 
         python_code_data = data_copy.pop("python_code", None)
 

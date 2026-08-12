@@ -40,4 +40,4 @@ class PythonCodeToolImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PythonCodeTool
-        fields = "__all__"
+        exclude = ["labels"]

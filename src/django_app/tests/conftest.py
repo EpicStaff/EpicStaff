@@ -27,16 +27,21 @@ def flush_test_db_once(django_db_setup, django_db_blocker):
         # Migration module names start with digits and cannot be imported via
         # `from ... import`; use importlib. Delegating to the migrations' own
         # seed functions keeps the role/permission definitions in one place.
-        # Replay BOTH seeds in migration order: 0171 seeds roles + initial
+        # Replay seeds in migration order: 0171 seeds roles + initial
         # permission bitmasks, then 0183 overrides them with the authoritative
-        # bitmasks (e.g. Org Admin export on agents/projects). Re-seeding only
-        # 0171 would leave tests on the stale pre-0183 permissions.
+        # bitmasks (e.g. Org Admin export on agents/projects), then 0210 adds
+        # the EXPORT bit to the `tools` resource (EST-3207). Re-seeding only
+        # 0171/0183 would leave tests on the stale pre-0210 tools permissions.
         roles_module = import_module("tables.migrations.0171_seed_builtin_roles")
         roles_module.seed_builtin_roles(django_apps, None)
         perms_module = import_module(
             "tables.migrations.0183_seed_builtin_role_permissions"
         )
         perms_module.seed_role_permissions(django_apps, None)
+        tools_export_module = import_module(
+            "tables.migrations.0210_seed_tools_export_permission"
+        )
+        tools_export_module.grant_tools_export(django_apps, None)
 
 
 @pytest.fixture(autouse=True)
