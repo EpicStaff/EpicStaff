@@ -105,11 +105,13 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
         return python_code_tool
 
     def update(self, instance, validated_data):
-        if instance.built_in:
-            raise BuiltInToolModificationError()
-
         labels = validated_data.pop("labels", None)
         python_code_data = validated_data.pop("python_code", None)
+
+        if instance.built_in and (validated_data or python_code_data):
+            raise BuiltInToolModificationError(
+                "Built-in tools cannot be modified, except for labels"
+            )
 
         with transaction.atomic():
             if python_code_data:

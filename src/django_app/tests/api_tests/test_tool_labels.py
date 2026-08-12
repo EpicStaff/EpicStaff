@@ -262,6 +262,74 @@ def test_mcp_tool_full_put_without_labels_does_not_clear_assignment(
     assert list(mcp_tool_a.labels.values_list("id", flat=True)) == [label.id]
 
 
+# ---- built-in tool label updates ----
+
+
+@pytest.fixture
+def built_in_python_code_tool(org_a) -> PythonCodeTool:
+    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
+    return PythonCodeTool.objects.create(
+        name="BuiltInTool",
+        description="desc",
+        python_code=code,
+        org=org_a,
+        built_in=True,
+    )
+
+
+@pytest.mark.django_db
+def test_labels_only_patch_on_built_in_tool_succeeds(
+    client_a, org_a, built_in_python_code_tool
+):
+    # Labels are org-scoped user tags, not part of the built-in tool's
+    # definition — a labels-only PATCH must be allowed even for built-in tools.
+    l1 = Label.objects.create(name="BI1", org=org_a, scope=Label.Scope.TOOL)
+
+    resp = client_a.patch(
+        f"/api/python-code-tool/{built_in_python_code_tool.id}/",
+        {"labels": [l1.id]},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+    built_in_python_code_tool.refresh_from_db()
+    assert set(
+        built_in_python_code_tool.labels.values_list("id", flat=True)
+    ) == {l1.id}
+
+
+@pytest.mark.django_db
+def test_non_label_patch_on_built_in_tool_still_rejected(
+    client_a, org_a, built_in_python_code_tool
+):
+    resp = client_a.patch(
+        f"/api/python-code-tool/{built_in_python_code_tool.id}/",
+        {"name": "RenamedBuiltIn"},
+        format="json",
+    )
+    assert resp.status_code == 400
+    built_in_python_code_tool.refresh_from_db()
+    assert built_in_python_code_tool.name == "BuiltInTool"
+
+
+@pytest.mark.django_db
+def test_labels_plus_other_field_patch_on_built_in_tool_rejected(
+    client_a, org_a, built_in_python_code_tool
+):
+    # Mixing a labels change with any other field change on a built-in tool
+    # must still be rejected as a whole — labels don't grant a bypass.
+    l1 = Label.objects.create(name="BI2", org=org_a, scope=Label.Scope.TOOL)
+
+    resp = client_a.patch(
+        f"/api/python-code-tool/{built_in_python_code_tool.id}/",
+        {"labels": [l1.id], "name": "RenamedBuiltIn"},
+        format="json",
+    )
+    assert resp.status_code == 400
+    built_in_python_code_tool.refresh_from_db()
+    assert built_in_python_code_tool.name == "BuiltInTool"
+    assert list(built_in_python_code_tool.labels.values_list("id", flat=True)) == []
+
+
 # ---- cascade delete ----
 
 
