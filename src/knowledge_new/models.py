@@ -67,7 +67,13 @@ class Rag(Entity):
 
     def mark_as_failed(self, error: Exception | str):
         self.status = IndexStatusEnum.FAILED
-        self.error_message = str(error)
+        if isinstance(error, BaseExceptionGroup):
+            sub_details = "; ".join(f"{type(e).__name__}: {e}" for e in error.exceptions)
+            self.error_message = (
+                f"{error.message} [{sub_details}]" if sub_details else error.message
+            )
+        else:
+            self.error_message = str(error)
 
     def mark_as_outdated(self, **reasons: str):
         self.status = IndexStatusEnum.OUTDATED
