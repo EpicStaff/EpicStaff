@@ -8,6 +8,7 @@ from tables.models import (
 
 
 class PythonCodeImportSerializer(serializers.ModelSerializer):
+    code = serializers.CharField(allow_blank=True)
     libraries = serializers.CharField(allow_blank=True)
 
     class Meta:

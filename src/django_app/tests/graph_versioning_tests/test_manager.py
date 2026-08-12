@@ -654,6 +654,31 @@ def test_restore_does_not_raise_integrity_error_for_classification_decision_tabl
 
 
 @pytest.mark.django_db
+def test_restore_does_not_reject_blank_pre_python_code(manager, graph):
+    """
+    Restore must not raise a validation error for a blank pre/post-processing code block.
+
+    Before the fix, PythonCodeImportSerializer required "code" to be non-blank,
+    so a ClassificationDecisionTableNode whose pre_python_code.code was ""
+    (a normal, saveable state in the editor) failed to restore.
+    """
+    from tables.models import ClassificationDecisionTableNode, PythonCode
+
+    pre_python_code = PythonCode.objects.create(code="")
+    ClassificationDecisionTableNode.objects.create(
+        graph=graph,
+        node_name="classifier_node",
+        pre_python_code=pre_python_code,
+    )
+    snapshot = manager.create_snapshot(graph)
+
+    manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
+
+    restored = graph.classification_decision_table_node_list.first()
+    assert restored.pre_python_code.code == ""
+
+
+@pytest.mark.django_db
 def test_restore_does_not_duplicate_schedule_trigger_node(manager, graph):
     """
     Restore must not accumulate duplicate ScheduleTriggerNode rows.
