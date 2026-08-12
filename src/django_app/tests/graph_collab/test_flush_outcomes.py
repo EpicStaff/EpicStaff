@@ -41,6 +41,40 @@ def test_flush_service_singleton_is_correct_type():
 
 
 # ---------------------------------------------------------------------------
+# flush_if_dirty skips when clean
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_flush_if_dirty_skips_when_clean(
+    live_state_service, base_snapshot, flush_service, monkeypatch
+):
+    graph_id = 2
+    await live_state_service.seed(graph_id, base_snapshot())
+    live_state_service._revision[graph_id] = 0
+    live_state_service._flushed_revision[graph_id] = 0
+
+    # Point flush_service internals at our isolated service instance.
+    monkeypatch.setattr(
+        "tables.graph_collab.flush_service.graph_state_service", live_state_service
+    )
+
+    flush_called = []
+    original_flush = flush_service.flush
+
+    async def _spy_flush(gid):
+        flush_called.append(gid)
+        return await original_flush(gid)
+
+    monkeypatch.setattr(flush_service, "flush", _spy_flush)
+
+    outcome = await flush_service.flush_if_dirty(graph_id)
+
+    assert outcome.status is FlushStatus.NOTHING_TO_FLUSH
+    assert flush_called == [], "flush() must not be called when snapshot is clean"
+
+
+# ---------------------------------------------------------------------------
 # DB-backed tests
 # ---------------------------------------------------------------------------
 

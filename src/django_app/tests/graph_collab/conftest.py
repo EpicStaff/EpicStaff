@@ -1,3 +1,4 @@
+import asyncio
 import unittest.mock
 
 import fakeredis
@@ -30,6 +31,7 @@ from tables.graph_collab.presence_service import (
 from tables.graph_collab.protocol import EditorInfo
 from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
 from tables.services.schedule_trigger_service import ScheduleTriggerService
+from tables.services import redis_service as _rs_module
 
 
 application = URLRouter(
@@ -104,6 +106,63 @@ PYTHON_CODE_DATA = {
     "entrypoint": "main",
     "libraries": [],
 }
+
+
+async def wait_for(
+    condition_coro, timeout: float = 2.0, interval: float = 0.05
+) -> bool:
+    """Poll `condition_coro()` until it returns truthy or `timeout` elapses."""
+    elapsed = 0.0
+    while elapsed < timeout:
+        if await condition_coro():
+            return True
+        await asyncio.sleep(interval)
+        elapsed += interval
+    return False
+
+
+async def collect_messages(communicator, timeout: float = 0.5) -> list[dict]:
+    """Drain all messages currently queued on `communicator`, stopping at the first gap."""
+    messages = []
+    try:
+        while True:
+            msg = await asyncio.wait_for(
+                communicator.receive_json_from(), timeout=timeout
+            )
+            messages.append(msg)
+    except asyncio.TimeoutError:
+        pass
+    return messages
+
+
+async def apply_create_op(communicator, graph_id: int, user, temp_id: str) -> None:
+    """Send a node_created op and wait until that exact node appears in the live snapshot."""
+    await communicator.send_json_to(
+        {
+            "type": "node_created",
+            "node": {
+                "temp_id": temp_id,
+                "graph": graph_id,
+                "python_code": PYTHON_CODE_DATA,
+            },
+            "list_key": "python_node_list",
+            "editor": {
+                "user_id": user.pk,
+                "display_name": "x",
+                "avatar_url": None,
+            },
+        }
+    )
+
+    async def _node_in_snapshot():
+        snap = await _gss_module.graph_state_service.get_snapshot(graph_id)
+        if snap is None:
+            return False
+        return any(n.get("temp_id") == temp_id for n in snap["python_node_list"])
+
+    assert await wait_for(_node_in_snapshot), (
+        f"Node {temp_id!r} did not appear in snapshot"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -209,6 +268,35 @@ def patch_graph_state_redis(fake_async_redis, monkeypatch):
     _gss_module.graph_state_service._locks.clear()
     _gss_module.graph_state_service._revision.clear()
     _gss_module.graph_state_service._flushed_revision.clear()
+
+
+@pytest.fixture
+def patch_redis_service(fake_async_redis, monkeypatch):
+    """Replace RedisService's async client with the shared `fake_async_redis` instance.
+
+    Not autouse: opt in explicitly for tests that exercise RedisService directly
+    (e.g. autosave/flush broadcast tests), so they share the same fake Redis
+    instance as `patch_graph_state_redis` instead of each patching in a separate one.
+    """
+    monkeypatch.setattr(
+        type(_rs_module.RedisService()),
+        "async_redis_client",
+        property(lambda self: fake_async_redis),
+    )
+
+
+@pytest.fixture
+def noop_content_hash_refresh(monkeypatch):
+    """Patch out the content_hash DB refresh step so a DB-free test file stays DB-free.
+
+    Not autouse: must be opted into explicitly, since test_content_hash_refresh.py
+    tests this exact function and a directory-wide autouse patch would neuter it.
+    """
+
+    async def _noop(snapshot):
+        return None
+
+    monkeypatch.setattr(_gss_module, "_refresh_flushed_content_hashes", _noop)
 
 
 @pytest.fixture(autouse=True)
@@ -321,6 +409,11 @@ def get_node(list_key: str, node_id: int):
 @sync_to_async
 def first_node(list_key: str, graph_id: int):
     return _model_for(list_key).objects.filter(graph_id=graph_id).first()
+
+
+@sync_to_async
+def get_graph_save_version(graph_id: int) -> int:
+    return Graph.objects.get(pk=graph_id).save_version
 
 
 @sync_to_async

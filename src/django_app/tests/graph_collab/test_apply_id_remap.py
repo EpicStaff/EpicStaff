@@ -7,74 +7,9 @@ fixture from conftest.py.  No DB needed for these tests.
 
 import pytest
 
-from tables.graph_collab import graph_state_service as _gss_module
-from tables.graph_collab.graph_state_service import graph_state_service
+from tables.graph_collab.constants import _DECISION_TABLE_LIST_KEYS
 
-
-@pytest.fixture(autouse=True)
-def noop_content_hash_refresh(monkeypatch):
-    """These tests exercise apply_id_remap's temp_id/edge/orphan/deleted-
-    accumulator logic in isolation, with fake ids (10, 42, 99, ...) that do
-    not correspond to real DB rows. Patch out the content_hash DB refresh
-    step (EST-3020, see _refresh_flushed_content_hashes) so this file stays
-    DB-free, matching its original scope. Dedicated DB-backed coverage for
-    the refresh itself lives in test_content_hash_refresh.py.
-    """
-
-    async def _noop(snapshot):
-        return None
-
-    monkeypatch.setattr(_gss_module, "_refresh_flushed_content_hashes", _noop)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _empty_deleted() -> dict:
-    return {
-        "edge_ids": [],
-        "conditional_edge_ids": [],
-        "crew_node_ids": [],
-        "python_node_ids": [],
-        "file_extractor_node_ids": [],
-        "audio_transcription_node_ids": [],
-        "start_node_ids": [],
-        "end_node_ids": [],
-        "subgraph_node_ids": [],
-        "decision_table_node_ids": [],
-        "graph_note_ids": [],
-        "webhook_trigger_node_ids": [],
-        "telegram_trigger_node_ids": [],
-        "schedule_trigger_node_ids": [],
-        "code_agent_node_ids": [],
-        "classification_decision_table_node_ids": [],
-    }
-
-
-def _snapshot(**overrides) -> dict:
-    base = {
-        "save_version": 1,
-        "crew_node_list": [],
-        "python_node_list": [],
-        "file_extractor_node_list": [],
-        "audio_transcription_node_list": [],
-        "start_node_list": [],
-        "end_node_list": [],
-        "subgraph_node_list": [],
-        "decision_table_node_list": [],
-        "graph_note_list": [],
-        "webhook_trigger_node_list": [],
-        "telegram_trigger_node_list": [],
-        "schedule_trigger_node_list": [],
-        "code_agent_node_list": [],
-        "edge_list": [],
-        "conditional_edge_list": [],
-        "deleted": _empty_deleted(),
-    }
-    base.update(overrides)
-    return base
+pytestmark = pytest.mark.usefixtures("noop_content_hash_refresh")
 
 
 # ---------------------------------------------------------------------------
@@ -83,12 +18,12 @@ def _snapshot(**overrides) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_no_snapshot_is_noop():
+async def test_apply_id_remap_no_snapshot_is_noop(live_state_service, empty_deleted):
     """apply_id_remap must not raise and must not create a snapshot."""
-    await graph_state_service.apply_id_remap(
-        9999, {"tmp-a": 1}, new_save_version=2, flushed_deleted=_empty_deleted()
+    await live_state_service.apply_id_remap(
+        9999, {"tmp-a": 1}, new_save_version=2, flushed_deleted=empty_deleted()
     )
-    assert await graph_state_service.get_snapshot(9999) is None
+    assert await live_state_service.get_snapshot(9999) is None
 
 
 # ---------------------------------------------------------------------------
@@ -97,20 +32,22 @@ async def test_apply_id_remap_no_snapshot_is_noop():
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_rewrites_node_temp_id():
+async def test_apply_id_remap_rewrites_node_temp_id(
+    live_state_service, base_snapshot, empty_deleted
+):
     """A node entry with temp_id in the map gets id set and temp_id removed."""
-    snap = _snapshot(
+    snap = base_snapshot(
         python_node_list=[
             {"temp_id": "tmp-1", "node_name": "my_node"},
         ]
     )
-    await graph_state_service.seed(1, snap)
+    await live_state_service.seed(1, snap)
 
-    await graph_state_service.apply_id_remap(
-        1, {"tmp-1": 42}, new_save_version=2, flushed_deleted=_empty_deleted()
+    await live_state_service.apply_id_remap(
+        1, {"tmp-1": 42}, new_save_version=2, flushed_deleted=empty_deleted()
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
     node = result["python_node_list"][0]
     assert node["id"] == 42
     assert "temp_id" not in node
@@ -118,42 +55,46 @@ async def test_apply_id_remap_rewrites_node_temp_id():
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_leaves_nodes_with_real_id_untouched():
+async def test_apply_id_remap_leaves_nodes_with_real_id_untouched(
+    live_state_service, base_snapshot, empty_deleted
+):
     """Nodes that already have a real id and no temp_id must not be touched."""
-    snap = _snapshot(
+    snap = base_snapshot(
         crew_node_list=[
             {"id": 10, "crew_id": 5, "node_name": "existing"},
         ]
     )
-    await graph_state_service.seed(1, snap)
+    await live_state_service.seed(1, snap)
 
-    await graph_state_service.apply_id_remap(
-        1, {}, new_save_version=2, flushed_deleted=_empty_deleted()
+    await live_state_service.apply_id_remap(
+        1, {}, new_save_version=2, flushed_deleted=empty_deleted()
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
     node = result["crew_node_list"][0]
     assert node["id"] == 10
     assert "temp_id" not in node
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_multiple_nodes_across_lists():
+async def test_apply_id_remap_multiple_nodes_across_lists(
+    live_state_service, base_snapshot, empty_deleted
+):
     """Remapping works across multiple node type lists in a single call."""
-    snap = _snapshot(
+    snap = base_snapshot(
         python_node_list=[{"temp_id": "tmp-py-1", "node_name": "py"}],
         crew_node_list=[{"temp_id": "tmp-cr-1", "crew_id": 3}],
     )
-    await graph_state_service.seed(1, snap)
+    await live_state_service.seed(1, snap)
 
-    await graph_state_service.apply_id_remap(
+    await live_state_service.apply_id_remap(
         1,
         {"tmp-py-1": 100, "tmp-cr-1": 200},
         new_save_version=3,
-        flushed_deleted=_empty_deleted(),
+        flushed_deleted=empty_deleted(),
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
     assert result["python_node_list"][0]["id"] == 100
     assert "temp_id" not in result["python_node_list"][0]
     assert result["crew_node_list"][0]["id"] == 200
@@ -161,21 +102,59 @@ async def test_apply_id_remap_multiple_nodes_across_lists():
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_temp_id_not_in_map_left_as_is():
+async def test_apply_id_remap_temp_id_not_in_map_left_as_is(
+    live_state_service, base_snapshot, empty_deleted
+):
     """A node with a temp_id that is NOT in the map is left unchanged."""
-    snap = _snapshot(
+    snap = base_snapshot(
         python_node_list=[{"temp_id": "tmp-unknown", "node_name": "unresolved"}],
     )
-    await graph_state_service.seed(1, snap)
+    await live_state_service.seed(1, snap)
 
-    await graph_state_service.apply_id_remap(
-        1, {"tmp-other": 77}, new_save_version=2, flushed_deleted=_empty_deleted()
+    await live_state_service.apply_id_remap(
+        1, {"tmp-other": 77}, new_save_version=2, flushed_deleted=empty_deleted()
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
     node = result["python_node_list"][0]
     assert node.get("temp_id") == "tmp-unknown"
     assert "id" not in node
+
+
+@pytest.mark.asyncio
+async def test_apply_id_remap_survivor_and_orphan_coexist(
+    live_state_service, base_snapshot, empty_deleted
+):
+    """When a flushed snapshot had two temp entries and only one survives to the
+    live snapshot, the survivor is stamped and the concurrently-deleted one is
+    enqueued for deletion — without the survivor's real id leaking into that
+    accumulator.
+    """
+    snap = base_snapshot(
+        python_node_list=[{"temp_id": "tmp-survivor", "node_name": "alive"}],
+    )
+    await live_state_service.seed(1, snap)
+
+    temp_id_map = {"tmp-survivor": 42, "tmp-deleted": 77}
+    flushed_temp_id_to_list_key = {
+        "tmp-survivor": "python_node_list",
+        "tmp-deleted": "python_node_list",
+    }
+    await live_state_service.apply_id_remap(
+        1,
+        temp_id_map,
+        new_save_version=2,
+        flushed_deleted=empty_deleted(),
+        flushed_temp_id_to_list_key=flushed_temp_id_to_list_key,
+    )
+
+    result = await live_state_service.get_snapshot(1)
+    survivor = result["python_node_list"][0]
+    assert survivor["id"] == 42
+    assert "temp_id" not in survivor
+
+    assert 77 in result["deleted"]["python_node_ids"]
+    assert 42 not in result["deleted"]["python_node_ids"]
 
 
 # ---------------------------------------------------------------------------
@@ -184,20 +163,23 @@ async def test_apply_id_remap_temp_id_not_in_map_left_as_is():
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_rewrites_edge_start_temp_id():
-    """start_temp_id on an edge entry is rewritten to start_node_id."""
-    snap = _snapshot(
+async def test_apply_id_remap_rewrites_edge_start_temp_id(
+    live_state_service, base_snapshot, empty_deleted
+):
+    """start_temp_id is rewritten to start_node_id; an already-real end_node_id
+    on the same edge is left untouched."""
+    snap = base_snapshot(
         edge_list=[
             {"start_temp_id": "tmp-n1", "end_node_id": 20},
         ]
     )
-    await graph_state_service.seed(1, snap)
+    await live_state_service.seed(1, snap)
 
-    await graph_state_service.apply_id_remap(
-        1, {"tmp-n1": 10}, new_save_version=2, flushed_deleted=_empty_deleted()
+    await live_state_service.apply_id_remap(
+        1, {"tmp-n1": 10}, new_save_version=2, flushed_deleted=empty_deleted()
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
     edge = result["edge_list"][0]
     assert edge["start_node_id"] == 10
     assert "start_temp_id" not in edge
@@ -205,20 +187,23 @@ async def test_apply_id_remap_rewrites_edge_start_temp_id():
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_rewrites_edge_end_temp_id():
-    """end_temp_id on an edge entry is rewritten to end_node_id."""
-    snap = _snapshot(
+async def test_apply_id_remap_rewrites_edge_end_temp_id(
+    live_state_service, base_snapshot, empty_deleted
+):
+    """end_temp_id is rewritten to end_node_id; an already-real start_node_id
+    on the same edge is left untouched."""
+    snap = base_snapshot(
         edge_list=[
             {"start_node_id": 10, "end_temp_id": "tmp-n2"},
         ]
     )
-    await graph_state_service.seed(1, snap)
+    await live_state_service.seed(1, snap)
 
-    await graph_state_service.apply_id_remap(
-        1, {"tmp-n2": 20}, new_save_version=2, flushed_deleted=_empty_deleted()
+    await live_state_service.apply_id_remap(
+        1, {"tmp-n2": 20}, new_save_version=2, flushed_deleted=empty_deleted()
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
     edge = result["edge_list"][0]
     assert edge["end_node_id"] == 20
     assert "end_temp_id" not in edge
@@ -226,20 +211,22 @@ async def test_apply_id_remap_rewrites_edge_end_temp_id():
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_rewrites_conditional_edge_source_temp_id():
+async def test_apply_id_remap_rewrites_conditional_edge_source_temp_id(
+    live_state_service, base_snapshot, empty_deleted
+):
     """source_temp_id on a conditional edge is rewritten to source_node_id."""
-    snap = _snapshot(
+    snap = base_snapshot(
         conditional_edge_list=[
             {"source_temp_id": "tmp-src", "label": "yes"},
         ]
     )
-    await graph_state_service.seed(1, snap)
+    await live_state_service.seed(1, snap)
 
-    await graph_state_service.apply_id_remap(
-        1, {"tmp-src": 55}, new_save_version=2, flushed_deleted=_empty_deleted()
+    await live_state_service.apply_id_remap(
+        1, {"tmp-src": 55}, new_save_version=2, flushed_deleted=empty_deleted()
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
     cond_edge = result["conditional_edge_list"][0]
     assert cond_edge["source_node_id"] == 55
     assert "source_temp_id" not in cond_edge
@@ -247,23 +234,26 @@ async def test_apply_id_remap_rewrites_conditional_edge_source_temp_id():
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_edge_with_both_temp_refs():
-    """Both start_temp_id and end_temp_id on the same edge are rewritten."""
-    snap = _snapshot(
+async def test_apply_id_remap_edge_with_both_temp_refs(
+    live_state_service, base_snapshot, empty_deleted
+):
+    """When neither endpoint was persisted yet, both start_temp_id and
+    end_temp_id on the same edge are rewritten."""
+    snap = base_snapshot(
         edge_list=[
             {"start_temp_id": "tmp-a", "end_temp_id": "tmp-b"},
         ]
     )
-    await graph_state_service.seed(1, snap)
+    await live_state_service.seed(1, snap)
 
-    await graph_state_service.apply_id_remap(
+    await live_state_service.apply_id_remap(
         1,
         {"tmp-a": 11, "tmp-b": 22},
         new_save_version=2,
-        flushed_deleted=_empty_deleted(),
+        flushed_deleted=empty_deleted(),
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
     edge = result["edge_list"][0]
     assert edge["start_node_id"] == 11
     assert edge["end_node_id"] == 22
@@ -272,60 +262,172 @@ async def test_apply_id_remap_edge_with_both_temp_refs():
 
 
 # ---------------------------------------------------------------------------
+# Decision-table routing ref rewrites
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "list_key",
+    _DECISION_TABLE_LIST_KEYS,
+    ids=list(_DECISION_TABLE_LIST_KEYS),
+)
+async def test_apply_id_remap_rewrites_decision_table_routing_refs(
+    live_state_service, base_snapshot, empty_deleted, list_key
+):
+    """default_next_node_temp_id, next_error_node_temp_id, and every
+    condition_groups[].next_node_temp_id are rewritten to their real-id
+    counterparts, for both decision-table list types."""
+    snap = base_snapshot(
+        **{
+            list_key: [
+                {
+                    "id": 1,
+                    "default_next_node_temp_id": "tmp-default",
+                    "next_error_node_temp_id": "tmp-error",
+                    "condition_groups": [
+                        {"id": 10, "next_node_temp_id": "tmp-group-a"},
+                        {"id": 11, "next_node_temp_id": "tmp-group-b"},
+                    ],
+                }
+            ]
+        }
+    )
+    await live_state_service.seed(1, snap)
+
+    await live_state_service.apply_id_remap(
+        1,
+        {
+            "tmp-default": 200,
+            "tmp-error": 300,
+            "tmp-group-a": 400,
+            "tmp-group-b": 500,
+        },
+        new_save_version=2,
+        flushed_deleted=empty_deleted(),
+    )
+
+    result = await live_state_service.get_snapshot(1)
+    entry = result[list_key][0]
+    assert entry["default_next_node_id"] == 200
+    assert "default_next_node_temp_id" not in entry
+    assert entry["next_error_node_id"] == 300
+    assert "next_error_node_temp_id" not in entry
+    assert entry["condition_groups"][0]["next_node_id"] == 400
+    assert "next_node_temp_id" not in entry["condition_groups"][0]
+    assert entry["condition_groups"][1]["next_node_id"] == 500
+    assert "next_node_temp_id" not in entry["condition_groups"][1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "list_key",
+    _DECISION_TABLE_LIST_KEYS,
+    ids=list(_DECISION_TABLE_LIST_KEYS),
+)
+async def test_apply_id_remap_decision_table_unmapped_refs_left_as_is(
+    live_state_service, base_snapshot, empty_deleted, list_key
+):
+    """Routing refs whose temp id is absent from temp_id_map are left
+    untouched — an unresolved ref must never be replaced with a fabricated
+    real id."""
+    snap = base_snapshot(
+        **{
+            list_key: [
+                {
+                    "id": 1,
+                    "default_next_node_temp_id": "tmp-unknown",
+                    "next_error_node_temp_id": "tmp-also-unknown",
+                    "condition_groups": [
+                        {"id": 10, "next_node_temp_id": "tmp-group-unknown"},
+                    ],
+                }
+            ]
+        }
+    )
+    await live_state_service.seed(1, snap)
+
+    await live_state_service.apply_id_remap(
+        1, {"tmp-other": 999}, new_save_version=2, flushed_deleted=empty_deleted()
+    )
+
+    result = await live_state_service.get_snapshot(1)
+    entry = result[list_key][0]
+    assert entry["default_next_node_temp_id"] == "tmp-unknown"
+    assert "default_next_node_id" not in entry
+    assert entry["next_error_node_temp_id"] == "tmp-also-unknown"
+    assert "next_error_node_id" not in entry
+    group = entry["condition_groups"][0]
+    assert group["next_node_temp_id"] == "tmp-group-unknown"
+    assert "next_node_id" not in group
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "list_key",
+    _DECISION_TABLE_LIST_KEYS,
+    ids=list(_DECISION_TABLE_LIST_KEYS),
+)
+async def test_apply_id_remap_decision_table_skips_malformed_entries(
+    live_state_service, base_snapshot, empty_deleted, list_key
+):
+    """An entry with condition_groups explicitly None and a non-dict group
+    must not crash the remap, and must not stop a well-formed sibling entry
+    from being remapped correctly."""
+    snap = base_snapshot(
+        **{
+            list_key: [
+                {
+                    "id": 2,
+                    "default_next_node_temp_id": "tmp-no-groups",
+                    "condition_groups": None,
+                },
+                {
+                    "id": 3,
+                    "next_error_node_temp_id": "tmp-bad-group",
+                    "condition_groups": ["not-a-dict"],
+                },
+                {"id": 4, "default_next_node_temp_id": "tmp-good"},
+            ]
+        }
+    )
+    await live_state_service.seed(1, snap)
+
+    await live_state_service.apply_id_remap(
+        1,
+        {"tmp-no-groups": 100, "tmp-bad-group": 200, "tmp-good": 300},
+        new_save_version=2,
+        flushed_deleted=empty_deleted(),
+    )
+
+    result = await live_state_service.get_snapshot(1)
+    entries = result[list_key]
+    assert entries[0]["default_next_node_id"] == 100
+    assert entries[1]["next_error_node_id"] == 200
+    assert entries[1]["condition_groups"] == ["not-a-dict"]
+    assert entries[2]["default_next_node_id"] == 300
+    assert "default_next_node_temp_id" not in entries[2]
+
+
+# ---------------------------------------------------------------------------
 # save_version bump
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_bumps_save_version():
+async def test_apply_id_remap_bumps_save_version(
+    live_state_service, base_snapshot, empty_deleted
+):
     """save_version in the snapshot is replaced with new_save_version."""
-    snap = _snapshot(save_version=5)
-    await graph_state_service.seed(1, snap)
+    snap = base_snapshot(save_version=5)
+    await live_state_service.seed(1, snap)
 
-    await graph_state_service.apply_id_remap(
-        1, {}, new_save_version=6, flushed_deleted=_empty_deleted()
+    await live_state_service.apply_id_remap(
+        1, {}, new_save_version=6, flushed_deleted=empty_deleted()
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
     assert result["save_version"] == 6
-
-
-# ---------------------------------------------------------------------------
-# deleted accumulator cleared
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_apply_id_remap_clears_deleted_accumulator():
-    """The deleted accumulator is reset to all-empty lists after a flush."""
-    snap = _snapshot(
-        python_node_list=[],
-        deleted={
-            **_empty_deleted(),
-            "python_node_ids": [7, 8, 9],
-            "edge_ids": [3],
-        },
-    )
-    await graph_state_service.seed(1, snap)
-
-    await graph_state_service.apply_id_remap(
-        1,
-        {},
-        new_save_version=2,
-        flushed_deleted={
-            **_empty_deleted(),
-            "python_node_ids": [7, 8, 9],
-            "edge_ids": [3],
-        },
-    )
-
-    result = await graph_state_service.get_snapshot(1)
-    deleted = result["deleted"]
-    assert deleted["python_node_ids"] == []
-    assert deleted["edge_ids"] == []
-    # Other keys should also be empty.
-    for ids in deleted.values():
-        assert ids == []
 
 
 # ---------------------------------------------------------------------------
@@ -334,23 +436,27 @@ async def test_apply_id_remap_clears_deleted_accumulator():
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_combined_node_and_edge():
-    """Remap a new python node and an edge referencing it, all in one call."""
-    snap = _snapshot(
+async def test_apply_id_remap_combined_node_and_edge(
+    live_state_service, base_snapshot, empty_deleted
+):
+    """Remap a new python node, an edge, and a conditional edge all referencing
+    that node, in one call."""
+    snap = base_snapshot(
         python_node_list=[{"temp_id": "tmp-py", "node_name": "new_node"}],
         edge_list=[{"start_temp_id": "tmp-py", "end_node_id": 99}],
-        deleted={**_empty_deleted(), "crew_node_ids": [1]},
+        conditional_edge_list=[{"source_temp_id": "tmp-py", "label": "yes"}],
+        deleted={**empty_deleted(), "crew_node_ids": [1]},
     )
-    await graph_state_service.seed(1, snap)
+    await live_state_service.seed(1, snap)
 
-    await graph_state_service.apply_id_remap(
+    await live_state_service.apply_id_remap(
         1,
         {"tmp-py": 50},
         new_save_version=4,
-        flushed_deleted={**_empty_deleted(), "crew_node_ids": [1]},
+        flushed_deleted={**empty_deleted(), "crew_node_ids": [1]},
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
 
     node = result["python_node_list"][0]
     assert node["id"] == 50
@@ -361,295 +467,231 @@ async def test_apply_id_remap_combined_node_and_edge():
     assert "start_temp_id" not in edge
     assert edge["end_node_id"] == 99
 
+    cond_edge = result["conditional_edge_list"][0]
+    assert cond_edge["source_node_id"] == 50
+    assert "source_temp_id" not in cond_edge
+
     assert result["save_version"] == 4
     assert result["deleted"]["crew_node_ids"] == []
 
 
 # ---------------------------------------------------------------------------
-# FIX 2: Precise deleted-accumulator reconciliation
+# Precise deleted-accumulator reconciliation
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_precise_deleted_removes_only_flushed_ids():
-    """Only ids present in flushed_deleted are removed from the live accumulator.
+async def test_apply_id_remap_precise_deleted_removes_only_flushed_ids(
+    live_state_service, base_snapshot, empty_deleted
+):
+    """Only ids present in flushed_deleted are removed from the live accumulator;
+    an id accumulated after the flush read-point (a concurrent delete) survives.
 
     Scenario:
     - Live accumulator has crew_node_ids = [10, 11].
     - flushed_deleted has crew_node_ids = [10]  (only id=10 was persisted).
     - After remap: accumulator must have [11] (id=10 removed, id=11 kept).
     """
-    snap = _snapshot(
-        deleted={**_empty_deleted(), "crew_node_ids": [10, 11]},
+    snap = base_snapshot(
+        deleted={**empty_deleted(), "crew_node_ids": [10, 11]},
     )
-    await graph_state_service.seed(1, snap)
+    await live_state_service.seed(1, snap)
 
-    flushed_deleted = {**_empty_deleted(), "crew_node_ids": [10]}
-    await graph_state_service.apply_id_remap(
+    flushed_deleted = {**empty_deleted(), "crew_node_ids": [10]}
+    await live_state_service.apply_id_remap(
         1, {}, new_save_version=2, flushed_deleted=flushed_deleted
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
     # id=11 must be preserved; id=10 was flushed and must be removed.
     assert result["deleted"]["crew_node_ids"] == [11]
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_precise_deleted_preserves_concurrent_delete():
-    """An id accumulated after the flush read-point is NOT removed.
-
-    This is the core data-correctness guarantee of FIX 2: a concurrent
-    apply_op delete (id=11) added between flush-read and remap must survive.
-    """
-    snap = _snapshot(
-        deleted={**_empty_deleted(), "crew_node_ids": [10, 11]},
-    )
-    await graph_state_service.seed(1, snap)
-
-    # Only id=10 was in the snapshot when the flush read it.
-    flushed_deleted = {**_empty_deleted(), "crew_node_ids": [10]}
-    await graph_state_service.apply_id_remap(
-        1, {}, new_save_version=2, flushed_deleted=flushed_deleted
-    )
-
-    result = await graph_state_service.get_snapshot(1)
-    assert 11 in result["deleted"]["crew_node_ids"]
-    assert 10 not in result["deleted"]["crew_node_ids"]
-
-
-@pytest.mark.asyncio
-async def test_apply_id_remap_precise_deleted_multiple_types():
+async def test_apply_id_remap_precise_deleted_multiple_types(
+    live_state_service, base_snapshot, empty_deleted
+):
     """Precise reconciliation works across multiple accumulator keys simultaneously."""
-    snap = _snapshot(
+    snap = base_snapshot(
         deleted={
-            **_empty_deleted(),
+            **empty_deleted(),
             "crew_node_ids": [1, 2],
             "edge_ids": [5, 6],
         },
     )
-    await graph_state_service.seed(1, snap)
+    await live_state_service.seed(1, snap)
 
     # Flush persisted crew_node_ids=[1] and edge_ids=[5].
-    flushed_deleted = {**_empty_deleted(), "crew_node_ids": [1], "edge_ids": [5]}
-    await graph_state_service.apply_id_remap(
+    flushed_deleted = {**empty_deleted(), "crew_node_ids": [1], "edge_ids": [5]}
+    await live_state_service.apply_id_remap(
         1, {}, new_save_version=2, flushed_deleted=flushed_deleted
     )
 
-    result = await graph_state_service.get_snapshot(1)
+    result = await live_state_service.get_snapshot(1)
     assert result["deleted"]["crew_node_ids"] == [2]
     assert result["deleted"]["edge_ids"] == [6]
 
 
 # ---------------------------------------------------------------------------
-# FIX 3: Orphan node detection after in-flight delete of a freshly-created node
+# Orphan detection after in-flight delete of a freshly-created node/edge
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_orphan_temp_node_enqueued_for_deletion():
-    """If a temp node was in the flushed snapshot but is gone from the live snapshot,
-    its real id must be enqueued in the deleted accumulator.
-
-    Scenario:
-    1. Flushed snapshot had temp node tmp-1 which was assigned real id=42.
-    2. Between flush and remap, apply_op deleted tmp-1 (live snapshot has no such node).
-    3. temp_id_map = {"tmp-1": 42}.
-    4. After remap: crew_node_ids accumulator must contain 42.
+@pytest.mark.parametrize(
+    "list_key,temp_id,real_id,new_save_version,delete_key",
+    [
+        pytest.param(
+            "crew_node_list",
+            "tmp-1",
+            42,
+            2,
+            "crew_node_ids",
+            id="crew_node_list",
+        ),
+        pytest.param(
+            "python_node_list",
+            "tmp-py-x",
+            77,
+            3,
+            "python_node_ids",
+            id="python_node_list",
+        ),
+        pytest.param(
+            "edge_list",
+            "tmp-edge-1",
+            123,
+            2,
+            "edge_ids",
+            id="edge_list",
+        ),
+        pytest.param(
+            "conditional_edge_list",
+            "tmp-cond-edge-1",
+            456,
+            2,
+            "conditional_edge_ids",
+            id="conditional_edge_list",
+        ),
+    ],
+)
+async def test_apply_id_remap_orphan_entry_enqueued_for_deletion(
+    live_state_service,
+    base_snapshot,
+    empty_deleted,
+    list_key,
+    temp_id,
+    real_id,
+    new_save_version,
+    delete_key,
+):
+    """A temp entry that was in the flushed snapshot but is gone from the live
+    snapshot (concurrently deleted before this remap) has its real id enqueued
+    for deletion, for every node and edge list type.
     """
-    # Live snapshot has NO node with temp_id "tmp-1" — it was concurrently deleted.
-    snap = _snapshot(crew_node_list=[])
-    await graph_state_service.seed(1, snap)
+    # Live snapshot has NO entry with this temp_id — it was concurrently deleted.
+    snap = base_snapshot()
+    await live_state_service.seed(1, snap)
 
-    # The flushed snapshot had a node with temp_id "tmp-1" under crew_node_list.
-    # We pass flushed_deleted as empty (the concurrent delete was not flushed).
-    flushed_deleted = _empty_deleted()
-    flushed_temp_id_to_list_key = {"tmp-1": "crew_node_list"}
-    await graph_state_service.apply_id_remap(
+    flushed_deleted = empty_deleted()
+    flushed_temp_id_to_list_key = {temp_id: list_key}
+    await live_state_service.apply_id_remap(
         1,
-        {"tmp-1": 42},
+        {temp_id: real_id},
+        new_save_version=new_save_version,
+        flushed_deleted=flushed_deleted,
+        flushed_temp_id_to_list_key=flushed_temp_id_to_list_key,
+    )
+
+    result = await live_state_service.get_snapshot(1)
+    assert real_id in result["deleted"][delete_key]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "list_key,seeded_entry,temp_id,real_id,delete_key",
+    [
+        pytest.param(
+            "python_node_list",
+            {"temp_id": "tmp-1", "node_name": "alive"},
+            "tmp-1",
+            99,
+            "python_node_ids",
+            id="python_node_list",
+        ),
+        pytest.param(
+            "edge_list",
+            {"temp_id": "tmp-edge-1", "start_node_id": 1, "end_node_id": 2},
+            "tmp-edge-1",
+            123,
+            "edge_ids",
+            id="edge_list",
+        ),
+        pytest.param(
+            "conditional_edge_list",
+            {"temp_id": "tmp-cond-edge-1", "source_node_id": 1, "label": "yes"},
+            "tmp-cond-edge-1",
+            456,
+            "conditional_edge_ids",
+            id="conditional_edge_list",
+        ),
+    ],
+)
+async def test_apply_id_remap_non_orphan_entry_stamped_not_enqueued(
+    live_state_service,
+    base_snapshot,
+    empty_deleted,
+    list_key,
+    seeded_entry,
+    temp_id,
+    real_id,
+    delete_key,
+):
+    """An entry that IS still in the live snapshot (survived the flush cycle)
+    must not be added to the deleted accumulator, and is instead stamped with
+    its real id — for every node and edge list type.
+    """
+    snap = base_snapshot(**{list_key: [seeded_entry]})
+    await live_state_service.seed(1, snap)
+
+    flushed_deleted = empty_deleted()
+    flushed_temp_id_to_list_key = {temp_id: list_key}
+    await live_state_service.apply_id_remap(
+        1,
+        {temp_id: real_id},
         new_save_version=2,
         flushed_deleted=flushed_deleted,
         flushed_temp_id_to_list_key=flushed_temp_id_to_list_key,
     )
 
-    result = await graph_state_service.get_snapshot(1)
-    # Real id=42 must now be queued for deletion.
-    assert 42 in result["deleted"]["crew_node_ids"]
-
-
-@pytest.mark.asyncio
-async def test_apply_id_remap_non_orphan_node_not_enqueued():
-    """A node that IS still in the live snapshot (survived the flush cycle) must
-    NOT be added to the deleted accumulator.
-
-    This ensures FIX 3 only targets genuinely missing nodes.
-    """
-    # Live snapshot has the node with temp_id "tmp-1" (it was NOT deleted).
-    snap = _snapshot(
-        python_node_list=[{"temp_id": "tmp-1", "node_name": "alive"}],
-    )
-    await graph_state_service.seed(1, snap)
-
-    flushed_deleted = _empty_deleted()
-    flushed_temp_id_to_list_key = {"tmp-1": "python_node_list"}
-    await graph_state_service.apply_id_remap(
-        1,
-        {"tmp-1": 99},
-        new_save_version=2,
-        flushed_deleted=flushed_deleted,
-        flushed_temp_id_to_list_key=flushed_temp_id_to_list_key,
-    )
-
-    result = await graph_state_service.get_snapshot(1)
-    # Node survived — must NOT be in the deleted accumulator.
-    assert 99 not in result["deleted"]["python_node_ids"]
-    # And it must have been remapped normally.
-    assert result["python_node_list"][0]["id"] == 99
-
-
-@pytest.mark.asyncio
-async def test_apply_id_remap_orphan_node_multi_type():
-    """Orphan detection works for python_node_list as well (not only crew_node_list)."""
-    # Live snapshot lacks the python node that was created during flush.
-    snap = _snapshot(python_node_list=[])
-    await graph_state_service.seed(1, snap)
-
-    flushed_deleted = _empty_deleted()
-    flushed_temp_id_to_list_key = {"tmp-py-x": "python_node_list"}
-    await graph_state_service.apply_id_remap(
-        1,
-        {"tmp-py-x": 77},
-        new_save_version=3,
-        flushed_deleted=flushed_deleted,
-        flushed_temp_id_to_list_key=flushed_temp_id_to_list_key,
-    )
-
-    result = await graph_state_service.get_snapshot(1)
-    assert 77 in result["deleted"]["python_node_ids"]
+    result = await live_state_service.get_snapshot(1)
+    # Entry survived — must NOT be in the deleted accumulator.
+    assert real_id not in result["deleted"][delete_key]
+    # And it must have been stamped with its real id normally.
+    entry = result[list_key][0]
+    assert entry["id"] == real_id
+    assert "temp_id" not in entry
 
 
 # ---------------------------------------------------------------------------
-# Regression: edges/conditional edges have their own temp_id (self-stamped by
-# apply_id_remap after the flush that first creates them) and must be routed
-# through the same orphan-detection path as nodes when deleted in the window
-# between that flush and the next one.
+# Resolved temp_id map pruning
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_apply_id_remap_orphan_edge_enqueued_for_deletion():
-    """A newly-created edge deleted before the next flush must not be orphaned.
-
-    Scenario (the exact race from the EST-3020 follow-up review):
-    1. An edge with temp_id "tmp-edge-1" was flushed and assigned real id=123.
-    2. Before the NEXT flush, the edge is removed from the live snapshot
-       (e.g. a ConnectionDeletedMessage arrived).
-    3. temp_id_map = {"tmp-edge-1": 123} — as apply_id_remap would build it
-       when GraphFlushService includes edge_list in
-       flushed_temp_id_to_list_key.
-    4. After remap: edge_ids accumulator must contain 123 so the next flush
-       actually deletes the orphaned DB row, instead of leaving it stranded.
+async def test_apply_id_remap_leaves_resolved_temp_ids_untouched_when_nothing_flushed_deleted(
+    live_state_service, base_snapshot, empty_deleted
+):
+    """An empty flushed_deleted must leave the resolved temp_id map completely
+    unchanged — guards against replacing the targeted prune with a blanket clear.
     """
-    # Live snapshot has NO edge with temp_id "tmp-edge-1" — it was concurrently deleted.
-    snap = _snapshot(edge_list=[])
-    await graph_state_service.seed(1, snap)
+    snap = base_snapshot()
+    await live_state_service.seed(1, snap)
+    await live_state_service.record_resolved_temp_ids(1, {"tmp-a": 1, "tmp-b": 2})
 
-    flushed_deleted = _empty_deleted()
-    flushed_temp_id_to_list_key = {"tmp-edge-1": "edge_list"}
-    await graph_state_service.apply_id_remap(
-        1,
-        {"tmp-edge-1": 123},
-        new_save_version=2,
-        flushed_deleted=flushed_deleted,
-        flushed_temp_id_to_list_key=flushed_temp_id_to_list_key,
+    await live_state_service.apply_id_remap(
+        1, {}, new_save_version=2, flushed_deleted=empty_deleted()
     )
 
-    result = await graph_state_service.get_snapshot(1)
-    assert 123 in result["deleted"]["edge_ids"]
-
-
-@pytest.mark.asyncio
-async def test_apply_id_remap_orphan_conditional_edge_enqueued_for_deletion():
-    """Same orphan-detection guarantee as above, for a conditional edge."""
-    snap = _snapshot(conditional_edge_list=[])
-    await graph_state_service.seed(1, snap)
-
-    flushed_deleted = _empty_deleted()
-    flushed_temp_id_to_list_key = {"tmp-cond-edge-1": "conditional_edge_list"}
-    await graph_state_service.apply_id_remap(
-        1,
-        {"tmp-cond-edge-1": 456},
-        new_save_version=2,
-        flushed_deleted=flushed_deleted,
-        flushed_temp_id_to_list_key=flushed_temp_id_to_list_key,
-    )
-
-    result = await graph_state_service.get_snapshot(1)
-    assert 456 in result["deleted"]["conditional_edge_ids"]
-
-
-@pytest.mark.asyncio
-async def test_apply_id_remap_non_orphan_edge_not_enqueued_and_id_stamped():
-    """An edge that IS still in the live snapshot must not be misdetected as an
-    orphan, and its own id must be stamped from its own temp_id (distinct from
-    the start/end node reference fields on the same entry).
-    """
-    snap = _snapshot(
-        edge_list=[
-            {
-                "temp_id": "tmp-edge-1",
-                "start_node_id": 1,
-                "end_node_id": 2,
-            }
-        ],
-    )
-    await graph_state_service.seed(1, snap)
-
-    flushed_deleted = _empty_deleted()
-    flushed_temp_id_to_list_key = {"tmp-edge-1": "edge_list"}
-    await graph_state_service.apply_id_remap(
-        1,
-        {"tmp-edge-1": 123},
-        new_save_version=2,
-        flushed_deleted=flushed_deleted,
-        flushed_temp_id_to_list_key=flushed_temp_id_to_list_key,
-    )
-
-    result = await graph_state_service.get_snapshot(1)
-    # Edge survived — must NOT be in the deleted accumulator.
-    assert 123 not in result["deleted"]["edge_ids"]
-    # And its own id must have been stamped normally.
-    edge = result["edge_list"][0]
-    assert edge["id"] == 123
-    assert "temp_id" not in edge
-
-
-@pytest.mark.asyncio
-async def test_apply_id_remap_non_orphan_conditional_edge_not_enqueued_and_id_stamped():
-    """Same non-orphan guarantee as above, for a conditional edge."""
-    snap = _snapshot(
-        conditional_edge_list=[
-            {
-                "temp_id": "tmp-cond-edge-1",
-                "source_node_id": 1,
-                "label": "yes",
-            }
-        ],
-    )
-    await graph_state_service.seed(1, snap)
-
-    flushed_deleted = _empty_deleted()
-    flushed_temp_id_to_list_key = {"tmp-cond-edge-1": "conditional_edge_list"}
-    await graph_state_service.apply_id_remap(
-        1,
-        {"tmp-cond-edge-1": 456},
-        new_save_version=2,
-        flushed_deleted=flushed_deleted,
-        flushed_temp_id_to_list_key=flushed_temp_id_to_list_key,
-    )
-
-    result = await graph_state_service.get_snapshot(1)
-    assert 456 not in result["deleted"]["conditional_edge_ids"]
-    cond_edge = result["conditional_edge_list"][0]
-    assert cond_edge["id"] == 456
-    assert "temp_id" not in cond_edge
+    resolved = await live_state_service.get_resolved_temp_ids(1)
+    assert resolved == {"tmp-a": 1, "tmp-b": 2}

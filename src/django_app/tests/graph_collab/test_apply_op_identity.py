@@ -290,6 +290,111 @@ async def test_apply_id_remap_prunes_based_on_flushed_deleted(
 
 
 # ---------------------------------------------------------------------------
+# Retained temp_id -> real_id map
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("noop_content_hash_refresh")
+async def test_apply_id_remap_records_resolved_temp_ids(live_state_service, base_snapshot):
+    """A node created via WS op carries temp_id "U". Once the flush that
+    persists it runs, apply_id_remap stamps id=42 and pops temp_id — but the
+    retained temp_id->real_id map must remember U -> 42 so a later edge op
+    referencing "U" as an endpoint can still resolve.
+    """
+    graph_id = 1
+    await live_state_service.seed(
+        graph_id, base_snapshot(crew_node_list=[{"temp_id": "U", "type": "agent"}])
+    )
+
+    await live_state_service.apply_id_remap(
+        graph_id, {"U": 42}, new_save_version=2, flushed_deleted={}
+    )
+
+    snapshot = await live_state_service.get_snapshot(graph_id)
+    assert snapshot["crew_node_list"] == [{"id": 42, "type": "agent"}]
+    assert await live_state_service.get_resolved_temp_ids(graph_id) == {"U": 42}
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("noop_content_hash_refresh")
+async def test_apply_op_rewrites_edge_endpoint_for_already_remapped_temp_id(
+    live_state_service, base_snapshot, editor
+):
+    """A late edge referencing an already-flushed node's temp_id must have its
+    endpoint rewritten to the real id at apply_op time, so the next flush
+    resolves cleanly instead of raising BulkSaveValidationError.
+    """
+    graph_id = 1
+    await live_state_service.seed(
+        graph_id, base_snapshot(crew_node_list=[{"temp_id": "U", "type": "agent"}])
+    )
+    await live_state_service.apply_id_remap(
+        graph_id, {"U": 42}, new_save_version=2, flushed_deleted={}
+    )
+
+    msg = ConnectionCreatedMessage(
+        connection={
+            "temp_id": "edge-1",
+            "start_temp_id": "U",
+            "end_node_id": 7,
+        },
+        list_key="edge_list",
+        editor=editor,
+    )
+    await live_state_service.apply_op(graph_id, msg)
+
+    snapshot = await live_state_service.get_snapshot(graph_id)
+    assert len(snapshot["edge_list"]) == 1
+    edge = snapshot["edge_list"][0]
+    assert edge["start_node_id"] == 42
+    assert "start_temp_id" not in edge
+    # The edge's own temp_id must be untouched by endpoint resolution.
+    assert edge["temp_id"] == "edge-1"
+
+
+@pytest.mark.asyncio
+async def test_apply_op_leaves_unresolved_temp_id_endpoint_untouched(
+    live_state_service, base_snapshot, editor
+):
+    """A new-node flow: the endpoint temp_id has no entry in the retained map
+    yet (its node hasn't been flushed), so it must be left as-is for normal
+    flush-time resolution via the node's own temp_id.
+    """
+    graph_id = 1
+    await live_state_service.seed(graph_id, base_snapshot())
+
+    msg = ConnectionCreatedMessage(
+        connection={
+            "temp_id": "edge-1",
+            "start_temp_id": "not-yet-flushed",
+            "end_node_id": 7,
+        },
+        list_key="edge_list",
+        editor=editor,
+    )
+    await live_state_service.apply_op(graph_id, msg)
+
+    snapshot = await live_state_service.get_snapshot(graph_id)
+    edge = snapshot["edge_list"][0]
+    assert edge["start_temp_id"] == "not-yet-flushed"
+    assert "start_node_id" not in edge
+
+
+@pytest.mark.asyncio
+async def test_clear_removes_resolved_temp_ids_map(live_state_service, base_snapshot):
+    graph_id = 1
+    await live_state_service.seed(graph_id, base_snapshot())
+    await live_state_service.record_resolved_temp_ids(graph_id, {"U": 42})
+    assert await live_state_service.get_resolved_temp_ids(graph_id) == {"U": 42}
+
+    await live_state_service.clear(graph_id)
+
+    assert await live_state_service.get_snapshot(graph_id) is None
+    assert await live_state_service.get_resolved_temp_ids(graph_id) == {}
+
+
+# ---------------------------------------------------------------------------
 # 5. graph_saved carries deleted_ids, including cascade-deleted edges
 # ---------------------------------------------------------------------------
 

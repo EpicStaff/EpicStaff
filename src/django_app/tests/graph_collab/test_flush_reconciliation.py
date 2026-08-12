@@ -285,8 +285,9 @@ async def test_flush_collapses_duplicate_start_node_entries_preferring_real_id(
                 "variables": {"variables": {"greeting": "hello"}, "persistent": {}},
             },
             {
-                # Stray duplicate create — no id, as if a mismatched-temp_id
-                # op had appended a second entry before the Bug 5 op-time fix.
+                # Stray duplicate create — no id, simulating a mismatched-temp_id
+                # op that appended a second entry instead of resolving to the
+                # existing node's id.
                 "temp_id": "stray-duplicate",
                 "graph": graph.id,
                 "variables": {"variables": {}, "persistent": {}},
