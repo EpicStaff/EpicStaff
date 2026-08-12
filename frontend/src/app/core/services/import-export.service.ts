@@ -8,12 +8,12 @@ import { ImportResult } from '../models/import-result.model';
 export type ExportFormat = 'json' | 'csv';
 
 export interface PartialExportRequest {
-    start_node_list: number[];
     crew_node_list: number[];
+    agent_node_list: number[];
+    task_node_list: number[];
     python_node_list: number[];
     audio_transcription_node_list: number[];
     file_extractor_node_list: number[];
-    end_node_list: number[];
     subgraph_node_list: number[];
     webhook_trigger_node_list: number[];
     telegram_trigger_node_list: number[];
