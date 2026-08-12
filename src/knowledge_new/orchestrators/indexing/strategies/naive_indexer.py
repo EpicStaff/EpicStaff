@@ -42,6 +42,8 @@ class NaiveIndexer(AbstractIndexer):
                 await self._update_rag(rag)
                 continue
 
+            self.state["processing_document"] = document
+            self.state["processing_document_status"] = document.status
             document.mark_as_processing()
             await self._update_document(rag.id, document)
 
@@ -96,6 +98,14 @@ class NaiveIndexer(AbstractIndexer):
         logger.info("Finished indexing in RAG(id={}, status={})", rag.id, rag.status.value)
 
     async def on_cancel(self, request: IndexRequest):
+        if (
+            (document := self.state.get("processing_document")) is not None
+            and document.status == DocumentStatusEnum.PROCESSING
+        ):
+            document: Document
+            document.status = self.state["processing_document_status"]
+            await self._update_document(request.rag_id, document)
+
         if (rag := self.state.get("rag")) is not None:
             rag = cast(Rag, rag)
             rag.mark_as_cancelled()
@@ -103,6 +113,14 @@ class NaiveIndexer(AbstractIndexer):
             await self._update_rag(rag)
 
     async def on_error(self, request: IndexRequest, error: Exception):
+        if (
+            (document := self.state.get("processing_document")) is not None
+            and document.status == DocumentStatusEnum.PROCESSING
+        ):
+            document: Document
+            document.status = self.state["processing_document_status"]
+            await self._update_document(request.rag_id, document)
+
         if (rag := self.state.get("rag")) is not None:
             rag = cast(Rag, rag)
             rag.mark_as_failed(error)
