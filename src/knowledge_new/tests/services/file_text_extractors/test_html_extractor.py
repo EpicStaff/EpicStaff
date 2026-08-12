@@ -1,8 +1,8 @@
 import os
 
 import pytest
-from errors import FileTextExtractingError
-from services.file_text_extractors.strategies.html_extractor import HTMLTextExtractor
+from domain.errors import FileTextExtractingError
+from infrastructure.file_text_extractors.strategies.html_extractor import HTMLTextExtractor
 from tests.conftest import offload_to_process
 
 SAMPLE_HTML = (

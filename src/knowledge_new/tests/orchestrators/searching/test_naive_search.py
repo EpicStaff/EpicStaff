@@ -1,7 +1,13 @@
-from enums import EmbedderProviderEnum
-from models import EmbeddingConfig, FoundChunk, NaiveSearchConfig, SearchRequest, SearchResponse
-from orchestrators.searching.strategies import naive_search
-from orchestrators.searching.strategies.naive_search import NaiveSearch
+from application.orchestrators.searching.strategies import naive_search
+from application.orchestrators.searching.strategies.naive_search import NaiveSearch
+from domain.enums import EmbedderProviderEnum
+from domain.models import (
+    EmbeddingConfig,
+    FoundChunk,
+    NaiveSearchConfig,
+    SearchRequest,
+    SearchResponse,
+)
 
 
 class FakeNaiveRagRepo:

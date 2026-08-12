@@ -1,20 +1,22 @@
 import asyncio
 
 import pytest
-from enums import (
+from application.orchestrators.indexing.strategies import naive_indexer
+from application.orchestrators.indexing.strategies.naive_indexer import NaiveIndexer
+from domain.enums import (
     ChunkStrategyEnum,
     DocumentStatusEnum,
     EmbedderProviderEnum,
     IndexStatusEnum,
     RAGStrategy,
 )
-from errors import (
+from domain.errors import (
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
     EmbeddingError,
     RagNotFoundError,
 )
-from models import (
+from domain.models import (
     ChunkingConfig,
     Document,
     EmbeddingConfig,
@@ -23,8 +25,6 @@ from models import (
     PreviewChunk,
     Rag,
 )
-from orchestrators.indexing.strategies import naive_indexer
-from orchestrators.indexing.strategies.naive_indexer import NaiveIndexer
 
 
 class FakeNaiveRagRepo:

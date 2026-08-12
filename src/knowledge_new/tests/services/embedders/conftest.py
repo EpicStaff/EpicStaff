@@ -1,5 +1,5 @@
-from enums import EmbedderProviderEnum
-from models import EmbeddingConfig
+from domain.enums import EmbedderProviderEnum
+from domain.models import EmbeddingConfig
 
 
 def make_config(provider: EmbedderProviderEnum) -> EmbeddingConfig:

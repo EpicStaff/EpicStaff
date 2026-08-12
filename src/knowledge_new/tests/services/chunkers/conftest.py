@@ -1,5 +1,5 @@
-from enums import ChunkStrategyEnum
-from models import ChunkingConfig
+from domain.enums import ChunkStrategyEnum
+from domain.models import ChunkingConfig
 
 
 def make_config(

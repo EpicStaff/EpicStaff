@@ -1,11 +1,11 @@
 import asyncio
 from concurrent.futures.process import ProcessPoolExecutor
 
-from handlers import IndexHandler, PrechunkHandler, SearchHandler
-from handlers.cancel_handler import CancelHandler
-from loguru import logger
-from services.processing_run import set_process_pool
 from settings import settings
+from infrastructure.processing_run import set_process_pool
+from loguru import logger
+from presentation.handlers import IndexHandler, PrechunkHandler, SearchHandler
+from presentation.handlers.cancel_handler import CancelHandler
 from src.shared.communication import Consumer, Producer, brokers, storages
 
 

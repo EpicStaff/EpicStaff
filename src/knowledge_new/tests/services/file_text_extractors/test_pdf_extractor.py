@@ -1,8 +1,8 @@
 import os
 
 import pytest
-from errors import FileTextExtractingError
-from services.file_text_extractors.strategies.pdf_extractor import PDFTextExtractor
+from domain.errors import FileTextExtractingError
+from infrastructure.file_text_extractors.strategies.pdf_extractor import PDFTextExtractor
 from tests.conftest import offload_to_process
 
 MINIMAL_PDF = b"""%PDF-1.4

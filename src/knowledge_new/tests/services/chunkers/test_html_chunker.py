@@ -1,10 +1,10 @@
 import os
 
 import pytest
-from enums import ChunkStrategyEnum
-from errors import ChunkingError
-from models import PreviewChunk
-from services.chunkers.strategies.html_chunker import HTMLChunker
+from domain.enums import ChunkStrategyEnum
+from domain.errors import ChunkingError
+from domain.models import PreviewChunk
+from infrastructure.naive.chunkers.strategies.html_chunker import HTMLChunker
 from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
 
