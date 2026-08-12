@@ -24,6 +24,7 @@ from agents.models import (
 )
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.registry import entity_registry
@@ -310,3 +311,91 @@ class TestNoStorageOrKnowledgeLeakage:
 
         assert SurfaceStorageItem.objects.count() == 0
         assert SurfaceKnowledge.objects.count() == 0
+
+
+@pytest.mark.django_db
+class TestSurfaceAndAgentDefinitionOrganizationResolution:
+    """
+    Regression coverage for the 500 caused by SurfaceStrategy /
+    AgentDefinitionStrategy resolving the default org via an exact-name
+    `Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)` lookup.
+
+    Once the default org is renamed (or the configured name drifts from the
+    DB), that lookup raises `Organization.DoesNotExist`. The strategies must
+    instead resolve the ACTIVE org passed as `org_id`, falling back to the
+    `is_default=True` org only when no `org_id` is given.
+    """
+
+    def test_surface_create_entity_uses_active_org_from_kwargs(
+        self, surface_agent_seeded_db, export_service, default_org
+    ):
+        owned_surface = surface_agent_seeded_db["owned_surface"]
+        active_org = Organization.objects.create(name="Active Org")
+
+        export_data = export_service.export_entities(
+            EntityType.SURFACE, [owned_surface.id]
+        )
+        surface_data = export_data[EntityType.SURFACE][0]
+
+        strategy = entity_registry.get_strategy(EntityType.SURFACE)
+        new_surface = strategy.create_entity(
+            surface_data, IDMapper(), org_id=active_org.id
+        )
+
+        assert new_surface.organization_id == active_org.id
+
+    def test_surface_create_entity_falls_back_to_is_default_org_without_org_id(
+        self, surface_agent_seeded_db, export_service, default_org
+    ):
+        owned_surface = surface_agent_seeded_db["owned_surface"]
+
+        default_org.name = "Renamed Default Org"
+        default_org.is_default = True
+        default_org.save(update_fields=["name", "is_default"])
+
+        export_data = export_service.export_entities(
+            EntityType.SURFACE, [owned_surface.id]
+        )
+        surface_data = export_data[EntityType.SURFACE][0]
+
+        strategy = entity_registry.get_strategy(EntityType.SURFACE)
+        new_surface = strategy.create_entity(surface_data, IDMapper())
+
+        assert new_surface.organization_id == default_org.id
+
+    def test_agent_definition_create_entity_uses_active_org_from_kwargs(
+        self, surface_agent_seeded_db, export_service, default_org
+    ):
+        agent_def = surface_agent_seeded_db["agent_def"]
+        active_org = Organization.objects.create(name="Active Org")
+
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_def.id]
+        )
+        agent_definition_data = export_data[EntityType.AGENT_DEFINITION][0]
+
+        strategy = entity_registry.get_strategy(EntityType.AGENT_DEFINITION)
+        new_agent_definition = strategy.create_entity(
+            agent_definition_data, IDMapper(), org_id=active_org.id
+        )
+
+        assert new_agent_definition.organization_id == active_org.id
+
+    def test_agent_definition_create_entity_falls_back_to_is_default_org_without_org_id(
+        self, surface_agent_seeded_db, export_service, default_org
+    ):
+        agent_def = surface_agent_seeded_db["agent_def"]
+
+        default_org.name = "Renamed Default Org"
+        default_org.is_default = True
+        default_org.save(update_fields=["name", "is_default"])
+
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [agent_def.id]
+        )
+        agent_definition_data = export_data[EntityType.AGENT_DEFINITION][0]
+
+        strategy = entity_registry.get_strategy(EntityType.AGENT_DEFINITION)
+        new_agent_definition = strategy.create_entity(agent_definition_data, IDMapper())
+
+        assert new_agent_definition.organization_id == default_org.id

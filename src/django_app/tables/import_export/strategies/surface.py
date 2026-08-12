@@ -1,11 +1,12 @@
-from tables.models import Organization
 from agents.models import Surface, SurfacePythonTool, SurfaceMcpTool
-from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.serializers.surface import SurfaceImportSerializer
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
-from tables.import_export.utils import ensure_unique_identifier
+from tables.import_export.utils import (
+    ensure_unique_identifier,
+    resolve_import_organization,
+)
 
 
 class SurfaceStrategy(EntityImportExportStrategy):
@@ -38,7 +39,7 @@ class SurfaceStrategy(EntityImportExportStrategy):
         data.pop("owner_agent", None)
         data.pop("id", None)
 
-        organization = Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
+        organization = resolve_import_organization(kwargs.get("org_id"))
 
         if "name" in data:
             existing_names = Surface.objects.filter(

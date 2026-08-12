@@ -341,3 +341,66 @@ class TestAgentTaskNodeRoundTrip:
         assert (
             InlineSurfaceKnowledge.objects.count() == task_inline_knowledge_count_before
         )
+
+
+@pytest.mark.django_db
+class TestGraphImportSurvivesRenamedDefaultOrg:
+    """
+    Regression test for the 500 (`Organization.DoesNotExist`) raised when
+    importing a Graph containing an AgentNode/TaskNode: SurfaceStrategy and
+    AgentDefinitionStrategy resolved the default org via an exact-name
+    `Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)` lookup, which
+    misses as soon as the org is renamed. The strategies must resolve the
+    active `org_id` passed to the import instead.
+    """
+
+    def test_import_succeeds_when_default_org_is_renamed(
+        self, node_graph_seeded_db, export_service, import_service, default_org
+    ):
+        graph = node_graph_seeded_db["graph"]
+
+        default_org.name = "Renamed Default Org"
+        default_org.is_default = True
+        default_org.save(update_fields=["name", "is_default"])
+
+        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+
+        id_mapper, _ = import_service.import_data(
+            export_data, EntityType.GRAPH, org_id=default_org.id
+        )
+
+        new_graph_id = id_mapper.get_new_ids(EntityType.GRAPH)[0]
+        new_graph = Graph.objects.get(id=new_graph_id)
+
+        assert new_graph.agent_node_list.count() == 1
+        assert new_graph.task_node_list.count() == 1
+
+    def test_imported_surface_and_agent_definition_stamped_with_active_org(
+        self, node_graph_seeded_db, export_service, import_service, default_org
+    ):
+        graph = node_graph_seeded_db["graph"]
+
+        default_org.name = "Renamed Default Org"
+        default_org.is_default = True
+        default_org.save(update_fields=["name", "is_default"])
+        active_org = Organization.objects.create(name="Active Org")
+
+        export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
+
+        id_mapper, _ = import_service.import_data(
+            export_data, EntityType.GRAPH, org_id=active_org.id
+        )
+
+        new_agent_definition_ids = id_mapper.get_new_ids(EntityType.AGENT_DEFINITION)
+        new_surface_ids = id_mapper.get_new_ids(EntityType.SURFACE)
+
+        assert new_agent_definition_ids
+        assert new_surface_ids
+
+        for agent_definition_id in new_agent_definition_ids:
+            agent_definition = AgentDefinition.objects.get(id=agent_definition_id)
+            assert agent_definition.organization_id == active_org.id
+
+        for surface_id in new_surface_ids:
+            surface = Surface.objects.get(id=surface_id)
+            assert surface.organization_id == active_org.id
