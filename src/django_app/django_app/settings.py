@@ -60,6 +60,48 @@ LOGGING = {
         "handlers": ["loguru"],
         "level": "DEBUG",
     },
+    "loggers": {
+        "litellm": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "LiteLLM": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "LiteLLM Router": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "LiteLLM Proxy": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "boto3": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "botocore": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "s3transfer": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "urllib3": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
 }
 
 
