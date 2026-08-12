@@ -1,0 +1,28 @@
+{
+  "title": "NotebookEditToolArgs",
+  "type": "object",
+  "properties": {
+    "notebook_path": {
+      "type": "string",
+      "description": "Path to the .ipynb file, relative to the sandbox root."
+    },
+    "new_source": {
+      "type": "string",
+      "description": "New cell content. Ignored when edit_mode is 'delete'."
+    },
+    "cell_id": {
+      "type": "string",
+      "description": "Target cell id. Required for replace/delete. For insert, the new cell is inserted after this cell id; omit to insert at the top."
+    },
+    "cell_type": {
+      "type": "string",
+      "description": "'code' or 'markdown'. Required for insert; ignored otherwise."
+    },
+    "edit_mode": {
+      "type": "string",
+      "description": "'replace', 'insert', or 'delete'. Default 'replace'.",
+      "default": "replace"
+    }
+  },
+  "required": ["notebook_path", "new_source"]
+}

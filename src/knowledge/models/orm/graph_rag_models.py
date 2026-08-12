@@ -64,7 +64,6 @@ class LLMConfig(Base):
     presence_penalty = Column(Float, nullable=True)
     frequency_penalty = Column(Float, nullable=True)
     logit_bias = Column(JSON, nullable=True)
-    response_format = Column(JSON, nullable=True)
     seed = Column(Integer, nullable=True)
 
     # API settings

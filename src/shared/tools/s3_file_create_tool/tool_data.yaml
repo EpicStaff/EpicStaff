@@ -1,6 +1,6 @@
 tool-data:
   name: "S3 File Create Tool"
-  description: "Create or overwrite an S3-stored file with the given content."
+  description: "Create a new file in S3 storage (touch/create semantics). Params: file_path (required); content (default \"\"); fail_if_exists (default true) - when true, refuses and tells you to use s3_file_write_tool (or pass fail_if_exists=false) if the file already exists, preventing accidental overwrites."
   args-schema: "args_schema.json"
   code-file: "main.py"
   entrypoint: "main"

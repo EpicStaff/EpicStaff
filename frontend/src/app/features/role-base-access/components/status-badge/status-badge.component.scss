@@ -31,6 +31,16 @@
         background: var(--transparent-white-4);
         color: var(--text-secondary-60);
     }
+
+    &.expired {
+        background: var(--transparent-white-8);
+        color: var(--text-secondary-60);
+    }
+
+    &.revoked {
+        background: var(--transparent-white-8);
+        color: var(--text-secondary-60);
+    }
 }
 
 .dot {

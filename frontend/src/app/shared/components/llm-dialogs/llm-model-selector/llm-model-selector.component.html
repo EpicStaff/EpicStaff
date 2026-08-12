@@ -30,6 +30,17 @@
         <span>{{ placeholder() }}</span>
     }
 
+    @if (isSelectedModelDeprecated()) {
+        <span class="llm-selector__deprecated">
+            <app-svg-icon
+                icon="warning"
+                size="12px"
+                aria-hidden="true"
+            />
+            <span>Deprecated</span>
+        </span>
+    }
+
     <svg
         class="llm-selector__chevron"
         [class.llm-selector__chevron--open]="open()"
@@ -46,6 +57,12 @@
         />
     </svg>
 </button>
+
+@if (isSelectedModelDeprecated()) {
+    <div class="llm-selector__deprecated-banner">
+        The model {{ selectedModelInfo()!.model.name }} is deprecated and can no longer be used in new configurations.
+    </div>
+}
 
 <ng-template #dropdownTemplate>
     <div class="model-selector">
@@ -106,14 +123,21 @@
                                         class="model-selector__model"
                                         [class.model-selector__model--selected]="isModelSelected(model.id)"
                                         [class.model-selector__model--not-visible]="model.is_visible === false"
+                                        [class.model-selector__model--deprecated]="
+                                            model.predefined && !model.is_visible
+                                        "
                                     >
                                         <button
                                             type="button"
                                             class="model-selector__model-select"
+                                            [disabled]="model.predefined && !model.is_visible"
                                             (click)="selectModel(model, providerData.provider)"
                                         >
                                             <span class="model-selector__model-name">{{ model.name }}</span>
                                         </button>
+                                        @if (model.predefined && !model.is_visible) {
+                                            <span class="model-selector__model-deprecated">Deprecated</span>
+                                        }
                                         @if (model.predefined === false || model.is_custom) {
                                             <app-icon-button
                                                 icon="edit"
