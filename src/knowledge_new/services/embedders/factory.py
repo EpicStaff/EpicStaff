@@ -13,9 +13,7 @@ _STRATEGIES: dict[EmbedderProviderEnum, type[AbstractEmbedder]] = {
 }
 
 
-def build_embedder(
-    provider: EmbedderProviderEnum, config: EmbeddingConfig
-) -> AbstractEmbedder:
+def build_embedder(provider: EmbedderProviderEnum, config: EmbeddingConfig) -> AbstractEmbedder:
     """Create the embedder registered for `provider`.
 
     Args:

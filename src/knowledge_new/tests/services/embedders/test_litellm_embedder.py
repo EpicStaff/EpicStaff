@@ -41,13 +41,15 @@ async def test_embed_returns_empty_list_when_no_data(config):
 
 
 async def test_embed_raises_embedding_error_on_client_failure(config):
-    with patch.object(
-        litellm_embedder.litellm,
-        "aembedding",
-        AsyncMock(side_effect=RuntimeError("boom")),
+    with (
+        patch.object(
+            litellm_embedder.litellm,
+            "aembedding",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        pytest.raises(EmbeddingError),
     ):
-        with pytest.raises(EmbeddingError):
-            await LiteLLMEmbedder(config).embed("hi")
+        await LiteLLMEmbedder(config).embed("hi")
 
 
 async def test_embed_routes_provider_as_custom_llm_provider(config):
