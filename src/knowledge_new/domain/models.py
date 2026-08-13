@@ -2,7 +2,6 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from domain.enums import (
-    ChunkStrategyEnum,
     DocumentStatusEnum,
     EmbedderProviderEnum,
     IndexStatusEnum,
@@ -11,6 +10,7 @@ from pydantic import Field, computed_field
 from src.shared.models.base import Entity, ValueObject
 from src.shared.models.knowledge_new import (
     CancelRequest,
+    ChunkingConfig,
     FoundChunk,
     GraphSearchConfig,
     IndexRequest,
@@ -85,15 +85,6 @@ class Rag(Entity):
     def mark_as_cancelled(self):
         self.status = IndexStatusEnum.CANCELLED
         self.error_message = None
-
-
-class ChunkingConfig(ValueObject):
-    """Parameters controlling how a document is chunked."""
-
-    chunk_strategy: ChunkStrategyEnum
-    chunk_size: int
-    chunk_overlap: int
-    extra: dict = Field(default_factory=dict)
 
 
 class IndexedChunk(PreviewChunk):

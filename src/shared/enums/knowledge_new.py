@@ -4,6 +4,7 @@ __all__ = [
     "DocumentStatusEnum",
     "GraphSearchMethodEnum",
     "RAGStrategy",
+    "ChunkStrategyEnum",
 ]
 
 
@@ -28,3 +29,13 @@ class DocumentStatusEnum(StrEnum):
     WARNING = "warning"  # deprecated
     FAILED = "failed"
     OUTDATED = "outdated"
+
+
+
+class ChunkStrategyEnum(StrEnum):
+    CHARACTER = "character"
+    CSV = "csv"
+    HTML = "html"
+    JSON = "json"
+    MARKDOWN = "markdown"
+    TOKEN = "token"

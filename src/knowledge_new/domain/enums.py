@@ -1,6 +1,11 @@
 from enum import StrEnum
 
-from src.shared.enums.knowledge_new import DocumentStatusEnum, GraphSearchMethodEnum, RAGStrategy
+from src.shared.enums.knowledge_new import (
+    ChunkStrategyEnum,
+    DocumentStatusEnum,
+    GraphSearchMethodEnum,
+    RAGStrategy,
+)
 
 __all__ = [
     "ChunkStrategyEnum",
@@ -12,15 +17,6 @@ __all__ = [
     "IndexStatusEnum",
     "RAGStrategy",
 ]
-
-
-class ChunkStrategyEnum(StrEnum):
-    CHARACTER = "character"
-    CSV = "csv"
-    HTML = "html"
-    JSON = "json"
-    MARKDOWN = "markdown"
-    TOKEN = "token"
 
 
 class DocumentErrorCode(StrEnum):
