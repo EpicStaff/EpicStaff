@@ -46,9 +46,9 @@ class KnowledgeNodeValidator:
 
         Save stays permissive (empty nodes are allowed) -- this is enforced only
         before a run, so an incompletely configured node can't start a session.
-        Collects every offending node and reports them together so the FE can
-        highlight all of them at once."""
-        invalid = {}
+        Collects every offending node and reports them together as a single flat
+        message (mirrors FileNodeValidator) so the FE gets a uniform error shape."""
+        issues = []
         for node in node_list:
             missing = []
             if node.source_collection_id is None:
@@ -58,6 +58,9 @@ class KnowledgeNodeValidator:
             if not (node.query or "").strip() and not node.input_map:
                 missing.append("query or input")
             if missing:
-                invalid[f"{node.node_name} #{node.id}"] = missing
-        if invalid:
-            raise KnowledgeNodeRunValidationError(detail={"knowledge_nodes": invalid})
+                issues.append(f"{node.node_name} #{node.id} ({', '.join(missing)})")
+        if issues:
+            raise KnowledgeNodeRunValidationError(
+                f"KnowledgeNode is not fully configured to run. "
+                f"Issue with nodes: {'; '.join(issues)}"
+            )
