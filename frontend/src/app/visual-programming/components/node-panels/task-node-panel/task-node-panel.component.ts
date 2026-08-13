@@ -25,7 +25,10 @@ import {
 } from '@shared/components';
 import { catchError, of } from 'rxjs';
 
-import { AgentDefinition } from '../../../../features/agent-definitions/models/agent-definition.model';
+import {
+    AgentDefinition,
+    FLOW_CONTEXT_PLACES,
+} from '../../../../features/agent-definitions/models/agent-definition.model';
 import { Surface } from '../../../../features/agent-definitions/models/surface.model';
 import {
     SurfaceSummaryDialogComponent,
@@ -449,20 +452,15 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
 
     private autoSelectAgentSurfaces(agentId: number): void {
         const validSurfaceIds = new Set(this.surfaces().map((surface) => surface.id));
-
-        const ownedSurfaceIds = this.surfaces()
-            .filter((surface) => surface.owner_agent === agentId)
-            .map((surface) => surface.id);
-
-        const assignedSharedSurfaceIds = (
+        const flowContextSurfaceIds = (
             this.agentDefinitions().find((agent) => agent.id === agentId)?.default_surfaces ?? []
         )
+            .filter((defaultSurface) => FLOW_CONTEXT_PLACES.includes(defaultSurface.place))
             .map((defaultSurface) => defaultSurface.surface)
             .filter((surfaceId) => validSurfaceIds.has(surfaceId));
 
-        const agentSurfaceIds = [...ownedSurfaceIds, ...assignedSharedSurfaceIds];
-        if (agentSurfaceIds.length === 0) return;
-        this.selectedSurfaceIds.update((current) => Array.from(new Set([...current, ...agentSurfaceIds])));
+        if (flowContextSurfaceIds.length === 0) return;
+        this.selectedSurfaceIds.update((current) => Array.from(new Set([...current, ...flowContextSurfaceIds])));
     }
 
     private applyPendingAgentSurfaceAutoSelect(): void {

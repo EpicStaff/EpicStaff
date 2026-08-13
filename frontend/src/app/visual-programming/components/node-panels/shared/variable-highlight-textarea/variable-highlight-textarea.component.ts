@@ -427,7 +427,10 @@ export class VariableHighlightTextareaComponent implements ControlValueAccessor,
             highlighted += '<br>';
         }
 
-        this.backdropRef.nativeElement.innerHTML = highlighted;
+        const backdrop = this.backdropRef.nativeElement;
+        backdrop.innerHTML = highlighted;
+        backdrop.scrollTop = this.textareaRef.nativeElement.scrollTop;
+        backdrop.scrollLeft = this.textareaRef.nativeElement.scrollLeft;
     }
 
     private escapeHtml(text: string): string {
