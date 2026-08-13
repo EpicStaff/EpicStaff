@@ -170,6 +170,21 @@
             font-weight: 500;
             border-color: var(--wts-accent, #685fff);
         }
+
+        &--disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+
+            &:hover {
+                background: transparent;
+            }
+        }
+    }
+
+    &__warning {
+        font-size: 0.75rem;
+        line-height: 1.2;
+        color: var(--color-error, #e5484d);
     }
 
     &__empty {

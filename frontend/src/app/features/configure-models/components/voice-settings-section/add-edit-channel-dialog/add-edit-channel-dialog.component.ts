@@ -91,7 +91,7 @@ export class AddEditChannelDialogComponent implements OnInit {
             realtime_agent: [ch?.realtime_agent ?? null],
             is_active: [ch?.is_active ?? true],
             account_sid: [tw?.account_sid ?? ''],
-            auth_token: [tw?.auth_token ?? ''],
+            auth_token: [tw?.auth_token ?? '', [Validators.required]],
             phone_number: [tw?.phone_number ?? ''],
             webhook_trigger: [(tw?.webhook_trigger?.id ?? null) as WebhookTriggerWrite | null],
         });

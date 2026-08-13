@@ -55,6 +55,10 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
     required = input<boolean>(false);
     tooltipText = input<string>('Pick an existing webhook trigger, or create a new one.');
     placeholder = input<string>('Select a trigger');
+    /** Allow the localhost provider. Off for Telegram (bot API can't reach localhost webhooks). */
+    allowLocalhost = input<boolean>(true);
+    /** Message shown when the currently selected trigger uses a disallowed provider. */
+    disallowedProviderMessage = input<string>('This provider is not supported here.');
 
     /** Emits the resolved trigger model (or null when cleared). */
     triggerResolved = output<WebhookTriggerModel | null>();
@@ -70,6 +74,14 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
         const id = this.selectedId();
         if (id == null) return null;
         return this.triggers().find((t) => t.id === id) ?? null;
+    });
+
+    isTriggerDisallowed = (t: WebhookTriggerModel): boolean =>
+        !this.allowLocalhost() && t.provider_type === 'localhost';
+
+    selectedIsDisallowed = computed<boolean>(() => {
+        const t = this.selectedTrigger();
+        return t != null && this.isTriggerDisallowed(t);
     });
 
     filteredTriggers = computed<WebhookTriggerModel[]>(() => {
@@ -173,6 +185,7 @@ export class WebhookTriggerSelectComponent implements ControlValueAccessor, OnIn
 
     onSelect(trigger: WebhookTriggerModel): void {
         if (this.controlDisabled()) return;
+        if (this.isTriggerDisallowed(trigger)) return;
         const id = trigger.id ?? null;
         this.selectedId.set(id);
         this.onChange(id);

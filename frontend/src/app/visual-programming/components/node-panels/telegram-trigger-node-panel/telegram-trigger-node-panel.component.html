@@ -34,6 +34,8 @@
                     <div class="webhook-section">
                         <app-webhook-trigger-select
                             formControlName="webhook_trigger"
+                            [allowLocalhost]="false"
+                            disallowedProviderMessage="Localhost webhooks are not supported for Telegram. Use ngrok or a publicly reachable provider."
                             (triggerResolved)="onTriggerResolved($event)"
                         ></app-webhook-trigger-select>
 
