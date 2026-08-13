@@ -513,6 +513,21 @@
     font-family: inherit;
 }
 
+.res-row__needs-rag {
+    flex-shrink: 0;
+    margin-left: 0.5rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: var(--accent-color);
+    background-color: var(--color-ghost-btn-hover);
+    white-space: nowrap;
+}
+
+.res-row--needs-rag {
+    box-shadow: inset 2px 0 0 var(--accent-color);
+}
+
 .res-row__remove {
     position: relative;
     display: inline-flex;
