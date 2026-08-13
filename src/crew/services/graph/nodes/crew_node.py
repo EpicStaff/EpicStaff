@@ -99,6 +99,17 @@ class CrewNode(BaseNode):
         )
         crew_output = await crew.kickoff_async(inputs=input_)
 
+        token_usage = None
+        if hasattr(crew_output, "token_usage") and crew_output.token_usage:
+            token_usage = {
+                "total_tokens": crew_output.token_usage.total_tokens,
+                "prompt_tokens": crew_output.token_usage.prompt_tokens,
+                "completion_tokens": crew_output.token_usage.completion_tokens,
+                "successful_requests": crew_output.token_usage.successful_requests,
+            }
+
+            logger.info(f"Crew {self.node_name} token usage: {token_usage}")
+
         output = (
             json.loads(crew_output.pydantic.model_dump_json())
             if crew_output.pydantic
@@ -106,6 +117,8 @@ class CrewNode(BaseNode):
         )
         if "message" not in output:
             output["message"] = crew_output.raw
+        if token_usage:
+            output["token_usage"] = token_usage
 
         return output
 
