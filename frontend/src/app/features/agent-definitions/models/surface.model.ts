@@ -1,5 +1,10 @@
 export type ToolMode = 'allow' | 'deny';
 
+export interface SurfaceSaveError {
+    surfaceId: number;
+    tick: number;
+}
+
 export type PermTriState = 'allow' | 'unset' | 'deny';
 
 export interface SurfacePythonTool {

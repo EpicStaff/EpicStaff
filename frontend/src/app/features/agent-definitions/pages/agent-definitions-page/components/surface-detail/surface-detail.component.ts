@@ -1,7 +1,12 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import { AgentSurfacePlace } from '../../../../models/agent-definition.model';
-import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../models/surface.model';
+import {
+    CreateSurfaceRequest,
+    PartialUpdateSurfaceRequest,
+    Surface,
+    SurfaceSaveError,
+} from '../../../../models/surface.model';
 import { SurfaceCategoryId } from '../../../../models/surface-category.model';
 import { SurfaceCardComponent } from '../agent-detail/agent-surfaces-panel/surface-card/surface-card.component';
 
@@ -21,6 +26,7 @@ export class SurfaceDetailComponent {
     currentPlace = input<SurfaceCategoryId | null>(null);
     surfacePlaces = input<AgentSurfacePlace[]>([]);
     placesBusy = input<boolean>(false);
+    saveError = input<SurfaceSaveError | null>(null);
 
     readonly create = output<CreateSurfaceRequest>();
     readonly rename = output<string>();

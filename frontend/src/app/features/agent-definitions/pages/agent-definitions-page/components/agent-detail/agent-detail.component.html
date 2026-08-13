@@ -259,6 +259,7 @@
                     [defaultSurfaces]="agent()?.default_surfaces ?? []"
                     [sharedSurfaceIds]="sharedSurfaceIds()"
                     [saving]="saving()"
+                    [saveError]="surfaceSaveError()"
                     (createSurface)="createSurface.emit($event)"
                     (addFromShared)="addFromShared.emit($event)"
                     (dropSharedSurface)="dropSharedSurface.emit($event)"
