@@ -80,6 +80,9 @@ def test_agentdef_list_includes_realtime_config_id_with_and_without_realtime_age
     )
     assert without_realtime_row["agent_definition_realtime_config_id"] is None
 
+    assert with_realtime_row["has_realtime_definition"] is True
+    assert without_realtime_row["has_realtime_definition"] is False
+
     retrieve_with_realtime = client_a.get(
         f"/api/agent-definitions/{agent_definition_with_realtime.id}/"
     )
@@ -97,6 +100,8 @@ def test_agentdef_list_includes_realtime_config_id_with_and_without_realtime_age
         without_realtime_row["agent_definition_realtime_config_id"]
         == retrieve_without_realtime.data["agent_definition_realtime_config_id"]
     )
+    assert retrieve_with_realtime.data["has_realtime_definition"] is True
+    assert retrieve_without_realtime.data["has_realtime_definition"] is False
 
 
 def _create_agent_definitions_with_realtime_config(
