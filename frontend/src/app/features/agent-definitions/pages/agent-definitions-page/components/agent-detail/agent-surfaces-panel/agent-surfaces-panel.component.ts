@@ -21,7 +21,12 @@ import {
 import { CollapseOnOverflowDirective, EnterBlurDirective } from '@shared/directives';
 
 import { AgentDefaultSurface, AgentSurfacePlace } from '../../../../../models/agent-definition.model';
-import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../../models/surface.model';
+import {
+    CreateSurfaceRequest,
+    PartialUpdateSurfaceRequest,
+    Surface,
+    SurfaceSaveError,
+} from '../../../../../models/surface.model';
 import {
     categoryToPlace,
     placeToCategory,
@@ -57,6 +62,8 @@ export class AgentSurfacesPanelComponent {
     defaultSurfaces = input<AgentDefaultSurface[]>([]);
     sharedSurfaceIds = input<ReadonlySet<number>>(new Set<number>());
     saving = input<boolean>(false);
+    /** Last surface-save failure from the store; forwarded to each card for per-id revert. */
+    saveError = input<SurfaceSaveError | null>(null);
 
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
     readonly addFromShared = output<{ surfaceId: number; category: SurfaceCategoryId }>();

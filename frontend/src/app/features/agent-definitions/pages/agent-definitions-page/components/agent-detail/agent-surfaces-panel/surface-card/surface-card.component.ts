@@ -55,6 +55,7 @@ import {
     SurfaceKnowledge,
     SurfaceMcpTool,
     SurfacePythonTool,
+    SurfaceSaveError,
     SurfaceStorageItem,
 } from '../../../../../../models/surface.model';
 import {
@@ -129,6 +130,8 @@ export class SurfaceCardComponent {
     // True while a placement PATCH is in flight — disables the checkboxes and holds
     // the optimistic local state until the store settles (see the resync effect).
     placesBusy = input<boolean>(false);
+    /** Last surface-save failure from the store; only reverts this card when surfaceId matches. */
+    saveError = input<SurfaceSaveError | null>(null);
 
     readonly save = output<void>();
     readonly cancel = output<void>();
@@ -439,6 +442,7 @@ export class SurfaceCardComponent {
     );
 
     private lastSurfaceId: number | null | undefined = undefined;
+    private lastSaveErrorTick: number | null = null;
 
     constructor() {
         // Resync the optimistic place-set from the input whenever no placement PATCH is
@@ -454,17 +458,28 @@ export class SurfaceCardComponent {
 
         effect(() => {
             const s = this.surface();
+            const error = this.saveError();
 
-            // Switching to a different surface (or into/out of create mode) makes the
-            // "last sent" snapshots meaningless — they described a different object.
-            // Reset them so the new surface's fields load unconditionally below.
+            // A failed save for THIS surface invalidates the snapshots: the optimistic local
+            // value was rejected, the store re-synced the server surface, but the snapshot still
+            // holds the rejected value — so the guards below would refuse the server's (correct)
+            // value and leave the invalid tool/file/collection on screen. Clearing the snapshots
+            // lets the server value win. Errors for other surfaces are ignored (per-id).
+            const errorForThis = error && s && error.surfaceId === s.id ? error.tick : null;
+
+            // Switching to a different surface (or into/out of create mode) makes the "last sent"
+            // snapshots meaningless — they described a different object; reset unconditionally.
             if (s?.id !== this.lastSurfaceId) {
                 this.lastSurfaceId = s?.id ?? null;
-                this.lastSentName = null;
-                this.lastSentInstructions = null;
-                this.lastSentToolKeys = null;
-                this.lastSentKnowledge = null;
-                this.lastSentStorageItems = null;
+                this.lastSaveErrorTick = errorForThis;
+                this.clearSentSnapshots();
+            } else if (errorForThis != null && errorForThis !== this.lastSaveErrorTick) {
+                // Only a NEW failure of this surface clears the snapshots. Guarding on
+                // "!= null && changed" (not just "changed") stops another surface's error —
+                // which drives errorForThis back to null here — from spuriously reverting an
+                // in-flight edit on this card.
+                this.lastSaveErrorTick = errorForThis;
+                this.clearSentSnapshots();
             }
 
             // Autosave PATCHes one field at a time but the backend always returns the
@@ -970,6 +985,14 @@ export class SurfaceCardComponent {
                 );
                 this.emitKnowledgeChange();
             });
+    }
+
+    private clearSentSnapshots(): void {
+        this.lastSentName = null;
+        this.lastSentInstructions = null;
+        this.lastSentToolKeys = null;
+        this.lastSentKnowledge = null;
+        this.lastSentStorageItems = null;
     }
 
     private buildKnowledgePayload(): SurfaceKnowledge[] {
