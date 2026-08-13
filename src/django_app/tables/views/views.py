@@ -1,4 +1,3 @@
-import json
 from datetime import datetime, timezone
 from collections import defaultdict
 from drf_yasg.utils import swagger_auto_schema
@@ -32,27 +31,24 @@ from tables.swagger_schemas.python_node_test_mode_schema import (
 from utils.logger import logger
 
 from drf_spectacular.utils import (
-    extend_schema,
     extend_schema_view,
     OpenApiParameter,
-    OpenApiResponse,
 )
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef
 from django.conf import settings
-from django.conf import settings
 from src.shared.communication import Message
 from django_app.communication import producer
 from src.shared.models import IndexRequest, CancelRequest
+from src.shared.enums.knowledge_new import RAGStrategy
+from tables.clients import KnowledgeClient
+from tables.clients.errors import ClientError
 
 from rest_framework.mixins import RetrieveModelMixin, UpdateModelMixin, ListModelMixin
 from rest_framework.viewsets import GenericViewSet
 
 from rest_framework.decorators import api_view, action
-from rest_framework.views import APIView
 from rest_framework import viewsets, mixins
-from rest_framework.response import Response
-from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework import filters
 
@@ -101,7 +97,6 @@ from tables.serializers.quickstart_serializers import (
     QuickstartConfigSerializer,
     QuickstartStatusSerializer,
 )
-from tables.serializers.default_config_serializers import DefaultModelsSerializer
 from tables.filters import SessionFilter  # CollectionFilter,
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.import_export.enums import EntityType
@@ -930,16 +925,15 @@ class ProcessRagIndexingView(APIView):
 
         IndexingService.validate_and_prepare_indexing(rag_id=rag_id, rag_type=rag_type)
 
-        producer.send(
-            settings.KNOWLEDGE_INDEX_REQUEST_CHANNEL,
-            Message(
-                payload=IndexRequest(
+        try:
+            with KnowledgeClient() as client:
+                client.index(
+                    strategy=RAGStrategy(rag_type),
                     rag_id=rag_id,
-                    rag_strategy=rag_type,
                     document_ids=frozenset(document_config_ids),
-                ).model_dump()
-            ),
-        )
+                )
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
 
         return Response(
             {
