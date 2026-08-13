@@ -16,7 +16,6 @@ from django_app.settings import (
     SCHEDULE_CHANNEL,
     SESSION_STATUS_CHANNEL,
     STORAGE_MUTATION_CHANNEL,
-    TELEGRAM_TRIGGER_PREFIX,
     WEBHOOK_MESSAGE_CHANNEL,
     REQUEST_WEBHOOK_UPDATE_CHANNEL,
 )
@@ -188,20 +187,32 @@ class RedisPubSub:
         try:
             logger.debug(f"Received webhook event: {message}")
             data = WebhookEventData.model_validate_json(message["data"])
-            if data.path.startswith(TELEGRAM_TRIGGER_PREFIX):
-                TelegramTriggerService().handle_telegram_trigger(
-                    url_path=data.path[len(TELEGRAM_TRIGGER_PREFIX) : -1],
-                    payload=data.payload,
-                    config_id=data.config_id,
-                )
-            else:
-                WebhookTriggerService().handle_webhook_trigger(
-                    path=data.path,
-                    payload=data.payload,
-                    config_id=data.config_id,
-                )
         except Exception as e:
             logger.error(f"Error handling webhook_events_handler message: {e}")
+            return
+
+        path = data.path.rstrip("/")
+        try:
+            WebhookTriggerService().handle_webhook_trigger(
+                path=path,
+                payload=data.payload,
+                config_id=data.config_id,
+            )
+        except Exception:
+            logger.exception(
+                f"Error in generic webhook_trigger handling for path={path}"
+            )
+
+        try:
+            TelegramTriggerService().handle_telegram_trigger(
+                path=path,
+                payload=data.payload,
+                config_id=data.config_id,
+            )
+        except Exception:
+            logger.exception(
+                f"Error in telegram_trigger handling for path={path}"
+            )
 
     def request_webhook_update_handler(self, message: dict):
         try:

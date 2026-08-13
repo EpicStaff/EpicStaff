@@ -99,6 +99,7 @@ class TelegramTriggerNodeSerializer(
                     )
                 }
             )
+
         return attrs
 
     def create(self, validated_data):

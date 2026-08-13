@@ -267,5 +267,5 @@ class TestTelegramTriggerServiceLocalhostGuard:
         mock_call.assert_called_once()
         _, kwargs = mock_call.call_args
         assert kwargs["params"]["url"] == (
-            "https://abcd1234.ngrok-free.app/webhooks/telegram-trigger/tg-ngrok-ok/"
+            "https://abcd1234.ngrok-free.app/webhooks/tg-ngrok-ok/"
         )
