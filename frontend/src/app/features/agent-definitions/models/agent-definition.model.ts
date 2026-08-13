@@ -31,6 +31,7 @@ export interface AgentDefinition {
     llm_config: number | null;
     fcm_llm_config: number | null;
     agent_definition_realtime_config_id: number | null;
+    has_realtime_definition: boolean;
     default_surfaces: AgentDefaultSurface[];
     metadata: AgentMetadata;
     max_iter: number;
