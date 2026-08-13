@@ -1,4 +1,4 @@
-"""Consumer-level tests for Block 3: authoritative node locks."""
+"""Consumer-level tests for authoritative node locks."""
 
 import pytest
 from django.test import override_settings

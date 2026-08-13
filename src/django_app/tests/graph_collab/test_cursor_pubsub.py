@@ -277,8 +277,8 @@ async def test_node_created_still_relays_via_channel_layer(
     await comm_a.send_json_to(
         {
             "type": "node_created",
-            "node": {"id": "n99", "type": "agent"},
-            "list_key": "crew_node_list",
+            "node": {"id": 99, "type": "agent"},
+            "list_key": "code_agent_node_list",
             "editor": {
                 "user_id": test_user.pk,
                 "display_name": test_user.display_name,
@@ -289,7 +289,7 @@ async def test_node_created_still_relays_via_channel_layer(
 
     msg = await comm_b.receive_json_from()
     assert msg["type"] == "node_created"
-    assert msg["node"]["id"] == "n99"
+    assert msg["node"]["id"] == 99
     assert "sender_channel" not in msg
 
     await comm_a.disconnect()
@@ -318,9 +318,9 @@ async def test_cursor_moved_does_not_return_unknown_message_error(
     # Only a cursor_batch would be acceptable here (from self-publish); but
     # echo suppression means the sender user is filtered out, so nothing arrives.
     if msg is not None:
-        assert (
-            msg["type"] != "error"
-        ), f"cursor_moved must not return an error; got: {msg}"
+        assert msg["type"] != "error", (
+            f"cursor_moved must not return an error; got: {msg}"
+        )
 
     await communicator.disconnect()
 

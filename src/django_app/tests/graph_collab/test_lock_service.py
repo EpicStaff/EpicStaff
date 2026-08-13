@@ -237,3 +237,35 @@ def test_different_fields_on_same_node_are_independent(
     assert (
         lock_service.get_holder(GRAPH_ID, NODE_ID, "description").channel == CHANNEL_B
     )
+
+
+# ---------------------------------------------------------------------------
+# lock_service.release_all — direct unit coverage (pure in-memory, no DB)
+# ---------------------------------------------------------------------------
+
+
+def test_lock_service_release_all_returns_every_pair_and_clears_the_graph(
+    lock_service, editor_a
+):
+    lock_service.try_lock(999, "node-1", "label", editor_a, "chan-1")
+    lock_service.try_lock(999, "node-1", "description", editor_a, "chan-1")
+    lock_service.try_lock(999, "node-2", "label", editor_a, "chan-2")
+    lock_service.try_lock(1000, "node-1", "label", editor_a, "chan-3")  # other graph
+
+    released = lock_service.release_all(999)
+
+    assert set(released) == {
+        ("node-1", "label"),
+        ("node-1", "description"),
+        ("node-2", "label"),
+    }
+    assert lock_service.get_all_locks(999) == {}
+    assert 999 not in lock_service._store
+    # A different graph's locks must be untouched.
+    assert lock_service.get_holder(1000, "node-1", "label") is not None
+
+
+def test_lock_service_release_all_on_graph_with_no_locks_returns_empty_list(
+    lock_service,
+):
+    assert lock_service.release_all(424242) == []
