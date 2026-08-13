@@ -1,5 +1,7 @@
 export type AgentSurfacePlace = 'all' | 'flow' | 'chat' | 'realtime';
 
+export const FLOW_CONTEXT_PLACES: readonly AgentSurfacePlace[] = ['all', 'flow'];
+
 // UI fallbacks shown when the agent's value is null (backend null = inherit
 // DefaultAgentDefinitionConfig; these mirror those org-wide defaults). Saving a
 // value writes a number, i.e. it overrides the inherited default for this agent.
