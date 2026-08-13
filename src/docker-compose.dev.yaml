@@ -106,6 +106,7 @@ services:
     volumes:
       - ./webhook/app:/app/src/webhook/app
       - ./webhook/run.py:/app/src/webhook/run.py
+      - ./shared:/app/src/shared
 
   knowledge:
     command: sh -c "watchfiles --filter python 'python main.py' ."

@@ -94,9 +94,6 @@ from tables.models.realtime_models import (
     GeminiRealtimeConfig,
 )
 from tables.models.webhook_models import LocalhostWebhookConfig, NgrokWebhookConfig
-from tables.serializers.model_serializers import ToolConfigSerializer
-from tables.models.realtime_models import RealtimeAgentChat
-from tables.models.webhook_models import NgrokWebhookConfig
 from tables.validators.crew_memory_validator import CrewMemoryValidator
 from tables.validators.task_validator import TaskValidator
 from tables.validators.tool_config_validator import (
@@ -1032,6 +1029,9 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_ngrok_webhook_config_to_pydantic(
         self, ngrok_webhook_config: NgrokWebhookConfig
     ) -> NgrokConfigData:
+        # `name` must match `NgrokWebhookConfig.get_redis_key()` and the
+        # `webhook` service's tunnel-registry resolution — both webhook and
+        # telegram-linked triggers register under the bare trigger path.
         return NgrokConfigData(
             name=ngrok_webhook_config.trigger.path,
             auth_token=ngrok_webhook_config.auth_token,

@@ -314,6 +314,22 @@ class TestHandleTelegramTriggerConfigIsolation:
     up with `TypeError` on `TelegramTriggerNode.objects.filter(**None)` when
     the same cross-config mismatch occurs for a Telegram trigger."""
 
+    @pytest.fixture(autouse=True)
+    def _mock_telegram_signal_side_effects(self, monkeypatch):
+        """`_make_telegram_trigger_node()` calls `TelegramTriggerNode.objects.create()`,
+        which fires `telegram_signals.telegram_trigger_post_save_handler` --
+        a REAL `WebhookTriggerService().register_webhooks()` Redis publish
+        and a REAL outbound Telegram API call via
+        `TelegramTriggerService().register_telegram_trigger()`. Stub both;
+        this class tests `get_trigger_filters`/`handle_telegram_trigger`
+        dispatch, not the attach signal."""
+        monkeypatch.setattr(WebhookTriggerService, "register_webhooks", lambda self: True)
+        monkeypatch.setattr(
+            TelegramTriggerService,
+            "register_telegram_trigger",
+            lambda self, telegram_trigger_instance=None, **kwargs: None,
+        )
+
     def test_wrong_domain_registered_path_for_requested_path_starts_no_flow(
         self, default_org, monkeypatch
     ):
@@ -331,7 +347,7 @@ class TestHandleTelegramTriggerConfigIsolation:
 
         # Must not raise, and must start no flow.
         TelegramTriggerService().handle_telegram_trigger(
-            url_path="tg-p1",
+            path="tg-p1",
             payload={"m": 1},
             config_id="ngrok:tg-p2",
         )
@@ -349,7 +365,7 @@ class TestHandleTelegramTriggerConfigIsolation:
         _stub_publish(monkeypatch)
 
         TelegramTriggerService().handle_telegram_trigger(
-            url_path="tg-p1b",
+            path="tg-p1b",
             payload={"m": 1},
             config_id="ngrok:tg-p1b",
         )

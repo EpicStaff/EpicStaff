@@ -156,3 +156,26 @@ class WebhookTriggerService(metaclass=SingletonMeta):
                 return url
             time.sleep(interval)
         return None
+
+    def wait_for_tunnel_url_for_trigger(
+        self,
+        webhook_trigger: "WebhookTrigger",
+        timeout: float = 10.0,
+        interval: float = 0.1,
+    ) -> str | None:
+        """Provider-agnostic polling counterpart to `get_tunnel_url_for_trigger`.
+
+        Attaching/detaching a `TelegramTriggerNode` triggers a tunnel-config
+        resync (`telegram_signals._resync_tunnel_registration`), which forces
+        the `webhook` service to reconnect and re-publish its URL to Redis --
+        not instantaneous. `TelegramTriggerService.register_telegram_trigger`
+        uses this instead of a single `get_tunnel_url_for_trigger` read so it
+        doesn't race that resync.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            url = self.get_tunnel_url_for_trigger(webhook_trigger)
+            if url:
+                return url
+            time.sleep(interval)
+        return None

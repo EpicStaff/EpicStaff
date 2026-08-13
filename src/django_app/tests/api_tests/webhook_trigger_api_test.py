@@ -3,7 +3,7 @@ from unittest import mock
 import pytest
 from django.urls import reverse
 
-from tables.models.graph_models import Graph
+from tables.models.graph_models import Graph, TelegramTriggerNode, WebhookTriggerNode
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.models.webhook_models import (
@@ -961,6 +961,38 @@ class TestWebhookTriggerLiveUrlIncludesPath:
             == "https://abcd1234.ngrok-free.app/webhooks/my-trigger-path"
         )
 
+    def test_live_url_stays_bare_path_for_telegram_linked_trigger(
+        self, default_org
+    ):
+        """EST-1869: prefix-based exclusivity routing was removed --
+        `live_url` always reflects the bare path now, even for a trigger
+        linked to a `TelegramTriggerNode`."""
+        trigger = WebhookTrigger.objects.create(
+            path="tg-live-url-path",
+            provider_type=ProviderType.NGROK,
+            org=default_org,
+        )
+        TelegramTriggerNode.objects.create(
+            node_name="tg-live-url-node",
+            graph=Graph.objects.create(name="g-live-url", org=default_org),
+            webhook_trigger=trigger,
+        )
+        NgrokWebhookConfig.objects.create(
+            trigger=trigger, name="ng-tg", auth_token="tok"
+        )
+
+        with mock.patch(
+            "tables.services.webhook_trigger_service.WebhookTriggerService"
+            ".get_tunnel_url_for_trigger",
+            return_value="https://abcd1234.ngrok-free.app",
+        ):
+            data = WebhookTriggerNestedSerializer(trigger).data
+
+        assert (
+            data["live_url"]
+            == "https://abcd1234.ngrok-free.app/webhooks/tg-live-url-path"
+        )
+
     def test_live_url_stays_none_when_no_tunnel_url_available(self, default_org):
         """No live tunnel yet -> live_url must stay None, not become
         `None/<path>`."""
@@ -981,4 +1013,289 @@ class TestWebhookTriggerLiveUrlIncludesPath:
             data = WebhookTriggerNestedSerializer(trigger).data
 
         assert data["live_url"] is None
+
+
+@pytest.mark.django_db
+class TestCrossTypeTriggerNodeConflictValidation:
+    """EST-1869: a single `WebhookTrigger` may now legitimately be attached
+    to BOTH a `WebhookTriggerNode` and a `TelegramTriggerNode` at the same
+    time -- DB-driven fan-out in `redis_pubsub.webhook_events_handler` means
+    each node type is resolved and notified independently, so dual-attach no
+    longer breaks either registration scheme. Covered here at the
+    serializer/API layer for both directions, plus regression checks for the
+    unaffected single-type flows and same-instance re-save."""
+
+    def _webhook_node_payload(self, node_name, graph, webhook_trigger_id="__unset__"):
+        payload = {
+            "node_name": node_name,
+            "graph": graph.id,
+            "python_code": {
+                "libraries": [],
+                "code": "def handler(event, context):\n    return event",
+                "entrypoint": "handler",
+                "global_kwargs": {},
+            },
+            "metadata": {},
+        }
+        if webhook_trigger_id != "__unset__":
+            payload["webhook_trigger"] = webhook_trigger_id
+        return payload
+
+    def _telegram_node_payload(self, node_name, graph, webhook_trigger_id="__unset__"):
+        payload = {
+            "node_name": node_name,
+            "telegram_bot_api_key": "123456:ABC-DEF",
+            "graph": graph.id,
+            "fields": [],
+        }
+        if webhook_trigger_id != "__unset__":
+            payload["webhook_trigger"] = webhook_trigger_id
+        return payload
+
+    def test_creating_telegram_node_on_trigger_already_claimed_by_webhook_node_allowed(
+        self, auth_client, graph: Graph, default_org, mock_telegram_service
+    ):
+        trigger = WebhookTrigger.objects.create(
+            path="claimed-by-webhook-node", provider_type=None, org=default_org
+        )
+        webhook_create = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            self._webhook_node_payload("Webhook Owner", graph, trigger.id),
+            format="json",
+        )
+        assert webhook_create.status_code == 201, webhook_create.json()
+
+        response = auth_client.post(
+            reverse("telegramtriggernode-list"),
+            self._telegram_node_payload("Telegram Conflict", graph, trigger.id),
+            format="json",
+        )
+
+        assert response.status_code == 201, response.json()
+        assert TelegramTriggerNode.objects.filter(
+            node_name="Telegram Conflict", webhook_trigger=trigger
+        ).exists()
+        assert WebhookTriggerNode.objects.filter(
+            node_name="Webhook Owner", webhook_trigger=trigger
+        ).exists()
+
+    def test_creating_webhook_node_on_trigger_already_claimed_by_telegram_node_allowed(
+        self, auth_client, graph: Graph, default_org, mock_telegram_service
+    ):
+        trigger = WebhookTrigger.objects.create(
+            path="claimed-by-telegram-node", provider_type=None, org=default_org
+        )
+        telegram_create = auth_client.post(
+            reverse("telegramtriggernode-list"),
+            self._telegram_node_payload("Telegram Owner", graph, trigger.id),
+            format="json",
+        )
+        assert telegram_create.status_code == 201, telegram_create.json()
+
+        response = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            self._webhook_node_payload("Webhook Conflict", graph, trigger.id),
+            format="json",
+        )
+
+        assert response.status_code == 201, response.json()
+        assert WebhookTriggerNode.objects.filter(
+            node_name="Webhook Conflict", webhook_trigger=trigger
+        ).exists()
+        assert TelegramTriggerNode.objects.filter(
+            node_name="Telegram Owner", webhook_trigger=trigger
+        ).exists()
+
+    def test_trigger_attached_to_both_node_types_fans_out_via_real_api_create_path(
+        self, auth_client, graph: Graph, default_org, mock_telegram_service, monkeypatch
+    ):
+        """End-to-end regression guard: a `WebhookTrigger` created through the
+        real API and attached to both node types must fan out to both
+        services on an inbound event -- not just pass serializer validation."""
+        import json
+
+        from tables.services import redis_pubsub
+        from tables.services.session_manager_service import SessionManagerService
+        from tables.models.session_models import Session
+
+        trigger = WebhookTrigger.objects.create(
+            path="dual-attach-api-path", provider_type=None, org=default_org
+        )
+        webhook_create = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            self._webhook_node_payload("Dual API Webhook", graph, trigger.id),
+            format="json",
+        )
+        assert webhook_create.status_code == 201, webhook_create.json()
+
+        telegram_create = auth_client.post(
+            reverse("telegramtriggernode-list"),
+            self._telegram_node_payload("Dual API Telegram", graph, trigger.id),
+            format="json",
+        )
+        assert telegram_create.status_code == 201, telegram_create.json()
+
+        class _FakeGraphDump:
+            def model_dump(self, mode=None):
+                return {}
+
+        class _FakeSessionData:
+            graph = _FakeGraphDump()
+
+        sm = SessionManagerService()
+        monkeypatch.setattr(
+            sm, "create_session_data", lambda session: _FakeSessionData()
+        )
+        monkeypatch.setattr(
+            sm.redis_service, "publish_session_data", lambda session_data: 2
+        )
+
+        class _FakeRedis:
+            def pubsub(self):
+                return object()
+
+            def keys(self, pattern):
+                return []
+
+        monkeypatch.setattr(
+            redis_pubsub.RedisPubSub, "_create_redis_client", lambda self: _FakeRedis()
+        )
+        monkeypatch.setattr(redis_pubsub, "close_old_connections", lambda: None)
+        svc = redis_pubsub.RedisPubSub()
+        monkeypatch.setattr(svc, "_save_session_storage_files", lambda session: None)
+
+        message = {
+            "data": json.dumps(
+                {
+                    "path": trigger.path,
+                    "payload": {"m": 1},
+                    "config_id": None,
+                }
+            )
+        }
+
+        svc.webhook_events_handler(message)
+
+        assert Session.objects.filter(graph=graph).count() == 2
+
+    def test_normal_single_type_webhook_node_create_update_detach_reattach_unaffected(
+        self, auth_client, graph: Graph, default_org
+    ):
+        """Regression guard: the ordinary single-type flow (attach, re-save,
+        detach, reattach to a different trigger) for `WebhookTriggerNode`
+        must keep working unaffected by the new cross-type check."""
+        trigger_a = WebhookTrigger.objects.create(
+            path="webhook-node-flow-a", provider_type=None, org=default_org
+        )
+        trigger_b = WebhookTrigger.objects.create(
+            path="webhook-node-flow-b", provider_type=None, org=default_org
+        )
+
+        create = auth_client.post(
+            reverse("webhooktriggernode-list"),
+            self._webhook_node_payload("Webhook Flow Node", graph, trigger_a.id),
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        node_id = create.json()["id"]
+
+        # re-save with the same trigger (legitimate owner re-saving itself)
+        resave = auth_client.put(
+            reverse("webhooktriggernode-detail", args=[node_id]),
+            self._webhook_node_payload("Webhook Flow Node", graph, trigger_a.id),
+            format="json",
+        )
+        assert resave.status_code == 200, resave.json()
+
+        # detach
+        detach = auth_client.put(
+            reverse("webhooktriggernode-detail", args=[node_id]),
+            self._webhook_node_payload("Webhook Flow Node", graph, None),
+            format="json",
+        )
+        assert detach.status_code == 200, detach.json()
+        assert detach.json()["webhook_trigger"] is None
+
+        # reattach to a different trigger
+        reattach = auth_client.put(
+            reverse("webhooktriggernode-detail", args=[node_id]),
+            self._webhook_node_payload("Webhook Flow Node", graph, trigger_b.id),
+            format="json",
+        )
+        assert reattach.status_code == 200, reattach.json()
+        assert reattach.json()["webhook_trigger"] == trigger_b.id
+
+    def test_normal_single_type_telegram_node_create_update_detach_reattach_unaffected(
+        self, auth_client, graph: Graph, default_org, mock_telegram_service
+    ):
+        """Regression guard: the ordinary single-type flow for
+        `TelegramTriggerNode` must keep working unaffected."""
+        trigger_a = WebhookTrigger.objects.create(
+            path="telegram-node-flow-a", provider_type=None, org=default_org
+        )
+        trigger_b = WebhookTrigger.objects.create(
+            path="telegram-node-flow-b", provider_type=None, org=default_org
+        )
+
+        create = auth_client.post(
+            reverse("telegramtriggernode-list"),
+            self._telegram_node_payload("Telegram Flow Node", graph, trigger_a.id),
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        node_id = create.json()["id"]
+
+        detach = auth_client.put(
+            reverse("telegramtriggernode-detail", args=[node_id]),
+            self._telegram_node_payload("Telegram Flow Node", graph, None),
+            format="json",
+        )
+        assert detach.status_code == 200, detach.json()
+        assert detach.json()["webhook_trigger"] is None
+
+        reattach = auth_client.put(
+            reverse("telegramtriggernode-detail", args=[node_id]),
+            self._telegram_node_payload("Telegram Flow Node", graph, trigger_b.id),
+            format="json",
+        )
+        assert reattach.status_code == 200, reattach.json()
+        assert reattach.json()["webhook_trigger"] == trigger_b.id
+
+    def test_updating_telegram_node_that_already_owns_its_trigger_not_spuriously_rejected(
+        self, auth_client, graph: Graph, default_org, mock_telegram_service
+    ):
+        """A `TelegramTriggerNode` re-saving the SAME `webhook_trigger` it
+        already legitimately owns (the only `telegram_trigger_nodes` row
+        referencing that trigger IS this instance) must not be rejected as a
+        conflict against itself."""
+        trigger = WebhookTrigger.objects.create(
+            path="telegram-self-owned", provider_type=None, org=default_org
+        )
+        create = auth_client.post(
+            reverse("telegramtriggernode-list"),
+            self._telegram_node_payload("Telegram Self Owned", graph, trigger.id),
+            format="json",
+        )
+        assert create.status_code == 201, create.json()
+        node_id = create.json()["id"]
+
+        # re-save without changing the trigger
+        resave = auth_client.put(
+            reverse("telegramtriggernode-detail", args=[node_id]),
+            self._telegram_node_payload("Telegram Self Owned", graph, trigger.id),
+            format="json",
+        )
+        assert resave.status_code == 200, resave.json()
+        assert resave.json()["webhook_trigger"] == trigger.id
+
+        # change only an unrelated field, still referencing the same trigger
+        rename = auth_client.put(
+            reverse("telegramtriggernode-detail", args=[node_id]),
+            self._telegram_node_payload("Telegram Self Owned Renamed", graph, trigger.id),
+            format="json",
+        )
+        assert rename.status_code == 200, rename.json()
+        assert TelegramTriggerNode.objects.get(id=node_id).node_name == (
+            "Telegram Self Owned Renamed"
+        )
 

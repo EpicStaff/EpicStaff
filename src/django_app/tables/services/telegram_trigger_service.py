@@ -81,7 +81,9 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             )
         try:
             webhook_tunnel_url = (
-                self.webhook_trigger_service.get_tunnel_url_for_trigger(webhook_trigger)
+                self.webhook_trigger_service.wait_for_tunnel_url_for_trigger(
+                    webhook_trigger
+                )
             )
         except Exception as e:
             raise RegisterTelegramTriggerError(
@@ -94,9 +96,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                 status_code=503,
             )
 
-        telegram_webhook_url = (
-            f"{webhook_tunnel_url}/webhooks/telegram-trigger/{webhook_trigger.path}/"
-        )
+        telegram_webhook_url = f"{webhook_tunnel_url}/webhooks/{webhook_trigger.path}/"
 
         try:
             return self._call_telegram_api(
@@ -119,10 +119,10 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             return {"ok": False, "description": "Unregistration failed"}
 
     def handle_telegram_trigger(
-        self, url_path: str, payload: dict, config_id: str | None = None
+        self, path: str, payload: dict, config_id: str | None = None
     ) -> None:
         filters = self.webhook_trigger_service.get_trigger_filters(
-            path=url_path, config_id=config_id
+            path=path, config_id=config_id
         )
         if filters is None:
             return
