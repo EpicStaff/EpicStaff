@@ -110,7 +110,64 @@ class KnowledgeSearchService:
         timeout: Optional[int] = None,
     ) -> list[str]:
         """
-        Search knowledge using specified RAG implementation.
+        Search knowledge and return result strings (agent path).
+
+        When this service was constructed with a stream writer, also emits an
+        `extracted_chunks` graph message. For the node path, which needs the full
+        response and adds its own message fields, use `search_knowledges_detailed`.
+
+        Returns:
+            List of knowledge results (strings)
+        """
+        response, token_usage = self._search(
+            sender=sender,
+            knowledge_collection_id=knowledge_collection_id,
+            rag_type_id=rag_type_id,
+            query=query,
+            rag_search_config=rag_search_config,
+            stop_event=stop_event,
+            timeout=timeout,
+        )
+
+        if self.writer is not None:
+            self._add_knowledges_to_graph_message(
+                knowledge_results=response,
+                token_usage=token_usage,
+            )
+        return response.results
+
+    def search_knowledges_detailed(
+        self,
+        sender: str,
+        knowledge_collection_id: int,
+        rag_type_id: str,
+        query: str,
+        rag_search_config: Dict[str, Any],
+        stop_event: Optional[StopEvent] = None,
+        timeout: Optional[int] = None,
+    ) -> tuple[BaseKnowledgeSearchMessageResponse, dict]:
+        return self._search(
+            sender=sender,
+            knowledge_collection_id=knowledge_collection_id,
+            rag_type_id=rag_type_id,
+            query=query,
+            rag_search_config=rag_search_config,
+            stop_event=stop_event,
+            timeout=timeout,
+        )
+
+    def _search(
+        self,
+        sender: str,
+        knowledge_collection_id: int,
+        rag_type_id: str,
+        query: str,
+        rag_search_config: Dict[str, Any],
+        stop_event: Optional[StopEvent] = None,
+        timeout: Optional[int] = None,
+    ) -> tuple[BaseKnowledgeSearchMessageResponse, dict]:
+        """
+        Publish a search request over Redis and block until the response arrives.
 
         Args:
             sender: Identifier of the sender
@@ -178,12 +235,7 @@ class KnowledgeSearchService:
                         f"Knowledge search failed for {rag_type_id}: {results.message}"
                     )
 
-                if self.writer is not None:
-                    self._add_knowledges_to_graph_message(
-                        knowledge_results=results,
-                        token_usage=knowledge_callback_receiver.token_usage,
-                    )
-                return results.results
+                return results, knowledge_callback_receiver.token_usage
 
             if stop_event is not None:
                 stop_event.check_stop()

@@ -2,7 +2,6 @@ from typing import Optional
 
 from tables.models import KnowledgeNode
 from tables.models.knowledge_models import (
-    BaseRagType,
     KnowledgeNodeGraphRagBasicSearchConfig,
     KnowledgeNodeGraphRagLocalSearchConfig,
     KnowledgeNodeNaiveRagSearchConfig,
@@ -14,6 +13,7 @@ from tables.import_export.serializers.knowledge_node import (
 )
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
+from tables.services.rag_registry import RAG_TYPE_REGISTRY
 
 
 class KnowledgeNodeStrategy(EntityImportExportStrategy):
@@ -43,12 +43,25 @@ class KnowledgeNodeStrategy(EntityImportExportStrategy):
 
         configs = {key: data.pop(key, None) for key in self._CONFIG_MODELS}
 
-        if not SourceCollection.objects.filter(
+        source_collection_exists = SourceCollection.objects.filter(
             pk=data.get("source_collection")
-        ).exists():
+        ).exists()
+        if not source_collection_exists:
             data["source_collection"] = None
-        if not BaseRagType.objects.filter(pk=data.get("rag_type")).exists():
+
+        rag_type = data.get("rag_type")
+        rag_id = data.get("rag_id")
+        descriptor = RAG_TYPE_REGISTRY.get(rag_type)
+        rag_impl_exists = (
+            descriptor is not None
+            and rag_id is not None
+            and descriptor.model.objects.filter(
+                **{descriptor.id_field: rag_id}
+            ).exists()
+        )
+        if not source_collection_exists or not rag_impl_exists:
             data["rag_type"] = None
+            data["rag_id"] = None
 
         serializer = self.serializer_class(data={**data, "graph": graph_id})
         serializer.is_valid(raise_exception=True)

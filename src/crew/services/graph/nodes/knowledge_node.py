@@ -1,8 +1,10 @@
 import asyncio
+from string import Formatter
 from typing import Any
 
 from langgraph.types import StreamWriter
 
+from models.graph_models import GraphMessage
 from models.state import State
 from services.graph.events import StopEvent
 from services.graph.exceptions import KnowledgeSearchError
@@ -43,6 +45,34 @@ class KnowledgeNode(BaseNode):
         self.rag_search_config = rag_search_config
         self.knowledge_search_service = knowledge_search_service
 
+    def _build_query(self, input_: Any) -> str:
+        """Build the search query from the template and the mapped variables.
+
+        Named variables are inserted where the template references them ({name});
+        any mapped variable not referenced in the template is appended at the end,
+        space-separated. Without a template, all mapped values are joined.
+        """
+        if not self.query_template:
+            if isinstance(input_, dict):
+                return "\n".join(str(v) for v in input_.values())
+            return str(input_)
+
+        referenced = {
+            field_name.split(".")[0].split("[")[0]
+            for _, field_name, _, _ in Formatter().parse(self.query_template)
+            if field_name
+        }
+        try:
+            query = self.query_template.format(**input_)
+        except (KeyError, IndexError, ValueError, TypeError):
+            query = self.query_template
+
+        if isinstance(input_, dict):
+            extras = [str(v) for k, v in input_.items() if k not in referenced]
+            if extras:
+                query = f"{query} {' '.join(extras)}".strip()
+        return query
+
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
     ) -> str:
@@ -52,15 +82,7 @@ class KnowledgeNode(BaseNode):
                 "select a knowledge collection and RAG type."
             )
 
-        if self.query_template:
-            try:
-                query = self.query_template.format(**input_)
-            except (KeyError, IndexError, ValueError, TypeError):
-                query = self.query_template
-        elif isinstance(input_, dict):
-            query = "\n".join(str(v) for v in input_.values())
-        else:
-            query = str(input_)
+        query = self._build_query(input_)
 
         if not query.strip():
             raise ValueError(
@@ -72,8 +94,8 @@ class KnowledgeNode(BaseNode):
             self.rag_search_config.model_dump() if self.rag_search_config else {}
         )
         try:
-            chunks = await asyncio.to_thread(
-                self.knowledge_search_service.search_knowledges,
+            response, token_usage = await asyncio.to_thread(
+                self.knowledge_search_service.search_knowledges_detailed,
                 sender="node",
                 knowledge_collection_id=self.collection_id,
                 rag_type_id=self.rag_type_id,
@@ -86,7 +108,26 @@ class KnowledgeNode(BaseNode):
                 f"Knowledge node '{self.node_name}' search failed: {e}"
             ) from e
 
-        if not chunks:
+        if writer is not None:
+            writer(
+                GraphMessage(
+                    session_id=self.session_id,
+                    name=self.node_name,
+                    execution_order=execution_order,
+                    message_data={
+                        "message_type": "extracted_chunks",
+                        "knowledge_query": response.query,
+                        "collection_id": response.collection_id,
+                        "retrieved_chunks": response.retrieved_chunks,
+                        "rag_search_config": response.rag_search_config.model_dump(),
+                        "chunks": [chunk.model_dump() for chunk in response.chunks],
+                        "token_usage": token_usage,
+                        "input": input_,
+                    },
+                )
+            )
+
+        if not response.results:
             return "No relevant results were found in the knowledge collection."
 
-        return "\n\n".join(chunks)
+        return "\n\n".join(response.results)
