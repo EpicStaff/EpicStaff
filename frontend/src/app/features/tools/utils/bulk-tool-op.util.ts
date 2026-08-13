@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, WritableSignal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ConfirmationDialogService } from '@shared/components';
+import { ConfirmationDialogData, ConfirmationDialogService } from '@shared/components';
 import { Observable } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
@@ -43,9 +43,10 @@ export function runSettledBulk<T>(
 }
 
 /**
- * Confirms deletion with the user, then hits the caller-supplied `bulkDelete`
- * endpoint (which takes an id array in a single request), removes the ids
- * from the local list signal, clears selection, and toasts.
+ * Confirms deletion with the user (using caller-provided dialog data), then
+ * hits the caller-supplied `bulkDelete` endpoint (which takes an id array in
+ * a single request), removes the ids from the local list signal, clears
+ * selection, and toasts.
  */
 export function runBulkDeleteWithConfirm<T extends { id: number }>(
     ids: number[],
@@ -56,7 +57,9 @@ export function runBulkDeleteWithConfirm<T extends { id: number }>(
         viewState: ToolsViewStorageService;
         allTools: WritableSignal<T[]>;
         bulkDelete: (ids: number[]) => Observable<BulkDeleteToolsResponse>;
-        /** Human-readable noun used in the confirm/toast messages (e.g. 'custom tool', 'MCP tool'). */
+        /** Pre-built dialog data (title/message/caution). */
+        dialogData: ConfirmationDialogData;
+        /** Human-readable noun used in the toast messages (e.g. 'custom tool', 'MCP tool'). */
         entityLabel: string;
         /** Scope word rendered in the success toast (e.g. 'unused', 'selected'). */
         scopeLabel: 'unused' | 'selected';
@@ -64,13 +67,7 @@ export function runBulkDeleteWithConfirm<T extends { id: number }>(
 ): void {
     if (ids.length === 0) return;
     opts.confirmation
-        .confirm({
-            title: 'Confirm Deletion',
-            message: `Are you sure you want to delete <strong>${ids.length}</strong> ${opts.entityLabel}(s)? <br> This action cannot be undone.`,
-            confirmText: 'Delete',
-            cancelText: 'Cancel',
-            type: 'danger',
-        })
+        .confirm(opts.dialogData)
         .pipe(takeUntilDestroyed(opts.destroyRef))
         .subscribe((result) => {
             if (result !== true) return;
@@ -110,6 +107,8 @@ export function runDeleteUnused<T extends { id: number }>(
         bulkDelete: (ids: number[]) => Observable<BulkDeleteToolsResponse>;
         /** Human-readable noun used in the toasts (e.g. 'custom tool', 'MCP tool'). */
         entityLabel: string;
+        /** Plural noun used in the confirm dialog message (e.g. 'custom tools', 'MCP tools'). */
+        entityLabelPlural: string;
     }
 ): void {
     if (filteredIds.length === 0) return;
@@ -133,10 +132,102 @@ export function runDeleteUnused<T extends { id: number }>(
                     bulkDelete: opts.bulkDelete,
                     entityLabel: opts.entityLabel,
                     scopeLabel: 'unused',
+                    dialogData: buildUnusedDeleteDialog(unusedIds.length, opts.entityLabelPlural),
                 });
             },
             error: (err: HttpErrorResponse) => {
                 opts.toast.error(err.error?.message || 'Failed to load usage data.');
             },
         });
+}
+
+// Delete-confirmation dialog builders
+function pluralise(count: number, singular: string, plural: string): string {
+    return count === 1 ? singular : plural;
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/**
+ * Bulk delete of tools that have no agent/project usages.
+ */
+export function buildUnusedDeleteDialog(count: number, entityLabelPlural: string): ConfirmationDialogData {
+    const title = count === 1 ? 'Deleting Tool?' : 'Deleting Tools?';
+    return {
+        title,
+        message:
+            `You are about to permanently delete <strong>${count} ${entityLabelPlural}</strong> ` +
+            `that are not currently connected to any agents or projects. This action cannot be undone.`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        type: 'danger',
+    };
+}
+
+/**
+ * Single-tool delete with a "Caution" block that summarises
+ * the agent + project dependencies that will be broken.
+ */
+export function buildSingleDeleteWithUsageDialog(
+    toolName: string,
+    staffCount: number,
+    projectsCount: number
+): ConfirmationDialogData {
+    const safeName = escapeHtml(toolName);
+    return {
+        title: 'Delete Tool?',
+        message:
+            `You are about to permanently delete <strong>${safeName}</strong>. ` +
+            `This action cannot be undone and will break existing dependencies.`,
+        cautionTitle: 'Caution',
+        caution:
+            `This tool is currently connected to <strong>${staffCount} ${pluralise(staffCount, 'agent', 'agents')}</strong> ` +
+            `and <strong>${projectsCount} ${pluralise(projectsCount, 'project', 'projects')}</strong>. ` +
+            `If deleted, it will be removed from all of these workspaces.`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        type: 'danger',
+    };
+}
+
+/**
+ * Bulk selected delete when at least one tool has usages.
+ * Tools are sorted by total usage descending so the heaviest dependencies
+ * surface first in the collapsible list.
+ */
+export function buildBulkSelectedDeleteDialog(
+    tools: { id: number; name: string; staffCount: number; projectsCount: number }[]
+): ConfirmationDialogData {
+    const count = tools.length;
+    const sorted = [...tools].sort((a, b) => b.staffCount + b.projectsCount - (a.staffCount + a.projectsCount));
+    const listItems = sorted
+        .map((t) => {
+            const safeName = escapeHtml(t.name);
+            return (
+                `<li><strong>${safeName}</strong> is connected to ` +
+                `<strong>${t.staffCount} ${pluralise(t.staffCount, 'agent', 'agents')}</strong> and ` +
+                `<strong>${t.projectsCount} ${pluralise(t.projectsCount, 'project', 'projects')}</strong>.</li>`
+            );
+        })
+        .join('');
+
+    return {
+        title: 'Delete Tools?',
+        message:
+            'This action cannot be undone and will break existing dependencies ' +
+            'across multiple agents and projects.',
+        caution:
+            `<details open><summary>You are about to permanently delete <strong>${count} tools</strong>.</summary>` +
+            `<ul>${listItems}</ul></details>`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        type: 'danger',
+    };
 }

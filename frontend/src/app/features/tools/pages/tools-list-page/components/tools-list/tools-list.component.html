@@ -1,23 +1,23 @@
-<div class="mcp-tools">
+<div class="tools-list">
     @if (!isLoaded()) {
         <app-loading-spinner
             size="md"
-            message="Loading MCP tools..."
+            [message]="loadingMessage()"
         ></app-loading-spinner>
     } @else {
         @if (error()) {
             <div class="error">{{ error() }}</div>
             <button
                 type="button"
-                (click)="refreshTools()"
+                (click)="reload()"
             >
                 Retry
             </button>
         } @else {
-            <div class="mcp-tools-grid">
+            <div class="tools-list-grid">
                 @if (cards().length === 0) {
                     <div class="empty-message">
-                        <p>No MCP tools found.</p>
+                        <p>{{ emptyMessage() }}</p>
                     </div>
                 } @else {
                     @for (card of cards(); track card.id) {
