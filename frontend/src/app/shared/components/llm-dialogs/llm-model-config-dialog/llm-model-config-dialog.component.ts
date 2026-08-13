@@ -13,6 +13,7 @@ import { ValidationErrorsComponent } from '../../app-validation-errors/validatio
 import { ButtonComponent } from '../../buttons';
 import { IconButtonComponent } from '../../buttons';
 import { CustomInputComponent } from '../../form-input/form-input.component';
+import { HintMessageComponent } from '../../hint-message/hint-message.component';
 import { JsonEditorFormFieldComponent } from '../../json-editor/json-editor-form-field.component';
 import { KeyValueListComponent } from '../../key-value-list/key-value-list.component';
 import { SelectComponent, SelectItem } from '../../select/select.component';
@@ -39,6 +40,7 @@ interface DialogData {
         LlmModelSelectorComponent,
         JsonEditorFormFieldComponent,
         SelectComponent,
+        HintMessageComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

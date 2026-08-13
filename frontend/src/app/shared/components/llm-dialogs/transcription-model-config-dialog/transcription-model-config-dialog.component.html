@@ -33,6 +33,7 @@
             <app-select
                 formControlName="api_key_secret_id"
                 label="API Key"
+                variant="boxed"
                 placeholder="Select a secret"
                 tooltipText="The stored secret holding this provider's API key"
                 [items]="secretItems()"
@@ -40,9 +41,9 @@
                 searchPlaceholder="Search a secret..."
             />
             @if (!form.get('api_key_secret_id')?.value) {
-                <div class="secret-hint">
+                <app-hint-message>
                     Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
-                </div>
+                </app-hint-message>
             }
             <app-validation-errors [control]="form.get('api_key_secret_id')!" />
         </div>

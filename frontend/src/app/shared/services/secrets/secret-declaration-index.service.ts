@@ -92,6 +92,10 @@ export class SecretDeclarationIndexService {
                                 this.addToIndex(index, this.toolKey(item.name), secretId);
                             }
                         }
+                        // 'llm_configs' is deliberately not indexed here: LLM/Embedding/Realtime/
+                        // Transcription configs reference their secret via a plain readable FK
+                        // (api_key_secret_id), unlike PythonCode.secrets — so there's nothing
+                        // write-only to reconstruct, and no lookup*() method needs it.
                     }
                 }
                 return index;

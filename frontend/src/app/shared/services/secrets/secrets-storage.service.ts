@@ -2,12 +2,13 @@ import { inject, Injectable, signal } from '@angular/core';
 import { CreateSecretRequest, Secret } from '@shared/models';
 import { finalize, Observable, of, shareReplay, tap } from 'rxjs';
 
+import { StorageService } from '../app-storage.service';
 import { SecretsApiService } from './secrets-api.service';
 
 const TAIL_LENGTH = 4;
 
 @Injectable({ providedIn: 'root' })
-export class SecretsStorageService {
+export class SecretsStorageService implements StorageService {
     private readonly secretsApiService = inject(SecretsApiService);
 
     private secretsSignal = signal<Secret[]>([]);

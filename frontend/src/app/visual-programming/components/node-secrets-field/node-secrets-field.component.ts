@@ -23,7 +23,6 @@ import { SelectItem } from '../../../shared/components/select/select.component';
  *  Telegram node panels instead of duplicating the trigger+dropdown wiring in each one. */
 @Component({
     selector: 'app-node-secrets-field',
-    standalone: true,
     imports: [AppSvgIconComponent, HelpTooltipComponent, MultiSelectComponent],
     templateUrl: './node-secrets-field.component.html',
     styleUrls: ['./node-secrets-field.component.scss'],

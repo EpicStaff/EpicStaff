@@ -5,6 +5,7 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import {
     ButtonComponent,
     CustomInputComponent,
+    HintMessageComponent,
     IconButtonComponent,
     SelectComponent,
     SelectItem,
@@ -29,6 +30,7 @@ import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selec
         ReactiveFormsModule,
         ValidationErrorsComponent,
         SelectComponent,
+        HintMessageComponent,
     ],
 })
 export class TranscriptionModelConfigDialogComponent {

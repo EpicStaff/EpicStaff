@@ -76,6 +76,7 @@
                 <app-select
                     formControlName="auth_secret_id"
                     label="Auth"
+                    variant="boxed"
                     placeholder="Select a secret"
                     tooltipText="The stored secret used to authenticate with the MCP server (optional)"
                     [items]="secretItems()"
@@ -83,9 +84,9 @@
                     searchPlaceholder="Search a secret..."
                 />
                 @if (!form.get('auth_secret_id')?.value) {
-                    <div class="secret-hint">
+                    <app-hint-message>
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
-                    </div>
+                    </app-hint-message>
                 }
                 <app-validation-errors [control]="form.get('auth_secret_id')!" />
             </div>

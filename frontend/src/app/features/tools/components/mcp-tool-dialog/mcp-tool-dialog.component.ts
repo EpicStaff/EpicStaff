@@ -24,6 +24,7 @@ import {
 import {
     ButtonComponent,
     CustomInputComponent,
+    HintMessageComponent,
     IconButtonComponent,
     InputNumberComponent,
     SelectComponent,
@@ -60,6 +61,7 @@ interface DialogData {
         IconButtonComponent,
         HasPermissionDirective,
         SelectComponent,
+        HintMessageComponent,
     ],
     templateUrl: './mcp-tool-dialog.component.html',
     styleUrls: ['./mcp-tool-dialog.component.scss'],

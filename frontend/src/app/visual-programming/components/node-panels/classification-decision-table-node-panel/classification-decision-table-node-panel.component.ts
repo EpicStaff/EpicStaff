@@ -38,6 +38,7 @@ import { NodeType } from '../../../core/enums/node-type';
 import { generatePortsForClassificationDecisionTableNode } from '../../../core/helpers/helpers';
 import {
     ClassificationDecisionTableData,
+    ComputationConfig,
     PromptConfig,
 } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
@@ -237,32 +238,36 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                         NodeType.CLASSIFICATION_TABLE,
                         'post_python_code'
                     );
-
-                    let changed = false;
-                    if (preComp?.secret_ids === undefined && preIds.length) {
-                        this.preSelectedSecretIds.set(preIds);
-                        changed = true;
-                    }
-                    if (postComp?.secret_ids === undefined && postIds.length) {
-                        this.postSelectedSecretIds.set(postIds);
-                        changed = true;
-                    }
-                    // Patch only the restored secret_ids into the baseline — resetBaseline()
-                    // would recompute the whole node snapshot and bake in any other field the
-                    // user edited while this async lookup was in flight.
-                    if (changed && this.initialNodeSnapshot) {
-                        const snapshot = JSON.parse(this.initialNodeSnapshot);
-                        if (preComp?.secret_ids === undefined && preIds.length) {
-                            snapshot.data.table.pre_computation.secret_ids = [...preIds].sort();
-                        }
-                        if (postComp?.secret_ids === undefined && postIds.length) {
-                            snapshot.data.table.post_computation.secret_ids = [...postIds].sort();
-                        }
-                        this.initialNodeSnapshot = JSON.stringify(snapshot);
-                        this.notifyExternalChange();
-                    }
+                    this.applyRestoredSecrets(preComp, postComp, preIds, postIds);
                 });
         });
+    }
+
+    /**
+     * Applies restored pre/post secret_ids to the picker signals and patches just those fields
+     * into the dirty-tracking baseline. Doesn't call resetBaseline(), which would recompute the
+     * whole node snapshot and bake in any other field the user edited while this async lookup
+     * (SecretDeclarationIndexService.getIndex()) was in flight.
+     */
+    private applyRestoredSecrets(
+        preComp: ComputationConfig | undefined,
+        postComp: ComputationConfig | undefined,
+        preIds: number[],
+        postIds: number[]
+    ): void {
+        const restorePre = preComp?.secret_ids === undefined && preIds.length > 0;
+        const restorePost = postComp?.secret_ids === undefined && postIds.length > 0;
+        if (!restorePre && !restorePost) return;
+
+        if (restorePre) this.preSelectedSecretIds.set(preIds);
+        if (restorePost) this.postSelectedSecretIds.set(postIds);
+
+        if (!this.initialNodeSnapshot) return;
+        const snapshot = JSON.parse(this.initialNodeSnapshot);
+        if (restorePre) snapshot.data.table.pre_computation.secret_ids = [...preIds].sort();
+        if (restorePost) snapshot.data.table.post_computation.secret_ids = [...postIds].sort();
+        this.initialNodeSnapshot = JSON.stringify(snapshot);
+        this.notifyExternalChange();
     }
 
     public availableNodeItems = computed<SelectItem[]>(() => {

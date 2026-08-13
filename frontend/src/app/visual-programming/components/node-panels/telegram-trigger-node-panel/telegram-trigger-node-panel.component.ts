@@ -5,6 +5,7 @@ import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     ButtonComponent,
     CustomInputComponent,
+    HintMessageComponent,
     JsonEditorComponent,
     SelectComponent,
     SelectItem,
@@ -43,6 +44,7 @@ import { WebhookStatus } from './webhook-status.model';
         JsonEditorComponent,
         SelectComponent,
         ValidationErrorsComponent,
+        HintMessageComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

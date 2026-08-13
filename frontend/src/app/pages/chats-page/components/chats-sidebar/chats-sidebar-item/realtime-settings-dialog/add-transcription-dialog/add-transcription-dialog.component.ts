@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { SelectComponent, SelectItem } from '@shared/components';
+import { HintMessageComponent, SelectComponent, SelectItem } from '@shared/components';
 import {
     CreateTranscriptionConfigRequest,
     GetRealtimeTranscriptionModelRequest,
@@ -27,7 +27,7 @@ export interface AddTranscriptionConfigDialogData {
 @Component({
     selector: 'app-add-transcription-config-dialog',
     standalone: true,
-    imports: [CommonModule, ReactiveFormsModule, SelectComponent],
+    imports: [CommonModule, ReactiveFormsModule, SelectComponent, HintMessageComponent],
     templateUrl: './add-transcription-config-dialog.component.html',
     styleUrls: ['./add-transcription-config-dialog.component.scss'],
 })

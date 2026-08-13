@@ -18,13 +18,13 @@ function restoreNodeSecretIds(
     switch (node.type) {
         case NodeType.PYTHON: {
             const pyNode = node as PythonNodeModel;
-            if (pyNode.data.secret_ids !== undefined) return node;
+            if (pyNode.data.secret_ids) return node;
             const ids = service.lookup(index, graphId, node.node_name, NodeType.PYTHON, 'python_code');
             return { ...pyNode, data: { ...pyNode.data, secret_ids: ids } };
         }
         case NodeType.WEBHOOK_TRIGGER: {
             const whNode = node as WebhookTriggerNodeModel;
-            if (whNode.data.python_code.secret_ids !== undefined) return node;
+            if (whNode.data.python_code.secret_ids) return node;
             const ids = service.lookup(index, graphId, node.node_name, NodeType.WEBHOOK_TRIGGER, 'python_code');
             return {
                 ...whNode,
@@ -85,13 +85,13 @@ function mergeNodeSecretIds(node: NodeModel, savedByBackendId: Map<number, NodeM
     switch (node.type) {
         case NodeType.PYTHON: {
             const savedIds = (saved as PythonNodeModel).data.secret_ids;
-            if (savedIds === undefined) return node;
+            if (!savedIds) return node;
             const pyNode = node as PythonNodeModel;
             return { ...pyNode, data: { ...pyNode.data, secret_ids: savedIds } };
         }
         case NodeType.WEBHOOK_TRIGGER: {
             const savedIds = (saved as WebhookTriggerNodeModel).data.python_code.secret_ids;
-            if (savedIds === undefined) return node;
+            if (!savedIds) return node;
             const whNode = node as WebhookTriggerNodeModel;
             return {
                 ...whNode,
@@ -102,7 +102,7 @@ function mergeNodeSecretIds(node: NodeModel, savedByBackendId: Map<number, NodeM
             const savedTable = (saved as ClassificationDecisionTableNodeModel).data?.table;
             const savedPre = savedTable?.pre_computation?.secret_ids;
             const savedPost = savedTable?.post_computation?.secret_ids;
-            if (savedPre === undefined && savedPost === undefined) return node;
+            if (!savedPre && !savedPost) return node;
 
             const cdtNode = node as ClassificationDecisionTableNodeModel;
             const table = cdtNode.data?.table;
@@ -112,14 +112,12 @@ function mergeNodeSecretIds(node: NodeModel, savedByBackendId: Map<number, NodeM
                     ...cdtNode.data,
                     table: {
                         ...table,
-                        pre_computation:
-                            savedPre !== undefined
-                                ? { ...table?.pre_computation, secret_ids: savedPre }
-                                : table?.pre_computation,
-                        post_computation:
-                            savedPost !== undefined
-                                ? { ...table?.post_computation, secret_ids: savedPost }
-                                : table?.post_computation,
+                        pre_computation: savedPre
+                            ? { ...table?.pre_computation, secret_ids: savedPre }
+                            : table?.pre_computation,
+                        post_computation: savedPost
+                            ? { ...table?.post_computation, secret_ids: savedPost }
+                            : table?.post_computation,
                     },
                 },
             };

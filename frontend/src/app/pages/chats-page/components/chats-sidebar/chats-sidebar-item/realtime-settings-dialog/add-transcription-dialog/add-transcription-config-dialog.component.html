@@ -62,15 +62,16 @@
                 <app-select
                     id="apiKey"
                     formControlName="api_key_secret_id"
+                    variant="boxed"
                     placeholder="Select a secret"
                     [items]="secretItems"
                     [showSearch]="true"
                     searchPlaceholder="Search a secret..."
                 />
                 @if (!transcriptionForm.get('api_key_secret_id')?.value) {
-                    <div class="secret-hint">
+                    <app-hint-message>
                         Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
-                    </div>
+                    </app-hint-message>
                 }
             </div>
         </form>
