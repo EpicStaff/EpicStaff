@@ -22,16 +22,20 @@ export interface ToolFilterContext {
     labelNameById: Map<number, string>;
     /** Pre-lowercased + trimmed search term (empty string when not searching). */
     searchTerm: string;
+    /** Per-tool usage counts; used both by the sort and the `used_in_*` filter guards. */
+    usage: Map<number, GetBulkToolUsageItem>;
 }
 
 /**
  * Combined predicate: sidebar label filter, `showFavoriteOnly`, include/exclude
- * sets, custom filter condition, and free-text search — in the same order the
- * feature components previously applied them.
+ * sets, custom filter condition, free-text search, and the `used_in_projects` /
+ * `used_in_agents` sort orders (which double as filters — they hide rows with
+ * a zero usage count for the corresponding scope).
  */
 export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: ToolFilterAdapter<T>): boolean {
-    const { filter, sidebarLabelFilter, labelNameById, searchTerm } = ctx;
+    const { filter, sidebarLabelFilter, labelNameById, searchTerm, usage } = ctx;
     const labels = adapter.labelIdsOf(tool);
+    const id = adapter.idOf(tool);
 
     // Sidebar single-label filter.
     if (sidebarLabelFilter === 'unlabeled' && labels.length > 0) return false;
@@ -41,10 +45,10 @@ export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: T
     if (filter.showFavoriteOnly && !adapter.favoriteOf(tool)) return false;
 
     // Include/Exclude sets.
-    if (filter.includedToolIds && !filter.includedToolIds.includes(adapter.idOf(tool))) return false;
+    if (filter.includedToolIds && !filter.includedToolIds.includes(id)) return false;
     if (filter.includedLabelIds) {
         const includeLabels = filter.includedLabelIds;
-        if (!labels.some((id) => includeLabels.includes(id))) return false;
+        if (!labels.some((lId) => includeLabels.includes(lId))) return false;
     }
 
     // Custom filter.
@@ -52,10 +56,16 @@ export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: T
         if (filter.customFilter.scope === 'tool_name') {
             if (!evaluateCustomCondition(adapter.nameOf(tool), filter.customFilter)) return false;
         } else {
-            const names = labels.map((id) => labelNameById.get(id) ?? '');
+            const names = labels.map((lId) => labelNameById.get(lId) ?? '');
             if (!names.some((n) => evaluateCustomCondition(n, filter.customFilter))) return false;
         }
     }
+
+    // "Used in projects/agents" sort orders act as filters too: hide anything
+    // with a zero count for the corresponding scope. `most_used`/`unused_first`
+    // stay sort-only (they surface unused rows at the bottom / top).
+    if (filter.sortOrder === 'used_in_projects' && (usage.get(id)?.projects_count ?? 0) === 0) return false;
+    if (filter.sortOrder === 'used_in_agents' && (usage.get(id)?.staff_count ?? 0) === 0) return false;
 
     // Free-text search.
     if (searchTerm) {

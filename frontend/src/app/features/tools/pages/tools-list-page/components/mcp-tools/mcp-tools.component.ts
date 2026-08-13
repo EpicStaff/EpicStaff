@@ -26,6 +26,7 @@ import { map } from 'rxjs/operators';
 import { ToastService } from '../../../../../../services/notifications';
 import { downloadBlob } from '../../../../../../shared/utils/download-blob.util';
 import { McpToolDialogComponent } from '../../../../components/mcp-tool-dialog/mcp-tool-dialog.component';
+import { ToolUsageDialogComponent } from '../../../../components/tool-usage-dialog/tool-usage-dialog.component';
 import { GetMcpToolRequest } from '../../../../models/mcp-tool.model';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
 import { McpToolsService } from '../../../../services/mcp-tools/mcp-tools.service';
@@ -96,14 +97,15 @@ export class McpToolsComponent implements OnInit {
     }
 
     public readonly cards = computed<ToolCardVM[]>(() => {
+        const usage = this.usageById();
+        const showUsage = this.viewState.showUsageAndUnused();
         const ctx = {
             filter: this.viewState.filter(),
             sidebarLabelFilter: this.labelsStorage.activeLabelFilter(),
             labelNameById: new Map(this.labelsStorage.labels().map((l) => [l.id, l.name] as const)),
             searchTerm: this.searchTerm().trim().toLowerCase(),
+            usage,
         };
-        const usage = this.usageById();
-        const showUsage = this.viewState.showUsageAndUnused();
 
         return this.allTools()
             .filter((t) => matchesToolFilter(t, ctx, MCP_TOOL_ADAPTER))
@@ -165,7 +167,24 @@ export class McpToolsComponent implements OnInit {
                     });
                 return;
             case 'show_used_places':
-                // TODO: open a "used in" side panel once its component is defined.
+                this.mcpToolsService
+                    .getUsageDetailById(payload.tool.id)
+                    .pipe(takeUntilDestroyed(this.destroyRef))
+                    .subscribe({
+                        next: (usage) => {
+                            this.dialog.open<void>(ToolUsageDialogComponent, {
+                                data: { toolName: payload.tool.name, usage },
+                                width: 'calc(100vw - 2rem)',
+                                height: 'calc(100vh - 2rem)',
+                                hasBackdrop: true,
+                            });
+                        },
+                        error: (err: HttpErrorResponse) => {
+                            this.toastService.error(
+                                err.error?.message || `Failed to load usage for "${payload.tool.name}".`
+                            );
+                        },
+                    });
                 return;
         }
     }
