@@ -1,9 +1,14 @@
+from copy import deepcopy
+
+from django.db.models import Q
+
 from agents.models import Surface, SurfacePythonTool, SurfaceMcpTool
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.serializers.surface import SurfaceImportSerializer
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.utils import (
+    create_filters,
     ensure_unique_identifier,
     resolve_import_organization,
 )
@@ -58,6 +63,73 @@ class SurfaceStrategy(EntityImportExportStrategy):
         self._create_mcp_tools(surface, tools, id_mapper)
 
         return surface
+
+    def find_existing(
+        self, data: dict, id_mapper: IDMapper, org_id: int = None
+    ) -> Surface:
+        data_copy = deepcopy(data)
+        projected = {field: data_copy.get(field) for field in ("name", "instructions")}
+        filters, null_filters = create_filters(projected)
+
+        tools = data_copy.get("tools", {})
+        incoming_python_tools = self._remap_tool_set(
+            tools.get(EntityType.PYTHON_CODE_TOOL, []),
+            "python_tool_id",
+            EntityType.PYTHON_CODE_TOOL,
+            id_mapper,
+        )
+        incoming_mcp_tools = self._remap_tool_set(
+            tools.get(EntityType.MCP_TOOL, []),
+            "mcp_tool_id",
+            EntityType.MCP_TOOL,
+            id_mapper,
+        )
+
+        candidates = Surface.objects.filter(**filters, **null_filters).filter(
+            self.get_org_scope_q(org_id)
+        )
+
+        # Ownership is not part of the export, so a candidate owned by a
+        # different agent definition is still reused. Combined with the
+        # owner_agent__isnull=True guard in AgentDefinitionStrategy, the
+        # worst case is a newly created agent definition without an owned
+        # surface — never cross-agent ownership theft.
+        for candidate in candidates:
+            candidate_python_tools = set(
+                candidate.python_tools.values_list("python_tool_id", "mode")
+            )
+            if candidate_python_tools != incoming_python_tools:
+                continue
+
+            candidate_mcp_tools = set(
+                candidate.mcp_tools.values_list("mcp_tool_id", "mode")
+            )
+            if candidate_mcp_tools != incoming_mcp_tools:
+                continue
+
+            return candidate
+
+        return None
+
+    def get_org_scope_q(self, org_id: int) -> Q:
+        organization = resolve_import_organization(org_id)
+        if organization is None:
+            return Q()
+        return Q(organization=organization)
+
+    def _remap_tool_set(
+        self, entries: list, id_field: str, entity_type: EntityType, id_mapper: IDMapper
+    ) -> set:
+        remapped = set()
+
+        for entry in entries:
+            new_id = id_mapper.get_or_none(entity_type, entry[id_field])
+            if new_id is None:
+                continue
+
+            remapped.add((new_id, entry["mode"]))
+
+        return remapped
 
     def _create_python_tools(self, surface: Surface, tools: dict, id_mapper: IDMapper):
         python_tool_rows = []

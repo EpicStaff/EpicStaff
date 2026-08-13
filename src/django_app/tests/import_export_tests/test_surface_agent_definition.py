@@ -194,8 +194,9 @@ class TestAgentDefinitionRoundTrip:
     """
     Scenario 3: exporting an AgentDefinition pulls in its llm configs and both
     its owned and default surfaces; importing creates a brand-new
-    AgentDefinition, backfills ownership on the imported owned surface, and
-    recreates the AgentDefaultSurface assignment. LLM configs are reused.
+    AgentDefinition but REUSES the existing owned and default Surface rows
+    (equivalent name/instructions/tools), leaving their ownership untouched.
+    LLM configs are reused too.
     """
 
     def test_export_import_roundtrip(
@@ -216,7 +217,7 @@ class TestAgentDefinitionRoundTrip:
         )
 
         assert AgentDefinition.objects.count() == agent_definition_count_before + 1
-        assert Surface.objects.count() == surface_count_before + 2
+        assert Surface.objects.count() == surface_count_before
         assert LLMConfig.objects.count() == llm_config_count_before
 
         new_agent_def_id = id_mapper.get_new_ids(EntityType.AGENT_DEFINITION)[0]
@@ -230,7 +231,7 @@ class TestAgentDefinitionRoundTrip:
             new_agent_def.llm_config_id
         ]
 
-    def test_owned_surface_ownership_backfilled(
+    def test_owned_surface_reused_without_ownership_theft(
         self, surface_agent_seeded_db, export_service, import_service
     ):
         agent_def = surface_agent_seeded_db["agent_def"]
@@ -247,14 +248,14 @@ class TestAgentDefinitionRoundTrip:
         new_agent_def = AgentDefinition.objects.get(id=new_agent_def_id)
 
         assert id_mapper.has_mapping(EntityType.SURFACE, owned_surface.id)
-        new_surface_ids = id_mapper.get_new_ids(EntityType.SURFACE)
-        assert len(new_surface_ids) == 2
+        assert id_mapper.was_created(EntityType.SURFACE, owned_surface.id) is False
+        assert id_mapper.get(EntityType.SURFACE, owned_surface.id) == owned_surface.id
 
-        new_owned_surface = new_agent_def.owned_surfaces.get()
-        assert new_owned_surface.id in new_surface_ids
-        assert new_owned_surface.owner_agent_id == new_agent_def.id
+        owned_surface.refresh_from_db()
+        assert owned_surface.owner_agent_id == agent_def.id
+        assert new_agent_def.owned_surfaces.exists() is False
 
-    def test_default_surface_assignment_recreated(
+    def test_default_surface_assignment_reused_and_recreated(
         self, surface_agent_seeded_db, export_service, import_service
     ):
         agent_def = surface_agent_seeded_db["agent_def"]
@@ -271,12 +272,14 @@ class TestAgentDefinitionRoundTrip:
         new_agent_def = AgentDefinition.objects.get(id=new_agent_def_id)
 
         assert id_mapper.has_mapping(EntityType.SURFACE, default_surface.id)
+        assert id_mapper.was_created(EntityType.SURFACE, default_surface.id) is False
+        assert id_mapper.get(EntityType.SURFACE, default_surface.id) == (
+            default_surface.id
+        )
 
         default_surface_row = new_agent_def.default_surfaces.get()
         assert default_surface_row.place == SurfacePlace.FLOW
-        assert default_surface_row.surface_id in id_mapper.get_new_ids(
-            EntityType.SURFACE
-        )
+        assert default_surface_row.surface_id == default_surface.id
 
 
 @pytest.mark.django_db

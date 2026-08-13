@@ -209,11 +209,12 @@ class TestAgentTaskNodeRoundTrip:
         assert new_graph.agent_node_list.count() == 1
         assert new_graph.task_node_list.count() == 1
 
-    def test_agent_definition_remapped(
+    def test_agent_definition_reused_on_import_into_same_org(
         self, node_graph_seeded_db, export_service, import_service, default_org
     ):
         graph = node_graph_seeded_db["graph"]
         agent_definition = node_graph_seeded_db["agent_definition"]
+        agent_definition_count_before_import = AgentDefinition.objects.count()
 
         export_data = export_service.export_entities(EntityType.GRAPH, [graph.id])
         id_mapper, _ = import_service.import_data(
@@ -224,11 +225,17 @@ class TestAgentTaskNodeRoundTrip:
         new_graph = Graph.objects.get(id=new_graph_id)
         new_agent_node = new_graph.agent_node_list.get()
 
-        assert new_agent_node.agent_definition_id is not None
-        assert new_agent_node.agent_definition_id != agent_definition.id
-        assert new_agent_node.agent_definition_id in id_mapper.get_new_ids(
+        # Importing into the same org dedups the AgentDefinition instead of
+        # creating a duplicate row.
+        assert new_agent_node.agent_definition_id == agent_definition.id
+        assert (
+            id_mapper.was_created(EntityType.AGENT_DEFINITION, agent_definition.id)
+            is False
+        )
+        assert agent_definition.id in id_mapper.get_reused_ids(
             EntityType.AGENT_DEFINITION
         )
+        assert AgentDefinition.objects.count() == agent_definition_count_before_import
 
     def test_surface_list_remapped(
         self, node_graph_seeded_db, export_service, import_service, default_org

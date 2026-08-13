@@ -1,3 +1,7 @@
+from copy import deepcopy
+
+from django.db.models import Q
+
 from tables.models import LLMConfig
 from agents.models import AgentDefinition, AgentDefaultSurface, Surface
 from tables.import_export.strategies.base import EntityImportExportStrategy
@@ -7,8 +11,29 @@ from tables.import_export.serializers.agent_definition import (
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.utils import (
+    create_filters,
     ensure_unique_identifier,
     resolve_import_organization,
+)
+
+# Scalar fields compared for reuse. Explicit allowlist (not create_filters over
+# the whole dict) so the comparison stays self-documenting and immune to
+# serializer/field additions. default_surface_list is intentionally excluded.
+COMPARED_FIELDS = (
+    "name",
+    "description",
+    "instructions",
+    "metadata",
+    "max_iter",
+    "max_rpm",
+    "max_execution_time",
+    "cache",
+    "max_retry_limit",
+    "default_temperature",
+    "max_tool_calls",
+    "tool_timeout",
+    "max_consecutive_failures",
+    "schema_max_retries",
 )
 
 
@@ -75,6 +100,42 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
 
         return agent_definition
 
+    def find_existing(
+        self, data: dict, id_mapper: IDMapper, org_id: int = None
+    ) -> AgentDefinition:
+        data_copy = deepcopy(data)
+        projected = {field: data_copy.get(field) for field in COMPARED_FIELDS}
+        filters, null_filters = create_filters(projected)
+
+        new_llm_config_id = id_mapper.get_or_none(
+            EntityType.LLM_CONFIG, data_copy.get("llm_config")
+        )
+        new_fcm_llm_config_id = id_mapper.get_or_none(
+            EntityType.LLM_CONFIG, data_copy.get("fcm_llm_config")
+        )
+
+        if new_llm_config_id is None:
+            null_filters["llm_config_id__isnull"] = True
+        else:
+            filters["llm_config_id"] = new_llm_config_id
+
+        if new_fcm_llm_config_id is None:
+            null_filters["fcm_llm_config_id__isnull"] = True
+        else:
+            filters["fcm_llm_config_id"] = new_fcm_llm_config_id
+
+        return (
+            AgentDefinition.objects.filter(**filters, **null_filters)
+            .filter(self.get_org_scope_q(org_id))
+            .first()
+        )
+
+    def get_org_scope_q(self, org_id: int) -> Q:
+        organization = resolve_import_organization(org_id)
+        if organization is None:
+            return Q()
+        return Q(organization=organization)
+
     def _assign_llm_configs(
         self,
         agent_definition: AgentDefinition,
@@ -109,7 +170,7 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
 
             new_surface_ids.append(new_surface_id)
 
-        Surface.objects.filter(id__in=new_surface_ids).update(
+        Surface.objects.filter(id__in=new_surface_ids, owner_agent__isnull=True).update(
             owner_agent=agent_definition
         )
 
