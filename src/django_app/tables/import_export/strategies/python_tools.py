@@ -4,7 +4,7 @@ from django.db.models import Q
 
 from tables.models import PythonCode, PythonCodeTool
 from tables.import_export.strategies.base import EntityImportExportStrategy
-from tables.import_export.strategies.tool_labels import attach_tool_labels
+from tables.import_export.utils import attach_tool_labels
 from tables.import_export.serializers.python_tools import (
     PythonCodeImportSerializer,
     PythonCodeToolImportSerializer,

@@ -214,11 +214,18 @@ def test_pythoncodetool_copy_with_custom_name(client_a, org_a):
 
 
 @pytest.mark.django_db
-def test_pythoncodetool_copy_rejects_built_in(client_a):
+def test_pythoncodetool_copy_of_built_in_lands_in_active_org_as_custom(client_a, org_a):
+    # Copying a built-in tool must succeed and produce a normal, org-owned,
+    # non-built-in custom tool — not raise. See test_tool_copy.py for the
+    # full coverage of this behavior.
     tool = _make_tool(built_in=True, org=None, name="bt")
     resp = client_a.post(f"/api/python-code-tool/{tool.id}/copy/", {}, format="json")
-    assert resp.status_code == 400
-    assert "built-in" in resp.data["message"].lower()
+    assert resp.status_code == 201, resp.data
+    new_tool = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert new_tool.id != tool.id
+    assert new_tool.org_id == org_a.id
+    assert new_tool.built_in is False
+    assert new_tool.python_code_id != tool.python_code_id
 
 
 @pytest.mark.django_db
