@@ -1,12 +1,12 @@
 from application.orchestrators.searching.strategies import naive_search
-from application.orchestrators.searching.strategies.naive_search import NaiveSearch
+from application.orchestrators.searching.strategies.naive_search import NaiveSearchOrchestrator
 from domain.enums import EmbedderProviderEnum
+from application.results import SearchResult
 from domain.models import (
     EmbeddingConfig,
     FoundChunk,
     NaiveSearchConfig,
     SearchRequest,
-    SearchResponse,
 )
 
 
@@ -87,9 +87,9 @@ async def test_search_success_returns_response_with_found_chunks(monkeypatch):
         search_config=NaiveSearchConfig(search_limit=5, similarity_threshold=0.3),
     )
 
-    response = await NaiveSearch(uow).execute(request)
+    response = await NaiveSearchOrchestrator(uow).execute(request)
 
-    assert response == SearchResponse(request=request, result=found_chunks)
+    assert response == SearchResult(result=found_chunks)
     assert response.result == found_chunks
     assert embedder.embedded == ["find me"]  # the query was embedded
     assert repo.search_calls == [
@@ -114,9 +114,9 @@ async def test_search_success_returns_empty_response_when_no_chunks_match(monkey
         search_config=NaiveSearchConfig(search_limit=5, similarity_threshold=0.3),
     )
 
-    response = await NaiveSearch(uow).execute(request)
+    response = await NaiveSearchOrchestrator(uow).execute(request)
 
-    assert response == SearchResponse(request=request, result=[])
+    assert response == SearchResult(result=[])
     assert response.result == []
     assert embedder.embedded == ["no matches here"]  # flow still ran end-to-end
     assert len(repo.search_calls) == 1  # search was performed, just matched nothing

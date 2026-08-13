@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from application.orchestrators.indexing.strategies import naive_indexer
-from application.orchestrators.indexing.strategies.naive_indexer import NaiveIndexer
+from application.orchestrators.indexing.strategies.naive_indexer import NaiveIndexOrchestrator
 from domain.enums import (
     ChunkStrategyEnum,
     DocumentStatusEnum,
@@ -184,7 +184,7 @@ async def test_index_success_full_flow_sets_document_and_rag_statuses(monkeypatc
 
     request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({7}))
 
-    await NaiveIndexer(uow).execute(request)
+    await NaiveIndexOrchestrator(uow).execute(request)
 
     assert repo.doc_status_log == [
         DocumentStatusEnum.PROCESSING,
@@ -219,7 +219,7 @@ async def test_index_skips_already_completed_document_with_unchanged_config(monk
 
     request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({7}))
 
-    await NaiveIndexer(uow).execute(request)
+    await NaiveIndexOrchestrator(uow).execute(request)
 
     assert repo.doc_status_log == []
     assert document.status == DocumentStatusEnum.COMPLETED
@@ -252,7 +252,7 @@ async def test_index_success_skips_chunking_when_preview_chunks_exist(monkeypatc
 
     request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({7}))
 
-    await NaiveIndexer(uow).execute(request)
+    await NaiveIndexOrchestrator(uow).execute(request)
 
     # chunking stage skipped because preview_chunks already exist — PROCESSING then COMPLETED
     assert repo.doc_status_log == [
@@ -301,7 +301,7 @@ async def test_index_rechunks_when_config_changed_despite_existing_preview_chunk
 
     request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({7}))
 
-    await NaiveIndexer(uow).execute(request)
+    await NaiveIndexOrchestrator(uow).execute(request)
 
     # config changed → full re-chunk even though preview chunks already existed
     assert repo.doc_status_log == [
@@ -397,7 +397,7 @@ async def test_cancellation_marks_rag_cancelled(
 
     request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({7}))
 
-    await NaiveIndexer(uow).execute(request)
+    await NaiveIndexOrchestrator(uow).execute(request)
     assert repo.rag_status_log == expected_rag_log
     assert repo.doc_status_log == expected_doc_log
 
@@ -484,7 +484,7 @@ async def test_document_error_marks_document_failed_and_rag_failed(
 
     request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({7}))
 
-    await NaiveIndexer(uow).execute(request)
+    await NaiveIndexOrchestrator(uow).execute(request)
 
     assert document.status == DocumentStatusEnum.FAILED
     assert document.error_message  # populated by mark_as_failed(error)
@@ -529,7 +529,7 @@ async def test_index_partial_when_one_document_succeeds_and_one_fails(monkeypatc
 
     request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({1, 2}))
 
-    await NaiveIndexer(uow).execute(request)
+    await NaiveIndexOrchestrator(uow).execute(request)
 
     # per-document outcomes
     assert good_doc.status == DocumentStatusEnum.COMPLETED
@@ -587,7 +587,7 @@ async def test_top_level_error_marks_rag_failed_and_reraises(
     request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=document_ids)
 
     with pytest.raises(expected_exc):
-        await NaiveIndexer(uow).execute(request)
+        await NaiveIndexOrchestrator(uow).execute(request)
 
     # on_error ran: rag marked FAILED — and ONLY that (PROCESSING was never reached)
     assert repo.rag_status_log == [IndexStatusEnum.FAILED]
@@ -604,7 +604,7 @@ async def test_missing_rag_raises_and_does_not_mark_anything(monkeypatch):
     request = IndexRequest(rag_id=999, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset())
 
     with pytest.raises(RagNotFoundError):
-        await NaiveIndexer(uow).execute(request)
+        await NaiveIndexOrchestrator(uow).execute(request)
 
     # rag never existed — self.state['rag'] never set — on_error has nothing to mark
     assert repo.rag_status_log == []
@@ -693,7 +693,7 @@ async def test_finalize_rag_status_considers_documents_outside_ids(
 
     request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({2}))
 
-    await NaiveIndexer(uow).execute(request)
+    await NaiveIndexOrchestrator(uow).execute(request)
 
     assert doc1.status == doc1_status  # untouched — outside document_ids
     assert repo.rag_status_log[-1] == expected_status
@@ -727,7 +727,7 @@ async def test_outdated_reasons_cleared_when_no_outdated_document_remains(monkey
 
     request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({7}))
 
-    await NaiveIndexer(uow).execute(request)
+    await NaiveIndexOrchestrator(uow).execute(request)
 
     # no OUTDATED doc remains → reasons cleared → rag is COMPLETED (not OUTDATED)
     assert rag.outdated_reasons == {}
@@ -764,7 +764,7 @@ async def test_outdated_reasons_preserved_when_outdated_document_remains(monkeyp
 
     request = IndexRequest(rag_id=1, rag_strategy=RAGStrategy.NAIVE, document_ids=frozenset({2}))
 
-    await NaiveIndexer(uow).execute(request)
+    await NaiveIndexOrchestrator(uow).execute(request)
 
     # OUTDATED doc still present → reasons preserved → rag is OUTDATED
     assert rag.outdated_reasons == {"doc_1": "source_changed"}
