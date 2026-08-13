@@ -311,6 +311,62 @@ class TestBuildGraphDataTaskNode:
         assert task_data.input_map == {}
 
 
+class TestDefaultAgentDefinitionConfigSeededDefaults:
+    @pytest.mark.django_db
+    def test_null_exec_fields_fall_back_to_seeded_defaults(
+        self, graph, task_node, agent
+    ):
+        agent.max_iter = None
+        agent.max_rpm = None
+        agent.max_execution_time = None
+        agent.cache = None
+        agent.max_retry_limit = None
+        agent.default_temperature = None
+        agent.schema_max_retries = None
+        agent.save()
+        task_node.agent_definition = agent
+        task_node.save()
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        agent_data = graph_data.task_node_list[0].agent_definition
+        assert agent_data.max_iter == 25
+        assert agent_data.max_rpm == 10
+        assert agent_data.max_execution_time == 60
+        assert agent_data.cache is False
+        assert agent_data.max_retry_limit == 3
+        assert agent_data.default_temperature == 0.7
+        assert agent_data.schema_max_retries == 2
+
+    @pytest.mark.django_db
+    def test_explicit_exec_fields_are_not_overridden_by_seeded_defaults(
+        self, graph, task_node, agent
+    ):
+        agent.max_iter = 99
+        agent.max_rpm = 42
+        agent.max_execution_time = 120
+        agent.cache = True
+        agent.max_retry_limit = 7
+        agent.default_temperature = 0.2
+        agent.schema_max_retries = 9
+        agent.save()
+        task_node.agent_definition = agent
+        task_node.save()
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        agent_data = graph_data.task_node_list[0].agent_definition
+        assert agent_data.max_iter == 99
+        assert agent_data.max_rpm == 42
+        assert agent_data.max_execution_time == 120
+        assert agent_data.cache is True
+        assert agent_data.max_retry_limit == 7
+        assert agent_data.default_temperature == 0.2
+        assert agent_data.schema_max_retries == 9
+
+
 class TestSessionDataRoundTrip:
     @pytest.mark.django_db
     def test_task_node_list_survives_json_round_trip(

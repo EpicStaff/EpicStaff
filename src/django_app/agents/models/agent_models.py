@@ -7,32 +7,32 @@ class DefaultAgentDefinitionConfig(models.Model):
     """Singleton holding default values for AgentDefinition nullable fields."""
 
     max_iter = models.IntegerField(
-        default=None,
+        default=25,
         null=True,
         help_text="Default max reasoning iterations for an AgentDefinition when its own value is null.",
     )
     max_rpm = models.IntegerField(
-        default=None,
+        default=10,
         null=True,
         help_text="Default max LLM requests per minute when AgentDefinition.max_rpm is null.",
     )
     max_execution_time = models.IntegerField(
-        default=None,
+        default=60,
         null=True,
         help_text="Default per-run wall-clock budget in seconds when AgentDefinition.max_execution_time is null.",
     )
     cache = models.BooleanField(
-        default=None,
+        default=False,
         null=True,
         help_text="Default for whether tool-result caching is enabled when AgentDefinition.cache is null.",
     )
     max_retry_limit = models.IntegerField(
-        default=None,
+        default=3,
         null=True,
         help_text="Default max retries on transient failures when AgentDefinition.max_retry_limit is null.",
     )
     default_temperature = models.FloatField(
-        default=None,
+        default=0.7,
         null=True,
         help_text="Default sampling temperature applied when neither the AgentDefinition nor its LLMConfig specify one.",
     )
@@ -52,7 +52,7 @@ class DefaultAgentDefinitionConfig(models.Model):
         help_text="Default consecutive tool-failure limit when AgentDefinition.max_consecutive_failures is null. Null = disabled.",
     )
     schema_max_retries = models.IntegerField(
-        default=None,
+        default=2,
         null=True,
         help_text="Default max schema-enforcement retries when AgentDefinition.schema_max_retries is null.",
     )
