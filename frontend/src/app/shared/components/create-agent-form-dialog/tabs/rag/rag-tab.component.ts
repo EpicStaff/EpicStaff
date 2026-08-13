@@ -21,6 +21,7 @@ import {
     RagSelectorComponent,
     SelectItem,
     SliderWithStepperComponent,
+    SuggestedValueComponent,
     TextareaComponent,
     ToggleSwitchComponent,
     ValidationErrorsComponent,
@@ -43,6 +44,14 @@ import {
 } from '../../../../models';
 
 type SuggestKey = GraphSearchMethod | 'naive';
+
+const PROMPT_FIELDS: Record<SuggestKey, string[]> = {
+    naive: [],
+    basic: ['prompt'],
+    local: ['prompt'],
+    global: ['map_prompt', 'reduce_prompt', 'knowledge_prompt'],
+    drift: ['prompt', 'reduce_prompt'],
+};
 
 export const GRAPH_BASIC_DEFAULTS: GraphBasicSearchConfig = {
     prompt: null,
@@ -116,6 +125,7 @@ export const GRAPH_DRIFT_DEFAULTS: GraphDriftSearchConfig = {
         ValidationErrorsComponent,
         ToggleSwitchComponent,
         AppSvgIconComponent,
+        SuggestedValueComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -141,6 +151,13 @@ export class RagTabComponent implements OnInit {
     suggestErrorFor = signal<SuggestKey | null>(null);
     useSuggestedParams = signal<boolean>(false);
     private searchConfigsValueChangesSub: Subscription | null = null;
+    // Baseline the "did the user edit a non-prompt field" diff runs against.
+    // Must be resynced after every programmatic patch (applyResponse) — otherwise
+    // the very next value-change event, even one caused solely by typing in a
+    // prompt field, would diff against a pre-patch baseline and see the
+    // suggested params' own K/token/etc. changes as if the user had just made
+    // them, incorrectly turning the toggle back off.
+    private lastNonPromptSnapshot: string | null = null;
 
     featureAvailable = computed<boolean>(() => this.llmConfigId() != null);
 
@@ -309,16 +326,45 @@ export class RagTabComponent implements OnInit {
 
         this.form().setControl('search_configs', this.searchConfigsFormGroup);
 
-        // Any genuine user edit anywhere in this group should turn the
-        // "use suggested params" toggle back off. applyResponse() below always
-        // patches with { emitEvent: false }, and Angular threads that flag up
-        // through every ancestor's own valueChanges — so this only fires for
-        // real user edits (including switching search_method), never for our
+        // A genuine user edit to a suggested field (or switching search_method)
+        // should turn the "use suggested params" toggle back off. Prompt fields
+        // are excluded — they're never part of what the toggle applies (see
+        // PROMPT_FIELDS), so editing them shouldn't disable it either.
+        // applyResponse() below always patches with { emitEvent: false }, and
+        // Angular threads that flag up through every ancestor's own
+        // valueChanges — so this only fires for real user edits, never for our
         // own programmatic patch.
         this.searchConfigsValueChangesSub?.unsubscribe();
+        this.syncNonPromptSnapshot();
         this.searchConfigsValueChangesSub = this.searchConfigsFormGroup!.valueChanges.pipe(
             takeUntilDestroyed(this.destroyRef)
-        ).subscribe(() => this.useSuggestedParams.set(false));
+        ).subscribe((value) => {
+            const snapshot = JSON.stringify(this.withoutPromptFields(value));
+            if (snapshot === this.lastNonPromptSnapshot) return;
+            this.lastNonPromptSnapshot = snapshot;
+            this.useSuggestedParams.set(false);
+        });
+    }
+
+    // Call after any programmatic patch, or the next real edit's diff would
+    // run against a pre-patch baseline.
+    private syncNonPromptSnapshot(): void {
+        if (!this.searchConfigsFormGroup) return;
+        this.lastNonPromptSnapshot = JSON.stringify(this.withoutPromptFields(this.searchConfigsFormGroup.value));
+    }
+
+    private withoutPromptFields(value: unknown): Record<string, unknown> {
+        const clone: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+        for (const method of ['basic', 'local', 'global', 'drift'] as const) {
+            const sub = clone[method];
+            if (!sub || typeof sub !== 'object') continue;
+            const subClone: Record<string, unknown> = { ...(sub as Record<string, unknown>) };
+            for (const field of PROMPT_FIELDS[method]) {
+                delete subClone[field];
+            }
+            clone[method] = subClone;
+        }
+        return clone;
     }
 
     private initGraphBasicSearchConfig(configs: GraphBasicSearchConfig | undefined): FormGroup {
@@ -500,27 +546,35 @@ export class RagTabComponent implements OnInit {
         const flag = globalGroup.get('dynamic_community_selection');
         if (!flag) return;
 
-        const toggle = (enabled: boolean) => {
-            const dependents = [
-                'dynamic_search_threshold',
-                'dynamic_search_keep_parent',
-                'dynamic_search_num_repeats',
-                'dynamic_search_use_summary',
-                'dynamic_search_max_level',
-            ];
-            dependents.forEach((name) => {
-                const ctrl = globalGroup.get(name);
-                if (!ctrl) return;
-                if (enabled) {
-                    ctrl.enable({ emitEvent: false });
-                } else {
-                    ctrl.disable({ emitEvent: false });
-                }
-            });
-        };
+        this.syncDynamicCommunityDependents(!!flag.value);
+        flag.valueChanges
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((v) => this.syncDynamicCommunityDependents(!!v));
+    }
 
-        toggle(!!flag.value);
-        flag.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((v) => toggle(!!v));
+    // Also called from applyResponse(): a suggested-params patch sets
+    // dynamic_community_selection with { emitEvent: false }, which never fires
+    // the valueChanges subscription above, so without this the dependents'
+    // enabled state would go stale relative to the newly-suggested value.
+    private syncDynamicCommunityDependents(enabled: boolean): void {
+        const globalGroup = this.searchConfigsFormGroup?.get('global') as FormGroup | null;
+        if (!globalGroup) return;
+        const dependents = [
+            'dynamic_search_threshold',
+            'dynamic_search_keep_parent',
+            'dynamic_search_num_repeats',
+            'dynamic_search_use_summary',
+            'dynamic_search_max_level',
+        ];
+        dependents.forEach((name) => {
+            const ctrl = globalGroup.get(name);
+            if (!ctrl) return;
+            if (enabled) {
+                ctrl.enable({ emitEvent: false });
+            } else {
+                ctrl.disable({ emitEvent: false });
+            }
+        });
     }
 
     onTextUnitPropUpdate(value: number): void {
@@ -553,6 +607,22 @@ export class RagTabComponent implements OnInit {
 
     get activeGraphMethod(): GraphSearchMethod | null {
         return (this.searchConfigsFormGroup?.get('search_method')?.value as GraphSearchMethod) ?? null;
+    }
+
+    get basicGroup(): FormGroup | null {
+        return (this.searchConfigsFormGroup?.get('basic') as FormGroup | null) ?? null;
+    }
+
+    get localGroup(): FormGroup | null {
+        return (this.searchConfigsFormGroup?.get('local') as FormGroup | null) ?? null;
+    }
+
+    get globalGroup(): FormGroup | null {
+        return (this.searchConfigsFormGroup?.get('global') as FormGroup | null) ?? null;
+    }
+
+    get driftGroup(): FormGroup | null {
+        return (this.searchConfigsFormGroup?.get('drift') as FormGroup | null) ?? null;
     }
 
     canToggleSuggested(): boolean {
@@ -632,10 +702,19 @@ export class RagTabComponent implements OnInit {
             return;
         }
 
-        // patchValue silently ignores keys with no matching control (e.g. drift's
-        // reduce_temperature/local_search_temperature, local's community_level).
-        target.patchValue(response.suggested_params, { emitEvent: false });
+        const params = { ...response.suggested_params };
+        for (const field of PROMPT_FIELDS[key]) {
+            delete params[field];
+        }
+        target.patchValue(params, { emitEvent: false });
         target.markAsPristine();
+        if (key === 'global') {
+            this.syncDynamicCommunityDependents(!!this.globalGroup?.get('dynamic_community_selection')?.value);
+        }
+        // The patch above never emits, so the next value-change event (even a
+        // harmless prompt edit) would otherwise diff against a pre-patch
+        // baseline and see this patch's own field changes as a user edit.
+        this.syncNonPromptSnapshot();
 
         if (key !== 'naive' && response.recommended_search_method) {
             this.recommendedSearchMethod.set(response.recommended_search_method);
@@ -643,9 +722,6 @@ export class RagTabComponent implements OnInit {
         this.suggestingFor.set(null);
     }
 
-    // Same (collection, llm, ragType, method) key format used by both the
-    // background metadata fetch and the explicit "suggest" fetch, so a response
-    // cached by one can be reused by the other.
     private metadataKeyFor(key: SuggestKey): string | null {
         const collectionId = this.collectionId;
         const llmConfigId = this.llmConfigId();

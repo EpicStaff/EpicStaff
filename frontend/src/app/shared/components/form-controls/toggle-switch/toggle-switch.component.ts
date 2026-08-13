@@ -1,11 +1,9 @@
 import {
     ChangeDetectionStrategy,
-    ChangeDetectorRef,
     Component,
     computed,
     EventEmitter,
     forwardRef,
-    inject,
     Input,
     input,
     Output,
@@ -37,10 +35,20 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
     tooltipText = input<string>('');
     disabled = input<boolean>(false);
 
-    @Input() checked = false;
-    @Output() checkedChange = new EventEmitter<boolean>();
+    private checkedState = signal(false);
 
-    private readonly cdr = inject(ChangeDetectorRef);
+    // Kept as a plain @Input()/@Output() pair for external API compatibility
+    // (banana-in-a-box, formControlName's ControlValueAccessor writeValue,
+    // etc.) — internally backed by a signal so the template updates
+    // reliably under OnPush regardless of markForCheck timing.
+    @Input()
+    set checked(value: boolean) {
+        this.checkedState.set(value);
+    }
+    get checked(): boolean {
+        return this.checkedState();
+    }
+    @Output() checkedChange = new EventEmitter<boolean>();
 
     private onChange: (value: boolean) => void = () => {};
     private onTouched = () => {};
@@ -50,17 +58,15 @@ export class ToggleSwitchComponent implements ControlValueAccessor {
 
     onToggle() {
         if (this.isDisabled()) return;
-        const next = !this.checked;
-        this.checked = next;
+        const next = !this.checkedState();
+        this.checkedState.set(next);
         this.checkedChange.emit(next);
         this.onChange(next);
         this.onTouched();
-        this.cdr.markForCheck();
     }
 
     writeValue(value: boolean): void {
-        this.checked = value;
-        this.cdr.markForCheck();
+        this.checkedState.set(value);
     }
 
     registerOnChange(fn: (value: boolean) => void): void {

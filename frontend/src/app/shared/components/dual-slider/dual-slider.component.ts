@@ -25,6 +25,7 @@ export class DualSliderComponent {
     step = input<number>(1);
     linked = input<boolean>(false);
     decimals = input<number>(2);
+    disabled = input<boolean>(false);
 
     activeThumb = signal<'left' | 'right'>('left');
 
@@ -56,6 +57,9 @@ export class DualSliderComponent {
         if (val === null || val === undefined) return '0';
         return val.toFixed(this.decimals());
     });
+
+    firstPercentLabel = computed(() => `${Math.round(this.firstPercentage())}%`);
+    secondPercentLabel = computed(() => `${Math.round(this.secondPercentage())}%`);
 
     updateFirst(newValue: number): void {
         const second = this.secondValue();
