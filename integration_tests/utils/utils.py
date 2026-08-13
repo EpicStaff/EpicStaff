@@ -45,8 +45,27 @@ def get_auth_token() -> str:
     return _auth_token
 
 
+_active_org_id: int | None = None
+
+
+def set_active_organization(org_id: int | None) -> None:
+    """
+    Opt into sending `X-Organization-Id` on every helper request.
+
+    Org-scoped endpoints (graphs, and anything else resolving an active
+    organization) reject requests without this header. Left unset by default
+    so existing tests send exactly the headers they always did; a test that
+    needs org context sets it, and should reset it to None afterwards.
+    """
+    global _active_org_id
+    _active_org_id = org_id
+
+
 def get_headers() -> dict:
-    return {"Host": rhost, "Authorization": f"Bearer {get_auth_token()}"}
+    headers = {"Host": rhost, "Authorization": f"Bearer {get_auth_token()}"}
+    if _active_org_id is not None:
+        headers["X-Organization-Id"] = str(_active_org_id)
+    return headers
 
 
 container_name_list = [

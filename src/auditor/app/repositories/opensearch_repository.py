@@ -31,25 +31,31 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
         if not events:
             return
 
-        record_time = datetime.now(timezone.utc).isoformat()
-
+        record_time = datetime.now(timezone.utc)
         actions = (
             {
                 "_op_type": "index",
                 "_index": SESSION_AUDIT_EVENTS_INDEX,
                 "_id": event.id,
-                "_source": {
-                    **event.model_dump(mode="json"),
-                    "record_time": record_time,
-                },
+                "_source": event.model_copy(
+                    update={"record_time": record_time}
+                ).model_dump(mode="json"),
             }
             for event in events
         )
 
-        _, errors = await async_bulk(self._client, actions, raise_on_error=False)
+        success_count, errors = await async_bulk(
+            self._client, actions, raise_on_error=False
+        )
 
         if errors:
-            logger.warning(f"OpenSearch bulk write had {len(errors)} error(s): {errors}")
+            logger.warning(
+                f"OpenSearch bulk write had {len(errors)} error(s): {errors}"
+            )
+        logger.info(
+            f"OpenSearch bulk write: {success_count}/{len(events)} event(s) indexed "
+            f"into {SESSION_AUDIT_EVENTS_INDEX}"
+        )
 
     async def query(
         self,
@@ -75,13 +81,6 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
             must.append({"range": {"event_time": {"gte": f"now-{retention_days}d"}}})
 
         if filters.get("search"):
-            # name/node_type/flow_name are mapped keyword (exact-match, for
-            # filtering/sorting) - a substring query needs wildcard, not
-            # multi_match. input/output/details are dynamically-mapped
-            # objects; their string leaves get real analyzed text fields by
-            # OpenSearch's default dynamic template, so query_string across
-            # a wildcard field pattern reaches into them for genuine
-            # free-text search - the actual reason this moved off ClickHouse.
             term = filters["search"]
             must.append(
                 {
@@ -89,7 +88,10 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
                         "should": [
                             {
                                 "wildcard": {
-                                    field: {"value": f"*{term}*", "case_insensitive": True}
+                                    field: {
+                                        "value": f"*{term}*",
+                                        "case_insensitive": True,
+                                    }
                                 }
                             }
                             for field in ("name", "node_type", "flow_name")
@@ -100,13 +102,6 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
                                     "query": term,
                                     "fields": ["input.*", "output.*", "details.*"],
                                     "default_operator": "AND",
-                                    # input/output/details are dynamic - the
-                                    # wildcard field pattern can match a
-                                    # numeric leaf (e.g. a token count), and
-                                    # without `lenient` a single type
-                                    # mismatch fails the whole query across
-                                    # every shard instead of just skipping
-                                    # that one field.
                                     "lenient": True,
                                 }
                             }
@@ -124,8 +119,11 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
         if cursor:
             body["search_after"] = _decode_cursor(cursor)
 
-        response = await self._client.search(index=SESSION_AUDIT_EVENTS_INDEX, body=body)
+        response = await self._client.search(
+            index=SESSION_AUDIT_EVENTS_INDEX, body=body
+        )
         hits = response["hits"]["hits"]
+        logger.info(f"Audit query filters={filters} -> {len(hits)} hit(s)")
 
         events = [SessionAuditEvent.model_validate(hit["_source"]) for hit in hits]
         next_cursor = _encode_cursor(hits[-1]["sort"]) if len(hits) == size else None

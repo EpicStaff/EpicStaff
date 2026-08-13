@@ -71,6 +71,11 @@ class AuditClient(Generic[T]):
             self._http_client = http_client or httpx.AsyncClient()
             if not self._immediate:
                 self._flush_task = asyncio.create_task(self._flush_loop())
+        else:
+            logger.warning(
+                f"AuditClient for {self._url} constructed with enabled=False - "
+                "every emit() call will silently no-op."
+            )
 
     async def emit(self, event: T) -> None:
         """Never raises - enqueues for background flush (or sends immediately
@@ -120,6 +125,10 @@ class AuditClient(Generic[T]):
                     timeout=5.0,
                 )
                 response.raise_for_status()
+                logger.info(
+                    f"Audit batch sent to {self._url}: {len(batch)} event(s), "
+                    f"status={response.status_code}"
+                )
                 return
             except Exception as e:
                 if attempt < self._max_retries - 1:

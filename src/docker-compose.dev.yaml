@@ -32,6 +32,25 @@ services:
     ports:
       - "${OPENSEARCH_PORT:-9200}:9200"
 
+  # Dev-only table browser over OpenSearch (the pgAdmin equivalent for OpenSearch). 
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.19.1
+    container_name: opensearch-dashboards
+    profiles:
+      - audit
+    environment:
+      OPENSEARCH_USERNAME: admin
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
+    ports:
+      - "${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
+    volumes:
+      - ./auditor/dev/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml:ro
+    networks:
+      - backend-network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
   realtime:
     ports:
       - "${REALTIME_PORT:-8050}:${REALTIME_PORT:-8050}"

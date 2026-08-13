@@ -19,7 +19,7 @@ class SessionAuditEvent(BaseModel):
 
     input: dict[str, Any] | None = None
     output: dict[str, Any] | None = None
-    error: dict[str, Any] | None = None
+    error: str | None = None
     details: dict[str, Any] = {}
 
     event_time: datetime

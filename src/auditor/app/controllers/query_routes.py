@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.security import require_audit_action
 
-router = APIRouter()
+router = APIRouter(tags=["Browse"])
 
 
 @router.get("/api/audit/sessions")

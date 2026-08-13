@@ -2,7 +2,7 @@ import csv
 import io
 import json
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import Response
@@ -11,8 +11,9 @@ from pydantic import BaseModel
 
 from app.core.security import require_audit_action
 from app.repositories.base import SessionAuditRepository
+from src.shared.models import SessionAuditEvent
 
-router = APIRouter()
+router = APIRouter(tags=["Export"])
 
 # In-memory job store - fine for a single-instance MVP; a real deployment
 # with multiple auditor replicas would need this in a shared store instead.
@@ -20,8 +21,8 @@ _jobs: dict[str, dict[str, Any]] = {}
 
 
 class ExportRequest(BaseModel):
-    format: str = "json"  # "json" | "csv"
-    detail: str = "base"  # "base" (session rows only) | "full" (with trace)
+    format: Literal["json", "csv"] = "json"
+    detail: Literal["base", "full"] = "base"  # "base" = session rows only
     session_id: int | None = None  # single-session export
     search: str | None = None  # filtered-list export (ignored if session_id set)
 
@@ -118,10 +119,11 @@ async def _collect_all(repository: SessionAuditRepository, filters: dict) -> lis
 
 
 def _to_csv(rows: list[dict]) -> bytes:
-    if not rows:
-        return b""
+    # Columns come from the model, not from rows[0]: an empty result set used
+    # to produce a zero-byte file with no header row at all, which reads as a
+    # broken download rather than "no matching events".
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=list(rows[0].keys()))
+    writer = csv.DictWriter(output, fieldnames=list(SessionAuditEvent.model_fields))
     writer.writeheader()
     for row in rows:
         writer.writerow(

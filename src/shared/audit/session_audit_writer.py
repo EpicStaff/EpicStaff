@@ -12,6 +12,20 @@ from src.shared.models import SessionAuditEvent
 AUDIT_NAMESPACE = uuid.UUID("c6e6a7c0-6b3b-4c2b-9f2e-8e6a2a2b6b3a")
 
 
+def _as_object(value: Any) -> dict[str, Any] | None:
+    """
+    crew's own input/output fields (StartMessageData.input, FinishMessageData.
+    output) are typed `object` upstream - a node can legitimately finish with
+    a bare string/list/number, not just a dict (e.g. a python node's plain
+    string result). SessionAuditEvent.input/output must stay dict-shaped
+    because OpenSearch's mapping for these fields is `object` - a bare scalar
+    would fail to index. Wrap anything non-dict rather than dropping it.
+    """
+    if value is None or isinstance(value, dict):
+        return value
+    return {"value": value}
+
+
 class SessionAuditWriter:
     """
     Domain-level writer for the session-audit domain: knows how to translate
@@ -97,9 +111,8 @@ class SessionAuditWriter:
         event_id: str,
     ) -> None:
         """
-        error is wrapped into a dict here, not passed through as-is - the
-        real ErrorMessageData.details on the primary pipeline is a plain
-        str(error), but SessionAuditEvent.error is dict-shaped.
+        error is stringified but otherwise passed through flat, matching the
+        primary pipeline's ErrorMessageData.details (also a plain str(error)).
         """
         input_ = self._pop_start_input(session_id, node_name, execution_order)
         await self._emit_node_or_event(
@@ -110,7 +123,7 @@ class SessionAuditWriter:
             status="failed",
             name=node_name,
             input_=input_,
-            error={"message": str(error)},
+            error=str(error),
         )
 
     async def add_custom_message(
@@ -149,7 +162,7 @@ class SessionAuditWriter:
         name: str,
         input_: dict | None = None,
         output: dict | None = None,
-        error: dict | None = None,
+        error: str | None = None,
         details: dict | None = None,
     ) -> None:
         parent_id = derive_root_id(AUDIT_NAMESPACE, str(session_id))
@@ -163,8 +176,8 @@ class SessionAuditWriter:
             name=name,
             status=status,
             event_time=datetime.now(timezone.utc),
-            input=input_,
-            output=output,
+            input=_as_object(input_),
+            output=_as_object(output),
             error=error,
             details=details or {},
         )
@@ -198,7 +211,7 @@ class SessionAuditWriter:
             flow_name=flow_name or "",
             status=status,
             event_time=datetime.now(timezone.utc),
-            output=output,
+            output=_as_object(output),
             details=details or {},
         )
         await safe_emit(self._client, event)

@@ -78,10 +78,19 @@ def _extract_finish_token_total(message_data: dict) -> int:
 _audit_tasks: set[asyncio.Task] = set()
 
 
+def _on_audit_task_done(task: asyncio.Task) -> None:
+    _audit_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning(f"Audit task failed, event dropped: {exc}")
+
+
 def _track_audit_task(coro) -> None:
     task = asyncio.create_task(coro)
     _audit_tasks.add(task)
-    task.add_done_callback(_audit_tasks.discard)
+    task.add_done_callback(_on_audit_task_done)
 
 
 def _emit_session_audit_event(data: dict) -> None:

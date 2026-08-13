@@ -1,7 +1,7 @@
 {
   "settings": {
     "number_of_shards": 3,
-    "number_of_replicas": 1
+    "auto_expand_replicas": "0-1"
   },
   "mappings": {
     "properties": {
@@ -19,8 +19,14 @@
 
       "input": { "type": "object", "enabled": true },
       "output": { "type": "object", "enabled": true },
-      "error": { "type": "object", "enabled": true },
       "details": { "type": "object", "enabled": true },
+
+      "error": {
+        "type": "text",
+        "fields": {
+          "raw": { "type": "wildcard" }
+        }
+      },
 
       "event_time": { "type": "date" },
       "record_time": { "type": "date" }

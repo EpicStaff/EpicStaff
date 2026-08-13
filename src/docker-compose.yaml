@@ -516,6 +516,8 @@ services:
     container_name: auditor
     profiles:
       - audit
+    ports:
+      - "${AUDITOR_PORT:-8060}:${AUDITOR_PORT:-8060}"
     build:
       context: .
       dockerfile: ./auditor/Dockerfile.auditor
