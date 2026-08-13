@@ -10,6 +10,8 @@ from tables.graph_versioning.handlers.webhook_trigger_node_handler import (
 from tables.graph_versioning.handlers.telegram_trigger_node_handler import (
     TelegramTriggerNodeHandler,
 )
+from tables.graph_versioning.handlers.agent_node_handler import AgentNodeHandler
+from tables.graph_versioning.handlers.task_node_handler import TaskNodeHandler
 from tables.import_export.enums import NodeType
 
 HANDLER_REGISTRY: dict[NodeType, MissingDependencyHandler] = {
@@ -20,6 +22,8 @@ HANDLER_REGISTRY: dict[NodeType, MissingDependencyHandler] = {
         CodeAgentNodeHandler(),
         WebhookTriggerNodeHandler(),
         TelegramTriggerNodeHandler(),
+        AgentNodeHandler(),
+        TaskNodeHandler(),
     )
 }
 

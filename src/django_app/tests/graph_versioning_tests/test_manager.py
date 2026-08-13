@@ -985,3 +985,259 @@ def test_create_graph_from_snapshot_keeps_agent_node_agent_definition(
     new_agent_node = new_graph.agent_node_list.first()
     assert new_agent_node is not None
     assert new_agent_node.agent_definition_id == agent_definition.id
+
+
+# ---------------------------------------------------------------------------
+# Group J: restore warnings for deleted AgentNode/TaskNode dependencies
+#
+# Deleting AgentDefinition/Surface/PythonCodeTool/MCPTool referenced by an
+# AgentNode or TaskNode must not silently drop them on restore — a warning
+# carrying node_id/node_name must be surfaced for each dropped reference.
+#
+# The dependency must be deleted *after* the snapshot/deps manifest are
+# captured — this mirrors the real restore scenario (an older GraphVersion
+# was saved while the dependency existed, and it was deleted afterwards).
+# Snapshotting after deletion is meaningless here: Django's SET_NULL/CASCADE
+# already scrubs the stale FK/M2M/link rows from the live graph the moment
+# the dependency is deleted, so a fresh snapshot would never contain the
+# missing reference in the first place.
+# ---------------------------------------------------------------------------
+
+
+def _restore_from_saved_snapshot(manager, graph, snapshot, deps):
+    """Restore `graph` from a snapshot captured earlier, validating `deps`
+    (also captured earlier) against the current DB state."""
+    deps_validation = manager.validate_dependencies(deps)
+    filtered_snapshot, warnings = manager.filter_snapshot(
+        snapshot, deps_validation["missing"]
+    )
+    manager.apply_snapshot_to_graph(
+        graph, filtered_snapshot, deps_validation["available"]
+    )
+    return warnings
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_nulls_agent_node_agent_definition_when_deleted(
+    manager, graph, agent_definition
+):
+    from tables.models import AgentNode
+
+    agent_node = AgentNode.objects.create(
+        graph=graph, node_name="agent_node", agent_definition=agent_definition
+    )
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    agent_definition.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.agent_node_list.first()
+    assert restored.agent_definition_id is None
+
+    fk_nulled_warnings = [w for w in warnings if w["type"] == "fk_nulled"]
+    assert len(fk_nulled_warnings) == 1
+    assert fk_nulled_warnings[0]["node_name"] == "agent_node"
+    assert fk_nulled_warnings[0]["node_id"] == agent_node.id
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_nulls_task_node_agent_definition_when_deleted(
+    manager, graph, agent_definition
+):
+    from tables.models import TaskNode
+
+    task_node = TaskNode.objects.create(
+        graph=graph, node_name="task_node", agent_definition=agent_definition
+    )
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    agent_definition.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.task_node_list.first()
+    assert restored is not None
+    assert restored.agent_definition_id is None
+
+    fk_nulled_warnings = [w for w in warnings if w["type"] == "fk_nulled"]
+    assert len(fk_nulled_warnings) == 1
+    assert fk_nulled_warnings[0]["node_name"] == "task_node"
+    assert fk_nulled_warnings[0]["node_id"] == task_node.id
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_drops_agent_node_surface_when_deleted(
+    manager, graph, surface, default_org
+):
+    from agents.models import Surface
+    from tables.models import AgentNode
+
+    surviving_surface = Surface.objects.create(
+        organization=default_org, name="surviving-surface"
+    )
+    agent_node = AgentNode.objects.create(graph=graph, node_name="agent_node")
+    agent_node.surface_list.set([surface, surviving_surface])
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    deleted_surface_id = surface.id
+    surface.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.agent_node_list.first()
+    assert list(restored.surface_list.values_list("id", flat=True)) == [
+        surviving_surface.id
+    ]
+
+    surface_dropped_warnings = [w for w in warnings if w["type"] == "surface_dropped"]
+    assert len(surface_dropped_warnings) == 1
+    assert surface_dropped_warnings[0]["node_name"] == "agent_node"
+    assert surface_dropped_warnings[0]["node_id"] == agent_node.id
+    assert surface_dropped_warnings[0]["missing_id"] == deleted_surface_id
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_drops_task_node_surface_when_deleted(
+    manager, graph, surface
+):
+    from tables.models import TaskNode
+
+    task_node = TaskNode.objects.create(graph=graph, node_name="task_node")
+    task_node.surface_list.set([surface])
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    surface.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.task_node_list.first()
+    assert list(restored.surface_list.values_list("id", flat=True)) == []
+
+    surface_dropped_warnings = [w for w in warnings if w["type"] == "surface_dropped"]
+    assert len(surface_dropped_warnings) == 1
+    assert surface_dropped_warnings[0]["node_name"] == "task_node"
+    assert surface_dropped_warnings[0]["node_id"] == task_node.id
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_drops_agent_node_inline_python_tool_when_deleted(
+    manager, graph, python_code, python_code_tool
+):
+    from agents.models import AgentInlineSurface, AgentInlineSurfacePythonTool
+    from tables.models import AgentNode, PythonCodeTool
+
+    surviving_tool = PythonCodeTool.objects.create(
+        name="SurvivingTool",
+        description="Surviving PythonCodeTool",
+        variables=[],
+        python_code=python_code,
+        favorite=False,
+        built_in=False,
+    )
+    agent_node = AgentNode.objects.create(graph=graph, node_name="agent_node")
+    inline_surface = AgentInlineSurface.objects.create(agent_node=agent_node)
+    AgentInlineSurfacePythonTool.objects.create(
+        agent_inline_surface=inline_surface,
+        python_tool=python_code_tool,
+        mode="allow",
+    )
+    AgentInlineSurfacePythonTool.objects.create(
+        agent_inline_surface=inline_surface,
+        python_tool=surviving_tool,
+        mode="allow",
+    )
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    deleted_tool_id = python_code_tool.id
+    python_code_tool.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.agent_node_list.first()
+    restored_tool_ids = list(
+        restored.inline_surface.python_tools.values_list("python_tool_id", flat=True)
+    )
+    assert restored_tool_ids == [surviving_tool.id]
+
+    tool_dropped_warnings = [w for w in warnings if w["type"] == "inline_tool_dropped"]
+    assert len(tool_dropped_warnings) == 1
+    assert tool_dropped_warnings[0]["node_name"] == "agent_node"
+    assert tool_dropped_warnings[0]["node_id"] == agent_node.id
+    assert tool_dropped_warnings[0]["missing_id"] == deleted_tool_id
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_drops_task_node_inline_mcp_tool_when_deleted(
+    manager, graph, mcp_tool
+):
+    from agents.models import InlineSurface, InlineSurfaceMcpTool
+    from tables.models import TaskNode
+
+    task_node = TaskNode.objects.create(graph=graph, node_name="task_node")
+    inline_surface = InlineSurface.objects.create(task_node=task_node)
+    InlineSurfaceMcpTool.objects.create(
+        inline_surface=inline_surface,
+        mcp_tool=mcp_tool,
+        mode="allow",
+    )
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    deleted_mcp_tool_id = mcp_tool.id
+    mcp_tool.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.task_node_list.first()
+    restored_tool_ids = list(
+        restored.inline_surface.mcp_tools.values_list("mcp_tool_id", flat=True)
+    )
+    assert restored_tool_ids == []
+
+    tool_dropped_warnings = [w for w in warnings if w["type"] == "inline_tool_dropped"]
+    assert len(tool_dropped_warnings) == 1
+    assert tool_dropped_warnings[0]["node_name"] == "task_node"
+    assert tool_dropped_warnings[0]["node_id"] == task_node.id
+    assert tool_dropped_warnings[0]["missing_id"] == deleted_mcp_tool_id
+
+
+@pytest.mark.django_db
+def test_restore_produces_no_warnings_when_agent_task_node_deps_all_present(
+    manager, graph, agent_definition, surface, python_code_tool, mcp_tool
+):
+    from agents.models import (
+        AgentInlineSurface,
+        AgentInlineSurfacePythonTool,
+        AgentInlineSurfaceMcpTool,
+    )
+    from tables.models import AgentNode, TaskNode
+
+    agent_node = AgentNode.objects.create(
+        graph=graph, node_name="agent_node", agent_definition=agent_definition
+    )
+    agent_node.surface_list.set([surface])
+    inline_surface = AgentInlineSurface.objects.create(agent_node=agent_node)
+    AgentInlineSurfacePythonTool.objects.create(
+        agent_inline_surface=inline_surface,
+        python_tool=python_code_tool,
+        mode="allow",
+    )
+    AgentInlineSurfaceMcpTool.objects.create(
+        agent_inline_surface=inline_surface,
+        mcp_tool=mcp_tool,
+        mode="allow",
+    )
+    TaskNode.objects.create(
+        graph=graph, node_name="task_node", agent_definition=agent_definition
+    )
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    assert warnings == []
+    restored_agent_node = graph.agent_node_list.first()
+    assert restored_agent_node.agent_definition_id == agent_definition.id
+    assert list(restored_agent_node.surface_list.values_list("id", flat=True)) == [
+        surface.id
+    ]
