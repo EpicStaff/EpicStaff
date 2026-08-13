@@ -4,7 +4,13 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, OnChanges,
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { CustomInputComponent, SelectComponent, SelectItem } from '@shared/components';
+import {
+    ColumnResizeDividerComponent,
+    createColumnWidthState,
+    CustomInputComponent,
+    SelectComponent,
+    SelectItem,
+} from '@shared/components';
 import { NgrokConfigStorageService } from '@shared/services';
 import { startWith } from 'rxjs';
 
@@ -26,6 +32,7 @@ export const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
         ClipboardModule,
         SelectComponent,
         MatTooltipModule,
+        ColumnResizeDividerComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -42,6 +49,7 @@ export class WebhookTriggerNodePanelComponent
     public override readonly isExpanded = input<boolean>(false);
 
     public readonly isCodeEditorFullWidth = signal<boolean>(true);
+    protected readonly leftColumnWidth = createColumnWidthState('webhook-trigger-node', 400);
     ngrokConfigsLoading = signal<boolean>(false);
     webhookPath = signal<string | null>(null);
     ngrokConfigId = signal<number | null | undefined>(null);
