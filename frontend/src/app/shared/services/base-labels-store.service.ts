@@ -4,12 +4,7 @@ import { Observable, of } from 'rxjs';
 import { catchError, shareReplay, tap } from 'rxjs/operators';
 
 import { LabelsApi, LabelsStore } from './labels-store.token';
-
-// TODO check is this can be removed
-// Local StorageService copy to avoid a circular import with app-storage.service.
-interface StorageService {
-    clear(): void;
-}
+import { StorageService } from './storage-service.interface';
 
 /**
  * Reusable labels store. Feature-specific storage services extend this class

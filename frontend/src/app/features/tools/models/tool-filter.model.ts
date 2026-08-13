@@ -1,11 +1,5 @@
 import { CustomFilterCondition as SharedCustomFilterCondition } from '@shared/models';
 
-// TODO check is this can be removed
-// Re-export shared custom-filter primitives so existing feature imports keep
-// working
-export type { CustomFilterClause, FilterOperator, LogicalCombinator } from '@shared/models';
-export { evaluateCustomCondition, FILTER_OPERATOR_LABELS, FILTER_OPERATOR_ORDER } from '@shared/models';
-
 export type ToolSortOrder =
     | 'default'
     | 'name_asc'

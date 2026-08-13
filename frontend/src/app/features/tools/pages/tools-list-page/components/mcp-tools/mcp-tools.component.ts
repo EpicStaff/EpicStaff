@@ -33,7 +33,7 @@ import { McpToolsService } from '../../../../services/mcp-tools/mcp-tools.servic
 import { ToolsEventsService } from '../../../../services/tools-events.service';
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
 import { ToolsSearchService } from '../../../../services/tools-search.service';
-import { ToolsBulkActionEvent, ToolsViewStateService } from '../../../../services/tools-view-state.service';
+import { ToolsBulkActionEvent, ToolsViewStorageService } from '../../../../services/tools-view-storage.service';
 import { runBulkDeleteWithConfirm, runDeleteUnused, runSettledBulk } from '../../../../utils/bulk-tool-op.util';
 import {
     compareTools,
@@ -68,7 +68,7 @@ export class McpToolsComponent implements OnInit {
     private readonly toolsEventsService = inject(ToolsEventsService);
     private readonly toolsSearchService = inject(ToolsSearchService);
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
-    public readonly viewState = inject(ToolsViewStateService);
+    public readonly viewState = inject(ToolsViewStorageService);
 
     public searchTerm = signal<string>('');
 
@@ -93,6 +93,10 @@ export class McpToolsComponent implements OnInit {
                         this.toastService.error(err.error?.message || 'Failed to load usage for MCP tools.');
                     },
                 });
+        });
+
+        effect(() => {
+            this.viewState.setVisibleToolIds(this.cards().map((c) => c.id));
         });
     }
 

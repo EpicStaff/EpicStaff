@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { AppSvgIconComponent, LabelDropdownComponent } from '@shared/components';
 
-import { ToolsBulkActionKind } from '../../../../services/tools-view-state.service';
+import { ToolsBulkActionKind } from '../../../../services/tools-view-storage.service';
 
 export interface ToolsBulkAction {
     label: string;

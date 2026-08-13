@@ -10,6 +10,7 @@ import { ProjectsStorageService } from '../../features/projects/services/project
 import { OrganizationsStorageService } from '../../features/role-base-access/services/admin/organizations-storage.service';
 import { RolesService } from '../../features/role-base-access/services/admin/roles.service';
 import { ToolsLabelsStorageService } from '../../features/tools/services/tools-labels-storage.service';
+import { ToolsViewStorageService } from '../../features/tools/services/tools-view-storage.service';
 import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import {
@@ -24,10 +25,9 @@ import {
     TranscriptionConfigStorageService,
     TranscriptionModelsStorageService,
 } from './index';
+import { StorageService } from './storage-service.interface';
 
-export interface StorageService {
-    clear(): void;
-}
+export type { StorageService } from './storage-service.interface';
 
 @Injectable({ providedIn: 'root' })
 export class AppStorageService {
@@ -54,6 +54,7 @@ export class AppStorageService {
         inject(RealtimeModelsStorageService),
         inject(TranscriptionConfigStorageService),
         inject(TranscriptionModelsStorageService),
+        inject(ToolsViewStorageService),
     ];
 
     clearAll(): void {

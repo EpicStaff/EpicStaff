@@ -1,5 +1,7 @@
+import { evaluateCustomCondition } from '@shared/models';
+
 import { GetBulkToolUsageItem } from '../models/tool-config.model';
-import { evaluateCustomCondition, ToolsFilterState, ToolSortOrder } from '../models/tool-filter.model';
+import { ToolsFilterState, ToolSortOrder } from '../models/tool-filter.model';
 import { ToolCardVM } from '../pages/tools-list-page/components/tool-card/tool-card.model';
 
 /**

@@ -1,5 +1,6 @@
 import { computed, Injectable, signal } from '@angular/core';
 import { IncludeExcludeTab } from '@shared/components';
+import { StorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 
 import { EMPTY_TOOLS_FILTER, ToolsFilterState, USAGE_DEPENDENT_SORTS } from '../models/tool-filter.model';
@@ -30,7 +31,7 @@ export interface ToolsBulkActionEvent {
  *    action against its own data + service.
  */
 @Injectable({ providedIn: 'root' })
-export class ToolsViewStateService {
+export class ToolsViewStorageService implements StorageService {
     private readonly _selectedIds = signal<Set<number>>(new Set());
 
     public readonly selectedIds = this._selectedIds.asReadonly();
@@ -38,6 +39,18 @@ export class ToolsViewStateService {
     public readonly hasSelection = computed(() => this._selectedIds().size > 0);
 
     public readonly showUsageAndUnused = signal<boolean>(false);
+
+    private readonly _visibleToolIds = signal<number[]>([]);
+    public readonly visibleToolIds = this._visibleToolIds.asReadonly();
+
+    public readonly selectMode = signal<boolean>(false);
+
+    public readonly isAllVisibleSelected = computed(() => {
+        const visible = this._visibleToolIds();
+        if (visible.length === 0) return false;
+        const selected = this._selectedIds();
+        return visible.every((id) => selected.has(id));
+    });
 
     private readonly _filter = signal<ToolsFilterState>({ ...EMPTY_TOOLS_FILTER });
     public readonly filter = this._filter.asReadonly();
@@ -75,9 +88,40 @@ export class ToolsViewStateService {
         this._selectedIds.set(next);
     }
 
-    public clear(): void {
+    public clearSelection(): void {
         if (this._selectedIds().size === 0) return;
         this._selectedIds.set(new Set());
+    }
+
+    public setVisibleToolIds(ids: number[]): void {
+        this._visibleToolIds.set(ids);
+    }
+
+    public setSelectMode(mode: boolean): void {
+        this.selectMode.set(mode);
+        if (!mode) {
+            this.clearSelection();
+        }
+    }
+
+    public toggleSelectAllVisible(): void {
+        if (this.isAllVisibleSelected()) {
+            this.clearSelection();
+        } else {
+            this.selectMany(this._visibleToolIds());
+        }
+    }
+
+    /**
+     * Full-state reset invoked by `AppStorageService` on logout.
+     * Wipes every in-memory signal back to its initial value.
+     */
+    public clear(): void {
+        this._selectedIds.set(new Set());
+        this._visibleToolIds.set([]);
+        this.selectMode.set(false);
+        this.showUsageAndUnused.set(false);
+        this._filter.set({ ...EMPTY_TOOLS_FILTER });
     }
 
     public dispatch(event: ToolsBulkActionEvent): void {

@@ -11,31 +11,53 @@
                 </h1>
             </div>
             <div class="header-actions">
-                <app-button
-                    *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
-                    leftIcon="download"
-                    type="outline-primary"
-                    (click)="onImportClick()"
-                >
-                    Import
-                </app-button>
+                @if (viewState.selectMode()) {
+                    <app-button
+                        type="ghost"
+                        (click)="cancelExport()"
+                    >
+                        Cancel
+                    </app-button>
+                    <app-button
+                        type="ghost"
+                        (click)="toggleSelectAllTools()"
+                    >
+                        {{ viewState.isAllVisibleSelected() ? 'Deselect all' : 'Select all' }}
+                    </app-button>
+                    <app-button
+                        type="primary"
+                        [disabled]="viewState.selectedCount() === 0"
+                        (click)="confirmExport()"
+                    >
+                        Export {{ viewState.selectedCount() }} tools
+                    </app-button>
+                } @else {
+                    <app-button
+                        *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+                        leftIcon="download"
+                        type="outline-primary"
+                        (click)="onImportClick()"
+                    >
+                        Import
+                    </app-button>
 
-                <app-button
-                    *appHasPermission="[ResourceCode.Tools, ActionCode.Export]"
-                    leftIcon="upload"
-                    type="outline-primary"
-                    (click)="onExportClick()"
-                >
-                    Export
-                </app-button>
-                <app-button
-                    *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
-                    type="primary"
-                    leftIcon="plus"
-                    (click)="onCreateToolClick()"
-                >
-                    Create Tool
-                </app-button>
+                    <app-button
+                        *appHasPermission="[ResourceCode.Tools, ActionCode.Export]"
+                        leftIcon="upload"
+                        type="outline-primary"
+                        (click)="onExportClick()"
+                    >
+                        Export
+                    </app-button>
+                    <app-button
+                        *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+                        type="primary"
+                        leftIcon="plus"
+                        (click)="onCreateToolClick()"
+                    >
+                        Create Tool
+                    </app-button>
+                }
             </div>
         </header>
         <nav class="tabs">

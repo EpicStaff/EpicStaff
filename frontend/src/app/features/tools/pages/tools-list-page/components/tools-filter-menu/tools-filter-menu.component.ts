@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, output } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 
-// TODO: wire real actions once usage endpoints are available on the backend.
 export type ToolsFilterMenuAction =
     | 'show_favorite'
     | 'sort_asc'

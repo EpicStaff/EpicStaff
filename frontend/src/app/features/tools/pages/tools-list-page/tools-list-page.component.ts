@@ -40,7 +40,7 @@ import { GetPythonCodeToolRequest } from '../../models/python-code-tool.model';
 import { ToolsEventsService } from '../../services/tools-events.service';
 import { ToolsLabelsStorageService } from '../../services/tools-labels-storage.service';
 import { ToolsSearchService } from '../../services/tools-search.service';
-import { ToolsViewStateService } from '../../services/tools-view-state.service';
+import { ToolsViewStorageService } from '../../services/tools-view-storage.service';
 import {
     ToolsBulkAction,
     ToolsBulkActionsMenuComponent,
@@ -93,7 +93,7 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     private readonly toolsEventsService = inject(ToolsEventsService);
     private readonly toolsSearchService = inject(ToolsSearchService);
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
-    public readonly viewState = inject(ToolsViewStateService);
+    public readonly viewState = inject(ToolsViewStorageService);
 
     private readonly noSelectionActions: ToolsBulkAction[] = [
         { label: 'Select All', kind: 'select-all' },
@@ -139,7 +139,8 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
             .subscribe(() => {
                 const nextTab = this.currentTab();
                 if (nextTab !== prevTab) {
-                    this.viewState.clear();
+                    this.viewState.setSelectMode(false);
+                    this.viewState.clearSelection();
                     prevTab = nextTab;
                 }
             });
@@ -147,7 +148,8 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
 
     public ngOnDestroy(): void {
         this.toolsSearchService.clearSearch();
-        this.viewState.clear();
+        this.viewState.setSelectMode(false);
+        this.viewState.clearSelection();
         this.viewState.showUsageAndUnused.set(false);
         this.viewState.resetFilter();
     }
@@ -281,7 +283,21 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     }
 
     public onExportClick(): void {
+        this.viewState.setSelectMode(true);
+    }
+
+    public cancelExport(): void {
+        this.viewState.setSelectMode(false);
+    }
+
+    public confirmExport(): void {
+        if (this.viewState.selectedCount() === 0) return;
         this.viewState.dispatch({ kind: 'export-selected' });
+        this.viewState.setSelectMode(false);
+    }
+
+    public toggleSelectAllTools(): void {
+        this.viewState.toggleSelectAllVisible();
     }
 
     public openCustomToolDialog(): void {

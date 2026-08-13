@@ -6,7 +6,7 @@ import { Observable } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
 import { BulkDeleteToolsResponse, GetBulkToolUsageItem } from '../models/tool-config.model';
-import { ToolsViewStateService } from '../services/tools-view-state.service';
+import { ToolsViewStorageService } from '../services/tools-view-storage.service';
 import { partitionSettled, settleAll } from './settle-all';
 
 /**
@@ -20,7 +20,7 @@ export function runSettledBulk<T>(
     opts: {
         destroyRef: DestroyRef;
         toast: ToastService;
-        viewState: ToolsViewStateService;
+        viewState: ToolsViewStorageService;
         applySuccess: (items: T[]) => void;
         successMessage: (count: number) => string;
         failureMessage: (count: number) => string;
@@ -33,7 +33,7 @@ export function runSettledBulk<T>(
             const { successes, failures } = partitionSettled(results);
             if (successes.length > 0) {
                 opts.applySuccess(successes);
-                opts.viewState.clear();
+                opts.viewState.clearSelection();
                 opts.toast.success(opts.successMessage(successes.length));
             }
             if (failures.length > 0) {
@@ -53,7 +53,7 @@ export function runBulkDeleteWithConfirm<T extends { id: number }>(
         destroyRef: DestroyRef;
         toast: ToastService;
         confirmation: ConfirmationDialogService;
-        viewState: ToolsViewStateService;
+        viewState: ToolsViewStorageService;
         allTools: WritableSignal<T[]>;
         bulkDelete: (ids: number[]) => Observable<BulkDeleteToolsResponse>;
         /** Human-readable noun used in the confirm/toast messages (e.g. 'custom tool', 'MCP tool'). */
@@ -80,7 +80,7 @@ export function runBulkDeleteWithConfirm<T extends { id: number }>(
                     next: (response) => {
                         const idSet = new Set(ids);
                         opts.allTools.update((list) => list.filter((t) => !idSet.has(t.id)));
-                        opts.viewState.clear();
+                        opts.viewState.clearSelection();
                         opts.toast.success(`Deleted ${response.deleted} ${opts.scopeLabel} ${opts.entityLabel}(s).`);
                     },
                     error: (err: HttpErrorResponse) => {
@@ -104,7 +104,7 @@ export function runDeleteUnused<T extends { id: number }>(
         destroyRef: DestroyRef;
         toast: ToastService;
         confirmation: ConfirmationDialogService;
-        viewState: ToolsViewStateService;
+        viewState: ToolsViewStorageService;
         allTools: WritableSignal<T[]>;
         getBulkUsage: (ids: number[]) => Observable<GetBulkToolUsageItem[]>;
         bulkDelete: (ids: number[]) => Observable<BulkDeleteToolsResponse>;
