@@ -21,7 +21,7 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         abstract = True
         model = None
-        exclude = ["api_key_secret"]
+        exclude = ["created_by", "api_key_secret"]
 
     def get_fields(self):
         fields = super().get_fields()

@@ -257,7 +257,14 @@ class GraphImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Graph
-        exclude = ["tags", "created_at", "updated_at", "labels", "save_version"]
+        exclude = [
+            "tags",
+            "created_at",
+            "updated_at",
+            "labels",
+            "save_version",
+            "created_by",
+        ]
 
 
 class ScheduleTriggerNodeImportSerializer(BaseNodeImportSerializer):

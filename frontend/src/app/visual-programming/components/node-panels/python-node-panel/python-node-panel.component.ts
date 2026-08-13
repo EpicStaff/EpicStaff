@@ -8,6 +8,8 @@ import { debounceTime } from 'rxjs/operators';
 
 import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
+import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
 import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
@@ -47,6 +49,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
         AppSvgIconComponent,
         HelpTooltipComponent,
         NodeSecretsFieldComponent,
+        ColumnResizeDividerComponent,
     ],
     animations: [expandCollapseAnimation],
     template: `
@@ -63,7 +66,11 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                         [class.code-editor-fullwidth]="isExpanded() && isCodeEditorFullWidth()"
                     >
                         <!-- Form Fields (stable single instance) -->
-                        <div class="form-fields">
+                        <div
+                            #formColumn
+                            class="form-fields"
+                            [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
+                        >
                             <app-custom-input
                                 label="Node Name"
                                 tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
@@ -140,8 +147,21 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                             ></app-node-storage-section>
                         </div>
 
+                        @if (isExpanded() && !isCodeEditorFullWidth()) {
+                            <app-column-resize-divider
+                                ariaLabel="Resize form and code editor columns"
+                                [column]="formColumn"
+                                [opposite]="editorColumn"
+                                [(width)]="leftColumnWidth.width"
+                                [defaultWidth]="leftColumnWidth.defaultWidth"
+                            />
+                        }
+
                         <!-- Code editor area: toggle button only present in expanded mode -->
-                        <div class="code-editor-wrapper">
+                        <div
+                            #editorColumn
+                            class="code-editor-wrapper"
+                        >
                             @if (isExpanded()) {
                                 <button
                                     type="button"
@@ -233,7 +253,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
 
                 &.expanded {
                     display: flex;
-                    gap: 1rem;
+                    gap: 0;
                     height: 100%;
                     width: 100%;
 
@@ -283,11 +303,10 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
             }
 
             .form-fields {
+                @include mixins.resizable-column(400px);
                 display: flex;
                 flex-direction: column;
                 gap: 1rem;
-                flex: 0 0 400px;
-                max-width: 400px;
                 height: 100%;
                 overflow-y: auto;
             }
@@ -444,6 +463,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     public readonly graphId = input<number | null>(null);
     public readonly isCodeEditorFullWidth = signal<boolean>(true);
     public readonly useStorage = signal<boolean>(false);
+    protected readonly leftColumnWidth = createColumnWidthState('python-node', 400);
 
     public readonly selectedSecretIds = signal<number[]>([]);
     public readonly secretNames = computed(() => {
