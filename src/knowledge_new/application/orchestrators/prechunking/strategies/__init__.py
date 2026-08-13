@@ -1,3 +1,3 @@
-from .naive_prechunker import NaivePrechunker
+from .naive_prechunker import NaivePrechunkOrchestrator
 
-__all__ = ["NaivePrechunker"]
+__all__ = ["NaivePrechunkOrchestrator"]

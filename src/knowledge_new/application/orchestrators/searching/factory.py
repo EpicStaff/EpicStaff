@@ -1,16 +1,16 @@
 from application.orchestrators.searching import strategies
-from application.orchestrators.searching.base import AbstractSearch
+from application.orchestrators.searching.base import AbstractSearchOrchestrator
 from application.ports import AbstractUnitOfWork
 from domain.enums import RAGStrategy
 from domain.errors import UnsupportedError
 
-_STRATEGIES: dict[RAGStrategy, type[AbstractSearch]] = {
-    RAGStrategy.NAIVE: strategies.NaiveSearch,
-    RAGStrategy.GRAPH: strategies.GraphSearch,
+_STRATEGIES: dict[RAGStrategy, type[AbstractSearchOrchestrator]] = {
+    RAGStrategy.NAIVE: strategies.NaiveSearchOrchestrator,
+    RAGStrategy.GRAPH: strategies.GraphSearchOrchestrator,
 }
 
 
-def build_search(strategy: RAGStrategy, uow: AbstractUnitOfWork) -> AbstractSearch:
+def build_search(strategy: RAGStrategy, uow: AbstractUnitOfWork) -> AbstractSearchOrchestrator:
     """Build the searcher registered for `strategy`.
 
     Args:

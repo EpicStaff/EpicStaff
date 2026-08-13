@@ -1,8 +1,9 @@
 import abc
+from typing import Never
 
+from application.commands import RunPrechunk
 from application.orchestrators.base import AbstractOrchestrator
-from domain.models import PrechunkRequest, PrechunkResponse
 
 
-class AbstractPrechunker(AbstractOrchestrator[PrechunkRequest, PrechunkResponse], abc.ABC):
+class AbstractPrechunkOrchestrator(AbstractOrchestrator[RunPrechunk, Never], abc.ABC):
     """Abstract base for producing preview chunks for a single document."""

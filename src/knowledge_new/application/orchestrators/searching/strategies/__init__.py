@@ -1,4 +1,4 @@
-from .graph_search import GraphSearch
-from .naive_search import NaiveSearch
+from .graph_search import GraphSearchOrchestrator
+from .naive_search import NaiveSearchOrchestrator
 
-__all__ = ["GraphSearch", "NaiveSearch"]
+__all__ = ["GraphSearchOrchestrator", "NaiveSearchOrchestrator"]

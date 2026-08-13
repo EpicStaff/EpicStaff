@@ -1,6 +1,7 @@
 from typing import cast
 
-from application.orchestrators.indexing import AbstractIndexer
+from application.commands import RunIndex
+from application.orchestrators.indexing.base import AbstractIndexOrchestrator
 from application.ports import AbstractEmbedder
 from domain.enums import DocumentStatusEnum, IndexStatusEnum
 from domain.errors import (
@@ -11,21 +12,21 @@ from domain.errors import (
     RagNotFoundError,
     RepositoryError,
 )
-from domain.models import Document, IndexedChunk, IndexRequest, Rag
+from domain.models import Document, IndexedChunk, Rag
 from infrastructure.file_text_extractors import build_file_text_extractor
 from infrastructure.naive.chunkers import build_chunker
 from infrastructure.naive.embedders import build_embedder
 from loguru import logger
 
 
-class NaiveIndexer(AbstractIndexer):
-    async def on_execute(self, request: IndexRequest) -> None:
+class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
+    async def on_execute(self, command: RunIndex) -> None:
         async with self.uow:
-            rag = await self._get_rag_under_uow(request.rag_id)
+            rag = await self._get_rag_under_uow(command.rag_id)
             embedder = await self._get_embedder_under_uow(rag.id)
-            documents = await self._get_documents_under_uow(rag.id, request.document_ids)
+            documents = await self._get_documents_under_uow(rag.id, command.document_ids)
 
-        rag.mark_as_processing(request.document_ids)
+        rag.mark_as_processing(command.document_ids)
         await self._update_rag(rag)
 
         for document in documents:
@@ -98,32 +99,32 @@ class NaiveIndexer(AbstractIndexer):
         await self._finish_rag(rag)
         logger.info("Finished indexing in RAG(id={}, status={})", rag.id, rag.status.value)
 
-    async def on_cancel(self, request: IndexRequest):
+    async def on_cancel(self, command: RunIndex):
         if (
             document := self.state.get("processing_document")
         ) is not None and document.status == DocumentStatusEnum.PROCESSING:
             document: Document
             document.status = self.state["processing_document_status"]
-            await self._update_document(request.rag_id, document)
+            await self._update_document(command.rag_id, document)
 
         if (rag := self.state.get("rag")) is not None:
             rag = cast(Rag, rag)
             rag.mark_as_cancelled()
-            rag.finish_document(*request.document_ids)
+            rag.finish_document(*command.document_ids)
             await self._update_rag(rag)
 
-    async def on_error(self, request: IndexRequest, error: Exception):
+    async def on_error(self, command: RunIndex, error: Exception):
         if (
             document := self.state.get("processing_document")
         ) is not None and document.status == DocumentStatusEnum.PROCESSING:
             document: Document
             document.status = self.state["processing_document_status"]
-            await self._update_document(request.rag_id, document)
+            await self._update_document(command.rag_id, document)
 
         if (rag := self.state.get("rag")) is not None:
             rag = cast(Rag, rag)
             rag.mark_as_failed(error)
-            rag.finish_document(*request.document_ids)
+            rag.finish_document(*command.document_ids)
             await self._update_rag(rag)
 
     async def _get_rag_under_uow(self, rag_id: int) -> Rag:
