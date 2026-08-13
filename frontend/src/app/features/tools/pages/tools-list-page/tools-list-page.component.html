@@ -13,8 +13,24 @@
             <div class="header-actions">
                 <app-button
                     *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+                    leftIcon="download"
+                    type="outline-primary"
+                    (click)="onImportClick()"
+                >
+                    Import
+                </app-button>
+
+                <app-button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Export]"
+                    leftIcon="upload"
+                    type="outline-primary"
+                    (click)="onExportClick()"
+                >
+                    Export
+                </app-button>
+                <app-button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
                     type="primary"
-                    class="btn-primary create-btn"
                     leftIcon="plus"
                     (click)="onCreateToolClick()"
                 >

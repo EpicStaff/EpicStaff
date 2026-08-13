@@ -11,7 +11,9 @@ export type ToolsBulkActionKind =
     | 'duplicate'
     | 'delete-selected'
     | 'add-labels'
-    | 'open-include-exclude';
+    | 'open-include-exclude'
+    | 'export-selected'
+    | 'open-import';
 
 export interface ToolsBulkActionEvent {
     kind: ToolsBulkActionKind;

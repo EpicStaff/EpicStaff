@@ -5,6 +5,7 @@ import { ConfirmationDialogService } from '@shared/components';
 import { Observable } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
+import { BulkDeleteToolsResponse, GetBulkToolUsageItem } from '../models/tool-config.model';
 import { ToolsViewStateService } from '../services/tools-view-state.service';
 import { partitionSettled, settleAll } from './settle-all';
 
@@ -54,7 +55,7 @@ export function runBulkDeleteWithConfirm<T extends { id: number }>(
         confirmation: ConfirmationDialogService;
         viewState: ToolsViewStateService;
         allTools: WritableSignal<T[]>;
-        bulkDelete: (ids: number[]) => Observable<void>;
+        bulkDelete: (ids: number[]) => Observable<BulkDeleteToolsResponse>;
         /** Human-readable noun used in the confirm/toast messages (e.g. 'custom tool', 'MCP tool'). */
         entityLabel: string;
         /** Scope word rendered in the success toast (e.g. 'unused', 'selected'). */
@@ -76,11 +77,11 @@ export function runBulkDeleteWithConfirm<T extends { id: number }>(
             opts.bulkDelete(ids)
                 .pipe(takeUntilDestroyed(opts.destroyRef))
                 .subscribe({
-                    next: () => {
+                    next: (response) => {
                         const idSet = new Set(ids);
                         opts.allTools.update((list) => list.filter((t) => !idSet.has(t.id)));
                         opts.viewState.clear();
-                        opts.toast.success(`Deleted ${ids.length} ${opts.scopeLabel} ${opts.entityLabel}(s).`);
+                        opts.toast.success(`Deleted ${response.deleted} ${opts.scopeLabel} ${opts.entityLabel}(s).`);
                     },
                     error: (err: HttpErrorResponse) => {
                         opts.toast.error(
@@ -105,8 +106,8 @@ export function runDeleteUnused<T extends { id: number }>(
         confirmation: ConfirmationDialogService;
         viewState: ToolsViewStateService;
         allTools: WritableSignal<T[]>;
-        getBulkUsage: (ids: number[]) => Observable<import('../models/tool-config.model').GetBulkToolUsageItem[]>;
-        bulkDelete: (ids: number[]) => Observable<void>;
+        getBulkUsage: (ids: number[]) => Observable<GetBulkToolUsageItem[]>;
+        bulkDelete: (ids: number[]) => Observable<BulkDeleteToolsResponse>;
         /** Human-readable noun used in the toasts (e.g. 'custom tool', 'MCP tool'). */
         entityLabel: string;
     }

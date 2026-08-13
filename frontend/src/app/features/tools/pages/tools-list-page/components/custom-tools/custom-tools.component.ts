@@ -21,9 +21,10 @@ import {
     LoadingSpinnerComponent,
 } from '@shared/components';
 import { LABELS_STORE } from '@shared/services';
-import { tap } from 'rxjs/operators';
+import { map, tap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../services/notifications';
+import { downloadBlob } from '../../../../../../shared/utils/download-blob.util';
 import { CreateCustomToolDialogComponent } from '../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
 import { GetPythonCodeToolRequest } from '../../../../models/python-code-tool.model';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
@@ -46,7 +47,7 @@ const CUSTOM_TOOL_ADAPTER: ToolFilterAdapter<GetPythonCodeToolRequest> = {
     idOf: (t) => t.id,
     nameOf: (t) => t.name,
     labelIdsOf: (t) => t.labels ?? [],
-    favoriteOf: (t) => t.favorite,
+    favoriteOf: (t) => t.is_favorite,
     searchableTextOf: (t) => [t.name, t.description],
 };
 
@@ -114,7 +115,7 @@ export class CustomToolsComponent implements OnInit {
                 name: t.name,
                 description: t.description,
                 labelIds: t.labels ?? [],
-                favorite: t.favorite,
+                favorite: t.is_favorite,
                 builtIn: t.built_in,
                 ...toUsageVmFields(usage, t.id, showUsage),
             }));
@@ -141,7 +142,7 @@ export class CustomToolsComponent implements OnInit {
                 return;
             case 'duplicate':
                 this.customToolsService
-                    .copyPythonCodeTool(payload.tool.id)
+                    .copyPythonCodeTool(payload.tool.id, { name: payload.tool.name })
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: (copy) => this.addNewTool(copy),
@@ -149,6 +150,17 @@ export class CustomToolsComponent implements OnInit {
                             this.toastService.error(
                                 err.error?.message || `Failed to duplicate "${payload.tool.name}".`
                             );
+                        },
+                    });
+                return;
+            case 'export':
+                this.customToolsService
+                    .exportPythonCodeTool(payload.tool.id)
+                    .pipe(takeUntilDestroyed(this.destroyRef))
+                    .subscribe({
+                        next: (blob) => downloadBlob(blob, `${payload.tool.name}.json`),
+                        error: (err: HttpErrorResponse) => {
+                            this.toastService.error(err.error?.message || `Failed to export "${payload.tool.name}".`);
                         },
                     });
                 return;
@@ -163,17 +175,15 @@ export class CustomToolsComponent implements OnInit {
     }
 
     public onCardFavoriteChange(payload: { tool: ToolCardVM; favorite: boolean }): void {
-        this.customToolsService
-            .patchPythonCodeTool(payload.tool.id, { favorite: payload.favorite })
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (updated) => this.replaceToolInState(updated),
-                error: (err: HttpErrorResponse) => {
-                    this.toastService.error(
-                        err.error?.message || `Failed to update favorite for "${payload.tool.name}".`
-                    );
-                },
-            });
+        const req$ = payload.favorite
+            ? this.customToolsService.addToFavoritesPythonCodeTool(payload.tool.id)
+            : this.customToolsService.deleteFromFavoritesPythonCodeTool(payload.tool.id);
+        req$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+            next: () => this.setFavoriteInState([payload.tool.id], payload.favorite),
+            error: (err: HttpErrorResponse) => {
+                this.toastService.error(err.error?.message || `Failed to update favorite for "${payload.tool.name}".`);
+            },
+        });
     }
 
     public onCardLabelsChange(payload: { tool: ToolCardVM; labelIds: number[] }): void {
@@ -221,7 +231,7 @@ export class CustomToolsComponent implements OnInit {
                         viewState: this.viewState,
                         allTools: this.allTools,
                         getBulkUsage: (ids) => this.customToolsService.getBulkUsageDetailById(ids),
-                        bulkDelete: (ids) => this.customToolsService.bulkDeletePythonCode(ids),
+                        bulkDelete: (ids) => this.customToolsService.bulkDeletePythonCodeTool(ids),
                         entityLabel: 'custom tool',
                     }
                 );
@@ -232,25 +242,78 @@ export class CustomToolsComponent implements OnInit {
             case 'duplicate':
                 this.handleBulkDuplicate();
                 return;
-            case 'delete-selected':
-                runBulkDeleteWithConfirm(Array.from(this.viewState.selectedIds()), {
+            case 'delete-selected': {
+                const selected = Array.from(this.viewState.selectedIds());
+
+                const deletable = selected.filter((id) => !this.findToolById(id)?.built_in);
+                const skipped = selected.length - deletable.length;
+                if (skipped > 0) {
+                    this.toastService.info(`${skipped} built-in tool(s) cannot be deleted and will be skipped.`);
+                }
+                runBulkDeleteWithConfirm(deletable, {
                     destroyRef: this.destroyRef,
                     toast: this.toastService,
                     confirmation: this.confirmationDialogService,
                     viewState: this.viewState,
                     allTools: this.allTools,
-                    bulkDelete: (ids) => this.customToolsService.bulkDeletePythonCode(ids),
+                    bulkDelete: (ids) => this.customToolsService.bulkDeletePythonCodeTool(ids),
                     entityLabel: 'custom tool',
                     scopeLabel: 'selected',
                 });
                 return;
+            }
             case 'add-labels':
                 this.handleBulkAddLabels(event.labelIds ?? []);
                 return;
             case 'open-include-exclude':
                 this.openIncludeExcludeDialog(event.initialTab ?? 'primary');
                 return;
+            case 'export-selected':
+                this.handleBulkExport(Array.from(this.viewState.selectedIds()));
+                return;
+            case 'open-import':
+                this.handleImport();
+                return;
         }
+    }
+
+    private handleImport(): void {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,application/json';
+        input.onchange = (event: Event) => {
+            const file = (event.target as HTMLInputElement).files?.[0];
+            if (!file) return;
+            this.customToolsService
+                .importPythonCodeTool(file)
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe({
+                    next: () => {
+                        this.toastService.success('Custom tools imported successfully.');
+                        this.loadTools();
+                    },
+                    error: (err: HttpErrorResponse) => {
+                        this.toastService.error(err.error?.message || 'Failed to import custom tools.');
+                    },
+                });
+        };
+        input.click();
+    }
+
+    public handleBulkExport(ids: number[]): void {
+        if (ids.length === 0) {
+            this.toastService.info('Select at least one tool to export.');
+            return;
+        }
+        this.customToolsService
+            .bulkExportPythonCodeTool(ids)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (blob) => downloadBlob(blob, `python-code-tools-export-${Date.now()}.json`),
+                error: (err: HttpErrorResponse) => {
+                    this.toastService.error(err.error?.message || 'Failed to export selected tools.');
+                },
+            });
     }
 
     private openIncludeExcludeDialog(initialTab: IncludeExcludeTab): void {
@@ -286,32 +349,31 @@ export class CustomToolsComponent implements OnInit {
 
     private handleBulkFavorite(): void {
         const ids = Array.from(this.viewState.selectedIds());
-        runSettledBulk(
-            ids.map((id) => this.customToolsService.patchPythonCodeTool(id, { favorite: true })),
-            {
-                destroyRef: this.destroyRef,
-                toast: this.toastService,
-                viewState: this.viewState,
-                applySuccess: (updated) => this.replaceManyInState(updated),
-                successMessage: (n) => `Marked ${n} tool(s) as favorite.`,
-                failureMessage: (n) => `Failed to update ${n} tool(s).`,
-            }
-        );
+        const requests = ids.map((id) => this.customToolsService.addToFavoritesPythonCodeTool(id).pipe(map(() => id)));
+        runSettledBulk(requests, {
+            destroyRef: this.destroyRef,
+            toast: this.toastService,
+            viewState: this.viewState,
+            applySuccess: (succeededIds) => this.setFavoriteInState(succeededIds, true),
+            successMessage: (n) => `Marked ${n} tool(s) as favorite.`,
+            failureMessage: (n) => `Failed to update ${n} tool(s).`,
+        });
     }
 
     private handleBulkDuplicate(): void {
         const ids = Array.from(this.viewState.selectedIds());
-        runSettledBulk(
-            ids.map((id) => this.customToolsService.copyPythonCodeTool(id)),
-            {
-                destroyRef: this.destroyRef,
-                toast: this.toastService,
-                viewState: this.viewState,
-                applySuccess: (copies) => this.allTools.update((list) => [...copies, ...list]),
-                successMessage: (n) => `Duplicated ${n} tool(s).`,
-                failureMessage: (n) => `Failed to duplicate ${n} tool(s).`,
-            }
-        );
+        const requests = ids.map((id) => {
+            const source = this.findToolById(id);
+            return this.customToolsService.copyPythonCodeTool(id, { name: source?.name ?? '' });
+        });
+        runSettledBulk(requests, {
+            destroyRef: this.destroyRef,
+            toast: this.toastService,
+            viewState: this.viewState,
+            applySuccess: (copies) => this.allTools.update((list) => [...copies, ...list]),
+            successMessage: (n) => `Duplicated ${n} tool(s).`,
+            failureMessage: (n) => `Failed to duplicate ${n} tool(s).`,
+        });
     }
 
     private handleBulkAddLabels(labelIdsToAdd: number[]): void {
@@ -340,6 +402,11 @@ export class CustomToolsComponent implements OnInit {
     private replaceManyInState(updated: GetPythonCodeToolRequest[]): void {
         const byId = new Map(updated.map((t) => [t.id, t]));
         this.allTools.update((list) => list.map((t) => byId.get(t.id) ?? t));
+    }
+
+    private setFavoriteInState(ids: number[], value: boolean): void {
+        const idSet = new Set(ids);
+        this.allTools.update((list) => list.map((t) => (idSet.has(t.id) ? { ...t, is_favorite: value } : t)));
     }
 
     private loadTools(): void {

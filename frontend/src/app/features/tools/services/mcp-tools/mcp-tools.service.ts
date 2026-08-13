@@ -6,7 +6,7 @@ import { map } from 'rxjs/operators';
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config/config.service';
 import { CreateMcpToolRequest, GetMcpToolRequest, UpdateMcpToolRequest } from '../../models/mcp-tool.model';
-import { GetBulkToolUsageItem, GetToolUsage } from '../../models/tool-config.model';
+import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../models/tool-config.model';
 
 @Injectable({
     providedIn: 'root',
@@ -19,7 +19,7 @@ export class McpToolsService {
         'Content-Type': 'application/json',
     });
 
-    private get apiUrl(): string {
+    private get baseUrl(): string {
         return `${this.configService.apiUrl}mcp-tools/`;
     }
 
@@ -45,62 +45,93 @@ export class McpToolsService {
         }
 
         return this.http
-            .get<ApiGetRequest<GetMcpToolRequest>>(this.apiUrl, { params: httpParams })
+            .get<ApiGetRequest<GetMcpToolRequest>>(this.baseUrl, { params: httpParams })
             .pipe(map((response) => response.results));
     }
 
     getMcpToolById(id: number): Observable<GetMcpToolRequest> {
-        return this.http.get<GetMcpToolRequest>(`${this.apiUrl}${id}/`, {
+        return this.http.get<GetMcpToolRequest>(`${this.baseUrl}${id}/`, {
             headers: this.httpHeaders,
         });
     }
 
     createMcpTool(tool: CreateMcpToolRequest): Observable<GetMcpToolRequest> {
-        return this.http.post<GetMcpToolRequest>(this.apiUrl, tool, {
+        return this.http.post<GetMcpToolRequest>(this.baseUrl, tool, {
             headers: this.httpHeaders,
         });
     }
 
-    copyMcpTool(toolId: number, body: { name?: string } = {}): Observable<GetMcpToolRequest> {
-        return this.http.post<GetMcpToolRequest>(`${this.apiUrl}${toolId}/copy/`, body, {
+    copyMcpTool(toolId: number, body: { name: string }): Observable<GetMcpToolRequest> {
+        return this.http.post<GetMcpToolRequest>(`${this.baseUrl}${toolId}/copy/`, body, {
             headers: this.httpHeaders,
         });
+    }
+
+    exportMcpTool(toolId: number): Observable<Blob> {
+        return this.http.get(`${this.baseUrl}${toolId}/export/`, { responseType: 'blob' });
     }
 
     updateMcpTool(id: number, tool: CreateMcpToolRequest): Observable<GetMcpToolRequest> {
-        return this.http.put<GetMcpToolRequest>(`${this.apiUrl}${id}/`, tool, {
+        return this.http.put<GetMcpToolRequest>(`${this.baseUrl}${id}/`, tool, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    addToFavoritesMcpTool(id: number): Observable<void> {
+        return this.http.post<void>(`${this.baseUrl}${id}/favorite/`, null, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    deleteFromFavoritesMcpTool(id: number): Observable<void> {
+        return this.http.delete<void>(`${this.baseUrl}${id}/favorite/`, {
             headers: this.httpHeaders,
         });
     }
 
     patchMcpTool(id: number, updates: UpdateMcpToolRequest): Observable<GetMcpToolRequest> {
-        return this.http.patch<GetMcpToolRequest>(`${this.apiUrl}${id}/`, updates, {
+        return this.http.patch<GetMcpToolRequest>(`${this.baseUrl}${id}/`, updates, {
             headers: this.httpHeaders,
         });
     }
 
     deleteMcpTool(id: number): Observable<void> {
-        return this.http.delete<void>(`${this.apiUrl}${id}/`, {
+        return this.http.delete<void>(`${this.baseUrl}${id}/`, {
             headers: this.httpHeaders,
         });
     }
 
-    bulkDeleteMcpTool(ids: number[]): Observable<void> {
+    bulkDeleteMcpTool(ids: number[]): Observable<BulkDeleteToolsResponse> {
         const body = { ids };
-        return this.http.post<void>(`${this.apiUrl}bulk-delete/`, body, {
+        return this.http.post<BulkDeleteToolsResponse>(`${this.baseUrl}bulk-delete/`, body, {
             headers: this.httpHeaders,
         });
+    }
+
+    bulkExportMcpTool(ids: number[]): Observable<Blob> {
+        const body = { ids };
+        return this.http.post(`${this.baseUrl}bulk-export/`, body, {
+            headers: this.httpHeaders,
+            responseType: 'blob',
+        });
+    }
+
+    importMcpTool(file: File, importLabels = true): Observable<Record<string, unknown>> {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('import_labels', String(importLabels));
+        return this.http.post<Record<string, unknown>>(`${this.baseUrl}import/`, form);
     }
 
     getUsageDetailById(toolId: number): Observable<GetToolUsage> {
-        return this.http.get<GetToolUsage>(`${this.apiUrl}${toolId}/usage-detail/`, {
+        return this.http.get<GetToolUsage>(`${this.baseUrl}${toolId}/usage-detail/`, {
             headers: this.httpHeaders,
         });
     }
 
     getBulkUsageDetailById(toolIds: number[]): Observable<GetBulkToolUsageItem[]> {
         const body = { ids: toolIds };
-        return this.http.post<GetBulkToolUsageItem[]>(`${this.apiUrl}usage/`, body, {
+        return this.http.post<GetBulkToolUsageItem[]>(`${this.baseUrl}usage/`, body, {
             headers: this.httpHeaders,
         });
     }

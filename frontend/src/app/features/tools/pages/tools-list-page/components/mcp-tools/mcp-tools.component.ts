@@ -21,8 +21,10 @@ import {
     LoadingSpinnerComponent,
 } from '@shared/components';
 import { LABELS_STORE } from '@shared/services';
+import { map } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../services/notifications';
+import { downloadBlob } from '../../../../../../shared/utils/download-blob.util';
 import { McpToolDialogComponent } from '../../../../components/mcp-tool-dialog/mcp-tool-dialog.component';
 import { GetMcpToolRequest } from '../../../../models/mcp-tool.model';
 import { GetBulkToolUsageItem } from '../../../../models/tool-config.model';
@@ -45,9 +47,7 @@ const MCP_TOOL_ADAPTER: ToolFilterAdapter<GetMcpToolRequest> = {
     idOf: (t) => t.id,
     nameOf: (t) => t.name,
     labelIdsOf: (t) => t.labels ?? [],
-    // TODO check is mcp can be favorite
-    // MCP tools have no `favorite` field on the backend model.
-    favoriteOf: () => false,
+    favoriteOf: (t) => t.is_favorite,
     searchableTextOf: (t) => [t.name, t.tool_name, t.transport],
 };
 
@@ -115,7 +115,7 @@ export class McpToolsComponent implements OnInit {
                 name: t.name,
                 description: `${t.tool_name} · ${t.transport}${t.timeout ? ` · ${t.timeout}s` : ''}`,
                 labelIds: t.labels ?? [],
-                favorite: false,
+                favorite: t.is_favorite,
                 builtIn: false,
                 ...toUsageVmFields(usage, t.id, showUsage),
             }));
@@ -142,7 +142,7 @@ export class McpToolsComponent implements OnInit {
                 return;
             case 'duplicate':
                 this.mcpToolsService
-                    .copyMcpTool(payload.tool.id)
+                    .copyMcpTool(payload.tool.id, { name: payload.tool.name })
                     .pipe(takeUntilDestroyed(this.destroyRef))
                     .subscribe({
                         next: (copy) => this.addNewTool(copy),
@@ -150,6 +150,17 @@ export class McpToolsComponent implements OnInit {
                             this.toastService.error(
                                 err.error?.message || `Failed to duplicate "${payload.tool.name}".`
                             );
+                        },
+                    });
+                return;
+            case 'export':
+                this.mcpToolsService
+                    .exportMcpTool(payload.tool.id)
+                    .pipe(takeUntilDestroyed(this.destroyRef))
+                    .subscribe({
+                        next: (blob) => downloadBlob(blob, `${payload.tool.name}.json`),
+                        error: (err: HttpErrorResponse) => {
+                            this.toastService.error(err.error?.message || `Failed to export "${payload.tool.name}".`);
                         },
                     });
                 return;
@@ -175,6 +186,18 @@ export class McpToolsComponent implements OnInit {
                     );
                 },
             });
+    }
+
+    public onCardFavoriteChange(payload: { tool: ToolCardVM; favorite: boolean }): void {
+        const req$ = payload.favorite
+            ? this.mcpToolsService.addToFavoritesMcpTool(payload.tool.id)
+            : this.mcpToolsService.deleteFromFavoritesMcpTool(payload.tool.id);
+        req$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+            next: () => this.setFavoriteInState([payload.tool.id], payload.favorite),
+            error: (err: HttpErrorResponse) => {
+                this.toastService.error(err.error?.message || `Failed to update favorite for "${payload.tool.name}".`);
+            },
+        });
     }
 
     public ngOnInit(): void {
@@ -214,8 +237,7 @@ export class McpToolsComponent implements OnInit {
                 );
                 return;
             case 'favorite':
-                // MCP tools have no `favorite` field on the backend model.
-                this.toastService.info('Favorite is not supported for MCP tools.');
+                this.handleBulkFavorite();
                 return;
             case 'duplicate':
                 this.handleBulkDuplicate();
@@ -238,7 +260,52 @@ export class McpToolsComponent implements OnInit {
             case 'open-include-exclude':
                 this.openIncludeExcludeDialog(event.initialTab ?? 'primary');
                 return;
+            case 'export-selected':
+                this.handleBulkExport(Array.from(this.viewState.selectedIds()));
+                return;
+            case 'open-import':
+                this.handleImport();
+                return;
         }
+    }
+
+    private handleImport(): void {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,application/json';
+        input.onchange = (event: Event) => {
+            const file = (event.target as HTMLInputElement).files?.[0];
+            if (!file) return;
+            this.mcpToolsService
+                .importMcpTool(file)
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe({
+                    next: () => {
+                        this.toastService.success('MCP tools imported successfully.');
+                        this.loadTools();
+                    },
+                    error: (err: HttpErrorResponse) => {
+                        this.toastService.error(err.error?.message || 'Failed to import MCP tools.');
+                    },
+                });
+        };
+        input.click();
+    }
+
+    public handleBulkExport(ids: number[]): void {
+        if (ids.length === 0) {
+            this.toastService.info('Select at least one tool to export.');
+            return;
+        }
+        this.mcpToolsService
+            .bulkExportMcpTool(ids)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (blob) => downloadBlob(blob, `mcp-tools-export-${Date.now()}.json`),
+                error: (err: HttpErrorResponse) => {
+                    this.toastService.error(err.error?.message || 'Failed to export selected MCP tools.');
+                },
+            });
     }
 
     private openIncludeExcludeDialog(initialTab: IncludeExcludeTab): void {
@@ -274,17 +341,31 @@ export class McpToolsComponent implements OnInit {
 
     private handleBulkDuplicate(): void {
         const ids = Array.from(this.viewState.selectedIds());
-        runSettledBulk(
-            ids.map((id) => this.mcpToolsService.copyMcpTool(id)),
-            {
-                destroyRef: this.destroyRef,
-                toast: this.toastService,
-                viewState: this.viewState,
-                applySuccess: (copies) => this.allTools.update((list) => [...copies, ...list]),
-                successMessage: (n) => `Duplicated ${n} MCP tool(s).`,
-                failureMessage: (n) => `Failed to duplicate ${n} MCP tool(s).`,
-            }
-        );
+        const requests = ids.map((id) => {
+            const source = this.findToolById(id);
+            return this.mcpToolsService.copyMcpTool(id, { name: source?.name ?? '' });
+        });
+        runSettledBulk(requests, {
+            destroyRef: this.destroyRef,
+            toast: this.toastService,
+            viewState: this.viewState,
+            applySuccess: (copies) => this.allTools.update((list) => [...copies, ...list]),
+            successMessage: (n) => `Duplicated ${n} MCP tool(s).`,
+            failureMessage: (n) => `Failed to duplicate ${n} MCP tool(s).`,
+        });
+    }
+
+    private handleBulkFavorite(): void {
+        const ids = Array.from(this.viewState.selectedIds());
+        const requests = ids.map((id) => this.mcpToolsService.addToFavoritesMcpTool(id).pipe(map(() => id)));
+        runSettledBulk(requests, {
+            destroyRef: this.destroyRef,
+            toast: this.toastService,
+            viewState: this.viewState,
+            applySuccess: (succeededIds) => this.setFavoriteInState(succeededIds, true),
+            successMessage: (n) => `Marked ${n} MCP tool(s) as favorite.`,
+            failureMessage: (n) => `Failed to update ${n} MCP tool(s).`,
+        });
     }
 
     private handleBulkAddLabels(labelIdsToAdd: number[]): void {
@@ -313,6 +394,11 @@ export class McpToolsComponent implements OnInit {
     private replaceManyInState(updated: GetMcpToolRequest[]): void {
         const byId = new Map(updated.map((t) => [t.id, t]));
         this.allTools.update((list) => list.map((t) => byId.get(t.id) ?? t));
+    }
+
+    private setFavoriteInState(ids: number[], value: boolean): void {
+        const idSet = new Set(ids);
+        this.allTools.update((list) => list.map((t) => (idSet.has(t.id) ? { ...t, is_favorite: value } : t)));
     }
 
     private loadTools(): void {

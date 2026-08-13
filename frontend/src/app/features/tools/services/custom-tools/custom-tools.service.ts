@@ -11,7 +11,7 @@ import {
     PatchPythonCodeToolRequest,
     UpdatePythonCodeToolRequest,
 } from '../../models/python-code-tool.model';
-import { GetBulkToolUsageItem, GetToolUsage } from '../../models/tool-config.model';
+import { BulkDeleteToolsResponse, GetBulkToolUsageItem, GetToolUsage } from '../../models/tool-config.model';
 
 @Injectable({
     providedIn: 'root',
@@ -51,10 +51,14 @@ export class CustomToolsService {
         });
     }
 
-    copyPythonCodeTool(toolId: number, body: { name?: string } = {}): Observable<GetPythonCodeToolRequest> {
+    copyPythonCodeTool(toolId: number, body: { name: string }): Observable<GetPythonCodeToolRequest> {
         return this.http.post<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/copy/`, body, {
             headers: this.httpHeaders,
         });
+    }
+
+    exportPythonCodeTool(toolId: number): Observable<Blob> {
+        return this.http.get(`${this.baseUrl}${toolId}/export/`, { responseType: 'blob' });
     }
 
     updatePythonCodeTool(
@@ -62,6 +66,18 @@ export class CustomToolsService {
         updatedTool: UpdatePythonCodeToolRequest
     ): Observable<GetPythonCodeToolRequest> {
         return this.http.put<GetPythonCodeToolRequest>(`${this.baseUrl}${toolId}/`, updatedTool, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    addToFavoritesPythonCodeTool(id: number): Observable<void> {
+        return this.http.post<void>(`${this.baseUrl}${id}/favorite/`, null, {
+            headers: this.httpHeaders,
+        });
+    }
+
+    deleteFromFavoritesPythonCodeTool(id: number): Observable<void> {
+        return this.http.delete<void>(`${this.baseUrl}${id}/favorite/`, {
             headers: this.httpHeaders,
         });
     }
@@ -84,11 +100,26 @@ export class CustomToolsService {
         });
     }
 
-    bulkDeletePythonCode(ids: number[]): Observable<void> {
+    bulkDeletePythonCodeTool(ids: number[]): Observable<BulkDeleteToolsResponse> {
         const body = { ids };
-        return this.http.post<void>(`${this.baseUrl}bulk-delete/`, body, {
+        return this.http.post<BulkDeleteToolsResponse>(`${this.baseUrl}bulk-delete/`, body, {
             headers: this.httpHeaders,
         });
+    }
+
+    bulkExportPythonCodeTool(ids: number[]): Observable<Blob> {
+        const body = { ids };
+        return this.http.post(`${this.baseUrl}bulk-export/`, body, {
+            headers: this.httpHeaders,
+            responseType: 'blob',
+        });
+    }
+
+    importPythonCodeTool(file: File, importLabels = true): Observable<Record<string, unknown>> {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('import_labels', String(importLabels));
+        return this.http.post<Record<string, unknown>>(`${this.baseUrl}import/`, form);
     }
 
     getPythonCodeToolById(id: number): Observable<GetPythonCodeToolRequest> {

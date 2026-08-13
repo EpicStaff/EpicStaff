@@ -9,6 +9,7 @@ export interface GetMcpToolRequest {
     init_timeout?: number;
     org: number;
     created_by: number;
+    is_favorite: boolean;
 }
 
 export interface CreateMcpToolRequest {

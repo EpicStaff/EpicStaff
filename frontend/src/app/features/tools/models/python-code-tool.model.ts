@@ -24,7 +24,7 @@ export interface GetPythonCodeToolRequest {
     built_in: boolean;
     variables?: unknown[];
     use_storage?: boolean;
-    favorite: boolean;
+    is_favorite: boolean;
     labels: number[];
 }
 
@@ -51,7 +51,6 @@ export interface PatchPythonCodeToolRequest {
     name?: string;
     description?: string;
     labels?: number[];
-    favorite?: boolean;
     use_storage?: boolean;
 }
 

@@ -106,6 +106,7 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         { label: 'Select All', kind: 'select-all' },
         { label: 'Make Favorite', kind: 'favorite' },
         { label: 'Duplicate', kind: 'duplicate' },
+        { label: 'Export Selected', kind: 'export-selected' },
         { label: 'Delete All Selected', kind: 'delete-selected' },
     ];
 
@@ -273,6 +274,14 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         } else {
             this.openCustomToolDialog();
         }
+    }
+
+    public onImportClick(): void {
+        this.viewState.dispatch({ kind: 'open-import' });
+    }
+
+    public onExportClick(): void {
+        this.viewState.dispatch({ kind: 'export-selected' });
     }
 
     public openCustomToolDialog(): void {

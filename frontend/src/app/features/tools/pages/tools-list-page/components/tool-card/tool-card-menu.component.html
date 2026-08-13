@@ -23,6 +23,14 @@
         type="button"
         class="menu-item"
         role="menuitem"
+        (click)="onSelect('export')"
+    >
+        <span class="label">Export</span>
+    </button>
+    <button
+        type="button"
+        class="menu-item"
+        role="menuitem"
         (click)="onSelect('show_used_places')"
     >
         <span class="label">Show Used Places</span>

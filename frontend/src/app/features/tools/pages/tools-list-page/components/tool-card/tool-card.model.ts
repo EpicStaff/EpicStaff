@@ -18,4 +18,4 @@ export interface ToolCardVM {
     unused?: boolean;
 }
 
-export type ToolCardMenuAction = 'duplicate' | 'show_used_places' | 'delete';
+export type ToolCardMenuAction = 'duplicate' | 'export' | 'show_used_places' | 'delete';

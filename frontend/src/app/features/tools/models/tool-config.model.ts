@@ -24,3 +24,8 @@ export interface GetBulkToolUsageItem {
     staff_count: number;
     is_built_in: boolean;
 }
+
+export interface BulkDeleteToolsResponse {
+    deleted: number;
+    ids: number[];
+}

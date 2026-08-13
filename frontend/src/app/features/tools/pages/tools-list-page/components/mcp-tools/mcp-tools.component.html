@@ -27,6 +27,7 @@
                             [showUsage]="viewState.showUsageAndUnused()"
                             (configure)="onCardConfigure($event)"
                             (selectedChange)="onCardSelectedChange($event)"
+                            (favoriteChange)="onCardFavoriteChange($event)"
                             (labelsChange)="onCardLabelsChange($event)"
                             (menuAction)="onCardMenuAction($event)"
                         ></app-tool-card>
