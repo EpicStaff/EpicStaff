@@ -11,9 +11,6 @@ class PythonCodeToolCopyService(BaseCopyService):
         name: str | None = None,
         org_id: int | None = None,
     ) -> PythonCodeTool:
-        if tool.built_in:
-            raise ValueError("Cannot copy a built-in tool.")
-
         new_code = copy_python_code(tool.python_code)
 
         existing_names = PythonCodeTool.objects.values_list("name", flat=True)
