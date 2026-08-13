@@ -80,6 +80,7 @@
     resize: vertical;
     overflow: auto;
     scrollbar-gutter: stable;
+    scroll-padding-block-end: 0.5em;
 
     &::placeholder {
         color: var(--color-ks-transparent-text-60);
