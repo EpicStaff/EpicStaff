@@ -448,9 +448,19 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     }
 
     private autoSelectAgentSurfaces(agentId: number): void {
-        const agentSurfaceIds = this.surfaces()
+        const validSurfaceIds = new Set(this.surfaces().map((surface) => surface.id));
+
+        const ownedSurfaceIds = this.surfaces()
             .filter((surface) => surface.owner_agent === agentId)
             .map((surface) => surface.id);
+
+        const assignedSharedSurfaceIds = (
+            this.agentDefinitions().find((agent) => agent.id === agentId)?.default_surfaces ?? []
+        )
+            .map((defaultSurface) => defaultSurface.surface)
+            .filter((surfaceId) => validSurfaceIds.has(surfaceId));
+
+        const agentSurfaceIds = [...ownedSurfaceIds, ...assignedSharedSurfaceIds];
         if (agentSurfaceIds.length === 0) return;
         this.selectedSurfaceIds.update((current) => Array.from(new Set([...current, ...agentSurfaceIds])));
     }

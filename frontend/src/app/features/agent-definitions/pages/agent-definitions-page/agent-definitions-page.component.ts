@@ -228,6 +228,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 instructions: payload.instructions,
                 llm_config: payload.llm_config,
                 fcm_llm_config: payload.fcm_llm_config,
+                metadata: { instructions_format: payload.bootIsDoc ? 'markdown' : 'text' },
             });
         } else {
             this.store.updateAgent(payload.id, {

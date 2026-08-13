@@ -50,6 +50,7 @@ export interface AgentSavePayload {
     name: string;
     description: string;
     instructions: string;
+    bootIsDoc: boolean;
     llm_config: number | null;
     fcm_llm_config: number | null;
     max_iter?: number;
@@ -250,6 +251,7 @@ export class AgentDetailComponent implements OnInit {
             name: effectiveName,
             description: v.description ?? '',
             instructions: v.instructions ?? '',
+            bootIsDoc: this.bootAsDoc(),
             llm_config: v.llm_config,
             fcm_llm_config: a?.fcm_llm_config ?? null,
             max_iter: a?.max_iter,
@@ -333,6 +335,7 @@ export class AgentDetailComponent implements OnInit {
             name: v.name.trim() || a.name,
             description: v.description ?? '',
             instructions: v.instructions ?? '',
+            bootIsDoc: this.bootAsDoc(),
             llm_config: v.llm_config,
             fcm_llm_config: result.fcm_llm_config,
             max_iter: result.max_iter,
