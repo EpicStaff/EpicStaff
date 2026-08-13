@@ -658,7 +658,10 @@
                             </span>
                         </div>
                         @for (col of selectedCollections(); track col.id) {
-                            <div class="res-row res-row--simple">
+                            <div
+                                class="res-row res-row--simple"
+                                [class.res-row--needs-rag]="collectionsWithoutRag().has(col.id)"
+                            >
                                 <span
                                     class="res-row__name"
                                     appTooltipOnOverflow
@@ -667,6 +670,9 @@
                                     matTooltipClass="custom-tooltip"
                                     >{{ col.name }}</span
                                 >
+                                @if (collectionsWithoutRag().has(col.id)) {
+                                    <span class="res-row__needs-rag">Select RAG</span>
+                                }
                                 @if (!readOnly()) {
                                     <button
                                         type="button"

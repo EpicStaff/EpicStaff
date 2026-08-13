@@ -429,6 +429,11 @@ export class SurfaceCardComponent {
     readonly selectedCollectionIds = computed<ReadonlySet<number>>(
         () => new Set(this.knowledgeItems().map((k) => k.collection))
     );
+    // A collection with no RAG picked yet (none of the three configs set). The backend rejects
+    // such rows, so they're kept in the UI but excluded from the saved payload until a RAG is set.
+    readonly collectionsWithoutRag = computed<ReadonlySet<number>>(
+        () => new Set(this.knowledgeItems().filter((k) => !this.hasRag(k)).map((k) => k.collection))
+    );
     readonly collectionAdvancedOpen = signal<boolean>(false);
 
     readonly collectionHeaderAction: SelectDropdownHeaderAction = { icon: 'plus', label: 'Add new collection' };
@@ -513,7 +518,14 @@ export class SurfaceCardComponent {
 
             const knowledge = s?.knowledge ?? [];
             if (this.lastSentKnowledge == null || this.lastSentKnowledge === serializeKnowledge(knowledge)) {
-                this.knowledgeItems.set(knowledge);
+                // The server only stores RAG-configured collections, so re-attach any locally
+                // added-but-not-yet-configured (RAG-less) ones that aren't in the server list —
+                // otherwise a save of some other field would silently drop them from the UI.
+                const serverIds = new Set(knowledge.map((k) => k.collection));
+                const pendingRagless = untracked(() =>
+                    this.knowledgeItems().filter((k) => !this.hasRag(k) && !serverIds.has(k.collection))
+                );
+                this.knowledgeItems.set([...knowledge, ...pendingRagless]);
             }
 
             const storageItems = s?.storage_items ?? [];
@@ -926,6 +938,7 @@ export class SurfaceCardComponent {
         const byId = new Map(this.knowledgeItems().map((k) => [k.collection, k]));
         this.knowledgeItems.set(ids.map((id) => byId.get(id) ?? { collection: id }));
         this.emitKnowledgeChange();
+        this.revealAdvancedIfRagMissing();
     }
 
     onKnowledgeConfigChange(item: SurfaceKnowledge): void {
@@ -984,6 +997,7 @@ export class SurfaceCardComponent {
                         : [...items, { collection: collection_id }]
                 );
                 this.emitKnowledgeChange();
+                this.revealAdvancedIfRagMissing();
             });
     }
 
@@ -995,8 +1009,19 @@ export class SurfaceCardComponent {
         this.lastSentStorageItems = null;
     }
 
+    private hasRag(k: SurfaceKnowledge): boolean {
+        return !!(k.naive_search_config || k.graph_basic_search_config || k.graph_local_search_config);
+    }
+
+    private revealAdvancedIfRagMissing(): void {
+        if (this.readOnly()) return;
+        if (this.collectionsWithoutRag().size > 0) this.collectionAdvancedOpen.set(true);
+    }
+
+    // Only collections with a RAG chosen are persisted; RAG-less rows stay in the UI (with a
+    // "Select RAG" hint) until configured, so we never send a row the backend would reject.
     private buildKnowledgePayload(): SurfaceKnowledge[] {
-        return this.knowledgeItems();
+        return this.knowledgeItems().filter((k) => this.hasRag(k));
     }
 
     private emitKnowledgeChange(): void {
