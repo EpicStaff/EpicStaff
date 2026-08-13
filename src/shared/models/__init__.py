@@ -58,6 +58,7 @@ from .knowledge import (
 )
 from .sessions import (
     SessionData,
+    TokenUsage,
     GraphSessionMessageData,
     StopSessionMessage,
     WebhookEventData,
@@ -157,6 +158,7 @@ __all__ = [
     "ChunkDocumentMessageResponse",
     # sessions
     "SessionData",
+    "TokenUsage",
     "GraphSessionMessageData",
     "StopSessionMessage",
     "WebhookEventData",

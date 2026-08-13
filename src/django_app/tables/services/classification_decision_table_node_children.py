@@ -91,7 +91,7 @@ def _sync_prompt_configs(node, prompt_configs_data):
 
 
 def _sync_condition_group_sections(node, sections_data):
-    """Reconcile a CDT node's condition-group sections (name + color).
+    """Reconcile a CDT node's condition-group sections (name + metadata).
 
     Sections use a client-generated UUID as their real PK, so a section
     referenced by a condition group in the same payload can be resolved
@@ -117,7 +117,7 @@ def _sync_condition_group_sections(node, sections_data):
             defaults={
                 "classification_decision_table_node": node,
                 "name": section_data.get("name", ""),
-                "color": section_data.get("color", "").lower(),
+                "metadata": section_data.get("metadata", {}),
             },
         )
         sections_by_id[str(section.id)] = section

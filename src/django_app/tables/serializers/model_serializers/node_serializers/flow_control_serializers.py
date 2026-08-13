@@ -214,7 +214,7 @@ class ClassificationConditionGroupSerializer(serializers.ModelSerializer):
 class ClassificationConditionGroupSectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClassificationConditionGroupSection
-        fields = ["id", "name", "color"]
+        fields = ["id", "name", "metadata"]
 
 
 class ClassificationDecisionTablePromptSerializer(serializers.ModelSerializer):

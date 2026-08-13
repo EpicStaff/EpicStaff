@@ -10,7 +10,7 @@ from src.crew.services.graph.custom_message_writer import CustomSessionMessageWr
 from src.crew.models.graph_models import (
     GraphMessage,
 )
-from src.shared.models import LLMData, PythonCodeData
+from src.shared.models import LLMData, PythonCodeData, TokenUsage
 from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
@@ -343,7 +343,7 @@ def main(**kwargs) -> dict:
 
     async def _run_json_llm(
         self, prompt: str, llm: LLMData, output_schema: dict | str | None = None
-    ) -> tuple[Any, dict[str, int]]:
+    ) -> tuple[Any, TokenUsage]:
         """Call LLM via litellm and parse JSON response."""
         llm_config = llm.config
         litellm.drop_params = True
@@ -392,7 +392,7 @@ def main(**kwargs) -> dict:
         try:
             cost = litellm.completion_cost(completion_response=resp)
         except Exception:
-            cost = 0.0  # litellm кидає для моделей без цінового запису — не крашити CDT
+            cost = 0.0  # litellm raises for models without a pricing entry — don't crash CDT
 
         cached_tokens = 0
         details = (
@@ -403,20 +403,20 @@ def main(**kwargs) -> dict:
         if details is not None:
             cached_tokens = getattr(details, "cached_tokens", 0) or 0
 
-        usage = {
-            "total_tokens": getattr(resp.usage, "total_tokens", 0)
+        usage = TokenUsage(
+            total_tokens=getattr(resp.usage, "total_tokens", 0)
             if hasattr(resp, "usage")
             else 0,
-            "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0)
+            prompt_tokens=getattr(resp.usage, "prompt_tokens", 0)
             if hasattr(resp, "usage")
             else 0,
-            "completion_tokens": getattr(resp.usage, "completion_tokens", 0)
+            completion_tokens=getattr(resp.usage, "completion_tokens", 0)
             if hasattr(resp, "usage")
             else 0,
-            "successful_requests": 1,
-            "cached_prompt_tokens": cached_tokens,
-            "total_cost_usd": cost,
-        }
+            successful_requests=1,
+            cached_prompt_tokens=cached_tokens,
+            total_cost_usd=cost,
+        )
 
         content = resp.choices[0].message.content
         if not isinstance(content, str):
@@ -478,7 +478,7 @@ def main(**kwargs) -> dict:
 
         logger.info(
             f"Prompt '{prompt_id}' completed. "
-            f"Tokens: {usage.get('total_tokens', 0)}, "
+            f"Tokens: {usage.total_tokens}, "
             f"Result type: {type(result).__name__}"
         )
 
@@ -500,7 +500,7 @@ def main(**kwargs) -> dict:
             "raw_response": raw_response,
             "parsed_result": result,
             "result_variable": result_var,
-            "usage": usage,
+            "usage": usage.model_dump(),
         }
 
     def _indent_code(self, code: str) -> str:

@@ -1,7 +1,6 @@
 import json
 from typing import Any
 
-import litellm
 from loguru import logger
 from langgraph.types import StreamWriter
 
@@ -14,39 +13,6 @@ from services.knowledge_search_service import KnowledgeSearchService
 from src.shared.models import CrewData
 
 from models.state import State
-
-
-def _compute_crew_cost_and_cached_tokens(crew) -> tuple[float, int]:
-    """Sum real USD cost + cached-token count per agent's own model.
-
-    Reuses the same per-agent iteration crewAI's own
-    Crew.calculate_usage_metrics() does (crew.py:1091-1101) — no fork changes,
-    just re-deriving per-model detail before it gets flattened into one
-    crew-level aggregate.
-    """
-    total_cost = 0.0
-    total_cached = 0
-    agents = list(crew.agents) + ([crew.manager_agent] if crew.manager_agent else [])
-    for agent in agents:
-        if not hasattr(agent, "_token_process"):
-            continue
-        usage = agent._token_process.get_summary()
-        total_cached += usage.cached_prompt_tokens
-
-        model_name = getattr(getattr(agent, "llm", None), "model", None)
-        if not model_name:
-            continue
-        try:
-            prompt_cost, completion_cost = litellm.cost_per_token(
-                model=model_name,
-                prompt_tokens=usage.prompt_tokens,
-                completion_tokens=usage.completion_tokens,
-                cache_read_input_tokens=usage.cached_prompt_tokens,
-            )
-        except Exception:
-            continue  # кастомна/self-hosted модель без цінового запису — пропускаємо, не крашимо
-        total_cost += prompt_cost + completion_cost
-    return total_cost, total_cached
 
 
 class CrewNode(BaseNode):
@@ -133,20 +99,6 @@ class CrewNode(BaseNode):
         )
         crew_output = await crew.kickoff_async(inputs=input_)
 
-        token_usage = None
-        if hasattr(crew_output, "token_usage") and crew_output.token_usage:
-            total_cost, total_cached = _compute_crew_cost_and_cached_tokens(crew)
-            token_usage = {
-                "total_tokens": crew_output.token_usage.total_tokens,
-                "prompt_tokens": crew_output.token_usage.prompt_tokens,
-                "completion_tokens": crew_output.token_usage.completion_tokens,
-                "successful_requests": crew_output.token_usage.successful_requests,
-                "cached_prompt_tokens": total_cached,
-                "total_cost_usd": total_cost,
-            }
-
-            logger.info(f"Crew {self.node_name} token usage: {token_usage}")
-
         output = (
             json.loads(crew_output.pydantic.model_dump_json())
             if crew_output.pydantic
@@ -154,8 +106,6 @@ class CrewNode(BaseNode):
         )
         if "message" not in output:
             output["message"] = crew_output.raw
-        if token_usage:
-            output["token_usage"] = token_usage
 
         return output
 

@@ -1,6 +1,5 @@
 import hashlib
 import json
-import re
 import uuid
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
@@ -759,29 +758,14 @@ class ClassificationDecisionTablePrompt(TimestampMixin, models.Model):
         unique_together = ("cdt_node", "prompt_key")
 
 
-def validate_hex_color(value: str) -> None:
-    """Validate that value is a proper 6-digit hex color, e.g. "#ff5733"."""
-    if not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
-        raise ValidationError(
-            f"{value!r} is not a valid hex color. Expected format: #RRGGBB.",
-            code="invalid_color",
-        )
-
-
 class ClassificationConditionGroupSection(BaseGraphEntity, models.Model):
-    id = models.UUIDField(primary_key=True)  # клієнтський id — і Django PK
+    id = models.UUIDField(primary_key=True)  # client-generated id — and the Django PK
     classification_decision_table_node = models.ForeignKey(
         "ClassificationDecisionTableNode",
         on_delete=models.CASCADE,
         related_name="sections",
     )
     name = models.CharField(max_length=255, blank=True, default="")
-    color = models.CharField(
-        max_length=7,  # "#" + 6 hex digits
-        blank=True,
-        default="",
-        validators=[validate_hex_color],
-    )
 
 
 class ClassificationConditionGroup(BaseGraphEntity, models.Model):

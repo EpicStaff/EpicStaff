@@ -16,6 +16,7 @@ class TokenUsage(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    successful_requests: int = 0
     cached_prompt_tokens: int = 0
     total_cost_usd: float = 0.0
 

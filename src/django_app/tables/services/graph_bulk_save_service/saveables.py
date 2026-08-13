@@ -359,7 +359,7 @@ class ClassificationDecisionTableNodeSaveable:
                         defaults={
                             "classification_decision_table_node": node,
                             "name": section_data.get("name", ""),
-                            "color": section_data.get("color", "").lower(),
+                            "metadata": section_data.get("metadata", {}),
                         },
                     )
                 )
