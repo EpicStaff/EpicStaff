@@ -70,7 +70,16 @@ def telegram_trigger_node_dict():
 
 @pytest.fixture
 def empty_missing_sets():
-    return _MissingSets(crews=set(), subgraphs=set(), llm_configs=set(), webhooks=set())
+    return _MissingSets(
+        crews=set(),
+        subgraphs=set(),
+        llm_configs=set(),
+        webhooks=set(),
+        agent_definitions=set(),
+        surfaces=set(),
+        python_code_tools=set(),
+        mcp_tools=set(),
+    )
 
 
 @pytest.fixture
@@ -80,6 +89,10 @@ def full_missing_sets():
         subgraphs={_SUBGRAPH_ID},
         llm_configs={_LLM_CONFIG_ID},
         webhooks={_WEBHOOK_TRIGGER_ID},
+        agent_definitions=set(),
+        surfaces=set(),
+        python_code_tools=set(),
+        mcp_tools=set(),
     )
 
 

@@ -29,9 +29,12 @@ from tables.serializers.base_serializer import (
     ContentHashWritableMixin,
 )
 from tables.serializers.org_scoped_fields import (
+    OrganizationScopedPrimaryKeyRelatedField,
     OrgScopedPrimaryKeyRelatedField,
     resolve_active_org_id,
 )
+from agents.models.agent_models import AgentDefinition
+from agents.models.surface_models import Surface
 from agents.serializers.inline_surface_serializers import (
     AgentInlineSurfaceReadSerializer,
     AgentInlineSurfaceWriteSerializer,
@@ -223,6 +226,16 @@ class TaskNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     inline_surface = InlineSurfaceWriteSerializer(
         required=False, allow_null=True, write_only=True
     )
+    # Org isolation: agent_definition/surface_list/graph must belong to the
+    # caller's active org — a cross-org pk is rejected exactly like a
+    # non-existent one (no leak).
+    agent_definition = OrganizationScopedPrimaryKeyRelatedField(
+        queryset=AgentDefinition.objects.all(), required=False, allow_null=True
+    )
+    surface_list = OrganizationScopedPrimaryKeyRelatedField(
+        queryset=Surface.objects.all(), many=True, required=False
+    )
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
         model = TaskNode
@@ -335,6 +348,16 @@ class AgentNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer)
     inline_surface = AgentInlineSurfaceWriteSerializer(
         required=False, allow_null=True, write_only=True
     )
+    # Org isolation: agent_definition/surface_list/graph must belong to the
+    # caller's active org — a cross-org pk is rejected exactly like a
+    # non-existent one (no leak).
+    agent_definition = OrganizationScopedPrimaryKeyRelatedField(
+        queryset=AgentDefinition.objects.all(), required=False, allow_null=True
+    )
+    surface_list = OrganizationScopedPrimaryKeyRelatedField(
+        queryset=Surface.objects.all(), many=True, required=False
+    )
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta:
         model = AgentNode
