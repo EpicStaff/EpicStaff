@@ -141,9 +141,8 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                 ariaLabel="Resize form and code editor columns"
                                 [column]="formColumn"
                                 [opposite]="editorColumn"
-                                [width]="leftColumnWidth.width()"
+                                [(width)]="leftColumnWidth.width"
                                 [defaultWidth]="leftColumnWidth.defaultWidth"
-                                (widthChange)="leftColumnWidth.set($event)"
                             />
                         }
 

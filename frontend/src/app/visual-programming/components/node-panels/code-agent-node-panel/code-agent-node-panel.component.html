@@ -9,6 +9,8 @@
                     class="form-layout expanded"
                     [class.code-editor-fullwidth]="isCodeEditorFullWidth()"
                 >
+                    <!-- Keep the column, its divider and the flex-basis binding in this block: it is
+                    expanded-only, which is why the binding needs no isExpanded() gate. -->
                     @if (!isCodeEditorFullWidth()) {
                         <div
                             #formColumn
@@ -150,9 +152,8 @@
                             ariaLabel="Resize form and editor columns"
                             [column]="formColumn"
                             [opposite]="editorColumn"
-                            [width]="leftColumnWidth.width()"
+                            [(width)]="leftColumnWidth.width"
                             [defaultWidth]="leftColumnWidth.defaultWidth"
-                            (widthChange)="leftColumnWidth.set($event)"
                         />
                     }
 

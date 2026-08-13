@@ -125,9 +125,8 @@
                         ariaLabel="Resize form and mock data columns"
                         [column]="formColumn"
                         [opposite]="mockDataColumn"
-                        [width]="leftColumnWidth.width()"
+                        [(width)]="leftColumnWidth.width"
                         [defaultWidth]="leftColumnWidth.defaultWidth"
-                        (widthChange)="leftColumnWidth.set($event)"
                     />
                 }
 

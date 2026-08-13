@@ -1,11 +1,12 @@
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     ElementRef,
     inject,
     input,
+    model,
     OnDestroy,
-    output,
     signal,
 } from '@angular/core';
 
@@ -18,7 +19,7 @@ const KEYBOARD_STEP = 16;
  *
  * Place it between those two flex children and set the flex container's `gap` to 0 — the divider
  * supplies the spacing itself. `column` takes its width from `flex-basis`, which the parent binds
- * from the value emitted here (see `createColumnWidthState`).
+ * from the value written back here (see `createColumnWidthState`).
  */
 @Component({
     standalone: true,
@@ -42,7 +43,7 @@ const KEYBOARD_STEP = 16;
         '(pointerdown)': 'onPointerDown($event)',
         '(pointermove)': 'onPointerMove($event)',
         '(pointerup)': 'stopDragging()',
-        '(pointercancel)': 'stopDragging()',
+        '(pointercancel)': 'cancelDragging()',
         '(lostpointercapture)': 'stopDragging()',
         '(dblclick)': 'resetToDefault()',
         '(keydown)': 'onKeydown($event)',
@@ -83,14 +84,12 @@ export class ColumnResizeDividerComponent implements OnDestroy {
     public readonly column = input.required<HTMLElement>();
     public readonly opposite = input.required<HTMLElement>();
 
-    public readonly width = input.required<number>();
+    public readonly width = model.required<number>();
     public readonly minWidth = input<number>(280);
     public readonly minOppositeWidth = input<number>(320);
     /** Width restored on double click or Home; omit to disable that shortcut. */
     public readonly defaultWidth = input<number | null>(null);
     public readonly ariaLabel = input<string>('Resize columns');
-
-    public readonly widthChange = output<number>();
 
     protected readonly isDragging = signal(false);
     protected readonly maxWidth = signal<number | null>(null);
@@ -100,15 +99,27 @@ export class ColumnResizeDividerComponent implements OnDestroy {
     private startWidth = 0;
     private pendingClientX = 0;
     private frameHandle: number | null = null;
-    private restoreBodyStyles: (() => void) | null = null;
+    private endDrag: (() => void) | null = null;
+    private containerResize: ResizeObserver | null = null;
+
+    constructor() {
+        afterNextRender(() => {
+            this.publishBoundsToCss();
+            this.maxWidth.set(this.measureMaxWidth());
+            this.observeContainer();
+        });
+    }
 
     public ngOnDestroy(): void {
         this.cancelPendingFrame();
-        this.restoreBodyStyles?.();
+        this.endDrag?.();
+        this.containerResize?.disconnect();
     }
 
     protected onPointerDown(event: PointerEvent): void {
-        if (event.button !== 0) {
+        // A second pointer mid-drag would replace `endDrag` and orphan the first one, leaving the
+        // body unselectable and the Escape listener swallowing the key for good.
+        if (event.button !== 0 || this.isDragging()) {
             return;
         }
         event.preventDefault();
@@ -118,7 +129,7 @@ export class ColumnResizeDividerComponent implements OnDestroy {
         this.pendingClientX = event.clientX;
         this.isDragging.set(true);
         this.host.nativeElement.setPointerCapture(event.pointerId);
-        this.lockPageWhileDragging();
+        this.beginDrag();
     }
 
     protected onPointerMove(event: PointerEvent): void {
@@ -129,10 +140,10 @@ export class ColumnResizeDividerComponent implements OnDestroy {
         if (this.frameHandle !== null) {
             return;
         }
-        // One emission per frame: every width change relayouts the code editor beside it.
+        // One write per frame: every width change relayouts the code editor beside it.
         this.frameHandle = requestAnimationFrame(() => {
             this.frameHandle = null;
-            this.emitWidth(this.draggedWidth());
+            this.applyWidth(this.draggedWidth());
         });
     }
 
@@ -144,10 +155,20 @@ export class ColumnResizeDividerComponent implements OnDestroy {
         if (this.frameHandle !== null) {
             // Flush the last move so the column lands where the pointer was released.
             this.cancelPendingFrame();
-            this.emitWidth(this.draggedWidth());
+            this.applyWidth(this.draggedWidth());
         }
-        this.restoreBodyStyles?.();
-        this.restoreBodyStyles = null;
+        this.finishDrag();
+    }
+
+    /** Drops the drag and puts the column back where it started. */
+    protected cancelDragging(): void {
+        if (!this.isDragging()) {
+            return;
+        }
+        this.isDragging.set(false);
+        this.cancelPendingFrame();
+        this.finishDrag();
+        this.applyWidth(this.startWidth);
     }
 
     protected resetToDefault(): void {
@@ -156,14 +177,14 @@ export class ColumnResizeDividerComponent implements OnDestroy {
             return;
         }
         this.remeasureBounds();
-        this.emitWidth(defaultWidth);
+        this.applyWidth(defaultWidth);
     }
 
     protected onKeydown(event: KeyboardEvent): void {
         if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
             event.preventDefault();
             this.remeasureBounds();
-            this.emitWidth(this.startWidth + (event.key === 'ArrowLeft' ? -KEYBOARD_STEP : KEYBOARD_STEP));
+            this.applyWidth(this.startWidth + (event.key === 'ArrowLeft' ? -KEYBOARD_STEP : KEYBOARD_STEP));
             return;
         }
         if (event.key === 'Home') {
@@ -176,7 +197,7 @@ export class ColumnResizeDividerComponent implements OnDestroy {
         return this.startWidth + (this.pendingClientX - this.startX);
     }
 
-    private emitWidth(rawWidth: number): void {
+    private applyWidth(rawWidth: number): void {
         const maxWidth = this.maxWidth();
         let nextWidth = Math.max(this.minWidth(), rawWidth);
         if (maxWidth !== null) {
@@ -185,7 +206,7 @@ export class ColumnResizeDividerComponent implements OnDestroy {
         nextWidth = Math.round(nextWidth);
 
         if (nextWidth !== Math.round(this.width())) {
-            this.widthChange.emit(nextWidth);
+            this.width.set(nextWidth);
         }
     }
 
@@ -195,11 +216,39 @@ export class ColumnResizeDividerComponent implements OnDestroy {
      */
     private remeasureBounds(): void {
         this.startWidth = this.column().getBoundingClientRect().width;
-        const slack = this.opposite().getBoundingClientRect().width - this.minOppositeWidth();
-        this.maxWidth.set(Math.max(this.minWidth(), this.startWidth + slack));
+        this.maxWidth.set(this.measureMaxWidth());
     }
 
-    private lockPageWhileDragging(): void {
+    private measureMaxWidth(): number {
+        const columnWidth = this.column().getBoundingClientRect().width;
+        const slack = this.opposite().getBoundingClientRect().width - this.minOppositeWidth();
+        return Math.max(this.minWidth(), columnWidth + slack);
+    }
+
+    /**
+     * Gives the `resizable-column` mixin the same bounds this component clamps to. On the container,
+     * not this host: custom properties inherit downwards and the column is a sibling.
+     */
+    private publishBoundsToCss(): void {
+        const container = this.column().parentElement;
+        if (!container) {
+            return;
+        }
+        container.style.setProperty('--column-min-opposite', `${this.minOppositeWidth()}px`);
+        container.style.setProperty('--column-divider-width', `${this.host.nativeElement.offsetWidth}px`);
+    }
+
+    /** Keeps the bounds current while nothing is being dragged: panel and window resizes. */
+    private observeContainer(): void {
+        const container = this.column().parentElement;
+        if (!container) {
+            return;
+        }
+        this.containerResize = new ResizeObserver(() => this.maxWidth.set(this.measureMaxWidth()));
+        this.containerResize.observe(container);
+    }
+
+    private beginDrag(): void {
         const body = this.host.nativeElement.ownerDocument.body;
         const previousUserSelect = body.style.userSelect;
         const previousCursor = body.style.cursor;
@@ -207,10 +256,27 @@ export class ColumnResizeDividerComponent implements OnDestroy {
         body.style.userSelect = 'none';
         body.style.cursor = 'col-resize';
 
-        this.restoreBodyStyles = () => {
+        const onKeydown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') {
+                return;
+            }
+            // Capture phase: cancel the drag instead of letting the panel around it close.
+            event.preventDefault();
+            event.stopPropagation();
+            this.cancelDragging();
+        };
+        body.ownerDocument.addEventListener('keydown', onKeydown, true);
+
+        this.endDrag = () => {
             body.style.userSelect = previousUserSelect;
             body.style.cursor = previousCursor;
+            body.ownerDocument.removeEventListener('keydown', onKeydown, true);
         };
+    }
+
+    private finishDrag(): void {
+        this.endDrag?.();
+        this.endDrag = null;
     }
 
     private cancelPendingFrame(): void {

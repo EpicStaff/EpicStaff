@@ -120,15 +120,15 @@
     }
 }
 
-/* Both keep in sync with ColumnResizeDividerComponent: its host width and its minOppositeWidth. */
-$column-divider-width: 1rem;
-$resizable-column-min-opposite: 320px;
-
-/* Column left of an app-column-resize-divider; $default-width applies until the user drags. */
+/*
+ * Column left of an app-column-resize-divider; $default-width applies until the user drags.
+ * The max-width keeps the opposite column above its minimum on window resizes, when nothing
+ * measures. Both bounds are published by the divider, so they cannot drift from its drag clamp.
+ */
 @mixin resizable-column($default-width) {
     flex: 0 0 $default-width;
     min-width: 0;
-    max-width: calc(100% - #{$resizable-column-min-opposite} - #{$column-divider-width});
+    max-width: calc(100% - var(--column-min-opposite, 320px) - var(--column-divider-width, 1rem));
 }
 
 @mixin panel-content {

@@ -156,9 +156,8 @@
                             ariaLabel="Resize inputs and code columns"
                             [column]="preSidebarColumn"
                             [opposite]="preCodeColumn"
-                            [width]="sidebarWidth.width()"
+                            [(width)]="sidebarWidth.width"
                             [defaultWidth]="sidebarWidth.defaultWidth"
-                            (widthChange)="sidebarWidth.set($event)"
                         />
                         <div
                             #preCodeColumn
@@ -204,9 +203,8 @@
                             ariaLabel="Resize inputs and code columns"
                             [column]="postSidebarColumn"
                             [opposite]="postCodeColumn"
-                            [width]="sidebarWidth.width()"
+                            [(width)]="sidebarWidth.width"
                             [defaultWidth]="sidebarWidth.defaultWidth"
-                            (widthChange)="sidebarWidth.set($event)"
                         />
                         <div
                             #postCodeColumn
