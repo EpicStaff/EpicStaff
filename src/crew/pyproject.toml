@@ -34,6 +34,7 @@ litellm = "1.75.7"
 openai = {extras = ["voice-helpers"], version = "1.99.9"}
 instructor = "1.11.3"
 fastmcp = "^2.12.2"
+httpx = "^0.28.1"
 
 [tool.poetry.group.crew.dependencies]
 mem0ai = { path = "libraries/mem0" }
