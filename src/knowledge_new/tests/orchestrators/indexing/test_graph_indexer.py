@@ -5,7 +5,7 @@ from typing import Literal
 import pandas
 import pytest
 from application.orchestrators.indexing.strategies import graph_indexer
-from application.orchestrators.indexing.strategies.graph_indexer import GraphIndexer
+from application.orchestrators.indexing.strategies.graph_indexer import GraphIndexOrchestrator
 from domain.enums import DocumentStatusEnum, IndexStatusEnum, RAGStrategy
 from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
 from domain.models import IndexRequest, Rag
@@ -174,7 +174,7 @@ async def test_index_success_full_flow_marks_documents_indexed_and_rag_completed
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({7}))
-    await GraphIndexer(uow).execute(request)
+    await GraphIndexOrchestrator(uow).execute(request)
 
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.COMPLETED]
     assert repo.status_updates == [(frozenset({7}), DocumentStatusEnum.COMPLETED)]
@@ -199,7 +199,7 @@ async def test_build_index_receives_documents_dataframe_and_config(monkeypatch):
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({1, 2}))
-    await GraphIndexer(uow).execute(request)
+    await GraphIndexOrchestrator(uow).execute(request)
 
     # config object must be forwarded by identity, not copied
     assert captured["config"] is config
@@ -254,7 +254,7 @@ async def test_is_update_run_computed_correctly(
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({10}))
-    await GraphIndexer(uow).execute(request)
+    await GraphIndexOrchestrator(uow).execute(request)
 
     assert captured_is_update_run == [expected_is_update_run]
 
@@ -277,7 +277,7 @@ async def test_indexing_errors_raise_exception_group_and_mark_rag_failed(monkeyp
     request = _make_request(frozenset({7}))
 
     with pytest.raises(ExceptionGroup):
-        await GraphIndexer(uow).execute(request)
+        await GraphIndexOrchestrator(uow).execute(request)
 
     # documents are marked FAILED when indexing errors occurred
     assert repo.status_updates == [(frozenset({7}), DocumentStatusEnum.FAILED)]
@@ -302,7 +302,7 @@ async def test_missing_rag_raises_and_marks_nothing(monkeypatch):
     request = _make_request(frozenset({1}))
 
     with pytest.raises(RagNotFoundError):
-        await GraphIndexer(uow).execute(request)
+        await GraphIndexOrchestrator(uow).execute(request)
 
     assert repo.rag_status_log == []
     assert build_index_called == []
@@ -327,7 +327,7 @@ async def test_missing_config_marks_rag_failed_and_reraises(monkeypatch):
     request = _make_request(frozenset({5}))
 
     with pytest.raises(GraphRagConfigNotFoundError):
-        await GraphIndexer(uow).execute(request)
+        await GraphIndexOrchestrator(uow).execute(request)
 
     assert repo.rag_status_log == [IndexStatusEnum.FAILED]
     assert build_index_called == []
@@ -353,7 +353,7 @@ async def test_no_documents_marks_rag_failed_and_reraises(monkeypatch):
     request = _make_request(frozenset({99}))
 
     with pytest.raises(DocumentNotFoundError):
-        await GraphIndexer(uow).execute(request)
+        await GraphIndexOrchestrator(uow).execute(request)
 
     assert repo.rag_status_log == [IndexStatusEnum.FAILED]
     assert build_index_called == []
@@ -401,7 +401,7 @@ async def test_cancellation_marks_rag_cancelled(monkeypatch, cancel_scenario: st
 
     # execute() swallows CancelledError (the base only re-raises RepositoryError / generic
     # Exception; the cancellation path calls on_cancel and does NOT re-raise).
-    await GraphIndexer(uow).execute(request)
+    await GraphIndexOrchestrator(uow).execute(request)
 
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.CANCELLED]
     assert repo.status_updates == []
@@ -434,7 +434,7 @@ async def test_graph_rag_never_resolves_to_partial_when_failed_doc_exists(monkey
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({7}))
-    await GraphIndexer(uow).execute(request)
+    await GraphIndexOrchestrator(uow).execute(request)
 
     # After the run: doc 7 → COMPLETED, doc 99 → FAILED (pre-existing).
     # _finish_rag priority: OUTDATED > PROCESSING > COMPLETED > FAILED.
@@ -462,7 +462,7 @@ async def test_outdated_doc_keeps_rag_outdated_and_preserves_reasons(monkeypatch
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({7}))
-    await GraphIndexer(uow).execute(request)
+    await GraphIndexOrchestrator(uow).execute(request)
 
     # has_outdated is True → rag must be OUTDATED with reasons intact.
     assert rag.status == IndexStatusEnum.OUTDATED
@@ -486,7 +486,7 @@ async def test_outdated_reasons_cleared_when_no_outdated_document_remains(monkey
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
     request = _make_request(frozenset({7}))
-    await GraphIndexer(uow).execute(request)
+    await GraphIndexOrchestrator(uow).execute(request)
 
     # No OUTDATED doc remains → reasons cleared → rag is COMPLETED (not OUTDATED).
     assert rag.outdated_reasons == {}
