@@ -1,15 +1,17 @@
 from application.orchestrators.prechunking import strategies
-from application.orchestrators.prechunking.base import AbstractPrechunker
+from application.orchestrators.prechunking.base import AbstractPrechunkOrchestrator
 from application.ports import AbstractUnitOfWork
 from domain.enums import RAGStrategy
 from domain.errors import UnsupportedError
 
-_STRATEGIES: dict[RAGStrategy, type[AbstractPrechunker]] = {
-    RAGStrategy.NAIVE: strategies.NaivePrechunker,
+_STRATEGIES: dict[RAGStrategy, type[AbstractPrechunkOrchestrator]] = {
+    RAGStrategy.NAIVE: strategies.NaivePrechunkOrchestrator,
 }
 
 
-def build_prechunker(strategy: RAGStrategy, uow: AbstractUnitOfWork) -> AbstractPrechunker:
+def build_prechunker(
+    strategy: RAGStrategy, uow: AbstractUnitOfWork
+) -> AbstractPrechunkOrchestrator:
     """Build the prechunker registered for `strategy`.
 
     Args:

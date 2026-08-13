@@ -1,32 +1,33 @@
 from dataclasses import asdict
 
 import pandas
-from application.orchestrators.indexing import AbstractIndexer
+from application.commands import RunIndex
+from application.orchestrators.indexing.base import AbstractIndexOrchestrator
 from domain.enums import DocumentStatusEnum, IndexStatusEnum
 from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
-from domain.models import IndexRequest, Rag
+from domain.models import Rag
 from graphrag.api import build_index
 from graphrag_input import TextDocument
 from loguru import logger
 
 
-class GraphIndexer(AbstractIndexer):
-    async def on_execute(self, request: IndexRequest):
+class GraphIndexOrchestrator(AbstractIndexOrchestrator):
+    async def on_execute(self, command: RunIndex):
         async with self.uow:
-            rag = await self._get_rag_under_uow(request.rag_id)
+            rag = await self._get_rag_under_uow(command.rag_id)
             config = await self._get_config_under_uow(rag.id)
-            documents = await self._get_documents_under_uow(rag.id, request.document_ids)
+            documents = await self._get_documents_under_uow(rag.id, command.document_ids)
 
         is_update_run = False
         if rag.status == IndexStatusEnum.COMPLETED:
             if self._has_indexed_document(documents):
                 documents += await self._get_indexed_documents_excluding(
-                    rag.id, request.document_ids
+                    rag.id, command.document_ids
                 )
             else:
                 is_update_run = True
 
-        rag.mark_as_processing(request.document_ids)
+        rag.mark_as_processing(command.document_ids)
         await self._update_rag(rag)
 
         input_documents = pandas.DataFrame(data=[asdict(d) for d in documents])
@@ -41,7 +42,7 @@ class GraphIndexer(AbstractIndexer):
         errors = {r.workflow: r.error for r in results if r.error is not None}
         if errors:
             await self._update_status_of_documents(
-                rag.id, request.document_ids, status=DocumentStatusEnum.FAILED
+                rag.id, command.document_ids, status=DocumentStatusEnum.FAILED
             )
             raise ExceptionGroup(
                 f"GraphRAG indexing failed for RAG(id={rag.id}) "
@@ -50,24 +51,24 @@ class GraphIndexer(AbstractIndexer):
             )
 
         await self._update_status_of_documents(
-            rag.id, request.document_ids, DocumentStatusEnum.COMPLETED
+            rag.id, command.document_ids, DocumentStatusEnum.COMPLETED
         )
-        await self._finish_rag(rag, request.document_ids)
+        await self._finish_rag(rag, command.document_ids)
 
         logger.info("Finished indexing in RAG(id={}, status={}).", rag.id, rag.status.value)
 
-    async def on_cancel(self, request: IndexRequest):
+    async def on_cancel(self, command: RunIndex):
         if (rag := self.state.get("rag")) is not None:
             rag: Rag
             rag.mark_as_cancelled()
-            rag.finish_document(*request.document_ids)
+            rag.finish_document(*command.document_ids)
             await self._update_rag(rag)
 
-    async def on_error(self, request: IndexRequest, error: Exception):
+    async def on_error(self, command: RunIndex, error: Exception):
         if (rag := self.state.get("rag")) is not None:
             rag: Rag
             rag.mark_as_failed(error)
-            rag.finish_document(*request.document_ids)
+            rag.finish_document(*command.document_ids)
             await self._update_rag(rag)
 
     async def _get_rag_under_uow(self, rag_id: int) -> Rag:

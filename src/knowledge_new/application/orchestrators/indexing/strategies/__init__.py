@@ -1,4 +1,4 @@
-from .graph_indexer import GraphIndexer
-from .naive_indexer import NaiveIndexer
+from .graph_indexer import GraphIndexOrchestrator
+from .naive_indexer import NaiveIndexOrchestrator
 
-__all__ = ["GraphIndexer", "NaiveIndexer"]
+__all__ = ["GraphIndexOrchestrator", "NaiveIndexOrchestrator"]

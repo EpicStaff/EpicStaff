@@ -1,8 +1,9 @@
 import abc
 
+from application.commands import RunSearch
 from application.orchestrators.base import AbstractOrchestrator
-from domain.models import SearchRequest, SearchResponse
+from application.results import SearchResult
 
 
-class AbstractSearch(AbstractOrchestrator[SearchRequest, SearchResponse], abc.ABC):
+class AbstractSearchOrchestrator(AbstractOrchestrator[RunSearch, SearchResult], abc.ABC):
     """Search the RAG named in `request` for chunks relevant to the query."""

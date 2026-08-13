@@ -3,10 +3,11 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 import pandas
-from application.orchestrators.searching import AbstractSearch
+from application.commands import RunSearch
+from application.orchestrators.searching.base import AbstractSearchOrchestrator
+from application.results import SearchResult
 from domain.enums import GraphSearchMethodEnum
 from domain.errors import UnsupportedError
-from domain.models import SearchRequest, SearchResponse
 from graphrag.api import basic_search, drift_search, global_search, local_search
 from graphrag.config.models.basic_search_config import BasicSearchConfig
 from graphrag.config.models.drift_search_config import DRIFTSearchConfig
@@ -29,7 +30,7 @@ class SearchSpecification:
     extra_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
-class GraphSearch(AbstractSearch):
+class GraphSearchOrchestrator(AbstractSearchOrchestrator):
     DEFAULT_RESPONSE_TYPE = "Multiple Paragraphs"
     DEFAULT_COMMUNITY_LEVEL = 2
     DEFAULT_DYNAMIC_COMMUNITY_SELECTION = False
@@ -92,21 +93,21 @@ class GraphSearch(AbstractSearch):
         ),
     }
 
-    async def on_execute(self, request: SearchRequest) -> SearchResponse:
+    async def on_execute(self, command: RunSearch) -> SearchResult:
         async with self.uow:
-            config = await self.uow.graph_rag_repo.get_config(request.rag_id)
+            config = await self.uow.graph_rag_repo.get_config(command.rag_id)
 
-        if request.search_config.method not in self._SEARCH_MAP:
+        if command.search_config.method not in self._SEARCH_MAP:
             raise UnsupportedError(
                 that="graph search method",
-                got=request.search_config.method,
+                got=command.search_config.method,
             )
 
-        specs = self._SEARCH_MAP[request.search_config.method]
+        specs = self._SEARCH_MAP[command.search_config.method]
         setattr(
             config,
             specs.config_field,
-            specs.config_model.model_validate(request.search_config.model_dump()),
+            specs.config_model.model_validate(command.search_config.model_dump()),
         )
         files = await self._resolve_files(
             config=config,
@@ -114,13 +115,13 @@ class GraphSearch(AbstractSearch):
             optional_files=specs.optional_files,
         )
         result, _ = await specs.searcher(
-            query=request.query,
+            query=command.query,
             config=config,
             **files,
             **specs.extra_kwargs,
         )
 
-        return SearchResponse(request=request, result=result)
+        return SearchResult(result=result)
 
     @staticmethod
     async def _resolve_files(

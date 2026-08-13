@@ -1,4 +1,4 @@
-from .base import AbstractIndexer
+from .base import AbstractIndexOrchestrator
 from .factory import build_indexer
 
-__all__ = ["AbstractIndexer", "build_indexer"]
+__all__ = ["AbstractIndexOrchestrator", "build_indexer"]
