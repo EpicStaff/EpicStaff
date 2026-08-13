@@ -47,6 +47,59 @@
                 <span class="info__meta-value">{{ collection().updated_at | date: 'dd MMM, yyyy' }}</span>
             </li>
         </ul>
+
+        <div class="info__guidance">
+            <div class="info__guidance-header">
+                <h3 class="info__meta-title">GUIDANCE FOR AGENTS</h3>
+                @if (!editingDescription()) {
+                    <button
+                        type="button"
+                        class="info__guidance-edit"
+                        aria-label="Edit guidance"
+                        (click)="startEditDescription()"
+                    >
+                        <app-svg-icon
+                            icon="guidance-edit"
+                            size="12px"
+                        />
+                    </button>
+                } @else {
+                    <div class="info__guidance-actions">
+                        <app-button-round
+                            variant="secondary"
+                            icon="x-tight"
+                            [size]="28"
+                            [iconSize]="10"
+                            ariaLabel="Cancel"
+                            (click)="cancelEditDescription()"
+                        />
+                        <app-button-round
+                            variant="primary"
+                            icon="check-tight"
+                            [size]="28"
+                            [iconSize]="10"
+                            [disabled]="descriptionControl.invalid"
+                            ariaLabel="Save guidance"
+                            (click)="saveDescription()"
+                        />
+                    </div>
+                }
+            </div>
+
+            @if (editingDescription()) {
+                <textarea
+                    class="info__guidance-input"
+                    [formControl]="descriptionControl"
+                    placeholder="Describe what's inside and which questions this collection can answer..."
+                    rows="6"
+                ></textarea>
+                <app-validation-errors [control]="descriptionControl" />
+            } @else if (collection().description) {
+                <p class="info__guidance-text">{{ collection().description }}</p>
+            } @else {
+                <p class="info__guidance-empty">No guidance provided.</p>
+            }
+        </div>
     </div>
 
     <!-- issues -->
