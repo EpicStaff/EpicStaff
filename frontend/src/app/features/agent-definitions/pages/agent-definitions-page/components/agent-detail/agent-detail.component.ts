@@ -357,20 +357,11 @@ export class AgentDetailComponent implements OnInit {
             return;
         }
 
-        this.realtimeApi
-            .partialUpdate(a.id, { realtime_config: realtimeConfig })
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: () => onDone(),
-                error: (err) => {
-                    if (err?.status === 404) {
-                        this.createRealtimeConfig(a.id, realtimeConfig, onDone);
-                        return;
-                    }
-                    this.toast.error('Failed to save realtime config');
-                    onDone();
-                },
-            });
+        if (realtimeConfig == null || a.has_realtime_definition) {
+            this.patchRealtimeConfig(a.id, realtimeConfig, onDone);
+        } else {
+            this.createRealtimeConfig(a.id, realtimeConfig, onDone);
+        }
     }
 
     private createRealtimeConfig(agentId: number, realtimeConfig: number | null, onDone: () => void): void {
@@ -380,6 +371,19 @@ export class AgentDetailComponent implements OnInit {
         }
         this.realtimeApi
             .create({ agent_definition: agentId, realtime_config: realtimeConfig })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: () => onDone(),
+                error: () => {
+                    this.toast.error('Failed to save realtime config');
+                    onDone();
+                },
+            });
+    }
+
+    private patchRealtimeConfig(agentId: number, realtimeConfig: number | null, onDone: () => void): void {
+        this.realtimeApi
+            .partialUpdate(agentId, { realtime_config: realtimeConfig })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => onDone(),
