@@ -1469,7 +1469,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 const data = msg?.message_data;
                 const type = data?.message_type;
                 if (!type || !RENDERABLE_MESSAGE_TYPES.has(type)) return false;
-                return this.isCodeAgentVisible(context);
+                if (!this.isCodeAgentVisible(context)) return false;
                 if (this.isSseHidden(data)) return false;
                 if (!STREAM_MESSAGE_TYPES.has(type)) return true;
                 return streamShowSet.has(context.index);

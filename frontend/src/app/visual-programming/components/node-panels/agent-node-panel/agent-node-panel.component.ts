@@ -355,16 +355,19 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         if (!this.isExpanded()) {
             this.sidePanelService.requestExpand();
         }
+        this.resyncRightSchemaDraft(selection);
         this.rightPane.set(selection);
     }
 
     toggleRightPaneField(): void {
         const pane = this.effectiveRightPane();
         if (!pane) return;
-        this.rightPane.set({
+        const next: RightPaneSelection = {
             taskIndex: pane.taskIndex,
             field: pane.field === 'instructions' ? 'schema' : 'instructions',
-        });
+        };
+        this.resyncRightSchemaDraft(next);
+        this.rightPane.set(next);
     }
 
     rightInstructionsValue(): string {
@@ -404,14 +407,24 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         try {
             const parsed = trimmed === '' ? {} : JSON.parse(trimmed);
             this.updateSelectedTaskField(task.tempId, { output_schema: parsed, output_schema_invalid: false });
-            this.rightSchemaDrafts.update((drafts) =>
-                Object.fromEntries(Object.entries(drafts).filter(([key]) => key !== task.tempId))
-            );
             this.setRightSchemaError(task.tempId, isValidOutputSchema(parsed) ? '' : OUTPUT_SCHEMA_RULE_ERROR);
         } catch {
             this.updateSelectedTaskField(task.tempId, { output_schema_invalid: true });
             this.setRightSchemaError(task.tempId, OUTPUT_SCHEMA_JSON_ERROR);
         }
+    }
+
+    private resyncRightSchemaDraft(selection: RightPaneSelection): void {
+        const current = this.rightPane();
+        if (current && current.taskIndex === selection.taskIndex && current.field === selection.field) {
+            return;
+        }
+        const task = this.tasks()[selection.taskIndex];
+        if (!task || task.output_schema_invalid) return;
+        this.rightSchemaDrafts.update((drafts) => {
+            if (!(task.tempId in drafts)) return drafts;
+            return Object.fromEntries(Object.entries(drafts).filter(([key]) => key !== task.tempId));
+        });
     }
 
     private setRightSchemaError(tempId: string, message: string): void {
@@ -541,7 +554,9 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         if (tasks.length === 0) {
             this.rightPane.set(null);
         } else if (pane.taskIndex >= tasks.length) {
-            this.rightPane.set({ taskIndex: 0, field: 'instructions' });
+            const next: RightPaneSelection = { taskIndex: 0, field: 'instructions' };
+            this.resyncRightSchemaDraft(next);
+            this.rightPane.set(next);
         }
     }
 

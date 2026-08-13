@@ -56,6 +56,7 @@
     background: transparent;
     pointer-events: none;
     overflow: hidden;
+    scrollbar-gutter: stable;
 
     ::ng-deep .vht-variable {
         color: var(--accent-color);
@@ -78,6 +79,7 @@
     outline: none;
     resize: vertical;
     overflow: auto;
+    scrollbar-gutter: stable;
 
     &::placeholder {
         color: var(--color-ks-transparent-text-60);

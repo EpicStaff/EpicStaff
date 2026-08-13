@@ -201,6 +201,9 @@ make_scripts/backups
 # Savefiles
 **/savefiles
 
+# Local frontend environment overrides
+frontend/src/environments/environment.local.ts
+
 # Compiled output
 frontend/dist
 frontend/tmp

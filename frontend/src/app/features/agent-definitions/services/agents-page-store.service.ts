@@ -14,7 +14,13 @@ import {
     PartialUpdateAgentDefinitionRequest,
 } from '../models/agent-definition.model';
 import { EXPLORER_SECTIONS, ExplorerSectionId, ExplorerSelection, NO_SELECTION } from '../models/explorer.model';
-import { CombinedSurface, CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../models/surface.model';
+import {
+    CombinedSurface,
+    CreateSurfaceRequest,
+    PartialUpdateSurfaceRequest,
+    Surface,
+    SurfaceSaveError,
+} from '../models/surface.model';
 import {
     categoryToPlace,
     placeToCategory,
@@ -23,6 +29,7 @@ import {
 } from '../models/surface-category.model';
 import { AgentDocType, BranchTreeNode } from '../models/tree-node.model';
 import { AgentDefinitionsApiService } from './agent-definitions-api.service';
+import { SurfaceCatalogsStore } from './surface-catalogs-store.service';
 import { SurfacesApiService } from './surfaces-api.service';
 
 export type SelectedNode = ExplorerSelection;
@@ -60,6 +67,7 @@ export class AgentsPageStore {
     private readonly agentsApi: AgentDefinitionsApiService = inject(AgentDefinitionsApiService);
     private readonly surfacesApi: SurfacesApiService = inject(SurfacesApiService);
     private readonly toast: ToastService = inject(ToastService);
+    private readonly catalogs: SurfaceCatalogsStore = inject(SurfaceCatalogsStore);
     private readonly destroyRef = inject(DestroyRef);
 
     private readonly pendingSurfacePatch = new Map<number, PartialUpdateSurfaceRequest>();
@@ -80,6 +88,13 @@ export class AgentsPageStore {
     readonly loading = signal<boolean>(false);
     readonly saving = signal<boolean>(false);
     readonly agentSaveErrorTick = signal<number>(0);
+    // Bumped when a specific surface's save fails; carries the surface id so only that
+    // surface's card reverts its optimistic fields (a global tick would revert siblings too).
+    readonly surfaceSaveError = signal<SurfaceSaveError | null>(null);
+    private surfaceErrorTick = 0;
+    // Monotonic per-surface version; a late resync getById is dropped if a newer save or
+    // resync bumped it in the meantime (prevents a stale snapshot clobbering a fresh success).
+    private readonly surfaceVersion = new Map<number, number>();
     readonly search = signal<string>('');
     readonly selectedNode = signal<ExplorerSelection>(NO_SELECTION);
     readonly showSidebar = signal<boolean>(true);
@@ -679,20 +694,48 @@ export class AgentsPageStore {
         this.surfacePatch$.next(id);
     }
 
+    private bumpSurfaceVersion(id: number): number {
+        const next = (this.surfaceVersion.get(id) ?? 0) + 1;
+        this.surfaceVersion.set(id, next);
+        return next;
+    }
+
     private flushSurfacePatch(id: number): void {
         const patch = this.pendingSurfacePatch.get(id);
         if (!patch) return;
         this.pendingSurfacePatch.delete(id);
         this.surfacesApi.partialUpdate(id, patch).subscribe({
             next: (updated) => {
+                this.bumpSurfaceVersion(id);
                 this.surfaces.update((list) => list.map((s) => (s.id === id ? updated : s)));
                 this.saving.set(false);
             },
             error: (err) => {
                 this.saving.set(false);
                 this.toast.error(this.extractError(err, 'Failed to save surface'));
+                // Revert the card's optimistic fields immediately (the store isn't optimistic,
+                // so this needs no round-trip); the getById below just reconciles with server.
+                this.surfaceSaveError.set({ surfaceId: id, tick: ++this.surfaceErrorTick });
+                this.resyncSurface(id);
             },
         });
+    }
+
+    private resyncSurface(id: number): void {
+        // A rejected save usually means our catalog of pickable tools/collections/files is
+        // stale (an item was deleted elsewhere), so refresh those dropdown sources too.
+        this.catalogs.reloadLoadedCatalogs();
+        const version = this.bumpSurfaceVersion(id);
+        this.surfacesApi
+            .getById(id)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (fresh) => {
+                    // Drop this response if a newer save/resync superseded it while in flight.
+                    if (this.surfaceVersion.get(id) !== version) return;
+                    this.surfaces.update((list) => list.map((s) => (s.id === id ? fresh : s)));
+                },
+            });
     }
 
     duplicateAgent(id: number): void {
@@ -766,6 +809,7 @@ export class AgentsPageStore {
         if (!body) return fallback;
         if (typeof body === 'string') return body;
         if (typeof body['detail'] === 'string') return body['detail'] as string;
+        if (typeof body['message'] === 'string') return body['message'] as string;
         for (const v of Object.values(body)) {
             if (typeof v === 'string') return v;
             if (Array.isArray(v) && typeof v[0] === 'string') return v[0] as string;

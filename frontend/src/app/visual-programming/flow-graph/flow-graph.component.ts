@@ -1416,12 +1416,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
 
         const body: PartialExportRequest = {
-            start_node_list: [],
             crew_node_list: [],
+            agent_node_list: [],
+            task_node_list: [],
             python_node_list: [],
             audio_transcription_node_list: [],
             file_extractor_node_list: [],
-            end_node_list: [],
             subgraph_node_list: [],
             webhook_trigger_node_list: [],
             telegram_trigger_node_list: [],
@@ -1439,7 +1439,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const id = node.backendId;
             switch (node.type) {
                 case NodeType.AGENT:
+                    body.agent_node_list.push(id);
+                    break;
                 case NodeType.TASK:
+                    body.task_node_list.push(id);
+                    break;
                 case NodeType.TOOL:
                 case NodeType.PROJECT:
                 case NodeType.LLM:

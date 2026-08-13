@@ -184,6 +184,7 @@
                                 [currentPlace]="category.id"
                                 [surfacePlaces]="placesForSurface(surface.id)"
                                 [placesBusy]="saving()"
+                                [saveError]="saveError()"
                                 [expanded]="isExpanded(surface)"
                                 (expandedChange)="onCardExpanded(surface, $event)"
                                 (renameSurface)="renameSurface.emit({ id: surface.id, name: $event })"

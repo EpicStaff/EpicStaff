@@ -164,4 +164,23 @@ export class SurfaceCatalogsStore {
         this.collectionsRequest$ = undefined;
         return this.loadCollections();
     }
+
+    reloadPythonTools(): Observable<SurfaceToolOption[]> {
+        this.pythonLoaded = false;
+        this.pythonRequest$ = undefined;
+        return this.loadPythonTools();
+    }
+
+    reloadMcpTools(): Observable<SurfaceToolOption[]> {
+        this.mcpLoaded = false;
+        this.mcpRequest$ = undefined;
+        return this.loadMcpTools();
+    }
+
+    reloadLoadedCatalogs(): void {
+        if (this.pythonLoaded) this.reloadPythonTools().subscribe({ error: () => {} });
+        if (this.mcpLoaded) this.reloadMcpTools().subscribe({ error: () => {} });
+        if (this.collectionsLoaded) this.reloadCollections().subscribe({ error: () => {} });
+        if (this.storageTreeLoaded) this.reloadStorageTree().subscribe({ error: () => {} });
+    }
 }

@@ -95,6 +95,7 @@
                                 [currentPlace]="view.place"
                                 [surfacePlaces]="view.places"
                                 [placesBusy]="store.saving()"
+                                [saveError]="store.surfaceSaveError()"
                                 (rename)="store.updateSurface(view.surface.id, { name: $event })"
                                 (surfaceChange)="store.updateSurface(view.surface.id, $event)"
                                 (openSource)="store.openSharedSurfaceSource(view.surface.id)"
@@ -144,6 +145,7 @@
                             [saving]="store.saving()"
                             [surfaces]="store.surfaces()"
                             [saveErrorTick]="store.agentSaveErrorTick()"
+                            [surfaceSaveError]="store.surfaceSaveError()"
                             (save)="onSaveAgent($event)"
                             (dirtyChange)="onDirtyChange($event)"
                         />
@@ -162,6 +164,7 @@
                             [saving]="store.saving()"
                             [surfaces]="store.surfaces()"
                             [saveErrorTick]="store.agentSaveErrorTick()"
+                            [surfaceSaveError]="store.surfaceSaveError()"
                             [bootIsDoc]="store.isBootDoc(store.selectedAgent()!.id)"
                             [sharedSurfaceIds]="store.sharedSurfaceIdSet()"
                             (save)="onSaveAgent($event)"

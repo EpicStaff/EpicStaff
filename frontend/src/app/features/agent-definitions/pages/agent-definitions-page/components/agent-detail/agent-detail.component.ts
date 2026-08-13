@@ -28,7 +28,12 @@ import {
     ExtractTextFromStorageDialogResult,
 } from '../../../../components/extract-text-from-storage-dialog/extract-text-from-storage-dialog.component';
 import { AgentDefinition, AgentSurfacePlace } from '../../../../models/agent-definition.model';
-import { CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../../../../models/surface.model';
+import {
+    CreateSurfaceRequest,
+    PartialUpdateSurfaceRequest,
+    Surface,
+    SurfaceSaveError,
+} from '../../../../models/surface.model';
 import { SurfaceCategoryId } from '../../../../models/surface-category.model';
 import { RealtimeAgentDefinitionsApiService } from '../../../../services/realtime-agent-definitions-api.service';
 import { SurfaceDragService } from '../../../../services/surface-drag.service';
@@ -102,6 +107,7 @@ export class AgentDetailComponent implements OnInit {
     saving = input<boolean>(false);
     surfaces = input<Surface[]>([]);
     saveErrorTick = input<number>(0);
+    surfaceSaveError = input<SurfaceSaveError | null>(null);
     bootIsDoc = input<boolean>(false);
     surfacesOnly = input<boolean>(false);
     sharedSurfaceIds = input<ReadonlySet<number>>(new Set<number>());
