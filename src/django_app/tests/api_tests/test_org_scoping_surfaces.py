@@ -101,7 +101,10 @@ def test_tasknode_update_rejects_cross_org_reparent(client_a, org_a, org_b):
     gb = Graph.objects.create(name="B", org=org_b)
     node = TaskNode.objects.create(graph=ga, node_name="ta")
     resp = client_a.patch(f"/api/tasknodes/{node.id}/", {"graph": gb.id}, format="json")
-    assert resp.status_code == 404
+    # `graph` is now an OrganizationScopedPrimaryKeyRelatedField, so a cross-org
+    # pk is rejected at field validation (400) before the reparent guard runs.
+    assert resp.status_code == 400
+    assert "does not exist" in str(resp.data)
 
 
 @pytest.mark.django_db
@@ -122,7 +125,10 @@ def test_agentnode_update_rejects_cross_org_reparent(client_a, org_a, org_b):
     resp = client_a.patch(
         f"/api/agentnodes/{node.id}/", {"graph": gb.id}, format="json"
     )
-    assert resp.status_code == 404
+    # `graph` is now an OrganizationScopedPrimaryKeyRelatedField, so a cross-org
+    # pk is rejected at field validation (400) before the reparent guard runs.
+    assert resp.status_code == 400
+    assert "does not exist" in str(resp.data)
 
 
 @pytest.mark.django_db
