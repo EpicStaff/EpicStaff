@@ -53,4 +53,4 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
 WORKDIR /app/src/knowledge
 
 # Run module
-CMD ["python", "main.py"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8100"]
