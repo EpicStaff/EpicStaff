@@ -5,28 +5,19 @@ __all__ = ["TaskRegister", "task_register"]
 
 class TaskRegister:
     def __init__(self):
-        self._task: dict[str, asyncio.Task] = {}
-        self._pending_to_cancel: set[str] = set()
+        self._tasks: dict[str, asyncio.Task] = {}
 
     def register(self, key: str, task: asyncio.Task):
-        if key in self._pending_to_cancel:
-            self._pending_to_cancel.discard(key)
-            task.cancel(msg="Cancelled before registration.")
-        else:
-            self._task[key] = task
-
-    def discard(self, key: str):
-        self._task.pop(key, None)
+        if (registered_task := self._tasks.get(key)) is not None:
+            registered_task.cancel()
+        self._tasks[key] = task
+        task.add_done_callback(lambda *args: self._discard_if_current(key, task))
 
     def cancel(self, key: str, *, msg="") -> bool:
-        task = self._task.get(key)
-        if task is None:
-            self._pending_to_cancel.add(key)
-            return False
-        return task.cancel(msg)
+        if (task := self._tasks.get(key)) is not None:
+            return task.cancel(msg)
+        return False
 
-    def __contains__(self, key):
-        return key in self._task
-
-
-task_register = TaskRegister()
+    def _discard_if_current(self, key: str, task: asyncio.Task):
+        if self._tasks.get(key) is task:
+            del self._tasks[key]

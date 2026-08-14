@@ -11,6 +11,7 @@ __all__ = [
     "RagNotFoundError",
     "RepositoryError",
     "UnsupportedError",
+    "NotRunningOperationError",
 ]
 
 
@@ -69,3 +70,7 @@ class ChunksNotIndexedError(KnowledgeError):
 
 class RagNotFoundError(KnowledgeError):
     default_message = "RAG(id={rag_id}) not found."
+
+
+class NotRunningOperationError(KnowledgeError):
+    default_message = "No running {operation} for RAG(id={rag_id})."

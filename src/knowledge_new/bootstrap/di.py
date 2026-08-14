@@ -5,6 +5,7 @@ from litestar.di import Provide
 
 __all__ = ["get_dependencies"]
 
+from infrastructure.task_register import TaskRegister
 
 _dependencies: dict[str, Provide] = {}
 
@@ -36,3 +37,8 @@ def register(
 @register(sync_to_thread=False)
 def uow() -> SQLAlchemyUnitOfWork:
     return SQLAlchemyUnitOfWork()
+
+
+@register(use_cache=True, sync_to_thread=False)
+def task_register() -> TaskRegister:
+    return TaskRegister()
