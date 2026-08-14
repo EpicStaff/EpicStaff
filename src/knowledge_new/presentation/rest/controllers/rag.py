@@ -70,6 +70,10 @@ class RagController(Controller):
         data: schemas.PrechunkInputSchema,
         uow: AbstractUnitOfWork,
     ) -> None:
-        command = commands.RunPrechunk(rag_id=rag_id, **data.model_dump())
+        command = commands.RunPrechunk(
+            rag_id=rag_id,
+            document_id=data.document_id,
+            chunking_config=data.chunking_config,
+        )
         orchestrator = build_prechunker(strategy, uow)
         await orchestrator.execute(command)
