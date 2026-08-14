@@ -118,7 +118,7 @@ from tables.swagger_schemas.default_config_schemas import (
 )
 from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     PROCESS_RAG_INDEXING_POST,
-    CANCEL_RAG_INDEXING_POST,
+    CANCEL_RAG_INDEXING_DELETE,
 )
 from tables.swagger_schemas.realtime_schemas import INIT_REALTIME_POST
 from tables.swagger_schemas.sessions_schema import (
@@ -943,29 +943,14 @@ class ProcessRagIndexingView(APIView):
 
 
 class CancelRagIndexingView(APIView):
-    @extend_schema(**CANCEL_RAG_INDEXING_POST)
-    def post(self, request):
-        serializer = ProcessRagIndexingSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        rag_id = serializer.validated_data["rag_id"]
-        rag_type = serializer.validated_data["rag_type"]
-
+    @extend_schema(**CANCEL_RAG_INDEXING_DELETE)
+    def delete(self, request, rag_type: str, rag_id: int):
         try:
             with KnowledgeClient() as client:
                 client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
-
-        return Response(
-            {
-                "detail": "Indexing cancellation requested",
-                "rag_id": rag_id,
-                "rag_type": rag_type,
-            },
-            status=status.HTTP_200_OK,
-        )
+        except ClientError:
+            pass
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # class ProcessCollectionEmbeddingView(APIView):
