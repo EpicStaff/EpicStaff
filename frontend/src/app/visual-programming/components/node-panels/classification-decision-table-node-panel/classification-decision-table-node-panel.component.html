@@ -127,7 +127,11 @@
                 <!-- Pre-computation Tab -->
                 @if (activeTab() === 'precomputation') {
                     <div class="computation-section">
-                        <div class="computation-sidebar">
+                        <div
+                            #preSidebarColumn
+                            class="computation-sidebar"
+                            [style.flex-basis.px]="sidebarWidth.width()"
+                        >
                             <ng-container [formGroup]="preInputForm">
                                 <div class="cdt-input-map-wrapper">
                                     <app-input-map [activeColor]="activeColor"></app-input-map>
@@ -148,7 +152,17 @@
                                 [activeColor]="activeColor"
                             ></app-custom-input>
                         </div>
-                        <div class="code-editor-section">
+                        <app-column-resize-divider
+                            ariaLabel="Resize inputs and code columns"
+                            [column]="preSidebarColumn"
+                            [opposite]="preCodeColumn"
+                            [(width)]="sidebarWidth.width"
+                            [defaultWidth]="sidebarWidth.defaultWidth"
+                        />
+                        <div
+                            #preCodeColumn
+                            class="code-editor-section"
+                        >
                             <app-code-editor
                                 [pythonCode]="preCode"
                                 (pythonCodeChange)="onPreCodeChange($event)"
@@ -160,7 +174,11 @@
                 <!-- Post-computation Tab -->
                 @if (activeTab() === 'postcomputation') {
                     <div class="computation-section">
-                        <div class="computation-sidebar">
+                        <div
+                            #postSidebarColumn
+                            class="computation-sidebar"
+                            [style.flex-basis.px]="sidebarWidth.width()"
+                        >
                             <ng-container [formGroup]="postInputForm">
                                 <div class="cdt-input-map-wrapper">
                                     <app-input-map [activeColor]="activeColor"></app-input-map>
@@ -181,7 +199,17 @@
                                 [activeColor]="activeColor"
                             ></app-custom-input>
                         </div>
-                        <div class="code-editor-section">
+                        <app-column-resize-divider
+                            ariaLabel="Resize inputs and code columns"
+                            [column]="postSidebarColumn"
+                            [opposite]="postCodeColumn"
+                            [(width)]="sidebarWidth.width"
+                            [defaultWidth]="sidebarWidth.defaultWidth"
+                        />
+                        <div
+                            #postCodeColumn
+                            class="code-editor-section"
+                        >
                             <app-code-editor
                                 [pythonCode]="postCode"
                                 (pythonCodeChange)="onPostCodeChange($event)"

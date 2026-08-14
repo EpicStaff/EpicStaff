@@ -4,6 +4,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     ButtonComponent,
+    ColumnResizeDividerComponent,
+    createColumnWidthState,
     CustomInputComponent,
     JsonEditorComponent,
     SelectComponent,
@@ -41,6 +43,7 @@ import { WebhookStatus } from './webhook-status.model';
         MATERIAL_FORMS,
         JsonEditorComponent,
         SelectComponent,
+        ColumnResizeDividerComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -53,6 +56,8 @@ export class TelegramTriggerNodePanelComponent
     private dialog = inject(Dialog);
     private toastService = inject(ToastService);
     private ngrokStorageService = inject(NgrokConfigStorageService);
+
+    protected readonly leftColumnWidth = createColumnWidthState('telegram-trigger-node', 550);
 
     ngrokConfigs = this.ngrokStorageService.configs;
     ngrokConfigsLoading = signal<boolean>(false);
