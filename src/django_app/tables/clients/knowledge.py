@@ -56,14 +56,17 @@ class KnowledgeClient:
             },
         )
 
-    def _request(
+    def cancel(
         self,
-        method: Literal["get", "post", "put", "patch", "delete"],
-        url: str,
-        json: dict
-    ) -> httpx.Response:
+        strategy: RAGStrategy,
+        rag_id: int,
+        operation: Literal["index", "prechunk"],
+    ) -> None:
+        self._request(method="delete", url=f"rags/{strategy}/{rag_id}/{operation}/cancel/")
+
+    def _request(self, method: str, url: str, *, json: dict | None = None) -> httpx.Response:
         try:
-            response = getattr(self._client, method)(url=url, json=json)
+            response = self._client.request(method, url, json=json)
         except httpx.TimeoutException as e:
             raise ClientTimeoutError("Knowledge service timed out.") from e
         except httpx.RequestError as e:
