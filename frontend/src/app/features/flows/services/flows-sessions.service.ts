@@ -119,7 +119,8 @@ export class GraphSessionService {
         nodeName?: string | null,
         isErrorCause?: boolean,
         durationFilter?: DurationFilter | null,
-        triggerType?: TriggerType[]
+        triggerType?: TriggerType[],
+        dateFilter?: DateRangeFilter | null
     ): Observable<ApiGetRequest<GraphSessionLight>>;
 
     getSessionsByGraphId(
@@ -131,7 +132,8 @@ export class GraphSessionService {
         nodeName?: string | null,
         isErrorCause?: boolean,
         durationFilter?: DurationFilter | null,
-        triggerType?: TriggerType[]
+        triggerType?: TriggerType[],
+        dateFilter?: DateRangeFilter | null
     ): Observable<ApiGetRequest<GraphSession | GraphSessionLight>> {
         let params = new HttpParams().set('graph_id', graphId.toString());
 
@@ -143,6 +145,7 @@ export class GraphSessionService {
         if (isErrorCause) params = params.set('is_error_cause', 'true');
         if (durationFilter) params = this.applyDurationParams(params, durationFilter);
         if (triggerType && triggerType.length > 0) params = params.set('trigger_type', triggerType.join(','));
+        if (dateFilter) params = this.applyDateParams(params, dateFilter);
         if (detailed === false) {
             return this.http.get<ApiGetRequest<GraphSessionLight>>(this.apiUrl, {
                 params,

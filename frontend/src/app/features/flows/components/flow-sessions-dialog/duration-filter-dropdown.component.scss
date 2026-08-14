@@ -17,7 +17,8 @@
     white-space: nowrap;
 }
 
-.dur-dropdown.open .toggle-btn {
+.dur-dropdown.open .toggle-btn,
+.dur-dropdown.has-value .toggle-btn {
     color: var(--accent-color, #5e9eff);
 }
 

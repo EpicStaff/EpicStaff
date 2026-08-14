@@ -104,21 +104,16 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                             ></app-trigger-filter-dropdown>
                         </th>
                         <th class="col-created">
-                            <span class="col-created-header">
-                                <span
-                                    class="col-created-label"
-                                    [class.sortable]="sortable"
-                                    (click)="sortable && toggleSort()"
+                            @if (showDateFilter) {
+                                <app-created-at-filter-dropdown
+                                    [value]="dateFilter"
+                                    (valueChange)="dateFilterChange.emit($event)"
                                 >
                                     Created At
-                                </span>
-                                @if (showDateFilter) {
-                                    <app-created-at-filter-dropdown
-                                        [value]="dateFilter"
-                                        (valueChange)="dateFilterChange.emit($event)"
-                                    ></app-created-at-filter-dropdown>
-                                }
-                            </span>
+                                </app-created-at-filter-dropdown>
+                            } @else {
+                                Created At
+                            }
                         </th>
                         <th class="col-duration">
                             @if (showDuration) {

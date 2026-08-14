@@ -179,22 +179,6 @@ table {
         font-weight: 600;
     }
 
-    .col-created-label {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-
-        &.sortable {
-            cursor: pointer;
-            user-select: none;
-            white-space: nowrap;
-
-            &:hover {
-                color: var(--accent-color);
-            }
-        }
-    }
-
     .trigger-chip {
         --trigger-color: var(--color-text-secondary);
         display: inline-flex;
@@ -418,10 +402,4 @@ tr.preview-row td.preview-cell {
 .view-btn--active {
     background-color: transparent;
     border: 1px solid rgba(104, 95, 255, 1);
-}
-
-.col-created-header {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
 }
