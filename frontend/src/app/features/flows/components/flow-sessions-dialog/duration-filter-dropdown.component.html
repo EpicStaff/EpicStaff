@@ -8,20 +8,10 @@
         (click)="toggle($event)"
     >
         <span>{{ label }}</span>
-        <svg
-            class="arrow"
-            [class.arrow--open]="open"
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-        >
-            <path
-                d="M7 10l5 5 5-5"
-                stroke="currentColor"
-                stroke-width="2"
-                fill="none"
-            />
-        </svg>
+        <app-svg-icon
+            icon="menu"
+            size="16px"
+        ></app-svg-icon>
     </button>
 
     @if (open) {

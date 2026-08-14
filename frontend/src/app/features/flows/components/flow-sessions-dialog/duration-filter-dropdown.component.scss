@@ -21,16 +21,6 @@
     color: var(--accent-color, #5e9eff);
 }
 
-.arrow {
-    pointer-events: none;
-    transition: transform 0.2s;
-    flex-shrink: 0;
-
-    &--open {
-        transform: rotate(180deg);
-    }
-}
-
 .dur-panel {
     position: absolute;
     top: calc(100% + 8px);

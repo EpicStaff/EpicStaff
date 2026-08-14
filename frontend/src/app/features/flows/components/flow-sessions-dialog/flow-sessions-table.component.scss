@@ -37,8 +37,11 @@
 }
 
 .sessions-table-wrapper.has-flow-name table {
+    min-width: 1165px;
+
     .col-flow {
         width: auto;
+        min-width: 120px;
     }
 
     .col-created {
@@ -49,7 +52,7 @@
 
 table {
     width: 100%;
-    min-width: 860px;
+    min-width: 935px;
     border-collapse: collapse;
     margin-bottom: 0;
     table-layout: fixed;
@@ -63,8 +66,10 @@ table {
 
     th.col-select,
     td.col-select {
-        width: 40px;
-        min-width: 40px;
+        width: 56px;
+        min-width: 56px;
+        padding-left: 15px;
+        padding-right: 15px;
     }
 
     th.col-id,
@@ -91,8 +96,8 @@ table {
 
     th.col-trigger,
     td.col-trigger {
-        width: 130px;
-        min-width: 130px;
+        width: 170px;
+        min-width: 170px;
     }
 
     th.col-created,
@@ -103,16 +108,23 @@ table {
 
     th.col-duration,
     td.col-duration {
-        min-width: 90px;
-        width: 90px;
+        min-width: 120px;
+        width: 120px;
     }
 
     th.col-actions,
     td.col-actions {
-        min-width: 140px;
-        width: 140px;
-        text-align: center;
+        min-width: 175px;
+        width: 175px;
         padding: 12px 8px;
+    }
+
+    th.col-actions {
+        text-align: left;
+    }
+
+    td.col-actions {
+        text-align: center;
     }
 
     td[colspan='6'],
