@@ -36,20 +36,17 @@ interface StatusOption {
             >
                 <span class="selected-icons">
                     @if (selectedValues().length === 0) {
-                        {{ options[0].label }}
+                        Status
                     } @else if (selectedValues().length === 1) {
                         {{ selectedOptions()[0].label }}
                     } @else {
                         Mixed ({{ selectedValues().length }})
                     }
                 </span>
-                <span class="dropdown-arrow-wrapper">
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="16px"
-                        class="dropdown-arrow"
-                    ></app-svg-icon>
-                </span>
+                <app-svg-icon
+                    icon="menu"
+                    size="16px"
+                ></app-svg-icon>
             </button>
 
             @if (open) {
@@ -85,7 +82,7 @@ export class FlowSessionStatusFilterDropdownComponent {
     public open = false;
 
     public options: StatusOption[] = [
-        { value: 'all', label: 'All', color: '#b0b8c1', icon: 'list-numbers' },
+        { value: 'all', label: 'All', color: '#b0b8c1', icon: 'menu' },
         {
             value: GraphSessionStatus.RUNNING,
             label: 'Running',

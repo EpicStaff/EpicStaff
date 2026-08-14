@@ -1,0 +1,7 @@
+tool-data:
+  name: "Glob Tool"
+  description: "Finds files by glob pattern (e.g. '**/*.csv'), sorted newest-first. Path is relative to the sandbox root."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

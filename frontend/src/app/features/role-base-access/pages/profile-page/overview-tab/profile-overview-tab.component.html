@@ -1,0 +1,82 @@
+@if (user(); as user) {
+    <div class="info-cards">
+        <div class="card">
+            <h3 class="title card-title">
+                <app-svg-icon
+                    class="icon"
+                    icon="calendar"
+                    size="16px"
+                />
+                ACCOUNT TIMELINE
+            </h3>
+            <div>
+                <div class="row">
+                    <span class="label">Created Date:</span>
+                    <span class="value">{{ user.created_at | date: 'longDate' }}</span>
+                </div>
+                <div class="row">
+                    <span class="label">Last Updated:</span>
+                    <span class="value">{{ user.updated_at | date: 'longDate' }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 class="title card-title">
+                <app-svg-icon
+                    icon="shield"
+                    size="14px"
+                    class="icon"
+                />
+                ORGANIZATION ROLES
+                <span class="count">{{ uniqueRoles().length }}</span>
+            </h3>
+            <div class="role-tags">
+                @for (role of uniqueRoles(); track role) {
+                    <span class="role-tag">{{ role }}</span>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="orgs-section">
+        <div class="section-header">
+            <h3 class="title section-title">
+                <app-svg-icon
+                    class="icon"
+                    icon="buildings"
+                    size="18px"
+                />
+                Organizations
+                <span class="count">{{ organizations().length }}</span>
+            </h3>
+
+            <app-select
+                class="sort"
+                placeholder="Sort by"
+                [items]="SORT_ITEMS"
+                [(selectedValue)]="sortKey"
+            />
+        </div>
+
+        <div class="org-list-scroll">
+            <app-list [items]="sortedOrganizations()">
+                <ng-template
+                    let-item
+                    let-i="index"
+                >
+                    <app-list-row class="org-row">
+                        <div class="left">
+                            <app-org-avatar [name]="item.organization.name" />
+                            <span class="org-name">{{ item.organization.name }}</span>
+                        </div>
+
+                        <div class="right">
+                            <span class="org-role">{{ roleLabel(item.role.id) }}</span>
+                        </div>
+                    </app-list-row>
+                </ng-template>
+            </app-list>
+        </div>
+    </div>
+}

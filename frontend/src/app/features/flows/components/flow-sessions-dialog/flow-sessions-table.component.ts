@@ -13,13 +13,17 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
-import { CheckboxComponent, IconButtonComponent, LoadingSpinnerComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    CheckboxComponent,
+    IconButtonComponent,
+    LoadingSpinnerComponent,
+} from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
-import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GraphDto } from '../../models/graph.model';
 import {
     DateRangeFilter,
@@ -27,18 +31,23 @@ import {
     GraphSessionLight,
     GraphSessionStatus,
     isTerminalSessionStatus,
+    SessionTrigger,
+    TriggerType,
 } from '../../services/flows-sessions.service';
 import { DatePickerDropdownComponent } from './date-picker-dropdown.component';
 import { DurationFilterDropdownComponent } from './duration-filter-dropdown.component';
 import { FlowNameFilterDropdownComponent } from './flow-name-filter-dropdown.component';
 import { FlowSessionStatusBadgeComponent } from './flow-session-status-badge.component';
 import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-filter-dropdown.component';
+import { getTriggerDisplay, TriggerDisplay } from './trigger-display.constants';
+import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.component';
 @Component({
     selector: 'app-flow-sessions-table',
     standalone: true,
     imports: [
         CommonModule,
         CheckboxComponent,
+        AppSvgIconComponent,
         FlowSessionStatusBadgeComponent,
         LoadingSpinnerComponent,
         IconButtonComponent,
@@ -48,8 +57,8 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
         DurationFilterDropdownComponent,
         HasPermissionDirective,
         MatTooltipModule,
-        AppSvgIconComponent,
         DatePickerDropdownComponent,
+        TriggerFilterDropdownComponent,
     ],
     template: `
         <div
@@ -88,6 +97,12 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 (valueChange)="flowNameFilterChange.emit($event)"
                             ></app-flow-name-filter-dropdown>
                         </th>
+                        <th class="col-trigger">
+                            <app-trigger-filter-dropdown
+                                [value]="trigger"
+                                (valueChange)="triggerFilterChange.emit($event)"
+                            ></app-trigger-filter-dropdown>
+                        </th>
                         <th class="col-created">
                             <span class="col-created-header">
                                 <span
@@ -105,7 +120,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 }
                             </span>
                         </th>
-                        <th class="col-finished">
+                        <th class="col-duration">
                             @if (showDuration) {
                                 <app-duration-filter-dropdown
                                     [value]="durationFilter"
@@ -115,12 +130,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 Finished At
                             }
                         </th>
-                        <th
-                            style="text-align: center"
-                            class="actions col-actions"
-                        >
-                            Actions
-                        </th>
+                        <th class="col-actions actions">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -169,7 +179,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 </td>
                                 <td
                                     *ngIf="showFlowName"
-                                    class="flow-link-td col-flow"
+                                    class="col-flow flow-link-td"
                                 >
                                     <a
                                         class="flow-link"
@@ -183,9 +193,19 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                         <span class="flow-link-name">{{ session.graph_name }}</span>
                                     </a>
                                 </td>
-
+                                <td class="col-trigger">
+                                    <span
+                                        class="trigger-chip"
+                                        [style.--trigger-color]="getTriggerChip(session.trigger).color"
+                                    >
+                                        @if (getTriggerChip(session.trigger).icon) {
+                                            <i [class]="getTriggerChip(session.trigger).icon"></i>
+                                        }
+                                        <span>{{ getTriggerChip(session.trigger).label }}</span>
+                                    </span>
+                                </td>
                                 <td class="col-created">{{ session.created_at | date: 'medium' }}</td>
-                                <td class="col-finished">
+                                <td class="col-duration">
                                     @if (showDuration) {
                                         {{ getDuration(session) }}
                                     } @else {
@@ -281,7 +301,8 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     @Input() selectedIds: Set<number> = new Set();
     @Input() flows: { id: number; name: string }[] = [];
-    @Input() flowNameFilter: string | null = null;
+    @Input() flowNameFilter: string[] = [];
+    @Input() trigger: TriggerType[] = [];
     @Input() durationFilter: DurationFilter | null = null;
 
     @Input() externalPreview: boolean = false;
@@ -294,7 +315,8 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
     @Output() stopSession = new EventEmitter<number>();
     @Output() sortChange = new EventEmitter<'asc' | 'desc'>();
     @Output() statusFilterChange = new EventEmitter<string[]>();
-    @Output() flowNameFilterChange = new EventEmitter<string | null>();
+    @Output() flowNameFilterChange = new EventEmitter<string[]>();
+    @Output() triggerFilterChange = new EventEmitter<TriggerType[]>();
     @Output() durationFilterChange = new EventEmitter<DurationFilter | null>();
     @Output() selectedIdsChange = new EventEmitter<Set<number>>();
     @Output() previewSession = new EventEmitter<number | null>();
@@ -314,7 +336,7 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     public get colspan(): number {
         const canSelect = this.perms.canAny(ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]);
-        return 5 + (this.showFlowName ? 1 : 0) + (canSelect ? 1 : 0);
+        return 6 + (this.showFlowName ? 1 : 0) + (canSelect ? 1 : 0);
     }
 
     public ngOnChanges(changes: SimpleChanges): void {
@@ -406,6 +428,11 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
         if (hours > 0) return `${hours}h ${minutes}m`;
         if (minutes > 0) return `${minutes}m ${seconds}s`;
         return `${seconds}s`;
+    }
+
+    public getTriggerChip(trigger: SessionTrigger | null): TriggerDisplay {
+        if (!trigger) return { label: 'Unknown', icon: null, color: null };
+        return getTriggerDisplay(trigger.trigger_type);
     }
 
     protected readonly ResourceCode = ResourceCode;

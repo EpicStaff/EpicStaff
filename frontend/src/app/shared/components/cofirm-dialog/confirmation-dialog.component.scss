@@ -93,6 +93,8 @@
     color: var(--color-text-subtle);
     margin: 0;
     line-height: 1.5;
+    max-height: 200px;
+    overflow: auto;
 }
 
 ::ng-deep .caution-message strong {

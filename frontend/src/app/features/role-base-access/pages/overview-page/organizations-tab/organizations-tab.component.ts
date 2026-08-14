@@ -2,12 +2,11 @@ import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatTooltip } from '@angular/material/tooltip';
 import {
-    AppSvgIconComponent,
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
+    AppTableRowAction,
     ButtonComponent,
     ConfirmationDialogService,
     LoadingSpinnerComponent,
@@ -39,13 +38,11 @@ const STATUS_ITEMS: SelectItem[] = [
         AppTableCellDirective,
         ButtonComponent,
         SearchComponent,
-        AppSvgIconComponent,
         LoadingSpinnerComponent,
         StatusBadgeComponent,
         OrgAvatarComponent,
         AdminsCellComponent,
         DatePipe,
-        MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -59,13 +56,35 @@ export class OrganizationsTabComponent implements OnInit {
     searchTerm = signal('');
     isLoading = signal(true);
 
+    private readonly rowActions: AppTableRowAction[] = [
+        {
+            icon: 'edit',
+            tooltip: 'Edit organization',
+            onClick: (row) => this.onEditOrganization(row),
+        },
+        {
+            icon: 'stop',
+            tooltip: 'Deactivate organization',
+            variant: 'danger',
+            hidden: (row) => row['status'] !== 'active',
+            onClick: (row) => this.onDeactivateOrganization(row),
+        },
+        {
+            icon: 'play',
+            tooltip: 'Activate organization',
+            variant: 'muted',
+            hidden: (row) => row['status'] === 'active',
+            onClick: (row) => this.onReactivateOrganization(row),
+        },
+    ];
+
     readonly columns: AppTableColumnDef[] = [
-        { key: 'organization', label: 'Organization', width: '2fr' },
-        { key: 'admin', label: 'Admin', width: '2fr' },
-        { key: 'members', label: 'Members', width: '1fr' },
-        { key: 'created', label: 'Created', width: '1.5fr' },
-        { key: 'status', label: 'Status', width: '1.5fr', filterItems: STATUS_ITEMS },
-        { key: 'actions', label: 'Actions', width: '130px', align: 'center' },
+        { key: 'organization', label: 'Organization', width: 'minmax(180px, 2fr)' },
+        { key: 'admin', label: 'Admin', width: 'minmax(180px, 2fr)' },
+        { key: 'members', label: 'Members', width: 'minmax(90px, 1fr)' },
+        { key: 'created', label: 'Created', width: 'minmax(120px, 1.5fr)' },
+        { key: 'status', label: 'Status', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
+        { key: 'actions', label: 'Actions', width: '130px', align: 'center', actions: this.rowActions },
     ];
 
     organizations = this.organizationStorage.organizations;

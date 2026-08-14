@@ -8,6 +8,7 @@
         @for (section of VARIABLE_SECTIONS; track section.inputType) {
             <app-variable-section
                 [config]="section"
+                [readOnly]="readOnly()"
                 [initialRows]="getSectionInitialRows(section.inputType)"
                 [externalDuplicates]="externalDuplicatesByType()[section.inputType]"
                 [rowDropListId]="parameterRowDropListId(section.inputType)"
@@ -22,6 +23,7 @@
         @if (currentDrillSectionConfig(); as cfg) {
             <app-variable-section
                 [config]="cfg"
+                [readOnly]="readOnly()"
                 [mode]="currentDrillMode()"
                 [initialRows]="currentDrillRows()"
                 [rowDropListId]="null"

@@ -33,7 +33,7 @@
     overflow-y: hidden;
     border: 1px solid var(--color-divider-regular);
     background: var(--color-nodes-actionbar-bg);
-    min-height: 300px;
+    min-height: 520px;
 }
 
 .sessions-table-wrapper.has-flow-name table {
@@ -61,24 +61,26 @@ table {
         border-bottom: 1px solid var(--color-divider-subtle);
     }
 
-    .col-select {
-        width: 48px;
-        min-width: 48px;
-        padding-left: 12px;
-        padding-right: 12px;
+    th.col-select,
+    td.col-select {
+        width: 40px;
+        min-width: 40px;
     }
 
-    .col-id {
+    th.col-id,
+    td.col-id {
         width: 70px;
         min-width: 70px;
     }
 
-    .col-status {
+    th.col-status,
+    td.col-status {
         width: 150px;
         min-width: 150px;
     }
 
-    .col-flow {
+    th.col-flow,
+    td.col-flow {
         width: 200px;
         min-width: 100px;
     }
@@ -87,19 +89,28 @@ table {
         overflow: hidden;
     }
 
-    .col-created {
-        width: 150px;
-        min-width: 150px;
+    th.col-trigger,
+    td.col-trigger {
+        width: 130px;
+        min-width: 130px;
     }
 
-    .col-finished {
-        min-width: 110px;
-        width: 110px;
+    th.col-created,
+    td.col-created {
+        width: 190px;
+        min-width: 190px;
     }
 
-    .col-actions {
-        min-width: 165px;
-        width: 165px;
+    th.col-duration,
+    td.col-duration {
+        min-width: 90px;
+        width: 90px;
+    }
+
+    th.col-actions,
+    td.col-actions {
+        min-width: 140px;
+        width: 140px;
         text-align: center;
         padding: 12px 8px;
     }
@@ -169,6 +180,24 @@ table {
             &:hover {
                 color: var(--accent-color);
             }
+        }
+    }
+
+    .trigger-chip {
+        --trigger-color: var(--color-text-secondary);
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 5px;
+        border: 1px solid var(--trigger-color);
+        color: var(--trigger-color);
+        font-size: 0.85em;
+        white-space: nowrap;
+
+        i {
+            font-size: 1em;
+            line-height: 1;
         }
     }
 

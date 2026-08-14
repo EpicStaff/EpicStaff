@@ -295,6 +295,12 @@
             background-color: var(--color-surface, #1e1e2e);
             color: var(--color-text-primary);
         }
+
+        &:disabled {
+            cursor: default;
+            padding-right: 0;
+            background-image: none;
+        }
     }
 
     &__cell-checkbox {

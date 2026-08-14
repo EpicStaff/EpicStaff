@@ -10,6 +10,7 @@ import {
     SimpleChanges,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 
 import { ClickOutsideDirective } from '../../../../shared/directives/click-outside.directive';
 
@@ -21,7 +22,7 @@ interface FlowOption {
 @Component({
     selector: 'app-flow-name-filter-dropdown',
     standalone: true,
-    imports: [CommonModule, FormsModule, ClickOutsideDirective],
+    imports: [CommonModule, FormsModule, ClickOutsideDirective, CheckboxComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     styles: [
         `
@@ -34,6 +35,7 @@ interface FlowOption {
             }
             :host .dropdown-panel {
                 z-index: 1100 !important;
+                min-width: 350px !important;
             }
             :host .node-filter-dropdown {
                 margin-left: 0;
@@ -44,29 +46,18 @@ interface FlowOption {
         <div
             class="node-filter-dropdown"
             [class.open]="open"
-            (appClickOutside)="closeDropdown()"
+            (appClickOutside)="onCancel()"
         >
             <button
                 class="dropdown-toggle"
                 (click)="toggleDropdown($event)"
             >
                 <span class="selected-label">
-                    {{ value ?? 'Flow name' }}
-                </span>
-                <span class="dropdown-arrow-wrapper">
-                    <svg
-                        class="dropdown-arrow"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M7 10l5 5 5-5"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            fill="none"
-                        />
-                    </svg>
+                    Flow Name
+                    <app-svg-icon
+                        icon="menu"
+                        size="16px"
+                    ></app-svg-icon>
                 </span>
             </button>
             @if (open) {
@@ -91,24 +82,13 @@ interface FlowOption {
                         }
                     </div>
                     <ul class="dropdown-menu">
-                        <li
-                            (click)="select(null, $event)"
-                            [class.selected]="value === null"
-                        >
-                            <span>All Flows</span>
-                            @if (value === null) {
-                                <span class="checkmark">&#10003;</span>
-                            }
-                        </li>
                         @for (flow of filteredFlows; track flow.id) {
                             <li
-                                (click)="select(flow.name, $event)"
-                                [class.selected]="value === flow.name"
+                                class="group-item"
+                                (click)="toggleFlow(flow.name)"
                             >
+                                <app-checkbox [checked]="isChecked(flow.name)"></app-checkbox>
                                 <span>{{ flow.name }}</span>
-                                @if (value === flow.name) {
-                                    <span class="checkmark">&#10003;</span>
-                                }
                             </li>
                         }
                         @if (filteredFlows.length === 0) {
@@ -118,16 +98,27 @@ interface FlowOption {
                             </li>
                         }
                     </ul>
-                    @if (value !== null) {
-                        <div class="clear-filter-footer">
-                            <button
-                                class="clear-filter-btn"
-                                (click)="select(null, $event)"
-                            >
-                                Clear Filter
-                            </button>
-                        </div>
-                    }
+
+                    <div class="trigger-dropdown-footer">
+                        <button
+                            class="clear-filter-btn"
+                            (click)="onClear()"
+                        >
+                            Clear Filter
+                        </button>
+                        <button
+                            class="cancel-btn"
+                            (click)="onCancel()"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            class="save-btn"
+                            (click)="onSave()"
+                        >
+                            Save Changes
+                        </button>
+                    </div>
                 </div>
             }
         </div>
@@ -136,17 +127,19 @@ interface FlowOption {
 })
 export class FlowNameFilterDropdownComponent implements OnChanges {
     @Input() flows: FlowOption[] = [];
-    @Input() value: string | null = null;
-    @Output() valueChange = new EventEmitter<string | null>();
+    @Input() value: string[] = [];
+    @Output() valueChange = new EventEmitter<string[]>();
 
     public open = false;
     public searchQuery = '';
+    public draftValue: string[] = [];
     public filteredFlows: FlowOption[] = [];
 
     constructor(private cdr: ChangeDetectorRef) {}
 
     public ngOnChanges(changes: SimpleChanges): void {
         if (changes['flows'] || changes['value']) {
+            this.draftValue = [...this.value];
             this.applySearch(this.searchQuery);
         }
     }
@@ -169,21 +162,46 @@ export class FlowNameFilterDropdownComponent implements OnChanges {
         this.cdr.markForCheck();
     }
 
+    public isChecked(name: string): boolean {
+        return this.draftValue.includes(name);
+    }
+
+    public toggleFlow(name: string): void {
+        if (this.isChecked(name)) {
+            this.draftValue = this.draftValue.filter((n) => n !== name);
+        } else {
+            this.draftValue = [...this.draftValue, name];
+        }
+        this.cdr.markForCheck();
+    }
+
     public toggleDropdown(event: Event): void {
         event.stopPropagation();
         this.open = !this.open;
-        if (this.open) this.applySearch(this.searchQuery);
+        if (this.open) {
+            this.draftValue = [...this.value];
+            this.applySearch(this.searchQuery);
+        }
         this.cdr.markForCheck();
     }
 
-    public closeDropdown(): void {
+    public onClear(): void {
+        this.draftValue = [];
+        this.valueChange.emit([]);
+        this.closeDropdown();
+    }
+
+    public onCancel(): void {
+        this.closeDropdown();
+    }
+
+    public onSave(): void {
+        this.valueChange.emit([...this.draftValue]);
+        this.closeDropdown();
+    }
+
+    private closeDropdown(): void {
         this.open = false;
         this.cdr.markForCheck();
-    }
-
-    public select(name: string | null, event: Event): void {
-        event.stopPropagation();
-        this.valueChange.emit(name);
-        this.closeDropdown();
     }
 }

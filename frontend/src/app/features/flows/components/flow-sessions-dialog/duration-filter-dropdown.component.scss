@@ -11,9 +11,14 @@
     border: none;
     color: var(--color-text-primary);
     font-size: 1em;
+    font-weight: 600;
     cursor: pointer;
     padding: 0;
     white-space: nowrap;
+}
+
+.dur-dropdown.open .toggle-btn {
+    color: var(--accent-color, #5e9eff);
 }
 
 .arrow {

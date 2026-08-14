@@ -1,0 +1,104 @@
+<div
+    class="findings-container"
+    *ngIf="data"
+>
+    <div
+        class="header"
+        (click)="toggle()"
+    >
+        <div class="play-arrow">
+            <app-svg-icon
+                [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                size="1rem"
+            />
+        </div>
+        <div class="icon-container">
+            <app-svg-icon
+                icon="list-check"
+                size="1rem"
+            />
+        </div>
+        <div class="title">
+            <h3>{{ data.title || 'Findings' }}</h3>
+            <p
+                class="subtitle"
+                *ngIf="data.summary"
+            >
+                {{ data.summary }}
+            </p>
+        </div>
+        <div class="meta">
+            <span class="chip">{{ data.total_returned }} of {{ data.total_submitted }}</span>
+            <span
+                class="chip chip-truncated"
+                *ngIf="data.truncated"
+            >
+                truncated
+            </span>
+        </div>
+    </div>
+
+    <div
+        class="content"
+        [class.collapsed]="!isExpanded"
+        [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
+    >
+        <div
+            class="empty-state"
+            *ngIf="data.findings.length === 0"
+        >
+            No findings reported
+        </div>
+
+        <div
+            class="findings-table-wrapper"
+            *ngIf="data.findings.length > 0"
+        >
+            <table class="findings-table">
+                <thead>
+                    <tr>
+                        <th class="col-severity">Severity</th>
+                        <th class="col-title">Title</th>
+                        <th class="col-category">Category</th>
+                        <th class="col-location">File</th>
+                        <th class="col-detail">Detail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr *ngFor="let finding of data.findings; trackBy: trackByIndex">
+                        <td class="col-severity">
+                            <span
+                                class="severity-badge"
+                                [ngClass]="severityClass(finding.severity)"
+                            >
+                                {{ finding.severity }}
+                            </span>
+                        </td>
+                        <td class="col-title">{{ finding.title }}</td>
+                        <td class="col-category">{{ finding.category || '—' }}</td>
+                        <td class="col-location">
+                            <code *ngIf="fileLocation(finding) as location">{{ location }}</code>
+                            <span
+                                *ngIf="!fileLocation(finding)"
+                                class="muted"
+                                >—</span
+                            >
+                        </td>
+                        <td class="col-detail">
+                            <span
+                                *ngIf="finding.detail"
+                                class="detail-text"
+                                >{{ finding.detail }}</span
+                            >
+                            <span
+                                *ngIf="!finding.detail"
+                                class="muted"
+                                >—</span
+                            >
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

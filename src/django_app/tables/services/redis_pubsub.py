@@ -26,11 +26,13 @@ from tables.models import (
     SessionStorageFile,
     StorageFile,
 )
+from tables.models.session_models import SessionTrigger
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.services.schedule_trigger_service import ScheduleTriggerService
+from tables.services.trigger_spec import TriggerSpec
 from src.shared.models import (
     CodeResultData,
     GraphSessionMessageData,
@@ -83,7 +85,7 @@ class RedisPubSub:
 
     def session_status_handler(self, message: dict):
         try:
-            logger.debug(f"Received message from session_status_handler: {message}")
+            logger.debug("Received message from session_status_handler: {}", message)
             data = json.loads(message["data"])
             close_old_connections()
             with transaction.atomic():
@@ -124,7 +126,7 @@ class RedisPubSub:
 
     def code_results_handler(self, message: dict):
         try:
-            logger.debug(f"Received message from code_result_handler: {message}")
+            logger.debug("Received message from code_result_handler: {}", message)
             result = CodeResultData.model_validate_json(message["data"])
             close_old_connections()
             if not RunPythonCodeService().save_execution_result(result):
@@ -136,7 +138,7 @@ class RedisPubSub:
 
     def storage_mutations_handler(self, message: dict):
         try:
-            logger.debug(f"Received storage mutation event: {message}")
+            logger.debug("Received storage mutation event: {}", message)
             data = json.loads(message["data"])
             event = StorageMutationEvent.model_validate(data)
 
@@ -186,7 +188,7 @@ class RedisPubSub:
 
     def webhook_events_handler(self, message: dict):
         try:
-            logger.debug(f"Received webhook event: {message}")
+            logger.debug("Received webhook event: {}", message)
             data = WebhookEventData.model_validate_json(message["data"])
             if data.path.startswith(TELEGRAM_TRIGGER_PREFIX):
                 TelegramTriggerService().handle_telegram_trigger(
@@ -261,7 +263,10 @@ class RedisPubSub:
             with transaction.atomic():
                 created_objects = model.objects.bulk_create(data, ignore_conflicts=True)
                 logger.debug(
-                    f"{model.__name__} updated with {len(created_objects)}/{len(data)} entities"
+                    "{} updated with {}/{} entities",
+                    model.__name__,
+                    len(created_objects),
+                    len(data),
                 )
         except IntegrityError as e:
             logger.error(f"Failed to save {model.__name__}: {e}")
@@ -310,7 +315,7 @@ class RedisPubSub:
 
     def graph_session_message_handler(self, message: dict):
         try:
-            logger.info(f"Received message from graph_message_handler: {message}")
+            logger.debug("Received message from graph_message_handler: {}", message)
             data = json.loads(message["data"])
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
             message_uuid = graph_session_message_data.uuid
@@ -566,6 +571,16 @@ class RedisPubSub:
 
             exec_id_to_session_id[exec_id] = session.pk
             created_sessions.append((exec_id, session, finish_data))
+
+        SessionTrigger.objects.bulk_create(
+            [
+                SessionTrigger(
+                    session=session,
+                    **TriggerSpec.parent_flow(session.parent_session_id).to_fields(),
+                )
+                for _, session, _ in created_sessions
+            ]
+        )
 
         # Copy messages to each subgraph session via buffer,
         # and keep source messages per exec_id for token calculation.

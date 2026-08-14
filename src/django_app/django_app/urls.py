@@ -16,10 +16,10 @@ Including another URLconf
 """
 
 from django.urls import include, path
-from rest_framework_simplejwt.views import TokenRefreshView
 from tables.views.auth_views import (
     AdminPasswordResetView,
     ApiKeyValidateView,
+    CookieTokenRefreshView,
     FirstSetupView,
     LoginView,
     LogoutView,
@@ -55,7 +55,7 @@ from django.conf.urls.static import static
 urlpatterns = [
     path("api/auth/login/", LoginView.as_view(), name="login"),
     path("api/auth/logout/", LogoutView.as_view(), name="logout"),
-    path("api/auth/refresh/", TokenRefreshView.as_view(), name="refresh"),
+    path("api/auth/refresh/", CookieTokenRefreshView.as_view(), name="refresh"),
     path("api/auth/sse-ticket/", SseTicketView.as_view(), name="sse_ticket"),
     path("api/auth/ws-ticket/", WsTicketView.as_view(), name="ws_ticket"),
     path(

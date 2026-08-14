@@ -60,6 +60,48 @@ LOGGING = {
         "handlers": ["loguru"],
         "level": "DEBUG",
     },
+    "loggers": {
+        "litellm": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "LiteLLM": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "LiteLLM Router": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "LiteLLM Proxy": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "boto3": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "botocore": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "s3transfer": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "urllib3": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
 }
 
 
@@ -87,13 +129,13 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
 ]
 
 
@@ -116,6 +158,7 @@ REST_FRAMEWORK = {
         "password_reset_request": os.getenv(
             "PASSWORD_RESET_REQUEST_THROTTLE_RATE", "5/hour"
         ),
+        "notify_email": os.getenv("NOTIFY_EMAIL_THROTTLE_RATE", "10/hour"),
     },
 }
 

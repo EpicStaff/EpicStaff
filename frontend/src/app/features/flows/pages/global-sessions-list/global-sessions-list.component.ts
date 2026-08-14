@@ -37,6 +37,7 @@ import {
     GraphSessionLight,
     GraphSessionService,
     GraphSessionStatus,
+    TriggerType,
 } from '../../services/flows-sessions.service';
 
 @Component({
@@ -71,7 +72,8 @@ export class GlobalSessionsListComponent {
     ];
     public statusFilter = signal<string[]>(['all']);
     public sortOrder = signal<'asc' | 'desc'>('desc');
-    public flowFilter = signal<string | null>(null);
+    public flowFilter = signal<string[]>([]);
+    public triggerFilter = signal<TriggerType[]>([]);
     public isErrorCauseFilter = signal<boolean>(false);
     public durationFilter = signal<DurationFilter | null>(null);
     public dateFilter = signal<DateRangeFilter | null>(null);
@@ -110,6 +112,7 @@ export class GlobalSessionsListComponent {
             const status = this.statusFilter();
             const sort = this.sortOrder();
             const flowName = this.flowFilter();
+            const triggerName = this.triggerFilter();
             const isErrorCause = this.isErrorCauseFilter();
             const durationFilter = this.durationFilter();
             const dateFilter = this.dateFilter();
@@ -120,6 +123,7 @@ export class GlobalSessionsListComponent {
                 status,
                 sort,
                 flowName,
+                triggerName,
                 isErrorCause,
                 durationFilter,
                 dateFilter
@@ -182,14 +186,18 @@ export class GlobalSessionsListComponent {
             this.router.navigate(['/graph', session.graph_id, 'session', sessionId]);
         }
     }
-
     public onIsErrorCauseChange(): void {
         this.isErrorCauseFilter.update((v) => !v);
         this.currentPage.set(1);
     }
 
-    public onFlowFilterChange(name: string | null): void {
-        this.flowFilter.set(name);
+    public onFlowFilterChange(names: string[]): void {
+        this.flowFilter.set(names);
+        this.currentPage.set(1);
+    }
+
+    public onTriggerFilterChange(types: TriggerType[]): void {
+        this.triggerFilter.set(types);
         this.currentPage.set(1);
     }
 
@@ -297,9 +305,11 @@ export class GlobalSessionsListComponent {
             obs$ = this.importExportService.bulkExportSessions(Array.from(this.selectedIds()), format);
         } else {
             const activeStatuses = this.statusFilter().filter((s) => s !== 'all');
-            const selectedFlow = this.flowFilter()
-                ? this.availableFlows().find((f) => f.name === this.flowFilter())
-                : null;
+            const selectedFlowNames = this.flowFilter();
+            const selectedFlow =
+                selectedFlowNames.length === 1
+                    ? this.availableFlows().find((f) => f.name === selectedFlowNames[0])
+                    : null;
             obs$ = this.importExportService.exportAll(
                 {
                     graph: selectedFlow?.id,
@@ -333,7 +343,8 @@ export class GlobalSessionsListComponent {
         offset: number,
         status: string[],
         sort: 'asc' | 'desc' = 'desc',
-        graphName?: string | null,
+        graphName?: string[],
+        triggerType?: TriggerType[],
         isErrorCause?: boolean,
         durationFilter?: DurationFilter | null,
         dateFilter?: DateRangeFilter | null
@@ -343,7 +354,17 @@ export class GlobalSessionsListComponent {
         this.isLoaded.set(false);
         const ordering = sort === 'asc' ? 'created_at' : '-created_at';
         this.graphSessionService
-            .getGlobalSessions(limit, offset, status, ordering, graphName, isErrorCause, durationFilter, dateFilter)
+            .getGlobalSessions(
+                limit,
+                offset,
+                status,
+                ordering,
+                graphName,
+                triggerType,
+                isErrorCause,
+                durationFilter,
+                dateFilter
+            )
             .pipe(takeUntil(this.cancelLoad$), takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (response) => {
@@ -374,6 +395,7 @@ export class GlobalSessionsListComponent {
                             this.statusFilter(),
                             ordering,
                             this.flowFilter(),
+                            this.triggerFilter(),
                             this.isErrorCauseFilter(),
                             this.durationFilter(),
                             this.dateFilter()
