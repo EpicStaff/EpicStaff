@@ -27,9 +27,11 @@ from src.crew.services.graph.shared_variables import (
 )
 from src.crew.services.graph.session_audit_provider import (
     clear_session_org,
+    emit_session_audit_event,
     get_session_audit_writer,
     get_session_org,
     register_session_org,
+    track_audit_task,
 )
 
 # Reserved key smuggled through SessionData.initial_state (a pre-existing
@@ -67,97 +69,6 @@ def _extract_finish_token_total(message_data: dict) -> int:
         return 0
 
     return token_usage.get("total_tokens", 0) or 0
-
-
-# Fire-and-forget audit emission tasks (add_finish_message, add_session_end,
-# etc.) need a strong reference held somewhere for their lifetime - asyncio's
-# own docs warn a Task with no reference anywhere is only weakly tracked by
-# the loop and can be garbage-collected mid-execution. safe_emit swallows
-# exceptions internally, so a GC'd task here would fail with zero log output,
-# unlike every other designed failure mode in this feature.
-_audit_tasks: set[asyncio.Task] = set()
-
-
-def _on_audit_task_done(task: asyncio.Task) -> None:
-    _audit_tasks.discard(task)
-    if task.cancelled():
-        return
-    exc = task.exception()
-    if exc is not None:
-        logger.warning(f"Audit task failed, event dropped: {exc}")
-
-
-def _track_audit_task(coro) -> None:
-    task = asyncio.create_task(coro)
-    _audit_tasks.add(task)
-    task.add_done_callback(_on_audit_task_done)
-
-
-def _emit_session_audit_event(data: dict) -> None:
-    """
-    Dispatches one custom-stream chunk into the audit pipeline, reusing the
-    same uuid already minted for the primary Redis-published message (data
-    is the same dict published via redis_service.publish("graph:messages", data)
-    right after this runs - one id, shared across both pipelines).
-
-    Never blocks the primary pipeline - fire-and-forget via create_task,
-    except add_start_message which is cache-only and synchronous.
-    """
-    session_id = data.get("session_id")
-    org_id = get_session_org(session_id) if session_id is not None else None
-    if org_id is None:
-        return
-
-    message_data = data.get("message_data") or {}
-    message_type = message_data.get("message_type")
-    node_name = data.get("name") or ""
-    execution_order = data.get("execution_order") or 0
-    event_id = data["uuid"]
-    writer = get_session_audit_writer()
-
-    if message_type == "start":
-        writer.add_start_message(
-            session_id, node_name, execution_order, message_data.get("input") or {}
-        )
-    elif message_type == "finish":
-        _track_audit_task(
-            writer.add_finish_message(
-                session_id=session_id,
-                org_id=org_id,
-                node_name=node_name,
-                execution_order=execution_order,
-                output=message_data.get("output") or {},
-                event_id=event_id,
-                additional_data=message_data.get("additional_data"),
-            )
-        )
-    elif message_type == "error":
-        # Real ErrorMessageData serializes to "details"; the chunk-cleaning
-        # exception fallback (a few lines up in run_session) uses "error"
-        # instead - handle both since they're both real shapes in this file.
-        error_detail = (
-            message_data.get("details") or message_data.get("error") or "unknown error"
-        )
-        _track_audit_task(
-            writer.add_error_message(
-                session_id=session_id,
-                org_id=org_id,
-                node_name=node_name,
-                execution_order=execution_order,
-                error=error_detail,
-                event_id=event_id,
-            )
-        )
-    else:
-        _track_audit_task(
-            writer.add_custom_message(
-                session_id=session_id,
-                org_id=org_id,
-                node_name=node_name,
-                message_data=message_data,
-                event_id=event_id,
-            )
-        )
 
 
 @dataclass
@@ -213,6 +124,14 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         try:
             session_id = session_data.id
             register_session_org(session_id, session_data.org_id)
+            track_audit_task(
+                get_session_audit_writer().add_session_start(
+                    session_id=session_id,
+                    org_id=session_data.org_id,
+                    flow_name=session_data.graph.name,
+                    event_id=str(uuid.uuid4()),
+                )
+            )
             # Copy so popping the reserved budget key never mutates the
             # pydantic SessionData model itself.
             initial_state = dict(session_data.initial_state)
@@ -326,7 +245,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     assert isinstance(data, dict), "custom chunk must be a dict"
                     data["uuid"] = str(uuid.uuid4())
                     try:
-                        _emit_session_audit_event(data)
+                        emit_session_audit_event(data)
                     except Exception as audit_exc:
                         # Audit must never break the primary pipeline - this
                         # dispatch call must never propagate, no matter what
@@ -395,14 +314,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             org_id = get_session_org(session_id)
             if org_id is not None:
-                _track_audit_task(
+                track_audit_task(
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
+                        event_id=graph_end_message_data["uuid"],
                         status="completed",
-                        session_message_id=graph_end_message_data["uuid"],
                         output=end_node_result,
-                        flow_name=session_data.graph.name,
                     )
                 )
 
@@ -421,13 +339,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             logger.warning(f"Session {session_id} was cancelled")
             org_id = get_session_org(session_id)
             if org_id is not None:
-                _track_audit_task(
+                track_audit_task(
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
+                        event_id=str(uuid.uuid4()),
                         status="failed",
                         details={"reason": "timeout"},
-                        flow_name=session_data.graph.name,
                     )
                 )
             clear_session_org(session_id)
@@ -438,13 +356,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             )
             org_id = get_session_org(session_id)
             if org_id is not None:
-                _track_audit_task(
+                track_audit_task(
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
+                        event_id=str(uuid.uuid4()),
                         status="failed",
                         details={"reason": e.reason or "stopped"},
-                        flow_name=session_data.graph.name,
                     )
                 )
             clear_session_org(session_id)
@@ -457,13 +375,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             )
             org_id = get_session_org(session_id)
             if org_id is not None:
-                _track_audit_task(
+                track_audit_task(
                     get_session_audit_writer().add_session_end(
                         session_id=session_id,
                         org_id=org_id,
+                        event_id=str(uuid.uuid4()),
                         status="failed",
                         details={"error": str(e)},
-                        flow_name=session_data.graph.name,
                     )
                 )
             clear_session_org(session_id)

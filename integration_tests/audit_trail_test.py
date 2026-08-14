@@ -54,7 +54,7 @@ from utils.audit_utils import (
     wait_for_audit_tree,
     wait_for_export,
 )
-from utils.variables import AUDITOR_URL
+from utils.variables import AUDIT_TOKEN_TTL_SECONDS, AUDITOR_URL
 from utils.cleaning_utils import delete_graph, delete_session
 from utils.utils import (
     create_edge,
@@ -101,7 +101,9 @@ def test_audit_token_carries_rbac_derived_claims(org_id):
     """POST /api/audit/token/ turns effective AUDIT permissions into claims."""
     body = mint_audit_token(org_id)
 
-    assert body["expires_in"] == 300, "Token TTL should be the documented 5 minutes"
+    assert body["expires_in"] == AUDIT_TOKEN_TTL_SECONDS, (
+        f"Token TTL should match AUDIT_TOKEN_TTL_SECONDS ({AUDIT_TOKEN_TTL_SECONDS}s)"
+    )
 
     claims = decode_jwt_payload(body["token"])
     assert claims["org_id"] == org_id
@@ -112,7 +114,7 @@ def test_audit_token_carries_rbac_derived_claims(org_id):
         f"Unexpected action in claims: {claims['actions']}"
     )
     assert isinstance(claims["retention_days"], int)
-    assert claims["exp"] - claims["iat"] == 300
+    assert claims["exp"] - claims["iat"] == AUDIT_TOKEN_TTL_SECONDS
 
 
 # --------------------------------------------------------------------------
@@ -322,10 +324,15 @@ def test_session_run_produces_audit_trail(org_id, read_export_token):
         logger.info(f"Audit test session {session_id} started")
         wait_for_results_sse(session_id=session_id)
 
-        # The session root only lands once the session ends, so wait on the
-        # kinds under test rather than a row count.
+        # The session identity doc + "Session Start" land immediately (top of
+        # run_session), well before the session finishes - wait specifically
+        # for "Session End" too, or we'd assert on a session that's still
+        # mid-run.
         items = wait_for_audit_tree(
-            read_export_token, session_id, required_kinds={"session", "node"}
+            read_export_token,
+            session_id,
+            required_kinds={"session", "node"},
+            required_event_names={"Session Start", "Session End"},
         )
         by_kind: dict[str, list[dict]] = {}
         for item in items:
@@ -341,20 +348,49 @@ def test_session_run_produces_audit_trail(org_id, read_export_token):
         session_row = session_rows[0]
         assert session_row["org_id"] == org_id
         assert session_row["session_id"] == session_id
-        assert session_row["status"] == "completed"
+        assert session_row["status"] is None, (
+            "The session identity doc's status must stay None forever "
+            "(write-once/no-edit hard rule) - the real outcome lives on "
+            "the 'Session End' event instead, never on this doc"
+        )
         assert session_row["parent_id"] == "", "The session root must have no parent"
         assert session_row["flow_name"], (
             "flow_name must be populated on the session row, not left blank"
         )
 
-        # every non-root row hangs off that root
-        for item in items:
-            if item["kind"] == "session":
-                continue
-            assert item["parent_id"] == session_row["id"], (
-                f"{item['kind']} row {item['id']} is not chained to the session root"
+        # kind=node rows are direct children of the session.
+        for node in by_kind.get("node", []):
+            assert node["parent_id"] == session_row["id"], (
+                f"node row {node['id']} is not chained to the session root"
             )
+            assert node["org_id"] == org_id
+
+        event_rows = by_kind.get("event", [])
+        for item in event_rows:
             assert item["org_id"] == org_id
+
+        # Session Start/End are the two events parented directly to the
+        # session itself - everything else parents to a specific node instead
+        # (checked below, once we've identified audit_probe_node's own row).
+        session_start_events = [e for e in event_rows if e["name"] == "Session Start"]
+        assert len(session_start_events) == 1, (
+            f"Exactly one 'Session Start' event expected, got {len(session_start_events)}"
+        )
+        assert session_start_events[0]["parent_id"] == session_row["id"], (
+            "'Session Start' must be parented directly to the session"
+        )
+        assert session_start_events[0]["status"] == "completed"
+
+        session_end_events = [e for e in event_rows if e["name"] == "Session End"]
+        assert len(session_end_events) == 1, (
+            f"Exactly one 'Session End' event expected, got {len(session_end_events)}"
+        )
+        session_end = session_end_events[0]
+        assert session_end["parent_id"] == session_row["id"], (
+            "'Session End' must be parented directly to the session"
+        )
+        assert session_end["status"] == "completed"
+        assert session_end["output"], "Session End must carry the final output"
 
         # crew suffixes node names with an execution counter
         # ("audit_probe_node #19"), so match on the declared name as a prefix.
@@ -366,8 +402,43 @@ def test_session_run_produces_audit_trail(org_id, read_export_token):
             f"No node row for audit_probe_node. Names: "
             f"{[n['name'] for n in by_kind['node']]}"
         )
-        assert node_row["status"] == "completed"
-        assert node_row["output"], "The node's output must be captured in the audit row"
+        assert node_row["status"] is None, (
+            "The node wrapper's status must stay None forever - the real "
+            "outcome lives on the 'Finish' event instead, never on this doc "
+            "(same write-once/no-edit rule as the session identity doc)"
+        )
+
+        # every event this node emitted (its "Start" marker + activity events
+        # like python_stream/python) must be parented to the node's own id -
+        # not flatly to the session - so a trace viewer can nest them under
+        # the right node even though they're written before the node's
+        # outcome row exists.
+        node_events = [e for e in event_rows if e["name"] == node_row["name"]]
+        assert node_events, f"No event rows found for node {node_row['name']}"
+        for event in node_events:
+            assert event["parent_id"] == node_row["id"], (
+                f"event {event['id']} ({event['name']}) is not chained to its "
+                f"owning node {node_row['id']}, got parent_id={event['parent_id']}"
+            )
+
+        finish_events = [
+            e for e in node_events if e["details"].get("message_type") == "finish"
+        ]
+        assert len(finish_events) == 1, (
+            f"Expected exactly one Finish event for {node_row['name']}, "
+            f"got {len(finish_events)}"
+        )
+        finish_event = finish_events[0]
+        assert finish_event["status"] == "completed"
+        assert finish_event["output"], "Finish event must carry the node's output"
+
+        start_events = [
+            e for e in node_events if e["details"].get("message_type") == "start"
+        ]
+        assert len(start_events) == 1, (
+            f"Expected exactly one Start event for {node_row['name']}, "
+            f"got {len(start_events)}"
+        )
 
         # the session must also be listed by the org-wide session browser
         listed = query_sessions(read_export_token)

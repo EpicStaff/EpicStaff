@@ -5,17 +5,20 @@ from pydantic import BaseModel, ConfigDict
 
 
 class SessionAuditEvent(BaseModel):
+    # OpenSearch columns
     id: str
-    org_id: int
-    session_message_id: str | None = None
     parent_id: str = ""
+
+    # Postgres columns
     session_id: int
+    session_message_id: str | None = None
 
     kind: Literal["session", "node", "event"]
+    status: Literal["completed", "failed"] | None = None
+
     name: str = ""
     flow_name: str = ""
     node_type: str = ""
-    status: Literal["completed", "failed"]
 
     input: dict[str, Any] | None = None
     output: dict[str, Any] | None = None
@@ -24,5 +27,7 @@ class SessionAuditEvent(BaseModel):
 
     event_time: datetime
     record_time: datetime | None = None
+
+    org_id: int
 
     model_config = ConfigDict(from_attributes=True)

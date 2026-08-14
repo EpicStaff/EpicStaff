@@ -15,8 +15,6 @@ from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permission_resolver import PermissionResolver
 from tables.swagger_schemas.audit_schemas import AUDIT_TOKEN_CREATE
 
-AUDIT_TOKEN_TTL_SECONDS = 300  # 5 minutes
-
 
 class AuditTokenView(APIView):
     """
@@ -57,7 +55,9 @@ class AuditTokenView(APIView):
         # effect belongs here just to mint a token), so fall back to the same
         # default (0 = unlimited) the field itself defaults to, rather than 500ing.
         try:
-            retention_days = OrganizationConfig.objects.get(org_id=org_id).audit_retention_days
+            retention_days = OrganizationConfig.objects.get(
+                org_id=org_id
+            ).audit_retention_days
         except OrganizationConfig.DoesNotExist:
             retention_days = 0
 
@@ -67,8 +67,10 @@ class AuditTokenView(APIView):
             "actions": actions,
             "retention_days": retention_days,
             "iat": now,
-            "exp": now + timedelta(seconds=AUDIT_TOKEN_TTL_SECONDS),
+            "exp": now + timedelta(seconds=settings.AUDIT_TOKEN_TTL_SECONDS),
         }
         token = jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 
-        return Response({"token": token, "expires_in": AUDIT_TOKEN_TTL_SECONDS})
+        return Response(
+            {"token": token, "expires_in": settings.AUDIT_TOKEN_TTL_SECONDS}
+        )

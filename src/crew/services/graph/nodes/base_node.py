@@ -68,6 +68,7 @@ class BaseNode(ABC):
             input_=input_,
             writer=writer,
             execution_order=execution_order,
+            node_type=self.TYPE,
         )
 
     def add_finish_message(
@@ -103,6 +104,7 @@ class BaseNode(ABC):
             output=output,
             execution_order=execution_order,
             state=state,
+            node_type=self.TYPE,
             **kwargs,
         )
 
@@ -128,6 +130,7 @@ class BaseNode(ABC):
             writer=writer,
             error=error,
             execution_order=execution_order,
+            node_type=self.TYPE,
         )
 
     @abstractmethod

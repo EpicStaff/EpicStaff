@@ -280,6 +280,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                 session_id=session.id,
                 org_id=session.graph.org_id,
                 node_name=graph_session_message_data.name,
+                execution_order=graph_session_message_data.execution_order,
                 message_data=graph_session_message_data.message_data,
                 event_id=str(graph_session_message_data.uuid),
             )

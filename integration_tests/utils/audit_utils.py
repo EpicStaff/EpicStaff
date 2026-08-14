@@ -242,15 +242,21 @@ def wait_for_audit_tree(
     session_id: int,
     min_items: int = 1,
     required_kinds: set[str] | None = None,
+    required_event_names: set[str] | None = None,
     timeout: int = AUDIT_VISIBILITY_TIMEOUT_SECONDS,
 ) -> list[dict]:
     """
     Poll a session's audit tree until it is complete enough to assert on.
 
     `required_kinds` matters more than `min_items` for a real run: the
-    kind='session' root is only emitted when the session ends, and node rows
-    land on their own batch flush, so a count-only gate can be satisfied by
-    early kind='event' rows while the rows under test are still in flight.
+    kind='session' identity doc and the "Session Start" event both land
+    immediately (top of run_session), so `min_items`/`required_kinds` alone
+    can be satisfied well before the session actually finishes - node rows
+    land on their own batch flush too. Pass `required_event_names` (e.g.
+    {"Session End"}) when the test specifically needs to wait for the
+    session's outcome, not just its early rows - kind="event" is satisfied
+    almost instantly by "Session Start" alone, so kind membership by itself
+    can't distinguish "just started" from "actually finished".
 
     Fails with the last-seen state rather than a bare timeout, so a partial
     trail is diagnosable from the assertion message alone.
@@ -262,8 +268,14 @@ def wait_for_audit_tree(
         if response.ok:
             items = response.json()["items"]
             kinds = {i["kind"] for i in items}
-            if len(items) >= min_items and (
-                required_kinds is None or required_kinds <= kinds
+            event_names = {i["name"] for i in items if i["kind"] == "event"}
+            if (
+                len(items) >= min_items
+                and (required_kinds is None or required_kinds <= kinds)
+                and (
+                    required_event_names is None
+                    or required_event_names <= event_names
+                )
             ):
                 return items
         else:
@@ -274,7 +286,12 @@ def wait_for_audit_tree(
         f"Audit tree for session {session_id} was still incomplete after {timeout}s: "
         f"{len(items)} row(s) (wanted >={min_items}), kinds seen "
         f"{sorted({i.get('kind') for i in items})}"
-        + (f", wanted {sorted(required_kinds)}" if required_kinds else "")
+        + (f", wanted kinds {sorted(required_kinds)}" if required_kinds else "")
+        + (
+            f", wanted events {sorted(required_event_names)}"
+            if required_event_names
+            else ""
+        )
     )
 
 
