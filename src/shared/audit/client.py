@@ -71,6 +71,7 @@ class AuditClient(Generic[T]):
             self._http_client = http_client or httpx.AsyncClient()
             if not self._immediate:
                 self._flush_task = asyncio.create_task(self._flush_loop())
+                self._flush_task.add_done_callback(self._on_flush_task_done)
         else:
             logger.warning(
                 f"AuditClient for {self._url} constructed with enabled=False - "
@@ -90,11 +91,42 @@ class AuditClient(Generic[T]):
         except Exception as e:
             logger.warning(f"Failed to enqueue audit event {event.id}: {e}")
 
+    def _on_flush_task_done(self, task: asyncio.Task) -> None:
+        """
+        get_session_audit_writer() is a process-wide lru_cache(maxsize=1)
+        singleton - if this task ever dies (cancellation aside), every
+        future emit() call for the rest of the process's life silently
+        enqueues into a queue nobody drains again: put_nowait() never
+        raises, so there is no other signal that audit has gone dark.
+        Observed in practice: the loop died mid-session with zero error
+        logged anywhere, and every session afterwards produced a complete
+        Postgres trace but zero OpenSearch documents. _flush_loop's own
+        try/except (below) is the real fix - this callback is the last-
+        resort visibility net for any escape it doesn't anticipate.
+        """
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error(
+                f"Audit flush loop for {self._url} died unexpectedly - all "
+                f"further emit() calls will silently no-op for the rest of "
+                f"this process's life. Error: {exc!r}"
+            )
+
     async def _flush_loop(self) -> None:
         while True:
-            batch = await self._collect_batch()
-            if batch:
-                await self._send_batch(batch)
+            try:
+                batch = await self._collect_batch()
+                if batch:
+                    await self._send_batch(batch)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                # Never let one bad iteration kill the loop permanently -
+                # see _on_flush_task_done's docstring for why that's so much
+                # worse here than in a typical background task.
+                logger.warning(f"Audit flush loop iteration failed, continuing: {e}")
 
     async def _collect_batch(self) -> list[T]:
         """Batches by size-or-time, whichever hits first."""
@@ -114,7 +146,21 @@ class AuditClient(Generic[T]):
         return batch
 
     async def _send_batch(self, batch: list[T]) -> None:
-        payload = [event.model_dump(mode="json") for event in batch]
+        """
+        One event failing to serialize (e.g. a stray non-JSON-safe object
+        leaking into a field) must not cost the whole batch its unrelated
+        events - build the payload item-by-item so a single bad event is
+        dropped and logged on its own, not silently taking N good ones
+        down with it.
+        """
+        payload = []
+        for event in batch:
+            try:
+                payload.append(event.model_dump(mode="json"))
+            except Exception as e:
+                logger.warning(f"Dropping unserializable audit event {event.id}: {e}")
+        if not payload:
+            return
 
         for attempt in range(self._max_retries):
             try:
@@ -126,7 +172,7 @@ class AuditClient(Generic[T]):
                 )
                 response.raise_for_status()
                 logger.info(
-                    f"Audit batch sent to {self._url}: {len(batch)} event(s), "
+                    f"Audit batch sent to {self._url}: {len(payload)} event(s), "
                     f"status={response.status_code}"
                 )
                 return
@@ -137,10 +183,10 @@ class AuditClient(Generic[T]):
                     ]
                     await asyncio.sleep(backoff)
                 else:
-                    event_ids = [event.id for event in batch]
+                    event_ids = [event.get("id") for event in payload]
                     logger.warning(
                         f"Audit batch send to {self._url} failed after "
-                        f"{self._max_retries} attempt(s), dropping {len(batch)} "
+                        f"{self._max_retries} attempt(s), dropping {len(payload)} "
                         f"event(s): {event_ids}. Error: {e}"
                     )
 
