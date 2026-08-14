@@ -189,6 +189,83 @@ def test_size_formatting_boundaries():
         assert expected in line, f"size={size} expected {expected!r} in {line!r}"
 
 
+def test_legend_lists_only_ops_present_across_specs():
+    spec_a = _spec(
+        file_id=1,
+        path="reports/q1.pdf",
+        metadata={"item_type": "file", "flags": _flags(can_view="allow")},
+    )
+    spec_b = _spec(
+        file_id=2,
+        path="inbox/notes.txt",
+        metadata={"item_type": "file", "flags": _flags(can_edit="allow")},
+    )
+
+    attachment = build_s3_manifest([spec_a, spec_b])
+
+    assert "- list:" not in attachment.content
+    assert "- view: read the contents" in attachment.content
+    assert "- edit: modify or overwrite the contents" in attachment.content
+    assert "- delete:" not in attachment.content
+
+
+def test_legend_line_order_is_list_view_edit_delete():
+    spec = _spec(
+        metadata={
+            "item_type": "file",
+            "flags": _flags(
+                can_delete="allow", can_list="allow", can_edit="allow", can_view="allow"
+            ),
+        }
+    )
+
+    attachment = build_s3_manifest([spec])
+
+    content = attachment.content
+    indices = [
+        content.index("- list:"),
+        content.index("- view:"),
+        content.index("- edit:"),
+        content.index("- delete:"),
+    ]
+    assert indices == sorted(indices)
+
+
+def test_legend_contains_non_implication_and_delete_clarification_sentences():
+    spec = _spec(metadata={"item_type": "file", "flags": _flags(can_view="allow")})
+
+    attachment = build_s3_manifest([spec])
+
+    assert (
+        "each is granted independently — having one does NOT imply any other"
+        in attachment.content
+    )
+    assert "being able to edit a file does not let you delete it" in attachment.content
+
+
+def test_no_legend_when_no_path_has_any_allowed_op():
+    spec = _spec(metadata={"item_type": "file", "flags": _flags()})
+
+    attachment = build_s3_manifest([spec])
+
+    assert "What each permission means" not in attachment.content
+    assert attachment.content.endswith(
+        "You have no access to any other path in storage."
+    )
+
+
+def test_legend_appears_before_closing_footer_line():
+    spec = _spec(metadata={"item_type": "file", "flags": _flags(can_view="allow")})
+
+    attachment = build_s3_manifest([spec])
+
+    legend_index = attachment.content.index("What each permission means")
+    footer_index = attachment.content.index(
+        "You have no access to any other path in storage."
+    )
+    assert legend_index < footer_index
+
+
 def test_multiple_specs_render_multiple_lines():
     spec_a = _spec(
         file_id=1,
@@ -210,7 +287,15 @@ def test_multiple_specs_render_multiple_lines():
 
     attachment = build_s3_manifest([spec_a, spec_b, spec_c])
 
-    lines = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")]
+    all_lines = attachment.content.splitlines()
+    header_index = all_lines.index("Files and folders you have access to:")
+    lines = []
+
+    for line in all_lines[header_index + 1 :]:
+        if not line.startswith("- "):
+            break
+        lines.append(line)
+
     assert lines == [
         "- reports/q1.pdf (file, 24 KB) — may: view, edit",
         "- reports/archive/ (folder) — may: list",

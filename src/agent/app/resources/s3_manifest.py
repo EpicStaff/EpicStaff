@@ -14,6 +14,13 @@ from shared.models.agent_service import ContextAttachment, S3FileSpec
 
 _FLAG_ORDER = ("can_list", "can_view", "can_edit", "can_delete")
 
+_OPERATION_DESCRIPTIONS = {
+    "list": "list: enumerate the entries inside this folder",
+    "view": "view: read the contents",
+    "edit": "edit: modify or overwrite the contents",
+    "delete": "delete: remove it permanently",
+}
+
 
 def build_s3_manifest(specs: list[S3FileSpec]) -> ContextAttachment | None:
     """Render ``specs`` into one system ``ContextAttachment``, or ``None`` if empty."""
@@ -21,16 +28,62 @@ def build_s3_manifest(specs: list[S3FileSpec]) -> ContextAttachment | None:
         return None
 
     lines = [_render_line(spec) for spec in specs]
+    legend_lines = _render_legend(specs)
     content = "\n".join(
         [
             "Files and folders you have access to:",
             *lines,
             "",
+            *legend_lines,
             "You have no access to any other path in storage.",
         ]
     )
 
     return ContextAttachment(role="system", source="s3", content=content)
+
+
+def _render_legend(specs: list[S3FileSpec]) -> list[str]:
+    operations_present = _operations_present_across(specs)
+
+    if not operations_present:
+        return []
+
+    bullets = [
+        f"- {_OPERATION_DESCRIPTIONS[operation]}"
+        for operation in ("list", "view", "edit", "delete")
+        if operation in operations_present
+    ]
+
+    return [
+        (
+            "What each permission means (each is granted independently — having "
+            "one does NOT imply any other):"
+        ),
+        *bullets,
+        "",
+        (
+            "Any operation not listed for a path is forbidden — in particular, "
+            "being able to edit a file does not let you delete it."
+        ),
+        "",
+    ]
+
+
+def _operations_present_across(specs: list[S3FileSpec]) -> set[str]:
+    operations_present: set[str] = set()
+
+    for spec in specs:
+        metadata = spec.metadata or {}
+        flags = metadata.get("flags")
+
+        if not isinstance(flags, dict):
+            continue
+
+        for flag_name in _FLAG_ORDER:
+            if flags.get(flag_name) == "allow":
+                operations_present.add(flag_name.removeprefix("can_"))
+
+    return operations_present
 
 
 def _render_line(spec: S3FileSpec) -> str:
