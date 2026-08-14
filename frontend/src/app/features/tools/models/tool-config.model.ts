@@ -9,13 +9,18 @@ export interface ToolConfig {
 }
 
 export interface GetToolUsage {
-    projects: ToolUsageItem[];
-    staff: ToolUsageItem[];
+    projects: ProjectUsageItem[];
+    staff: AgentUsageItem[];
 }
 
-export interface ToolUsageItem {
+export interface ProjectUsageItem {
     id: number;
     name: string;
+}
+
+export interface AgentUsageItem {
+    id: number;
+    role: string;
 }
 
 export interface GetBulkToolUsageItem {
