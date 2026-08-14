@@ -46,6 +46,9 @@ from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.surface_knowledge_warning_service import (
+    SurfaceKnowledgeWarningService,
+)
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.task_node_payload_service import TaskNodePayloadService
 from tables.validators.end_node_validator import EndNodeValidator
@@ -68,6 +71,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         self.end_node_validator: EndNodeValidator = EndNodeValidator()
         self.subgraph_validator = SubGraphValidator()
         self.persistent_variables_service = PersistentVariablesService()
+        self.surface_knowledge_warning_service = SurfaceKnowledgeWarningService()
 
     def get_session(self, session_id: int) -> Session:
         return Session.objects.get(id=session_id)
@@ -252,9 +256,13 @@ class SessionManagerService(metaclass=SingletonMeta):
         finally:
             session.save()
 
-        if run_vars.warnings:
+        surface_knowledge_warnings = (
+            self.surface_knowledge_warning_service.build_warnings(graph)
+        )
+        all_warnings = run_vars.warnings + surface_knowledge_warnings
+        if all_warnings:
             SessionWarningMessage.objects.create(
-                session_id=session.pk, messages=run_vars.warnings
+                session_id=session.pk, messages=all_warnings
             )
         return session.pk
 
