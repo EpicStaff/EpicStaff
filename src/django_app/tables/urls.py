@@ -360,7 +360,7 @@ urlpatterns = [
         name="process-rag-indexing",
     ),
     path(
-        "process-rag-indexing/cancel/",
+        "process-rag-indexing/<str:rag_type>/<int:rag_id>/cancel/",
         CancelRagIndexingView.as_view(),
         name="cancel-rag-indexing",
     ),

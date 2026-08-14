@@ -58,7 +58,7 @@ from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
     NAIVE_RAG_DOCUMENT_CONFIGS_GET,
     NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET,
     NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST,
-    NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_POST,
+    NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_DELETE,
     NAIVE_RAG_DOCUMENT_CONFIG_GET,
     NAIVE_RAG_DOCUMENT_CONFIG_PUT,
     NAIVE_RAG_DOCUMENT_CONFIG_DELETE,
@@ -576,36 +576,14 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
 
 
 class CancelNaiveRagDocumentChunkingView(APIView):
-    @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_POST)
-    def post(self, request, naive_rag_id: int, document_config_id: int):
-        try:
-            NaiveRagDocumentConfig.objects.get(
-                naive_rag_document_id=document_config_id,
-                naive_rag_id=naive_rag_id,
-            )
-        except NaiveRagDocumentConfig.DoesNotExist:
-            return Response(
-                {
-                    "error": f"DocumentConfig {document_config_id} not found "
-                    f"for NaiveRag {naive_rag_id}"
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
+    @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_DELETE)
+    def delete(self, request, naive_rag_id: int, document_config_id: int):
         try:
             with KnowledgeClient() as client:
                 client.cancel(strategy=RAGStrategy.NAIVE, rag_id=naive_rag_id, operation="prechunk")
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
-
-        return Response(
-            {
-                "detail": "Chunking cancellation requested",
-                "naive_rag_id": naive_rag_id,
-                "document_config_id": document_config_id,
-            },
-            status=status.HTTP_200_OK,
-        )
+        except ClientError:
+            pass
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class NaiveRagChunkPreviewView(APIView):

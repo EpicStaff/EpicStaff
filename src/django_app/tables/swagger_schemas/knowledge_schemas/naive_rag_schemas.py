@@ -847,70 +847,34 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = dict(
     },
 )
 
-NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_POST = dict(
+NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_DELETE = dict(
     summary="Cancel a running document chunking (prechunk)",
     description=(
-        "Request cancellation of an in-flight document chunking.\n"
-        "Publishes a cancel signal to the knowledge service, which stops the "
-        "running prechunk task for the given document config.\n\n"
-        "Cancellation works by matching the in-flight task via a hash of its exact "
-        "request parameters. The request body MUST contain the same chunking config "
-        "(chunk_strategy, chunk_size, chunk_overlap, additional_params) that was used "
-        "to start chunking — a mismatch results in a no-op.\n\n"
-        "Fire-and-forget: a 202 is returned regardless of whether chunking was "
-        "actually in progress. If nothing was running, the signal is a no-op.\n\n"
-        "URL: POST /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/cancel/"
+        "Cancel an in-flight document prechunk for the given NaiveRag.\n\n"
+        "Forwards a cancel request to the knowledge service over HTTP, which stops "
+        "the running prechunk task for the RAG. Idempotent and best-effort: "
+        "always returns 204 whether or not a prechunk was actually running.\n\n"
+        "URL: DELETE /naive-rag/{naive_rag_id}/document-configs/{document_config_id}/process-chunking/cancel/"
     ),
-    request=ChunkingConfigSerializer,
     parameters=[
         OpenApiParameter(
             name="naive_rag_id",
             type=OpenApiTypes.INT,
             location=OpenApiParameter.PATH,
             required=True,
-            description="ID of the NaiveRag whose document chunking is being cancelled.",
+            description="ID of the NaiveRag whose prechunk is being cancelled.",
         ),
         OpenApiParameter(
             name="document_config_id",
             type=OpenApiTypes.INT,
             location=OpenApiParameter.PATH,
             required=True,
-            description=(
-                "ID of the document config (NaiveRagDocumentConfig.naive_rag_document_id) "
-                "whose running prechunk task should be stopped."
-            ),
+            description="ID of the document config (NaiveRagDocumentConfig.naive_rag_document_id).",
         ),
     ],
     responses={
-        202: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Cancellation requested.",
-            examples=[
-                OpenApiExample(
-                    name="Accepted",
-                    value={
-                        "detail": "Chunking cancellation requested",
-                        "naive_rag_id": 1,
-                        "document_config_id": 5,
-                    },
-                    response_only=True,
-                    status_codes=["202"],
-                )
-            ],
-        ),
+        204: OpenApiResponse(description="Cancellation accepted (no content)."),
         401: UNAUTHORIZED_401_RESPONSE,
-        404: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="NaiveRag or DocumentConfig not found.",
-            examples=[
-                OpenApiExample(
-                    name="DocumentConfig not found",
-                    value={"error": "DocumentConfig 5 not found for NaiveRag 1"},
-                    response_only=True,
-                    status_codes=["404"],
-                )
-            ],
-        ),
     },
 )
 
@@ -1135,62 +1099,34 @@ PROCESS_RAG_INDEXING_POST = dict(
 )
 
 
-CANCEL_RAG_INDEXING_POST = dict(
+CANCEL_RAG_INDEXING_DELETE = dict(
     summary="Cancel a running RAG indexing",
     description=(
-        "Request cancellation of an in-flight RAG indexing.\n"
-        "Publishes a cancel signal to the knowledge service, which stops the "
-        "running task and marks the RAG as CANCELLED.\n\n"
-        "Request body identifies the RAG to cancel:\n"
-        "- `rag_id` (int, required): ID of the specific RAG implementation "
-        "(NaiveRag.naive_rag_id or GraphRag.graph_rag_id).\n"
-        "- `rag_type` (str, required): RAG strategy — one of `naive`, `graph`.\n\n"
-        "Fire-and-forget: a 202 is returned regardless of whether indexing was "
-        "actually in progress. If nothing was running, the signal is a no-op.\n\n"
-        "URL: POST /process-rag-indexing/cancel/"
+        "Cancel an in-flight RAG indexing.\n\n"
+        "Forwards a cancel request to the knowledge service over HTTP, which stops "
+        "the running task and marks the RAG as CANCELLED. Idempotent and best-effort: "
+        "always returns 204 whether or not indexing was actually in progress.\n\n"
+        "URL: DELETE /process-rag-indexing/{rag_type}/{rag_id}/cancel/"
     ),
-    request=ProcessRagIndexingSerializer,
-    examples=[
-        OpenApiExample(
-            name="Cancel naive RAG indexing",
-            value={"rag_id": 1, "rag_type": "naive"},
-            request_only=True,
+    parameters=[
+        OpenApiParameter(
+            name="rag_type",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.PATH,
+            required=True,
+            enum=["naive", "graph"],
+            description="RAG strategy — one of `naive`, `graph`.",
         ),
-        OpenApiExample(
-            name="Cancel graph RAG indexing",
-            value={"rag_id": 3, "rag_type": "graph"},
-            request_only=True,
+        OpenApiParameter(
+            name="rag_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description="ID of the RAG implementation (NaiveRag.naive_rag_id or GraphRag.graph_rag_id).",
         ),
     ],
     responses={
-        202: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Cancellation requested.",
-            examples=[
-                OpenApiExample(
-                    name="Accepted",
-                    value={
-                        "detail": "Indexing cancellation requested",
-                        "rag_id": 1,
-                        "rag_type": "naive",
-                    },
-                    response_only=True,
-                    status_codes=["202"],
-                )
-            ],
-        ),
-        400: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Invalid request.",
-            examples=[
-                OpenApiExample(
-                    name="Invalid serializer",
-                    value={"rag_type": ['"invalid" is not a valid choice.']},
-                    response_only=True,
-                    status_codes=["400"],
-                )
-            ],
-        ),
+        204: OpenApiResponse(description="Cancellation accepted (no content)."),
         401: UNAUTHORIZED_401_RESPONSE,
     },
 )
