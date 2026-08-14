@@ -24,7 +24,7 @@ class TaskNodePayloadService(BaseNodePayloadService):
         combined_surface = CombinedSurfaceData(
             **NodeSurfaceService.build_combined_surface(task_node)
         )
-        s3_files = self._build_s3_pool(combined_surface)
+        s3_files = self._build_s3_pool(combined_surface, graph_id)
 
         return TaskNodeData(
             node_name=node_name,

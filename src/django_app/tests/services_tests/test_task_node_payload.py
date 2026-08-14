@@ -54,6 +54,7 @@ from agents.services.node_surface_service import NodeSurfaceService
 from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.task_node_payload_service import TaskNodePayloadService
 from src.shared.models import (
     AgentRequest,
     AgentSpec,
@@ -563,6 +564,7 @@ class TestS3Pool:
     def test_allow_view_flag_included_with_flags_metadata(
         self, graph, task_node, surface_a, storage_file
     ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
         SurfaceStorageItem.objects.create(
             surface=surface_a, storage_file=storage_file, can_view="allow"
         )
@@ -924,6 +926,7 @@ class TestStorageToolAllowedPathsScopedToSurface:
     def test_surface_granted_file_is_included(
         self, graph, task_node, surface_a, storage_file, storage_py_tool
     ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
         SurfaceStorageItem.objects.create(
             surface=surface_a, storage_file=storage_file, can_view="allow"
         )
@@ -973,3 +976,68 @@ class TestStorageToolAllowedPathsScopedToSurface:
         task_data = graph_data.task_node_list[0]
         tool = task_data.tools[0]
         assert tool.data.python_code.storage_allowed_paths is None
+
+
+class TestStorageToolAllowedPathsScopedToGraphAttachedFiles:
+    """A surface may grant a StorageFile the flow never attached. The flow's
+    GraphStorageFile rows are a ceiling on top of the surface: effective set =
+    surface grants ∩ files attached to the graph."""
+
+    @pytest.mark.django_db
+    def test_surface_granted_file_not_attached_to_graph_is_excluded(
+        self, graph, task_node, surface_a, storage_file, storage_py_tool
+    ):
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=storage_file, can_view="allow"
+        )
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert task_data.s3_files == []
+        tool = task_data.tools[0]
+        assert storage_file.path not in (
+            tool.data.python_code.storage_allowed_paths or []
+        )
+
+    @pytest.mark.django_db
+    def test_surface_granted_file_attached_to_graph_is_included(
+        self, graph, task_node, surface_a, storage_file, storage_py_tool
+    ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=storage_file, can_view="allow"
+        )
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert [f.id for f in task_data.s3_files] == [storage_file.pk]
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == [storage_file.path]
+
+    @pytest.mark.django_db
+    def test_graph_id_none_skips_ceiling_surface_stays_authoritative(
+        self, task_node, surface_a, storage_file
+    ):
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=storage_file, can_view="allow"
+        )
+        task_node.surface_list.set([surface_a])
+
+        service = TaskNodePayloadService(ConverterService())
+        task_data = service.build_task_node_data(
+            task_node, node_name="task-node-payload", graph_id=None, session_id=None
+        )
+
+        assert [f.id for f in task_data.s3_files] == [storage_file.pk]

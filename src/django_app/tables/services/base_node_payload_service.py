@@ -110,7 +110,17 @@ class BaseNodePayloadService:
 
         return tools
 
-    def _build_s3_pool(self, combined_surface: CombinedSurfaceData) -> list[S3FileSpec]:
+    def _build_s3_pool(
+        self, combined_surface: CombinedSurfaceData, graph_id: int | None
+    ) -> list[S3FileSpec]:
+        """Resolve the node's s3 file pool from its surface, capped by the flow.
+
+        The surface grants determine which files a node MAY access; the flow's
+        attached files (GraphStorageFile) determine which files EXIST for this
+        run. Effective pool = surface grants ∩ flow-attached files. When
+        `graph_id` is None (standalone / non-flow runs), the flow ceiling does
+        not apply and the surface stays authoritative.
+        """
         access_flags_by_file_id = {
             entry.storage_file: entry for entry in combined_surface.storage_items
         }
@@ -121,8 +131,14 @@ class BaseNodePayloadService:
             in (entry.can_list, entry.can_view, entry.can_edit, entry.can_delete)
         ]
 
+        storage_files = StorageFile.objects.filter(pk__in=allowed_file_ids)
+        if graph_id is not None:
+            storage_files = storage_files.filter(
+                graph_storage_files__graph_id=graph_id
+            ).distinct()
+
         s3_files: list[S3FileSpec] = []
-        for storage_file in StorageFile.objects.filter(pk__in=allowed_file_ids):
+        for storage_file in storage_files:
             entry = access_flags_by_file_id[storage_file.pk]
             s3_files.append(
                 S3FileSpec(

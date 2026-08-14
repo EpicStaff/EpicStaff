@@ -19,9 +19,15 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
-from agents.models import AgentDefinition
-from agents.models.surface_models import AgentInlineSurface
-from tables.models.graph_models import AgentNode, AgentNodeTask, Graph
+from agents.models import AgentDefinition, Surface
+from agents.models.surface_models import AgentInlineSurface, SurfaceStorageItem
+from tables.models.graph_models import (
+    AgentNode,
+    AgentNodeTask,
+    Graph,
+    GraphStorageFile,
+    StorageFile,
+)
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.rbac_models import Organization
@@ -84,6 +90,22 @@ def mcp_tool(db):
         name="agent-node-mcp-tool",
         transport="http://localhost/sse",
         tool_name="agent_node_tool",
+    )
+
+
+@pytest.fixture
+def surface_a(db, org):
+    return Surface.objects.create(
+        organization=org,
+        name="agent-node-surface-a",
+        instructions="be concise",
+    )
+
+
+@pytest.fixture
+def storage_file(db, org):
+    return StorageFile.objects.create(
+        org=org, name="agent-node-file", path="agent-node-payload/a.txt"
     )
 
 
@@ -416,6 +438,86 @@ def test_build_agent_node_data_without_agent_definition_is_none(agent_node):
 
     assert data.agent_definition is None
     assert data.tasks == []
+
+
+# ---------------------------------------------------------------------------
+# 7b. s3 pool is capped by GraphStorageFile when a graph_id is supplied
+#
+# `graph`/`agent_node` intentionally not reused here: `graph` never sets
+# `org`, which violates the not-null `Graph.org` FK. Build an org-scoped
+# graph inline instead of touching that shared, pre-existing fixture.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def org_scoped_agent_node(db, org):
+    org_scoped_graph = Graph.objects.create(name="agent-node-s3-pool-graph", org=org)
+    return AgentNode.objects.create(
+        graph=org_scoped_graph, node_name="agent-node-s3-pool"
+    )
+
+
+@pytest.mark.django_db
+def test_s3_pool_excludes_surface_granted_file_not_attached_to_graph(
+    org_scoped_agent_node, surface_a, storage_file
+):
+    SurfaceStorageItem.objects.create(
+        surface=surface_a, storage_file=storage_file, can_view="allow"
+    )
+    org_scoped_agent_node.surface_list.set([surface_a])
+
+    service = AgentNodePayloadService(ConverterService())
+    data = service.build_agent_node_data(
+        org_scoped_agent_node,
+        node_name="agent-node-s3-pool #1",
+        graph_id=org_scoped_agent_node.graph_id,
+        session_id=None,
+    )
+
+    assert data.s3_files == []
+
+
+@pytest.mark.django_db
+def test_s3_pool_includes_surface_granted_file_attached_to_graph(
+    org_scoped_agent_node, surface_a, storage_file
+):
+    GraphStorageFile.objects.create(
+        graph=org_scoped_agent_node.graph, storage_file=storage_file
+    )
+    SurfaceStorageItem.objects.create(
+        surface=surface_a, storage_file=storage_file, can_view="allow"
+    )
+    org_scoped_agent_node.surface_list.set([surface_a])
+
+    service = AgentNodePayloadService(ConverterService())
+    data = service.build_agent_node_data(
+        org_scoped_agent_node,
+        node_name="agent-node-s3-pool #1",
+        graph_id=org_scoped_agent_node.graph_id,
+        session_id=None,
+    )
+
+    assert [f.id for f in data.s3_files] == [storage_file.pk]
+
+
+@pytest.mark.django_db
+def test_s3_pool_graph_id_none_skips_ceiling_surface_stays_authoritative(
+    org_scoped_agent_node, surface_a, storage_file
+):
+    SurfaceStorageItem.objects.create(
+        surface=surface_a, storage_file=storage_file, can_view="allow"
+    )
+    org_scoped_agent_node.surface_list.set([surface_a])
+
+    service = AgentNodePayloadService(ConverterService())
+    data = service.build_agent_node_data(
+        org_scoped_agent_node,
+        node_name="agent-node-s3-pool #1",
+        graph_id=None,
+        session_id=None,
+    )
+
+    assert [f.id for f in data.s3_files] == [storage_file.pk]
 
 
 # ---------------------------------------------------------------------------
