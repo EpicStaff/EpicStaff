@@ -75,6 +75,7 @@ class BaseNodePayloadService:
         combined_surface: CombinedSurfaceData,
         graph_id: int | None,
         session_id: int | None,
+        s3_files: list[S3FileSpec],
     ) -> list[BaseToolData]:
         allowed_python_tool_ids = [
             entry.python_tool
@@ -86,6 +87,7 @@ class BaseNodePayloadService:
             for entry in combined_surface.mcp_tools
             if entry.mode == "allow"
         ]
+        surface_storage_paths = [spec.path for spec in s3_files]
 
         tools: list[BaseToolData] = []
 
@@ -94,7 +96,10 @@ class BaseNodePayloadService:
         ):
             tools.append(
                 self.converter_service.convert_tool_to_base_tool_pydantic(
-                    python_tool, graph_id=graph_id, session_id=session_id
+                    python_tool,
+                    graph_id=graph_id,
+                    session_id=session_id,
+                    storage_allowed_paths_override=surface_storage_paths,
                 )
             )
 

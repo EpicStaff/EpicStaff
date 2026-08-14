@@ -154,8 +154,8 @@ class S3FileSpec(BaseModel):
     """Immutable pool entry for an S3-hosted file.
 
     Carried on ``AgentRequest.s3_files``; referenced by ``AgentSpec.s3_refs``
-    via ``id``.  S3 resolution is out of scope for this pass — ``AgentResolver``
-    validates presence and carries the path without fetching content.
+    via ``id``.  ``AgentResolver`` validates presence and renders an
+    informational access manifest without fetching file content.
     """
 
     model_config = ConfigDict(frozen=True)

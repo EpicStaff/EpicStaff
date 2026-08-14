@@ -36,6 +36,7 @@ from tables.models.graph_models import (
     AgentNode,
     Edge,
     Graph,
+    GraphStorageFile,
     StartNode,
     StorageFile,
     TaskNode,
@@ -114,6 +115,17 @@ def py_tool(db):
 def storage_file(db, org):
     return StorageFile.objects.create(
         org=org, name="task-node-payload-file", path="task-node-payload/a.txt"
+    )
+
+
+@pytest.fixture
+def storage_py_tool(db):
+    code = PythonCode.objects.create(code="def main(): pass")
+    return PythonCodeTool.objects.create(
+        name="task-node-payload-storage-py-tool",
+        description="test",
+        python_code=code,
+        use_storage=True,
     )
 
 
@@ -884,3 +896,80 @@ class TestPoolsContractCrossCheck:
         parsed_task_data = parsed.graph.task_node_list[0]
         assert len(parsed_task_data.tools) == 1
         assert parsed_task_data.tools[0].unique_name == f"python-code-tool:{py_tool.pk}"
+
+
+class TestStorageToolAllowedPathsScopedToSurface:
+    """storage_allowed_paths baked into a use_storage python tool must come from
+    the node's SURFACE storage items, not from every GraphStorageFile attached
+    to the graph."""
+
+    @pytest.mark.django_db
+    def test_graph_file_not_granted_by_surface_is_excluded(
+        self, graph, task_node, surface_a, storage_file, storage_py_tool
+    ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        tool = task_data.tools[0]
+        assert storage_file.path not in tool.data.python_code.storage_allowed_paths
+
+    @pytest.mark.django_db
+    def test_surface_granted_file_is_included(
+        self, graph, task_node, surface_a, storage_file, storage_py_tool
+    ):
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=storage_file, can_view="allow"
+        )
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == [storage_file.path]
+
+    @pytest.mark.django_db
+    def test_no_surface_storage_items_yields_empty_list_not_none(
+        self, graph, task_node, surface_a, storage_py_tool
+    ):
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == []
+
+    @pytest.mark.django_db
+    def test_use_storage_false_tool_keeps_none(
+        self, graph, task_node, surface_a, storage_file, py_tool
+    ):
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=storage_file, can_view="allow"
+        )
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths is None

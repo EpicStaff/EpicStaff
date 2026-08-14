@@ -24,6 +24,7 @@ class TaskNodePayloadService(BaseNodePayloadService):
         combined_surface = CombinedSurfaceData(
             **NodeSurfaceService.build_combined_surface(task_node)
         )
+        s3_files = self._build_s3_pool(combined_surface)
 
         return TaskNodeData(
             node_name=node_name,
@@ -36,7 +37,9 @@ class TaskNodePayloadService(BaseNodePayloadService):
             output_schema=task_node.output_schema or {},
             remember_output=task_node.remember_output,
             surface=combined_surface,
-            tools=self._build_tool_pool(combined_surface, graph_id, session_id),
+            tools=self._build_tool_pool(
+                combined_surface, graph_id, session_id, s3_files
+            ),
             collections=self._build_collection_pool(combined_surface),
-            s3_files=self._build_s3_pool(combined_surface),
+            s3_files=s3_files,
         )

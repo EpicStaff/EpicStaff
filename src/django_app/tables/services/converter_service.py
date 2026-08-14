@@ -257,9 +257,9 @@ class ConverterService(metaclass=SingletonMeta):
                 task=task, graph_id=graph_id, session_id=session_id
             )
             crew_base_tools.extend(base_tools)  # TODO: make it unique
-            assert not (crew.process == "sequential" and task.agent is None), (
-                f"Task {task.name} has no agent, but it's required for sequential process."
-            )
+            assert not (
+                crew.process == "sequential" and task.agent is None
+            ), f"Task {task.name} has no agent, but it's required for sequential process."
 
             task_data_list.append(
                 TaskData(
@@ -442,16 +442,23 @@ class ConverterService(metaclass=SingletonMeta):
         tool: PythonCodeTool | ToolConfig | McpTool | PythonCodeToolConfig,
         graph_id: int | None = None,
         session_id: int | None = None,
+        storage_allowed_paths_override: list[str] | None = None,
     ) -> BaseToolData:
         if isinstance(tool, PythonCodeTool):
             unique_name = f"python-code-tool:{tool.pk}"
             data = self.convert_python_code_tool_to_pydantic(
-                tool, graph_id=graph_id, session_id=session_id
+                tool,
+                graph_id=graph_id,
+                session_id=session_id,
+                storage_allowed_paths_override=storage_allowed_paths_override,
             )
         elif isinstance(tool, PythonCodeToolConfig):
             unique_name = f"python-code-tool-config:{tool.pk}"
             data = self.convert_python_code_tool_config_to_pydantic(
-                tool, graph_id=graph_id, session_id=session_id
+                tool,
+                graph_id=graph_id,
+                session_id=session_id,
+                storage_allowed_paths_override=storage_allowed_paths_override,
             )
         elif isinstance(tool, ToolConfig):
             unique_name = f"configured-tool:{tool.pk}"
@@ -647,12 +654,17 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool: PythonCodeTool,
         graph_id: int | None = None,
         session_id: int | None = None,
+        storage_allowed_paths_override: list[str] | None = None,
     ) -> PythonCodeToolData:
         storage_allowed_paths = None
         storage_org_prefix = None
-        if python_code_tool.use_storage and graph_id is not None:
-            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+        if python_code_tool.use_storage:
+            if storage_allowed_paths_override is not None:
+                storage_allowed_paths = storage_allowed_paths_override
+            elif graph_id is not None:
+                storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if graph_id is not None:
+                storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
 
         org_id = None
         if graph_id is not None:
@@ -686,20 +698,25 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool_config: PythonCodeToolConfig,
         graph_id: int | None = None,
         session_id: int | None = None,
+        storage_allowed_paths_override: list[str] | None = None,
     ) -> PythonCodeToolData:
         python_code_tool: PythonCodeTool = python_code_tool_config.tool
         python_configuration = python_code_tool_config.configuration
 
-        assert isinstance(python_configuration, dict), (
-            "Error reading python tool configuration. How did you even pass validation?"
-        )
+        assert isinstance(
+            python_configuration, dict
+        ), "Error reading python tool configuration. How did you even pass validation?"
 
         storage_allowed_paths = None
         storage_org_prefix = None
-        if python_code_tool.use_storage and graph_id is not None:
-            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-        
+        if python_code_tool.use_storage:
+            if storage_allowed_paths_override is not None:
+                storage_allowed_paths = storage_allowed_paths_override
+            elif graph_id is not None:
+                storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if graph_id is not None:
+                storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
         org_id = None
         if graph_id is not None:
             org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
@@ -829,7 +846,7 @@ class ConverterService(metaclass=SingletonMeta):
             if session_id is not None:
                 storage_allowed_paths.append(f"sessions/{session_id}/")
             storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-        
+
         org_id = None
         if graph_id is not None:
             org_id = self._resolve_authoritative_org_id_for_graph(graph_id)

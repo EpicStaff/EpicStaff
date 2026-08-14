@@ -314,14 +314,28 @@ async def test_unknown_collection_ref_raises():
 # ---------------------------------------------------------------------------
 
 
-async def test_s3_ref_validates_and_carries_path():
+async def test_s3_ref_produces_single_system_attachment():
     s3 = _s3_spec(88, "reports/q1.pdf")
     agent = _agent_spec(s3_refs=[88])
     request = _request([agent], s3_files=[s3])
 
     resolved = await _resolver().resolve(agent, request)
 
+    assert len(resolved.attachments) == 1
+    attachment = resolved.attachments[0]
+    assert attachment.source == "s3"
+    assert attachment.role == "system"
+    assert resolved.context.attachments == resolved.attachments
+
+
+async def test_no_s3_refs_produces_no_attachments():
+    agent = _agent_spec(s3_refs=[])
+    request = _request([agent], s3_files=[])
+
+    resolved = await _resolver().resolve(agent, request)
+
     assert resolved.attachments == []
+    assert resolved.context.attachments == []
 
 
 async def test_unknown_s3_ref_raises():

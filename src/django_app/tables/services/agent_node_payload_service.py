@@ -25,6 +25,7 @@ class AgentNodePayloadService(BaseNodePayloadService):
         combined_surface = CombinedSurfaceData(
             **NodeSurfaceService.build_combined_surface(agent_node)
         )
+        s3_files = self._build_s3_pool(combined_surface)
 
         return AgentNodeData(
             node_name=node_name,
@@ -34,9 +35,11 @@ class AgentNodePayloadService(BaseNodePayloadService):
             input_map=agent_node.input_map or {},
             output_variable_path=agent_node.output_variable_path,
             surface=combined_surface,
-            tools=self._build_tool_pool(combined_surface, graph_id, session_id),
+            tools=self._build_tool_pool(
+                combined_surface, graph_id, session_id, s3_files
+            ),
             collections=self._build_collection_pool(combined_surface),
-            s3_files=self._build_s3_pool(combined_surface),
+            s3_files=s3_files,
             tasks=[
                 AgentNodeTaskData(
                     name=task.name,

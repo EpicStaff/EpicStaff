@@ -27,6 +27,7 @@ from app.exceptions import (
 from app.knowledge.client import KnowledgeClient
 from app.knowledge.events import KnowledgeEventSink
 from app.loop.context import AgentContext
+from app.resources.s3_manifest import build_s3_manifest
 from app.sandbox.client import SandboxClient
 from app.tools.mcp.gateway import McpToolGateway
 from app.tools.registry import ToolRegistry
@@ -46,8 +47,8 @@ class ResolvedAgent:
     """Holds everything needed to run one agent through ``AgentLoop``.
 
     Not a DTO — contains live objects (``ToolRegistry``) and must not be
-    serialised.  ``attachments`` will carry RAG/S3 context once those passes
-    are implemented.
+    serialised.  ``attachments`` carries the informational S3 access manifest
+    (and will carry RAG context once that pass is implemented).
     """
 
     agent_id: int
@@ -71,8 +72,9 @@ class AgentResolver:
        the appropriate builder method.
     3. For each ``agent.collection_refs``: look up in collection pool → raise
        ``UnknownCollectionRefError`` if missing → register knowledge search tools.
-    4. For each ``agent.s3_refs``: validate presence (raise on missing) and carry.
-    5. Build ``AgentContext`` from ``AgentSpec``.
+    4. For each ``agent.s3_refs``: validate presence (raise on missing) and
+       render them into a single informational ``ContextAttachment`` manifest.
+    5. Build ``AgentContext`` from ``AgentSpec``, seeded with the attachments.
     6. Return ``ResolvedAgent``.
     """
 
@@ -112,19 +114,20 @@ class AgentResolver:
         names = [s.name for s in registry.tool_specs()]
         logger.debug("agent_id={} resolved {} tool(s): {}", agent.id, len(names), names)
 
-        s3_paths = self._validate_s3_refs(agent, s3_pool)
+        s3_specs = self._validate_s3_refs(agent, s3_pool)
+        manifest = build_s3_manifest(s3_specs)
+        attachments = [manifest] if manifest is not None else []
 
-        if s3_paths:
+        if attachments:
             logger.info(
-                "agent_id={} carrying {} s3 ref(s) (not resolved this pass): {}",
+                "agent_id={} carrying s3 manifest for {} ref(s)",
                 agent.id,
-                len(s3_paths),
-                s3_paths,
+                len(s3_specs),
             )
 
         context = AgentContext(
             agent=agent,
-            attachments=[],
+            attachments=attachments,
             correlation_id=request.correlation_id,
         )
 
@@ -132,7 +135,7 @@ class AgentResolver:
             agent_id=agent.id,
             context=context,
             tools=registry,
-            attachments=[],
+            attachments=attachments,
         )
 
     async def _build_tool_registry(
@@ -193,8 +196,8 @@ class AgentResolver:
         self,
         agent: AgentSpec,
         s3_pool: dict[int, S3FileSpec],
-    ) -> list[str]:
-        paths: list[str] = []
+    ) -> list[S3FileSpec]:
+        specs: list[S3FileSpec] = []
 
         for file_id in agent.s3_refs:
             if file_id not in s3_pool:
@@ -202,6 +205,6 @@ class AgentResolver:
                     f"agent_id={agent.id}: s3_ref id={file_id} not found in request.s3_files pool"
                 )
 
-            paths.append(s3_pool[file_id].path)
+            specs.append(s3_pool[file_id])
 
-        return paths
+        return specs
