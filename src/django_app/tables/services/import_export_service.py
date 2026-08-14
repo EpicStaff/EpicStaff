@@ -67,6 +67,7 @@ class ViewSetImportExportService:
             self.entity_type,
             settings=settings,
             org_id=org_id,
+            user=user,
             effective_permissions=effective_permissions,
         )
         summary = id_mapper.get_detailed_summary(registry)

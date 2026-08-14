@@ -4,9 +4,21 @@
         (ngSubmit)="submit()"
     >
         <header class="dialog-header">
-            <h2 class="title">{{ isEditMode ? 'Edit Custom Tool' : 'Create Custom Tool' }}</h2>
+            <h2 class="title">{{ dialogTitle() }}</h2>
             <div class="dialog-header-right">
-                @if (isEditMode) {
+                @if (isBuiltIn()) {
+                    <app-button
+                        *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
+                        type="outline-primary"
+                        mod="default"
+                        [disabled]="isSaving()"
+                        [matTooltip]="builtInSaveTooltip"
+                        matTooltipClass="builtin-copy-tooltip"
+                        matTooltipPosition="below"
+                        (click)="submit()"
+                        >{{ isSaving() ? 'Creating copy...' : 'Create Editable Copy' }}</app-button
+                    >
+                } @else if (isEditMode()) {
                     <app-button
                         *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
                         type="outline-primary"
@@ -19,7 +31,7 @@
                 <button
                     class="header-icon-btn header-icon-btn--cancel"
                     type="button"
-                    [attr.aria-label]="isEditMode ? 'Discard changes' : 'Cancel'"
+                    [attr.aria-label]="isEditMode() ? 'Discard changes' : 'Cancel'"
                     matTooltip="Cancel"
                     matTooltipPosition="above"
                     (click)="close()"
@@ -29,21 +41,23 @@
                         size="1.1rem"
                     ></app-svg-icon>
                 </button>
-                <button
-                    *appHasPermission="[ResourceCode.Tools, isEditMode ? ActionCode.Update : ActionCode.Create]"
-                    class="header-icon-btn header-icon-btn--confirm"
-                    type="button"
-                    [disabled]="isSaving()"
-                    [attr.aria-label]="isEditMode ? 'Save changes' : 'Create tool'"
-                    matTooltip="Save"
-                    matTooltipPosition="above"
-                    (click)="submit()"
-                >
-                    <app-svg-icon
-                        icon="check"
-                        size="1.1rem"
-                    ></app-svg-icon>
-                </button>
+                @if (!isBuiltIn()) {
+                    <button
+                        *appHasPermission="[ResourceCode.Tools, isEditMode() ? ActionCode.Update : ActionCode.Create]"
+                        class="header-icon-btn header-icon-btn--confirm"
+                        type="button"
+                        [disabled]="isSaving()"
+                        [attr.aria-label]="isEditMode() ? 'Save changes' : 'Create tool'"
+                        matTooltip="Save"
+                        matTooltipPosition="above"
+                        (click)="submit()"
+                    >
+                        <app-svg-icon
+                            icon="check"
+                            size="1.1rem"
+                        ></app-svg-icon>
+                    </button>
+                }
             </div>
         </header>
 
@@ -56,24 +70,32 @@
                 aria-label="Tool details"
             >
                 <div class="form-section">
-                    <app-custom-input
-                        label="Name"
-                        [required]="true"
-                        tooltipText="A unique, descriptive name for your custom tool."
-                        formControlName="name"
-                        placeholder="Enter tool name..."
-                        [errorMessage]="
-                            form.controls.name.touched && form.controls.name.hasError('required')
-                                ? 'Tool name is required.'
-                                : ''
-                        "
-                    ></app-custom-input>
+                    @if (isBuiltIn()) {
+                        <div class="readonly-field">
+                            <span class="readonly-field__label">Name</span>
+                            <p class="readonly-field__value">{{ form.controls.name.value }}</p>
+                        </div>
+                    } @else {
+                        <app-custom-input
+                            label="Name"
+                            [required]="true"
+                            tooltipText="A unique, descriptive name for your custom tool."
+                            formControlName="name"
+                            placeholder="Enter tool name..."
+                            [errorMessage]="
+                                form.controls.name.touched && form.controls.name.hasError('required')
+                                    ? 'Tool name is required.'
+                                    : ''
+                            "
+                        ></app-custom-input>
+                    }
                 </div>
 
                 <div class="form-section">
                     <app-textarea
                         label="Description"
                         [required]="true"
+                        [disabled]="isBuiltIn()"
                         tooltipText="Describe what this tool does so agents know when to use it."
                         formControlName="description"
                         placeholder="Enter tool description..."
@@ -145,6 +167,7 @@
                                 <app-code-editor
                                     [pythonCode]="form.controls.pythonCode.value"
                                     [showHeader]="false"
+                                    [readOnly]="isBuiltIn()"
                                     (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onPythonErrorChange($event)"
                                 ></app-code-editor>
@@ -177,6 +200,7 @@
                     @if (parametersTableMode()) {
                         <app-parameters-table-view
                             [variables]="tableVariables()"
+                            [readOnly]="isBuiltIn()"
                             [initialDrillStack]="tableDrillStack()"
                             (variablesChange)="onVariablesChange($event)"
                             (drillStackChange)="onDrillStackChange($event)"
@@ -257,6 +281,7 @@
                                 <div class="inline-editor-host">
                                     <app-json-editor
                                         [showHeader]="false"
+                                        [editorOptions]="jsonEditorOptions()"
                                         [fullHeight]="true"
                                         [jsonSchema]="toolVariablesSchema"
                                         [extraValidate]="objectDefaultMarkers"
@@ -275,6 +300,7 @@
                 <div class="form-section">
                     <app-chips-input
                         label="Library"
+                        [readOnly]="isBuiltIn()"
                         tooltipText="Add Python libraries needed by your tool. They must be available in the Python environment that runs the tool."
                         inputPlaceholder="Enter library name..."
                         formControlName="libraries"
@@ -346,6 +372,7 @@
                             <app-code-editor
                                 [pythonCode]="form.controls.pythonCode.value"
                                 [showHeader]="false"
+                                [readOnly]="isBuiltIn()"
                                 (pythonCodeChange)="onPythonCodeChange($event)"
                                 (errorChange)="onPythonErrorChange($event)"
                             ></app-code-editor>
@@ -353,6 +380,7 @@
                         @if (activeEditor() === ActiveEditor.Json) {
                             <app-json-editor
                                 [showHeader]="false"
+                                [editorOptions]="jsonEditorOptions()"
                                 [jsonData]="form.controls.variablesJson.value"
                                 [fullHeight]="true"
                                 [jsonSchema]="toolVariablesSchema"
