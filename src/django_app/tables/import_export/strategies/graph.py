@@ -117,13 +117,7 @@ class GraphStrategy(EntityImportExportStrategy):
         graph = serializer.save()
 
         # Register this graph's own GRAPH mapping immediately, keyed by its
-        # real old exported id. This is the single source of truth for
-        # resolving this graph in id_mapper — node strategies (via
-        # _create_nodes below) and the generic post-creation registration in
-        # ImportService._import_single_entity both read/skip based on this.
-        # was_created=True is always correct here: create_entity only runs on
-        # the branch where find_existing found nothing (see
-        # ImportService._import_single_entity).
+        # real old exported id.
         old_id = data.get("id")
         if old_id is not None:
             id_mapper.map(EntityType.GRAPH, old_id, graph.id, was_created=True)
