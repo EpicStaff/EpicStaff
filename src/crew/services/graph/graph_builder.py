@@ -164,6 +164,7 @@ class SessionGraphBuilder:
             graph_builder=subgraph_builder,
             stop_event=self.stop_event,
             run_code_execution_service=self.python_code_executor_service,
+            redis_service=self.redis_service,
         )
         subgraph: CompiledStateGraph = builder.build()
 
