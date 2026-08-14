@@ -37,9 +37,6 @@ from drf_spectacular.utils import (
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef
 from django.conf import settings
-from src.shared.communication import Message
-from django_app.communication import producer
-from src.shared.models import IndexRequest, CancelRequest
 from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError
@@ -954,13 +951,12 @@ class CancelRagIndexingView(APIView):
 
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
-        document_ids = serializer.validated_data["document_config_ids"]
 
-        target_request = IndexRequest(rag_id=rag_id, rag_strategy=rag_type, document_ids=document_ids).model_dump()
-        producer.send(
-            settings.KNOWLEDGE_CANCEL_REQUEST_CHANNEL,
-            Message(payload=CancelRequest(target_request=target_request).model_dump()),
-        )
+        try:
+            with KnowledgeClient() as client:
+                client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
 
         return Response(
             {
@@ -968,7 +964,7 @@ class CancelRagIndexingView(APIView):
                 "rag_id": rag_id,
                 "rag_type": rag_type,
             },
-            status=status.HTTP_202_ACCEPTED,
+            status=status.HTTP_200_OK,
         )
 
 

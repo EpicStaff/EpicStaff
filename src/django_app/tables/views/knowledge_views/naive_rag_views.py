@@ -16,14 +16,6 @@ from loguru import logger
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.viewsets import ReadOnlyModelViewSet
 from rest_framework.views import APIView
-from django.conf import settings
-
-from src.shared.communication import Message
-from django_app.communication import producer
-from src.shared.models import (
-    PrechunkRequest,
-    CancelRequest,
-)
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.knowledge_new import ChunkingConfig
 from tables.clients import KnowledgeClient
@@ -586,8 +578,6 @@ class ProcessNaiveRagDocumentChunkingView(APIView):
 class CancelNaiveRagDocumentChunkingView(APIView):
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_POST)
     def post(self, request, naive_rag_id: int, document_config_id: int):
-        serializer = ChunkingConfigSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
         try:
             NaiveRagDocumentConfig.objects.get(
                 naive_rag_document_id=document_config_id,
@@ -602,21 +592,11 @@ class CancelNaiveRagDocumentChunkingView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        target_request = PrechunkRequest(
-            rag_strategy="naive",
-            rag_id=naive_rag_id,
-            document_id=document_config_id,
-            **serializer.validated_data,
-        ).model_dump()
-        producer.send(
-            settings.KNOWLEDGE_CANCEL_REQUEST_CHANNEL,
-            Message(payload=CancelRequest(target_request=target_request).model_dump()),
-        )
-        logger.info(
-            "Sent prechunk cancellation rag_id=%s document_config_id=%s",
-            naive_rag_id,
-            document_config_id,
-        )
+        try:
+            with KnowledgeClient() as client:
+                client.cancel(strategy=RAGStrategy.NAIVE, rag_id=naive_rag_id, operation="prechunk")
+        except ClientError as e:
+            return Response({"error": str(e)}, status=e.status_code)
 
         return Response(
             {
@@ -624,7 +604,7 @@ class CancelNaiveRagDocumentChunkingView(APIView):
                 "naive_rag_id": naive_rag_id,
                 "document_config_id": document_config_id,
             },
-            status=status.HTTP_202_ACCEPTED,
+            status=status.HTTP_200_OK,
         )
 
 
