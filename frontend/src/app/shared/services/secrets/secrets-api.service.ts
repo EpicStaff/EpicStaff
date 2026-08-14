@@ -1,8 +1,9 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { CreateSecretRequest, Secret, SecretUsageResponse } from '@shared/models';
 import { map, Observable } from 'rxjs';
 
+import { SKIP_FORBIDDEN_RELOAD } from '../../../core/interceptors/skip-forbidden-reload.context';
 import { ConfigService } from '../../../services/config';
 import { ApiGetResponse } from '../transcription-llms/transcription-models.service';
 
@@ -22,7 +23,13 @@ export class SecretsApiService {
     }
 
     getSecrets(): Observable<Secret[]> {
-        return this.http.get<ApiGetResponse<Secret>>(this.apiUrl).pipe(map((response) => response.results));
+        // Fetched by every secret picker (node panels, tool dialogs) regardless of the viewer's
+        // role — a member/viewer legitimately has no access to this endpoint, and that's a
+        // permanent per-role restriction, not a sign of stale permissions worth reloading over.
+        const context = new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true);
+        return this.http
+            .get<ApiGetResponse<Secret>>(this.apiUrl, { context })
+            .pipe(map((response) => response.results));
     }
 
     getSecretById(id: number): Observable<Secret> {

@@ -37,6 +37,9 @@ import { SecretUsageDialogComponent } from '../secret-usage-dialog/secret-usage-
 
 type UsedByFilter = 'unused' | 'deactivated' | null;
 
+// Must match .secrets-section-used-by-panel .selector__dropdown's width in the stylesheet.
+const USED_BY_PANEL_WIDTH = 216;
+
 const USED_BY_FILTER_ITEMS: SelectItem[] = [
     { name: 'All', value: null },
     { name: 'Deactivate', value: 'deactivated' },
@@ -77,6 +80,14 @@ export class SecretsSectionComponent implements OnInit {
     public readonly errorMessage = signal<string | null>(null);
 
     public readonly hasSecrets = computed(() => this.secretsStorageService.secrets().length > 0);
+
+    // The search box and "USED BY" filter both narrow `secrets()` before app-table ever sees it,
+    // so its own hasAnyFilter() (built-in column filters only) doesn't know about them. Without
+    // reporting this, an external filter matching zero rows makes app-table treat it as "no data
+    // has ever existed" and drop the header along with the body — see hasExternalFilter's doc.
+    public readonly hasActiveExternalFilter = computed(
+        () => this.searchTerm().trim().length > 0 || this.usedByFilter() !== null
+    );
 
     public readonly secrets = computed<TableRow[]>(() => {
         const term = this.searchTerm().toLowerCase().trim();
@@ -226,7 +237,7 @@ export class SecretsSectionComponent implements OnInit {
 
     public onHeaderIconClick(event: { key: string; target: HTMLElement }): void {
         if (event.key !== 'usedBy') return;
-        this.usedByFilterSelect().openAt(event.target, 216);
+        this.usedByFilterSelect().openAt(event.target, USED_BY_PANEL_WIDTH);
     }
 
     public onUsedByFilterChange(value: unknown): void {

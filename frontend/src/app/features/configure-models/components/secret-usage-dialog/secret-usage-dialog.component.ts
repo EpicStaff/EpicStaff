@@ -181,6 +181,18 @@ export class SecretUsageDialogComponent implements OnInit {
         window.open(this.router.serializeUrl(urlTree), '_blank');
     }
 
+    /**
+     * Opens the flow and expands this specific node's panel. The usage endpoint only reports a
+     * node's name/type (no id), so the target flow resolves it against its own loaded nodes —
+     * see the nodeName/nodeType handling in FlowVisualProgrammingComponent.
+     */
+    public navigateToNode(flow: SecretUsageFlowItem, node: SecretUsageFlowNode): void {
+        const urlTree = this.router.createUrlTree(['/flows', flow.id], {
+            queryParams: { nodeName: node.name, nodeType: node.nodeType },
+        });
+        window.open(this.router.serializeUrl(urlTree), '_blank');
+    }
+
     public navigateToNamedItem(category: SecretUsageSimpleCategory, name: string): void {
         if (category.key === 'llm_configs') {
             this.navigateToLlmConfig(name);
