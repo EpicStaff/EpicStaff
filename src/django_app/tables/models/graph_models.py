@@ -693,7 +693,8 @@ class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode):
     post_output_variable_path = models.CharField(
         max_length=512, null=True, default=None, blank=True
     )
-    use_storage = models.BooleanField(default=False)
+    pre_use_storage = models.BooleanField(default=False)
+    post_use_storage = models.BooleanField(default=False)
     prompts = models.JSONField(default=dict, blank=True)
     default_llm_config = models.ForeignKey(
         "LLMConfig",

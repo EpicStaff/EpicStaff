@@ -224,7 +224,8 @@ def copy_classification_decision_table_node(
         default_next_node_id=node.default_next_node_id,
         next_error_node_id=node.next_error_node_id,
         metadata=node.metadata,
-        use_storage=node.use_storage,
+        pre_use_storage=node.pre_use_storage,
+        post_use_storage=node.post_use_storage,
     )
 
     new_prompts = ClassificationDecisionTablePrompt.objects.bulk_create(

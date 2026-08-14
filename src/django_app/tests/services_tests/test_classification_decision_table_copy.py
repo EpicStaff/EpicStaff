@@ -57,7 +57,7 @@ def test_copy_classification_decision_table_node_copies_use_storage_and_remaps_n
         graph=src, node_name="target"
     )
     cdt_node = ClassificationDecisionTableNode.objects.create(
-        graph=src, node_name="cdt", use_storage=True
+        graph=src, node_name="cdt", pre_use_storage=True, post_use_storage=True
     )
     ClassificationConditionGroup.objects.create(
         classification_decision_table_node=cdt_node,
@@ -78,7 +78,8 @@ def test_copy_classification_decision_table_node_copies_use_storage_and_remaps_n
         classification_decision_table_node=new_cdt_node
     )
 
-    assert new_cdt_node.use_storage is True
+    assert new_cdt_node.pre_use_storage is True
+    assert new_cdt_node.post_use_storage is True
 
     assert new_group.next_node_id is not None
     assert new_group.next_node_id != target_node.id
