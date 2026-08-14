@@ -108,7 +108,7 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         {
             label: 'Select All',
             kind: 'select-all',
-            isPermitted: this.permissionService.can(ResourceCode.Tools, ActionCode.Delete),
+            isPermitted: true,
         },
         {
             label: 'Make Favorite',
