@@ -1,133 +1,93 @@
+import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
+import { TemplatePortal } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
     ElementRef,
     EventEmitter,
-    HostListener,
+    inject,
     Input,
-    OnChanges,
     Output,
-    SimpleChanges,
+    TemplateRef,
+    ViewChild,
+    ViewContainerRef,
 } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { DatePickerComponent } from '../../../../shared/components/date-picker/date-picker.component';
+import { DateRangePickerComponent } from '../../../../shared/components/date-range-picker/date-range-picker.component';
 import { DateRangeFilter } from '../../services/flows-sessions.service';
 
 @Component({
     selector: 'app-created-at-filter-dropdown',
     standalone: true,
-    imports: [CommonModule, FormsModule, AppSvgIconComponent, DatePickerComponent],
+    imports: [CommonModule, OverlayModule, AppSvgIconComponent, DateRangePickerComponent],
     templateUrl: './date-picker-dropdown.component.html',
     styleUrls: ['./date-picker-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.Default,
 })
-export class DatePickerDropdownComponent implements OnChanges {
+export class DatePickerDropdownComponent {
     @Input() value: DateRangeFilter | null = null;
     @Output() valueChange = new EventEmitter<DateRangeFilter | null>();
 
-    public open = false;
-    public fromStr = '';
-    public toStr = '';
-    public error = '';
+    @ViewChild('triggerEl') private triggerEl!: ElementRef<HTMLButtonElement>;
+    @ViewChild('dropdownTemplate') private dropdownTemplate!: TemplateRef<unknown>;
 
-    constructor(private host: ElementRef<HTMLElement>) {}
+    private overlayRef: OverlayRef | null = null;
+    private overlay = inject(Overlay);
+    private overlayPositionBuilder = inject(OverlayPositionBuilder);
+    private vcr = inject(ViewContainerRef);
 
     public get hasValue(): boolean {
         return !!(this.value && (this.value.after || this.value.before));
     }
 
-    public ngOnChanges(changes: SimpleChanges): void {
-        if (changes['value']) {
-            this.fromStr = this.value?.after ? this.isoToDisplay(this.value.after) : '';
-            this.toStr = this.value?.before ? this.isoToDisplay(this.value.before) : '';
-        }
-    }
-
-    @HostListener('document:mousedown', ['$event'])
-    public onDocumentClick(event: MouseEvent): void {
-        if (!this.open) return;
-        const target = event.target as HTMLElement;
-        if (this.host.nativeElement.contains(target)) return;
-        if (target.closest('.cdk-overlay-container')) return;
-        this.close();
-    }
-
     public toggle(event: Event): void {
         event.stopPropagation();
-        this.open = !this.open;
+        if (this.overlayRef) {
+            this.close();
+        } else {
+            this.open();
+        }
     }
 
     public close(): void {
-        this.open = false;
-        this.error = '';
+        if (this.overlayRef) {
+            this.overlayRef.dispose();
+            this.overlayRef = null;
+        }
     }
 
-    public apply(): void {
-        const fromDate = this.fromStr ? this.parse(this.fromStr) : null;
-        const toDate = this.toStr ? this.parse(this.toStr) : null;
-
-        if (this.fromStr && !fromDate) {
-            this.error = 'Invalid "From" date';
-            return;
-        }
-
-        if (this.toStr && !toDate) {
-            this.error = 'Invalid "To" date';
-            return;
-        }
-
-        if (fromDate && toDate && fromDate.getTime() > toDate.getTime()) {
-            this.error = '"From" must be before "To"';
-            return;
-        }
-
-        if (!fromDate && !toDate) {
-            this.clear();
-            return;
-        }
-
-        this.error = '';
-        this.valueChange.emit({
-            after: fromDate ? this.startOfDayIso(fromDate) : null,
-            before: toDate ? this.endOfDayIso(toDate) : null,
-        });
+    public onSelect(range: DateRangeFilter): void {
+        this.valueChange.emit(range);
         this.close();
     }
 
     public clear(): void {
-        this.fromStr = '';
-        this.toStr = '';
-        this.error = '';
         this.valueChange.emit(null);
         this.close();
     }
 
-    private parse(value: string): Date | null {
-        const m = value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-        if (!m) return null;
-        const d = parseInt(m[1], 10);
-        const mo = parseInt(m[2], 10) - 1;
-        const y = parseInt(m[3], 10);
-        const date = new Date(y, mo, d);
-        if (date.getFullYear() !== y || date.getMonth() !== mo || date.getDate() !== d) return null;
-        return date;
-    }
+    private open(): void {
+        const positionStrategy = this.overlayPositionBuilder
+            .flexibleConnectedTo(this.triggerEl)
+            .withPositions([
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 20 },
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 20 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+            ])
+            .withPush(true);
 
-    private startOfDayIso(d: Date): string {
-        return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).toISOString();
-    }
+        this.overlayRef = this.overlay.create({
+            positionStrategy,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            hasBackdrop: true,
+            backdropClass: 'transparent-backdrop',
+        });
 
-    private endOfDayIso(d: Date): string {
-        return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).toISOString();
-    }
+        this.overlayRef.backdropClick().subscribe(() => this.close());
 
-    private isoToDisplay(iso: string): string {
-        const d = new Date(iso);
-        const day = String(d.getDate()).padStart(2, '0');
-        const mo = String(d.getMonth() + 1).padStart(2, '0');
-        return `${day}.${mo}.${d.getFullYear()}`;
+        const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
+        this.overlayRef.attach(portal);
     }
 }

@@ -1,58 +1,20 @@
-<div
-    class="cd-dropdown"
-    (click)="$event.stopPropagation()"
+<button
+    #triggerEl
+    class="cd-toggle"
+    [class.cd-toggle--active]="hasValue"
+    title="Filter by date"
+    (click)="toggle($event)"
 >
-    <button
-        class="cd-toggle"
-        [class.cd-toggle--active]="hasValue"
-        title="Filter by date"
-        (click)="toggle($event)"
-    >
-        <app-svg-icon
-            icon="calendar"
-            size="16px"
-        ></app-svg-icon>
-    </button>
+    <app-svg-icon
+        icon="date-filter"
+        size="16px"
+    ></app-svg-icon>
+</button>
 
-    @if (open) {
-        <div class="cd-panel">
-            <div class="cd-field">
-                <span class="cd-field-label">From</span>
-                <app-date-picker
-                    [allowPastDates]="true"
-                    placeholder="dd.mm.yyyy"
-                    [(ngModel)]="fromStr"
-                ></app-date-picker>
-            </div>
-
-            <div class="cd-field">
-                <span class="cd-field-label">To</span>
-                <app-date-picker
-                    [allowPastDates]="true"
-                    placeholder="dd.mm.yyyy"
-                    [(ngModel)]="toStr"
-                ></app-date-picker>
-            </div>
-
-            @if (error) {
-                <div class="cd-error">{{ error }}</div>
-            }
-            <div class="cd-actions">
-                <button
-                    class="cd-apply"
-                    (click)="apply()"
-                >
-                    Apply
-                </button>
-                @if (hasValue) {
-                    <button
-                        class="cd-clear"
-                        (click)="clear()"
-                    >
-                        Clear
-                    </button>
-                }
-            </div>
-        </div>
-    }
-</div>
+<ng-template #dropdownTemplate>
+    <app-date-range-picker
+        [value]="value"
+        (select)="onSelect($event)"
+        (clear)="clear()"
+    />
+</ng-template>

@@ -96,9 +96,6 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                     (click)="sortable && toggleSort()"
                                 >
                                     Created At
-                                    @if (sortable) {
-                                        <span class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
-                                    }
                                 </span>
                                 @if (showDateFilter) {
                                     <app-created-at-filter-dropdown
