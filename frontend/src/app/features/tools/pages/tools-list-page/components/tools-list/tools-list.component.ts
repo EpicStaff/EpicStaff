@@ -126,6 +126,20 @@ export class ToolsListComponent implements OnInit {
         effect(() => {
             this.viewState.setVisibleToolIds(this.cards().map((c) => c.id));
         });
+
+        // Publish a minimal projection of the currently selected tools so the
+        // page-level bulk menu can compute common / partial label sets.
+        effect(() => {
+            const selected = this.viewState.selectedIds();
+            if (selected.size === 0) {
+                this.viewState.setSelectedToolsMeta([]);
+                return;
+            }
+            const meta = this.allTools()
+                .filter((t) => selected.has(t.id))
+                .map((t) => ({ id: t.id, labels: t.labels ?? [] }));
+            this.viewState.setSelectedToolsMeta(meta);
+        });
     }
 
     public ngOnInit(): void {
@@ -167,7 +181,7 @@ export class ToolsListComponent implements OnInit {
         req$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
             next: () => this.setFavoriteInState([payload.tool.id], payload.favorite),
             error: (err: HttpErrorResponse) => {
-                this.toastService.error(err.error?.message || `Failed to update favorite for "${payload.tool.name}".`);
+                this.handleStaleResource(err, `Failed to update favorite for "${payload.tool.name}".`);
             },
         });
     }
@@ -179,9 +193,7 @@ export class ToolsListComponent implements OnInit {
             .subscribe({
                 next: (updated) => this.replaceToolInState(updated),
                 error: (err: HttpErrorResponse) => {
-                    this.toastService.error(
-                        err.error?.message || `Failed to update labels for "${payload.tool.name}".`
-                    );
+                    this.handleStaleResource(err, `Failed to update labels for "${payload.tool.name}".`);
                 },
             });
     }
@@ -198,9 +210,7 @@ export class ToolsListComponent implements OnInit {
                     .subscribe({
                         next: (copy) => this.addNewTool(copy),
                         error: (err: HttpErrorResponse) => {
-                            this.toastService.error(
-                                err.error?.message || `Failed to duplicate "${payload.tool.name}".`
-                            );
+                            this.handleStaleResource(err, `Failed to duplicate "${payload.tool.name}".`);
                         },
                     });
                 return;
@@ -211,7 +221,7 @@ export class ToolsListComponent implements OnInit {
                     .subscribe({
                         next: (blob) => downloadBlob(blob, this.port.exportFileName(payload.tool.name)),
                         error: (err: HttpErrorResponse) => {
-                            this.toastService.error(err.error?.message || `Failed to export "${payload.tool.name}".`);
+                            this.handleStaleResource(err, `Failed to export "${payload.tool.name}".`);
                         },
                     });
                 return;
@@ -229,9 +239,7 @@ export class ToolsListComponent implements OnInit {
                             });
                         },
                         error: (err: HttpErrorResponse) => {
-                            this.toastService.error(
-                                err.error?.message || `Failed to load usage for "${payload.tool.name}".`
-                            );
+                            this.handleStaleResource(err, `Failed to load usage for "${payload.tool.name}".`);
                         },
                     });
                 return;
@@ -285,8 +293,8 @@ export class ToolsListComponent implements OnInit {
                 this.runBulkSelectedDelete(deletable);
                 return;
             }
-            case 'add-labels':
-                this.handleBulkAddLabels(event.labelIds ?? []);
+            case 'manage-labels':
+                this.handleBulkManageLabels(event.addLabelIds ?? [], event.removeLabelIds ?? []);
                 return;
             case 'open-include-exclude':
                 this.openIncludeExcludeDialog(event.initialTab ?? 'primary');
@@ -296,6 +304,9 @@ export class ToolsListComponent implements OnInit {
                 return;
             case 'open-import':
                 this.handleImport();
+                return;
+            case 'open-create':
+                this.port.openCreateDialog(this.dialog);
                 return;
         }
     }
@@ -364,7 +375,7 @@ export class ToolsListComponent implements OnInit {
                 hasBackdrop: true,
                 providers: [{ provide: LABELS_STORE, useExisting: ToolsLabelsStorageService }],
             });
-            ref.closed.subscribe((result) => {
+            ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
                 if (!result) return;
                 this.viewState.patchFilter({
                     includedToolIds: result.includedItemIds,
@@ -403,15 +414,28 @@ export class ToolsListComponent implements OnInit {
         });
     }
 
-    private handleBulkAddLabels(labelIdsToAdd: number[]): void {
+    private handleBulkManageLabels(addLabelIds: number[], removeLabelIds: number[]): void {
         const selectedIds = Array.from(this.viewState.selectedIds());
-        if (selectedIds.length === 0 || labelIdsToAdd.length === 0) return;
-        const requests = selectedIds.map((id) => {
-            const tool = this.findToolById(id);
-            const union = new Set<number>(tool?.labels ?? []);
-            for (const l of labelIdsToAdd) union.add(l);
-            return this.port.patchLabels(id, Array.from(union));
-        });
+        if (selectedIds.length === 0 || (addLabelIds.length === 0 && removeLabelIds.length === 0)) return;
+
+        const removeSet = new Set<number>(removeLabelIds);
+        const requests = selectedIds
+            .map((id) => {
+                const tool = this.findToolById(id);
+                if (!tool) return null;
+                const current = new Set<number>(tool.labels ?? []);
+                const next = new Set<number>(current);
+                for (const l of addLabelIds) next.add(l);
+                for (const l of removeSet) next.delete(l);
+                // Skip no-op patches so a partial-label re-check doesn't fan out
+                // needless requests to tools that already have the target set.
+                if (setsEqual(current, next)) return null;
+                return this.port.patchLabels(id, Array.from(next));
+            })
+            .filter((r): r is NonNullable<typeof r> => r !== null);
+
+        if (requests.length === 0) return;
+
         runSettledBulk(requests, {
             destroyRef: this.destroyRef,
             toast: this.toastService,
@@ -468,7 +492,7 @@ export class ToolsListComponent implements OnInit {
                     });
                 },
                 error: (err: HttpErrorResponse) => {
-                    this.toastService.error(err.error?.message || 'Failed to load usage data.');
+                    this.handleStaleResource(err, 'Failed to load usage data.');
                 },
             });
     }
@@ -485,9 +509,9 @@ export class ToolsListComponent implements OnInit {
                     );
                 },
                 error: (err: HttpErrorResponse) => {
-                    this.toastService.error(
-                        err.error?.message ||
-                            `Failed to delete ${this.port.entityLabel} "${tool.name}". Please try again.`
+                    this.handleStaleResource(
+                        err,
+                        `Failed to delete ${this.port.entityLabel} "${tool.name}". Please try again.`
                     );
                 },
             });
@@ -523,7 +547,7 @@ export class ToolsListComponent implements OnInit {
                     });
                 },
                 error: (err: HttpErrorResponse) => {
-                    this.toastService.error(err.error?.message || 'Failed to load usage data.');
+                    this.handleStaleResource(err, 'Failed to load usage data.');
                 },
             });
     }
@@ -577,8 +601,21 @@ export class ToolsListComponent implements OnInit {
     public reload(): void {
         this.loadTools();
     }
+
+    private handleStaleResource(err: HttpErrorResponse, defaultMessage: string): void {
+        this.toastService.error(err.error?.message || defaultMessage);
+        if (err.status === 404 || err.status === 410) {
+            this.loadTools();
+        }
+    }
 }
 
 function capitalise(s: string): string {
     return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
+}
+
+function setsEqual(a: Set<number>, b: Set<number>): boolean {
+    if (a.size !== b.size) return false;
+    for (const v of a) if (!b.has(v)) return false;
+    return true;
 }

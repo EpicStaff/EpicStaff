@@ -1,5 +1,6 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
-import { inject, Injectable } from '@angular/core';
+import { DestroyRef, inject, Injectable } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable } from 'rxjs';
 
 import { CreateCustomToolDialogComponent } from '../../../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
@@ -15,6 +16,7 @@ import { ToolsListPort } from './tools-list-port';
 export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> {
     private readonly service = inject(CustomToolsService);
     private readonly events = inject(ToolsEventsService);
+    private readonly destroyRef = inject(DestroyRef);
 
     public readonly kind: ToolKind = 'custom';
     public readonly entityLabel = 'custom tool';
@@ -87,6 +89,13 @@ export class CustomToolsPort implements ToolsListPort<GetPythonCodeToolRequest> 
     ): DialogRef<GetPythonCodeToolRequest> {
         return dialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent, {
             data: { pythonTools: allTools, selectedTool: tool },
+        });
+    }
+
+    public openCreateDialog(dialog: Dialog): void {
+        const ref = dialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent);
+        ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
+            if (result) this.events.emitCustomToolCreated(result);
         });
     }
 }

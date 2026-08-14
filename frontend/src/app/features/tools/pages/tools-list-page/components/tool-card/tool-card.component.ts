@@ -6,7 +6,7 @@ import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
 import { getLabelColorOption, LabelDto } from '@shared/models';
 
 import { ToolsLabelsStorageService } from '../../../../services/tools-labels-storage.service';
-import { ToolCardMenuAction, ToolCardVM } from './tool-card.model';
+import { ToolCardIcon, ToolCardMenuAction, ToolCardVM } from './tool-card.model';
 import { ToolCardMenuComponent } from './tool-card-menu.component';
 
 @Component({
@@ -89,4 +89,6 @@ export class ToolCardComponent {
     public chipColor(label: LabelDto): string {
         return getLabelColorOption(label.metadata?.color).chipColor;
     }
+
+    protected readonly ToolCardIcon = ToolCardIcon;
 }

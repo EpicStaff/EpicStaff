@@ -11,15 +11,26 @@ export type ToolsBulkActionKind =
     | 'favorite'
     | 'duplicate'
     | 'delete-selected'
-    | 'add-labels'
+    | 'manage-labels'
     | 'open-include-exclude'
     | 'export-selected'
-    | 'open-import';
+    | 'open-import'
+    | 'open-create';
 
 export interface ToolsBulkActionEvent {
     kind: ToolsBulkActionKind;
-    labelIds?: number[];
+    /** For 'manage-labels': labels to add to any selected tool missing them. */
+    addLabelIds?: number[];
+    /** For 'manage-labels': labels to remove from any selected tool having them. */
+    removeLabelIds?: number[];
     initialTab?: IncludeExcludeTab;
+}
+
+/** Minimal projection of a selected tool used by the page to compute the
+ *  intersection / union of labels for the bulk "Manage Labels" dropdown. */
+export interface SelectedToolMeta {
+    id: number;
+    labels: number[];
 }
 
 /**
@@ -42,6 +53,11 @@ export class ToolsViewStorageService implements StorageService {
 
     private readonly _visibleToolIds = signal<number[]>([]);
     public readonly visibleToolIds = this._visibleToolIds.asReadonly();
+
+    private readonly _selectedToolsMeta = signal<SelectedToolMeta[]>([]);
+    /** Snapshot of the currently selected tools' label arrays; used by the
+     *  page to compute common/partial label sets for the bulk dropdown. */
+    public readonly selectedToolsMeta = this._selectedToolsMeta.asReadonly();
 
     public readonly selectMode = signal<boolean>(false);
 
@@ -91,10 +107,15 @@ export class ToolsViewStorageService implements StorageService {
     public clearSelection(): void {
         if (this._selectedIds().size === 0) return;
         this._selectedIds.set(new Set());
+        this._selectedToolsMeta.set([]);
     }
 
     public setVisibleToolIds(ids: number[]): void {
         this._visibleToolIds.set(ids);
+    }
+
+    public setSelectedToolsMeta(items: SelectedToolMeta[]): void {
+        this._selectedToolsMeta.set(items);
     }
 
     public setSelectMode(mode: boolean): void {
@@ -119,6 +140,7 @@ export class ToolsViewStorageService implements StorageService {
     public clear(): void {
         this._selectedIds.set(new Set());
         this._visibleToolIds.set([]);
+        this._selectedToolsMeta.set([]);
         this.selectMode.set(false);
         this.showUsageAndUnused.set(false);
         this._filter.set({ ...EMPTY_TOOLS_FILTER });

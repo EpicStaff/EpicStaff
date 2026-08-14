@@ -43,6 +43,13 @@ export interface ToolsListPort<T extends { id: number; name: string; labels: num
     // configure/edit dialog
     openConfigureDialog(dialog: Dialog, tool: T, allTools: T[]): DialogRef<T>;
 
+    /**
+     * Opens the kind-specific "create tool" dialog. On confirm, the port
+     * publishes the new tool via {@link ToolsEventsService} so any mounted
+     * `ToolsListComponent` picks it up through {@link createdEvent$}.
+     */
+    openCreateDialog(dialog: Dialog): void;
+
     // creation event stream (from ToolsEventsService)
     readonly createdEvent$: Observable<T>;
 }

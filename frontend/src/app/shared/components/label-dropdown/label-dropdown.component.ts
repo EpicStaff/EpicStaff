@@ -63,12 +63,29 @@ interface FlatLabelNode {
 })
 export class LabelDropdownComponent implements OnInit {
     readonly selectedLabelIds = input<number[]>([]);
+    /**
+     * Labels rendered in the tri-state indeterminate mode: applied to some but
+     * not all of the entities being bulk-edited. Ignored in single-entity mode
+     * (default empty). Ids that also appear in `selectedLabelIds` win — they
+     * render as fully checked.
+     */
+    readonly indeterminateLabelIds = input<number[]>([]);
 
     /** When true the built-in trigger button is not rendered; the parent
      *  provides its own and calls openAt(element). */
     readonly hideTrigger = input<boolean>(false);
 
+    /** Full-replacement contract used by single-entity consumers. */
     selectionChange = output<number[]>();
+    /**
+     * Delta contract used by bulk-edit consumers. Relative to the state the
+     * dropdown was opened with:
+     *   - `addLabelIds`   → labels the user turned checked that were unchecked
+     *                       or indeterminate initially.
+     *   - `removeLabelIds`→ labels the user turned unchecked that were checked
+     *                       or indeterminate initially.
+     */
+    bulkChange = output<{ addLabelIds: number[]; removeLabelIds: number[] }>();
 
     private readonly labelsStorage = inject(LABELS_STORE);
     private readonly elementRef = inject(ElementRef);
@@ -78,7 +95,12 @@ export class LabelDropdownComponent implements OnInit {
     private readonly destroyRef = inject(DestroyRef);
 
     readonly isOpen = signal<boolean>(false);
-    readonly localSelectedIds = signal<Set<number>>(new Set());
+    readonly localCheckedIds = signal<Set<number>>(new Set());
+    readonly localIndeterminateIds = signal<Set<number>>(new Set());
+
+    private initialCheckedSnapshot = new Set<number>();
+    private initialIndeterminateSnapshot = new Set<number>();
+
     readonly expandedIds = signal<Set<number>>(new Set());
     readonly addingChildOf = signal<number | null>(null);
     readonly addingRoot = signal<boolean>(false);
@@ -118,10 +140,13 @@ export class LabelDropdownComponent implements OnInit {
 
     constructor() {
         effect(() => {
-            const ids = this.selectedLabelIds();
+            const checked = this.selectedLabelIds();
+            const indeterminate = this.indeterminateLabelIds();
             untracked(() => {
                 if (!this.isOpen()) {
-                    this.localSelectedIds.set(new Set(ids));
+                    const checkedSet = new Set(checked);
+                    this.localCheckedIds.set(checkedSet);
+                    this.localIndeterminateIds.set(new Set(indeterminate.filter((id) => !checkedSet.has(id))));
                 }
             });
         });
@@ -158,7 +183,12 @@ export class LabelDropdownComponent implements OnInit {
 
     /** Open the dropdown anchored to an arbitrary element (custom trigger mode). */
     openAt(originElement: HTMLElement): void {
-        this.localSelectedIds.set(new Set(this.selectedLabelIds()));
+        const checkedSet = new Set(this.selectedLabelIds());
+        const indeterminateSet = new Set(this.indeterminateLabelIds().filter((id) => !checkedSet.has(id)));
+        this.localCheckedIds.set(checkedSet);
+        this.localIndeterminateIds.set(indeterminateSet);
+        this.initialCheckedSnapshot = new Set(checkedSet);
+        this.initialIndeterminateSnapshot = new Set(indeterminateSet);
 
         if (this.overlayRef) {
             this.overlayRef.detach();
@@ -208,17 +238,54 @@ export class LabelDropdownComponent implements OnInit {
     }
 
     save(): void {
-        this.selectionChange.emit(Array.from(this.localSelectedIds()));
+        const checkedNow = this.localCheckedIds();
+        const indeterminateNow = this.localIndeterminateIds();
+        const initialChecked = this.initialCheckedSnapshot;
+        const initialIndeterminate = this.initialIndeterminateSnapshot;
+
+        const addLabelIds: number[] = [];
+        for (const id of checkedNow) {
+            if (!initialChecked.has(id)) addLabelIds.push(id);
+        }
+
+        const removeLabelIds: number[] = [];
+        const wasPresent = new Set<number>([...initialChecked, ...initialIndeterminate]);
+        for (const id of wasPresent) {
+            if (!checkedNow.has(id) && !indeterminateNow.has(id)) removeLabelIds.push(id);
+        }
+
+        this.selectionChange.emit(Array.from(checkedNow));
+        this.bulkChange.emit({ addLabelIds, removeLabelIds });
         this.close();
     }
 
     clear(): void {
         this.searchTerm.set('');
-        this.localSelectedIds.set(new Set());
+        this.localCheckedIds.set(new Set());
+        this.localIndeterminateIds.set(new Set());
     }
 
+    /**
+     * Three-way toggle used by the checkbox row:
+     *   indeterminate → checked   (add to entities missing it)
+     *   checked       → unchecked (remove from entities that have it)
+     *   unchecked     → checked   (add to every entity)
+     */
     toggleSelection(id: number): void {
-        this.localSelectedIds.update((set) => {
+        if (this.localIndeterminateIds().has(id)) {
+            this.localIndeterminateIds.update((set) => {
+                const next = new Set(set);
+                next.delete(id);
+                return next;
+            });
+            this.localCheckedIds.update((set) => {
+                const next = new Set(set);
+                next.add(id);
+                return next;
+            });
+            return;
+        }
+        this.localCheckedIds.update((set) => {
             const next = new Set(set);
             if (next.has(id)) next.delete(id);
             else next.add(id);
@@ -235,8 +302,13 @@ export class LabelDropdownComponent implements OnInit {
         });
     }
 
+    /** True when the row should render highlighted (fully checked, not indeterminate). */
     isSelected(id: number): boolean {
-        return this.localSelectedIds().has(id);
+        return this.localCheckedIds().has(id);
+    }
+
+    isIndeterminate(id: number): boolean {
+        return this.localIndeterminateIds().has(id);
     }
 
     isExpanded(id: number): boolean {

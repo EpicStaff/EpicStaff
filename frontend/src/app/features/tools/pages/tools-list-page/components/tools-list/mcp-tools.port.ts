@@ -1,5 +1,6 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
-import { inject, Injectable } from '@angular/core';
+import { DestroyRef, inject, Injectable } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable } from 'rxjs';
 
 import { McpToolDialogComponent } from '../../../../components/mcp-tool-dialog/mcp-tool-dialog.component';
@@ -15,6 +16,7 @@ import { ToolsListPort } from './tools-list-port';
 export class McpToolsPort implements ToolsListPort<GetMcpToolRequest> {
     private readonly service = inject(McpToolsService);
     private readonly events = inject(ToolsEventsService);
+    private readonly destroyRef = inject(DestroyRef);
 
     public readonly kind: ToolKind = 'mcp';
     public readonly entityLabel = 'MCP tool';
@@ -87,6 +89,18 @@ export class McpToolsPort implements ToolsListPort<GetMcpToolRequest> {
             maxWidth: '95vw',
             maxHeight: '90vh',
             autoFocus: true,
+        });
+    }
+
+    public openCreateDialog(dialog: Dialog): void {
+        const ref = dialog.open<GetMcpToolRequest>(McpToolDialogComponent, {
+            data: {},
+            maxWidth: '95vw',
+            maxHeight: '90vh',
+            autoFocus: true,
+        });
+        ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
+            if (result) this.events.emitMcpToolCreated(result);
         });
     }
 }

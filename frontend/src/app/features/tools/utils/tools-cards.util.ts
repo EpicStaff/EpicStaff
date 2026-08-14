@@ -59,15 +59,17 @@ export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: T
             if (!evaluateCustomCondition(adapter.nameOf(tool), filter.customFilter)) return false;
         } else {
             const names = labels.map((lId) => labelNameById.get(lId) ?? '');
-            if (!names.some((n) => evaluateCustomCondition(n, filter.customFilter))) return false;
+            if (!evaluateCustomCondition(names, filter.customFilter)) return false;
         }
     }
 
     // "Used in projects/agents" sort orders act as filters too: hide anything
     // with a zero count for the corresponding scope. `most_used`/`unused_first`
     // stay sort-only (they surface unused rows at the bottom / top).
-    if (filter.sortOrder === 'used_in_projects' && (usage.get(id)?.projects_count ?? 0) === 0) return false;
-    if (filter.sortOrder === 'used_in_agents' && (usage.get(id)?.staff_count ?? 0) === 0) return false;
+    if (usage.size > 0) {
+        if (filter.sortOrder === 'used_in_projects' && (usage.get(id)?.projects_count ?? 0) === 0) return false;
+        if (filter.sortOrder === 'used_in_agents' && (usage.get(id)?.staff_count ?? 0) === 0) return false;
+    }
 
     // Free-text search.
     if (searchTerm) {

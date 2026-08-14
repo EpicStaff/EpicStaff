@@ -7,6 +7,7 @@ export interface ToolsBulkAction {
     label: string;
     kind: ToolsBulkActionKind;
     hasSubmenu?: boolean;
+    isPermitted: boolean;
 }
 
 @Component({
@@ -18,19 +19,21 @@ export interface ToolsBulkAction {
 })
 export class ToolsBulkActionsMenuComponent {
     public readonly actions = input<ToolsBulkAction[]>([]);
-    /** Renders an "Add Label" row that opens a label-dropdown as its picker. */
-    public readonly showAddLabel = input<boolean>(false);
-    /** Preselected label ids for the label dropdown. */
-    public readonly initialLabelIds = input<number[]>([]);
+    /** Renders a "Manage Labels" row that opens a label-dropdown as its picker. */
+    public readonly showManageLabels = input<boolean>(false);
+    /** Labels applied to every currently selected tool (render as checked). */
+    public readonly commonLabelIds = input<number[]>([]);
+    /** Labels applied to some but not all currently selected tools (render as indeterminate). */
+    public readonly partialLabelIds = input<number[]>([]);
 
     public readonly actionSelected = output<ToolsBulkAction>();
-    public readonly labelsChanged = output<number[]>();
+    public readonly labelsApplied = output<{ addLabelIds: number[]; removeLabelIds: number[] }>();
 
     public onSelect(action: ToolsBulkAction): void {
         this.actionSelected.emit(action);
     }
 
-    public onLabelsChanged(ids: number[]): void {
-        this.labelsChanged.emit(ids);
+    public onLabelsApplied(change: { addLabelIds: number[]; removeLabelIds: number[] }): void {
+        this.labelsApplied.emit(change);
     }
 }

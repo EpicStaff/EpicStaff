@@ -139,7 +139,8 @@
 
     <div class="card-footer">
         <app-svg-icon
-            icon="python"
+            class="card-icon"
+            [icon]="ToolCardIcon[tool().kind]"
             size="1rem"
         />
         @if (tool().builtIn) {

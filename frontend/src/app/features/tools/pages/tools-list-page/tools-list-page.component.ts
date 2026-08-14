@@ -15,6 +15,9 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import {
+    AppCustomFilterDialogComponent,
+    AppCustomFilterDialogData,
+    AppCustomFilterDialogResult,
     AppSvgIconComponent,
     ButtonComponent,
     LabelSidebarComponent,
@@ -22,22 +25,13 @@ import {
     TabButtonComponent,
     ToggleSwitchComponent,
 } from '@shared/components';
-import {
-    AppCustomFilterDialogComponent,
-    AppCustomFilterDialogData,
-    AppCustomFilterDialogResult,
-} from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
-import { filter, tap } from 'rxjs/operators';
+import { filter } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { HideInlineSubtitleOnOverflowDirective } from '../../../../shared/directives/hide-inline-subtitle-on-overflow.directive';
-import { CreateCustomToolDialogComponent } from '../../../../user-settings-page/tools/custom-tool-editor/create-custom-tool-dialog/create-custom-tool-dialog.component';
-import { McpToolDialogComponent } from '../../components/mcp-tool-dialog/mcp-tool-dialog.component';
-import { GetMcpToolRequest } from '../../models/mcp-tool.model';
-import { GetPythonCodeToolRequest } from '../../models/python-code-tool.model';
-import { ToolsEventsService } from '../../services/tools-events.service';
 import { ToolsLabelsStorageService } from '../../services/tools-labels-storage.service';
 import { ToolsSearchService } from '../../services/tools-search.service';
 import { ToolsViewStorageService } from '../../services/tools-view-storage.service';
@@ -88,33 +82,90 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
     public bulkMenuOpen = signal<boolean>(false);
 
     private readonly dialog = inject(Dialog);
+    private readonly permissionService = inject(PermissionsService);
     private readonly router = inject(Router);
     private readonly destroyRef = inject(DestroyRef);
-    private readonly toolsEventsService = inject(ToolsEventsService);
     private readonly toolsSearchService = inject(ToolsSearchService);
     private readonly labelsStorage = inject(ToolsLabelsStorageService);
     public readonly viewState = inject(ToolsViewStorageService);
 
     private readonly noSelectionActions: ToolsBulkAction[] = [
-        { label: 'Select All', kind: 'select-all' },
-        { label: 'Delete All Unused', kind: 'delete-unused' },
+        {
+            label: 'Select All',
+            kind: 'select-all',
+            isPermitted: true,
+        },
+        {
+            label: 'Delete All Unused',
+            kind: 'delete-unused',
+            isPermitted: this.permissionService.can(ResourceCode.Tools, ActionCode.Delete),
+        },
     ];
 
     // "Add Label" is rendered by the bulk-actions-menu itself (label-dropdown trigger),
     // not as a plain action here.
     private readonly selectionActions: ToolsBulkAction[] = [
-        { label: 'Select All', kind: 'select-all' },
-        { label: 'Make Favorite', kind: 'favorite' },
-        { label: 'Duplicate', kind: 'duplicate' },
-        { label: 'Export Selected', kind: 'export-selected' },
-        { label: 'Delete All Selected', kind: 'delete-selected' },
+        {
+            label: 'Select All',
+            kind: 'select-all',
+            isPermitted: this.permissionService.can(ResourceCode.Tools, ActionCode.Delete),
+        },
+        {
+            label: 'Make Favorite',
+            kind: 'favorite',
+            isPermitted: true,
+        },
+        {
+            label: 'Duplicate',
+            kind: 'duplicate',
+            isPermitted: this.permissionService.can(ResourceCode.Tools, ActionCode.Create),
+        },
+        {
+            label: 'Export Selected',
+            kind: 'export-selected',
+            isPermitted: this.permissionService.can(ResourceCode.Tools, ActionCode.Export),
+        },
+        {
+            label: 'Delete All Selected',
+            kind: 'delete-selected',
+            isPermitted: this.permissionService.can(ResourceCode.Tools, ActionCode.Delete),
+        },
     ];
 
     public readonly hasSelection = this.viewState.hasSelection;
+    public readonly canUpdateTools = this.permissionService.can(ResourceCode.Tools, ActionCode.Update);
 
     public readonly bulkActions = computed<ToolsBulkAction[]>(() =>
         this.hasSelection() ? this.selectionActions : this.noSelectionActions
     );
+
+    /**
+     * Labels applied to *every* currently selected tool. Rendered as fully
+     * checked in the bulk "Manage Labels" dropdown.
+     */
+    public readonly commonSelectedLabelIds = computed<number[]>(() => {
+        const rows = this.viewState.selectedToolsMeta();
+        if (rows.length === 0) return [];
+        const iter = rows.map((r) => new Set<number>(r.labels));
+        const intersection = new Set<number>(iter[0]);
+        for (let i = 1; i < iter.length; i++) {
+            for (const id of intersection) if (!iter[i].has(id)) intersection.delete(id);
+        }
+        return [...intersection];
+    });
+
+    /**
+     * Labels applied to some (but not all) selected tools. Rendered as
+     * indeterminate in the bulk "Manage Labels" dropdown.
+     */
+    public readonly partialSelectedLabelIds = computed<number[]>(() => {
+        const rows = this.viewState.selectedToolsMeta();
+        if (rows.length === 0) return [];
+        const union = new Set<number>();
+        for (const r of rows) for (const id of r.labels) union.add(id);
+        const common = new Set<number>(this.commonSelectedLabelIds());
+        return [...union].filter((id) => !common.has(id));
+    });
 
     public readonly activeLabelFilterDisplay = computed(() => {
         const filter = this.labelsStorage.activeLabelFilter();
@@ -123,10 +174,6 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         const label = this.labelsStorage.labels().find((l) => l.id === filter);
         return label && label.parent ? label.full_path : label?.name;
     });
-
-    public get isMcpTabActive(): boolean {
-        return this.router.url.includes('/mcp');
-    }
 
     public ngOnInit(): void {
         // Clear selection whenever the active tab changes (Custom <-> MCP).
@@ -243,7 +290,7 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
             panelClass: 'tools-filter-dialog-panel',
             hasBackdrop: true,
         });
-        ref.closed.subscribe((result) => {
+        ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (!result) return;
             this.viewState.patchFilter({
                 customFilter: result.condition as ReturnType<typeof this.viewState.filter>['customFilter'],
@@ -264,18 +311,18 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         this.viewState.dispatch({ kind: action.kind });
     }
 
-    public onBulkLabelsChanged(labelIds: number[]): void {
+    public onBulkLabelsApplied(change: { addLabelIds: number[]; removeLabelIds: number[] }): void {
         this.closeBulkMenu();
-        if (labelIds.length === 0) return;
-        this.viewState.dispatch({ kind: 'add-labels', labelIds });
+        if (change.addLabelIds.length === 0 && change.removeLabelIds.length === 0) return;
+        this.viewState.dispatch({
+            kind: 'manage-labels',
+            addLabelIds: change.addLabelIds,
+            removeLabelIds: change.removeLabelIds,
+        });
     }
 
     public onCreateToolClick(): void {
-        if (this.isMcpTabActive) {
-            this.openMcpToolDialog();
-        } else {
-            this.openCustomToolDialog();
-        }
+        this.viewState.dispatch({ kind: 'open-create' });
     }
 
     public onImportClick(): void {
@@ -298,41 +345,6 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
 
     public toggleSelectAllTools(): void {
         this.viewState.toggleSelectAllVisible();
-    }
-
-    public openCustomToolDialog(): void {
-        const dialogRef = this.dialog.open<GetPythonCodeToolRequest>(CreateCustomToolDialogComponent);
-
-        dialogRef.closed
-            .pipe(
-                tap((result) => {
-                    if (result) {
-                        this.toolsEventsService.emitCustomToolCreated(result);
-                        this.router.navigate(['/tools/custom']);
-                    }
-                })
-            )
-            .subscribe();
-    }
-
-    public openMcpToolDialog(): void {
-        const dialogRef = this.dialog.open<GetMcpToolRequest>(McpToolDialogComponent, {
-            data: {},
-            maxWidth: '95vw',
-            maxHeight: '90vh',
-            autoFocus: true,
-        });
-
-        dialogRef.closed
-            .pipe(
-                tap((result) => {
-                    if (result) {
-                        this.toolsEventsService.emitMcpToolCreated(result);
-                        this.router.navigate(['/tools/mcp']);
-                    }
-                })
-            )
-            .subscribe();
     }
 
     protected readonly ResourceCode = ResourceCode;

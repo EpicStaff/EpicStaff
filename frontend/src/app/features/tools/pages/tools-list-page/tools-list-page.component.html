@@ -146,7 +146,7 @@
                         (click)="toggleBulkMenu()"
                     >
                         <app-svg-icon
-                            icon="menu"
+                            icon="bulk-menu"
                             size="0.875rem"
                         />
                         <span>Bulk Actions</span>
@@ -177,9 +177,11 @@
                     >
                         <app-tools-bulk-actions-menu
                             [actions]="bulkActions()"
-                            [showAddLabel]="hasSelection()"
+                            [showManageLabels]="hasSelection() && canUpdateTools"
+                            [commonLabelIds]="commonSelectedLabelIds()"
+                            [partialLabelIds]="partialSelectedLabelIds()"
                             (actionSelected)="onBulkAction($event)"
-                            (labelsChanged)="onBulkLabelsChanged($event)"
+                            (labelsApplied)="onBulkLabelsApplied($event)"
                         />
                     </ng-template>
 

@@ -1,11 +1,13 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { LabelDropdownComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { ToolCardMenuAction } from './tool-card.model';
 
 @Component({
     selector: 'app-tool-card-menu',
-    imports: [LabelDropdownComponent],
+    imports: [LabelDropdownComponent, HasPermissionDirective],
     templateUrl: './tool-card-menu.component.html',
     styleUrls: ['./tool-card-menu.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -24,4 +26,7 @@ export class ToolCardMenuComponent {
     public onLabelsChanged(ids: number[]): void {
         this.labelsChanged.emit(ids);
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

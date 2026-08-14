@@ -4,6 +4,7 @@
     (click)="$event.stopPropagation()"
 >
     <button
+        *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
         type="button"
         class="menu-item"
         role="menuitem"
@@ -12,14 +13,16 @@
         <span class="label">Duplicate</span>
     </button>
     <button
+        *appHasPermission="[ResourceCode.Tools, ActionCode.Update]"
         type="button"
         class="menu-item"
         role="menuitem"
         (click)="$event.stopPropagation(); ld.openAt($any($event.currentTarget))"
     >
-        <span class="label">Add Label</span>
+        <span class="label">Manage Labels</span>
     </button>
     <button
+        *appHasPermission="[ResourceCode.Tools, ActionCode.Export]"
         type="button"
         class="menu-item"
         role="menuitem"
@@ -36,6 +39,7 @@
         <span class="label">Show Used Places</span>
     </button>
     <button
+        *appHasPermission="[ResourceCode.Tools, ActionCode.Delete]"
         type="button"
         class="menu-item"
         role="menuitem"

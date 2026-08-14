@@ -56,18 +56,23 @@ export const FILTER_OPERATOR_ORDER: FilterOperator[] = [
 ];
 
 /**
- * Evaluate a text against a single {@link CustomFilterCondition}. Values are
- * compared case-insensitively; an empty condition (no primary value) always
- * matches.
+ * Evaluate a text (or list of texts) against a single
+ * {@link CustomFilterCondition}. Values are compared case-insensitively; an
+ * empty condition (no primary value) always matches. When an array is passed,
+ * a clause matches if **any** element satisfies it (used for multi-value fields
+ * like a row's list of label names).
  */
-export function evaluateCustomCondition(text: string, condition: CustomFilterCondition | null): boolean {
+export function evaluateCustomCondition(text: string | string[], condition: CustomFilterCondition | null): boolean {
     if (!condition) return true;
     const primary = condition.primary.value.trim();
     if (!primary) return true;
-    const matchesPrimary = evaluateClause(text, condition.primary);
-    const secondary = condition.secondary?.value.trim();
-    if (!secondary || !condition.secondary) return matchesPrimary;
-    const matchesSecondary = evaluateClause(text, condition.secondary);
+    const haystacks = Array.isArray(text) ? text : [text];
+    if (haystacks.length === 0) return false;
+    const matchesPrimary = haystacks.some((h) => evaluateClause(h, condition.primary));
+    const secondaryValue = condition.secondary?.value.trim();
+    if (!secondaryValue || !condition.secondary) return matchesPrimary;
+    const secondaryClause = condition.secondary;
+    const matchesSecondary = haystacks.some((h) => evaluateClause(h, secondaryClause));
     return condition.combinator === 'AND' ? matchesPrimary && matchesSecondary : matchesPrimary || matchesSecondary;
 }
 

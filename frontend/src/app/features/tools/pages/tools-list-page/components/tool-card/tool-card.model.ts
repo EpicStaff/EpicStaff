@@ -5,6 +5,11 @@
  */
 export type ToolKind = 'custom' | 'mcp';
 
+export const ToolCardIcon: Record<ToolKind, string> = {
+    custom: 'python',
+    mcp: 'hub',
+};
+
 export interface ToolCardVM {
     id: number;
     kind: ToolKind;

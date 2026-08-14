@@ -157,6 +157,7 @@
 
                     <app-checkbox
                         [checked]="isSelected(item.node.id)"
+                        [indeterminate]="isIndeterminate(item.node.id)"
                         (changed)="toggleSelection(item.node.id)"
                     />
 
