@@ -183,6 +183,9 @@ class AgentRequest(BaseModel):
     tools: list[BaseToolData] = Field(default_factory=list)
     collections: list[CollectionSpec] = Field(default_factory=list)
     s3_files: list[S3FileSpec] = Field(default_factory=list)
+    scratch_path: str | None = None
+    """Per-session scratch folder prefix (e.g. ``sessions/42/``) the agent may
+    freely create/edit/delete under; ``None`` when the run has no session."""
     payload: dict = Field(default_factory=dict)
 
 

@@ -266,6 +266,60 @@ def test_legend_appears_before_closing_footer_line():
     assert legend_index < footer_index
 
 
+def test_no_scratch_path_output_unchanged_from_before():
+    spec = _spec(metadata={"item_type": "file", "flags": _flags(can_view="allow")})
+
+    attachment = build_s3_manifest([spec])
+    attachment_with_explicit_none = build_s3_manifest([spec], scratch_path=None)
+
+    assert attachment.content == attachment_with_explicit_none.content
+
+
+def test_scratch_path_only_manifest_is_not_none():
+    attachment = build_s3_manifest([], scratch_path="sessions/42/")
+
+    assert attachment is not None
+
+
+def test_scratch_path_line_rendered_after_granted_paths_before_legend():
+    spec = _spec(
+        path="reports/q1.pdf",
+        metadata={"item_type": "file", "flags": _flags(can_view="allow")},
+    )
+
+    attachment = build_s3_manifest([spec], scratch_path="sessions/42/")
+
+    content = attachment.content
+    scratch_line = (
+        "You may create and manage your own files under: sessions/42/ "
+        "— you have full access there (list, view, edit, delete)."
+    )
+    assert scratch_line in content
+
+    spec_line_index = content.index("- reports/q1.pdf")
+    scratch_line_index = content.index(scratch_line)
+    legend_index = content.index("What each permission means")
+    assert spec_line_index < scratch_line_index < legend_index
+
+
+def test_scratch_only_manifest_explains_all_four_ops():
+    attachment = build_s3_manifest([], scratch_path="sessions/42/")
+
+    content = attachment.content
+    assert "- list:" in content
+    assert "- view:" in content
+    assert "- edit:" in content
+    assert "- delete:" in content
+
+
+def test_scratch_only_manifest_ends_with_no_other_access_footer():
+    attachment = build_s3_manifest([], scratch_path="sessions/42/")
+
+    assert attachment.content.endswith(
+        "You have no access to any other path in storage."
+    )
+
+
 def test_multiple_specs_render_multiple_lines():
     spec_a = _spec(
         file_id=1,

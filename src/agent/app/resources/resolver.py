@@ -115,7 +115,7 @@ class AgentResolver:
         logger.debug("agent_id={} resolved {} tool(s): {}", agent.id, len(names), names)
 
         s3_specs = self._validate_s3_refs(agent, s3_pool)
-        manifest = build_s3_manifest(s3_specs)
+        manifest = build_s3_manifest(s3_specs, scratch_path=request.scratch_path)
         attachments = [manifest] if manifest is not None else []
 
         if attachments:

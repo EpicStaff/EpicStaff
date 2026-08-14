@@ -165,6 +165,7 @@ class TaskNodeData(BaseModel):
     tools: list[BaseToolData] = []
     collections: list[CollectionSpec] = []
     s3_files: list[S3FileSpec] = []
+    scratch_path: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -188,6 +189,7 @@ class AgentNodeData(BaseModel):
     tools: list[BaseToolData] = []
     collections: list[CollectionSpec] = []
     s3_files: list[S3FileSpec] = []
+    scratch_path: str | None = None
     tasks: list[AgentNodeTaskData] = []
 
     model_config = ConfigDict(from_attributes=True)

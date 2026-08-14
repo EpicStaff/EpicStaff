@@ -266,6 +266,7 @@ class AgentTaskService:
             tools=node_data.tools,
             collections=node_data.collections,
             s3_files=node_data.s3_files,
+            scratch_path=node_data.scratch_path,
             payload=payload,
         )
         dumped = request.model_dump(mode="json", exclude={"correlation_id"})
@@ -301,6 +302,7 @@ class AgentTaskService:
             tools=agent_node_data.tools,
             collections=agent_node_data.collections,
             s3_files=agent_node_data.s3_files,
+            scratch_path=agent_node_data.scratch_path,
             payload=payload,
         )
         dumped = request.model_dump(mode="json", exclude={"correlation_id"})

@@ -70,6 +70,19 @@ class BaseNodePayloadService:
             ),
         )
 
+    @staticmethod
+    def _build_scratch_path(session_id: int | None) -> str | None:
+        """Per-session scratch folder prefix a node's agent may freely
+        create/edit/delete under, matching the python-node convention.
+
+        ``None`` when there is no session (e.g. graph_id/session_id-less
+        preview builds), since there is nowhere to scope a scratch dir to.
+        """
+        if session_id is None:
+            return None
+
+        return f"sessions/{session_id}/"
+
     def _build_tool_pool(
         self,
         combined_surface: CombinedSurfaceData,
@@ -88,6 +101,10 @@ class BaseNodePayloadService:
             if entry.mode == "allow"
         ]
         surface_storage_paths = [spec.path for spec in s3_files]
+
+        scratch_path = self._build_scratch_path(session_id)
+        if scratch_path is not None:
+            surface_storage_paths.append(scratch_path)
 
         tools: list[BaseToolData] = []
 
@@ -110,7 +127,9 @@ class BaseNodePayloadService:
 
         return tools
 
-    def _build_s3_pool(self, combined_surface: CombinedSurfaceData) -> list[S3FileSpec]:
+    def _build_s3_pool(
+        self, combined_surface: CombinedSurfaceData, graph_id: int | None
+    ) -> list[S3FileSpec]:
         access_flags_by_file_id = {
             entry.storage_file: entry for entry in combined_surface.storage_items
         }
@@ -121,8 +140,12 @@ class BaseNodePayloadService:
             in (entry.can_list, entry.can_view, entry.can_edit, entry.can_delete)
         ]
 
+        storage_files = StorageFile.objects.filter(pk__in=allowed_file_ids)
+        if graph_id is not None:
+            storage_files = storage_files.filter(graph_storage_files__graph_id=graph_id)
+
         s3_files: list[S3FileSpec] = []
-        for storage_file in StorageFile.objects.filter(pk__in=allowed_file_ids):
+        for storage_file in storage_files:
             entry = access_flags_by_file_id[storage_file.pk]
             s3_files.append(
                 S3FileSpec(

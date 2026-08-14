@@ -338,6 +338,26 @@ async def test_no_s3_refs_produces_no_attachments():
     assert resolved.context.attachments == []
 
 
+async def test_scratch_path_reaches_attachment_with_no_s3_refs():
+    agent = _agent_spec(s3_refs=[])
+    request = _request([agent], s3_files=[])
+    request = request.model_copy(update={"scratch_path": "sessions/42/"})
+
+    resolved = await _resolver().resolve(agent, request)
+
+    assert len(resolved.attachments) == 1
+    assert "sessions/42/" in resolved.attachments[0].content
+
+
+async def test_no_scratch_path_and_no_s3_refs_produces_no_attachments():
+    agent = _agent_spec(s3_refs=[])
+    request = _request([agent], s3_files=[])
+
+    resolved = await _resolver().resolve(agent, request)
+
+    assert resolved.attachments == []
+
+
 async def test_unknown_s3_ref_raises():
     agent = _agent_spec(s3_refs=[999])
     request = _request([agent], s3_files=[])

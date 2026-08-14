@@ -22,13 +22,20 @@ _OPERATION_DESCRIPTIONS = {
 }
 
 
-def build_s3_manifest(specs: list[S3FileSpec]) -> ContextAttachment | None:
-    """Render ``specs`` into one system ``ContextAttachment``, or ``None`` if empty."""
-    if not specs:
+def build_s3_manifest(
+    specs: list[S3FileSpec], scratch_path: str | None = None
+) -> ContextAttachment | None:
+    """Render ``specs`` and an optional ``scratch_path`` into one system
+    ``ContextAttachment``, or ``None`` if there is nothing to grant."""
+    if not specs and scratch_path is None:
         return None
 
     lines = [_render_line(spec) for spec in specs]
-    legend_lines = _render_legend(specs)
+
+    if scratch_path is not None:
+        lines.append(_render_scratch_line(scratch_path))
+
+    legend_lines = _render_legend(specs, scratch_path)
     content = "\n".join(
         [
             "Files and folders you have access to:",
@@ -42,8 +49,20 @@ def build_s3_manifest(specs: list[S3FileSpec]) -> ContextAttachment | None:
     return ContextAttachment(role="system", source="s3", content=content)
 
 
-def _render_legend(specs: list[S3FileSpec]) -> list[str]:
+def _render_scratch_line(scratch_path: str) -> str:
+    return (
+        f"You may create and manage your own files under: {scratch_path} "
+        "— you have full access there (list, view, edit, delete)."
+    )
+
+
+def _render_legend(
+    specs: list[S3FileSpec], scratch_path: str | None = None
+) -> list[str]:
     operations_present = _operations_present_across(specs)
+
+    if scratch_path is not None:
+        operations_present |= {"list", "view", "edit", "delete"}
 
     if not operations_present:
         return []

@@ -574,6 +574,72 @@ async def test_run_task_returns_result_on_max_consecutive_failures_stop_reason(
     assert result["final_text"] == "summary"
 
 
+def test_build_request_blob_carries_scratch_path(redis_service_stub, llm_data):
+    service = AgentTaskService(redis_service=redis_service_stub)
+    task_node_data = TaskNodeData(
+        node_name="task_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research the topic.", llm=llm_data
+        ),
+        instructions="Summarize the findings.",
+        scratch_path="sessions/42/",
+    )
+
+    blob = json.loads(service._build_request_blob(task_node_data))
+
+    assert blob["scratch_path"] == "sessions/42/"
+
+
+def test_build_request_blob_scratch_path_none_when_absent(redis_service_stub, llm_data):
+    service = AgentTaskService(redis_service=redis_service_stub)
+    task_node_data = TaskNodeData(
+        node_name="task_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research the topic.", llm=llm_data
+        ),
+        instructions="Summarize the findings.",
+    )
+
+    blob = json.loads(service._build_request_blob(task_node_data))
+
+    assert blob["scratch_path"] is None
+
+
+def test_build_agent_node_request_blob_carries_scratch_path(
+    redis_service_stub, llm_data
+):
+    service = AgentTaskService(redis_service=redis_service_stub)
+    agent_node_data = AgentNodeData(
+        node_name="agent_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research the topic.", llm=llm_data
+        ),
+        scratch_path="sessions/7/",
+        tasks=[AgentNodeTaskData(name="task_a", order=0, instructions="Write draft.")],
+    )
+
+    blob = json.loads(service._build_agent_node_request_blob(agent_node_data))
+
+    assert blob["scratch_path"] == "sessions/7/"
+
+
+def test_build_agent_node_request_blob_scratch_path_none_when_absent(
+    redis_service_stub, llm_data
+):
+    service = AgentTaskService(redis_service=redis_service_stub)
+    agent_node_data = AgentNodeData(
+        node_name="agent_node_1",
+        agent_definition=AgentDefinitionData(
+            id=1, name="researcher", instructions="Research the topic.", llm=llm_data
+        ),
+        tasks=[AgentNodeTaskData(name="task_a", order=0, instructions="Write draft.")],
+    )
+
+    blob = json.loads(service._build_agent_node_request_blob(agent_node_data))
+
+    assert blob["scratch_path"] is None
+
+
 def test_resolve_timeout_s_scales_with_task_count(redis_service_stub):
     service = AgentTaskService(
         redis_service=redis_service_stub, default_timeout_s=600.0, timeout_buffer_s=60.0

@@ -153,6 +153,22 @@ def test_agent_request_validates_example_blob():
     assert request.correlation_id == "corr-1"
 
 
+def test_agent_request_scratch_path_defaults_to_none():
+    request = AgentRequest(correlation_id="corr-1", **EXAMPLE_BLOB)
+    assert request.scratch_path is None
+
+
+def test_agent_request_scratch_path_round_trips():
+    request = AgentRequest(
+        correlation_id="corr-1", **{**EXAMPLE_BLOB, "scratch_path": "sessions/42/"}
+    )
+    dumped = request.model_dump(mode="json", exclude={"correlation_id"})
+    assert dumped["scratch_path"] == "sessions/42/"
+
+    reloaded = AgentRequest(correlation_id="corr-1", **json.loads(json.dumps(dumped)))
+    assert reloaded.scratch_path == "sessions/42/"
+
+
 def test_agent_request_round_trips():
     request = AgentRequest(correlation_id="corr-1", **EXAMPLE_BLOB)
     dumped = request.model_dump()

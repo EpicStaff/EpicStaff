@@ -54,6 +54,7 @@ from agents.services.node_surface_service import NodeSurfaceService
 from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.task_node_payload_service import TaskNodePayloadService
 from src.shared.models import (
     AgentRequest,
     AgentSpec,
@@ -563,6 +564,7 @@ class TestS3Pool:
     def test_allow_view_flag_included_with_flags_metadata(
         self, graph, task_node, surface_a, storage_file
     ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
         SurfaceStorageItem.objects.create(
             surface=surface_a, storage_file=storage_file, can_view="allow"
         )
@@ -924,6 +926,7 @@ class TestStorageToolAllowedPathsScopedToSurface:
     def test_surface_granted_file_is_included(
         self, graph, task_node, surface_a, storage_file, storage_py_tool
     ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
         SurfaceStorageItem.objects.create(
             surface=surface_a, storage_file=storage_file, can_view="allow"
         )
@@ -973,3 +976,254 @@ class TestStorageToolAllowedPathsScopedToSurface:
         task_data = graph_data.task_node_list[0]
         tool = task_data.tools[0]
         assert tool.data.python_code.storage_allowed_paths is None
+
+
+class TestScratchPath:
+    """Every surface-backed node with a session gets a per-session scratch dir
+    it may freely write to, mirroring the python-node convention
+    (`sessions/{session_id}/`), surfaced both on the node data itself and in
+    the storage_allowed_paths baked into its use_storage python tools."""
+
+    @pytest.mark.django_db
+    def test_scratch_path_present_with_trailing_slash_when_session_id_set(
+        self, graph, task_node, surface_a, storage_py_tool
+    ):
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+
+        task_data = TaskNodePayloadService(ConverterService()).build_task_node_data(
+            task_node=task_node,
+            node_name=task_node.node_name,
+            graph_id=graph.pk,
+            session_id=42,
+        )
+
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == ["sessions/42/"]
+        assert task_data.scratch_path == "sessions/42/"
+
+    @pytest.mark.django_db
+    def test_scratch_path_absent_when_session_id_is_none(
+        self, graph, task_node, surface_a, storage_py_tool
+    ):
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+
+        task_data = TaskNodePayloadService(ConverterService()).build_task_node_data(
+            task_node=task_node,
+            node_name=task_node.node_name,
+            graph_id=graph.pk,
+            session_id=None,
+        )
+
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == []
+        assert task_data.scratch_path is None
+
+    @pytest.mark.django_db
+    def test_surface_granting_nothing_still_gets_exactly_scratch_path(
+        self, graph, task_node, surface_a, storage_py_tool
+    ):
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+
+        task_data = TaskNodePayloadService(ConverterService()).build_task_node_data(
+            task_node=task_node,
+            node_name=task_node.node_name,
+            graph_id=graph.pk,
+            session_id=7,
+        )
+
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == ["sessions/7/"]
+
+    @pytest.mark.django_db
+    def test_scratch_path_appended_alongside_surface_granted_files(
+        self, graph, task_node, surface_a, storage_file, storage_py_tool
+    ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=storage_file, can_view="allow"
+        )
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+
+        task_data = TaskNodePayloadService(ConverterService()).build_task_node_data(
+            task_node=task_node,
+            node_name=task_node.node_name,
+            graph_id=graph.pk,
+            session_id=99,
+        )
+
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == [
+            storage_file.path,
+            "sessions/99/",
+        ]
+
+    @pytest.mark.django_db
+    def test_agent_node_scratch_path_set_on_returned_node_data(
+        self, graph, surface_a, storage_py_tool
+    ):
+        agent_node = AgentNode.objects.create(
+            graph=graph, node_name="agent-node-scratch-path"
+        )
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        agent_node.surface_list.set([surface_a])
+
+        agent_node_data = AgentNodePayloadService(
+            ConverterService()
+        ).build_agent_node_data(
+            agent_node=agent_node,
+            node_name=agent_node.node_name,
+            graph_id=graph.pk,
+            session_id=13,
+        )
+
+        tool = agent_node_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == ["sessions/13/"]
+        assert agent_node_data.scratch_path == "sessions/13/"
+
+    @pytest.mark.django_db
+    def test_agent_node_scratch_path_none_when_session_id_none(
+        self, graph, surface_a, storage_py_tool
+    ):
+        agent_node = AgentNode.objects.create(
+            graph=graph, node_name="agent-node-no-scratch-path"
+        )
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        agent_node.surface_list.set([surface_a])
+
+        agent_node_data = AgentNodePayloadService(
+            ConverterService()
+        ).build_agent_node_data(
+            agent_node=agent_node,
+            node_name=agent_node.node_name,
+            graph_id=graph.pk,
+            session_id=None,
+        )
+
+        assert agent_node_data.scratch_path is None
+
+
+class TestStorageAllowedPathsIntersectedWithGraphAttachments:
+    """Effective storage access is the INTERSECTION of files attached to the
+    flow (GraphStorageFile) and files granted by the node's surface. A Surface
+    reused across flows must not leak grants for files a given flow never
+    attached."""
+
+    @pytest.mark.django_db
+    def test_surface_granted_but_not_attached_to_graph_is_excluded(
+        self, graph, task_node, surface_a, storage_file, storage_py_tool
+    ):
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=storage_file, can_view="allow"
+        )
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert task_data.s3_files == []
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == []
+
+    @pytest.mark.django_db
+    def test_surface_granted_and_attached_to_graph_is_included(
+        self, graph, task_node, surface_a, storage_file, storage_py_tool
+    ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=storage_file, can_view="allow"
+        )
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert [f.id for f in task_data.s3_files] == [storage_file.pk]
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == [storage_file.path]
+
+    @pytest.mark.django_db
+    def test_attached_to_graph_but_not_granted_by_surface_is_excluded(
+        self, graph, task_node, surface_a, storage_file, storage_py_tool
+    ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert task_data.s3_files == []
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == []
+
+    @pytest.mark.django_db
+    def test_no_graph_context_skips_intersection_surface_grant_stands(
+        self, graph, surface_a, storage_file, storage_py_tool
+    ):
+        agent_node = AgentNode.objects.create(
+            graph=graph, node_name="agent-node-no-graph-context"
+        )
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=storage_file, can_view="allow"
+        )
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        agent_node.surface_list.set([surface_a])
+
+        agent_node_data = AgentNodePayloadService(
+            ConverterService()
+        ).build_agent_node_data(
+            agent_node=agent_node,
+            node_name=agent_node.node_name,
+            graph_id=None,
+            session_id=None,
+        )
+
+        assert [f.id for f in agent_node_data.s3_files] == [storage_file.pk]
+        tool = agent_node_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == [storage_file.path]
+
+    @pytest.mark.django_db
+    def test_surface_grants_nothing_yields_empty_lists(
+        self, graph, task_node, surface_a, storage_py_tool
+    ):
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert task_data.s3_files == []
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == []
