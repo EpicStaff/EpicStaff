@@ -64,15 +64,32 @@ than left to be rediscovered:
   indistinguishable from that baseline. `0-1` resolves to 0 on one node and
   starts replicating automatically once a second node joins.
 
-## Known risk: dynamic mapping growth
+## `input`/`output`/`details` are `flat_object`, not dynamically-mapped `object`
 
-`input`, `output` and `details` are dynamically mapped objects populated from
-arbitrary session payloads - including keys that come from user-authored python
-node code. Every new key becomes a new field in the index mapping, and the
-default `index.mapping.total_fields.limit` is 1000; past that, ingest starts
-rejecting documents.
+Fixed after hitting it live: these three fields hold arbitrary session
+payloads - including keys from user-authored python node code - and dynamic
+`object` mapping has two failure modes that both actually occurred:
 
-A handful of dev sessions already produced ~100 dynamic fields (e.g.
-`details.some_python_node_result`). This needs a deliberate fix before any real
-volume - most likely `flat_object` for the payloads plus one dedicated `text`
-field for free-text search - and is not addressed yet.
+1. **Type lock.** OpenSearch locks a field's type from the *first* document it
+   ever sees for that exact key path (e.g. `input.yesno`). A flow variable that
+   starts as `{}` before its node runs and becomes a plain string once it does
+   (a completely normal pattern) permanently breaks every later write to that
+   path with a `mapper_parsing_exception` - silently, since the bulk API just
+   reports a per-item error that's easy to miss. This dropped real audit events
+   in production-shaped testing before the fix.
+2. **Field-count growth.** Every new key becomes a new field in the index
+   mapping; the default `index.mapping.total_fields.limit` is 1000, and a
+   handful of dev sessions already produced ~100 dynamic fields this way.
+
+`flat_object` (OpenSearch's name for what Elasticsearch calls `flattened`)
+avoids both: it doesn't register per-key sub-fields at all, so there's nothing
+to lock a type or blow the field-count limit. Trade-off: no native numeric
+range queries on a nested key (e.g. `output.tokens > 500`) - that needs an
+OpenSearch runtime field to cast the value at query time, or promoting a
+specific hot key to its own real top-level typed field if it's queried often
+enough to be worth a dedicated column.
+
+Applied via a full index delete + recreate (dev-only migration path - no
+production data existed yet to preserve). A real reindex+alias-swap migration
+(see "Changing an existing field's type" above) is still the only safe path
+once real data exists.

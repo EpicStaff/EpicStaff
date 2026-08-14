@@ -17,9 +17,9 @@
       "node_type": { "type": "keyword" },
       "status": { "type": "keyword" },
 
-      "input": { "type": "object", "enabled": true },
-      "output": { "type": "object", "enabled": true },
-      "details": { "type": "object", "enabled": true },
+      "input": { "type": "flat_object" },
+      "output": { "type": "flat_object" },
+      "details": { "type": "flat_object" },
 
       "error": {
         "type": "text",
