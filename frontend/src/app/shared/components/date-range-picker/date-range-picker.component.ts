@@ -55,7 +55,7 @@ interface MonthCell {
 export class DateRangePickerComponent implements OnChanges {
     @Input() value: DateRangeFilter | null = null;
     @Input() activeColor = '#685fff';
-    @Output() select = new EventEmitter<DateRangeFilter>();
+    @Output() apply = new EventEmitter<DateRangeFilter>();
     @Output() clear = new EventEmitter<void>();
 
     readonly weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -221,7 +221,7 @@ export class DateRangePickerComponent implements OnChanges {
     }
 
     private commit(start: Date, end: Date): void {
-        this.select.emit({
+        this.apply.emit({
             after: this.startOfDayIso(start),
             before: this.endOfDayIso(end),
         });

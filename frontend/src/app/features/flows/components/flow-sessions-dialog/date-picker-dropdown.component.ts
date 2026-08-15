@@ -38,6 +38,8 @@ export class DatePickerDropdownComponent {
     private overlayPositionBuilder = inject(OverlayPositionBuilder);
     private vcr = inject(ViewContainerRef);
 
+    public isOpen = false;
+
     public get hasValue(): boolean {
         return !!(this.value && (this.value.after || this.value.before));
     }
@@ -56,6 +58,7 @@ export class DatePickerDropdownComponent {
             this.overlayRef.dispose();
             this.overlayRef = null;
         }
+        this.isOpen = false;
     }
 
     public onSelect(range: DateRangeFilter): void {
@@ -89,5 +92,6 @@ export class DatePickerDropdownComponent {
 
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);
+        this.isOpen = true;
     }
 }

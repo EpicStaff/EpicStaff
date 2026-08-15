@@ -1,7 +1,7 @@
 <button
     #triggerEl
     class="cd-toggle"
-    [class.cd-toggle--active]="hasValue"
+    [class.cd-toggle--active]="hasValue || isOpen"
     title="Filter by date"
     (click)="toggle($event)"
 >
@@ -15,7 +15,7 @@
 <ng-template #dropdownTemplate>
     <app-date-range-picker
         [value]="value"
-        (select)="onSelect($event)"
+        (apply)="onSelect($event)"
         (clear)="clear()"
     />
 </ng-template>
