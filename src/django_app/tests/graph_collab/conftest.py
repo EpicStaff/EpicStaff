@@ -67,19 +67,6 @@ async def _drain_connect(communicator) -> None:
     assert "graph_state" in messages
 
 
-async def _drain_connect_with_locks(communicator) -> dict:
-    """Consume 4 initial messages when locks are active; return the lock_state message."""
-    received = {}
-    for _ in range(4):
-        msg = await communicator.receive_json_from()
-        received[msg["type"]] = msg
-    assert "presence_state" in received
-    assert "user_joined" in received
-    assert "graph_state" in received
-    assert "lock_state" in received
-    return received["lock_state"]
-
-
 CHANNEL_LAYERS_OVERRIDE = {
     "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
@@ -89,6 +76,11 @@ CHANNEL_LAYERS_OVERRIDE = {
 
 def _editor(user_id: int = 1, name: str = "Alice") -> EditorInfo:
     return EditorInfo(user_id=user_id, display_name=name, avatar_url=None)
+
+
+def editor_payload(user) -> dict:
+    """Wire-format editor dict for op/lock payloads sent from a test client."""
+    return {"user_id": user.pk, "display_name": "x", "avatar_url": None}
 
 
 def _empty_deleted() -> dict:
@@ -126,13 +118,58 @@ async def wait_for(
     return False
 
 
+async def connect_pair(graph, user_a, user_b):
+    """Connect two communicators and drain all connect-time messages."""
+    comm_a = _make_communicator(graph.pk, user_a)
+    comm_b = _make_communicator(graph.pk, user_b)
+
+    await comm_a.connect()
+    await _drain_connect(comm_a)
+
+    await comm_b.connect()
+    await comm_a.receive_json_from()  # user_joined for user_b
+    await _drain_connect(comm_b)
+
+    return comm_a, comm_b
+
+
+async def receive_or_none(
+    communicator, timeout: float = 1.0, poll: float = 0.05
+) -> dict | None:
+    """Poll a communicator's socket for a message, returning None on timeout.
+
+    Distinct from `wait_for`, which polls a condition coroutine, not a socket.
+
+    The inner `receive_json_from` timeout must always exceed the outer `poll`
+    timeout: asgiref's own receive timeout firing cancels the whole consumer
+    application task (not just the pending receive), so if the inner timeout
+    ever won the race, this would silently kill the consumer instead of just
+    reporting "no message yet".
+    """
+    elapsed = 0.0
+    while elapsed < timeout:
+        try:
+            return await asyncio.wait_for(
+                communicator.receive_json_from(timeout=poll * 10), timeout=poll
+            )
+        except asyncio.TimeoutError:
+            elapsed += poll
+    return None
+
+
 async def collect_messages(communicator, timeout: float = 0.5) -> list[dict]:
-    """Drain all messages currently queued on `communicator`, stopping at the first gap."""
+    """Drain all messages currently queued on `communicator`, stopping at the first gap.
+
+    The inner `receive_json_from` timeout must always exceed the outer `wait_for`
+    timeout: asgiref's own receive timeout firing cancels the whole consumer
+    application task (not just the pending receive), so if the inner timeout
+    ever won the race, a later `disconnect()` would raise `CancelledError`.
+    """
     messages = []
     try:
         while True:
             msg = await asyncio.wait_for(
-                communicator.receive_json_from(), timeout=timeout
+                communicator.receive_json_from(timeout=timeout * 10), timeout=timeout
             )
             messages.append(msg)
     except asyncio.TimeoutError:
@@ -151,11 +188,7 @@ async def apply_create_op(communicator, graph_id: int, user, temp_id: str) -> No
                 "python_code": PYTHON_CODE_DATA,
             },
             "list_key": "python_node_list",
-            "editor": {
-                "user_id": user.pk,
-                "display_name": "x",
-                "avatar_url": None,
-            },
+            "editor": editor_payload(user),
         }
     )
 
@@ -248,7 +281,9 @@ def reset_lock_store():
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def disconnect_leaked_communicators(channel_layer_settings, patch_graph_state_redis):
+async def disconnect_leaked_communicators(
+    channel_layer_settings, patch_graph_state_redis
+):
     """Safety net for tests whose explicit disconnect is skipped by an earlier failure.
 
     Drains any communicator registered via `_make_communicator` whose explicit
@@ -260,10 +295,14 @@ async def disconnect_leaked_communicators(channel_layer_settings, patch_graph_st
         communicator = _active_communicators.pop()
         try:
             await asyncio.wait_for(communicator.disconnect(), timeout=1.0)
-        except Exception:
+        except (Exception, asyncio.CancelledError):
             # Cleanup net only: an already-closed communicator reaching teardown
             # is the normal case, and this must never itself fail or hang an
-            # otherwise-passing test.
+            # otherwise-passing test. CancelledError is caught explicitly
+            # because it is a BaseException, not an Exception — letting it
+            # escape here aborts every remaining finalizer for the test,
+            # including pytest-django's table truncation, poisoning every
+            # later test.
             pass
 
 

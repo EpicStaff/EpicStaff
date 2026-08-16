@@ -11,7 +11,11 @@ from pydantic import ValidationError
 from tables.graph_collab.graph_state_service import OpResult, OpStatus
 from tables.graph_collab.protocol import NodeUpdatedMessage, EditorInfo
 
-from tests.graph_collab.conftest import _drain_connect, _make_communicator
+from tests.graph_collab.conftest import (
+    _drain_connect,
+    _make_communicator,
+    editor_payload,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -329,10 +333,6 @@ def test_expected_subset_of_changed_fields_is_valid(editor):
 # ---------------------------------------------------------------------------
 
 
-def _editor_payload(user) -> dict:
-    return {"user_id": user.pk, "display_name": "x", "avatar_url": None}
-
-
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_stale_expected_nacks_sender_only_with_mismatched_fields(
@@ -354,7 +354,7 @@ async def test_stale_expected_nacks_sender_only_with_mismatched_fields(
             "type": "node_created",
             "node": {"temp_id": "n1", "node_name": "Node A"},
             "list_key": "python_node_list",
-            "editor": _editor_payload(test_user),
+            "editor": editor_payload(test_user),
         }
     )
     await comm_b.receive_json_from()  # node_created relay
@@ -367,7 +367,7 @@ async def test_stale_expected_nacks_sender_only_with_mismatched_fields(
             "changed_fields": ["node_name"],
             "expected": {"node_name": "Stale Belief"},
             "op_id": "op-cas-1",
-            "editor": _editor_payload(test_user),
+            "editor": editor_payload(test_user),
         }
     )
 

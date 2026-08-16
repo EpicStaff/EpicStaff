@@ -1,7 +1,14 @@
 """
-Tests for multi-tab (multiple connections per user) presence reference-counting.
+Presence broadcast tests: baseline single-connection-per-user join/leave flow,
+plus multi-tab (multiple connections per user) reference-counting.
 
-Covers the two-tab scenarios:
+Baseline flow:
+- The first connector receives presence_state containing only itself.
+- A second, distinct user connecting broadcasts user_joined to the first, and
+  the second user's own presence_state includes both users.
+- A user disconnecting broadcasts user_left to the remaining participant.
+
+Multi-tab (same user, two connections) scenarios:
 - Closing one of two tabs must NOT broadcast user_left or remove the user.
 - Closing both tabs DOES broadcast user_left and removes the user.
 - Opening a second tab for an already-present user must NOT broadcast a duplicate user_joined.
@@ -11,8 +18,8 @@ Covers the two-tab scenarios:
 
 import pytest
 
-from tables.graph_collab.presence_service import GraphPresenceService, presence_service
-from tests.graph_collab.conftest import _editor
+from tables.graph_collab.presence_service import presence_service
+from tests.graph_collab.conftest import _editor, connect_pair
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +58,77 @@ def test_has_user_is_scoped_to_graph(presence_service):
     """A user present in graph 1 must not appear as present in graph 2."""
     presence_service.add(graph_id=1, channel_name="ch-a", editor=_editor(user_id=10))
     assert presence_service.has_user(graph_id=2, user_id=10) is False
+
+
+# ---------------------------------------------------------------------------
+# Consumer integration tests: baseline flow (two distinct users)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_first_user_connect_receives_presence_state_with_self(
+    test_graph, test_user, make_communicator
+):
+    communicator = make_communicator(test_graph.pk, test_user)
+    await communicator.connect()
+
+    msg = await communicator.receive_json_from()
+    assert msg["type"] == "presence_state"
+    editors = msg["editors"]
+    assert len(editors) == 1
+    assert editors[0]["user_id"] == test_user.pk
+
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_second_user_connect_first_receives_user_joined(
+    test_graph, test_user, second_user, make_communicator
+):
+    comm1 = make_communicator(test_graph.pk, test_user)
+    comm2 = make_communicator(test_graph.pk, second_user)
+
+    await comm1.connect()
+    # Drain comm1 initial messages.
+    await comm1.receive_json_from()  # presence_state
+    await comm1.receive_json_from()  # graph_state (DB-seeded)
+    await comm1.receive_json_from()  # user_joined (self)
+
+    await comm2.connect()
+
+    # comm1 should receive user_joined for second_user.
+    msg = await comm1.receive_json_from()
+    assert msg["type"] == "user_joined"
+    assert msg["editor"]["user_id"] == second_user.pk
+
+    # comm2's presence_state should contain both users.
+    msg = await comm2.receive_json_from()
+    assert msg["type"] == "presence_state"
+    editor_ids = {e["user_id"] for e in msg["editors"]}
+    assert test_user.pk in editor_ids
+    assert second_user.pk in editor_ids
+
+    await comm1.disconnect()
+    await comm2.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_user_disconnect_remaining_receives_user_left(
+    test_graph, test_user, second_user
+):
+    comm1, comm2 = await connect_pair(test_graph, test_user, second_user)
+
+    await comm1.disconnect()
+
+    # comm2 should receive user_left with test_user's id.
+    msg = await comm2.receive_json_from()
+    assert msg["type"] == "user_left"
+    assert msg["user_id"] == test_user.pk
+
+    await comm2.disconnect()
 
 
 # ---------------------------------------------------------------------------

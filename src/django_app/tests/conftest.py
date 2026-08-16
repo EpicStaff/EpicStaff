@@ -238,7 +238,8 @@ def superadmin_user(db):
 
 @pytest.fixture
 def default_org(db):
-    return Organization.objects.create(name="Default Organization")
+    org, _ = Organization.objects.get_or_create(name="Default Organization")
+    return org
 
 
 @pytest.fixture
