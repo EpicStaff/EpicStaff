@@ -26,7 +26,7 @@ services:
     environment:
       <<: *common_env
       DEBUG: ${DEBUG:-False}
-      SECRET_KEY: ${SECRET_KEY:-unsafe-dev-key}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — generate one with `openssl rand -base64 48`. Rotating it makes stored Secrets undecryptable.}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       DB_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -49,7 +49,7 @@ services:
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
       STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-epicstaff}
       STORAGE_LOCAL_ROOT: ${STORAGE_LOCAL_ROOT:-/app/storage}
-      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required — generate one with `openssl rand -base64 48`.}
       JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-15}
       JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-7}
       PASSWORD_RESET_TOKEN_TTL: ${PASSWORD_RESET_TOKEN_TTL:-900}
