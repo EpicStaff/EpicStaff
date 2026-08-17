@@ -129,6 +129,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
     public initialNodeId: string | null = null;
+    public initialNodeExpand = true;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
     private readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
@@ -201,7 +202,29 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         });
 
         effect(() => {
-            this.initialNodeId = this.routeQueryParamMap().get('nodeId');
+            const params = this.routeQueryParamMap();
+            const nodeId = params.get('nodeId');
+            if (nodeId) {
+                this.initialNodeId = nodeId;
+                this.initialNodeExpand = true;
+                return;
+            }
+
+            // Callers that only know a node by name (e.g. the Secret Usage dialog, whose backend
+            // response has no node id) use nodeName/nodeType instead — resolve it against the
+            // loaded graph once available. nodeType disambiguates same-named nodes of different types.
+            // This path only selects the node (small panel) rather than expanding it.
+            const nodeName = params.get('nodeName');
+            if (!nodeName) {
+                this.initialNodeId = null;
+                return;
+            }
+            const nodeType = params.get('nodeType');
+            const match = this.currentFlowState().nodes.find(
+                (n) => n.node_name === nodeName && (!nodeType || n.type === nodeType)
+            );
+            this.initialNodeId = match?.id ?? null;
+            this.initialNodeExpand = false;
         });
 
         effect(() => {

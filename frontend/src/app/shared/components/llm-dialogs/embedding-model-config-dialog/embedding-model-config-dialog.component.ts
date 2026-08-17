@@ -3,19 +3,15 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import {
-    ButtonComponent,
-    CustomInputComponent,
-    HintMessageComponent,
-    IconButtonComponent,
-    SelectComponent,
-    SelectItem,
-    ValidationErrorsComponent,
-} from '@shared/components';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
 import { EmbeddingConfigStorageService, SecretsStorageService } from '@shared/services';
 
 import { ToastService } from '../../../../services/notifications';
+import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
+import { ButtonComponent, IconButtonComponent } from '../../buttons';
+import { CustomInputComponent } from '../../form-input/form-input.component';
+import { HintMessageComponent } from '../../hint-message/hint-message.component';
+import { SelectComponent, SelectItem } from '../../select/select.component';
 import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selector.component';
 
 @Component({

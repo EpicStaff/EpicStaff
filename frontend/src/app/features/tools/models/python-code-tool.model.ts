@@ -67,4 +67,5 @@ export interface CreatePythonCodeToolPayload {
     description: string;
     variables: unknown[];
     python_code: CreatePythonCodeBody;
+    use_storage?: boolean;
 }

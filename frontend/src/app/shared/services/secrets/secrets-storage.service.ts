@@ -1,6 +1,7 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { CreateSecretRequest, Secret } from '@shared/models';
-import { finalize, Observable, of, shareReplay, tap } from 'rxjs';
+import { catchError, finalize, Observable, of, shareReplay, tap, throwError } from 'rxjs';
 
 import { StorageService } from '../app-storage.service';
 import { SecretsApiService } from './secrets-api.service';
@@ -27,6 +28,11 @@ export class SecretsStorageService implements StorageService {
 
         if (!this.pendingRequest$) {
             this.pendingRequest$ = this.secretsApiService.getSecrets().pipe(
+                // A member/viewer has no access to this endpoint at all — that's a permanent,
+                // by-design restriction (see SKIP_FORBIDDEN_RELOAD on this request), not a
+                // failure worth surfacing as an error toast to every secret-picker consumer.
+                // Cache it as "loaded, zero secrets" instead of rethrowing.
+                catchError((err: HttpErrorResponse) => (err.status === 403 ? of([]) : throwError(() => err))),
                 tap((secrets) => this.createSecretsInCache(secrets)),
                 finalize(() => (this.pendingRequest$ = null)),
                 shareReplay({ bufferSize: 1, refCount: false })
