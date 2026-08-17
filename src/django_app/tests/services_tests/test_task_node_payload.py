@@ -1041,3 +1041,119 @@ class TestStorageToolAllowedPathsScopedToGraphAttachedFiles:
         )
 
         assert [f.id for f in task_data.s3_files] == [storage_file.pk]
+
+
+class TestStorageCeilingIsPathPrefixAware:
+    """The flow ceiling must match on path, not exact StorageFile pk: a folder
+    attached to the flow covers surface-granted files nested inside it, and
+    vice versa is rejected (a surface grant broader than the flow attachment
+    does not pass the ceiling)."""
+
+    @pytest.fixture
+    def docs_folder(self, org):
+        return StorageFile.objects.create(
+            org=org, name="docs", path="docs/", item_type="folder"
+        )
+
+    @pytest.fixture
+    def docs_file(self, org):
+        return StorageFile.objects.create(
+            org=org, name="a.pdf", path="docs/a.pdf", item_type="file"
+        )
+
+    @pytest.fixture
+    def other_file(self, org):
+        return StorageFile.objects.create(
+            org=org, name="b.pdf", path="other/b.pdf", item_type="file"
+        )
+
+    @pytest.fixture
+    def near_miss_file(self, org):
+        return StorageFile.objects.create(
+            org=org, name="c.pdf", path="docsx/c.pdf", item_type="file"
+        )
+
+    @pytest.mark.django_db
+    def test_file_nested_in_attached_folder_is_included(
+        self, graph, task_node, surface_a, docs_folder, docs_file, storage_py_tool
+    ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=docs_folder)
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=docs_file, can_view="allow"
+        )
+        SurfacePythonTool.objects.create(
+            surface=surface_a, python_tool=storage_py_tool, mode=ToolMode.ALLOW
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert [f.id for f in task_data.s3_files] == [docs_file.pk]
+        tool = task_data.tools[0]
+        assert tool.data.python_code.storage_allowed_paths == [docs_file.path]
+
+    @pytest.mark.django_db
+    def test_attached_folder_granted_directly_is_included(
+        self, graph, task_node, surface_a, docs_folder
+    ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=docs_folder)
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=docs_folder, can_view="allow"
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert [f.id for f in task_data.s3_files] == [docs_folder.pk]
+
+    @pytest.mark.django_db
+    def test_file_outside_attached_folder_is_excluded(
+        self, graph, task_node, surface_a, docs_folder, other_file
+    ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=docs_folder)
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=other_file, can_view="allow"
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert task_data.s3_files == []
+
+    @pytest.mark.django_db
+    def test_folder_grant_broader_than_attached_file_is_excluded(
+        self, graph, task_node, surface_a, docs_file, docs_folder
+    ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=docs_file)
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=docs_folder, can_view="allow"
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert task_data.s3_files == []
+
+    @pytest.mark.django_db
+    def test_near_miss_prefix_without_slash_boundary_is_excluded(
+        self, graph, task_node, surface_a, docs_folder, near_miss_file
+    ):
+        GraphStorageFile.objects.create(graph=graph, storage_file=docs_folder)
+        SurfaceStorageItem.objects.create(
+            surface=surface_a, storage_file=near_miss_file, can_view="allow"
+        )
+        task_node.surface_list.set([surface_a])
+        wire_entrypoint(graph, task_node)
+
+        graph_data = SessionManagerService()._build_graph_data(graph)
+
+        task_data = graph_data.task_node_list[0]
+        assert task_data.s3_files == []

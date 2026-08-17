@@ -3,6 +3,11 @@ Builds an informational manifest of the storage files/folders an agent may
 access, rendered as a single ``ContextAttachment`` injected before the first
 LLM call.
 
+Permission verbs mean different things for a folder than for a file (e.g.
+"edit" on a folder means creating new entries inside it, not overwriting an
+existing one), so the legend renders a separate section per kind, each
+listing only the verbs actually present among specs of that kind.
+
 Pure function, no I/O, no S3 network calls — ``S3FileSpec.metadata`` is
 whatever ``base_node_payload_service._build_s3_pool`` attached on the Django
 side and must be read defensively since it crosses a service boundary.
@@ -14,11 +19,21 @@ from shared.models.agent_service import ContextAttachment, S3FileSpec
 
 _FLAG_ORDER = ("can_list", "can_view", "can_edit", "can_delete")
 
-_OPERATION_DESCRIPTIONS = {
-    "list": "list: enumerate the entries inside this folder",
+_FILE_OPERATION_DESCRIPTIONS = {
+    "list": "list: see this file in directory listings",
     "view": "view: read the contents",
     "edit": "edit: modify or overwrite the contents",
     "delete": "delete: remove it permanently",
+}
+
+_FOLDER_OPERATION_DESCRIPTIONS = {
+    "list": "list: enumerate the entries inside this folder",
+    "view": "view: read the contents of entries inside it",
+    "edit": (
+        "edit: create new entries inside it (modifying an existing entry "
+        "requires that entry's own edit permission)"
+    ),
+    "delete": "delete: remove the folder itself once empty",
 }
 
 
@@ -43,34 +58,58 @@ def build_s3_manifest(specs: list[S3FileSpec]) -> ContextAttachment | None:
 
 
 def _render_legend(specs: list[S3FileSpec]) -> list[str]:
-    operations_present = _operations_present_across(specs)
+    folder_operations, file_operations = _operations_present_by_kind(specs)
 
-    if not operations_present:
+    if not folder_operations and not file_operations:
         return []
 
-    bullets = [
-        f"- {_OPERATION_DESCRIPTIONS[operation]}"
+    lines = [
+        (
+            "What each permission means (each is granted independently — having "
+            "one does NOT imply any other):"
+        )
+    ]
+
+    if folder_operations:
+        lines.append("Folders:")
+        lines.extend(
+            _render_legend_bullets(folder_operations, _FOLDER_OPERATION_DESCRIPTIONS)
+        )
+
+    if file_operations:
+        if folder_operations:
+            lines.append("")
+
+        lines.append("Files:")
+        lines.extend(
+            _render_legend_bullets(file_operations, _FILE_OPERATION_DESCRIPTIONS)
+        )
+
+    lines.append("")
+    lines.append(
+        (
+            "Any operation not listed for a path is forbidden — in particular, "
+            "being able to edit a file does not let you delete it."
+        )
+    )
+    lines.append("")
+
+    return lines
+
+
+def _render_legend_bullets(
+    operations_present: set[str], descriptions: dict[str, str]
+) -> list[str]:
+    return [
+        f"- {descriptions[operation]}"
         for operation in ("list", "view", "edit", "delete")
         if operation in operations_present
     ]
 
-    return [
-        (
-            "What each permission means (each is granted independently — having "
-            "one does NOT imply any other):"
-        ),
-        *bullets,
-        "",
-        (
-            "Any operation not listed for a path is forbidden — in particular, "
-            "being able to edit a file does not let you delete it."
-        ),
-        "",
-    ]
 
-
-def _operations_present_across(specs: list[S3FileSpec]) -> set[str]:
-    operations_present: set[str] = set()
+def _operations_present_by_kind(specs: list[S3FileSpec]) -> tuple[set[str], set[str]]:
+    folder_operations: set[str] = set()
+    file_operations: set[str] = set()
 
     for spec in specs:
         metadata = spec.metadata or {}
@@ -79,11 +118,34 @@ def _operations_present_across(specs: list[S3FileSpec]) -> set[str]:
         if not isinstance(flags, dict):
             continue
 
-        for flag_name in _FLAG_ORDER:
-            if flags.get(flag_name) == "allow":
-                operations_present.add(flag_name.removeprefix("can_"))
+        allowed_operations = {
+            flag_name.removeprefix("can_")
+            for flag_name in _FLAG_ORDER
+            if flags.get(flag_name) == "allow"
+        }
 
-    return operations_present
+        if not allowed_operations:
+            continue
+
+        if _is_folder(spec):
+            folder_operations |= allowed_operations
+        else:
+            file_operations |= allowed_operations
+
+    return folder_operations, file_operations
+
+
+def _is_folder(spec: S3FileSpec) -> bool:
+    metadata = spec.metadata or {}
+    item_type = metadata.get("item_type")
+
+    if item_type == "folder":
+        return True
+
+    if item_type == "file":
+        return False
+
+    return spec.path.endswith("/")
 
 
 def _render_line(spec: S3FileSpec) -> str:

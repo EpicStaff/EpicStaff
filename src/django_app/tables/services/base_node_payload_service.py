@@ -3,7 +3,7 @@ from __future__ import annotations
 from loguru import logger
 
 from agents.models import AgentDefinition
-from tables.models.graph_models import StorageFile
+from tables.models.graph_models import GraphStorageFile, StorageFile
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
@@ -116,10 +116,15 @@ class BaseNodePayloadService:
         """Resolve the node's s3 file pool from its surface, capped by the flow.
 
         The surface grants determine which files a node MAY access; the flow's
-        attached files (GraphStorageFile) determine which files EXIST for this
-        run. Effective pool = surface grants ∩ flow-attached files. When
-        `graph_id` is None (standalone / non-flow runs), the flow ceiling does
-        not apply and the surface stays authoritative.
+        attached files/folders (GraphStorageFile) determine which paths EXIST
+        for this run. Effective pool = surface grants ∩ flow-attached paths,
+        where a surface-granted path passes the ceiling if it exactly matches
+        a flow-attached path or sits inside a flow-attached folder. A surface
+        grant broader than the flow attachment (e.g. surface grants a folder,
+        flow only attached one file in it) does not pass — the flow attachment
+        is a ceiling, never narrowed back out for the user. When `graph_id` is
+        None (standalone / non-flow runs), the flow ceiling does not apply and
+        the surface stays authoritative.
         """
         access_flags_by_file_id = {
             entry.storage_file: entry for entry in combined_surface.storage_items
@@ -131,11 +136,9 @@ class BaseNodePayloadService:
             in (entry.can_list, entry.can_view, entry.can_edit, entry.can_delete)
         ]
 
-        storage_files = StorageFile.objects.filter(pk__in=allowed_file_ids)
+        storage_files = list(StorageFile.objects.filter(pk__in=allowed_file_ids))
         if graph_id is not None:
-            storage_files = storage_files.filter(
-                graph_storage_files__graph_id=graph_id
-            ).distinct()
+            storage_files = self._filter_within_flow_ceiling(storage_files, graph_id)
 
         s3_files: list[S3FileSpec] = []
         for storage_file in storage_files:
@@ -159,6 +162,52 @@ class BaseNodePayloadService:
             )
 
         return s3_files
+
+    def _filter_within_flow_ceiling(
+        self, storage_files: list[StorageFile], graph_id: int
+    ) -> list[StorageFile]:
+        """Keep only `storage_files` whose path is covered by a path the flow
+        attached: an exact match, or nested inside an attached folder (whose
+        path always ends with '/'). Drops and logs anything a surface grants
+        that the flow never attached — a narrower grant than the flow
+        attachment still passes (e.g. flow attaches a folder, surface grants
+        one file in it); a broader one does not (surface grants a folder, flow
+        only attached one file in it)."""
+        attached_paths = set(
+            GraphStorageFile.objects.filter(graph_id=graph_id).values_list(
+                "storage_file__path", flat=True
+            )
+        )
+        attached_folder_paths = [path for path in attached_paths if path.endswith("/")]
+
+        kept: list[StorageFile] = []
+        for storage_file in storage_files:
+            if self._path_within_flow_ceiling(
+                storage_file.path, attached_paths, attached_folder_paths
+            ):
+                kept.append(storage_file)
+                continue
+
+            logger.warning(
+                "StorageFile {} (path={}) is granted by the surface but not "
+                "attached to graph {}; dropping it from the s3 pool.",
+                storage_file.pk,
+                storage_file.path,
+                graph_id,
+            )
+
+        return kept
+
+    @staticmethod
+    def _path_within_flow_ceiling(
+        path: str, attached_paths: set[str], attached_folder_paths: list[str]
+    ) -> bool:
+        if path in attached_paths:
+            return True
+
+        return any(
+            path.startswith(folder_path) for folder_path in attached_folder_paths
+        )
 
     def _build_collection_pool(
         self, combined_surface: CombinedSurfaceData

@@ -170,6 +170,121 @@ def test_content_ends_with_no_other_access_footer():
     )
 
 
+def test_folder_edit_renders_create_wording_not_file_wording():
+    spec = _spec(
+        path="test/",
+        metadata={"item_type": "folder", "flags": _flags(can_edit="allow")},
+    )
+
+    attachment = build_s3_manifest([spec])
+
+    assert "create new entries inside it" in attachment.content
+    assert "modify or overwrite the contents" not in attachment.content
+
+
+def test_file_edit_still_renders_modify_or_overwrite_wording():
+    spec = _spec(
+        path="reports/q1.pdf",
+        metadata={"item_type": "file", "flags": _flags(can_edit="allow")},
+    )
+
+    attachment = build_s3_manifest([spec])
+
+    assert "modify or overwrite the contents" in attachment.content
+    assert "create new entries inside it" not in attachment.content
+
+
+def test_mixed_pool_renders_both_sections_with_only_their_own_verbs():
+    folder_spec = _spec(
+        file_id=1,
+        path="test/",
+        metadata={
+            "item_type": "folder",
+            "flags": _flags(can_list="allow", can_edit="allow"),
+        },
+    )
+    file_spec = _spec(
+        file_id=2,
+        path="reports/q1.pdf",
+        metadata={
+            "item_type": "file",
+            "flags": _flags(can_view="allow", can_delete="allow"),
+        },
+    )
+
+    attachment = build_s3_manifest([folder_spec, file_spec])
+    content = attachment.content
+
+    assert "Folders:" in content
+    assert "Files:" in content
+    assert "create new entries inside it" in content
+    assert "read the contents" in content
+    assert "remove it permanently" in content
+    assert "modify or overwrite the contents" not in content
+    assert "read the contents of entries inside it" not in content
+    assert "remove the folder itself once empty" not in content
+
+
+def test_folder_only_pool_omits_files_section():
+    spec = _spec(
+        path="test/",
+        metadata={"item_type": "folder", "flags": _flags(can_list="allow")},
+    )
+
+    attachment = build_s3_manifest([spec])
+
+    assert "Folders:" in attachment.content
+    assert "Files:" not in attachment.content
+
+
+def test_file_only_pool_omits_folders_section():
+    spec = _spec(
+        path="reports/q1.pdf",
+        metadata={"item_type": "file", "flags": _flags(can_view="allow")},
+    )
+
+    attachment = build_s3_manifest([spec])
+
+    assert "Files:" in attachment.content
+    assert "Folders:" not in attachment.content
+
+
+def test_missing_item_type_falls_back_to_trailing_slash_for_folder_classification():
+    spec = _spec(
+        path="test/",
+        metadata={"flags": _flags(can_edit="allow")},
+    )
+
+    attachment = build_s3_manifest([spec])
+
+    assert "create new entries inside it" in attachment.content
+    assert "modify or overwrite the contents" not in attachment.content
+
+
+def test_missing_item_type_without_trailing_slash_classified_as_file():
+    spec = _spec(
+        path="reports/q1.pdf",
+        metadata={"flags": _flags(can_edit="allow")},
+    )
+
+    attachment = build_s3_manifest([spec])
+
+    assert "modify or overwrite the contents" in attachment.content
+    assert "create new entries inside it" not in attachment.content
+
+
+def test_file_only_pool_list_renders_file_wording_not_folder_wording():
+    spec = _spec(
+        path="reports/q1.pdf",
+        metadata={"item_type": "file", "flags": _flags(can_list="allow")},
+    )
+
+    attachment = build_s3_manifest([spec])
+
+    assert "list: see this file in directory listings" in attachment.content
+    assert "entries inside this folder" not in attachment.content
+
+
 def test_size_formatting_boundaries():
     cases = [
         (0, "0 B"),
