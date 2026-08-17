@@ -3,6 +3,12 @@ Builds an informational manifest of the storage files/folders an agent may
 access, rendered as a single ``ContextAttachment`` injected before the first
 LLM call.
 
+Each path line states both what is allowed ("may: ...") and what is denied
+("may not: ...") for that path explicitly, so the model never has to infer
+a denial from an unrelated example — leaving denials implicit previously
+caused the model to over-generalise a single denial example to unrelated
+paths and operations.
+
 Permission verbs mean different things for a folder than for a file (e.g.
 "edit" on a folder means creating new entries inside it, not overwriting an
 existing one), so the legend renders a separate section per kind, each
@@ -88,8 +94,12 @@ def _render_legend(specs: list[S3FileSpec]) -> list[str]:
     lines.append("")
     lines.append(
         (
-            "Any operation not listed for a path is forbidden — in particular, "
-            "being able to edit a file does not let you delete it."
+            "Each path above lists exactly what you may and may not do with "
+            "it. Treat that per-path list as authoritative — do not "
+            "generalise a restriction on one path to another path, or from "
+            "one operation to another. If an operation is listed as allowed "
+            "for a path, perform it with your tools when asked; do not "
+            "refuse it or ask for confirmation first."
         )
     )
     lines.append("")
@@ -151,15 +161,18 @@ def _is_folder(spec: S3FileSpec) -> bool:
 def _render_line(spec: S3FileSpec) -> str:
     metadata = spec.metadata or {}
     descriptor = _render_descriptor(metadata)
-    operations = _render_operations(metadata)
+    allowed_operations, denied_operations = _render_operations(metadata)
 
     line = f"- {spec.path}"
 
     if descriptor:
         line += f" ({descriptor})"
 
-    if operations:
-        line += f" — may: {operations}"
+    if allowed_operations:
+        line += f" — may: {', '.join(allowed_operations)}"
+
+    if denied_operations:
+        line += f" — may not: {', '.join(denied_operations)}"
 
     return line
 
@@ -178,19 +191,24 @@ def _render_descriptor(metadata: dict) -> str:
     return f"{item_type}, {_format_size(size)}"
 
 
-def _render_operations(metadata: dict) -> str:
+def _render_operations(metadata: dict) -> tuple[list[str], list[str]]:
     flags = metadata.get("flags")
 
     if not isinstance(flags, dict):
-        return ""
+        return [], []
 
-    allowed = [
-        flag_name.removeprefix("can_")
-        for flag_name in _FLAG_ORDER
-        if flags.get(flag_name) == "allow"
-    ]
+    allowed = []
+    denied = []
 
-    return ", ".join(allowed)
+    for flag_name in _FLAG_ORDER:
+        operation = flag_name.removeprefix("can_")
+
+        if flags.get(flag_name) == "allow":
+            allowed.append(operation)
+        else:
+            denied.append(operation)
+
+    return allowed, denied
 
 
 def _format_size(size_bytes: int) -> str:

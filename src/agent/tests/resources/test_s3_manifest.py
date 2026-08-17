@@ -75,9 +75,10 @@ def test_unset_and_deny_flags_are_omitted():
     attachment = build_s3_manifest([spec])
 
     line = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")][0]
-    assert "may: list" in line
-    assert "view" not in line.split("may:")[1]
-    assert "edit" not in line.split("may:")[1]
+    may_segment = line.split("may:")[1].split("may not:")[0]
+    assert "list" in may_segment
+    assert "view" not in may_segment
+    assert "edit" not in may_segment
 
 
 def test_all_flags_non_allow_omits_may_fragment():
@@ -87,6 +88,7 @@ def test_all_flags_non_allow_omits_may_fragment():
 
     line = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")][0]
     assert "may:" not in line
+    assert "may not: list, view, edit, delete" in line
 
 
 def test_folder_item_type_renders_without_size():
@@ -98,7 +100,9 @@ def test_folder_item_type_renders_without_size():
     attachment = build_s3_manifest([spec])
 
     line = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")][0]
-    assert line == "- reports/archive/ (folder) — may: list"
+    assert line == (
+        "- reports/archive/ (folder) — may: list — may not: view, edit, delete"
+    )
 
 
 def test_file_with_missing_size_omits_parenthetical_size():
@@ -110,7 +114,7 @@ def test_file_with_missing_size_omits_parenthetical_size():
     attachment = build_s3_manifest([spec])
 
     line = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")][0]
-    assert line == "- reports/q1.pdf (file) — may: view"
+    assert line == ("- reports/q1.pdf (file) — may: view — may not: list, edit, delete")
 
 
 def test_file_with_size_renders_parenthetical():
@@ -126,7 +130,9 @@ def test_file_with_size_renders_parenthetical():
     attachment = build_s3_manifest([spec])
 
     line = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")][0]
-    assert line == "- reports/q1.pdf (file, 24 KB) — may: view"
+    assert line == (
+        "- reports/q1.pdf (file, 24 KB) — may: view — may not: list, edit, delete"
+    )
 
 
 def test_spec_with_empty_metadata_degrades_to_bare_path_line():
@@ -147,7 +153,7 @@ def test_spec_with_none_item_type_and_size_degrades_gracefully():
     attachment = build_s3_manifest([spec])
 
     line = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")][0]
-    assert line == "- inbox/notes.txt — may: view"
+    assert line == "- inbox/notes.txt — may: view — may not: list, edit, delete"
 
 
 def test_malformed_flags_value_does_not_raise():
@@ -157,6 +163,7 @@ def test_malformed_flags_value_does_not_raise():
 
     line = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")][0]
     assert "may:" not in line
+    assert "may not:" not in line
 
 
 def test_content_ends_with_no_other_access_footer():
@@ -304,6 +311,88 @@ def test_size_formatting_boundaries():
         assert expected in line, f"size={size} expected {expected!r} in {line!r}"
 
 
+def test_all_flags_allowed_omits_may_not_fragment():
+    spec = _spec(
+        path="test/Notes.txt",
+        metadata={
+            "item_type": "file",
+            "flags": _flags(
+                can_list="allow", can_view="allow", can_edit="allow", can_delete="allow"
+            ),
+        },
+    )
+
+    attachment = build_s3_manifest([spec])
+
+    line = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")][0]
+    assert "may: list, view, edit, delete" in line
+    assert "may not:" not in line
+
+
+def test_no_flags_allowed_lists_path_with_may_not_only():
+    spec = _spec(
+        path="test/Locked.txt",
+        metadata={"item_type": "file", "flags": _flags()},
+    )
+
+    attachment = build_s3_manifest([spec])
+
+    line = [ln for ln in attachment.content.splitlines() if ln.startswith("- ")][0]
+    assert "- test/Locked.txt" in line
+    assert "may:" not in line
+    assert "may not: list, view, edit, delete" in line
+
+
+def test_mixed_pool_denial_wording_matches_actual_permissions_not_inverted():
+    notes_spec = _spec(
+        file_id=1,
+        path="test/Notes.txt",
+        metadata={
+            "item_type": "file",
+            "flags": _flags(
+                can_list="allow", can_view="allow", can_edit="allow", can_delete="allow"
+            ),
+        },
+    )
+    plan_spec = _spec(
+        file_id=2,
+        path="test/Plan.txt",
+        metadata={
+            "item_type": "file",
+            "flags": _flags(can_list="allow", can_view="allow", can_edit="allow"),
+        },
+    )
+    faq_spec = _spec(
+        file_id=3,
+        path="test/Solar System FAQ.txt",
+        metadata={
+            "item_type": "file",
+            "flags": _flags(can_list="allow", can_view="allow", can_edit="allow"),
+        },
+    )
+
+    attachment = build_s3_manifest([notes_spec, plan_spec, faq_spec])
+    all_lines = attachment.content.splitlines()
+    header_index = all_lines.index("Files and folders you have access to:")
+    lines = []
+
+    for line in all_lines[header_index + 1 :]:
+        if not line.startswith("- "):
+            break
+        lines.append(line)
+
+    notes_line, plan_line, faq_line = lines
+
+    assert "may: list, view, edit, delete" in notes_line
+    assert "may not:" not in notes_line
+
+    assert "delete" in plan_line.split("may not:")[1]
+    assert "delete" not in plan_line.split("may:")[1].split("may not:")[0]
+
+    assert "delete" in faq_line.split("may not:")[1]
+    assert "delete" not in faq_line.split("may:")[1].split("may not:")[0]
+
+
 def test_legend_lists_only_ops_present_across_specs():
     spec_a = _spec(
         file_id=1,
@@ -346,7 +435,7 @@ def test_legend_line_order_is_list_view_edit_delete():
     assert indices == sorted(indices)
 
 
-def test_legend_contains_non_implication_and_delete_clarification_sentences():
+def test_legend_contains_non_implication_sentence():
     spec = _spec(metadata={"item_type": "file", "flags": _flags(can_view="allow")})
 
     attachment = build_s3_manifest([spec])
@@ -355,7 +444,29 @@ def test_legend_contains_non_implication_and_delete_clarification_sentences():
         "each is granted independently — having one does NOT imply any other"
         in attachment.content
     )
-    assert "being able to edit a file does not let you delete it" in attachment.content
+
+
+def test_misleading_delete_example_sentence_is_removed():
+    spec = _spec(metadata={"item_type": "file", "flags": _flags(can_view="allow")})
+
+    attachment = build_s3_manifest([spec])
+
+    assert "does not let you delete it" not in attachment.content
+
+
+def test_legend_contains_act_dont_prejudge_closing_paragraph():
+    spec = _spec(metadata={"item_type": "file", "flags": _flags(can_view="allow")})
+
+    attachment = build_s3_manifest([spec])
+
+    assert (
+        "Each path above lists exactly what you may and may not do with it. "
+        "Treat that per-path list as authoritative — do not generalise a "
+        "restriction on one path to another path, or from one operation to "
+        "another. If an operation is listed as allowed for a path, perform "
+        "it with your tools when asked; do not refuse it or ask for "
+        "confirmation first."
+    ) in attachment.content
 
 
 def test_no_legend_when_no_path_has_any_allowed_op():
@@ -412,7 +523,7 @@ def test_multiple_specs_render_multiple_lines():
         lines.append(line)
 
     assert lines == [
-        "- reports/q1.pdf (file, 24 KB) — may: view, edit",
-        "- reports/archive/ (folder) — may: list",
-        "- inbox/notes.txt — may: view",
+        "- reports/q1.pdf (file, 24 KB) — may: view, edit — may not: list, delete",
+        "- reports/archive/ (folder) — may: list — may not: view, edit, delete",
+        "- inbox/notes.txt — may: view — may not: list, edit, delete",
     ]
