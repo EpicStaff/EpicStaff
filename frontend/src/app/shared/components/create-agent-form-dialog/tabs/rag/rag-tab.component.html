@@ -34,30 +34,32 @@
                     />
                     <span>{{ lockReason() }}</span>
                 </div>
-            } @else if (tokenLimitsLoading()) {
-                <div class="metadata-status metadata-status--loading">
-                    <span
-                        class="metadata-status__spinner"
-                        aria-hidden="true"
-                    ></span>
-                    <span>Loading token limits for this LLM…</span>
-                </div>
-            } @else if (tokenLimitsError()) {
-                <div class="metadata-status metadata-status--error">
-                    <app-svg-icon
-                        icon="warning"
-                        size="1.1rem"
-                    />
-                    <span>{{ tokenLimitsError() }}</span>
-                    <button
-                        type="button"
-                        class="metadata-status__retry"
-                        (click)="retryMetadataFetch()"
-                    >
-                        Retry
-                    </button>
-                </div>
             } @else {
+                @if (tokenLimitsLoading()) {
+                    <div class="metadata-status metadata-status--loading">
+                        <span
+                            class="metadata-status__spinner"
+                            aria-hidden="true"
+                        ></span>
+                        <span>Loading token limits for this LLM…</span>
+                    </div>
+                } @else if (tokenLimitsError()) {
+                    <div class="metadata-status metadata-status--error">
+                        <app-svg-icon
+                            icon="warning"
+                            size="1.1rem"
+                        />
+                        <span>{{ tokenLimitsError() }}</span>
+                        <button
+                            type="button"
+                            class="metadata-status__retry"
+                            (click)="retryMetadataFetch()"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                }
+
                 <ng-template #suggestedToggle>
                     <div class="suggested-params-toggle">
                         <app-toggle-switch

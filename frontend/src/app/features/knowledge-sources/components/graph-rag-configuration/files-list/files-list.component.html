@@ -51,35 +51,35 @@
                             <app-checkbox
                                 color="secondary"
                                 [checked]="checkedDocIds().has(item.graph_rag_document_id)"
-                                [disabled]="item.status === 'indexed'"
+                                [disabled]="item.disabled"
                                 (changed)="toggleDoc.emit(item.graph_rag_document_id)"
                             />
                             <span
                                 class="file-index"
-                                [class.dimmed]="item.status === 'indexed'"
+                                [class.dimmed]="item.disabled"
                                 >{{ i + 1 }}</span
                             >
                             <app-svg-icon
                                 icon="document"
                                 size="0.75rem"
-                                [class.dimmed]="item.status === 'indexed'"
+                                [class.dimmed]="item.disabled"
                             />
                             <span
                                 class="file-name"
-                                [class.dimmed]="item.status === 'indexed'"
+                                [class.dimmed]="item.disabled"
                                 >{{ item.file_name }}</span
                             >
                         </div>
                         <div class="size-column">
                             <span
                                 class="size"
-                                [class.dimmed]="item.status === 'indexed'"
+                                [class.dimmed]="item.disabled"
                                 >{{ item.file_size | fileSize }}</span
                             >
                             <app-svg-icon
                                 icon="close"
                                 class="file-action"
-                                [class.file-action--disabled]="item.status === 'indexed'"
+                                [class.file-action--disabled]="item.disabled"
                                 size="1rem"
                                 (click)="onDelete(item)"
                             />

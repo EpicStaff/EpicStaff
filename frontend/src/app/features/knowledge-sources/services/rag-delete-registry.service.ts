@@ -1,7 +1,8 @@
 import { inject, Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
+import { Observable } from 'rxjs';
 
 import { RagType } from '../models/base-rag.model';
+import { GraphRagService } from './graph-rag.service';
 import { NaiveRagService } from './naive-rag.service';
 
 export interface RagDeleteHandler {
@@ -13,10 +14,11 @@ export interface RagDeleteHandler {
 })
 export class RagDeleteRegistryService {
     private naiveRagService = inject(NaiveRagService);
+    private graphRagService = inject(GraphRagService);
 
     private handlers: Partial<Record<RagType, RagDeleteHandler>> = {
         naive: { deleteRag: (ragId) => this.naiveRagService.deleteNaiveRag(ragId) },
-        graph: { deleteRag: (ragId) => of(ragId) },
+        graph: { deleteRag: (ragId) => this.graphRagService.deleteGraphRag(ragId) },
     };
 
     deleteRag(type: RagType, ragId: number): Observable<unknown> {
