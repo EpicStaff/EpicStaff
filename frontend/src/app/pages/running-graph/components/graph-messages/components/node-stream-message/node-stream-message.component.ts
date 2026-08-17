@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
     AgentNodeStreamMessageData,
@@ -44,7 +43,6 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
     selector: 'app-node-stream-message',
     imports: [AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    animations: [expandCollapseAnimation],
     template: `
         <div
             class="node-stream-container"
@@ -91,109 +89,113 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
             <!-- Steps -->
             <div
                 class="collapsible-content"
-                [@expandCollapse]="isExpanded() ? 'expanded' : 'collapsed'"
+                [class.expanded]="isExpanded()"
             >
-                @if (hasContent()) {
-                    <div class="task-groups">
-                        @for (group of taskGroups(); track group.key) {
-                            <div class="task-group">
-                                @if (group.taskName) {
-                                    <div class="task-group-header">
-                                        <app-svg-icon
-                                            icon="list-check"
-                                            size="0.85rem"
-                                        />
-                                        {{ group.taskName }}
-                                    </div>
-                                }
-                                <div class="steps-container">
-                                    @for (step of group.toolSteps; track step.key) {
-                                        <div class="step-item">
-                                            <div
-                                                class="step-header"
-                                                (click)="toggleStep(step)"
-                                            >
-                                                <app-svg-icon
-                                                    [icon]="
-                                                        isStepExpanded(step)
-                                                            ? 'caret-down-filled'
-                                                            : 'caret-right-filled'
-                                                    "
-                                                    size="1rem"
-                                                />
-                                                <app-svg-icon
-                                                    [icon]="isStepError(step) ? 'alert-circle' : 'tool'"
-                                                    size="0.9rem"
-                                                    class="step-icon"
-                                                    [class.is-error]="isStepError(step)"
-                                                />
-                                                <span class="step-summary">{{ getStepSummary(step) }}</span>
-                                            </div>
+                <div class="collapsible-inner">
+                    @if (hasContent()) {
+                        <div class="task-groups">
+                            @for (group of taskGroups(); track group.key) {
+                                <div class="task-group">
+                                    @if (group.taskName) {
+                                        <div class="task-group-header">
+                                            <app-svg-icon
+                                                icon="list-check"
+                                                size="0.85rem"
+                                            />
+                                            {{ group.taskName }}
+                                        </div>
+                                    }
+                                    <div class="steps-container">
+                                        @for (step of group.toolSteps; track step.key) {
+                                            <div class="step-item">
+                                                <div
+                                                    class="step-header"
+                                                    (click)="toggleStep(step)"
+                                                >
+                                                    <app-svg-icon
+                                                        [icon]="
+                                                            isStepExpanded(step)
+                                                                ? 'caret-down-filled'
+                                                                : 'caret-right-filled'
+                                                        "
+                                                        size="1rem"
+                                                    />
+                                                    <app-svg-icon
+                                                        [icon]="isStepError(step) ? 'alert-circle' : 'tool'"
+                                                        size="0.9rem"
+                                                        class="step-icon"
+                                                        [class.is-error]="isStepError(step)"
+                                                    />
+                                                    <span class="step-summary">{{ getStepSummary(step) }}</span>
+                                                </div>
 
-                                            <div
-                                                class="collapsible-content"
-                                                [@expandCollapse]="isStepExpanded(step) ? 'expanded' : 'collapsed'"
-                                            >
-                                                <div class="step-content">
-                                                    @if (step.call; as call) {
-                                                        <div class="tool-call-item">
-                                                            <div class="tool-call-label">Arguments</div>
-                                                            <div class="tool-call-input">
-                                                                {{ truncate(call.arguments, 400) }}
-                                                            </div>
-                                                            @if (call.truncated) {
-                                                                <div class="truncated-hint">truncated</div>
+                                                <div
+                                                    class="collapsible-content"
+                                                    [class.expanded]="isStepExpanded(step)"
+                                                >
+                                                    <div class="collapsible-inner">
+                                                        <div class="step-content">
+                                                            @if (step.call; as call) {
+                                                                <div class="tool-call-item">
+                                                                    <div class="tool-call-label">Arguments</div>
+                                                                    <div class="tool-call-input">
+                                                                        {{ truncate(call.arguments, 400) }}
+                                                                    </div>
+                                                                    @if (call.truncated) {
+                                                                        <div class="truncated-hint">truncated</div>
+                                                                    }
+                                                                </div>
+                                                            }
+
+                                                            @if (step.result; as result) {
+                                                                <div
+                                                                    class="tool-result-item"
+                                                                    [class.is-error]="result.is_error"
+                                                                >
+                                                                    <div class="tool-call-label">
+                                                                        {{ result.is_error ? 'Error' : 'Result' }}
+                                                                    </div>
+                                                                    <div class="tool-call-output">
+                                                                        {{ truncate(result.content, 600) }}
+                                                                    </div>
+                                                                    @if (result.truncated) {
+                                                                        <div class="truncated-hint">truncated</div>
+                                                                    }
+                                                                </div>
                                                             }
                                                         </div>
-                                                    }
-
-                                                    @if (step.result; as result) {
-                                                        <div
-                                                            class="tool-result-item"
-                                                            [class.is-error]="result.is_error"
-                                                        >
-                                                            <div class="tool-call-label">
-                                                                {{ result.is_error ? 'Error' : 'Result' }}
-                                                            </div>
-                                                            <div class="tool-call-output">
-                                                                {{ truncate(result.content, 600) }}
-                                                            </div>
-                                                            @if (result.truncated) {
-                                                                <div class="truncated-hint">truncated</div>
-                                                            }
-                                                        </div>
-                                                    }
+                                                    </div>
                                                 </div>
                                             </div>
+                                        }
+                                    </div>
+
+                                    @if (group.message; as taskMessage) {
+                                        <div class="task-output">
+                                            <div class="tool-call-label">Output</div>
+                                            <div class="task-output-text">{{ taskMessage }}</div>
+                                        </div>
+                                    }
+
+                                    @if (group.tokenUsage; as tokenUsage) {
+                                        <div class="token-usage">
+                                            Tokens:
+                                            @if (tokenUsage['total_tokens'] !== undefined) {
+                                                {{ tokenUsage['total_tokens'] }} total
+                                            }
+                                            @if (tokenUsage['prompt_tokens'] !== undefined) {
+                                                · {{ tokenUsage['prompt_tokens'] }} prompt
+                                            }
+                                            @if (tokenUsage['completion_tokens'] !== undefined) {
+                                                · {{ tokenUsage['completion_tokens'] }} completion
+                                            }
                                         </div>
                                     }
                                 </div>
-
-                                @if (group.message; as taskMessage) {
-                                    <div class="task-output">
-                                        <div class="tool-call-label">Output</div>
-                                        <div class="task-output-text">{{ taskMessage }}</div>
-                                    </div>
-                                }
-
-                                @if (group.tokenUsage; as tokenUsage) {
-                                    <div class="token-usage">
-                                        Tokens:
-                                        @if (tokenUsage['total_tokens'] !== undefined) {
-                                            {{ tokenUsage['total_tokens'] }} total
-                                        }
-                                        @if (tokenUsage['prompt_tokens'] !== undefined) {
-                                            · {{ tokenUsage['prompt_tokens'] }} prompt
-                                        }
-                                        @if (tokenUsage['completion_tokens'] !== undefined) {
-                                            · {{ tokenUsage['completion_tokens'] }} completion
-                                        }
-                                    </div>
-                                }
-                            </div>
-                        }
-                    </div>
-                }
+                            }
+                        </div>
+                    }
+                </div>
             </div>
         </div>
     `,
@@ -290,12 +292,25 @@ const NODE_TYPE_STYLE: Record<NodeStreamType, { icon: string; color: string }> =
         }
 
         .collapsible-content {
-            overflow: hidden;
-            position: relative;
+            display: grid;
+            grid-template-rows: 0fr;
+            opacity: 0;
+            visibility: hidden;
+            transition:
+                grid-template-rows 180ms ease-in-out,
+                opacity 180ms ease-in-out,
+                visibility 180ms ease-in-out;
 
-            &.ng-animating {
-                overflow: hidden;
+            &.expanded {
+                grid-template-rows: 1fr;
+                opacity: 1;
+                visibility: visible;
             }
+        }
+
+        .collapsible-inner {
+            min-height: 0;
+            overflow: hidden;
         }
 
         .task-groups {
