@@ -142,6 +142,12 @@
             }
         }
 
+        &--empty {
+            .storage-tree__icon {
+                opacity: 0.16;
+            }
+        }
+
         &--selected {
             background-color: #685fff14;
             color: #685fff;
@@ -153,7 +159,8 @@
             }
 
             .storage-tree__empty-badge {
-                color: #685fff29;
+                color: var(--accent-color);
+                opacity: 0.16;
             }
 
             &:hover {
@@ -237,7 +244,8 @@
         letter-spacing: 0;
         text-align: right;
         vertical-align: middle;
-        color: var(--color-divider-subtle);
+        color: var(--color-text-primary);
+        opacity: 0.16;
         margin-left: 0;
         flex-shrink: 0;
     }

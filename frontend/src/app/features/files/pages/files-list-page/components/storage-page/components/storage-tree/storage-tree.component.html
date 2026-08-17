@@ -69,6 +69,7 @@
             [attr.data-path]="node.path"
             [class.storage-tree__item--selected]="isItemSelected(node)"
             [class.storage-tree__item--non-empty]="node.type === 'folder' && !node.is_empty"
+            [class.storage-tree__item--empty]="node.type === 'folder' && node.is_empty"
             [class.storage-tree__item--hovered]="hoveredItem() === node"
             [class.storage-tree__item--drop-target]="isDropTarget(node)"
             [class.storage-tree__item--dragging]="draggedItem()?.path === node.path"
