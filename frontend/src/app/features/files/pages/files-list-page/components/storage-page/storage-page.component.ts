@@ -279,10 +279,6 @@ export class StoragePageComponent {
         this.setSelectedItem(item);
     }
 
-    onFolderSelect(): void {
-        // Selecting a folder in the tree must not affect an unrelated open file preview.
-    }
-
     onFolderToggle(item: StorageItem): void {
         if (item.isExpanded && (!item.children || item.children.length === 0)) {
             this.storageApiService

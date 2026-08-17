@@ -16,7 +16,6 @@
                 <app-storage-tree
                     [items]="filteredTreeData()"
                     (fileSelected)="onFileSelect($event)"
-                    (folderSelected)="onFolderSelect()"
                     (folderToggled)="onFolderToggle($event)"
                     (contextAction)="onContextAction($event)"
                     (closeSidebar)="toggleSidebar()"
