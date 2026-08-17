@@ -402,8 +402,6 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         this.inlineSurface.set(data.inline_surface ?? null);
         this.outputSchemaExpanded.set(false);
         this.mainView.set('instructions');
-        // Preview by default so long instructions are readable, but an empty field would
-        // render a blank pane with nowhere to type — start those in Edit.
         this.instructionsView.set((data.instructions || '').trim() ? 'preview' : 'edit');
 
         const form = this.fb.group({

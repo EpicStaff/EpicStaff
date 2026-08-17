@@ -3,10 +3,12 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    effect,
     inject,
     Injector,
     input,
     signal,
+    untracked,
     viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -106,8 +108,6 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
 
     public readonly rightPane = signal<RightPaneSelection | null>(null);
 
-    /** Explicit Preview/Edit choices, per task `tempId`. Tasks absent here fall back to
-     *  the content-based default in `instructionsView` — see `setInstructionsView`. */
     private readonly instructionsViewByTask = signal<Record<string, InstructionsView>>({});
 
     private readonly rightSchemaDrafts = signal<Record<string, string>>({});
@@ -224,11 +224,9 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
 
     public readonly rightInstructionsValue = computed<string>(() => this.selectedTask()?.instructions ?? '');
 
-    public readonly instructionsView = computed<InstructionsView>(() => {
-        const task = this.selectedTask();
-        if (!task) return 'preview';
-        return this.instructionsViewByTask()[task.tempId] ?? ((task.instructions ?? '').trim() ? 'preview' : 'edit');
-    });
+    public readonly instructionsView = computed<InstructionsView>(
+        () => this.instructionsViewByTask()[this.selectedTask()?.tempId ?? ''] ?? 'preview'
+    );
 
     private readonly dialog: Dialog = inject(Dialog);
     private readonly injector: Injector = inject(Injector);
@@ -264,6 +262,17 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         this.sidePanelService.graphSaved$
             .pipe(takeUntilDestroyed())
             .subscribe(() => this.mergeReconciledTaskIdsAfterSave());
+
+        effect(() => {
+            const task = this.selectedTask();
+            if (task) this.seedInstructionsView(task);
+        });
+    }
+
+    private seedInstructionsView(task: AgentNodeTaskUi): void {
+        if (untracked(this.instructionsViewByTask)[task.tempId]) return;
+        const view: InstructionsView = (task.instructions ?? '').trim() ? 'preview' : 'edit';
+        this.instructionsViewByTask.update((views) => ({ ...views, [task.tempId]: view }));
     }
 
     get activeColor(): string {
@@ -388,7 +397,6 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         this.instructionsViewByTask.update((views) => ({ ...views, [task.tempId]: view }));
     }
 
-    /** Drops remembered view choices for tasks that no longer exist. */
     private pruneInstructionsViews(tasks: AgentNodeTaskUi[]): void {
         this.instructionsViewByTask.update((views) => {
             const liveIds = new Set(tasks.map((task) => task.tempId));
