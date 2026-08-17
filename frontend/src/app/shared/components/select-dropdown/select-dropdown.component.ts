@@ -439,11 +439,34 @@ export class SelectDropdownComponent {
             return;
         }
 
+        const check = !this.draftFolderIds().has(node.id);
+        const fileIds: (string | number)[] = [];
+        const folderIds: (string | number)[] = [node.id];
+        this.collectDescendants(node, fileIds, folderIds);
+
+        const files = new Set(this.draft());
+        for (const id of fileIds) (check ? files.add(id) : files.delete(id));
+        this.draft.set([...files]);
+
         this.draftFolderIds.update((set) => {
             const next = new Set(set);
-            next.has(node.id) ? next.delete(node.id) : next.add(node.id);
+            for (const id of folderIds) (check ? next.add(id) : next.delete(id));
             return next;
         });
+    }
+
+    private collectDescendants(
+        node: RuntimeTreeNode,
+        fileIds: (string | number)[],
+        folderIds: (string | number)[]
+    ): void {
+        for (const c of node.children) {
+            if (c.type === 'file') fileIds.push(c.id);
+            else {
+                folderIds.push(c.id);
+                this.collectDescendants(c, fileIds, folderIds);
+            }
+        }
     }
 
     private activeFolderIds(): Set<string | number> {
