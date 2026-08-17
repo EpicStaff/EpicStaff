@@ -14,18 +14,28 @@ import { SurfaceCollectionOption, SurfaceToolOption } from '../models/surface-ca
 export interface StorageFileMeta {
     name: string;
     path: string;
+    type: 'file' | 'folder';
 }
 
-function toDropdownNode(node: StorageTreeNode, meta: Map<number, StorageFileMeta>): SelectDropdownTreeNode {
-    const id: number | string = node.type === 'file' && node.id != null ? node.id : node.path;
-    if (node.type === 'file' && typeof id === 'number') {
-        meta.set(id, { name: node.name, path: node.path });
+function toDropdownNode(
+    node: StorageTreeNode,
+    meta: Map<number, StorageFileMeta>,
+    folderIdByPath: Map<string, number>
+): SelectDropdownTreeNode {
+    const folderPath = node.path.replace(/\/+$/, '');
+    const id: number | string = node.type === 'file' && node.id != null ? node.id : folderPath;
+    if (node.id != null) {
+        meta.set(node.id, { name: node.name, path: node.path, type: node.type });
+        if (node.type === 'folder') folderIdByPath.set(folderPath, node.id);
     }
     return {
         id,
         name: node.name,
         type: node.type,
-        children: node.type === 'folder' ? (node.children ?? []).map((c) => toDropdownNode(c, meta)) : undefined,
+        children:
+            node.type === 'folder'
+                ? (node.children ?? []).map((c) => toDropdownNode(c, meta, folderIdByPath))
+                : undefined,
     };
 }
 
@@ -42,12 +52,17 @@ export class SurfaceCatalogsStore {
     private readonly collectionsSignal = signal<SurfaceCollectionOption[]>([]);
     private readonly storageTreeSignal = signal<SelectDropdownTreeNode[]>([]);
     private readonly storageFileMetaSignal = signal<ReadonlyMap<number, StorageFileMeta>>(new Map());
+    private readonly folderIdByPathSignal = signal<ReadonlyMap<string, number>>(new Map());
 
     readonly pythonTools = this.pythonSignal.asReadonly();
     readonly mcpTools = this.mcpSignal.asReadonly();
     readonly collections = this.collectionsSignal.asReadonly();
     readonly storageTree = this.storageTreeSignal.asReadonly();
     readonly storageFileMeta = this.storageFileMetaSignal.asReadonly();
+
+    folderIdForPath(path: string): number | null {
+        return this.folderIdByPathSignal().get(path.replace(/\/+$/, '')) ?? null;
+    }
 
     private pythonLoaded = false;
     private mcpLoaded = false;
@@ -132,12 +147,14 @@ export class SurfaceCatalogsStore {
         this.storageTreeRequest$ = this.storageApi.tree().pipe(
             map((res) => {
                 const meta = new Map<number, StorageFileMeta>();
-                const nodes = (res.tree.children ?? []).map((n) => toDropdownNode(n, meta));
-                return { nodes, meta };
+                const folderIdByPath = new Map<string, number>();
+                const nodes = (res.tree.children ?? []).map((n) => toDropdownNode(n, meta, folderIdByPath));
+                return { nodes, meta, folderIdByPath };
             }),
-            tap(({ nodes, meta }) => {
+            tap(({ nodes, meta, folderIdByPath }) => {
                 this.storageTreeSignal.set(nodes);
                 this.storageFileMetaSignal.set(meta);
+                this.folderIdByPathSignal.set(folderIdByPath);
                 this.storageTreeLoaded = true;
             }),
             map(({ nodes }) => nodes),

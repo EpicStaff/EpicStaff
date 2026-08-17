@@ -5,12 +5,16 @@ interface FileTreeNode {
     path: string;
     type: 'folder' | 'file';
     file?: SurfaceFileRow;
+    row?: SurfaceFileRow;
     children: FileTreeNode[];
 }
 
-function filePathParts(file: SurfaceFileRow): string[] {
-    const raw = (file.path || file.name).replace(/\/+$/, '');
-    return raw.split('/').filter(Boolean);
+function normalizePath(row: SurfaceFileRow): string {
+    return (row.path || row.name).replace(/\/+$/, '');
+}
+
+function filePathParts(row: SurfaceFileRow): string[] {
+    return normalizePath(row).split('/').filter(Boolean);
 }
 
 function compareNodes(a: FileTreeNode, b: FileTreeNode): number {
@@ -24,39 +28,56 @@ function sortTree(nodes: FileTreeNode[]): FileTreeNode[] {
         .map((node) => (node.type === 'folder' ? { ...node, children: sortTree(node.children) } : node));
 }
 
-function buildFileTree(files: SurfaceFileRow[]): FileTreeNode[] {
+function ensureFolderChain(
+    root: FileTreeNode[],
+    folderMap: Map<string, FileTreeNode>,
+    parts: string[]
+): FileTreeNode[] {
+    let parentChildren = root;
+    let currentPath = '';
+    for (const part of parts) {
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        let folder = folderMap.get(currentPath);
+        if (!folder) {
+            folder = { name: part, path: currentPath, type: 'folder', children: [] };
+            folderMap.set(currentPath, folder);
+            parentChildren.push(folder);
+        }
+        parentChildren = folder.children;
+    }
+    return parentChildren;
+}
+
+function buildFileTree(rows: SurfaceFileRow[]): FileTreeNode[] {
     const root: FileTreeNode[] = [];
     const folderMap = new Map<string, FileTreeNode>();
 
-    for (const file of files) {
-        const parts = filePathParts(file);
+    for (const row of rows) {
+        const parts = filePathParts(row);
         if (parts.length === 0) continue;
 
-        let parentChildren = root;
-        let currentPath = '';
-
-        for (let i = 0; i < parts.length - 1; i++) {
-            currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
-            let folder = folderMap.get(currentPath);
-            if (!folder) {
-                folder = {
-                    name: parts[i],
-                    path: currentPath,
-                    type: 'folder',
-                    children: [],
-                };
-                folderMap.set(currentPath, folder);
-                parentChildren.push(folder);
+        if (row.type === 'folder') {
+            ensureFolderChain(root, folderMap, parts.slice(0, -1));
+            const fullPath = parts.join('/');
+            let node = folderMap.get(fullPath);
+            if (!node) {
+                node = { name: parts[parts.length - 1], path: fullPath, type: 'folder', children: [] };
+                folderMap.set(fullPath, node);
+                const parentChildren = ensureFolderChain(root, folderMap, parts.slice(0, -1));
+                parentChildren.push(node);
             }
-            parentChildren = folder.children;
+            node.row = row;
+            node.name = row.name || node.name;
+            continue;
         }
 
+        const parentChildren = ensureFolderChain(root, folderMap, parts.slice(0, -1));
         const leafName = parts[parts.length - 1];
         parentChildren.push({
-            name: file.name || leafName,
-            path: file.path || leafName,
+            name: row.name || leafName,
+            path: normalizePath(row),
             type: 'file',
-            file,
+            file: row,
             children: [],
         });
     }
@@ -79,6 +100,8 @@ function flattenTree(
                 name: node.name,
                 depth,
                 expanded,
+                hasChildren: node.children.length > 0,
+                row: node.row,
             });
             if (expanded) flattenTree(node.children, depth + 1, collapsedPaths, out);
             continue;
@@ -91,19 +114,26 @@ function flattenTree(
 }
 
 export function buildSurfaceFileDisplayRows(
-    files: SurfaceFileRow[],
+    rows: SurfaceFileRow[],
     collapsedPaths: ReadonlySet<string>
 ): SurfaceFileDisplayRow[] {
-    const rows: SurfaceFileDisplayRow[] = [];
-    flattenTree(buildFileTree(files), 0, collapsedPaths, rows);
-    return rows;
+    const out: SurfaceFileDisplayRow[] = [];
+    flattenTree(buildFileTree(rows), 0, collapsedPaths, out);
+    return out;
 }
 
-export function countSurfaceFileFolders(files: SurfaceFileRow[]): number {
+export function buildSurfaceFileStats(rows: SurfaceFileRow[]): SurfaceFileStats {
     const folderPaths = new Set<string>();
+    let files = 0;
 
-    for (const file of files) {
-        const parts = filePathParts(file);
+    for (const row of rows) {
+        if (row.type === 'folder') {
+            folderPaths.add(normalizePath(row));
+            continue;
+        }
+        files++;
+        // Count the structural parent folders a file passes through.
+        const parts = filePathParts(row);
         let current = '';
         for (let i = 0; i < parts.length - 1; i++) {
             current = current ? `${current}/${parts[i]}` : parts[i];
@@ -111,20 +141,5 @@ export function countSurfaceFileFolders(files: SurfaceFileRow[]): number {
         }
     }
 
-    return folderPaths.size;
-}
-
-export function buildSurfaceFileStats(files: SurfaceFileRow[]): SurfaceFileStats {
-    return {
-        folders: countSurfaceFileFolders(files),
-        files: files.length,
-    };
-}
-
-export function filesInFolder(files: SurfaceFileRow[], folderPath: string): SurfaceFileRow[] {
-    const prefix = `${folderPath}/`;
-    return files.filter((file) => {
-        const path = (file.path || file.name).replace(/\/+$/, '');
-        return path.startsWith(prefix);
-    });
+    return { folders: folderPaths.size, files };
 }

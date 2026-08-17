@@ -381,9 +381,10 @@
                         [maxPanelHeight]="500"
                         [nodes]="fileDropdownNodes()"
                         [selected]="selectedFileIds()"
+                        [selectedFolders]="selectedFolderPaths()"
                         [headerAction]="filesHeaderAction"
                         (headerActionClick)="openAddFiles()"
-                        (selectionChange)="onFilesChange($event)"
+                        (selectionChangeDetailed)="onFilesSelectionChange($event)"
                         (openedChange)="filesExpanded.set($event)"
                         searchPlaceholder="Search files..."
                     >
@@ -488,18 +489,22 @@
                                     class="file-row__resource file-row__resource--folder"
                                     (click)="toggleFolder(row.path, $event)"
                                 >
-                                    <button
-                                        type="button"
-                                        class="file-row__chevron"
-                                        [class.file-row__chevron--open]="row.expanded"
-                                        aria-label="Toggle folder"
-                                        (click)="toggleFolder(row.path, $event)"
-                                    >
-                                        <app-svg-icon
-                                            icon="chevron-down-filled"
-                                            size="8px"
-                                        />
-                                    </button>
+                                    @if (row.hasChildren) {
+                                        <button
+                                            type="button"
+                                            class="file-row__chevron"
+                                            [class.file-row__chevron--open]="row.expanded"
+                                            aria-label="Toggle folder"
+                                            (click)="toggleFolder(row.path, $event)"
+                                        >
+                                            <app-svg-icon
+                                                icon="chevron-down-filled"
+                                                size="8px"
+                                            />
+                                        </button>
+                                    } @else {
+                                        <span class="file-row__chevron-spacer"></span>
+                                    }
                                     <span
                                         class="file-row__name"
                                         [title]="row.path"
@@ -508,33 +513,53 @@
                                 </span>
 
                                 @for (col of visiblePermColumns(); track col.key) {
-                                    <span class="file-row__perm">
-                                        <button
-                                            type="button"
-                                            class="perm-cell"
-                                            [class.perm-cell--allow]="folderPermState(row.path, col.key) === 'allow'"
-                                            [class.perm-cell--deny]="folderPermState(row.path, col.key) === 'deny'"
-                                            [title]="folderPermState(row.path, col.key)"
-                                            [disabled]="readOnly()"
-                                            (click)="toggleFolderPerm(row.path, col.key)"
-                                        >
-                                            @if (folderPermState(row.path, col.key) === 'allow') {
-                                                <app-svg-icon
-                                                    icon="checkbox-tick"
-                                                    size="16px"
-                                                />
-                                            } @else if (folderPermState(row.path, col.key) === 'deny') {
-                                                <app-svg-icon
-                                                    icon="x"
-                                                    size="10px"
-                                                />
-                                            }
-                                        </button>
-                                    </span>
+                                    @if (row.row; as frow) {
+                                        <span class="file-row__perm">
+                                            <button
+                                                type="button"
+                                                class="perm-cell"
+                                                [class.perm-cell--allow]="frow.perms[col.key] === 'allow'"
+                                                [class.perm-cell--deny]="frow.perms[col.key] === 'deny'"
+                                                [title]="frow.perms[col.key]"
+                                                [disabled]="readOnly()"
+                                                (click)="togglePerm(frow, col.key)"
+                                            >
+                                                @if (frow.perms[col.key] === 'allow') {
+                                                    <app-svg-icon
+                                                        icon="checkbox-tick"
+                                                        size="16px"
+                                                    />
+                                                } @else if (frow.perms[col.key] === 'deny') {
+                                                    <app-svg-icon
+                                                        icon="x"
+                                                        size="10px"
+                                                    />
+                                                }
+                                            </button>
+                                        </span>
+                                    } @else {
+                                        <span class="file-row__perm"></span>
+                                    }
                                 }
 
                                 @if (!readOnly()) {
-                                    <span class="file-row__remove"></span>
+                                    @if (row.row; as frow) {
+                                        <span class="file-row__remove">
+                                            <button
+                                                type="button"
+                                                class="file-row__remove-btn"
+                                                aria-label="Remove"
+                                                (click)="removeFileRow(frow, $event)"
+                                            >
+                                                <app-svg-icon
+                                                    icon="x"
+                                                    size="24px"
+                                                />
+                                            </button>
+                                        </span>
+                                    } @else {
+                                        <span class="file-row__remove"></span>
+                                    }
                                 }
                             </div>
                         } @else {

@@ -75,11 +75,7 @@ import {
     buildClearSurfaceBundleDialog,
     SurfaceBundleClearKind,
 } from '../../../../../../utils/surface-bundle-confirmation.util';
-import {
-    buildSurfaceFileDisplayRows,
-    buildSurfaceFileStats,
-    filesInFolder,
-} from '../../../../../../utils/surface-file-tree.util';
+import { buildSurfaceFileDisplayRows, buildSurfaceFileStats } from '../../../../../../utils/surface-file-tree.util';
 import { SurfaceKnowledgeAdvancedComponent } from './surface-knowledge-advanced/surface-knowledge-advanced.component';
 
 @Component({
@@ -415,7 +411,17 @@ export class SurfaceCardComponent {
         return SURFACE_FILE_PERM_COLUMNS.filter((c) => used.has(c.key));
     });
 
-    readonly selectedFileIds = computed<number[]>(() => this.fileRows().map((r) => r.id));
+    readonly selectedFileIds = computed<number[]>(() =>
+        this.fileRows()
+            .filter((r) => r.type === 'file')
+            .map((r) => r.id)
+    );
+    // Folder rows resolved back to their dropdown ids (path strings) so the tree pre-checks them.
+    readonly selectedFolderPaths = computed<string[]>(() =>
+        this.fileRows()
+            .filter((r) => r.type === 'folder')
+            .map((r) => r.path.replace(/\/+$/, ''))
+    );
 
     readonly fileStats = computed(() => buildSurfaceFileStats(this.fileRows()));
 
@@ -538,6 +544,7 @@ export class SurfaceCardComponent {
                         const meta = untracked(() => this.metaFor(si.storage_file));
                         return {
                             id: si.storage_file,
+                            type: meta?.type ?? 'file',
                             name: meta?.name ?? `File #${si.storage_file}`,
                             path: meta?.path ?? '',
                             perms: {
@@ -578,7 +585,8 @@ export class SurfaceCardComponent {
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe({
                     next: (files) => {
-                        for (const f of files) this.fileMetaById.set(f.id, { name: f.name, path: f.path });
+                        for (const f of files)
+                            this.fileMetaById.set(f.id, { name: f.name, path: f.path, type: f.item_type });
                         this.refreshFileRowNames();
                     },
                     error: () => missing.forEach((id) => this.requestedFileMetaIds.delete(id)),
@@ -625,7 +633,7 @@ export class SurfaceCardComponent {
         this.fileRows.update((rows) =>
             rows.map((r) => {
                 const meta = this.metaFor(r.id);
-                return meta ? { ...r, name: meta.name, path: meta.path } : r;
+                return meta ? { ...r, name: meta.name, path: meta.path, type: meta.type } : r;
             })
         );
     }
@@ -739,23 +747,35 @@ export class SurfaceCardComponent {
         this.emitToolsChange();
     }
 
-    onFilesChange(values: unknown[]): void {
+    onFilesSelectionChange(detail: { fileIds: unknown[]; folderIds: (string | number)[] }): void {
         if (this.readOnly()) return;
-        const keep = (values as (number | string)[]).filter((v): v is number => typeof v === 'number');
         const byId = new Map(this.fileRows().map((r) => [r.id, r]));
-        const next: SurfaceFileRow[] = keep.map((id) => {
-            const existing = byId.get(id);
-            if (existing) return existing;
-            const meta = this.metaFor(id);
-            return {
-                id,
-                name: meta?.name ?? `File #${id}`,
-                path: meta?.path ?? '',
-                perms: defaultFilePerms(),
-            };
-        });
+        const next: SurfaceFileRow[] = [];
+
+        for (const raw of detail.fileIds) {
+            if (typeof raw !== 'number') continue;
+            next.push(byId.get(raw) ?? this.newFileRow(raw, 'file'));
+        }
+        // Folder dropdown ids are path strings; resolve each to its numeric StorageFile id.
+        for (const raw of detail.folderIds) {
+            const id = typeof raw === 'number' ? raw : this.catalogs.folderIdForPath(String(raw));
+            if (id == null) continue;
+            next.push(byId.get(id) ?? this.newFileRow(id, 'folder'));
+        }
+
         this.fileRows.set(next);
         this.emitStorageChange();
+    }
+
+    private newFileRow(id: number, type: 'file' | 'folder'): SurfaceFileRow {
+        const meta = this.metaFor(id);
+        return {
+            id,
+            type: meta?.type ?? type,
+            name: meta?.name ?? `File #${id}`,
+            path: meta?.path ?? '',
+            perms: defaultFilePerms(),
+        };
     }
 
     togglePerm(row: SurfaceFileRow, key: keyof SurfaceFilePerms): void {
@@ -866,53 +886,29 @@ export class SurfaceCardComponent {
     }
 
     private addDroppedItem(item: StorageItem): void {
-        const ids = this.resolveDroppedFileIds(item);
-        if (!ids.length) {
-            this.toast.info(
-                item.type === 'folder' ? `No files found in "${item.name}"` : `Could not find "${item.name}" in storage`
-            );
+        // No cascade: a dropped folder adds ONLY the folder entry (its own id), never its files.
+        const resolved = this.resolveDroppedEntry(item);
+        if (resolved == null) {
+            this.toast.info(`Could not find "${item.name}" in storage`);
             return;
         }
-        const existing = new Set(this.fileRows().map((r) => r.id));
-        const toAdd = ids.filter((id) => !existing.has(id));
-        if (!toAdd.length) {
-            this.toast.info(
-                item.type === 'folder'
-                    ? `All files from "${item.name}" are already in this surface`
-                    : `"${item.name}" is already in this surface`
-            );
+        if (this.fileRows().some((r) => r.id === resolved)) {
+            this.toast.info(`"${item.name}" is already in this surface`);
             return;
         }
-        this.fileRows.update((rows) => [
-            ...rows,
-            ...toAdd.map((id) => {
-                const meta = this.metaFor(id);
-                return {
-                    id,
-                    name: meta?.name ?? `File #${id}`,
-                    path: meta?.path ?? '',
-                    perms: defaultFilePerms(),
-                };
-            }),
-        ]);
+        this.fileRows.update((rows) => [...rows, this.newFileRow(resolved, item.type)]);
         this.emitStorageChange();
     }
 
-    private resolveDroppedFileIds(item: StorageItem): number[] {
-        const meta = this.catalogs.storageFileMeta();
+    private resolveDroppedEntry(item: StorageItem): number | null {
         if (item.type === 'file') {
-            if (typeof item.id === 'number') return [item.id];
-            for (const [id, m] of meta) {
-                if (m.path === item.path) return [id];
+            if (typeof item.id === 'number') return item.id;
+            for (const [id, m] of this.catalogs.storageFileMeta()) {
+                if (m.type === 'file' && m.path === item.path) return id;
             }
-            return [];
+            return null;
         }
-        const prefix = `${item.path.replace(/\/+$/, '')}/`;
-        const ids: number[] = [];
-        for (const [id, m] of meta) {
-            if (m.path.startsWith(prefix)) ids.push(id);
-        }
-        return ids;
+        return typeof item.id === 'number' ? item.id : this.catalogs.folderIdForPath(item.path);
     }
 
     private buildStoragePayload(): SurfaceStorageItem[] {
@@ -1053,32 +1049,13 @@ export class SurfaceCardComponent {
         });
     }
 
-    folderPermState(folderPath: string, key: keyof SurfaceFilePerms): PermTriState {
-        const descendants = filesInFolder(this.fileRows(), folderPath);
-        if (!descendants.length) return 'unset';
-        const states = descendants.map((file) => file.perms[key]);
-        const first = states[0];
-        return states.every((state) => state === first) ? first : 'unset';
-    }
-
-    toggleFolderPerm(folderPath: string, key: keyof SurfaceFilePerms): void {
-        if (this.readOnly()) return;
-        const descendants = filesInFolder(this.fileRows(), folderPath);
-        if (!descendants.length) return;
-        const next = nextPermState(this.folderPermState(folderPath, key));
-        const ids = new Set(descendants.map((file) => file.id));
-        this.fileRows.update((rows) =>
-            rows.map((row) => (ids.has(row.id) ? { ...row, perms: { ...row.perms, [key]: next } } : row))
-        );
-        this.emitStorageChange();
-    }
-
     fileTrackBy(_i: number, row: SurfaceFileRow): number {
         return row.id;
     }
 
     displayRowTrackBy(_i: number, row: SurfaceFileDisplayRow): string {
-        return row.kind === 'folder' ? `folder:${row.path}` : `file:${row.row.id}`;
+        if (row.kind === 'file') return `file:${row.row.id}`;
+        return row.row ? `folder:${row.row.id}` : `folder-path:${row.path}`;
     }
 }
 

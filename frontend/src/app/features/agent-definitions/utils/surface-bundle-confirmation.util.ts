@@ -37,14 +37,14 @@ export function buildClearSurfaceBundleDialog(
     }
 
     return {
-        title: 'Remove all files?',
-        message: `You are about to remove all files from ${surface}.`,
+        title: 'Remove all files & folders?',
+        message: `You are about to remove all files and folders from ${surface}.`,
         confirmText: 'Remove All',
         cancelText: 'Cancel',
         type: 'warning',
         cautionTitle: 'Attention',
         caution:
-            'If you remove them now, any agent using this surface will <strong>lose access</strong> to these files.',
+            'If you remove them now, any agent using this surface will <strong>lose access</strong> to these files and folders.',
         isShownBorder: true,
     };
 }

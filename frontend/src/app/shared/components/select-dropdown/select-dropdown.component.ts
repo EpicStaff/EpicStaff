@@ -98,6 +98,8 @@ export class SelectDropdownComponent {
     selected = model<unknown[]>([]);
     selectionChange = output<unknown[]>();
     openedChange = output<boolean>();
+    selectedFolders = input<(string | number)[]>([]);
+    selectionChangeDetailed = output<{ fileIds: unknown[]; folderIds: (string | number)[] }>();
 
     readonly triggerDir = contentChild(SelectDropdownTriggerDirective);
     @ViewChild('defaultTrigger') defaultTrigger?: ElementRef<HTMLElement>;
@@ -269,7 +271,7 @@ export class SelectDropdownComponent {
         this.search.set('');
         if (this.selectionMode() === 'multiple') {
             this.draft.set([...this.selected()]);
-            this.draftFolderIds.set(new Set());
+            this.draftFolderIds.set(new Set(this.selectedFolders()));
         }
         if (this.mode() === 'list' && this.selectedOnTop()) {
             this.buildFrozenOrder();
@@ -294,8 +296,10 @@ export class SelectDropdownComponent {
     // ============ FOOTER (multiple) ============
     saveChanges(): void {
         const next = [...this.draft()];
+        const folderIds = [...this.draftFolderIds()];
         this.selected.set(next);
         this.selectionChange.emit(next);
+        this.selectionChangeDetailed.emit({ fileIds: next, folderIds });
         this.close();
     }
 
@@ -387,21 +391,7 @@ export class SelectDropdownComponent {
 
     isNodeChecked(node: RuntimeTreeNode): boolean {
         if (node.type === 'file') return this.activeSet().has(node.id);
-        if (this.activeFolderIds().has(node.id)) return true;
-        const files = this.collectDescendantFileIds(node);
-        if (files.length === 0) return false;
-        const sel = this.activeSet();
-        return files.every((id) => sel.has(id));
-    }
-
-    isNodeIndeterminate(node: RuntimeTreeNode): boolean {
-        if (node.type !== 'folder') return false;
-        if (this.activeFolderIds().has(node.id)) return false;
-        const files = this.collectDescendantFileIds(node);
-        if (files.length === 0) return false;
-        const sel = this.activeSet();
-        const matched = files.filter((id) => sel.has(id)).length;
-        return matched > 0 && matched < files.length;
+        return this.activeFolderIds().has(node.id);
     }
 
     onTreeRowClick(node: RuntimeTreeNode): void {
@@ -442,53 +432,17 @@ export class SelectDropdownComponent {
         this.treeRoots.update((t) => [...t]);
     }
 
-    /** Multiple-mode toggle: mutates draft + draftFolderIds (committed on Save). */
     private toggleNode(node: RuntimeTreeNode): void {
         if (node.type === 'file') {
             const has = this.draftSet().has(node.id);
             this.draft.set(has ? this.draft().filter((v) => v !== node.id) : [...this.draft(), node.id]);
-            if (has) this.clearAncestorFolderFlags(node.id);
             return;
         }
 
-        this.ensureLoaded(node, () => {
-            const checked = this.isNodeChecked(node);
-            const descendants = this.collectDescendantFileIds(node);
-
-            this.draftFolderIds.update((set) => {
-                const next = new Set(set);
-                checked ? next.delete(node.id) : next.add(node.id);
-                return next;
-            });
-
-            if (descendants.length > 0) {
-                const sel = new Set(this.draft());
-                if (checked) {
-                    for (const id of descendants) sel.delete(id);
-                } else {
-                    for (const id of descendants) sel.add(id);
-                }
-                this.draft.set([...sel]);
-            }
-
-            if (checked) this.clearAncestorFolderFlags(node.id);
-        });
-    }
-
-    private clearAncestorFolderFlags(id: string | number): void {
-        const parents = this.parentById();
-        const ancestors = new Set<string | number>();
-        let cur = parents.get(id) ?? null;
-        while (cur != null) {
-            ancestors.add(cur);
-            cur = parents.get(cur) ?? null;
-        }
-        if (ancestors.size === 0) return;
         this.draftFolderIds.update((set) => {
-            let changed = false;
             const next = new Set(set);
-            for (const a of ancestors) if (next.delete(a)) changed = true;
-            return changed ? next : set;
+            next.has(node.id) ? next.delete(node.id) : next.add(node.id);
+            return next;
         });
     }
 
@@ -497,29 +451,6 @@ export class SelectDropdownComponent {
     }
 
     // ---- lazy load ----
-    private ensureLoaded(node: RuntimeTreeNode, done: () => void): void {
-        const load = this.loadChildren();
-        if (!load || node.type !== 'folder' || node.isLoaded || !(node.hasChildren ?? node.children.length > 0)) {
-            done();
-            return;
-        }
-        this.loadLevel(node, () => {
-            const folders = node.children.filter(
-                (c) => c.type === 'folder' && (c.hasChildren ?? c.children.length > 0)
-            );
-            if (folders.length === 0) {
-                done();
-                return;
-            }
-            let remaining = folders.length;
-            for (const f of folders) {
-                this.ensureLoaded(f, () => {
-                    if (--remaining === 0) done();
-                });
-            }
-        });
-    }
-
     private loadLevel(node: RuntimeTreeNode, onDone?: () => void): void {
         const load = this.loadChildren();
         if (!load) {
@@ -569,19 +500,6 @@ export class SelectDropdownComponent {
         };
         walk(roots, null);
         this.parentById.set(map);
-    }
-
-    private collectDescendantFileIds(node: RuntimeTreeNode): (string | number)[] {
-        const out: (string | number)[] = [];
-        const walk = (n: RuntimeTreeNode): void => {
-            if (n.type === 'file') {
-                out.push(n.id);
-                return;
-            }
-            for (const c of n.children) walk(c);
-        };
-        for (const c of node.children) walk(c);
-        return out;
     }
 
     private buildVisible(nodes: RuntimeTreeNode[], level: number): VisibleRow[] {

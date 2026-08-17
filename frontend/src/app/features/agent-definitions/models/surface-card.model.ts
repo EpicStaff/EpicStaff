@@ -23,6 +23,7 @@ export interface SurfaceFilePerms {
 
 export interface SurfaceFileRow {
     id: number;
+    type: 'file' | 'folder';
     name: string;
     path: string;
     perms: SurfaceFilePerms;
@@ -34,6 +35,10 @@ export interface SurfaceFileFolderRow {
     name: string;
     depth: number;
     expanded: boolean;
+    hasChildren: boolean;
+    // Present ⇒ this folder is a saved surface entry (own id + perms, editable, removable).
+    // Absent ⇒ structural-only parent auto-created to nest a child (no perms, no remove).
+    row?: SurfaceFileRow;
 }
 
 export interface SurfaceFileItemRow {
