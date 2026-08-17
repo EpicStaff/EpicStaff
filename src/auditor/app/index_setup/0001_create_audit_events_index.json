@@ -15,6 +15,7 @@
       "name": { "type": "keyword" },
       "flow_name": { "type": "keyword" },
       "node_type": { "type": "keyword" },
+      "run_type": { "type": "keyword" },
       "status": { "type": "keyword" },
 
       "input": { "type": "flat_object" },

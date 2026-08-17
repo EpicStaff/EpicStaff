@@ -295,6 +295,7 @@ class SessionAuditWriter:
         org_id: int,
         flow_name: str,
         event_id: str,
+        run_type: str = "",
     ) -> None:
         """
         Writes two immutable records, once, at the top of run_session - never
@@ -308,7 +309,12 @@ class SessionAuditWriter:
            session completed (see add_session_end).
         2. A kind="event" "Session Start" row, parented to that identity doc -
            the trace-timeline marker, mirroring the node-level start-event
-           pattern one level up.
+           pattern one level up. Carries details.message_type="session_start"
+           for the same reason node-level events carry message_type="start" -
+           a machine-readable marker independent of `name`, which is
+           otherwise a free-form/display field elsewhere (see
+           duration_filter.py in auditor, which pairs these markers to
+           compute duration and must never rely on `name` for that).
         """
         session_audit_id = derive_root_id(AUDIT_NAMESPACE, str(session_id))
         identity_event = SessionAuditEvent(
@@ -318,6 +324,7 @@ class SessionAuditWriter:
             parent_id="",
             session_id=session_id,
             flow_name=flow_name,
+            run_type=run_type,
             status=None,
             event_time=datetime.now(timezone.utc),
         )
@@ -330,6 +337,7 @@ class SessionAuditWriter:
             kind="event",
             status="completed",
             name="Session Start",
+            details={"message_type": "session_start"},
         )
 
     async def add_session_end(
@@ -342,6 +350,7 @@ class SessionAuditWriter:
         session_message_id: str | None = None,
         output: dict | None = None,
         details: dict | None = None,
+        run_type: str = "",
     ) -> None:
         """
         Writes the "Session End" kind="event" row - this is the only place a
@@ -351,6 +360,8 @@ class SessionAuditWriter:
         GraphSessionMessage.uuid where one exists (the graph_end message on
         the happy path); mint a fresh uuid for StopSession/timeout/generic
         exception paths, which never publish a GraphMessage at all.
+        Carries details.message_type="session_end" - see add_session_start's
+        docstring for why this exists alongside `name`.
         """
         parent_id = derive_root_id(AUDIT_NAMESPACE, str(session_id))
         event = SessionAuditEvent(
@@ -361,10 +372,11 @@ class SessionAuditWriter:
             session_id=session_id,
             session_message_id=session_message_id or event_id,
             name="Session End",
+            run_type=run_type,
             status=status,
             event_time=datetime.now(timezone.utc),
             output=_as_object(output),
-            details=details or {},
+            details={**(details or {}), "message_type": "session_end"},
         )
         await safe_emit(self._client, event)
 

@@ -167,6 +167,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         self,
         session: Session,
         token_budget: int | None = None,
+        run_type: str = "",
     ) -> SessionData:
         self.subgraph_validator.validate(session.graph)
 
@@ -186,6 +187,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
             initial_state=initial_state,
+            run_type=run_type,
         )
 
     def run_session(
@@ -221,7 +223,9 @@ class SessionManagerService(metaclass=SingletonMeta):
         )
         try:
             session_data: SessionData = self.create_session_data(
-                session=session, token_budget=token_budget
+                session=session,
+                token_budget=token_budget,
+                run_type=trigger.trigger_type,
             )
             # TODO: add ping or waiting for crew to accept connections
 

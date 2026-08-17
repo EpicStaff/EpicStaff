@@ -111,8 +111,25 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
                 }
             )
 
+        return await self._execute({"bool": {"must": must}}, cursor=cursor, size=size)
+
+    async def query_ast(
+        self,
+        query: dict[str, Any],
+        cursor: str | None = None,
+        size: int = 50,
+    ) -> tuple[list[SessionAuditEvent], str | None]:
+        """`query` is a fully-compiled OpenSearch query clause (see
+        opensearch_query_compiler.py) - org_id/retention_days/the AST are
+        already baked in. Shares _execute() with `query()` so the fixed sort
+        order (event_time desc, id desc) stays enforced in exactly one place."""
+        return await self._execute(query, cursor=cursor, size=size)
+
+    async def _execute(
+        self, query: dict[str, Any], *, cursor: str | None, size: int
+    ) -> tuple[list[SessionAuditEvent], str | None]:
         body: dict[str, Any] = {
-            "query": {"bool": {"must": must}},
+            "query": query,
             "sort": [{"event_time": "desc"}, {"id": "desc"}],
             "size": size,
         }
@@ -123,7 +140,7 @@ class OpenSearchSessionAuditRepository(SessionAuditRepository):
             index=SESSION_AUDIT_EVENTS_INDEX, body=body
         )
         hits = response["hits"]["hits"]
-        logger.info(f"Audit query filters={filters} -> {len(hits)} hit(s)")
+        logger.info(f"Audit query -> {len(hits)} hit(s)")
 
         events = [SessionAuditEvent.model_validate(hit["_source"]) for hit in hits]
         next_cursor = _encode_cursor(hits[-1]["sort"]) if len(hits) == size else None

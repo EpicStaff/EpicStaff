@@ -55,6 +55,30 @@ class SessionAuditRepository(ABC):
         pass
 
     @abstractmethod
+    async def query_ast(
+        self,
+        query: dict[str, Any],
+        cursor: str | None = None,
+        size: int = 50,
+    ) -> tuple[list[SessionAuditEvent], str | None]:
+        """
+        Query session-audit events using a fully-compiled, backend-native
+        query clause (see repositories/opensearch_query_compiler.py for the
+        OpenSearch case) - the output of compiling a FilterNode AST plus the
+        always-injected org_id/retention_days clauses.
+
+        A separate method from `query()` rather than a signature change: the
+        existing `filters: dict` shape stays exactly as-is for
+        get_session_tree and export_routes.py's current calls, which don't
+        need the AST/query-language machinery at all. `query_ast()` is the
+        new path used only by the AST-aware search route.
+
+        Same pagination/idempotency contract as `query()`: paginated by
+        `cursor`/`size`, returns (events for this page, next cursor or None).
+        """
+        pass
+
+    @abstractmethod
     async def close(self) -> None:
         """Release any underlying connection/client resources on shutdown."""
         pass

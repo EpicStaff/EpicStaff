@@ -19,6 +19,10 @@ class SessionAuditEvent(BaseModel):
     name: str = ""
     flow_name: str = ""
     node_type: str = ""
+    # Verbatim TriggerSpec.trigger_type (manual/schedule/webhook/telegram/
+    # parent_flow), stamped on the session identity doc and "Session End" -
+    # the "Run: Manual/API" filter buckets non-"manual" as "API" in the UI.
+    run_type: str = ""
 
     input: dict[str, Any] | None = None
     output: dict[str, Any] | None = None

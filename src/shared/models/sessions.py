@@ -11,6 +11,7 @@ class SessionData(BaseModel):
     unique_subgraph_list: list[SubGraphData] = []
     initial_state: dict[str, Any] = {}
     output_state: dict[str, Any] = {}
+    run_type: str = ""
 
 
 class GraphSessionMessageData(BaseModel):

@@ -90,6 +90,8 @@ TAG_MAP = [
     ("api/environment", "Environment"),
     ("api/quickstart", "Quickstart"),
     ("api/memory", "Memory"),
+    # Audit
+    ("api/audit", "Audit"),
 ]
 
 TAGS_ORDER = [
@@ -166,6 +168,7 @@ TAGS_ORDER = [
     "Admin: Users",
     "Labels",
     "Storage",
+    "Audit",
     "Defaults",
     "Environment",
     "Quickstart",

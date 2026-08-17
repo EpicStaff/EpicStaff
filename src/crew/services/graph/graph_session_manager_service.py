@@ -130,6 +130,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                     org_id=session_data.org_id,
                     flow_name=session_data.graph.name,
                     event_id=str(uuid.uuid4()),
+                    run_type=session_data.run_type,
                 )
             )
             # Copy so popping the reserved budget key never mutates the
@@ -321,6 +322,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         event_id=graph_end_message_data["uuid"],
                         status="completed",
                         output=end_node_result,
+                        run_type=session_data.run_type,
                     )
                 )
 
@@ -346,6 +348,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         event_id=str(uuid.uuid4()),
                         status="failed",
                         details={"reason": "timeout"},
+                        run_type=session_data.run_type,
                     )
                 )
             clear_session_org(session_id)
@@ -363,6 +366,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         event_id=str(uuid.uuid4()),
                         status="failed",
                         details={"reason": e.reason or "stopped"},
+                        run_type=session_data.run_type,
                     )
                 )
             clear_session_org(session_id)
@@ -382,6 +386,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         event_id=str(uuid.uuid4()),
                         status="failed",
                         details={"error": str(e)},
+                        run_type=session_data.run_type,
                     )
                 )
             clear_session_org(session_id)
