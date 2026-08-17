@@ -982,6 +982,7 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
             export_data=data,
             graph=graph,
             org_id=org_id,
+            user=request.user,
             effective_permissions=effective_permissions,
         )
         summary = id_mapper.get_detailed_summary(entity_registry)

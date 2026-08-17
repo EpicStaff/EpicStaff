@@ -30,6 +30,7 @@ export class VariableSectionComponent {
     rowSyncRevision = input<number>(0);
 
     mode = input<VariableSectionMode>('rows');
+    readOnly = input<boolean>(false);
 
     rowsChange = output<Record<string, unknown>[]>();
     navigateRow = output<{ row: TableRow; rowIndex: number; sectionType: VariableInputType }>();
@@ -56,6 +57,9 @@ export class VariableSectionComponent {
     };
 
     readonly isCellDisabled = (row: TableRow, colKey: string): boolean => {
+        if (this.readOnly()) {
+            return true;
+        }
         if (this.isArrayValuesMode() && colKey === 'name') {
             return true;
         }
