@@ -195,7 +195,6 @@ export class SecretUsageDialogComponent implements OnInit {
         window.open(this.router.serializeUrl(urlTree), '_blank');
     }
 
-    public navigateToNamedItem(category: SecretUsageSimpleCategory, item: SecretUsageResourceItem): void {
     /**
      * Opens the flow and expands this specific node's panel. The usage endpoint only reports a
      * node's name/type (no id), so the target flow resolves it against its own loaded nodes —
@@ -208,7 +207,7 @@ export class SecretUsageDialogComponent implements OnInit {
         window.open(this.router.serializeUrl(urlTree), '_blank');
     }
 
-    public navigateToNamedItem(category: SecretUsageSimpleCategory, name: string): void {
+    public navigateToNamedItem(category: SecretUsageSimpleCategory, item: SecretUsageResourceItem): void {
         if (category.key === 'llm_configs') {
             this.navigateToLlmConfig(item);
         } else {
