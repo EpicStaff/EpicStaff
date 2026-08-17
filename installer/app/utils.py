@@ -1,6 +1,7 @@
 import os
 import platform
 import re
+import secrets
 import subprocess
 from pathlib import Path
 import sys
@@ -8,6 +9,8 @@ import textwrap
 
 import json
 import threading
+
+SIGNING_KEY_VARS = ("SECRET_KEY", "JWT_SECRET")
 
 
 def get_env_file_path():
@@ -172,6 +175,38 @@ def save_savefiles_path(savefiles_path: str):
 
     save_config("savefiles_path", savefiles_path)
     return True
+
+
+def ensure_signing_keys(env_path: Path | str | None = None) -> None:
+    """Generate any missing Django signing key into the env file, never overwriting an existing value."""
+    if env_path is None:
+        env_path = get_env_file_path()
+    env_path = Path(env_path)
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if env_path.exists():
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    else:
+        lines = []
+
+    for var_name in SIGNING_KEY_VARS:
+        already_set = [
+            line
+            for line in lines
+            if line.startswith(f"{var_name}=") and line.split("=", 1)[1].strip()
+        ]
+        if already_set:
+            continue
+        # Rotating SECRET_KEY makes every stored Secret undecryptable, so a usable
+        # value is kept as-is; only missing or blank entries are (re)generated.
+        lines = [line for line in lines if not line.startswith(f"{var_name}=")]
+        lines.append(f"{var_name}={secrets.token_urlsafe(48)}")
+
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        env_path.chmod(0o600)
+    except OSError:
+        pass  # Windows and some mounted filesystems reject chmod
 
 
 def save_image_repository(image_repository: str):

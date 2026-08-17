@@ -20,6 +20,7 @@ import stat
 
 from flask_socketio import emit
 from app.utils import (
+    ensure_signing_keys,
     get_env_file_path,
     get_git_build_branch,
     get_git_build_repository,
@@ -389,6 +390,10 @@ class ManageProjectState(State):
 
         # Always rewrite .env with current path
         env_path = get_env_file_path()
+
+        # Generated once and reused: the compose file refuses to start without
+        # these, and rotating SECRET_KEY orphans every stored Secret.
+        ensure_signing_keys(env_path=env_path)
 
         yield f".env updated at: {env_path} with path: {target_path}\n"
 
