@@ -37,6 +37,9 @@ jobs:
 
       - name: Generate compose config json
         shell: bash
+        env:
+          SECRET_KEY: ci-compose-config-only
+          JWT_SECRET: ci-compose-config-only
         run: |
           set -euo pipefail
           REPO_ROOT="$(pwd)"

@@ -29,6 +29,9 @@ jobs:
 
       - name: Run Nuke Script
         shell: bash
+        env:
+          SECRET_KEY: ci-crewdb-only
+          JWT_SECRET: ci-crewdb-only
         run: |
           set -euo pipefail
           cd /home/developer/EpicStaff
