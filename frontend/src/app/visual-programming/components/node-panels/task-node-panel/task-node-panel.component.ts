@@ -23,6 +23,7 @@ import {
     SelectItem,
     TooltipComponent,
 } from '@shared/components';
+import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
 
 import {
@@ -52,6 +53,10 @@ import {
 } from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import {
+    InstructionsView,
+    InstructionsViewToggleComponent,
+} from '../shared/instructions-view-toggle/instructions-view-toggle.component';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
 import { VariableHighlightTextareaComponent } from '../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 
@@ -73,6 +78,8 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         TooltipComponent,
         ValidationErrorsComponent,
         ToggleSwitchComponent,
+        InstructionsViewToggleComponent,
+        MarkdownComponent,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -90,6 +97,7 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
     private readonly pendingAutoSelectAgentId = signal<number | null>(null);
 
     public readonly mainView = signal<'instructions' | 'schema'>('instructions');
+    public readonly instructionsView = signal<InstructionsView>('preview');
     public readonly outputSchemaExampleHint = OUTPUT_SCHEMA_EXAMPLE_HINT;
     private readonly surfaceMultiSelects = viewChildren(MultiSelectComponent);
 
@@ -122,6 +130,11 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         this.dirtyCheckTick();
         const control = this.form?.get('instructions');
         return !!control && control.invalid && control.touched;
+    });
+
+    public readonly instructionsValue = computed<string>(() => {
+        this.dirtyCheckTick();
+        return (this.form?.get('instructions')?.value as string) ?? '';
     });
 
     public readonly inputMapKeys = computed<string[]>(() => {
@@ -326,6 +339,10 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         this.mainView.update((value) => (value === 'instructions' ? 'schema' : 'instructions'));
     }
 
+    setInstructionsView(view: InstructionsView): void {
+        this.instructionsView.set(view);
+    }
+
     expandPanel(): void {
         this.mainView.set('schema');
         this.sidePanelService.requestExpand();
@@ -385,6 +402,9 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         this.inlineSurface.set(data.inline_surface ?? null);
         this.outputSchemaExpanded.set(false);
         this.mainView.set('instructions');
+        // Preview by default so long instructions are readable, but an empty field would
+        // render a blank pane with nowhere to type — start those in Edit.
+        this.instructionsView.set((data.instructions || '').trim() ? 'preview' : 'edit');
 
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],

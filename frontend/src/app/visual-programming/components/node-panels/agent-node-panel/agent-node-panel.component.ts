@@ -22,6 +22,7 @@ import {
     SelectDropdownTriggerDirective,
     SelectItem,
 } from '@shared/components';
+import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -53,6 +54,10 @@ import {
 } from '../../../utils/validation/output-schema.validator';
 import { InputMapComponent } from '../../input-map/input-map.component';
 import { createInputMapFromPairs, getValidInputPairs, initializeInputMap } from '../node-panel-form.utils';
+import {
+    InstructionsView,
+    InstructionsViewToggleComponent,
+} from '../shared/instructions-view-toggle/instructions-view-toggle.component';
 import { LocalSurfaceDialogService } from '../shared/local-surface-dialog/local-surface-dialog.service';
 import { VariableHighlightTextareaComponent } from '../shared/variable-highlight-textarea/variable-highlight-textarea.component';
 import { AgentTasksTableComponent } from './agent-tasks-table/agent-tasks-table.component';
@@ -76,6 +81,8 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         AgentTasksTableComponent,
         ValidationErrorsComponent,
         VariableHighlightTextareaComponent,
+        InstructionsViewToggleComponent,
+        MarkdownComponent,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -98,6 +105,10 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
     private readonly surfaceMultiSelects = viewChildren(MultiSelectComponent);
 
     public readonly rightPane = signal<RightPaneSelection | null>(null);
+
+    /** Explicit Preview/Edit choices, per task `tempId`. Tasks absent here fall back to
+     *  the content-based default in `instructionsView` — see `setInstructionsView`. */
+    private readonly instructionsViewByTask = signal<Record<string, InstructionsView>>({});
 
     private readonly rightSchemaDrafts = signal<Record<string, string>>({});
     private readonly rightSchemaErrors = signal<Record<string, string>>({});
@@ -211,6 +222,14 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
 
     public readonly selectedTaskNumber = computed<number>(() => (this.effectiveRightPane()?.taskIndex ?? 0) + 1);
 
+    public readonly rightInstructionsValue = computed<string>(() => this.selectedTask()?.instructions ?? '');
+
+    public readonly instructionsView = computed<InstructionsView>(() => {
+        const task = this.selectedTask();
+        if (!task) return 'preview';
+        return this.instructionsViewByTask()[task.tempId] ?? ((task.instructions ?? '').trim() ? 'preview' : 'edit');
+    });
+
     private readonly dialog: Dialog = inject(Dialog);
     private readonly injector: Injector = inject(Injector);
     private readonly nodeSurfaceCombineApi: NodeSurfaceCombineApiService = inject(NodeSurfaceCombineApiService);
@@ -319,6 +338,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
 
     onTasksChange(tasks: AgentNodeTaskUi[]): void {
         this.tasks.set(tasks);
+        this.pruneInstructionsViews(tasks);
         this.clampRightPane(tasks);
         this.form.get('tasksValidity')?.updateValueAndValidity();
         this.sidePanelService.triggerAutosave();
@@ -362,6 +382,21 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         this.rightPane.set(selection);
     }
 
+    setInstructionsView(view: InstructionsView): void {
+        const task = this.selectedTask();
+        if (!task) return;
+        this.instructionsViewByTask.update((views) => ({ ...views, [task.tempId]: view }));
+    }
+
+    /** Drops remembered view choices for tasks that no longer exist. */
+    private pruneInstructionsViews(tasks: AgentNodeTaskUi[]): void {
+        this.instructionsViewByTask.update((views) => {
+            const liveIds = new Set(tasks.map((task) => task.tempId));
+            const entries = Object.entries(views).filter(([tempId]) => liveIds.has(tempId));
+            return entries.length === Object.keys(views).length ? views : Object.fromEntries(entries);
+        });
+    }
+
     toggleRightPaneField(): void {
         const pane = this.effectiveRightPane();
         if (!pane) return;
@@ -371,10 +406,6 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         };
         this.resyncRightSchemaDraft(next);
         this.rightPane.set(next);
-    }
-
-    rightInstructionsValue(): string {
-        return this.selectedTask()?.instructions ?? '';
     }
 
     onRightInstructionsInput(value: string): void {
@@ -472,6 +503,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         this.rightPane.set(null);
         this.rightSchemaDrafts.set({});
         this.rightSchemaErrors.set({});
+        this.instructionsViewByTask.set({});
 
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],

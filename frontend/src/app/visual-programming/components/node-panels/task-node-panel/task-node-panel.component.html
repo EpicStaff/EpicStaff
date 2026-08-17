@@ -207,6 +207,10 @@
                                     Instructions
                                 </span>
                                 <div class="main-editor-pane__actions">
+                                    <app-instructions-view-toggle
+                                        [view]="instructionsView()"
+                                        (viewChange)="setInstructionsView($event)"
+                                    />
                                     <button
                                         type="button"
                                         class="icon-button"
@@ -232,14 +236,21 @@
                                 </div>
                             </div>
                             <div class="main-editor-pane__body">
-                                <app-variable-highlight-textarea
-                                    class="main-editor-pane__textarea"
-                                    formControlName="instructions"
-                                    placeholder="Enter task instructions..."
-                                    [rows]="20"
-                                    [invalid]="instructionsInvalid()"
-                                    [variables]="inputMapKeys()"
-                                ></app-variable-highlight-textarea>
+                                @if (instructionsView() === 'preview') {
+                                    <markdown
+                                        class="markdown-content markdown-content--pane"
+                                        [data]="instructionsValue()"
+                                    ></markdown>
+                                } @else {
+                                    <app-variable-highlight-textarea
+                                        class="main-editor-pane__textarea"
+                                        formControlName="instructions"
+                                        placeholder="Enter task instructions..."
+                                        [rows]="20"
+                                        [invalid]="instructionsInvalid()"
+                                        [variables]="inputMapKeys()"
+                                    ></app-variable-highlight-textarea>
+                                }
                                 @if (instructionsInvalid()) {
                                     <app-validation-errors
                                         class="main-editor-pane__validation"
