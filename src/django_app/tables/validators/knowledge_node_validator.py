@@ -42,7 +42,8 @@ class KnowledgeNodeValidator:
 
     def validate_runnable(self, node_list) -> None:
         """Run-time completeness gate: a node must have a collection, a fully
-        selected RAG, and something to search (query or a mapped input).
+        selected RAG, and a non-empty query (the FE composes the query text, so
+        a mapped input alone is not enough).
 
         Save stays permissive (empty nodes are allowed) -- this is enforced only
         before a run, so an incompletely configured node can't start a session.
@@ -55,8 +56,8 @@ class KnowledgeNodeValidator:
                 missing.append("source_collection")
             if node.rag_type is None or node.rag_id is None:
                 missing.append("rag_type/rag_id")
-            if not (node.query or "").strip() and not node.input_map:
-                missing.append("query or input")
+            if not (node.query or "").strip():
+                missing.append("query")
             if missing:
                 issues.append(f"{node.node_name} #{node.id} ({', '.join(missing)})")
         if issues:

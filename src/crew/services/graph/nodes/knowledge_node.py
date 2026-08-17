@@ -1,10 +1,10 @@
 import asyncio
-from string import Formatter
+from dataclasses import asdict
 from typing import Any
 
 from langgraph.types import StreamWriter
 
-from models.graph_models import GraphMessage
+from models.graph_models import NodeExtractedChunksMessageData, GraphMessage
 from models.state import State
 from services.graph.events import StopEvent
 from services.graph.exceptions import KnowledgeSearchError
@@ -46,32 +46,17 @@ class KnowledgeNode(BaseNode):
         self.knowledge_search_service = knowledge_search_service
 
     def _build_query(self, input_: Any) -> str:
-        """Build the search query from the template and the mapped variables.
+        """Interpolate mapped variables into the template ({name}).
 
-        Named variables are inserted where the template references them ({name});
-        any mapped variable not referenced in the template is appended at the end,
-        space-separated. Without a template, all mapped values are joined.
+        Variables not referenced in the template are ignored — the frontend
+        composes the full query text. Without a template, returns an empty query.
         """
         if not self.query_template:
-            if isinstance(input_, dict):
-                return "\n".join(str(v) for v in input_.values())
-            return str(input_)
-
-        referenced = {
-            field_name.split(".")[0].split("[")[0]
-            for _, field_name, _, _ in Formatter().parse(self.query_template)
-            if field_name
-        }
+            return ""
         try:
-            query = self.query_template.format(**input_)
+            return self.query_template.format(**input_)
         except (KeyError, IndexError, ValueError, TypeError):
-            query = self.query_template
-
-        if isinstance(input_, dict):
-            extras = [str(v) for k, v in input_.items() if k not in referenced]
-            if extras:
-                query = f"{query} {' '.join(extras)}".strip()
-        return query
+            return self.query_template
 
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
@@ -114,16 +99,17 @@ class KnowledgeNode(BaseNode):
                     session_id=self.session_id,
                     name=self.node_name,
                     execution_order=execution_order,
-                    message_data={
-                        "message_type": "extracted_chunks",
-                        "knowledge_query": response.query,
-                        "collection_id": response.collection_id,
-                        "retrieved_chunks": response.retrieved_chunks,
-                        "rag_search_config": response.rag_search_config.model_dump(),
-                        "chunks": [chunk.model_dump() for chunk in response.chunks],
-                        "token_usage": token_usage,
-                        "input": input_,
-                    },
+                    message_data=asdict(
+                        NodeExtractedChunksMessageData(
+                            knowledge_query=response.query,
+                            collection_id=response.collection_id,
+                            retrieved_chunks=response.retrieved_chunks,
+                            rag_search_config=response.rag_search_config.model_dump(),
+                            chunks=[chunk.model_dump() for chunk in response.chunks],
+                            token_usage=token_usage,
+                            input=input_,
+                        )
+                    ),
                 )
             )
 
