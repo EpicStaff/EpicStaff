@@ -521,6 +521,71 @@ def test_s3_pool_graph_id_none_skips_ceiling_surface_stays_authoritative(
 
 
 # ---------------------------------------------------------------------------
+# 7c. flow ceiling is path-prefix aware (folder attachments cover nested files)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def docs_folder(db, org):
+    return StorageFile.objects.create(
+        org=org, name="docs", path="docs/", item_type="folder"
+    )
+
+
+@pytest.fixture
+def docs_file(db, org):
+    return StorageFile.objects.create(
+        org=org, name="a.pdf", path="docs/a.pdf", item_type="file"
+    )
+
+
+@pytest.mark.django_db
+def test_s3_pool_includes_file_nested_in_attached_folder(
+    org_scoped_agent_node, surface_a, docs_folder, docs_file
+):
+    GraphStorageFile.objects.create(
+        graph=org_scoped_agent_node.graph, storage_file=docs_folder
+    )
+    SurfaceStorageItem.objects.create(
+        surface=surface_a, storage_file=docs_file, can_view="allow"
+    )
+    org_scoped_agent_node.surface_list.set([surface_a])
+
+    service = AgentNodePayloadService(ConverterService())
+    data = service.build_agent_node_data(
+        org_scoped_agent_node,
+        node_name="agent-node-s3-pool #1",
+        graph_id=org_scoped_agent_node.graph_id,
+        session_id=None,
+    )
+
+    assert [f.id for f in data.s3_files] == [docs_file.pk]
+
+
+@pytest.mark.django_db
+def test_s3_pool_excludes_folder_grant_broader_than_attached_file(
+    org_scoped_agent_node, surface_a, docs_folder, docs_file
+):
+    GraphStorageFile.objects.create(
+        graph=org_scoped_agent_node.graph, storage_file=docs_file
+    )
+    SurfaceStorageItem.objects.create(
+        surface=surface_a, storage_file=docs_folder, can_view="allow"
+    )
+    org_scoped_agent_node.surface_list.set([surface_a])
+
+    service = AgentNodePayloadService(ConverterService())
+    data = service.build_agent_node_data(
+        org_scoped_agent_node,
+        node_name="agent-node-s3-pool #1",
+        graph_id=org_scoped_agent_node.graph_id,
+        session_id=None,
+    )
+
+    assert data.s3_files == []
+
+
+# ---------------------------------------------------------------------------
 # 8. NodeSurfaceService.build_combined_surface uses the AgentInlineSurface serializer
 # ---------------------------------------------------------------------------
 
