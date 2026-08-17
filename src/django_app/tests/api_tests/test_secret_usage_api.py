@@ -341,8 +341,12 @@ class TestUsageDetailEndpoint:
             }
         ]
 
-        assert resp.data["categories"][1]["items"] == [{"name": "api tool"}]
-        assert resp.data["categories"][2]["items"] == [{"name": "api cfg"}]
+        assert resp.data["categories"][1]["items"] == [
+            {"name": "api tool", "type": "mcp_tool"}
+        ]
+        assert resp.data["categories"][2]["items"] == [
+            {"name": "api cfg", "type": "llm_config"}
+        ]
 
     def test_total_matches_the_lists_usage_count(self, admin_client, used_secret):
         """The chip and the headline must never disagree."""

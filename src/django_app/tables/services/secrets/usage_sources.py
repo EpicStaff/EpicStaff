@@ -33,6 +33,13 @@ CATEGORY_ORDER = (CATEGORY_FLOWS, CATEGORY_TOOLS, CATEGORY_LLM_CONFIGS)
 #: than in python_code_sites.
 NODE_TYPE_TELEGRAM_TRIGGER = "telegram-trigger"
 
+RESOURCE_TYPE_LLM_CONFIG = "llm_config"
+RESOURCE_TYPE_EMBEDDING_CONFIG = "embedding_config"
+RESOURCE_TYPE_REALTIME_CONFIG = "realtime_config"
+RESOURCE_TYPE_REALTIME_TRANSCRIPTION_CONFIG = "realtime_transcription_config"
+RESOURCE_TYPE_MCP_TOOL = "mcp_tool"
+RESOURCE_TYPE_PYTHON_CODE_TOOL = "python_code_tool"
+
 # The three column shapes the twelve sources fall into. Sources sharing a shape share
 # a column list, so the detail path unions each group as-is instead of padding every
 # branch out to one common shape with typed NULLs.
@@ -57,6 +64,8 @@ class UsageHit:
     """Flows only — one of the NODE_TYPE_* values."""
     code_field: str | None = None
     """Which code block declares the secret, for nodes that own more than one."""
+    resource_type: str | None = None
+    """Named resources only — one of the RESOURCE_TYPE_* values."""
 
 
 @dataclass(frozen=True)
@@ -80,6 +89,10 @@ class UsageSource:
     code_field: str | None = None
     """The PythonCode field this source reads, reported so the payload can name the
     block. None for FK sites, which declare nothing in code."""
+    resource_type: str | None = None
+    """A RESOURCE_TYPE_* value identifying which model a named resource is, so two
+    models of one category cannot merge on a shared name. None for flows, which are
+    keyed by graph rather than by name."""
 
     def count_pairs(self, *, org_id: int, secret_ids: set[int]):
         """(secret_id, resource_key) as a queryset, for the union in counts()."""
@@ -97,14 +110,20 @@ class UsageSource:
         return SHAPE_EDGE if self.name_field is None else SHAPE_NODE
 
     def named_rows(self, *, org_id: int, secret_ids: set[int]):
-        """(secret_id, category, name) for a standalone resource."""
+        """(secret_id, category, resource_type, name) for a standalone resource."""
         return (
             self._scoped(org_id=org_id, secret_ids=secret_ids)
             .annotate(
                 usage_category=Value(self.category, output_field=TextField()),
+                usage_resource_type=Value(self.resource_type, output_field=TextField()),
                 usage_name=Cast(self.name_field, output_field=TextField()),
             )
-            .values_list(self.secret_path, "usage_category", "usage_name")
+            .values_list(
+                self.secret_path,
+                "usage_category",
+                "usage_resource_type",
+                "usage_name",
+            )
         )
 
     def node_rows(self, *, org_id: int, secret_ids: set[int]):
@@ -167,7 +186,7 @@ class UsageSource:
                 output_field=TextField(),
             )
         return Concat(
-            Value(f"{self.category}:"),
+            Value(f"{self.category}:{self.resource_type}:"),
             F(self.name_field),
             output_field=TextField(),
         )
@@ -176,8 +195,13 @@ class UsageSource:
 def hits_from_named_rows(*, rows) -> list[UsageHit]:
     """Standalone resources, reported by their own names."""
     return [
-        UsageHit(secret_id=secret_id, category=category, resource_name=name)
-        for secret_id, category, name in rows
+        UsageHit(
+            secret_id=secret_id,
+            category=category,
+            resource_type=resource_type,
+            resource_name=name,
+        )
+        for secret_id, category, resource_type, name in rows
     ]
 
 
@@ -263,14 +287,16 @@ def _plain_node_name(*, formatted: str | None, node_id: int | None) -> str | Non
 
 def _from_python_code_site(*, site: PythonCodeSite) -> UsageSource:
     """A PythonCode declaration site, read as a usage source."""
+    is_flow = bool(site.node_type)
     return UsageSource(
         model=site.model,
         secret_path=f"{site.code_field}__secrets__id",
-        category=CATEGORY_FLOWS if site.node_type else CATEGORY_TOOLS,
+        category=CATEGORY_FLOWS if is_flow else CATEGORY_TOOLS,
         org_path=site.org_path,
         name_field=site.name_field,
         node_type=site.node_type,
         code_field=site.code_field,
+        resource_type=None if is_flow else RESOURCE_TYPE_PYTHON_CODE_TOOL,
     )
 
 
@@ -282,6 +308,7 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_LLM_CONFIGS,
         org_path="org_id",
         name_field="custom_name",
+        resource_type=RESOURCE_TYPE_LLM_CONFIG,
     ),
     UsageSource(
         model=EmbeddingConfig,
@@ -289,6 +316,7 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_LLM_CONFIGS,
         org_path="org_id",
         name_field="custom_name",
+        resource_type=RESOURCE_TYPE_EMBEDDING_CONFIG,
     ),
     UsageSource(
         model=RealtimeConfig,
@@ -296,6 +324,7 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_LLM_CONFIGS,
         org_path="org_id",
         name_field="custom_name",
+        resource_type=RESOURCE_TYPE_REALTIME_CONFIG,
     ),
     UsageSource(
         model=RealtimeTranscriptionConfig,
@@ -303,6 +332,7 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_LLM_CONFIGS,
         org_path="org_id",
         name_field="custom_name",
+        resource_type=RESOURCE_TYPE_REALTIME_TRANSCRIPTION_CONFIG,
     ),
     UsageSource(
         model=McpTool,
@@ -310,6 +340,7 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         category=CATEGORY_TOOLS,
         org_path="org_id",
         name_field="name",
+        resource_type=RESOURCE_TYPE_MCP_TOOL,
     ),
     UsageSource(
         model=TelegramTriggerNode,

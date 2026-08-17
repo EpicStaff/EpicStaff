@@ -94,8 +94,14 @@ class SecretUsageService:
 
     @staticmethod
     def _named_items(*, hits: list[UsageHit]) -> list[dict]:
-        """One item per distinct display name."""
-        return [{"name": name} for name in sorted({hit.resource_name for hit in hits})]
+        """One item per distinct resource type and display name."""
+        return [
+            {"name": name, "type": resource_type}
+            for resource_type, name in sorted(
+                {(hit.resource_type, hit.resource_name) for hit in hits},
+                key=lambda item: (item[1], item[0]),
+            )
+        ]
 
     @staticmethod
     def _secret_ids(*, org_id: int) -> set[int]:

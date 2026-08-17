@@ -1,5 +1,6 @@
 import { animate, state, style, transition, trigger } from '@angular/animations';
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { ComponentType } from '@angular/cdk/overlay';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
@@ -17,6 +18,7 @@ import {
     TranscriptionModelConfigDialogComponent,
     VoiceModelConfigDialogComponent,
 } from '@shared/components';
+import { SecretUsageResourceType } from '@shared/models';
 import {
     EmbeddingConfigStorageService,
     LlmConfigStorageService,
@@ -25,7 +27,7 @@ import {
     TranscriptionConfigStorageService,
 } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
-import { forkJoin } from 'rxjs';
+import { Observable } from 'rxjs';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { McpToolDialogComponent } from '../../../../features/tools/components/mcp-tool-dialog/mcp-tool-dialog.component';
@@ -39,6 +41,7 @@ import { NodeType } from '../../../../visual-programming/core/enums/node-type';
 import {
     SecretUsageFlowItem,
     SecretUsageFlowNode,
+    SecretUsageResourceItem,
     SecretUsageSimpleCategory,
     SecretUsageSummary,
     toSecretUsageSummary,
@@ -62,6 +65,13 @@ const NODE_TYPE_FILTER_ITEMS: SelectItem<NodeTypeFilter>[] = [
 const NODE_TYPE_LABELS = new Map<NodeType, string>(
     NODE_TYPE_FILTER_ITEMS.filter((item) => item.value !== null).map((item) => [item.value as NodeType, item.name])
 );
+
+const CONFIG_TYPE_LABELS = new Map<SecretUsageResourceType, string>([
+    ['llm_config', 'LLM'],
+    ['embedding_config', 'Embedding'],
+    ['realtime_config', 'Voice'],
+    ['realtime_transcription_config', 'Transcription'],
+]);
 
 @Component({
     selector: 'app-secret-usage-dialog',
@@ -172,6 +182,10 @@ export class SecretUsageDialogComponent implements OnInit {
         return NODE_TYPE_LABELS.get(nodeType) ?? '';
     }
 
+    public configTypeLabel(type: SecretUsageResourceType): string {
+        return CONFIG_TYPE_LABELS.get(type) ?? '';
+    }
+
     public scrollToCategory(key: string): void {
         document.getElementById(`secret-usage-category-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -181,11 +195,11 @@ export class SecretUsageDialogComponent implements OnInit {
         window.open(this.router.serializeUrl(urlTree), '_blank');
     }
 
-    public navigateToNamedItem(category: SecretUsageSimpleCategory, name: string): void {
+    public navigateToNamedItem(category: SecretUsageSimpleCategory, item: SecretUsageResourceItem): void {
         if (category.key === 'llm_configs') {
-            this.navigateToLlmConfig(name);
+            this.navigateToLlmConfig(item);
         } else {
-            this.navigateToTool(name);
+            this.navigateToTool(item);
         }
     }
 
@@ -193,80 +207,90 @@ export class SecretUsageDialogComponent implements OnInit {
         this.toastService.error(`Couldn't find "${name}" — it may have been renamed or deleted.`);
     }
 
-    private navigateToLlmConfig(name: string): void {
-        forkJoin({
-            llm: this.llmConfigStorageService.getAllConfigs(),
-            embedding: this.embeddingConfigStorageService.getAllConfigs(),
-            voice: this.realtimeConfigStorageService.getAllConfigs(),
-            transcription: this.transcriptionConfigStorageService.getAllConfigs(),
-        })
+    private navigateToLlmConfig(item: SecretUsageResourceItem): void {
+        const target = this.llmConfigTarget(item.type);
+        if (!target) {
+            this.notFound(item.name);
+            return;
+        }
+        target
+            .configs()
             .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(({ llm, embedding, voice, transcription }) => {
-                const llmMatch = llm.find((c) => c.custom_name === name);
-                if (llmMatch) {
-                    this.dialog.open(LlmModelConfigDialogComponent, {
-                        height: '90vh',
-                        width: '600px',
-                        data: { configId: llmMatch.id },
-                    });
+            .subscribe((configs) => {
+                const match = configs.find((config) => config.custom_name === item.name);
+                if (!match) {
+                    this.notFound(item.name);
                     return;
                 }
-                const embeddingMatch = embedding.find((c) => c.custom_name === name);
-                if (embeddingMatch) {
-                    this.dialog.open(EmbeddingModelConfigDialogComponent, {
-                        height: '90vh',
-                        width: '600px',
-                        data: { configId: embeddingMatch.id },
-                    });
-                    return;
-                }
-                const voiceMatch = voice.find((c) => c.custom_name === name);
-                if (voiceMatch) {
-                    this.dialog.open(VoiceModelConfigDialogComponent, {
-                        height: '90vh',
-                        width: '600px',
-                        data: { configId: voiceMatch.id },
-                    });
-                    return;
-                }
-                const transcriptionMatch = transcription.find((c) => c.custom_name === name);
-                if (transcriptionMatch) {
-                    this.dialog.open(TranscriptionModelConfigDialogComponent, {
-                        height: '90vh',
-                        width: '600px',
-                        data: { configId: transcriptionMatch.id },
-                    });
-                    return;
-                }
-                this.notFound(name);
+                this.dialog.open(target.dialog, {
+                    height: '90vh',
+                    width: '600px',
+                    data: { configId: match.id },
+                });
             });
     }
 
-    private navigateToTool(name: string): void {
-        forkJoin({
-            mcpTools: this.mcpToolsService.getMcpTools({ name }),
-            customTools: this.customToolsService.getPythonCodeTools(),
-        })
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(({ mcpTools, customTools }) => {
-                const mcpMatch = mcpTools.find((t) => t.name === name);
-                if (mcpMatch) {
+    private llmConfigTarget(
+        type: SecretUsageResourceType
+    ): { configs: () => Observable<{ id: number; custom_name: string }[]>; dialog: ComponentType<unknown> } | null {
+        switch (type) {
+            case 'llm_config':
+                return {
+                    configs: () => this.llmConfigStorageService.getAllConfigs(),
+                    dialog: LlmModelConfigDialogComponent,
+                };
+            case 'embedding_config':
+                return {
+                    configs: () => this.embeddingConfigStorageService.getAllConfigs(),
+                    dialog: EmbeddingModelConfigDialogComponent,
+                };
+            case 'realtime_config':
+                return {
+                    configs: () => this.realtimeConfigStorageService.getAllConfigs(),
+                    dialog: VoiceModelConfigDialogComponent,
+                };
+            case 'realtime_transcription_config':
+                return {
+                    configs: () => this.transcriptionConfigStorageService.getAllConfigs(),
+                    dialog: TranscriptionModelConfigDialogComponent,
+                };
+            default:
+                return null;
+        }
+    }
+
+    private navigateToTool(item: SecretUsageResourceItem): void {
+        if (item.type === 'mcp_tool') {
+            this.mcpToolsService
+                .getMcpTools({ name: item.name })
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((mcpTools) => {
+                    const match = mcpTools.find((tool) => tool.name === item.name);
+                    if (!match) {
+                        this.notFound(item.name);
+                        return;
+                    }
                     this.dialog.open(McpToolDialogComponent, {
-                        data: { selectedTool: mcpMatch },
+                        data: { selectedTool: match },
                         maxWidth: '95vw',
                         maxHeight: '90vh',
                         autoFocus: true,
                     });
+                });
+            return;
+        }
+        this.customToolsService
+            .getPythonCodeTools()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((customTools) => {
+                const match = customTools.find((tool) => tool.name === item.name);
+                if (!match) {
+                    this.notFound(item.name);
                     return;
                 }
-                const customMatch = customTools.find((t) => t.name === name);
-                if (customMatch) {
-                    this.dialog.open(CreateCustomToolDialogComponent, {
-                        data: { pythonTools: customTools, selectedTool: customMatch },
-                    });
-                    return;
-                }
-                this.notFound(name);
+                this.dialog.open(CreateCustomToolDialogComponent, {
+                    data: { pythonTools: customTools, selectedTool: match },
+                });
             });
     }
 

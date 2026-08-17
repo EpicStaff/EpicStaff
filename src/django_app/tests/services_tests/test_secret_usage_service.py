@@ -11,7 +11,13 @@ import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
-from tables.models import EmbeddingConfig, LLMConfig, McpTool, PythonCode
+from tables.models import (
+    EmbeddingConfig,
+    LLMConfig,
+    McpTool,
+    PythonCode,
+    PythonCodeTool,
+)
 from tables.models.embedding_models import EmbeddingModel
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
@@ -377,12 +383,13 @@ class TestSummary:
 
     def test_two_configs_of_one_type_sharing_a_name_dedupe(self, org, secret):
         """RealtimeConfig has no per-org uniqueness on custom_name, so this is
-        genuinely reachable. The items carry nothing but a name and the dialog
-        tracks by it, so duplicates must collapse or Angular raises NG0955.
+        genuinely reachable. Within one type an item is still identified by name
+        alone and the dialog tracks by (type, name), so these must collapse or
+        Angular raises NG0955.
 
-        Note the cost: these are two distinct resources reported as one, so the
-        count under-reports. Rendering them separately is not an option while the
-        item shape is {name} alone.
+        Note the cost, unchanged: two distinct resources reported as one, so the
+        count under-reports. Telling them apart would need the item to carry an
+        id, which nothing downstream can use yet.
         """
         realtime_model = RealtimeModel.objects.create(name="rt-dupe", org=org)
         for _ in range(2):
@@ -395,12 +402,15 @@ class TestSummary:
 
         summary = secret_usage_service.summary(secret=secret)
 
-        assert summary["categories"][0]["items"] == [{"name": "same name"}]
+        assert summary["categories"][0]["items"] == [
+            {"name": "same name", "type": "realtime_config"}
+        ]
         assert summary["total"] == 1
 
-    def test_different_config_types_sharing_a_name_dedupe(self, org, secret):
-        """Four models fold into the one llm_configs category, and per-model
-        uniqueness cannot prevent a collision across them."""
+    def test_different_config_types_sharing_a_name_report_separately(self, org, secret):
+        """Four models fold into the one llm_configs category and per-model
+        uniqueness cannot prevent a collision across them, so the type is what
+        keeps two genuinely different resources from reporting as one."""
         LLMConfig.objects.create(
             custom_name="prod",
             model=LLMModel.objects.create(
@@ -418,7 +428,11 @@ class TestSummary:
 
         summary = secret_usage_service.summary(secret=secret)
 
-        assert summary["categories"][0]["items"] == [{"name": "prod"}]
+        assert summary["categories"][0]["items"] == [
+            {"name": "prod", "type": "embedding_config"},
+            {"name": "prod", "type": "llm_config"},
+        ]
+        assert summary["total"] == 2
 
     def test_total_equals_the_sum_of_category_item_counts(self, org, secret):
         graph = Graph.objects.create(name="Total flow", org=org)
@@ -593,7 +607,10 @@ class TestSummaryIsDeterministic:
         }
 
         assert [flow["name"] for flow in by_key["flows"]] == ["A flow", "B flow"]
-        assert by_key["tools"] == [{"name": "a tool"}, {"name": "z tool"}]
+        assert by_key["tools"] == [
+            {"name": "a tool", "type": "mcp_tool"},
+            {"name": "z tool", "type": "mcp_tool"},
+        ]
 
     def test_nodes_within_a_flow_come_back_sorted(self, org, secret):
         graph = Graph.objects.create(name="Sorted nodes flow", org=org)
@@ -679,9 +696,9 @@ class TestCountsDedupInSql:
 
         assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 1
 
-    def test_different_config_types_sharing_a_name_count_once(self, org, secret):
-        """The category prefix in the key is what folds four models into one
-        namespace; without it these would count as two."""
+    def test_different_config_types_sharing_a_name_count_separately(self, org, secret):
+        """The type in the key is what keeps the four models of the category
+        apart; without it these two resources would count as one."""
         LLMConfig.objects.create(
             custom_name="prod",
             model=LLMModel.objects.create(
@@ -697,7 +714,25 @@ class TestCountsDedupInSql:
             api_key_secret=secret,
         )
 
-        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 1
+        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 2
+
+    def test_two_tool_types_sharing_a_name_count_separately(self, org, secret):
+        """The tools category folds two models the same way, and McpTool does not
+        constrain its name at all — so it is exposed to the same collision."""
+        McpTool.objects.create(
+            name="shared tool",
+            transport="https://example.com/sse",
+            tool_name="search",
+            org=org,
+            auth_secret=secret,
+        )
+        python_code = PythonCode.objects.create(code=DECLARING_CODE)
+        python_code.secrets.set([secret])
+        PythonCodeTool.objects.create(
+            name="shared tool", org=org, python_code=python_code
+        )
+
+        assert secret_usage_service.counts(org_id=org.id)[secret.pk] == 2
 
     def test_two_different_sources_in_one_flow_count_once(self, org, secret):
         """Cross-source, not just cross-row: a PythonNode and a ConditionalEdge are

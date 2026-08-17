@@ -28,8 +28,17 @@ export interface SecretUsageFlowItemDto {
     nodes: SecretUsageNodeDto[];
 }
 
+export type SecretUsageResourceType =
+    | 'llm_config'
+    | 'embedding_config'
+    | 'realtime_config'
+    | 'realtime_transcription_config'
+    | 'mcp_tool'
+    | 'python_code_tool';
+
 export interface SecretUsageNamedItemDto {
     name: string;
+    type: SecretUsageResourceType;
 }
 
 export interface SecretUsageCategoryDto {

@@ -2,6 +2,7 @@ import {
     SecretUsageCategoryDto,
     SecretUsageFlowItemDto,
     SecretUsageNamedItemDto,
+    SecretUsageResourceType,
     SecretUsageResponse,
 } from '@shared/models';
 
@@ -25,6 +26,7 @@ export interface SecretUsageFlowItem {
 
 export interface SecretUsageResourceItem {
     name: string;
+    type: SecretUsageResourceType;
 }
 
 export interface SecretUsageFlowCategory {

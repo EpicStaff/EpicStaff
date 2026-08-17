@@ -505,9 +505,10 @@ class TestCountPairs:
         assert {key for _, key in pairs} == {f"flows:{graph.pk}"}
         assert {secret_id for secret_id, _ in pairs} == {secret.pk}
 
-    def test_a_named_key_carries_its_category(self, org, secret, ids):
-        """The prefix is what folds four config models into one llm_configs
-        namespace, so a config and a tool sharing a name stay distinct."""
+    def test_a_named_key_carries_its_category_and_type(self, org, secret, ids):
+        """The prefix is what keeps same-named resources distinct — the category
+        across categories, and the resource type within one, since a category can
+        hold several models."""
         LLMConfig.objects.create(
             custom_name="shared",
             model=LLMModel.objects.create(
@@ -537,8 +538,8 @@ class TestCountPairs:
             )
         ]
 
-        assert config_keys == ["llm_configs:shared"]
-        assert tool_keys == ["tools:shared"]
+        assert config_keys == ["llm_configs:llm_config:shared"]
+        assert tool_keys == ["tools:mcp_tool:shared"]
         assert config_keys != tool_keys
 
     def test_every_source_projects_two_columns_of_matching_type(self, org, ids):
@@ -596,8 +597,27 @@ class TestDetailShapes:
             is_flow = source.category == CATEGORY_FLOWS
             assert (source.detail_shape == SHAPE_NAMED) is not is_flow, source.model
 
+    def test_every_named_source_declares_a_distinct_resource_type(self):
+        """The type is half the identity of a named resource: a source that left
+        it unset would key on None and merge with every other source that did."""
+        types = [
+            source.resource_type
+            for source in USAGE_SOURCES
+            if source.detail_shape == SHAPE_NAMED
+        ]
+
+        assert all(types), "a named source is missing its resource_type"
+        assert len(set(types)) == len(types), f"duplicate resource_type in {types}"
+
+    def test_no_flow_source_declares_a_resource_type(self):
+        """Flows are keyed by graph, so a type there would be dead weight that
+        reads as if it were doing something."""
+        for source in USAGE_SOURCES:
+            if source.category == CATEGORY_FLOWS:
+                assert source.resource_type is None, source.model
+
     @pytest.mark.parametrize(
-        "shape,columns", [(SHAPE_NAMED, 3), (SHAPE_NODE, 6), (SHAPE_EDGE, 7)]
+        "shape,columns", [(SHAPE_NAMED, 4), (SHAPE_NODE, 6), (SHAPE_EDGE, 7)]
     )
     def test_a_shape_projects_a_consistent_column_count(self, org, ids, shape, columns):
         """Differing column counts within a group make the union a hard error."""

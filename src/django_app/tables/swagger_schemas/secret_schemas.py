@@ -7,7 +7,10 @@ SECRET_USAGE_GET = dict(
         "Every resource in the active organization that references this secret. "
         "A category is present only when it has items, so an unused secret returns "
         "an empty list. Flow entries group their secret-using nodes; `node_type` "
-        "values are the frontend node-type identifiers."
+        "values are the frontend node-type identifiers. Items in the other "
+        "categories carry a `type` naming which model they are, because a category "
+        "can hold several — `llm_configs` folds four and `tools` folds two, and two "
+        "of them may share a name."
     ),
     responses={
         200: OpenApiResponse(
@@ -65,10 +68,17 @@ SECRET_USAGE_GET = dict(
                                     },
                                 ],
                             },
-                            {"key": "tools", "items": [{"name": "Stripe refund"}]},
+                            {
+                                "key": "tools",
+                                "items": [
+                                    {"name": "Stripe refund", "type": "mcp_tool"}
+                                ],
+                            },
                             {
                                 "key": "llm_configs",
-                                "items": [{"name": "gpt-4o prod"}],
+                                "items": [
+                                    {"name": "gpt-4o prod", "type": "llm_config"}
+                                ],
                             },
                         ],
                     },
