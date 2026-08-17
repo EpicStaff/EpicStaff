@@ -146,6 +146,7 @@
                             [surfaces]="store.surfaces()"
                             [saveErrorTick]="store.agentSaveErrorTick()"
                             [surfaceSaveError]="store.surfaceSaveError()"
+                            [surfaceCreateErrorTick]="store.surfaceCreateErrorTick()"
                             (save)="onSaveAgent($event)"
                             (dirtyChange)="onDirtyChange($event)"
                         />
@@ -165,6 +166,7 @@
                             [surfaces]="store.surfaces()"
                             [saveErrorTick]="store.agentSaveErrorTick()"
                             [surfaceSaveError]="store.surfaceSaveError()"
+                            [surfaceCreateErrorTick]="store.surfaceCreateErrorTick()"
                             [bootIsDoc]="store.isBootDoc(store.selectedAgent()!.id)"
                             [sharedSurfaceIds]="store.sharedSurfaceIdSet()"
                             (save)="onSaveAgent($event)"

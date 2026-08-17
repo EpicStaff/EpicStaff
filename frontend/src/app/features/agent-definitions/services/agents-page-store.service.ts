@@ -91,6 +91,7 @@ export class AgentsPageStore {
     // Bumped when a specific surface's save fails; carries the surface id so only that
     // surface's card reverts its optimistic fields (a global tick would revert siblings too).
     readonly surfaceSaveError = signal<SurfaceSaveError | null>(null);
+    readonly surfaceCreateErrorTick = signal<number>(0);
     private surfaceErrorTick = 0;
     // Monotonic per-surface version; a late resync getById is dropped if a newer save or
     // resync bumped it in the meantime (prevents a stale snapshot clobbering a fresh success).
@@ -611,6 +612,7 @@ export class AgentsPageStore {
             },
             error: (err) => {
                 this.saving.set(false);
+                this.surfaceCreateErrorTick.update((n) => n + 1);
                 this.toast.error(this.extractError(err, 'Failed to create surface'));
             },
         });

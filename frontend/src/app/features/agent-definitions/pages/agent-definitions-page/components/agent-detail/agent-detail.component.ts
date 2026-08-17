@@ -109,6 +109,7 @@ export class AgentDetailComponent implements OnInit {
     surfaces = input<Surface[]>([]);
     saveErrorTick = input<number>(0);
     surfaceSaveError = input<SurfaceSaveError | null>(null);
+    surfaceCreateErrorTick = input<number>(0);
     bootIsDoc = input<boolean>(false);
     surfacesOnly = input<boolean>(false);
     sharedSurfaceIds = input<ReadonlySet<number>>(new Set<number>());

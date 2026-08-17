@@ -141,6 +141,7 @@ export class SurfaceCardComponent {
     readonly placesChange = output<AgentSurfacePlace[]>();
     readonly duplicate = output<void>();
     readonly deleteSurface = output<void>();
+    readonly draftContentChanged = output<void>();
 
     readonly activeTab = signal<SurfaceTabId>('tools');
     readonly instructions = signal<string>('');
@@ -210,6 +211,21 @@ export class SurfaceCardComponent {
             storage_items: this.buildStoragePayload(),
             knowledge: this.buildKnowledgePayload(),
         };
+    }
+
+    private hasDraftContent(): boolean {
+        const { python_tools, mcp_tools } = this.buildToolsPayload();
+        return (
+            python_tools.length > 0 ||
+            mcp_tools.length > 0 ||
+            this.buildStoragePayload().length > 0 ||
+            this.buildKnowledgePayload().length > 0 ||
+            this.instructions().trim().length > 0
+        );
+    }
+
+    private notifyDraftContent(): void {
+        if (this.isCreating() && this.hasDraftContent()) this.draftContentChanged.emit();
     }
 
     toggleMenu(event: MouseEvent): void {
@@ -568,7 +584,7 @@ export class SurfaceCardComponent {
         // Files tab so the drop result is immediately in view.
         effect(() => {
             if (!this.storageDrag.isDragging()) return;
-            if (this.readOnly() || this.isCreating()) return;
+            if (this.readOnly()) return;
             if (!this.expanded() && !this.hideHeader()) return;
             this.activeTab.set('files');
         });
@@ -656,7 +672,10 @@ export class SurfaceCardComponent {
 
     onInstructionsBlur(): void {
         this.instructionsFocused.set(false);
-        if (this.isCreating()) return;
+        if (this.isCreating()) {
+            this.notifyDraftContent();
+            return;
+        }
         const value = this.instructions();
         this.lastSentInstructions = value;
         if (value === (this.surface()?.instructions ?? '')) return;
@@ -712,7 +731,10 @@ export class SurfaceCardComponent {
 
     private emitToolsChange(): void {
         this.lastSentToolKeys = serializeToolKeys(this.selectedToolKeys());
-        if (this.isCreating()) return;
+        if (this.isCreating()) {
+            this.notifyDraftContent();
+            return;
+        }
         this.surfaceChange.emit(this.buildToolsPayload());
     }
 
@@ -844,7 +866,7 @@ export class SurfaceCardComponent {
     readonly fileDropActive = signal<boolean>(false);
 
     private canAcceptFileDrop(): boolean {
-        return this.storageDrag.isDragging() && !this.readOnly() && !this.isCreating();
+        return this.storageDrag.isDragging() && !this.readOnly();
     }
 
     /** Spring-load: a storage item hovered over a collapsed card opens it on the Files tab. */
@@ -924,7 +946,10 @@ export class SurfaceCardComponent {
     private emitStorageChange(): void {
         const payload = this.buildStoragePayload();
         this.lastSentStorageItems = serializeStorageItems(payload);
-        if (this.isCreating()) return;
+        if (this.isCreating()) {
+            this.notifyDraftContent();
+            return;
+        }
         this.surfaceChange.emit({ storage_items: payload });
     }
 
@@ -1023,7 +1048,10 @@ export class SurfaceCardComponent {
     private emitKnowledgeChange(): void {
         const payload = this.buildKnowledgePayload();
         this.lastSentKnowledge = serializeKnowledge(payload);
-        if (this.isCreating()) return;
+        if (this.isCreating()) {
+            this.notifyDraftContent();
+            return;
+        }
         this.surfaceChange.emit({ knowledge: payload });
     }
 

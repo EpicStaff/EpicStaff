@@ -8,6 +8,7 @@ import {
     input,
     output,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -19,6 +20,7 @@ import {
     SelectDropdownTriggerDirective,
 } from '@shared/components';
 import { CollapseOnOverflowDirective, EnterBlurDirective } from '@shared/directives';
+import { computeUniqueName } from '@shared/utils';
 
 import { AgentDefaultSurface, AgentSurfacePlace } from '../../../../../models/agent-definition.model';
 import {
@@ -64,6 +66,8 @@ export class AgentSurfacesPanelComponent {
     saving = input<boolean>(false);
     /** Last surface-save failure from the store; forwarded to each card for per-id revert. */
     saveError = input<SurfaceSaveError | null>(null);
+    /** Bumped by the store when a surface CREATE fails, so the draft is kept for retry. */
+    surfaceCreateErrorTick = input<number>(0);
 
     readonly createSurface = output<{ body: CreateSurfaceRequest; place: SurfaceCategoryId }>();
     readonly addFromShared = output<{ surfaceId: number; category: SurfaceCategoryId }>();
@@ -85,17 +89,35 @@ export class AgentSurfacesPanelComponent {
     readonly dragging = signal<boolean>(false);
     readonly draftCategoryId = signal<SurfaceCategoryId | null>(null);
     readonly draftName = signal<string>('');
+    // Guards against a burst of draft-content changes POSTing the surface more than once.
+    private draftMaterializing = false;
+    private lastCreateErrorTick = 0;
 
     private readonly knownSurfaceIdsBeforeCreate = signal<Set<number> | null>(null);
 
     constructor() {
+        // Success: a newly-created surface appeared → swap the draft for it (drop the draft,
+        // open the real one).
         effect(() => {
             const known = this.knownSurfaceIdsBeforeCreate();
             if (!known) return;
             const created = this.surfaces().find((s) => !known.has(s.id));
             if (!created) return;
-            this.expandedSurfaceId.set(created.id);
             this.knownSurfaceIdsBeforeCreate.set(null);
+            this.draftMaterializing = false;
+            this.cancelDraft();
+            this.expandedSurfaceId.set(created.id);
+        });
+
+        // Error: a create failed → keep the draft mounted and re-enable retry.
+        effect(() => {
+            const tick = this.surfaceCreateErrorTick();
+            untracked(() => {
+                if (tick === this.lastCreateErrorTick) return;
+                this.lastCreateErrorTick = tick;
+                this.draftMaterializing = false;
+                this.knownSurfaceIdsBeforeCreate.set(null);
+            });
         });
     }
 
@@ -233,6 +255,7 @@ export class AgentSurfacesPanelComponent {
         this.knownSurfaceIdsBeforeCreate.set(null);
         this.expandedSurfaceId.set(null);
         this.draftName.set('');
+        this.draftMaterializing = false;
         this.draftCategoryId.set(categoryId);
     }
 
@@ -243,12 +266,30 @@ export class AgentSurfacesPanelComponent {
 
     saveDraft(): void {
         const name = this.draftName().trim();
+        if (!name) return;
+        this.materializeDraft(name);
+    }
+
+    onDraftContentChanged(): void {
+        const name = this.draftName().trim() || this.defaultSurfaceName();
+        this.materializeDraft(name);
+    }
+
+    private materializeDraft(name: string): void {
+        if (this.draftMaterializing) return;
         const place = this.draftCategoryId();
         const card = this.draftSurfaceCard();
-        if (!name || !place || !card) return;
+        if (!place || !card) return;
+        this.draftMaterializing = true;
         this.knownSurfaceIdsBeforeCreate.set(new Set(this.surfaces().map((s) => s.id)));
         this.createSurface.emit({ body: card.buildCreateRequest(name), place });
-        this.cancelDraft();
+    }
+
+    private defaultSurfaceName(): string {
+        return computeUniqueName(
+            'Untitled Surface',
+            this.surfaces().map((s) => s.name)
+        );
     }
 
     categoryTrackBy(_index: number, category: SurfaceCategoryConfig): SurfaceCategoryId {

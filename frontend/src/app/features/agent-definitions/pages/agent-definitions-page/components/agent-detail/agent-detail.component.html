@@ -260,6 +260,7 @@
                     [sharedSurfaceIds]="sharedSurfaceIds()"
                     [saving]="saving()"
                     [saveError]="surfaceSaveError()"
+                    [surfaceCreateErrorTick]="surfaceCreateErrorTick()"
                     (createSurface)="createSurface.emit($event)"
                     (addFromShared)="addFromShared.emit($event)"
                     (dropSharedSurface)="dropSharedSurface.emit($event)"

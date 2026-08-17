@@ -153,8 +153,10 @@
                             #draftSurfaceCard
                             class="surface-item__card"
                             [surface]="null"
+                            [isCreating]="true"
                             [hideHeader]="true"
                             [expanded]="true"
+                            (draftContentChanged)="onDraftContentChanged()"
                         />
                     </div>
                 }
