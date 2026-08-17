@@ -380,19 +380,21 @@ export class SelectStorageFilesDialogComponent {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (items) => {
-                    const nodes: TreeNode[] = items.map((i) => ({
-                        name: i.name,
-                        path: i.path || (path ? `${path}/${i.name}` : i.name),
-                        type: i.type,
-                        level: parent ? parent.level + 1 : 0,
-                        isExpanded: false,
-                        isLoading: false,
-                        hasChildren: i.type === 'folder' && !i.is_empty,
-                        children: [],
-                        isLoaded: false,
-                        is_empty: i.is_empty,
-                        size: i.size,
-                    }));
+                    const nodes: TreeNode[] = items
+                        .map((i) => ({
+                            name: i.name,
+                            path: i.path || (path ? `${path}/${i.name}` : i.name),
+                            type: i.type,
+                            level: parent ? parent.level + 1 : 0,
+                            isExpanded: false,
+                            isLoading: false,
+                            hasChildren: i.type === 'folder' && !i.is_empty,
+                            children: [],
+                            isLoaded: false,
+                            is_empty: i.is_empty,
+                            size: i.size,
+                        }))
+                        .sort(sortFoldersFirst);
 
                     if (parent) {
                         parent.children = nodes;
@@ -554,4 +556,9 @@ export class SelectStorageFilesDialogComponent {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     }
+}
+
+function sortFoldersFirst(a: TreeNode, b: TreeNode): number {
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+    return a.name.localeCompare(b.name);
 }
