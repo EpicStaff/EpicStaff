@@ -1,5 +1,6 @@
 langchain_openai
 langchain_community
 langchain
+sqlalchemy
 psycopg2-binary
 pymysql
