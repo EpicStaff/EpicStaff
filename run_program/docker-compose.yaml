@@ -15,7 +15,8 @@ services:
 
 
       - DEBUG=True
-      - SECRET_KEY=example-5$8!dbhafy9bp!gf
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required — run create_env.sh (Linux/macOS) or create_env.bat (Windows) to generate one.}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required — run create_env.sh (Linux/macOS) or create_env.bat (Windows) to generate one.}
       - ALLOWED_HOSTS=0.0.0.0, 127.0.0.1, localhost, django_app
     
       - REDIS_HOST=redis
