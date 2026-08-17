@@ -40,7 +40,6 @@ export abstract class RagConfigurationDialogComponent {
                     this.ragIndexingService.stopIndexing({
                         rag_id: this.data.ragId,
                         rag_type: this.data.ragType,
-                        document_config_ids: documentConfigIds,
                     })
                 )
             )

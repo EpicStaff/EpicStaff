@@ -6,7 +6,6 @@ import { catchError, map, tap } from 'rxjs/operators';
 import { TableDocument } from '../components/naive-rag-configuration/configuration-table/configuration-table.interface';
 import { calcLimit } from '../helpers/calculate-chunks-fetch-limit.util';
 import {
-    CancelNaiveNaiveRagChunkingResponse,
     ChunkedWithParams,
     DocumentChunkingState,
     GetNaiveRagDocumentChunksResponse,
@@ -196,13 +195,9 @@ export class NaiveRagChunkPreviewService {
         );
     }
 
-    public stopChunking(
-        ragId: number,
-        documentId: number,
-        body: RunNaiveRagDocumentChunkingRequest
-    ): Observable<CancelNaiveNaiveRagChunkingResponse> {
+    public stopChunking(ragId: number, documentId: number): Observable<void> {
         this.updateDocState(documentId, (s) => ({ ...s, status: 'new' }));
-        return this.naiveRagService.stopChunkingByDocumentId(ragId, documentId, body);
+        return this.naiveRagService.stopChunkingByDocumentId(ragId, documentId);
     }
 
     public runChunking(

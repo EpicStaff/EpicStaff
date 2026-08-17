@@ -7,7 +7,6 @@ import { catchError, tap } from 'rxjs/operators';
 import { TableDocument } from '../components/naive-rag-configuration/configuration-table/configuration-table.interface';
 import { normalizeBulkUpdateErrors } from '../helpers/normalize-bulk-update-errors.util';
 import {
-    CancelNaiveNaiveRagChunkingResponse,
     ChunkedWithParams,
     GetNaiveRagDocumentChunksResponse,
     NaiveRagChunkingResponse,
@@ -116,10 +115,8 @@ export class NaiveRagDocumentsStorageService implements StorageService {
         return this.chunkPreview.loadPrevChunks(naiveRagId, documentId, offset, limit, bufferLimit);
     }
 
-    public stopChunking(ragId: number, documentId: number): Observable<CancelNaiveNaiveRagChunkingResponse> {
-        const body = this.buildFullParamsBody(documentId);
-        if (!body) return EMPTY;
-        return this.chunkPreview.stopChunking(ragId, documentId, body);
+    public stopChunking(ragId: number, documentId: number): Observable<void> {
+        return this.chunkPreview.stopChunking(ragId, documentId);
     }
 
     public runChunking(ragId: number, documentId: number): Observable<NaiveRagChunkingResponse> {

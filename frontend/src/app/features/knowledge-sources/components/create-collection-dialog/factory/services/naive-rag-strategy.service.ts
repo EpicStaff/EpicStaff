@@ -80,7 +80,6 @@ export class NaiveRagStrategy implements RagCreationStrategy {
             .stopIndexing({
                 rag_id: naiveRagId,
                 rag_type: 'naive',
-                document_config_ids: configIds,
             })
             .pipe(
                 tap(() => {

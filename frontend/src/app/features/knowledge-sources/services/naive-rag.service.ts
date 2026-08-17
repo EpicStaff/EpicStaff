@@ -5,7 +5,6 @@ import { Observable } from 'rxjs';
 import { ConfigService } from '../../../services/config';
 import { CreateNaiveRagForCollectionResponse, DeleteNaiveRagResponse } from '../models/naive-rag.model';
 import {
-    CancelNaiveNaiveRagChunkingResponse,
     ChunkSearchResponse,
     GetChunksByIdsResponse,
     GetNaiveRagDocumentChunksResponse,
@@ -88,15 +87,8 @@ export class NaiveRagService {
         );
     }
 
-    stopChunkingByDocumentId(
-        ragId: number,
-        documentId: number,
-        body: RunNaiveRagDocumentChunkingRequest
-    ): Observable<CancelNaiveNaiveRagChunkingResponse> {
-        return this.http.post<CancelNaiveNaiveRagChunkingResponse>(
-            `${this.apiUrl}${ragId}/document-configs/${documentId}/process-chunking/cancel/`,
-            body
-        );
+    stopChunkingByDocumentId(ragId: number, documentId: number): Observable<void> {
+        return this.http.delete<void>(`${this.apiUrl}${ragId}/document-configs/${documentId}/process-chunking/cancel/`);
     }
 
     getChunkPreview(

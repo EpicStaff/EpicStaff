@@ -101,7 +101,6 @@ export class GraphRagStrategy implements RagCreationStrategy {
             .stopIndexing({
                 rag_id: ragId,
                 rag_type: 'graph',
-                document_config_ids: this.indexingConfigIds,
             })
             .pipe(
                 tap(() => this.toastService.success('Indexing stop requested')),
