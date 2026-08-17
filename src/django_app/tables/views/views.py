@@ -1021,13 +1021,18 @@ class RegisterWebhooksApiView(APIView):
         return Response(status=status.HTTP_200_OK)
 
 
-class PythonNodeLastTestInputView(APIView):
+class PythonNodeLastTestInputView(OrgScopedServiceViewSetMixin, APIView):
     @extend_schema(**_LAST_TEST_INPUT_SWAGGER)
     def get(self, request, pk):
-        try:
-            python_node = PythonNode.objects.get(pk=pk)
-        except PythonNode.DoesNotExist:
-            raise NotFound(detail="PythonNode not found.")
+        python_node = self.get_in_active_org_or_404(
+            PythonNode, pk, org_path="graph__org_id"
+        )
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.FLOWS,
+            Permission.READ,
+        )
 
         python_node_name = f"{python_node.node_name} #{python_node.pk}"
         found_input = (
