@@ -6,7 +6,7 @@ import pytest
 from asgiref.sync import sync_to_async
 
 from tables.graph_collab.flush_service import FlushStatus, flush_service
-from tables.graph_collab.graph_state_service import OpStatus
+from tables.graph_collab.graph_state_service import OpStatus, graph_state_service
 from tables.graph_collab.notifications import _build_graph_saved_message
 from tables.graph_collab.protocol import (
     ConnectionCreatedMessage,
@@ -18,7 +18,6 @@ from tables.graph_collab.protocol import (
 )
 from tables.models.graph_models import Edge, PythonNode
 from tables.models.python_models import PythonCode
-from tests.graph_collab.conftest import _editor
 from tests.fixtures import *  # noqa: F401,F403
 
 
@@ -44,6 +43,58 @@ def _create_python_setup(graph):
         graph=graph, start_node_id=node_a.id, end_node_id=node_b.id
     )
     return node_a, node_b, edge
+
+
+# ---------------------------------------------------------------------------
+# 0. apply_op deduplicates a replayed connection_created with the same temp_id
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "temp_id",
+    [
+        pytest.param("aaaabbbb-cccc-dddd-eeee-000000000123", id="uuid"),
+        pytest.param(
+            "00000000-0000-4000-000d-000000000065_telegram-trigger-out"
+            "+c943f8f0-b8f2-449c-8797-923412dca370_python-in",
+            id="composite",
+        ),
+    ],
+)
+async def test_duplicate_connection_created_replay_keeps_single_edge(
+    graph, base_snapshot, editor, temp_id
+):
+    """A connection_created op replayed twice with the same temp_id (e.g. a
+    duplicate op delivery) must be deduplicated to a single edge, with the
+    temp_id preserved verbatim — not re-derived or re-validated as a UUID.
+    ``connection`` is a bare dict field (no UUID validation), so a composite
+    string temp_id in the real-world edge-endpoint shape is accepted the same
+    as a plain UUID."""
+    await graph_state_service.seed(
+        graph.id, base_snapshot(save_version=graph.save_version)
+    )
+
+    connection_payload = {
+        "temp_id": temp_id,
+        "start_node_id": None,
+        "end_node_id": None,
+        "metadata": {},
+        "graph": graph.id,
+    }
+    msg = ConnectionCreatedMessage(
+        connection=connection_payload,
+        list_key="edge_list",
+        editor=editor,
+    )
+
+    await graph_state_service.apply_op(graph.id, msg)
+    await graph_state_service.apply_op(graph.id, msg)
+
+    snapshot = await graph_state_service.get_snapshot(graph.id)
+    assert len(snapshot["edge_list"]) == 1
+    assert snapshot["edge_list"][0]["temp_id"] == temp_id
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +147,7 @@ async def test_prune_resolved_temp_ids_preserves_ttl(
 
 @pytest.mark.asyncio
 async def test_prune_resolved_temp_ids_alive_temp_id_still_resolves_after_prune(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     """A temp_id whose real id is still alive keeps resolving after an
     unrelated dead pk is pruned."""
@@ -114,7 +165,7 @@ async def test_prune_resolved_temp_ids_alive_temp_id_still_resolves_after_prune(
     msg = NodeUpdatedMessage(
         node={"temp_id": "ALIVE", "node_name": "renamed"},
         list_key="python_node_list",
-        editor=_editor(),
+        editor=editor,
         changed_fields=["node_name"],
     )
     result = await live_state_service.apply_op(1, msg)
@@ -126,7 +177,7 @@ async def test_prune_resolved_temp_ids_alive_temp_id_still_resolves_after_prune(
 
 @pytest.mark.asyncio
 async def test_legacy_node_updated_by_temp_id_resolves_via_resolved_map(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     """A legacy NodeUpdatedMessage (changed_fields=None) carrying only a
     resolved-and-stripped temp_id must update the real entry in place, not
@@ -139,7 +190,7 @@ async def test_legacy_node_updated_by_temp_id_resolves_via_resolved_map(
     msg = NodeUpdatedMessage(
         node={"temp_id": "ALIVE", "node_name": "renamed"},
         list_key="python_node_list",
-        editor=_editor(),
+        editor=editor,
         changed_fields=None,
     )
     result = await live_state_service.apply_op(1, msg)
@@ -153,7 +204,7 @@ async def test_legacy_node_updated_by_temp_id_resolves_via_resolved_map(
 
 @pytest.mark.asyncio
 async def test_node_created_by_temp_id_resolving_to_alive_id_is_rejected(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     """A stale replayed create referencing an already-resolved temp_id gets
     rewritten to the live row's real id and rejected, since that id is alive
@@ -166,7 +217,7 @@ async def test_node_created_by_temp_id_resolving_to_alive_id_is_rejected(
     msg = NodeCreatedMessage(
         node={"temp_id": "ALIVE", "node_name": "duplicate-attempt"},
         list_key="python_node_list",
-        editor=_editor(),
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
@@ -180,7 +231,7 @@ async def test_node_created_by_temp_id_resolving_to_alive_id_is_rejected(
 
 @pytest.mark.asyncio
 async def test_node_created_by_temp_id_resolving_to_pending_delete_id_is_resurrected(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     """Resurrect via temp_id: create -> delete queued (pre-flush) -> undo
     re-sends the create by the original temp_id, which resolves to the still
@@ -192,7 +243,7 @@ async def test_node_created_by_temp_id_resolving_to_pending_delete_id_is_resurre
 
     delete_msg = NodesDeletedMessage(
         refs=[EntryDeleteRef(list_key="python_node_list", id=100)],
-        editor=_editor(),
+        editor=editor,
     )
     delete_result = await live_state_service.apply_op(1, delete_msg)
     assert delete_result.status is OpStatus.APPLIED
@@ -204,7 +255,7 @@ async def test_node_created_by_temp_id_resolving_to_pending_delete_id_is_resurre
     recreate_msg = NodeCreatedMessage(
         node={"temp_id": "ORIGINAL", "node_name": "n"},
         list_key="python_node_list",
-        editor=_editor(),
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, recreate_msg)
 
@@ -239,6 +290,111 @@ async def test_apply_id_remap_prunes_based_on_flushed_deleted(
 
 
 # ---------------------------------------------------------------------------
+# Retained temp_id -> real_id map
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("noop_content_hash_refresh")
+async def test_apply_id_remap_records_resolved_temp_ids(live_state_service, base_snapshot):
+    """A node created via WS op carries temp_id "U". Once the flush that
+    persists it runs, apply_id_remap stamps id=42 and pops temp_id — but the
+    retained temp_id->real_id map must remember U -> 42 so a later edge op
+    referencing "U" as an endpoint can still resolve.
+    """
+    graph_id = 1
+    await live_state_service.seed(
+        graph_id, base_snapshot(crew_node_list=[{"temp_id": "U", "type": "agent"}])
+    )
+
+    await live_state_service.apply_id_remap(
+        graph_id, {"U": 42}, new_save_version=2, flushed_deleted={}
+    )
+
+    snapshot = await live_state_service.get_snapshot(graph_id)
+    assert snapshot["crew_node_list"] == [{"id": 42, "type": "agent"}]
+    assert await live_state_service.get_resolved_temp_ids(graph_id) == {"U": 42}
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("noop_content_hash_refresh")
+async def test_apply_op_rewrites_edge_endpoint_for_already_remapped_temp_id(
+    live_state_service, base_snapshot, editor
+):
+    """A late edge referencing an already-flushed node's temp_id must have its
+    endpoint rewritten to the real id at apply_op time, so the next flush
+    resolves cleanly instead of raising BulkSaveValidationError.
+    """
+    graph_id = 1
+    await live_state_service.seed(
+        graph_id, base_snapshot(crew_node_list=[{"temp_id": "U", "type": "agent"}])
+    )
+    await live_state_service.apply_id_remap(
+        graph_id, {"U": 42}, new_save_version=2, flushed_deleted={}
+    )
+
+    msg = ConnectionCreatedMessage(
+        connection={
+            "temp_id": "edge-1",
+            "start_temp_id": "U",
+            "end_node_id": 7,
+        },
+        list_key="edge_list",
+        editor=editor,
+    )
+    await live_state_service.apply_op(graph_id, msg)
+
+    snapshot = await live_state_service.get_snapshot(graph_id)
+    assert len(snapshot["edge_list"]) == 1
+    edge = snapshot["edge_list"][0]
+    assert edge["start_node_id"] == 42
+    assert "start_temp_id" not in edge
+    # The edge's own temp_id must be untouched by endpoint resolution.
+    assert edge["temp_id"] == "edge-1"
+
+
+@pytest.mark.asyncio
+async def test_apply_op_leaves_unresolved_temp_id_endpoint_untouched(
+    live_state_service, base_snapshot, editor
+):
+    """A new-node flow: the endpoint temp_id has no entry in the retained map
+    yet (its node hasn't been flushed), so it must be left as-is for normal
+    flush-time resolution via the node's own temp_id.
+    """
+    graph_id = 1
+    await live_state_service.seed(graph_id, base_snapshot())
+
+    msg = ConnectionCreatedMessage(
+        connection={
+            "temp_id": "edge-1",
+            "start_temp_id": "not-yet-flushed",
+            "end_node_id": 7,
+        },
+        list_key="edge_list",
+        editor=editor,
+    )
+    await live_state_service.apply_op(graph_id, msg)
+
+    snapshot = await live_state_service.get_snapshot(graph_id)
+    edge = snapshot["edge_list"][0]
+    assert edge["start_temp_id"] == "not-yet-flushed"
+    assert "start_node_id" not in edge
+
+
+@pytest.mark.asyncio
+async def test_clear_removes_resolved_temp_ids_map(live_state_service, base_snapshot):
+    graph_id = 1
+    await live_state_service.seed(graph_id, base_snapshot())
+    await live_state_service.record_resolved_temp_ids(graph_id, {"U": 42})
+    assert await live_state_service.get_resolved_temp_ids(graph_id) == {"U": 42}
+
+    await live_state_service.clear(graph_id)
+
+    assert await live_state_service.get_snapshot(graph_id) is None
+    assert await live_state_service.get_resolved_temp_ids(graph_id) == {}
+
+
+# ---------------------------------------------------------------------------
 # 5. graph_saved carries deleted_ids, including cascade-deleted edges
 # ---------------------------------------------------------------------------
 
@@ -246,7 +402,7 @@ async def test_apply_id_remap_prunes_based_on_flushed_deleted(
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_flush_and_graph_saved_message_carry_cascade_deleted_edge_ids(
-    graph, live_state_service
+    graph, live_state_service, editor
 ):
     node_a, _node_b, edge = await _create_python_setup(graph)
 
@@ -255,7 +411,7 @@ async def test_flush_and_graph_saved_message_carry_cascade_deleted_edge_ids(
 
     delete_msg = NodesDeletedMessage(
         refs=[EntryDeleteRef(list_key="python_node_list", id=node_a.id)],
-        editor=_editor(),
+        editor=editor,
     )
     delete_result = await live_state_service.apply_op(graph.id, delete_msg)
     assert delete_result.status is OpStatus.APPLIED
@@ -284,14 +440,16 @@ async def test_flush_and_graph_saved_message_carry_cascade_deleted_edge_ids(
 
 
 @pytest.mark.asyncio
-async def test_node_created_with_real_id_is_rejected(live_state_service, base_snapshot):
+async def test_node_created_with_real_id_is_rejected(
+    live_state_service, base_snapshot, editor
+):
     """A bare real id never seen before, and a real id whose deletion was
     already flushed (no longer pending), are both rejected as stale replays."""
     await live_state_service.seed(1, base_snapshot())
     msg = NodeCreatedMessage(
         node={"id": 42, "node_name": "stale-undo-recreate"},
         list_key="crew_node_list",
-        editor=_editor(),
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
@@ -307,7 +465,7 @@ async def test_node_created_with_real_id_is_rejected(live_state_service, base_sn
     )
     delete_msg = NodesDeletedMessage(
         refs=[EntryDeleteRef(list_key="crew_node_list", id=25)],
-        editor=_editor(),
+        editor=editor,
     )
     await live_state_service.apply_op(2, delete_msg)
     await live_state_service.apply_id_remap(
@@ -322,7 +480,7 @@ async def test_node_created_with_real_id_is_rejected(live_state_service, base_sn
     recreate_msg = NodeCreatedMessage(
         node={"id": 25, "node_name": "n"},
         list_key="crew_node_list",
-        editor=_editor(),
+        editor=editor,
     )
     result = await live_state_service.apply_op(2, recreate_msg)
 
@@ -336,7 +494,7 @@ async def test_node_created_with_real_id_is_rejected(live_state_service, base_sn
 
 @pytest.mark.asyncio
 async def test_legacy_node_updated_with_real_id_is_still_accepted(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     """A legacy NodeUpdatedMessage (changed_fields=None) carrying a real id —
     the shape decision-table routing sync sends — must not be caught by the
@@ -345,7 +503,7 @@ async def test_legacy_node_updated_with_real_id_is_still_accepted(
     msg = NodeUpdatedMessage(
         node={"id": 42, "node_name": "decision-routing-update"},
         list_key="crew_node_list",
-        editor=_editor(),
+        editor=editor,
         changed_fields=None,
     )
     result = await live_state_service.apply_op(1, msg)
@@ -366,13 +524,13 @@ async def test_legacy_node_updated_with_real_id_is_still_accepted(
 
 @pytest.mark.asyncio
 async def test_connection_created_with_real_id_is_rejected(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     await live_state_service.seed(1, base_snapshot())
     msg = ConnectionCreatedMessage(
         connection={"id": 4, "start_node_id": 1, "end_node_id": 2},
         list_key="edge_list",
-        editor=_editor(),
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, msg)
 
@@ -392,7 +550,7 @@ async def test_connection_created_with_real_id_is_rejected(
 
 @pytest.mark.asyncio
 async def test_node_created_with_id_pending_delete_is_accepted_and_unqueued(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     """Create -> delete (pre-flush, id queued in the accumulator) -> undo
     re-sends node_created with the real id. Must be APPLIED, the entry
@@ -402,7 +560,7 @@ async def test_node_created_with_id_pending_delete_is_accepted_and_unqueued(
     )
     delete_msg = NodesDeletedMessage(
         refs=[EntryDeleteRef(list_key="crew_node_list", id=25)],
-        editor=_editor(),
+        editor=editor,
     )
     delete_result = await live_state_service.apply_op(1, delete_msg)
     assert delete_result.status is OpStatus.APPLIED
@@ -414,7 +572,7 @@ async def test_node_created_with_id_pending_delete_is_accepted_and_unqueued(
     recreate_msg = NodeCreatedMessage(
         node={"id": 25, "node_name": "n"},
         list_key="crew_node_list",
-        editor=_editor(),
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, recreate_msg)
 
@@ -427,7 +585,7 @@ async def test_node_created_with_id_pending_delete_is_accepted_and_unqueued(
 
 @pytest.mark.asyncio
 async def test_node_created_with_id_not_pending_delete_is_rejected(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     """Same real id as the resurrect case, but the deletion has already been
     flushed — a subsequent create carrying that dead pk is a stale replay."""
@@ -436,7 +594,7 @@ async def test_node_created_with_id_not_pending_delete_is_rejected(
     )
     delete_msg = NodesDeletedMessage(
         refs=[EntryDeleteRef(list_key="crew_node_list", id=25)],
-        editor=_editor(),
+        editor=editor,
     )
     await live_state_service.apply_op(1, delete_msg)
 
@@ -452,7 +610,7 @@ async def test_node_created_with_id_not_pending_delete_is_rejected(
     recreate_msg = NodeCreatedMessage(
         node={"id": 25, "node_name": "n"},
         list_key="crew_node_list",
-        editor=_editor(),
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, recreate_msg)
 
@@ -466,7 +624,7 @@ async def test_node_created_with_id_not_pending_delete_is_rejected(
 
 @pytest.mark.asyncio
 async def test_connection_created_with_id_pending_delete_is_accepted_and_unqueued(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     """Same pre-flush resurrect window as nodes, for connection_created /
     edge_ids."""
@@ -476,7 +634,7 @@ async def test_connection_created_with_id_pending_delete_is_accepted_and_unqueue
     delete_msg = ConnectionDeletedMessage(
         connection_id=4,
         list_key="edge_list",
-        editor=_editor(),
+        editor=editor,
     )
     delete_result = await live_state_service.apply_op(1, delete_msg)
     assert delete_result.status is OpStatus.APPLIED
@@ -488,7 +646,7 @@ async def test_connection_created_with_id_pending_delete_is_accepted_and_unqueue
     recreate_msg = ConnectionCreatedMessage(
         connection={"id": 4, "start_node_id": 1, "end_node_id": 2},
         list_key="edge_list",
-        editor=_editor(),
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, recreate_msg)
 
@@ -501,7 +659,7 @@ async def test_connection_created_with_id_pending_delete_is_accepted_and_unqueue
 
 @pytest.mark.asyncio
 async def test_connection_created_with_id_not_pending_delete_is_rejected(
-    live_state_service, base_snapshot
+    live_state_service, base_snapshot, editor
 ):
     """Same real id as the resurrect case, but the deletion has already been
     flushed — the create must be rejected as a stale replay."""
@@ -511,7 +669,7 @@ async def test_connection_created_with_id_not_pending_delete_is_rejected(
     delete_msg = ConnectionDeletedMessage(
         connection_id=4,
         list_key="edge_list",
-        editor=_editor(),
+        editor=editor,
     )
     await live_state_service.apply_op(1, delete_msg)
 
@@ -527,7 +685,7 @@ async def test_connection_created_with_id_not_pending_delete_is_rejected(
     recreate_msg = ConnectionCreatedMessage(
         connection={"id": 4, "start_node_id": 1, "end_node_id": 2},
         list_key="edge_list",
-        editor=_editor(),
+        editor=editor,
     )
     result = await live_state_service.apply_op(1, recreate_msg)
 

@@ -1,7 +1,9 @@
+import asyncio
 import unittest.mock
 
 import fakeredis
 import pytest
+import pytest_asyncio
 import fakeredis.aioredis
 
 from channels.routing import URLRouter
@@ -28,12 +30,17 @@ from tables.graph_collab.presence_service import (
     GraphPresenceService,
 )
 from tables.graph_collab.protocol import EditorInfo
+from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
 from tables.services.schedule_trigger_service import ScheduleTriggerService
+from tables.services import redis_service as _rs_module
 
 
 application = URLRouter(
     [re_path(r"ws/graphs/(?P<graph_id>\d+)/edit/$", GraphEditConsumer.as_asgi())]
 )
+
+
+_active_communicators: list[WebsocketCommunicator] = []
 
 
 def _make_communicator(graph_id: int, user=None):
@@ -44,6 +51,7 @@ def _make_communicator(graph_id: int, user=None):
         f"ws/graphs/{graph_id}/edit/",
     )
     communicator.scope["user"] = scope_user
+    _active_communicators.append(communicator)
     return communicator
 
 
@@ -59,19 +67,6 @@ async def _drain_connect(communicator) -> None:
     assert "graph_state" in messages
 
 
-async def _drain_connect_with_locks(communicator) -> dict:
-    """Consume 4 initial messages when locks are active; return the lock_state message."""
-    received = {}
-    for _ in range(4):
-        msg = await communicator.receive_json_from()
-        received[msg["type"]] = msg
-    assert "presence_state" in received
-    assert "user_joined" in received
-    assert "graph_state" in received
-    assert "lock_state" in received
-    return received["lock_state"]
-
-
 CHANNEL_LAYERS_OVERRIDE = {
     "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
@@ -81,6 +76,11 @@ CHANNEL_LAYERS_OVERRIDE = {
 
 def _editor(user_id: int = 1, name: str = "Alice") -> EditorInfo:
     return EditorInfo(user_id=user_id, display_name=name, avatar_url=None)
+
+
+def editor_payload(user) -> dict:
+    """Wire-format editor dict for op/lock payloads sent from a test client."""
+    return {"user_id": user.pk, "display_name": "x", "avatar_url": None}
 
 
 def _empty_deleted() -> dict:
@@ -96,6 +96,111 @@ def _base_snapshot(**overrides) -> dict:
     base["deleted"] = _empty_deleted()
     base.update(overrides)
     return base
+
+
+PYTHON_CODE_DATA = {
+    "code": "def main(): return 42",
+    "entrypoint": "main",
+    "libraries": [],
+}
+
+
+async def wait_for(
+    condition_coro, timeout: float = 2.0, interval: float = 0.05
+) -> bool:
+    """Poll `condition_coro()` until it returns truthy or `timeout` elapses."""
+    elapsed = 0.0
+    while elapsed < timeout:
+        if await condition_coro():
+            return True
+        await asyncio.sleep(interval)
+        elapsed += interval
+    return False
+
+
+async def connect_pair(graph, user_a, user_b):
+    """Connect two communicators and drain all connect-time messages."""
+    comm_a = _make_communicator(graph.pk, user_a)
+    comm_b = _make_communicator(graph.pk, user_b)
+
+    await comm_a.connect()
+    await _drain_connect(comm_a)
+
+    await comm_b.connect()
+    await comm_a.receive_json_from()  # user_joined for user_b
+    await _drain_connect(comm_b)
+
+    return comm_a, comm_b
+
+
+async def receive_or_none(
+    communicator, timeout: float = 1.0, poll: float = 0.05
+) -> dict | None:
+    """Poll a communicator's socket for a message, returning None on timeout.
+
+    Distinct from `wait_for`, which polls a condition coroutine, not a socket.
+
+    The inner `receive_json_from` timeout must always exceed the outer `poll`
+    timeout: asgiref's own receive timeout firing cancels the whole consumer
+    application task (not just the pending receive), so if the inner timeout
+    ever won the race, this would silently kill the consumer instead of just
+    reporting "no message yet".
+    """
+    elapsed = 0.0
+    while elapsed < timeout:
+        try:
+            return await asyncio.wait_for(
+                communicator.receive_json_from(timeout=poll * 10), timeout=poll
+            )
+        except asyncio.TimeoutError:
+            elapsed += poll
+    return None
+
+
+async def collect_messages(communicator, timeout: float = 0.5) -> list[dict]:
+    """Drain all messages currently queued on `communicator`, stopping at the first gap.
+
+    The inner `receive_json_from` timeout must always exceed the outer `wait_for`
+    timeout: asgiref's own receive timeout firing cancels the whole consumer
+    application task (not just the pending receive), so if the inner timeout
+    ever won the race, a later `disconnect()` would raise `CancelledError`.
+    """
+    messages = []
+    try:
+        while True:
+            msg = await asyncio.wait_for(
+                communicator.receive_json_from(timeout=timeout * 10), timeout=timeout
+            )
+            messages.append(msg)
+    except asyncio.TimeoutError:
+        pass
+    return messages
+
+
+async def apply_create_op(communicator, graph_id: int, user, temp_id: str) -> None:
+    """Send a node_created op and wait until that exact node appears in the live snapshot."""
+    await communicator.send_json_to(
+        {
+            "type": "node_created",
+            "node": {
+                "temp_id": temp_id,
+                "graph": graph_id,
+                "python_code": PYTHON_CODE_DATA,
+            },
+            "list_key": "python_node_list",
+            "editor": editor_payload(user),
+        }
+    )
+
+    async def _node_in_snapshot():
+        snap = await _gss_module.graph_state_service.get_snapshot(graph_id)
+        if snap is None:
+            return False
+        return any(n.get("temp_id") == temp_id for n in snap["python_node_list"])
+
+    assert await wait_for(_node_in_snapshot), (
+        f"Node {temp_id!r} did not appear in snapshot"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -175,6 +280,32 @@ def reset_lock_store():
     _ls_module.lock_service._store.clear()
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def disconnect_leaked_communicators(
+    channel_layer_settings, patch_graph_state_redis
+):
+    """Safety net for tests whose explicit disconnect is skipped by an earlier failure.
+
+    Drains any communicator registered via `_make_communicator` whose explicit
+    `disconnect()` was skipped, by calling `disconnect()` on it here instead.
+    """
+    _active_communicators.clear()
+    yield
+    while _active_communicators:
+        communicator = _active_communicators.pop()
+        try:
+            await asyncio.wait_for(communicator.disconnect(), timeout=1.0)
+        except (Exception, asyncio.CancelledError):
+            # Cleanup net only: an already-closed communicator reaching teardown
+            # is the normal case, and this must never itself fail or hang an
+            # otherwise-passing test. CancelledError is caught explicitly
+            # because it is a BaseException, not an Exception — letting it
+            # escape here aborts every remaining finalizer for the test,
+            # including pytest-django's table truncation, poisoning every
+            # later test.
+            pass
+
+
 @pytest.fixture
 def fake_async_redis():
     """Fresh fakeredis async client with decode_responses=True."""
@@ -201,6 +332,35 @@ def patch_graph_state_redis(fake_async_redis, monkeypatch):
     _gss_module.graph_state_service._locks.clear()
     _gss_module.graph_state_service._revision.clear()
     _gss_module.graph_state_service._flushed_revision.clear()
+
+
+@pytest.fixture
+def patch_redis_service(fake_async_redis, monkeypatch):
+    """Replace RedisService's async client with the shared `fake_async_redis` instance.
+
+    Not autouse: opt in explicitly for tests that exercise RedisService directly
+    (e.g. autosave/flush broadcast tests), so they share the same fake Redis
+    instance as `patch_graph_state_redis` instead of each patching in a separate one.
+    """
+    monkeypatch.setattr(
+        type(_rs_module.RedisService()),
+        "async_redis_client",
+        property(lambda self: fake_async_redis),
+    )
+
+
+@pytest.fixture
+def noop_content_hash_refresh(monkeypatch):
+    """Patch out the content_hash DB refresh step so a DB-free test file stays DB-free.
+
+    Not autouse: must be opted into explicitly, since test_content_hash_refresh.py
+    tests this exact function and a directory-wide autouse patch would neuter it.
+    """
+
+    async def _noop(snapshot):
+        return None
+
+    monkeypatch.setattr(_gss_module, "_refresh_flushed_content_hashes", _noop)
 
 
 @pytest.fixture(autouse=True)
@@ -294,6 +454,52 @@ def schedule_trigger_service():
     injected one, so returning the singleton as-is is sufficient.
     """
     return ScheduleTriggerService()
+
+
+def _model_for(list_key: str):
+    return next(c.model_class for c in NODE_TYPE_REGISTRY if c.list_key == list_key)
+
+
+@sync_to_async
+def count_nodes(list_key: str, graph_id: int) -> int:
+    return _model_for(list_key).objects.filter(graph_id=graph_id).count()
+
+
+@sync_to_async
+def get_node(list_key: str, node_id: int):
+    return _model_for(list_key).objects.get(pk=node_id)
+
+
+@sync_to_async
+def first_node(list_key: str, graph_id: int):
+    return _model_for(list_key).objects.filter(graph_id=graph_id).first()
+
+
+@sync_to_async
+def get_graph_save_version(graph_id: int) -> int:
+    return Graph.objects.get(pk=graph_id).save_version
+
+
+@sync_to_async
+def _create_start_node(graph):
+    """Create a StartNode row for the given graph and return it."""
+    from tables.models.graph_models import StartNode
+
+    return StartNode.objects.create(
+        graph=graph,
+        variables={"variables": {"greeting": "hello"}, "persistent": {}},
+    )
+
+
+@sync_to_async
+def _create_end_node(graph):
+    """Create an EndNode row for the given graph and return it."""
+    from tables.models.graph_models import EndNode
+
+    return EndNode.objects.create(
+        graph=graph,
+        output_map={"context": "variables"},
+    )
 
 
 @pytest.fixture

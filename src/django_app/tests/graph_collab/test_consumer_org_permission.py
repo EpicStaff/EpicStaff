@@ -1,31 +1,8 @@
 """
-Regression tests for GraphEditConsumer.connect() org-membership + flows-access
-gating, plus the live-session revocation follow-up: a user demoted or removed
-from an org (or globally stripped of superadmin) has their live collab socket
-kept in sync with their current access, instead of it silently keeping
-whatever access level they had when they connected.
-
-Root cause (connect()-time gap): connect() authenticated the WS ticket but never
-checked whether the authenticated user is a member of the graph's org, nor
-whether their role grants any flows access. Any authenticated user could open
-a collab session on ANY graph_id, including graphs belonging to other
-organizations, and both read and mutate its live snapshot.
-
-The fix resolves `EffectivePermissions` for (user, org) right after `org_id`
-is resolved and before `accept()`, requiring at least `Permission.READ` on
-`ResourceType.FLOWS` to connect at all. A connection that lacks
-`Permission.UPDATE` (e.g. the built-in Viewer role) connects successfully in
-a **read-only** capacity — it sees live cursors/edits/presence, but every
-state-mutating message (`_STATE_OP_TYPES` via `_handle_relay`, plus
-`node_locked`/`node_unlocked`) is rejected server-side rather than applied.
-
-Root cause (live-session gap): once connected, access was never re-checked,
-so a demotion/removal/superadmin-revocation had no effect on an already-open
-socket until the browser reloaded. The fix broadcasts `permission_changed`
-(org-wide) from the three RBAC mutation paths, and the consumer both reacts
-to that broadcast and re-checks on a periodic backstop timer, refreshing its
-cached permission bitmask in place — closing with 4403 only on a genuine
-loss of ALL access (no membership at all, or the org deactivated).
+Tests for `GraphEditConsumer.connect()` org-membership + flows-access gating,
+and for live-session revocation keeping an already-open socket in sync with
+the connected user's current access (role downgrade, membership removal,
+superadmin revocation, org deactivation).
 
 These tests cover:
 
@@ -39,6 +16,8 @@ connect()-time gating:
    (platform bypass preserved).
 5. Unauthenticated connect is rejected with 4401 + reason.
 6. A bad (non-integer) graph_id is rejected with 4400 + reason.
+6b. A well-formed but nonexistent graph id is rejected with 4404 + reason
+    (distinct code path from 6: `int()` succeeds, the DB lookup fails).
 
 Live-session access changes:
 7. `change_role` downgrading a connected Member to Viewer (loses UPDATE,
@@ -64,6 +43,17 @@ auth prior to this change):
 15. A Member downgraded to Viewer mid-session has their very first write
     after the downgrade rejected — proves the cached bitmask is actually
     refreshed and used, not just checked once at connect time.
+
+Org-wide group membership on connect (in addition to the per-graph
+`graph_edit_{graph_id}` group): the socket also joins `org_{org_id}` on
+connect and leaves it on disconnect, which is what lets org-scoped
+storage-tree broadcasts (upload/mkdir/delete/move/rename/copy — including
+on files attached to no graph at all) reach every open "Add files" dialog
+for the graph's org, not just per-graph attach/detach events.
+16. Connecting joins the org group, and a `graph_files_changed` broadcast
+    sent to that org's group is relayed to the connection.
+17. A broadcast sent to a DIFFERENT org's group does not reach the connection.
+18. Disconnecting discards the connection's org group membership.
 """
 
 import asyncio
@@ -71,6 +61,7 @@ import asyncio
 import pytest
 
 from asgiref.sync import sync_to_async
+from channels.layers import get_channel_layer
 from django.contrib.auth import get_user_model
 
 from tables.graph_collab import graph_state_service as _gss_module
@@ -83,7 +74,12 @@ from tables.services.rbac.organization_management_service import (
 )
 from tables.services.rbac.user_management_service import UserManagementService
 
-from tests.graph_collab.conftest import _make_communicator, _drain_connect
+from tests.graph_collab.conftest import (
+    _make_communicator,
+    _drain_connect,
+    editor_payload,
+    connect_pair,
+)
 
 
 async def _connect_raw(communicator, timeout: float = 1.0) -> dict:
@@ -103,6 +99,27 @@ async def _receive_close(communicator, timeout: float = 1.0) -> dict:
 @pytest.fixture
 def other_org(db):
     return Organization.objects.create(name="Other Organization")
+
+
+@pytest.fixture
+def org(db):
+    return Organization.objects.create(name="org-group-broadcast-test-org")
+
+
+@pytest.fixture
+def isolated_org_graph(db, org):
+    """Deliberately shadows conftest's `org_graph` (which lives in
+    `default_org`): these tests assert cross-org isolation, so the graph
+    must belong to a non-default org."""
+    return Graph.objects.create(name="org-group-broadcast-test-graph", org=org)
+
+
+@pytest.fixture
+def grant_test_user_membership_in_org(db, org, test_user, org_admin_role):
+    """`test_user` is seeded in `default_org` only, so it needs membership in
+    this file's own non-default `org` to pass connect()'s gate. Deliberately
+    not autouse — only the org-group-broadcast tests need it."""
+    OrganizationUser.objects.create(user=test_user, org=org, role=org_admin_role)
 
 
 @pytest.fixture
@@ -147,6 +164,24 @@ def member_member(db, default_org, member_role):
     )
     OrganizationUser.objects.create(user=user, org=default_org, role=member_role)
     return user
+
+
+@pytest.fixture
+def fake_cursor_redis_for_permission_tests(monkeypatch):
+    """Patch RedisService's async client with a shared in-memory fake so the
+    cursor_moved relay test doesn't require a live Redis server. Scoped to
+    this file only — other tests here don't touch the cursor pub/sub path."""
+    import fakeredis.aioredis
+
+    from tables.services import redis_service as _rs_module
+
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(
+        type(_rs_module.RedisService()),
+        "async_redis_client",
+        property(lambda self: fake),
+    )
+    return fake
 
 
 @pytest.mark.asyncio
@@ -224,6 +259,19 @@ async def test_connect_invalid_graph_id_is_rejected(regular_user):
     assert response["type"] == "websocket.close"
     assert response["code"] == 4400
     assert response["reason"] == "Invalid graph id."
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_connect_nonexistent_graph_is_rejected(test_user, make_communicator):
+    """A well-formed integer graph_id for a graph that doesn't exist must be
+    rejected with 4404 — distinct from the non-integer-id 4400 case above."""
+    communicator = make_communicator(999999, test_user)
+    response = await _connect_raw(communicator)
+    assert response["type"] == "websocket.close"
+    assert response["code"] == 4404
+    assert response["reason"] == "Graph not found."
     await communicator.disconnect()
 
 
@@ -347,17 +395,10 @@ async def test_remove_membership_disconnects_live_session(
 async def test_revoke_superadmin_downgrades_sessions_in_multiple_orgs_to_read_only(
     default_org, other_org, viewer_role, superadmin_user
 ):
-    """The is_superadmin flag is global, not per-org — a superadmin can have
-    live collab sessions in several orgs simultaneously. Revoking the flag
-    must re-check every one of them against the target's actual per-org role
-    — not disconnect them outright.
-
-    ``target`` only holds the Viewer role (has flows READ, lacks UPDATE) in
-    both orgs — while superadmin, the platform-wide bypass grants full access
-    regardless; once revoked, the Viewer role alone grants exactly enough to
-    stay connected read-only. Both connections must stay open, and a write
-    attempt on either must be rejected, proving the downgrade is real and not
-    masked by residual superadmin access."""
+    """`is_superadmin` is global, not per-org, so one user can hold live
+    sessions in several orgs at once. Revoking it leaves only the Viewer role
+    in each org, which downgrades both sockets to read-only rather than
+    disconnecting them."""
     target = await sync_to_async(get_user_model().objects.create_superuser)(
         email="second-superadmin@example.com",
         password="TestPass123!",
@@ -397,18 +438,13 @@ async def test_revoke_superadmin_downgrades_sessions_in_multiple_orgs_to_read_on
         assert rights_changed["type"] == "edit_rights_changed"
         assert rights_changed["can_edit"] is False
 
-    editor_payload = {
-        "user_id": target.pk,
-        "display_name": "x",
-        "avatar_url": None,
-    }
     for communicator in (communicator_a, communicator_b):
         await communicator.send_json_to(
             {
                 "type": "node_created",
                 "node": {"temp_id": "n1", "node_name": "Node A"},
                 "list_key": "python_node_list",
-                "editor": editor_payload,
+                "editor": editor_payload(target),
             }
         )
         rejection = await communicator.receive_json_from()
@@ -421,11 +457,12 @@ async def test_revoke_superadmin_downgrades_sessions_in_multiple_orgs_to_read_on
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
-async def test_permission_changed_for_other_user_does_not_disconnect(
+async def test_permission_changed_for_other_user_leaves_socket_untouched(
     org_graph, default_org, member_member, viewer_role, superadmin_user
 ):
     """A permission_changed broadcast naming a DIFFERENT user_id on the same
-    org group must not affect an unrelated connected user's socket."""
+    org group must leave the connected socket completely untouched — no
+    close frame and no edit_rights_changed message."""
     communicator = _make_communicator(org_graph.pk, member_member)
     connected, _ = await communicator.connect()
     assert connected
@@ -493,10 +530,18 @@ async def test_deactivate_organization_disconnects_all_connected_members(
     response_a = await _receive_close(communicator_a)
     assert response_a["type"] == "websocket.close"
     assert response_a["code"] == 4403
+    assert (
+        response_a["reason"]
+        == "Your access to this flow has changed. Please reconnect."
+    )
 
     response_b = await _receive_close(communicator_b)
     assert response_b["type"] == "websocket.close"
     assert response_b["code"] == 4403
+    assert (
+        response_b["reason"]
+        == "Your access to this flow has changed. Please reconnect."
+    )
 
     await communicator_a.disconnect()
     await communicator_b.disconnect()
@@ -505,23 +550,44 @@ async def test_deactivate_organization_disconnects_all_connected_members(
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_deactivate_organization_does_not_disconnect_other_org_members(
-    default_org, other_org, other_org_member
+    default_org, other_org, other_org_member, org_admin_role
 ):
-    """A member of a DIFFERENT, still-active org must be unaffected when some
-    other org gets deactivated — no false-positive disconnect."""
-    graph_in_other_org = await sync_to_async(Graph.objects.create)(
-        name="deactivate-other-org-graph", org=other_org
+    """Members of a DIFFERENT, still-active org must be unaffected when some
+    other org gets deactivated — no false-positive disconnect for any socket
+    in the unrelated org, checked across two separate connections."""
+    graph_a = await sync_to_async(Graph.objects.create)(
+        name="deactivate-other-org-graph-a", org=other_org
     )
-    communicator = _make_communicator(graph_in_other_org.pk, other_org_member)
-    connected, _ = await communicator.connect()
-    assert connected
-    await _drain_connect(communicator)
+    graph_b = await sync_to_async(Graph.objects.create)(
+        name="deactivate-other-org-graph-b", org=other_org
+    )
+
+    second_other_org_member = await sync_to_async(get_user_model().objects.create_user)(
+        email="second-other-org-member@example.com",
+        password="TestPass123!",
+    )
+    await sync_to_async(OrganizationUser.objects.create)(
+        user=second_other_org_member, org=other_org, role=org_admin_role
+    )
+
+    communicator_a = _make_communicator(graph_a.pk, other_org_member)
+    connected_a, _ = await communicator_a.connect()
+    assert connected_a
+    await _drain_connect(communicator_a)
+
+    communicator_b = _make_communicator(graph_b.pk, second_other_org_member)
+    connected_b, _ = await communicator_b.connect()
+    assert connected_b
+    await _drain_connect(communicator_b)
 
     service = OrganizationManagementService()
     await sync_to_async(service.deactivate_organization)(org_id=default_org.id)
 
-    assert await communicator.receive_nothing(timeout=0.3)
-    await communicator.disconnect()
+    assert await communicator_a.receive_nothing(timeout=0.3)
+    assert await communicator_b.receive_nothing(timeout=0.3)
+
+    await communicator_a.disconnect()
+    await communicator_b.disconnect()
 
 
 # ---------------------------------------------------------------------------
@@ -550,11 +616,7 @@ async def test_viewer_state_mutating_op_is_rejected_and_snapshot_unchanged(
             "type": "node_created",
             "node": {"temp_id": "n1", "node_name": "Node A"},
             "list_key": "python_node_list",
-            "editor": {
-                "user_id": viewer_member.pk,
-                "display_name": "x",
-                "avatar_url": None,
-            },
+            "editor": editor_payload(viewer_member),
         }
     )
 
@@ -589,11 +651,7 @@ async def test_viewer_node_locked_is_rejected_and_no_lock_granted(
             "type": "node_locked",
             "node_id": "node-1",
             "field": "label",
-            "editor": {
-                "user_id": viewer_member.pk,
-                "display_name": "x",
-                "avatar_url": None,
-            },
+            "editor": editor_payload(viewer_member),
         }
     )
 
@@ -601,9 +659,7 @@ async def test_viewer_node_locked_is_rejected_and_no_lock_granted(
     assert rejection["type"] == "error"
     assert rejection["code"] == "permission_denied"
 
-    assert (
-        _ls_module.lock_service.get_holder(org_graph.pk, "node-1", "label") is None
-    )
+    assert _ls_module.lock_service.get_holder(org_graph.pk, "node-1", "label") is None
 
     await communicator.disconnect()
 
@@ -616,25 +672,17 @@ async def test_viewer_cursor_moved_still_relays(
     """cursor_moved never mutates state, so it must relay normally regardless
     of permission level — the read-only gate must not overreach into
     presence/cursor traffic."""
-    comm_viewer = _make_communicator(org_graph.pk, viewer_member)
-    comm_member = _make_communicator(org_graph.pk, member_member)
 
-    await comm_viewer.connect()
-    await _drain_connect(comm_viewer)
-    await comm_member.connect()
-    await comm_viewer.receive_json_from()  # user_joined for member_member
-    await _drain_connect(comm_member)
+    comm_viewer, comm_member = await connect_pair(
+        org_graph, viewer_member, member_member
+    )
 
     await comm_viewer.send_json_to(
         {
             "type": "cursor_moved",
             "x": 10.0,
             "y": 20.0,
-            "editor": {
-                "user_id": viewer_member.pk,
-                "display_name": "x",
-                "avatar_url": None,
-            },
+            "editor": editor_payload(viewer_member),
         }
     )
 
@@ -652,24 +700,6 @@ async def test_viewer_cursor_moved_still_relays(
     await comm_member.disconnect()
 
 
-@pytest.fixture
-def fake_cursor_redis_for_permission_tests(monkeypatch):
-    """Patch RedisService's async client with a shared in-memory fake so the
-    cursor_moved relay test doesn't require a live Redis server. Scoped to
-    this file only — other tests here don't touch the cursor pub/sub path."""
-    import fakeredis.aioredis
-
-    from tables.services import redis_service as _rs_module
-
-    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
-    monkeypatch.setattr(
-        type(_rs_module.RedisService()),
-        "async_redis_client",
-        property(lambda self: fake),
-    )
-    return fake
-
-
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 async def test_downgraded_member_first_write_after_downgrade_is_rejected(
@@ -684,19 +714,13 @@ async def test_downgraded_member_first_write_after_downgrade_is_rejected(
     assert connected
     await _drain_connect(communicator)
 
-    editor_payload = {
-        "user_id": member_member.pk,
-        "display_name": "x",
-        "avatar_url": None,
-    }
-
     # Pre-downgrade write succeeds (no rejection observed).
     await communicator.send_json_to(
         {
             "type": "node_created",
             "node": {"temp_id": "n1", "node_name": "Node A"},
             "list_key": "python_node_list",
-            "editor": editor_payload,
+            "editor": editor_payload(member_member),
         }
     )
     assert await communicator.receive_nothing(timeout=0.3)
@@ -720,7 +744,7 @@ async def test_downgraded_member_first_write_after_downgrade_is_rejected(
             "list_key": "python_node_list",
             "changed_fields": ["node_name"],
             "op_id": "first-write-after-downgrade",
-            "editor": editor_payload,
+            "editor": editor_payload(member_member),
         }
     )
     rejection = await communicator.receive_json_from()
@@ -764,19 +788,13 @@ async def test_downgraded_connection_all_three_writes_are_rejected(
     assert rights_changed["type"] == "edit_rights_changed"
     assert rights_changed["can_edit"] is False
 
-    editor_payload = {
-        "user_id": member_member.pk,
-        "display_name": "x",
-        "avatar_url": None,
-    }
-
     for index in range(3):
         await communicator.send_json_to(
             {
                 "type": "node_created",
                 "node": {"temp_id": f"n{index}", "node_name": f"Node {index}"},
                 "list_key": "python_node_list",
-                "editor": editor_payload,
+                "editor": editor_payload(member_member),
             }
         )
         rejection = await communicator.receive_json_from()
@@ -815,3 +833,83 @@ async def test_recheck_with_no_actual_change_sends_no_edit_rights_changed(
 
     assert await communicator.receive_nothing(timeout=0.3)
     await communicator.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# Org-wide group membership: the socket also joins `org_{org_id}` (in
+# addition to the per-graph `graph_edit_{graph_id}` group) on connect, and
+# leaves it on disconnect.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_connect_joins_org_group_and_relays_org_broadcast(
+    org,
+    isolated_org_graph,
+    test_user,
+    grant_test_user_membership_in_org,
+    make_communicator,
+):
+    communicator = make_communicator(isolated_org_graph.pk, test_user)
+    connected, _ = await communicator.connect()
+    assert connected
+    await _drain_connect(communicator)
+
+    channel_layer = get_channel_layer()
+    await channel_layer.group_send(
+        f"org_{org.id}",
+        {"type": "graph_files_changed", "graph_id": None, "editor": None},
+    )
+
+    message = await communicator.receive_json_from()
+    assert message["type"] == "graph_files_changed"
+    assert message["graph_id"] is None
+
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_connect_does_not_receive_other_orgs_broadcast(
+    org,
+    other_org,
+    isolated_org_graph,
+    test_user,
+    grant_test_user_membership_in_org,
+    make_communicator,
+):
+    communicator = make_communicator(isolated_org_graph.pk, test_user)
+    connected, _ = await communicator.connect()
+    assert connected
+    await _drain_connect(communicator)
+
+    channel_layer = get_channel_layer()
+    await channel_layer.group_send(
+        f"org_{other_org.id}",
+        {"type": "graph_files_changed", "graph_id": None, "editor": None},
+    )
+
+    assert await communicator.receive_nothing(timeout=0.3)
+
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_disconnect_discards_org_group_membership(
+    org,
+    isolated_org_graph,
+    test_user,
+    grant_test_user_membership_in_org,
+    make_communicator,
+):
+    communicator = make_communicator(isolated_org_graph.pk, test_user)
+    connected, _ = await communicator.connect()
+    assert connected
+    await _drain_connect(communicator)
+    await communicator.disconnect()
+
+    channel_layer = get_channel_layer()
+    org_group_channels = channel_layer.groups.get(f"org_{org.id}", {})
+    assert org_group_channels == {}
