@@ -66,10 +66,11 @@ export class ConsoleService implements OnDestroy {
         this.connectionError$.complete();
     }
 
-    private connectToRealtime(): void {
+    private connectToRealtime(connectionKey: string): void {
         this.client = new RealtimeClient({
             url: this.configService.realtimeApiUrl,
             dangerouslyAllowAPIKeyInBrowser: false,
+            connectionKey,
         });
         this.setupClient();
     }
@@ -131,24 +132,15 @@ export class ConsoleService implements OnDestroy {
                 headers: this.headers,
             })
             .pipe(
-                tap((response) => {
-                    if (response.connection_key) {
-                        localStorage.setItem('connectionKey', response.connection_key);
-                    } else {
-                        throw new Error('connection_key is missing in the response');
-                    }
-                }),
                 delay(200),
                 takeUntilDestroyed(this.destroyRef),
 
-                switchMap(() => {
-                    const storedKey: string | null = localStorage.getItem('connectionKey');
-
-                    if (!storedKey) {
-                        throw new Error('No connectionKey found in localStorage');
+                switchMap((response) => {
+                    if (!response.connection_key) {
+                        throw new Error('connection_key is missing in the response');
                     }
 
-                    this.connectToRealtime();
+                    this.connectToRealtime(response.connection_key);
                     this.updateItems();
 
                     // Begin a sequence of initialization steps
