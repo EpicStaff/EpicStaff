@@ -1,6 +1,8 @@
 import pytest
 from rest_framework.test import APIClient
 
+from tables.models.label_models import Label
+from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 
@@ -140,3 +142,48 @@ def test_built_in_tool_still_cannot_be_deleted(client_a, org_a, built_in_python_
     )
     assert resp.status_code in (400, 403, 404)
     assert PythonCodeTool.objects.filter(id=built_in_python_code_tool.id).exists()
+
+
+# ---- EST-3782: copy must carry over tool-scope labels ----
+
+
+@pytest.mark.django_db
+def test_copy_of_python_code_tool_inherits_labels(client_a, org_a):
+    tool = _make_tool(org=org_a, built_in=False, name="LabeledPyTool")
+    label = Label.objects.create(name="prod", scope=Label.Scope.TOOL, org=org_a)
+    tool.labels.set([label])
+
+    resp = client_a.post(f"/api/python-code-tool/{tool.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert list(copy.labels.values_list("id", flat=True)) == [label.id]
+
+
+@pytest.mark.django_db
+def test_copy_of_python_code_tool_without_labels_has_no_labels(client_a, org_a):
+    tool = _make_tool(org=org_a, built_in=False, name="UnlabeledPyTool")
+
+    resp = client_a.post(f"/api/python-code-tool/{tool.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert copy.labels.count() == 0
+
+
+@pytest.mark.django_db
+def test_copy_of_mcp_tool_inherits_labels(client_a, org_a):
+    tool = McpTool.objects.create(
+        name="McpToolWithLabel",
+        transport="https://example.com/mcp",
+        tool_name="some_tool",
+        org=org_a,
+    )
+    label = Label.objects.create(name="staging", scope=Label.Scope.TOOL, org=org_a)
+    tool.labels.set([label])
+
+    resp = client_a.post(f"/api/mcp-tools/{tool.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+
+    copy = McpTool.objects.get(id=resp.data["id"])
+    assert list(copy.labels.values_list("id", flat=True)) == [label.id]

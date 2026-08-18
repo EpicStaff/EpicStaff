@@ -1,4 +1,5 @@
 from tables.import_export.utils import ensure_unique_identifier
+from tables.models import Label
 from tables.models.mcp_models import McpTool
 from tables.services.copy_services.base_copy_service import BaseCopyService
 
@@ -6,7 +7,7 @@ from tables.services.copy_services.base_copy_service import BaseCopyService
 class McpToolCopyService(BaseCopyService):
     """Copy service for McpTool entities.
 
-    Duplicates all scalar fields. No nested objects to clone.
+    Duplicates all scalar fields and the tool-scope labels M2M.
     """
 
     def copy(
@@ -18,7 +19,7 @@ class McpToolCopyService(BaseCopyService):
             existing_names=existing_names,
         )
 
-        return McpTool.objects.create(
+        new_tool = McpTool.objects.create(
             name=new_name,
             transport=tool.transport,
             tool_name=tool.tool_name,
@@ -27,3 +28,5 @@ class McpToolCopyService(BaseCopyService):
             init_timeout=tool.init_timeout,
             org_id=org_id if org_id is not None else tool.org_id,
         )
+        new_tool.labels.set(tool.labels.filter(scope=Label.Scope.TOOL))
+        return new_tool
