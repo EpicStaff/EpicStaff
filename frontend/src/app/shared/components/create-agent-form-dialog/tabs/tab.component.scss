@@ -30,6 +30,19 @@
     &:last-child {
         margin-bottom: 0;
     }
+
+    &--narrow {
+        width: 258px;
+        flex: none;
+    }
+}
+
+// Sits inside a .form-group-container row — even when it's the row's only
+// (and therefore also "last") child, it isn't the last field in the section,
+// so it must keep its bottom margin regardless of the :last-child reset above.
+.form-group.form-group--narrow,
+.form-group.form-group--keep-margin {
+    margin-bottom: 1rem;
 }
 
 .lock-notice {
@@ -85,6 +98,47 @@
 @keyframes rag-tab-spin {
     to {
         transform: rotate(360deg);
+    }
+}
+
+.max-context-tokens-anchor {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+
+    app-input-number {
+        width: 258px;
+        flex: none;
+    }
+
+    &__apply {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 42px;
+        height: 42px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        background: var(--accent-color);
+        color: var(--color-text-primary);
+        cursor: pointer;
+        transition:
+            background-color 0.2s,
+            color 0.2s;
+
+        &:hover:not(:disabled) {
+            background: var(--accent-color-hover);
+        }
+
+        &:active:not(:disabled) {
+            background: var(--accent-color-active);
+        }
+
+        &:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
     }
 }
 

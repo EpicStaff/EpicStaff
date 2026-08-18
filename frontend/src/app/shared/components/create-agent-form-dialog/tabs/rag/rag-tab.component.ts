@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
     DualSliderComponent,
@@ -42,6 +43,7 @@ import {
     GraphSearchMethod,
     SuggestResponse,
 } from '../../../../models';
+import { TooltipComponent } from '../../../tooltip/tooltip.component';
 
 type SuggestKey = GraphSearchMethod | 'naive';
 
@@ -51,6 +53,41 @@ const PROMPT_FIELDS: Record<SuggestKey, string[]> = {
     local: ['prompt'],
     global: ['map_prompt', 'reduce_prompt', 'knowledge_prompt'],
     drift: ['prompt', 'reduce_prompt'],
+};
+
+// Fields that stay editable while "Use Suggested Params" is on — editing them
+// doesn't turn the toggle off. Instead they anchor a recompute: the user can
+// dial in a target value, then re-request suggestions constrained to it via
+// user_custom_params (see onApplyMaxContextTokens).
+type AnchorKey = 'basic' | 'local' | 'global' | 'drift';
+
+// Drift has no max_context_tokens field of its own — data_max_tokens plays
+// that role in its UI. Whatever the form control is called, the backend's
+// anchor key in user_custom_params is always literally "max_context_tokens".
+const ANCHOR_FIELD_NAME: Record<AnchorKey, string> = {
+    basic: 'max_context_tokens',
+    local: 'max_context_tokens',
+    global: 'max_context_tokens',
+    drift: 'data_max_tokens',
+};
+
+// Drift's 4 advanced token caps (reduce_*, local_search_llm_max_gen_*) are
+// never recalculated from the anchor — the backend only clamps them as a
+// ceiling if they're ever sent above budget. They stay editable at all times,
+// capped in the UI by the live Data Max Tokens value, so they're exempt from
+// the toggle-off diff for the same reason the anchor field itself is.
+const DRIFT_ALWAYS_EDITABLE_FIELDS = [
+    'reduce_max_tokens',
+    'reduce_max_completion_tokens',
+    'local_search_llm_max_gen_tokens',
+    'local_search_llm_max_gen_completion_tokens',
+];
+
+const ANCHOR_FIELDS: Partial<Record<SuggestKey, string[]>> = {
+    basic: [ANCHOR_FIELD_NAME.basic],
+    local: [ANCHOR_FIELD_NAME.local],
+    global: [ANCHOR_FIELD_NAME.global],
+    drift: [ANCHOR_FIELD_NAME.drift, ...DRIFT_ALWAYS_EDITABLE_FIELDS],
 };
 
 export const GRAPH_BASIC_DEFAULTS: GraphBasicSearchConfig = {
@@ -114,6 +151,7 @@ export const GRAPH_DRIFT_DEFAULTS: GraphDriftSearchConfig = {
     styleUrls: ['../tab.component.scss'],
     imports: [
         ReactiveFormsModule,
+        MatTooltipModule,
         NgTemplateOutlet,
         KnowledgeSelectorComponent,
         RagSelectorComponent,
@@ -126,6 +164,7 @@ export const GRAPH_DRIFT_DEFAULTS: GraphDriftSearchConfig = {
         ToggleSwitchComponent,
         AppSvgIconComponent,
         SuggestedValueComponent,
+        TooltipComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -164,7 +203,18 @@ export class RagTabComponent implements OnInit {
     tokenLimitsLoading = signal<boolean>(false);
     tokenLimitsError = signal<string | null>(null);
     effectiveLlmContextWindow = signal<number | null>(null);
-    safeTokenBudget = signal<number | null>(null);
+    // safe_token_budget is default_budget from the backend — it depends on
+    // whatever max_context_tokens anchor was last submitted for THAT specific
+    // method, so unlike effectiveLlmContextWindow (a true LLM-level constant)
+    // it must be tracked per method. A single shared signal here previously
+    // leaked one method's custom budget into every other method's warning/max.
+    private safeTokenBudgetByKey = signal<Partial<Record<SuggestKey, number>>>({});
+
+    safeTokenBudget = computed<number | null>(() => this.safeTokenBudgetByKey()[this.activeKey()] ?? null);
+
+    private setSafeTokenBudget(key: SuggestKey, value: number): void {
+        this.safeTokenBudgetByKey.update((map) => ({ ...map, [key]: value }));
+    }
 
     searchParamsReady = computed<boolean>(
         () =>
@@ -184,8 +234,10 @@ export class RagTabComponent implements OnInit {
         return ctx != null ? `Exceeds this LLM's context window (${ctx.toLocaleString()} tokens).` : '';
     });
 
-    // Cache token limits per llm_config_id for the dialog's lifetime.
-    private tokenLimitsCache = new Map<number, { ctx: number; safe: number }>();
+    // Cache the LLM's context window per llm_config_id — this is a true LLM-level
+    // constant, safe to share across methods. safe_token_budget is NOT cached here
+    // (see safeTokenBudgetByKey above) since it depends on the per-method anchor.
+    private tokenLimitsCache = new Map<number, { ctx: number }>();
     // Cache full suggest responses per (collection, llm, ragType, method) so opting
     // into "Use Suggested Params" right after the background metadata fetch already
     // ran doesn't fire a second, identical request to the same endpoint.
@@ -320,6 +372,7 @@ export class RagTabComponent implements OnInit {
                 });
 
             this.wireDynamicCommunityToggle();
+            this.wireDriftDataMaxTokensCap();
         } else {
             this.activeGraphMethodSignal.set(null);
         }
@@ -359,7 +412,7 @@ export class RagTabComponent implements OnInit {
             const sub = clone[method];
             if (!sub || typeof sub !== 'object') continue;
             const subClone: Record<string, unknown> = { ...(sub as Record<string, unknown>) };
-            for (const field of PROMPT_FIELDS[method]) {
+            for (const field of [...PROMPT_FIELDS[method], ...(ANCHOR_FIELDS[method] ?? [])]) {
                 delete subClone[field];
             }
             clone[method] = subClone;
@@ -540,6 +593,20 @@ export class RagTabComponent implements OnInit {
         });
     }
 
+    // Reduce Max Tokens / Reduce Max Completion Tokens / Local LLM Max Gen (Completion)
+    // Tokens are capped by the live Data Max Tokens value (see refreshTokenValidators).
+    // Their real Validators.max only gets recomputed on suggest responses (applyResponse
+    // calls refreshTokenValidators) — this covers the user typing into Data Max Tokens
+    // directly, without ever touching "Use Suggested Params".
+    private wireDriftDataMaxTokensCap(): void {
+        const driftGroup = this.searchConfigsFormGroup?.get('drift') as FormGroup | null;
+        const dataMaxTokensControl = driftGroup?.get('data_max_tokens');
+        if (!dataMaxTokensControl) return;
+        dataMaxTokensControl.valueChanges
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.refreshTokenValidators());
+    }
+
     private wireDynamicCommunityToggle(): void {
         const globalGroup = this.searchConfigsFormGroup?.get('global') as FormGroup | null;
         if (!globalGroup) return;
@@ -625,6 +692,96 @@ export class RagTabComponent implements OnInit {
         return (this.searchConfigsFormGroup?.get('drift') as FormGroup | null) ?? null;
     }
 
+    get driftDataMaxTokensCapMessage(): string {
+        const cap = this.driftGroup?.get('data_max_tokens')?.value;
+        return typeof cap === 'number' ? `Can't exceed Data Max Tokens (${cap.toLocaleString()}).` : '';
+    }
+
+    get anchorFieldLabel(): string {
+        return this.activeGraphMethod === 'drift' ? 'Data Max Tokens' : 'Max Context Tokens';
+    }
+
+    get anchorFieldTooltip(): string {
+        return this.activeGraphMethod === 'drift'
+            ? 'Token limit for the data stage.'
+            : 'The maximum context size to create, in tokens';
+    }
+
+    get activeMaxContextTokensControl(): FormControl | null {
+        const key = this.activeGraphMethod;
+        if (!this.isAnchorKey(key)) return null;
+        const group =
+            key === 'basic'
+                ? this.basicGroup
+                : key === 'local'
+                  ? this.localGroup
+                  : key === 'global'
+                    ? this.globalGroup
+                    : this.driftGroup;
+        return (group?.get(ANCHOR_FIELD_NAME[key]) as FormControl | null) ?? null;
+    }
+
+    // Last suggested anchor-field value applied per method — the "Apply" button
+    // next to the field is only enabled once the live value drifts from this.
+    private lastSuggestedMaxContextTokens = new Map<AnchorKey, number>();
+
+    private isAnchorKey(key: SuggestKey | null): key is AnchorKey {
+        return key === 'basic' || key === 'local' || key === 'global' || key === 'drift';
+    }
+
+    maxContextTokensDirty(): boolean {
+        const key = this.activeGraphMethod;
+        if (!this.isAnchorKey(key)) return false;
+        const current = this.activeMaxContextTokensControl?.value;
+        const baseline = this.lastSuggestedMaxContextTokens.get(key);
+        return baseline != null && current != null && current !== baseline;
+    }
+
+    onApplyMaxContextTokens(): void {
+        const key = this.activeGraphMethod;
+        if (!this.isAnchorKey(key)) return;
+        if (this.suggestingFor() === key) return;
+
+        const collectionId = this.collectionId;
+        const llmConfigId = this.llmConfigId();
+        const value = this.activeMaxContextTokensControl?.value;
+        if (collectionId == null || llmConfigId == null || value == null) return;
+
+        this.suggestingFor.set(key);
+        this.suggestErrorFor.set(null);
+
+        // A monotonic token, not just the suggestingFor key, guards against a
+        // stale response winning a race: switching away-and-back to the same
+        // method (or firing Apply twice) reuses the same key, so an in-flight
+        // earlier request could otherwise still land after a newer one.
+        const token = ++this.fetchToken;
+
+        this.agentsService
+            .suggestGraphSearchParams({
+                knowledge_collection_id: collectionId,
+                llm_config_id: llmConfigId,
+                search_method: key,
+                user_custom_params: { max_context_tokens: value },
+            })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (response) => {
+                    if (token !== this.fetchToken || this.suggestingFor() !== key) return;
+                    // Deliberately NOT written to suggestResponseCache — that cache is keyed
+                    // only by (collection, llm, ragType, method), with no room for the custom
+                    // anchor value. Caching a customized response there would make a later
+                    // plain toggle-off/on for this method silently replay this override
+                    // instead of fetching the neutral default suggestion.
+                    this.applyResponse(key, response, llmConfigId);
+                },
+                error: () => {
+                    if (token !== this.fetchToken || this.suggestingFor() !== key) return;
+                    this.suggestingFor.set(null);
+                    this.suggestErrorFor.set(key);
+                },
+            });
+    }
+
     canToggleSuggested(): boolean {
         if (this.llmConfigId() == null) return false;
         if (this.collectionId == null) return false;
@@ -658,12 +815,16 @@ export class RagTabComponent implements OnInit {
         const cacheKey = this.metadataKeyFor(key);
         const cachedResponse = cacheKey ? this.suggestResponseCache.get(cacheKey) : undefined;
         if (cachedResponse) {
-            this.applyResponse(key, cachedResponse);
+            this.applyResponse(key, cachedResponse, llmConfigId);
             return;
         }
 
         this.suggestingFor.set(key);
         this.suggestErrorFor.set(null);
+
+        // See onApplyMaxContextTokens for why a request token (not just the
+        // suggestingFor key) is needed to reject a stale response.
+        const token = ++this.fetchToken;
 
         const request$ =
             key === 'naive'
@@ -679,14 +840,15 @@ export class RagTabComponent implements OnInit {
 
         request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
             next: (response) => {
-                // A newer fetchAndApply call (for a different key) may have
-                // already overwritten suggestingFor — ignore this stale response
-                // so it can't stomp on a different, currently-active request.
-                if (this.suggestingFor() !== key) return;
-                this.applyResponse(key, response);
+                // A newer fetchAndApply call (for a different key, or a repeat of
+                // this same key) may have already overwritten suggestingFor/token —
+                // ignore this stale response so it can't stomp on a currently-active
+                // or already-superseded request.
+                if (token !== this.fetchToken || this.suggestingFor() !== key) return;
+                this.applyResponse(key, response, llmConfigId);
             },
             error: () => {
-                if (this.suggestingFor() !== key) return;
+                if (token !== this.fetchToken || this.suggestingFor() !== key) return;
                 this.suggestErrorFor.set(key);
                 this.suggestingFor.set(null);
                 this.useSuggestedParams.set(false);
@@ -694,7 +856,7 @@ export class RagTabComponent implements OnInit {
         });
     }
 
-    private applyResponse(key: SuggestKey, response: SuggestResponse): void {
+    private applyResponse(key: SuggestKey, response: SuggestResponse, requestLlmConfigId: number | null): void {
         const target =
             key === 'naive' ? this.searchConfigsFormGroup : (this.searchConfigsFormGroup?.get(key) as FormGroup | null);
         if (!target) {
@@ -706,11 +868,40 @@ export class RagTabComponent implements OnInit {
         for (const field of PROMPT_FIELDS[key]) {
             delete params[field];
         }
+        if (key === 'drift') {
+            // These stay purely user-driven at all times (see DRIFT_ALWAYS_EDITABLE_FIELDS) —
+            // the backend always returns them as null since they're never derived from the
+            // anchor, so patching them here would silently wipe whatever the user typed on
+            // every recompute.
+            for (const field of DRIFT_ALWAYS_EDITABLE_FIELDS) {
+                delete params[field];
+            }
+        }
         target.patchValue(params, { emitEvent: false });
         target.markAsPristine();
+        if (this.isAnchorKey(key)) {
+            const anchorValue = params[ANCHOR_FIELD_NAME[key]];
+            if (typeof anchorValue === 'number') this.lastSuggestedMaxContextTokens.set(key, anchorValue);
+        }
+        // safe_token_budget reflects default_budget, which shifts with whatever
+        // max_context_tokens anchor was just submitted — refresh it (and the
+        // llm-keyed cache) so other fields' warningMax/tokenErrorMsg stay in
+        // sync with the budget this very response was computed against.
+        this.effectiveLlmContextWindow.set(response.effective_llm_context_window);
+        this.setSafeTokenBudget(key, response.safe_token_budget);
+        // Cache under the llmConfigId the REQUEST was made for, not whatever
+        // this.llmConfigId() reads now — if the user switched LLMs while this
+        // request was in flight, those would differ and this response's window
+        // would otherwise poison the cache entry for the new LLM.
+        if (requestLlmConfigId != null) {
+            this.tokenLimitsCache.set(requestLlmConfigId, { ctx: response.effective_llm_context_window });
+        }
         if (key === 'global') {
             this.syncDynamicCommunityDependents(!!this.globalGroup?.get('dynamic_community_selection')?.value);
         }
+        // Drift's always-editable fields are capped by the live data_max_tokens
+        // value (see refreshTokenValidators) — that value just changed above.
+        this.refreshTokenValidators();
         // The patch above never emits, so the next value-change event (even a
         // harmless prompt edit) would otherwise diff against a pre-patch
         // baseline and see this patch's own field changes as a user edit.
@@ -746,13 +937,15 @@ export class RagTabComponent implements OnInit {
         if (ragType === 'graph' && !this.activeGraphMethod) return;
 
         const method = (this.activeGraphMethodSignal() ?? 'basic') as GraphSearchMethod;
-        const key = this.metadataKeyFor(ragType === 'graph' ? method : 'naive');
+        const suggestKey: SuggestKey = ragType === 'graph' ? method : 'naive';
+        const key = this.metadataKeyFor(suggestKey);
         if (!key) return;
 
         const cached = this.tokenLimitsCache.get(llmConfigId);
+        const cachedResponse = this.suggestResponseCache.get(key);
         if (cached) {
             this.effectiveLlmContextWindow.set(cached.ctx);
-            this.safeTokenBudget.set(cached.safe);
+            if (cachedResponse) this.setSafeTokenBudget(suggestKey, cachedResponse.safe_token_budget);
             this.tokenLimitsLoading.set(false);
             this.tokenLimitsError.set(null);
             this.refreshTokenValidators();
@@ -782,13 +975,10 @@ export class RagTabComponent implements OnInit {
         request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
             next: (response) => {
                 if (token !== this.fetchToken) return;
-                this.tokenLimitsCache.set(llmConfigId, {
-                    ctx: response.effective_llm_context_window,
-                    safe: response.safe_token_budget,
-                });
+                this.tokenLimitsCache.set(llmConfigId, { ctx: response.effective_llm_context_window });
                 this.suggestResponseCache.set(key, response);
                 this.effectiveLlmContextWindow.set(response.effective_llm_context_window);
-                this.safeTokenBudget.set(response.safe_token_budget);
+                this.setSafeTokenBudget(suggestKey, response.safe_token_budget);
                 this.tokenLimitsLoading.set(false);
                 this.tokenLimitsError.set(null);
                 if (ragType === 'graph' && response.recommended_search_method) {
@@ -812,7 +1002,10 @@ export class RagTabComponent implements OnInit {
         const group = this.searchConfigsFormGroup;
         if (ctx == null || !group) return;
 
-        const tokenFieldsByMethod: Record<string, { name: string; min: number; required: boolean }[]> = {
+        const tokenFieldsByMethod: Record<
+            string,
+            { name: string; min: number; required: boolean; cappedByDataMaxTokens?: boolean }[]
+        > = {
             basic: [{ name: 'max_context_tokens', min: 100, required: true }],
             local: [{ name: 'max_context_tokens', min: 100, required: true }],
             global: [
@@ -823,10 +1016,15 @@ export class RagTabComponent implements OnInit {
                 { name: 'data_max_tokens', min: 100, required: true },
                 { name: 'primer_llm_max_tokens', min: 100, required: true },
                 { name: 'local_search_max_data_tokens', min: 100, required: true },
-                { name: 'reduce_max_tokens', min: 1, required: false },
-                { name: 'reduce_max_completion_tokens', min: 1, required: false },
-                { name: 'local_search_llm_max_gen_tokens', min: 1, required: false },
-                { name: 'local_search_llm_max_gen_completion_tokens', min: 1, required: false },
+                { name: 'reduce_max_tokens', min: 1, required: false, cappedByDataMaxTokens: true },
+                { name: 'reduce_max_completion_tokens', min: 1, required: false, cappedByDataMaxTokens: true },
+                { name: 'local_search_llm_max_gen_tokens', min: 1, required: false, cappedByDataMaxTokens: true },
+                {
+                    name: 'local_search_llm_max_gen_completion_tokens',
+                    min: 1,
+                    required: false,
+                    cappedByDataMaxTokens: true,
+                },
             ],
         };
 
@@ -836,7 +1034,12 @@ export class RagTabComponent implements OnInit {
             for (const field of tokenFieldsByMethod[method]) {
                 const ctrl = methodGroup.get(field.name);
                 if (!ctrl) continue;
-                const validators = [Validators.min(field.min), Validators.max(ctx)];
+                // These are never derived from the anchor — the UI caps them to
+                // Data Max Tokens (see driftDataMaxTokensCapMessage), so the real
+                // validator must match that, not the LLM's full context window.
+                const dataMaxTokens = field.cappedByDataMaxTokens ? methodGroup.get('data_max_tokens')?.value : null;
+                const max = typeof dataMaxTokens === 'number' ? Math.min(ctx, dataMaxTokens) : ctx;
+                const validators = [Validators.min(field.min), Validators.max(max)];
                 if (field.required) validators.unshift(Validators.required);
                 ctrl.setValidators(validators);
                 ctrl.updateValueAndValidity({ emitEvent: false });

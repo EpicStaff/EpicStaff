@@ -132,6 +132,43 @@
 
                         <ng-container *ngTemplateOutlet="suggestedToggle" />
 
+                        @if (activeMaxContextTokensControl; as anchorControl) {
+                            <div class="form-group">
+                                <app-tooltip
+                                    [label]="anchorFieldLabel"
+                                    [tooltipText]="anchorFieldTooltip"
+                                />
+                                <div class="max-context-tokens-anchor">
+                                    <app-input-number
+                                        [formControl]="anchorControl"
+                                        [alwaysShowSteps]="true"
+                                        [min]="100"
+                                        [max]="effectiveLlmContextWindow() ?? 100000"
+                                        [warningMax]="safeTokenBudget()"
+                                        [warningMessage]="tokenWarningMsg()"
+                                        [errorMessage]="tokenErrorMsg()"
+                                    />
+                                    @if (useSuggestedParams()) {
+                                        <button
+                                            type="button"
+                                            class="max-context-tokens-anchor__apply"
+                                            [disabled]="
+                                                !maxContextTokensDirty() || suggestingFor() === activeGraphMethod
+                                            "
+                                            matTooltip="Recalculate suggested values for this token budget"
+                                            matTooltipPosition="above"
+                                            (click)="onApplyMaxContextTokens()"
+                                        >
+                                            <app-svg-icon
+                                                icon="apply-check"
+                                                size="0.65rem"
+                                            />
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+
                         @switch (searchConfigsFormGroup.get('search_method')?.value) {
                             @case ('basic') {
                                 <div formGroupName="basic">
@@ -144,7 +181,7 @@
                                         />
                                     </div>
                                     <div class="form-group-container">
-                                        <div class="form-group">
+                                        <div class="form-group form-group--narrow">
                                             @if (useSuggestedParams()) {
                                                 <app-suggested-value
                                                     label="K"
@@ -159,27 +196,6 @@
                                                     [alwaysShowSteps]="true"
                                                     [min]="1"
                                                     [max]="100"
-                                                />
-                                            }
-                                        </div>
-                                        <div class="form-group">
-                                            @if (useSuggestedParams()) {
-                                                <app-suggested-value
-                                                    label="Max Context Tokens"
-                                                    tooltipText="The maximum context size to create, in tokens"
-                                                    [value]="basicGroup?.get('max_context_tokens')?.value"
-                                                />
-                                            } @else {
-                                                <app-input-number
-                                                    formControlName="max_context_tokens"
-                                                    label="Max Context Tokens"
-                                                    tooltipText="The maximum context size to create, in tokens"
-                                                    [alwaysShowSteps]="true"
-                                                    [min]="100"
-                                                    [max]="effectiveLlmContextWindow() ?? 100000"
-                                                    [warningMax]="safeTokenBudget()"
-                                                    [warningMessage]="tokenWarningMsg()"
-                                                    [errorMessage]="tokenErrorMsg()"
                                                 />
                                             }
                                         </div>
@@ -217,7 +233,7 @@
                                     }
 
                                     <div class="form-group-container">
-                                        <div class="form-group">
+                                        <div class="form-group form-group--narrow">
                                             @if (useSuggestedParams()) {
                                                 <app-suggested-value
                                                     label="Conversation History max Turns"
@@ -232,27 +248,6 @@
                                                     [alwaysShowSteps]="true"
                                                     [min]="1"
                                                     [max]="50"
-                                                />
-                                            }
-                                        </div>
-                                        <div class="form-group">
-                                            @if (useSuggestedParams()) {
-                                                <app-suggested-value
-                                                    label="Max Context Tokens"
-                                                    tooltipText="The maximum tokens to use building the request context"
-                                                    [value]="localGroup?.get('max_context_tokens')?.value"
-                                                />
-                                            } @else {
-                                                <app-input-number
-                                                    formControlName="max_context_tokens"
-                                                    label="Max Context Tokens"
-                                                    tooltipText="The maximum tokens to use building the request context"
-                                                    [alwaysShowSteps]="true"
-                                                    [min]="100"
-                                                    [max]="effectiveLlmContextWindow() ?? 100000"
-                                                    [warningMax]="safeTokenBudget()"
-                                                    [warningMessage]="tokenWarningMsg()"
-                                                    [errorMessage]="tokenErrorMsg()"
                                                 />
                                             }
                                         </div>
@@ -318,28 +313,7 @@
                                     </div>
 
                                     <div class="form-group-container">
-                                        <div class="form-group">
-                                            @if (useSuggestedParams()) {
-                                                <app-suggested-value
-                                                    label="Max Context Tokens"
-                                                    tooltipText="Maximum context size (tokens)"
-                                                    [value]="globalGroup?.get('max_context_tokens')?.value"
-                                                />
-                                            } @else {
-                                                <app-input-number
-                                                    formControlName="max_context_tokens"
-                                                    label="Max Context Tokens"
-                                                    tooltipText="Maximum context size (tokens)"
-                                                    [alwaysShowSteps]="true"
-                                                    [min]="100"
-                                                    [max]="effectiveLlmContextWindow() ?? 100000"
-                                                    [warningMax]="safeTokenBudget()"
-                                                    [warningMessage]="tokenWarningMsg()"
-                                                    [errorMessage]="tokenErrorMsg()"
-                                                />
-                                            }
-                                        </div>
-                                        <div class="form-group">
+                                        <div class="form-group form-group--keep-margin">
                                             <app-toggle-switch
                                                 formControlName="dynamic_community_selection"
                                                 label="Dynamic Community Selection"
@@ -601,28 +575,7 @@
                                         <div class="advanced-settings__content-wrapper">
                                             <div class="advanced-settings__content">
                                                 <div class="form-group-container">
-                                                    <div class="form-group">
-                                                        @if (useSuggestedParams()) {
-                                                            <app-suggested-value
-                                                                label="Data Max Tokens"
-                                                                tooltipText="Token limit for the data stage."
-                                                                [value]="driftGroup?.get('data_max_tokens')?.value"
-                                                            />
-                                                        } @else {
-                                                            <app-input-number
-                                                                formControlName="data_max_tokens"
-                                                                label="Data Max Tokens"
-                                                                tooltipText="Token limit for the data stage."
-                                                                [alwaysShowSteps]="true"
-                                                                [min]="100"
-                                                                [max]="effectiveLlmContextWindow() ?? 100000"
-                                                                [warningMax]="safeTokenBudget()"
-                                                                [warningMessage]="tokenWarningMsg()"
-                                                                [errorMessage]="tokenErrorMsg()"
-                                                            />
-                                                        }
-                                                    </div>
-                                                    <div class="form-group">
+                                                    <div class="form-group form-group--narrow">
                                                         @if (useSuggestedParams()) {
                                                             <app-suggested-value
                                                                 label="Primer LLM Max Tokens"
@@ -822,103 +775,51 @@
 
                                                 <div class="form-group-container">
                                                     <div class="form-group">
-                                                        @if (useSuggestedParams()) {
-                                                            <app-suggested-value
-                                                                label="Reduce Max Tokens"
-                                                                tooltipText="Reduce-answer token cap. Leave empty for no limit."
-                                                                [value]="
-                                                                    driftGroup?.get('reduce_max_tokens')?.value ?? '—'
-                                                                "
-                                                            />
-                                                        } @else {
-                                                            <app-input-number
-                                                                formControlName="reduce_max_tokens"
-                                                                label="Reduce Max Tokens"
-                                                                tooltipText="Reduce-answer token cap. Leave empty for no limit."
-                                                                [alwaysShowSteps]="true"
-                                                                [min]="1"
-                                                                [max]="effectiveLlmContextWindow() ?? 100000"
-                                                                [warningMax]="safeTokenBudget()"
-                                                                [warningMessage]="tokenWarningMsg()"
-                                                                [errorMessage]="tokenErrorMsg()"
-                                                            />
-                                                        }
+                                                        <app-input-number
+                                                            formControlName="reduce_max_tokens"
+                                                            label="Reduce Max Tokens"
+                                                            tooltipText="Reduce-answer token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            [alwaysShowSteps]="true"
+                                                            [min]="1"
+                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
+                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                        />
                                                     </div>
                                                     <div class="form-group">
-                                                        @if (useSuggestedParams()) {
-                                                            <app-suggested-value
-                                                                label="Reduce Max Completion Tokens"
-                                                                tooltipText="Reduce completion token cap. Leave empty for no limit."
-                                                                [value]="
-                                                                    driftGroup?.get('reduce_max_completion_tokens')
-                                                                        ?.value ?? '—'
-                                                                "
-                                                            />
-                                                        } @else {
-                                                            <app-input-number
-                                                                formControlName="reduce_max_completion_tokens"
-                                                                label="Reduce Max Completion Tokens"
-                                                                tooltipText="Reduce completion token cap. Leave empty for no limit."
-                                                                [alwaysShowSteps]="true"
-                                                                [min]="1"
-                                                                [max]="effectiveLlmContextWindow() ?? 100000"
-                                                                [warningMax]="safeTokenBudget()"
-                                                                [warningMessage]="tokenWarningMsg()"
-                                                                [errorMessage]="tokenErrorMsg()"
-                                                            />
-                                                        }
+                                                        <app-input-number
+                                                            formControlName="reduce_max_completion_tokens"
+                                                            label="Reduce Max Completion Tokens"
+                                                            tooltipText="Reduce completion token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            [alwaysShowSteps]="true"
+                                                            [min]="1"
+                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
+                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                        />
                                                     </div>
                                                 </div>
 
                                                 <div class="form-group-container">
                                                     <div class="form-group">
-                                                        @if (useSuggestedParams()) {
-                                                            <app-suggested-value
-                                                                label="Local LLM Max Gen Tokens"
-                                                                tooltipText="Local LLM-answer token cap. Leave empty for no limit."
-                                                                [value]="
-                                                                    driftGroup?.get('local_search_llm_max_gen_tokens')
-                                                                        ?.value ?? '—'
-                                                                "
-                                                            />
-                                                        } @else {
-                                                            <app-input-number
-                                                                formControlName="local_search_llm_max_gen_tokens"
-                                                                label="Local LLM Max Gen Tokens"
-                                                                tooltipText="Local LLM-answer token cap. Leave empty for no limit."
-                                                                [alwaysShowSteps]="true"
-                                                                [min]="1"
-                                                                [max]="effectiveLlmContextWindow() ?? 100000"
-                                                                [warningMax]="safeTokenBudget()"
-                                                                [warningMessage]="tokenWarningMsg()"
-                                                                [errorMessage]="tokenErrorMsg()"
-                                                            />
-                                                        }
+                                                        <app-input-number
+                                                            formControlName="local_search_llm_max_gen_tokens"
+                                                            label="Local LLM Max Gen Tokens"
+                                                            tooltipText="Local LLM-answer token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            [alwaysShowSteps]="true"
+                                                            [min]="1"
+                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
+                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                        />
                                                     </div>
                                                     <div class="form-group">
-                                                        @if (useSuggestedParams()) {
-                                                            <app-suggested-value
-                                                                label="Local LLM Max Completion Tokens"
-                                                                tooltipText="Local completion token cap. Leave empty for no limit."
-                                                                [value]="
-                                                                    driftGroup?.get(
-                                                                        'local_search_llm_max_gen_completion_tokens'
-                                                                    )?.value ?? '—'
-                                                                "
-                                                            />
-                                                        } @else {
-                                                            <app-input-number
-                                                                formControlName="local_search_llm_max_gen_completion_tokens"
-                                                                label="Local LLM Max Completion Tokens"
-                                                                tooltipText="Local completion token cap. Leave empty for no limit."
-                                                                [alwaysShowSteps]="true"
-                                                                [min]="1"
-                                                                [max]="effectiveLlmContextWindow() ?? 100000"
-                                                                [warningMax]="safeTokenBudget()"
-                                                                [warningMessage]="tokenWarningMsg()"
-                                                                [errorMessage]="tokenErrorMsg()"
-                                                            />
-                                                        }
+                                                        <app-input-number
+                                                            formControlName="local_search_llm_max_gen_completion_tokens"
+                                                            label="Local LLM Max Completion Tokens"
+                                                            tooltipText="Local completion token cap. Leave empty for no limit. Capped by Data Max Tokens."
+                                                            [alwaysShowSteps]="true"
+                                                            [min]="1"
+                                                            [max]="driftGroup?.get('data_max_tokens')?.value ?? 100000"
+                                                            [errorMessage]="driftDataMaxTokensCapMessage"
+                                                        />
                                                     </div>
                                                 </div>
                                             </div>
