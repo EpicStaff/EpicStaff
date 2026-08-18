@@ -269,10 +269,12 @@ export class StoragePageComponent {
     }
 
     private withPaths(items: StorageItem[], parentPath: string): StorageItem[] {
-        return items.map((item) => ({
-            ...item,
-            path: parentPath ? `${parentPath}/${item.name}` : item.name,
-        }));
+        return items
+            .map((item) => ({
+                ...item,
+                path: parentPath ? `${parentPath}/${item.name}` : item.name,
+            }))
+            .sort(sortFoldersFirst);
     }
 
     onFileSelect(item: StorageItem): void {
@@ -701,6 +703,11 @@ export class StoragePageComponent {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     }
+}
+
+function sortFoldersFirst(a: StorageItem, b: StorageItem): number {
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+    return a.name.localeCompare(b.name);
 }
 
 function filterStorageItems(items: StorageItem[], term: string): StorageItem[] {
