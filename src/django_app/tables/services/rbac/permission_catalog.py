@@ -67,6 +67,13 @@ RESOURCE_TYPE_METADATA = [
         "applicable_actions": ["create", "read", "update", "delete"],
     },
     {
+        "code": ResourceType.SURFACES.value,
+        "label": "Surfaces",
+        "group": "workspace",
+        "description": "Agent tool/storage/knowledge access surfaces",
+        "applicable_actions": ["create", "read", "update", "delete"],
+    },
+    {
         "code": ResourceType.KNOWLEDGE_SOURCES.value,
         "label": "Knowledge Sources",
         "group": "workspace",

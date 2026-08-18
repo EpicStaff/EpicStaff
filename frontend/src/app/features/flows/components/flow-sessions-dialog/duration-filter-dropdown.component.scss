@@ -10,21 +10,16 @@
     background: transparent;
     border: none;
     color: var(--color-text-primary);
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: 1em;
+    font-weight: 600;
     cursor: pointer;
     padding: 0;
     white-space: nowrap;
 }
 
-.arrow {
-    pointer-events: none;
-    transition: transform 0.2s;
-    flex-shrink: 0;
-
-    &--open {
-        transform: rotate(180deg);
-    }
+.dur-dropdown.open .toggle-btn,
+.dur-dropdown.has-value .toggle-btn {
+    color: var(--accent-color, #5e9eff);
 }
 
 .dur-panel {
@@ -144,7 +139,8 @@
     border-radius: 4px;
     background: var(--accent-color, #5e9eff);
     color: #fff;
-    font-size: 12px;
+    font-size: 0.95em;
+    font-weight: 500;
     cursor: pointer;
 
     &:hover {
@@ -158,7 +154,8 @@
     border-radius: 4px;
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: 12px;
+    font-size: 0.95em;
+    font-weight: 500;
     cursor: pointer;
 
     &:hover {

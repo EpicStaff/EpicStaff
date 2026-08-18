@@ -25,7 +25,7 @@ import {
     SelectItem,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
 import { catchError, EMPTY, finalize, interval, map, merge, Subject, switchMap, takeUntil } from 'rxjs';
 import { NodeGroup } from 'src/app/shared/models/node-group.model';
 
@@ -38,6 +38,7 @@ import {
     GraphSessionService,
     GraphSessionStatus,
     isTerminalSessionStatus,
+    TriggerType,
 } from '../../services/flows-sessions.service';
 import { FlowSessionNodeFilterDropdownComponent } from './flow-session-node-filter-dropdown.component';
 import { FlowSessionsTableComponent } from './flow-sessions-table.component';
@@ -72,6 +73,8 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
     ];
     public statusFilter = signal<string[]>(['all']);
     public nodeFilter = signal<string | null>(null);
+    public triggerFilter = signal<TriggerType[]>([]);
+    public dateFilter = signal<DateRangeFilter | null>(null);
     public totalCount = 0;
     public availableNodes = signal<string[]>([]);
     public isErrorCauseFilter = signal<boolean>(false);
@@ -112,8 +115,10 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
             const status = this.statusFilter();
             const nodeName = this.nodeFilter();
             const isErrorCause = this.isErrorCauseFilter();
+            const triggerType = this.triggerFilter();
+            const dateFilter = this.dateFilter();
             this.reloadTrigger();
-            this.loadSessions(size, (page - 1) * size, status, nodeName, isErrorCause);
+            this.loadSessions(size, (page - 1) * size, status, nodeName, isErrorCause, triggerType, dateFilter);
         });
     }
 
@@ -210,7 +215,9 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         offset: number,
         status: string[],
         nodeName: string | null = null,
-        isErrorCause: boolean = false
+        isErrorCause: boolean = false,
+        triggerType: TriggerType[] = [],
+        dateFilter: DateRangeFilter | null = null
     ): void {
         this.cancelLoad$.next();
         this.cancelPolling$.next();
@@ -218,7 +225,18 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         this.isLoaded.set(false);
         if (this.flow && this.flow.id) {
             this.graphSessionService
-                .getSessionsByGraphId(this.flow.id, false, limit, offset, status, nodeName, isErrorCause)
+                .getSessionsByGraphId(
+                    this.flow.id,
+                    false,
+                    limit,
+                    offset,
+                    status,
+                    nodeName,
+                    isErrorCause,
+                    null,
+                    triggerType,
+                    dateFilter
+                )
                 .pipe(takeUntil(this.cancelLoad$))
                 .subscribe({
                     next: (sessions) => {
@@ -399,6 +417,16 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
         if (!value) {
             this.isErrorCauseFilter.set(false);
         }
+    }
+
+    onTriggerFilterChange(types: TriggerType[]) {
+        this.currentPage.set(1);
+        this.triggerFilter.set(types);
+    }
+
+    onDateFilterChange(filter: DateRangeFilter | null) {
+        this.currentPage.set(1);
+        this.dateFilter.set(filter);
     }
 
     public onSelectedIdsChange(ids: Set<number>): void {

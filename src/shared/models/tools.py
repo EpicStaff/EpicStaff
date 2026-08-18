@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from pydantic import ConfigDict, model_validator
 from .ai_providers import LLMData, EmbedderData
 
@@ -54,8 +54,16 @@ class PythonCodeData(BaseModel):
     storage_allowed_paths: list[str] | None = None
     storage_org_prefix: str | None = None
     session_id: int | None = None
+    org_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ArgsSchema(BaseModel):
+    type: Literal["object"] = "object"
+    title: str = "ArgumentsSchema"
+    properties: dict[str, Any]
+    required: list[str] = []
 
 
 class PythonCodeToolData(BaseModel):
@@ -63,6 +71,7 @@ class PythonCodeToolData(BaseModel):
     name: str
     description: str
     variables: list[dict] = []
+    args_schema: ArgsSchema | None = None
     python_code: PythonCodeData
 
     model_config = ConfigDict(from_attributes=True)
@@ -148,5 +157,6 @@ class CodeTaskData(BaseModel):
     storage_allowed_paths: list[str] | None = None
     storage_org_prefix: str | None = None
     session_id: int | None = None
+    org_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)

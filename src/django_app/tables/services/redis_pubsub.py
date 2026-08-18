@@ -25,11 +25,13 @@ from tables.models import (
     SessionStorageFile,
     StorageFile,
 )
+from tables.models.session_models import SessionTrigger
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.services.schedule_trigger_service import ScheduleTriggerService
+from tables.services.trigger_spec import TriggerSpec
 from src.shared.models import (
     CodeResultData,
     GraphSessionMessageData,
@@ -82,7 +84,7 @@ class RedisPubSub:
 
     def session_status_handler(self, message: dict):
         try:
-            logger.debug(f"Received message from session_status_handler: {message}")
+            logger.debug("Received message from session_status_handler: {}", message)
             data = json.loads(message["data"])
             close_old_connections()
             with transaction.atomic():
@@ -123,7 +125,7 @@ class RedisPubSub:
 
     def code_results_handler(self, message: dict):
         try:
-            logger.debug(f"Received message from code_result_handler: {message}")
+            logger.debug("Received message from code_result_handler: {}", message)
             result = CodeResultData.model_validate_json(message["data"])
             close_old_connections()
             if not RunPythonCodeService().save_execution_result(result):
@@ -135,7 +137,7 @@ class RedisPubSub:
 
     def storage_mutations_handler(self, message: dict):
         try:
-            logger.debug(f"Received storage mutation event: {message}")
+            logger.debug("Received storage mutation event: {}", message)
             data = json.loads(message["data"])
             event = StorageMutationEvent.model_validate(data)
 
@@ -185,7 +187,7 @@ class RedisPubSub:
 
     def webhook_events_handler(self, message: dict):
         try:
-            logger.debug(f"Received webhook event: {message}")
+            logger.debug("Received webhook event: {}", message)
             data = WebhookEventData.model_validate_json(message["data"])
         except Exception as e:
             logger.error(f"Error handling webhook_events_handler message: {e}")
@@ -272,7 +274,10 @@ class RedisPubSub:
             with transaction.atomic():
                 created_objects = model.objects.bulk_create(data, ignore_conflicts=True)
                 logger.debug(
-                    f"{model.__name__} updated with {len(created_objects)}/{len(data)} entities"
+                    "{} updated with {}/{} entities",
+                    model.__name__,
+                    len(created_objects),
+                    len(data),
                 )
         except IntegrityError as e:
             logger.error(f"Failed to save {model.__name__}: {e}")
@@ -286,6 +291,8 @@ class RedisPubSub:
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "successful_requests": 0,
+            "cached_prompt_tokens": 0,
+            "total_cost_usd": 0.0,
         }
 
         for key in cached_keys:
@@ -294,7 +301,7 @@ class RedisPubSub:
                 message_data = data.get("message_data", {})
 
                 if not message_data:
-                    return total_usage
+                    continue
 
                 token_usage = None
 
@@ -313,6 +320,12 @@ class RedisPubSub:
                     total_usage["successful_requests"] += token_usage.get(
                         "successful_requests", 0
                     )
+                    total_usage["cached_prompt_tokens"] += token_usage.get(
+                        "cached_prompt_tokens", 0
+                    )
+                    total_usage["total_cost_usd"] += token_usage.get(
+                        "total_cost_usd", 0
+                    )
 
             except Exception as e:
                 logger.error(f"Error parsing cached message for key {key}: {e}")
@@ -321,7 +334,7 @@ class RedisPubSub:
 
     def graph_session_message_handler(self, message: dict):
         try:
-            logger.info(f"Received message from graph_message_handler: {message}")
+            logger.debug("Received message from graph_message_handler: {}", message)
             data = json.loads(message["data"])
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
             message_uuid = graph_session_message_data.uuid
@@ -578,6 +591,16 @@ class RedisPubSub:
             exec_id_to_session_id[exec_id] = session.pk
             created_sessions.append((exec_id, session, finish_data))
 
+        SessionTrigger.objects.bulk_create(
+            [
+                SessionTrigger(
+                    session=session,
+                    **TriggerSpec.parent_flow(session.parent_session_id).to_fields(),
+                )
+                for _, session, _ in created_sessions
+            ]
+        )
+
         # Copy messages to each subgraph session via buffer,
         # and keep source messages per exec_id for token calculation.
         exec_id_messages = {}
@@ -648,13 +671,15 @@ class RedisPubSub:
 
         Returns:
             Dict with total_tokens, prompt_tokens, completion_tokens,
-            successful_requests.
+            successful_requests, cached_prompt_tokens, total_cost_usd.
         """
         total_usage = {
             "total_tokens": 0,
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "successful_requests": 0,
+            "cached_prompt_tokens": 0,
+            "total_cost_usd": 0.0,
         }
 
         for msg in messages:
@@ -676,6 +701,10 @@ class RedisPubSub:
                 total_usage["successful_requests"] += token_usage.get(
                     "successful_requests", 0
                 )
+                total_usage["cached_prompt_tokens"] += token_usage.get(
+                    "cached_prompt_tokens", 0
+                )
+                total_usage["total_cost_usd"] += token_usage.get("total_cost_usd", 0)
 
         return total_usage
 

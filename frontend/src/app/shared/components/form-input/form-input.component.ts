@@ -103,7 +103,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
                     display: block;
                     font-size: 0.875rem;
                     line-height: 130%;
-                    color: var(--color-ks-text);
+                    color: var(--color-text-secondary);
                     margin: 0;
                 }
 

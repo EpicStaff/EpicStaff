@@ -42,6 +42,7 @@ import { GraphCollaborationWsService } from 'src/app/features/flows/services/gra
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
+import { AgentDefinitionsApiService } from '../../../../features/agent-definitions/services/agent-definitions-api.service';
 import { EpicChatService } from '../../../../features/epic-chat/epic-chat.service';
 import { FlowAssistantPanelComponent } from '../../../../features/flow-assistant/components/flow-assistant-panel/flow-assistant-panel.component';
 import { FlowAssistantService } from '../../../../features/flow-assistant/flow-assistant.service';
@@ -73,7 +74,12 @@ import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.
 import { UnsavedChangesDialogService } from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
 import { NodeType } from '../../../../visual-programming/core/enums/node-type';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
-import { NodeModel, ScheduleTriggerNodeModel } from '../../../../visual-programming/core/models/node.model';
+import {
+    AgentNodeModel,
+    NodeModel,
+    ScheduleTriggerNodeModel,
+    TaskNodeModel,
+} from '../../../../visual-programming/core/models/node.model';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
@@ -96,6 +102,7 @@ import {
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
 } from '../../../../visual-programming/utils/save';
+import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
 import { ShortcutsModalComponent } from './components/shortcuts-modal/shortcuts-modal.component';
 import { FLOW_SHORTCUT_SECTIONS } from './flow-shortcuts.config';
@@ -189,6 +196,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         private readonly permissionsService: PermissionsService,
         private readonly sidePanelService: SidePanelService,
         private readonly llmConfigStorageService: LlmConfigStorageService,
+        private readonly agentDefinitionsApiService: AgentDefinitionsApiService,
         private readonly unsavedChangesRegistry: UnsavedChangesRegistry
     ) {
         this.isEpicChatEnabled = this.configService.isEpicChatEnabled;
@@ -382,6 +390,100 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.saveFlowState(flowState, true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
+    private getBlockingNodeValidationIssues(flowState: FlowModel): string[] {
+        let issues: string[] = [];
+        try {
+            issues = [...this.getInvalidTaskNodeMessages(flowState), ...this.getInvalidAgentNodeMessages(flowState)];
+        } catch (error) {
+            console.error('Node validation crashed before save — blocking the save defensively', error);
+            return ['a node failed validation — check the console and try again'];
+        }
+
+        if (issues.length > 0) {
+            this.toastService.error(`Cannot save flow — fix the following node(s) first: ${issues.join('; ')}.`);
+        }
+        return issues;
+    }
+
+    private getInvalidTaskNodeMessages(flowState: FlowModel): string[] {
+        const messages: string[] = [];
+
+        flowState.nodes.forEach((node, index) => {
+            if (node.type !== NodeType.TASK) return;
+            const taskNode = node as TaskNodeModel;
+
+            const missingFields: string[] = [];
+            if (!taskNode.node_name?.trim()) missingFields.push('node name');
+            if (taskNode.data?.agent_definition == null) missingFields.push('agent');
+            if (!taskNode.data?.instructions?.trim()) missingFields.push('instructions');
+            if (taskNode.data?.output_schema_invalid || !isValidOutputSchema(taskNode.data?.output_schema)) {
+                missingFields.push('a valid output schema');
+            }
+
+            if (missingFields.length === 0) return;
+
+            const label = taskNode.node_name?.trim() || `Untitled task #${index + 1}`;
+            messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
+        });
+
+        return messages;
+    }
+
+    private getInvalidAgentNodeMessages(flowState: FlowModel): string[] {
+        const messages: string[] = [];
+
+        flowState.nodes.forEach((node, index) => {
+            if (node.type !== NodeType.AGENT) return;
+            const agentNode = node as AgentNodeModel;
+
+            const missingFields: string[] = [];
+            if (!agentNode.node_name?.trim()) missingFields.push('node name');
+            if (agentNode.data?.agent_definition == null) missingFields.push('agent');
+
+            const tasks = agentNode.data?.tasks ?? [];
+            if (tasks.length === 0) {
+                missingFields.push('at least one task');
+            } else {
+                const seenNames = new Set<string>();
+                let hasBlankName = false;
+                let hasDuplicateName = false;
+                let hasBlankInstructions = false;
+                let hasInvalidSchema = false;
+
+                for (const task of tasks) {
+                    const trimmedName = (task.name ?? '').trim();
+                    if (!trimmedName) {
+                        hasBlankName = true;
+                    } else if (seenNames.has(trimmedName)) {
+                        hasDuplicateName = true;
+                    } else {
+                        seenNames.add(trimmedName);
+                    }
+
+                    if (!(task.instructions ?? '').trim()) {
+                        hasBlankInstructions = true;
+                    }
+
+                    if (task.output_schema_invalid || !isValidOutputSchema(task.output_schema)) {
+                        hasInvalidSchema = true;
+                    }
+                }
+
+                if (hasBlankName) missingFields.push('a task name');
+                if (hasDuplicateName) missingFields.push('unique task names');
+                if (hasBlankInstructions) missingFields.push('a task description');
+                if (hasInvalidSchema) missingFields.push('a valid task output schema');
+            }
+
+            if (missingFields.length === 0) return;
+
+            const label = agentNode.node_name?.trim() || `Untitled agent #${index + 1}`;
+            messages.push(`"${label}" is missing ${missingFields.join(', ')}`);
+        });
+
+        return messages;
+    }
+
     private cleanupCdtGridState(flowState: FlowModel): void {
         const match = window.location.pathname.match(/\/flows\/(\d+)/);
         const graphId = match?.[1];
@@ -411,6 +513,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     private saveFlowState(flowState: FlowModel, showSuccessToast: boolean): Observable<void> {
         if (!this.graph?.id) return EMPTY;
+
+        if (this.getBlockingNodeValidationIssues(flowState).length > 0) {
+            return EMPTY;
+        }
 
         const previous = this.loadedFlowState();
         const flowToSave = clearStaleIds(previous, flowState);
@@ -863,6 +969,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     );
                 }
             });
+
+        // Fetch agent definitions fresh on every flow-page load so agent/task node
+        // "missing LLM" warnings reflect edits made on other pages (e.g. the agents page).
+        this.agentDefinitionsApiService.refreshDefinitions().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     private countBlockedSubgraphNodes(flowModel: FlowModel): number {

@@ -1,6 +1,6 @@
-<app-drag-drop-area (filesDropped)="onFilesDropped($event)">
+<app-drag-drop-area (filesDropped)="facade.onFilesDropped($event)">
     <div class="storage-page">
-        @if (isLoading()) {
+        @if (facade.isLoading()) {
             <div class="storage-page__loading">
                 <app-spinner
                     [text]="'Loading storage...'"
@@ -10,28 +10,38 @@
             </div>
         } @else {
             <div
+                #sidebarEl
                 class="storage-page__sidebar"
                 [class.storage-page__sidebar--hidden]="!showSidebar()"
+                [style.width.px]="sidebarWidth()"
             >
                 <app-storage-tree
                     [items]="filteredTreeData()"
                     (fileSelected)="onFileSelect($event)"
                     (folderSelected)="onFolderSelect($event)"
-                    (folderToggled)="onFolderToggle($event)"
-                    (contextAction)="onContextAction($event)"
+                    (folderToggled)="facade.onFolderToggle($event)"
+                    (contextAction)="facade.onContextAction($event)"
                     (closeSidebar)="toggleSidebar()"
                     (openCreateFolder)="onOpenCreateFolder($event)"
-                    (selectionChange)="selectedItems.set($event)"
+                    (selectionChange)="facade.selectedItems.set($event)"
                 />
+
+                @if (sidebarTargetElement(); as target) {
+                    <div
+                        class="resizable-sidebar-handle"
+                        [appResizableSidebar]="sidebarStorageKey"
+                        [sidebarTarget]="target"
+                    ></div>
+                }
             </div>
             <div class="storage-page__content">
                 <app-storage-preview
-                    [item]="selectedFile()"
-                    [selectedItems]="selectedItems()"
+                    [item]="facade.selectedFile()"
+                    [selectedItems]="facade.selectedItems()"
                     [showSidebar]="showSidebar()"
                     (toggleSidebar)="toggleSidebar()"
                     (contextAction)="onPreviewContextAction($event)"
-                    (breadcrumbClick)="showSidebar.set(true); expandAndSelectPath($event)"
+                    (breadcrumbClick)="showSidebar.set(true); facade.expandAndSelectPath($event)"
                 />
             </div>
         }

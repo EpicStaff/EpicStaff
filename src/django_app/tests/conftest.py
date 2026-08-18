@@ -44,6 +44,10 @@ def flush_test_db_once(django_db_setup, django_db_blocker):
             "tables.migrations.0210_seed_voice_role_permissions"
         )
         voice_perms_module.seed_voice_permissions(django_apps, None)
+        surface_perms_module = import_module(
+            "tables.migrations.0205_seed_surface_permissions"
+        )
+        surface_perms_module.seed(django_apps, None)
 
 
 @pytest.fixture(autouse=True)

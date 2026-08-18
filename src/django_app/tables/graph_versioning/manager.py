@@ -1,4 +1,3 @@
-import textwrap
 from copy import deepcopy
 
 from tables.graph_versioning.constants import (
@@ -103,6 +102,10 @@ class GraphVersioningManager:
             subgraphs=set(missing.get(EntityType.GRAPH.value, [])),
             llm_configs=set(missing.get(EntityType.LLM_CONFIG.value, [])),
             webhooks=set(missing.get(EntityType.WEBHOOK_TRIGGER.value, [])),
+            agent_definitions=set(missing.get(EntityType.AGENT_DEFINITION.value, [])),
+            surfaces=set(missing.get(EntityType.SURFACE.value, [])),
+            python_code_tools=set(missing.get(EntityType.PYTHON_CODE_TOOL.value, [])),
+            mcp_tools=set(missing.get(EntityType.MCP_TOOL.value, [])),
         )
 
     def _filter_nodes(
@@ -173,6 +176,115 @@ class GraphVersioningManager:
 
         return warnings
 
+    def _clean_agent_task_node_refs(
+        self, snapshot_nodes: list[dict], missing_sets: _MissingSets
+    ) -> list[dict]:
+        """
+        Check AgentNode/TaskNode surface_list and inline_surface tool refs.
+        Drop ids referencing deleted Surfaces/PythonCodeTools/MCPTools.
+        """
+        warnings: list[dict] = []
+
+        for node in snapshot_nodes:
+            if node.get("node_type") not in (NodeType.AGENT_NODE, NodeType.TASK_NODE):
+                continue
+
+            warnings.extend(self._clean_node_surface_list(node, missing_sets.surfaces))
+            warnings.extend(self._clean_node_inline_surface_tools(node, missing_sets))
+
+        return warnings
+
+    def _clean_node_surface_list(self, node: dict, missing_surfaces: set) -> list[dict]:
+        node_name = node.get("node_name") or node.get("node_type")
+        surface_ids = node.get("surface_list") or []
+        kept_surface_ids = []
+        warnings: list[dict] = []
+
+        for surface_id in surface_ids:
+            if surface_id not in missing_surfaces:
+                kept_surface_ids.append(surface_id)
+                continue
+            warnings.append(
+                {
+                    "type": "surface_dropped",
+                    "node_name": node_name,
+                    "node_type": node.get("node_type"),
+                    "node_id": node.get("id"),
+                    "missing_id": surface_id,
+                    "reason": f"Referenced Surface #{surface_id} no longer exists.",
+                }
+            )
+
+        node["surface_list"] = kept_surface_ids
+        return warnings
+
+    def _clean_node_inline_surface_tools(
+        self, node: dict, missing_sets: _MissingSets
+    ) -> list[dict]:
+        inline_surface = node.get("inline_surface")
+        if not inline_surface:
+            return []
+
+        tools = inline_surface.get("tools") or {}
+        warnings: list[dict] = []
+
+        warnings.extend(
+            self._clean_inline_tool_entries(
+                node,
+                tools,
+                tool_key=EntityType.PYTHON_CODE_TOOL.value,
+                id_field="python_tool_id",
+                missing_ids=missing_sets.python_code_tools,
+                tool_label="Python tool",
+            )
+        )
+        warnings.extend(
+            self._clean_inline_tool_entries(
+                node,
+                tools,
+                tool_key=EntityType.MCP_TOOL.value,
+                id_field="mcp_tool_id",
+                missing_ids=missing_sets.mcp_tools,
+                tool_label="MCP tool",
+            )
+        )
+
+        return warnings
+
+    def _clean_inline_tool_entries(
+        self,
+        node: dict,
+        tools: dict,
+        *,
+        tool_key: str,
+        id_field: str,
+        missing_ids: set,
+        tool_label: str,
+    ) -> list[dict]:
+        node_name = node.get("node_name") or node.get("node_type")
+        entries = tools.get(tool_key) or []
+        kept_entries = []
+        warnings: list[dict] = []
+
+        for entry in entries:
+            tool_id = entry.get(id_field)
+            if tool_id not in missing_ids:
+                kept_entries.append(entry)
+                continue
+            warnings.append(
+                {
+                    "type": "inline_tool_dropped",
+                    "node_name": node_name,
+                    "node_type": node.get("node_type"),
+                    "node_id": node.get("id"),
+                    "missing_id": tool_id,
+                    "reason": f"Referenced {tool_label} #{tool_id} no longer exists.",
+                }
+            )
+
+        tools[tool_key] = kept_entries
+        return warnings
+
     def _filter_edges(
         self, edges: list[dict], skipped_node_ids: set[int]
     ) -> tuple[list[dict], list[dict]]:
@@ -241,6 +353,10 @@ class GraphVersioningManager:
             self._clean_decision_table_refs(
                 filtered_snapshot["nodes"], skipped_node_ids
             )
+        )
+
+        warnings.extend(
+            self._clean_agent_task_node_refs(filtered_snapshot["nodes"], missing_sets)
         )
 
         kept_edges, edge_warnings = self._filter_edges(

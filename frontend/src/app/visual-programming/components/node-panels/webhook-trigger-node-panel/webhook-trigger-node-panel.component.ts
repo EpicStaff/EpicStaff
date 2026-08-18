@@ -3,7 +3,16 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { CustomInputComponent, WebhookTriggerSelectComponent } from '@shared/components';
+import {
+    ColumnResizeDividerComponent,
+    createColumnWidthState,
+    CustomInputComponent,
+    SelectComponent,
+    SelectItem,
+    WebhookTriggerSelectComponent,
+} from '@shared/components';
+import { NgrokConfigStorageService } from '@shared/services';
+import { startWith } from 'rxjs';
 
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
@@ -21,6 +30,7 @@ import { WebhookTriggerModel } from '../../../core/models/webhook-trigger.model'
         ClipboardModule,
         MatTooltipModule,
         WebhookTriggerSelectComponent,
+        ColumnResizeDividerComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
     styleUrls: ['webhook-trigger-node-panel.component.scss'],
@@ -32,6 +42,12 @@ export class WebhookTriggerNodePanelComponent extends BaseSidePanel<WebhookTrigg
     public override readonly isExpanded = input<boolean>(false);
 
     public readonly isCodeEditorFullWidth = signal<boolean>(true);
+    protected readonly leftColumnWidth = createColumnWidthState('webhook-trigger-node', 400);
+    ngrokConfigsLoading = signal<boolean>(false);
+    webhookPath = signal<string | null>(null);
+    ngrokConfigId = signal<number | null | undefined>(null);
+    loadingTunnel = signal<boolean>(false);
+    ngrokConfigs = this.ngrokStorageService.configs;
 
     pythonCode: string = '';
     initialPythonCode: string = '';

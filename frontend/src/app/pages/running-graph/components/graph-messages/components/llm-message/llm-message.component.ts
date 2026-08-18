@@ -5,7 +5,7 @@ import { MarkdownModule } from 'ngx-markdown';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
-import { GraphMessage, LLMMessageData } from '../../../../models/graph-session-message.model';
+import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-llm-message',
@@ -213,7 +213,7 @@ export class LlmMessageComponent {
     isCollapsed = true;
 
     get llmResponse(): string {
-        if (this.message.message_data && this.message.message_data.message_type === 'llm') {
+        if (this.message.message_data && this.message.message_data.message_type === MessageType.LLM) {
             const data = this.message.message_data as LLMMessageData;
             return data.response;
         }

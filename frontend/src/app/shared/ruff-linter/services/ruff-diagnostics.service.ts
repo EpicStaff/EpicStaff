@@ -1,5 +1,10 @@
 import { Injectable } from '@angular/core';
 
+import {
+    RUFF_LIKELY_BUG_PREFIXES,
+    RUFF_STYLE_PREFIXES,
+    RUFF_SYNTAX_ERROR_CODES,
+} from '../constants/ruff-diagnostic.constants';
 import type { RuffDiagnostic } from '../models/ruff-result.model';
 
 const RUFF_OWNER = 'ruff-linter';
@@ -20,6 +25,14 @@ const UNCLOSED_PAREN_PATTERN = /Expected [`'"]?[,\)][`'"]?,?\s*found\s+/i;
     providedIn: 'root',
 })
 export class RuffDiagnosticsService {
+    hasSyntaxErrors(diagnostics: RuffDiagnostic[]): boolean {
+        return diagnostics.some((d) => this.isSyntaxError(d.code));
+    }
+
+    private isSyntaxError(code: string | null): boolean {
+        return code !== null && RUFF_SYNTAX_ERROR_CODES.has(code);
+    }
+
     toMonacoMarkers(diagnostics: RuffDiagnostic[], code?: string) {
         const monaco = getMonaco();
         const markers = diagnostics.map((d) => this.toMonacoMarker(d, monaco, code));
@@ -134,19 +147,20 @@ export class RuffDiagnosticsService {
     }
 
     private ruffCodeToMonacoSeverity(code: string | null, monaco: typeof import('monaco-editor')) {
+        if (this.isSyntaxError(code)) {
+            return monaco.MarkerSeverity.Error;
+        }
         if (!code) {
             return monaco.MarkerSeverity.Warning;
         }
-        const first = code.charAt(0).toUpperCase();
-        switch (first) {
-            case 'E':
-            case 'F':
-                return monaco.MarkerSeverity.Error;
-            case 'W':
-                return monaco.MarkerSeverity.Warning;
-            default:
-                return monaco.MarkerSeverity.Hint;
+        const family = code.charAt(0).toUpperCase();
+        if (RUFF_LIKELY_BUG_PREFIXES.includes(family)) {
+            return monaco.MarkerSeverity.Warning;
         }
+        if (RUFF_STYLE_PREFIXES.includes(family)) {
+            return monaco.MarkerSeverity.Info;
+        }
+        return monaco.MarkerSeverity.Hint;
     }
 
     setMarkers(editor: import('monaco-editor').editor.IStandaloneCodeEditor, diagnostics: RuffDiagnostic[]): void {

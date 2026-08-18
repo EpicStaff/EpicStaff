@@ -19,6 +19,7 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.utils.telegram_fields import load_telegram_trigger_fields
 from tables.models import Agent
 from tables.services.realtime_service import RealtimeService
+from agents.models import AgentDefinition
 from tables.swagger_schemas.python_node_test_mode_schema import (
     LAST_TEST_INPUT_SWAGGER as _LAST_TEST_INPUT_SWAGGER,
 )
@@ -52,6 +53,7 @@ from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.quickstart_service import QuickstartService
 from tables.services.knowledge_services.indexing_service import IndexingService
+from tables.services.trigger_spec import TriggerSpec
 
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -73,12 +75,15 @@ from tables.serializers.serializers import (
     AnswerToLLMSerializer,
     BulkExportSerializer,
     InitRealtimeSerializer,
+    NotifyEmailSerializer,
     ProcessRagIndexingSerializer,
     RunSessionSerializer,
     RegisterTelegramTriggerSerializer,
     RunPythonCodeSerializer,
     SessionExportAllSerializer,
 )
+from tables.services.notification_email_sender import NotificationEmailSender
+from tables.throttles import NotifyEmailThrottle
 
 from tables.serializers.quickstart_serializers import (
     QuickstartSerializer,
@@ -154,6 +159,7 @@ session_manager_service = SessionManagerService()
 run_python_code_service = RunPythonCodeService()
 realtime_service = RealtimeService()
 quickstart_service = QuickstartService()
+notification_email_sender = NotificationEmailSender()
 
 
 @extend_schema_view(
@@ -226,7 +232,7 @@ class SessionViewSet(
         return SessionSerializer
 
     def get_queryset(self):
-        qs = Session.objects.select_related("graph").filter(
+        qs = Session.objects.select_related("graph", "trigger").filter(
             graph__org_id=self.get_active_org_id()
         )
         detailed = self.request.query_params.get("detailed", "true").lower()
@@ -485,10 +491,24 @@ class RunSession(APIView):
             variables["files"] = files_dict
             logger.info(f"Added {len(files_dict)} files to variables.")
 
+        parent_session_id = serializer.validated_data.get("parent_session_id")
+        # A sub-flow launched by the subflow_tool is triggered by its parent
+        # session, not by a human hitting this endpoint.
+        trigger = (
+            TriggerSpec.parent_flow(parent_session_id)
+            if parent_session_id is not None
+            else TriggerSpec.manual()
+        )
+
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
-                graph_id=graph_id, variables=variables, user=request.user
+                graph_id=graph_id,
+                variables=variables,
+                user=request.user,
+                trigger=trigger,
+                parent_session_id=parent_session_id,
+                token_budget=serializer.validated_data.get("token_budget"),
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:
@@ -623,6 +643,44 @@ class AnswerToLLM(APIView):
         return Response(status=status.HTTP_202_ACCEPTED)
 
 
+class NotifyEmailView(APIView):
+    """EST-3285 4.8: sends a notification email via notification_tool
+    (channel='email'). Reuses NotificationEmailSender (Django's send_mail /
+    EMAIL_BACKEND -- the same transport PasswordResetEmailSender uses), NOT a
+    parallel SMTP client. Requires auth (same DEFAULT_PERMISSION_CLASSES /
+    DEFAULT_AUTHENTICATION_CLASSES as every other endpoint), but auth alone
+    does not prevent abuse: this is driven by notification_tool (LLM output),
+    so a prompt-injected agent or a leaked API key could otherwise send
+    unlimited mail to arbitrary external addresses from our domain.
+    NotifyEmailThrottle caps that per authenticated user."""
+
+    throttle_classes = [NotifyEmailThrottle]
+
+    @extend_schema(
+        summary="Send a notification email",
+        request=NotifyEmailSerializer,
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = NotifyEmailSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        to_email = serializer.validated_data["to"]
+        subject = serializer.validated_data["subject"]
+        message = serializer.validated_data["message"]
+
+        sent, error = notification_email_sender.send(
+            to=to_email, subject=subject, message=message
+        )
+        if not sent:
+            return Response(
+                {"message": f"Failed to send notification email: {error}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response({"sent": True}, status=status.HTTP_200_OK)
+
+
 class RunPythonCodeAPIView(APIView):
     _org_context = OrgContextService()
 
@@ -693,12 +751,12 @@ class InitRealtimeAPIView(APIView):
         if not serializer.is_valid():
             logger.warning(f"Invalid data received in request: {serializer.errors}")
             return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST,
                 data={"error": str(serializer.errors)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        agent_id = serializer.validated_data["agent_id"]
+        agent_id = serializer.validated_data.get("agent_id")
+        agent_definition_id = serializer.validated_data.get("agent_definition_id")
         config = serializer.validated_data.get("config", {})
 
         if isinstance(request.auth, ApiKey):
@@ -711,16 +769,31 @@ class InitRealtimeAPIView(APIView):
             # lookup_by_token. This branch never runs for a JWT/user session:
             # request.auth is only an ApiKey instance for API-key-authenticated
             # requests (see IsApiKeyAuthenticated / ApiKeyAuthentication).
-            agent = Agent.objects.filter(id=agent_id).first()
-            if agent is None:
-                raise ValidationError(
-                    {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
-                )
-            org_id = agent.org_id
+            if agent_definition_id is not None:
+                agent_definition = AgentDefinition.objects.filter(
+                    pk=agent_definition_id
+                ).first()
+                if agent_definition is None:
+                    raise ValidationError(
+                        {
+                            "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
+                        }
+                    )
+                org_id = agent_definition.organization_id
+            else:
+                agent = Agent.objects.filter(id=agent_id).first()
+                if agent is None:
+                    raise ValidationError(
+                        {
+                            "agent_id": f'Invalid pk "{agent_id}" - object does not exist.'
+                        }
+                    )
+                org_id = agent.org_id
         else:
             # Org isolation: starting a realtime session is a read/use of an
-            # agent, so require AGENTS.READ and reject an agent_id outside the
-            # active org (rejected like a missing id — existence never leaks).
+            # agent, so require AGENTS.READ and reject an agent_id/agent_definition_id
+            # outside the active org (rejected like a missing id — existence
+            # never leaks).
             org_id = self._org_context.resolve(
                 request=request, view_kwargs=getattr(self, "kwargs", {})
             )
@@ -730,20 +803,39 @@ class InitRealtimeAPIView(APIView):
                 resource_type=ResourceType.AGENTS,
                 action=Permission.READ,
             )
+
+        if agent_id is not None:
             if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
                 raise ValidationError(
                     {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
                 )
 
+        if agent_definition_id is not None:
+            if not AgentDefinition.objects.filter(
+                pk=agent_definition_id, organization_id=org_id
+            ).exists():
+                raise ValidationError(
+                    {
+                        "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
+                    }
+                )
+
         try:
-            connection_key = realtime_service.init_realtime(
-                agent_id=agent_id,
-                config=config,
-            )
+            if agent_definition_id is not None:
+                connection_key = realtime_service.init_realtime_agent_definition(
+                    agent_definition_id=agent_definition_id,
+                    config=config,
+                )
+            else:
+                connection_key = realtime_service.init_realtime(
+                    agent_id=agent_id,
+                    config=config,
+                )
 
         except Exception as e:
             logger.exception(
-                f"Error occurred while creating realtime agent for agent_id {agent_id}"
+                f"Error occurred while creating realtime agent for agent_id {agent_id} "
+                f"or agent_definition_id {agent_definition_id}"
             )
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
         else:
@@ -982,13 +1074,26 @@ class RegisterWebhooksApiView(APIView):
         return Response(status=status.HTTP_200_OK)
 
 
-class PythonNodeLastTestInputView(APIView):
+class PythonNodeLastTestInputView(OrgScopedServiceViewSetMixin, APIView):
+    """
+    GET last tests input for python node from last
+    successfull session with that node
+    """
+
+    _PYTHONNODE_ORG_PATH = "graph__org_id"
+
     @extend_schema(**_LAST_TEST_INPUT_SWAGGER)
     def get(self, request, pk):
-        try:
-            python_node = PythonNode.objects.get(pk=pk)
-        except PythonNode.DoesNotExist:
-            raise NotFound(detail="PythonNode not found.")
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.FLOWS,
+            Permission.READ,
+        )
+
+        python_node = self.get_in_active_org_or_404(
+            PythonNode, pk, org_path=self._PYTHONNODE_ORG_PATH
+        )
 
         python_node_name = f"{python_node.node_name} #{python_node.pk}"
         found_input = (

@@ -10,7 +10,11 @@
                 [class.collapsed]="!isExpanded()"
                 [class.code-editor-fullwidth]="isCodeEditorFullWidth()"
             >
-                <div class="form-fields">
+                <div
+                    #formColumn
+                    class="form-fields"
+                    [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
+                >
                     <app-custom-input
                         label="Node Name"
                         tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
@@ -60,7 +64,19 @@
                     ></app-custom-input>
                 </div>
                 @if (isExpanded()) {
-                    <div class="code-editor-wrapper">
+                    @if (!isCodeEditorFullWidth()) {
+                        <app-column-resize-divider
+                            ariaLabel="Resize form and code editor columns"
+                            [column]="formColumn"
+                            [opposite]="editorColumn"
+                            [(width)]="leftColumnWidth.width"
+                            [defaultWidth]="leftColumnWidth.defaultWidth"
+                        />
+                    }
+                    <div
+                        #editorColumn
+                        class="code-editor-wrapper"
+                    >
                         <button
                             type="button"
                             class="toggle-icon-button"

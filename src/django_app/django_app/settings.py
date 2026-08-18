@@ -60,6 +60,48 @@ LOGGING = {
         "handlers": ["loguru"],
         "level": "DEBUG",
     },
+    "loggers": {
+        "litellm": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "LiteLLM": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "LiteLLM Router": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "LiteLLM Proxy": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "boto3": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "botocore": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "s3transfer": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "urllib3": {
+            "handlers": ["loguru"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
 }
 
 
@@ -73,6 +115,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "tables",
+    "agents",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -116,6 +159,7 @@ REST_FRAMEWORK = {
         "password_reset_request": os.getenv(
             "PASSWORD_RESET_REQUEST_THROTTLE_RATE", "5/hour"
         ),
+        "notify_email": os.getenv("NOTIFY_EMAIL_THROTTLE_RATE", "10/hour"),
     },
 }
 
@@ -325,12 +369,10 @@ AVATAR_ALLOWED_FORMATS = [
 ]
 
 # Object storage
-STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "s3")
 STORAGE_ENDPOINT = os.getenv("STORAGE_ENDPOINT", "")
 STORAGE_ACCESS_KEY = os.getenv("STORAGE_ACCESS_KEY", "")
 STORAGE_SECRET_KEY = os.getenv("STORAGE_SECRET_KEY", "")
 STORAGE_BUCKET_NAME = os.getenv("STORAGE_BUCKET_NAME", "epicstaff")
-STORAGE_LOCAL_ROOT = os.getenv("STORAGE_LOCAL_ROOT", "/app/storage")
 
 MAX_TOTAL_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
@@ -378,7 +420,7 @@ WEBHOOK_HOST_NAME = os.getenv("WEBHOOK_HOST_NAME", "localhost")
 WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", 8009))
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "CrewAI SheetsUI API",
+    "TITLE": "EpicStaff API",
     "VERSION": "v1",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,

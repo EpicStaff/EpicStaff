@@ -167,6 +167,18 @@ export class FlowGraphCoreMenuComponent {
             icon: NODE_ICONS[NodeType.CODE_AGENT],
             color: NODE_COLORS[NodeType.CODE_AGENT],
         },
+        {
+            label: 'Task Node',
+            type: NodeType.TASK,
+            icon: NODE_ICONS[NodeType.TASK],
+            color: NODE_COLORS[NodeType.TASK],
+        },
+        {
+            label: 'Agent Node',
+            type: NodeType.AGENT,
+            icon: NODE_ICONS[NodeType.AGENT],
+            color: NODE_COLORS[NodeType.AGENT],
+        },
     ];
 
     public onBlockClicked(type: NodeType): void {
@@ -240,6 +252,25 @@ export class FlowGraphCoreMenuComponent {
             data = null;
         } else if (type === NodeType.END) {
             data = null;
+        } else if (type === NodeType.TASK) {
+            data = {
+                name: 'Task Node',
+                instructions: '',
+                output_schema: {},
+                output_schema_invalid: false,
+                remember_output: false,
+                agent_definition: null,
+                surface_list: [],
+                inline_surface: null,
+            };
+        } else if (type === NodeType.AGENT) {
+            data = {
+                name: 'Agent Node',
+                agent_definition: null,
+                surface_list: [],
+                inline_surface: null,
+                tasks: [],
+            };
         }
 
         this.nodeSelected.emit({ type, data });

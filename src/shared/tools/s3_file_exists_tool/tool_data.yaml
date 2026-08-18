@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Exists Tool"
+  description: "Check whether a path exists in S3 storage (test -e semantics). Params: path (required). Returns one of: '<path> exists (file).', '<path> exists (folder).', or '<path> does not exist.' Use this before s3_file_create_tool/s3_folder_create_tool to decide whether to create or overwrite, or before s3_file_write_tool/s3_file_edit_tool to confirm a target is present."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

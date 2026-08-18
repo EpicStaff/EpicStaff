@@ -1,0 +1,47 @@
+:host {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.route-tab {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    // Pull each tab down so its 2px active underline overlaps the host's 1px border.
+    margin-bottom: -1px;
+    font-size: 0.875rem;
+    color: var(--purple-primary);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    transition:
+        color 0.15s,
+        border-color 0.15s;
+
+    &:hover {
+        color: var(--color-text-primary);
+    }
+
+    &.active {
+        color: var(--text);
+        border-bottom-color: var(--text);
+    }
+
+    &:not(:first-child) {
+        margin-left: 32px;
+
+        &::before {
+            content: '/';
+            position: absolute;
+            top: 50%;
+            right: calc(100% + 10px);
+            transform: translateY(-55%);
+            font-size: 26px;
+            line-height: 1;
+            color: var(--transparent-white-8);
+            pointer-events: none;
+        }
+    }
+}

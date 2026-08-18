@@ -31,7 +31,7 @@ class PythonCodeToolConfigImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PythonCodeToolConfig
-        exclude = ["id", "tool"]
+        exclude = ["id", "tool", "created_by"]
 
 
 class PythonCodeToolImportSerializer(serializers.ModelSerializer):
@@ -47,4 +47,4 @@ class PythonCodeToolImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PythonCodeTool
-        exclude = ["favorite"]
+        exclude = ["favorite", "created_by"]

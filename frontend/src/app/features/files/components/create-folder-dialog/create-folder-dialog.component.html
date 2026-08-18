@@ -102,6 +102,11 @@
                                             size="0.5rem"
                                         ></app-svg-icon>
                                     </span>
+                                    <app-svg-icon
+                                        class="create-folder-dialog__node-icon"
+                                        icon="folder-storage"
+                                        size="12px"
+                                    ></app-svg-icon>
                                     <span class="create-folder-dialog__node-name">/</span>
                                 </div>
                                 @for (node of visibleNodes(); track node.path) {
@@ -125,9 +130,18 @@
                                         } @else {
                                             <span class="create-folder-dialog__chevron-gap"></span>
                                         }
+                                        <app-svg-icon
+                                            class="create-folder-dialog__node-icon"
+                                            [class.create-folder-dialog__node-icon--empty]="node.isEmpty"
+                                            icon="folder-storage"
+                                            size="12px"
+                                        ></app-svg-icon>
                                         <span class="create-folder-dialog__node-name">{{ node.name }}</span>
                                         @if (node.isLoading) {
                                             <span class="create-folder-dialog__node-spinner">...</span>
+                                        }
+                                        @if (node.isEmpty) {
+                                            <span class="create-folder-dialog__empty-badge">Empty</span>
                                         }
                                     </div>
                                 }

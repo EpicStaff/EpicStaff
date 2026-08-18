@@ -1,0 +1,36 @@
+<div class="vht-wrapper">
+    @if (label()) {
+        <app-tooltip
+            [required]="required()"
+            [tooltipText]="tooltipText()"
+            [label]="label()"
+            [icon]="icon()"
+        />
+    }
+
+    <div
+        class="vht-field"
+        [class.vht-field--invalid]="invalid()"
+        [class.vht-field--disabled]="isDisabled()"
+    >
+        <div
+            #backdrop
+            class="vht-backdrop"
+            aria-hidden="true"
+        ></div>
+        <textarea
+            #textareaRef
+            class="vht-textarea"
+            [attr.rows]="rows()"
+            [placeholder]="placeholder()"
+            [disabled]="isDisabled()"
+            [value]="displayValue()"
+            (input)="onInput($event)"
+            (blur)="onBlur()"
+            (scroll)="onScroll()"
+            (click)="onClick($event)"
+            (keydown)="onKeyDown($event)"
+            (keyup)="onKeyUp($event)"
+        ></textarea>
+    </div>
+</div>

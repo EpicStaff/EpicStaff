@@ -192,13 +192,28 @@ export class QuickstartSectionComponent implements OnInit {
                 }),
                 finalize(() => {
                     this.defaultModelsStorageService.markDefaultModelsOutdated();
-                    this.llmConfigStorageService.markConfigsOutdated();
-                    this.embeddingConfigStorageService.markConfigsOutdated();
-                    this.realtimeConfigStorageService.markConfigsOutdated();
-                    this.transcriptionConfigStorageService.markConfigsOutdated();
-                    this.openaiRealtimeStorage.markConfigsOutdated();
-                    this.geminiRealtimeStorage.markConfigsOutdated();
-                    this.elevenLabsRealtimeStorage.markConfigsOutdated();
+                    this.llmConfigStorageService.getAllConfigs(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+                    this.embeddingConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.realtimeConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.transcriptionConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.openaiRealtimeStorage.getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.geminiRealtimeStorage.getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.elevenLabsRealtimeStorage.getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
                     this.isSaving.set(false);
                 }),
                 takeUntilDestroyed(this.destroyRef)
