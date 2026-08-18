@@ -16,14 +16,15 @@ import {
     TableRow,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { CreateOrganizationRequest, GetOrganizationResponse, UserRole } from '@shared/models';
-import { catchError, finalize, forkJoin, Observable, of, switchMap } from 'rxjs';
+import { CreateOrganizationRequest, GetOrganizationResponse, GetRoleResponse, UserRole } from '@shared/models';
+import { catchError, EMPTY, finalize, forkJoin, Observable, of, switchMap } from 'rxjs';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
-import { USER_ROLES } from '../../constants/user-roles-select-items.constant';
 import { AdminUserService } from '../../services/admin/admin-user.service';
 import { OrganizationsStorageService } from '../../services/admin/organizations-storage.service';
+import { RolesService } from '../../services/admin/roles.service';
 import { UserService } from '../../services/users/user.service';
 import { NormalizedUser } from '../../strategies/users/user-fetch.strategy';
 import { createUserFetchStrategy } from '../../strategies/users/user-fetch-strategy.factory';
@@ -55,6 +56,8 @@ export class CreateOrganizationDialogComponent implements OnInit {
     private userService = inject(UserService);
     private adminUserService = inject(AdminUserService);
     private currentUserService = inject(ProfileService);
+    private permissionsService = inject(PermissionsService);
+    private rolesService = inject(RolesService);
     private dialogData = inject<GetOrganizationResponse>(DIALOG_DATA, { optional: true });
 
     readonly isEditMode = !!this.dialogData;
@@ -75,6 +78,10 @@ export class CreateOrganizationDialogComponent implements OnInit {
     initialSelectedUserIds = signal<number[]>([]);
     selectionIds = signal<number[]>([]);
 
+    /** Roles available for assignment in this org: built-ins in create-mode;
+     *  built-ins + this org's custom roles in edit-mode. */
+    readonly roleItems = signal<SelectItem[]>([]);
+
     readonly columns: AppTableColumnDef[] = [
         { key: 'user', label: 'User', width: '1fr' },
         { key: 'role', label: 'Role', width: '1fr' },
@@ -92,6 +99,26 @@ export class CreateOrganizationDialogComponent implements OnInit {
 
     ngOnInit(): void {
         this.loadUsers();
+        this.loadRoleItems();
+    }
+
+    private loadRoleItems(): void {
+        // Edit-mode: filter by the target org so we get its custom roles alongside built-ins.
+        // Create-mode: the org doesn't exist yet, so use only the (org-agnostic) built-ins from an unfiltered call.
+        const params = this.isEditMode && this.organizationId ? { orgIds: [this.organizationId] } : {};
+        this.rolesService
+            .loadRoles(params)
+            .pipe(
+                catchError(() => EMPTY),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((res) => {
+                const items: SelectItem[] = [
+                    ...res.built_in_roles.map(roleToSelectItem),
+                    ...(this.isEditMode ? res.results.map(roleToSelectItem) : []),
+                ];
+                this.roleItems.set(items);
+            });
     }
 
     onSelection(items: TableRow[]): void {
@@ -179,7 +206,12 @@ export class CreateOrganizationDialogComponent implements OnInit {
     }
 
     private loadUsers(): void {
-        const strategy = createUserFetchStrategy(this.currentUserService, this.adminUserService, this.userService);
+        const strategy = createUserFetchStrategy(
+            this.currentUserService,
+            this.adminUserService,
+            this.userService,
+            this.permissionsService
+        );
 
         strategy
             .fetchUsers()
@@ -232,6 +264,8 @@ export class CreateOrganizationDialogComponent implements OnInit {
                 role_id: row['role'] as number,
             }));
     }
+}
 
-    protected readonly USER_ROLES: SelectItem[] = USER_ROLES;
+function roleToSelectItem(role: GetRoleResponse): SelectItem<number> {
+    return { name: role.name, value: role.id };
 }

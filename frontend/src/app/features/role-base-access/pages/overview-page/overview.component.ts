@@ -27,7 +27,7 @@ export class OverviewComponent {
             routerLink: 'organizations',
             icon: 'buildings',
             label: 'Organizations',
-            isPermitted: this.permissionsService.can(ResourceCode.Organizations, ActionCode.Read),
+            isPermitted: this.permissionsService.isSuperadmin,
         },
         {
             routerLink: 'users',
@@ -39,7 +39,8 @@ export class OverviewComponent {
             routerLink: 'roles',
             icon: 'briefcase',
             label: 'Roles',
-            isPermitted: this.permissionsService.can(ResourceCode.Roles, ActionCode.Read),
+            // Roles is a cross-org resource — permit if Roles.Read is granted in ANY org (via /me/orgs/).
+            isPermitted: this.permissionsService.hasRolesAccess(),
         },
         {
             routerLink: 'api-keys',

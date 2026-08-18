@@ -16,6 +16,7 @@ import {
 import { getRelativeTime } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../../services/auth/profile.service';
 import {
     OverflowBadgeDirective,
@@ -66,6 +67,7 @@ export class UsersTabComponent implements OnInit {
     private userService = inject(UserService);
     private adminUserService = inject(AdminUserService);
     private currentUserService = inject(ProfileService);
+    private permissionsService = inject(PermissionsService);
 
     private normalizedUsers = signal<NormalizedUser[]>([]);
 
@@ -74,6 +76,7 @@ export class UsersTabComponent implements OnInit {
     isLoading = signal(true);
 
     private orgFilterItems = signal<SelectItem[]>([]);
+    private roleFilterItems = signal<SelectItem[]>([]);
 
     filteredUsers = computed(() => {
         const term = this.searchTerm().toLowerCase().trim();
@@ -96,7 +99,12 @@ export class UsersTabComponent implements OnInit {
 
     columns = computed<AppTableColumnDef[]>(() => [
         { key: 'user', label: 'USER', width: 'minmax(200px, 2fr)' },
-        { key: 'roles', label: 'ROLE', width: 'minmax(150px, 1.5fr)' },
+        {
+            key: 'roles',
+            label: 'ROLE',
+            width: 'minmax(150px, 1.5fr)',
+            filterItems: this.roleFilterItems(),
+        },
         {
             key: 'organization',
             label: 'ORGANIZATION',
@@ -151,7 +159,12 @@ export class UsersTabComponent implements OnInit {
 
     private loadUsers(): void {
         this.isLoading.set(true);
-        const strategy = createUserFetchStrategy(this.currentUserService, this.adminUserService, this.userService);
+        const strategy = createUserFetchStrategy(
+            this.currentUserService,
+            this.adminUserService,
+            this.userService,
+            this.permissionsService
+        );
 
         strategy
             .fetchUsers()
@@ -166,6 +179,7 @@ export class UsersTabComponent implements OnInit {
                     this.normalizedUsers.set(filtered);
                     this.usersData.set(filtered.map((u) => this.mapToRow(u)));
                     this.orgFilterItems.set(this.extractOrgFilterItems(filtered));
+                    this.roleFilterItems.set(this.extractRoleFilterItems(filtered));
                 },
             });
     }
@@ -180,9 +194,25 @@ export class UsersTabComponent implements OnInit {
         return Array.from(orgMap, ([value, name]) => ({ name, value }));
     }
 
+    private extractRoleFilterItems(users: NormalizedUser[]): SelectItem[] {
+        const roleSet = new Set<string>();
+        let hasSuperadmin = false;
+        for (const user of users) {
+            if (user.isSuperadmin) hasSuperadmin = true;
+            for (const m of user.memberships) {
+                roleSet.add(m.role.name);
+            }
+        }
+        const items: SelectItem[] = [];
+        if (hasSuperadmin) items.push({ name: 'Super Admin', value: 'Super Admin' });
+        for (const name of roleSet) items.push({ name, value: name });
+        return items;
+    }
+
     private mapToRow(user: NormalizedUser): TableRow {
         const orgs = user.memberships.map((m) => m.organization);
-        const roles = [...new Set(user.memberships.map((m) => m.role.name))];
+        const memberRoles = [...new Set(user.memberships.map((m) => m.role.name))];
+        const roles = user.isSuperadmin ? ['Super Admin', ...memberRoles] : memberRoles;
 
         return {
             id: user.id,

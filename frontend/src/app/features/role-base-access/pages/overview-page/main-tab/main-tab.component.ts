@@ -34,6 +34,10 @@ export class MainTabComponent implements OnInit {
     isRolesLoading = signal(true);
     usersCount = signal(0);
 
+    private totalRoles = computed(
+        () => this.rolesService.builtInRoles().length + this.rolesService.customRoles().length
+    );
+
     stats = computed<StatCardData[]>(() => [
         {
             label: 'TOTAL ORGANIZATIONS',
@@ -50,7 +54,7 @@ export class MainTabComponent implements OnInit {
         {
             label: 'ROLES',
             icon: 'briefcase',
-            value: this.rolesService.roles().length,
+            value: this.totalRoles(),
             loading: this.isRolesLoading(),
         },
     ]);

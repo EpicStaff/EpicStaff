@@ -19,13 +19,13 @@ import { UserAvatarComponent } from '../user-avatar/user-avatar.component';
 export class RoleInfoDialogComponent implements OnInit {
     private dialogRef = inject(DialogRef);
     private destroyRef = inject(DestroyRef);
-    private rolesCatalogService = inject(PermissionsService);
+    private permissionsService = inject(PermissionsService);
 
     readonly role = inject<GetRoleResponse>(DIALOG_DATA);
-    readonly catalog = computed<CatalogResponse | null>(() => this.rolesCatalogService.catalog());
+    readonly catalog = computed<CatalogResponse | null>(() => this.permissionsService.catalog());
 
     readonly selectedPermissions = computed<Set<string>>(() => {
-        const catalog = this.rolesCatalogService.catalog();
+        const catalog = this.permissionsService.catalog();
         if (catalog && this.role.is_built_in && this.role.name === 'Superadmin') {
             const all = new Set<string>();
             for (const rt of catalog.resource_types) {
@@ -39,7 +39,7 @@ export class RoleInfoDialogComponent implements OnInit {
     });
 
     ngOnInit() {
-        this.rolesCatalogService.loadCatalog().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.permissionsService.loadCatalog().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     }
 
     onClose(): void {
