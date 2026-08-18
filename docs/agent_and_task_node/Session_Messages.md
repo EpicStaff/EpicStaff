@@ -75,7 +75,7 @@ sub-task — **guard for it being absent**.
   "message_type": "finish",
   "output": {
     "message": "…final text…",   // AgentNode: last task's text. TaskNode: the task's answer.
-    "stop_reason": "completed",  // completed | max_iter_reached | schema_satisfied
+    "stop_reason": "completed",  // completed | max_iter_reached | schema_satisfied | max_consecutive_failures
     "iterations": 2,             // AgentNode: summed across sub-tasks
     "tool_invocations": 0,       // AgentNode: summed across sub-tasks
     "token_usage": { "prompt_tokens": 95, "completion_tokens": 55, "total_tokens": 150 }
@@ -101,6 +101,7 @@ satisfied) — the node raised.
 | `completed` | Normal completion — the agent returned a final answer and stopped calling tools. |
 | `schema_satisfied` | The task had an `output_schema`; `message` is a JSON string matching it. |
 | `max_iter_reached` | Hit the tool-turn cap (`max_iter`). Partial result. |
+| `max_consecutive_failures` | Hit the consecutive tool-failure cap (`max_consecutive_failures`). Agent produced a graceful summary. Partial result. |
 
 > ⚠️ `completed` **replaced the legacy value `no_tool_calls`**. Update any FE
 > code keyed on `no_tool_calls`.
