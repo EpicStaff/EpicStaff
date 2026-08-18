@@ -553,9 +553,29 @@
         flex-shrink: 0;
     }
 
+    &__node-icon {
+        color: var(--color-text-secondary);
+        flex-shrink: 0;
+
+        &--empty {
+            opacity: 0.16;
+        }
+    }
+
     &__node-name {
         font-size: 0.875rem;
         color: var(--color-text-primary);
+        white-space: nowrap;
+    }
+
+    &__empty-badge {
+        flex-shrink: 0;
+        margin-left: auto;
+        padding-left: 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 400;
+        color: var(--color-text-primary);
+        opacity: 0.16;
         white-space: nowrap;
     }
 
