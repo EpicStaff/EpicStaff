@@ -90,6 +90,19 @@ def mcp_tool_a(org_a, tool_label_a):
     return tool
 
 
+@pytest.fixture
+def mcp_tool_with_auth_a(org_a, tool_label_a):
+    tool = McpTool.objects.create(
+        name="McpToolWithAuthA",
+        transport="https://example.com/mcp-secret",
+        tool_name="do_secret_thing",
+        auth="Bearer sk-super-secret-token",
+        org=org_a,
+    )
+    tool.labels.add(tool_label_a)
+    return tool
+
+
 # ---- export ----
 
 
@@ -117,6 +130,61 @@ def test_mcptool_export_includes_labels_no_favorite_key(client_a, mcp_tool_a):
     assert tool_data["labels"] == [*mcp_tool_a.labels.values_list("id", flat=True)]
     assert "favorite" not in tool_data
     assert "is_favorite" not in tool_data
+
+
+@pytest.mark.django_db
+def test_mcptool_export_does_not_leak_auth_secret(client_a, mcp_tool_with_auth_a):
+    """EST-3783: exporting an MCP tool must never include the `auth` secret."""
+    resp = client_a.get(f"/api/mcp-tools/{mcp_tool_with_auth_a.id}/export/")
+    assert resp.status_code == 200
+
+    data = resp.json()
+    tool_data = data["MCPTool"][0]
+    assert "auth" not in tool_data
+    assert "sk-super-secret-token" not in resp.content.decode()
+
+
+@pytest.mark.django_db
+def test_mcptool_bulk_export_does_not_leak_auth_secret(client_a, mcp_tool_with_auth_a):
+    resp = client_a.post(
+        "/api/mcp-tools/bulk-export/",
+        {"ids": [mcp_tool_with_auth_a.id]},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+    data = resp.json()
+    tool_data = data["MCPTool"][0]
+    assert "auth" not in tool_data
+    assert "sk-super-secret-token" not in resp.content.decode()
+
+
+@pytest.mark.django_db
+def test_mcptool_import_after_export_does_not_carry_over_auth(
+    client_a, mcp_tool_with_auth_a, org_a
+):
+    """
+    Re-importing a tool exported with an auth secret must not resurrect the
+    secret: the imported copy comes back with auth unset, and the user is
+    expected to re-enter it manually (secure-by-default behavior).
+    """
+    export_resp = client_a.get(f"/api/mcp-tools/{mcp_tool_with_auth_a.id}/export/")
+    assert export_resp.status_code == 200
+
+    file = _as_upload(export_resp.content, "mcp_tool_with_auth.json")
+    resp = client_a.post(
+        "/api/mcp-tools/import/",
+        {"file": file, "import_labels": "true"},
+        format="multipart",
+    )
+    assert resp.status_code == 200, resp.data
+
+    new_tool = (
+        McpTool.objects.filter(org=org_a)
+        .exclude(id=mcp_tool_with_auth_a.id)
+        .latest("id")
+    )
+    assert new_tool.auth is None
+    assert new_tool.transport == mcp_tool_with_auth_a.transport
 
 
 # ---- bulk export ----
