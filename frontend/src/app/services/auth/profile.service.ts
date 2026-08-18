@@ -13,7 +13,7 @@ import {
     UserRole,
 } from '@shared/models';
 import { AppStorageService } from '@shared/services';
-import { map, Observable, of, switchMap } from 'rxjs';
+import { forkJoin, map, Observable, of, switchMap } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
 import { ROLE_LABELS } from '../../features/role-base-access/constants/role-labels.constant';
@@ -56,7 +56,7 @@ export class ProfileService {
         return this.http.get<GetMeResponse>(this.baseUrl).pipe(tap((user) => this.setUser(user)));
     }
 
-    /** Bootstrap: picks active org, then fetches active permissions.
+    /** Bootstrap: picks active org, then fetches active permissions + cross-org capabilities.
      *  Reuses cached profile if already fetched; otherwise fetches profile first.
      *  Called once by the route resolver on app load. */
     bootstrapUser(): Observable<GetMeResponse> {
@@ -65,9 +65,15 @@ export class ProfileService {
 
         return user$.pipe(
             switchMap((user) => {
-                if (user.memberships.length === 0) {
+                if (user.memberships.length === 0 && !user.is_superadmin) {
                     this.permissionsService.setActivePermissions(null);
-                    return of(user);
+                    // Still load /me/orgs/ so downstream gates read `is_superadmin: false, orgs: []`.
+                    return this.permissionsService.loadOrgPermissions().pipe(map(() => user));
+                }
+
+                // For superadmins with no memberships, skip active-org selection but still load /me/orgs/.
+                if (user.memberships.length === 0) {
+                    return this.permissionsService.loadOrgPermissions().pipe(map(() => user));
                 }
 
                 const cachedId = this.activeOrgService.activeOrgId();
@@ -75,8 +81,11 @@ export class ProfileService {
                 const orgId = stillValid ? cachedId! : user.memberships[0].organization.id;
                 this.activeOrgService.set(orgId);
 
-                // Fetch active permissions with X-Organization-Id header now attached by the interceptor
-                return this.permissionsService.loadActivePermissions().pipe(map(() => user));
+                // /me/ uses the header just set; /me/orgs/ is cross-org (header skipped in interceptor).
+                return forkJoin({
+                    active: this.permissionsService.loadActivePermissions(),
+                    orgs: this.permissionsService.loadOrgPermissions(),
+                }).pipe(map(() => user));
             })
         );
     }
@@ -104,11 +113,20 @@ export class ProfileService {
     }
 
     /** Switches the active organization: clears all caches, sets the new org,
-     *  then reloads permissions for the new org context. Order MATTERS */
+     *  then reloads permissions (single + cross-org) for the new context. Order MATTERS */
     switchOrg(orgId: number): Observable<void> {
         this.appStorageService.clearAll();
         this.activeOrgService.set(orgId);
-        return this.permissionsService.loadActivePermissions().pipe(map(() => undefined));
+        return forkJoin({
+            active: this.permissionsService.loadActivePermissions(),
+            orgs: this.permissionsService.loadOrgPermissions(),
+        }).pipe(map(() => undefined));
+    }
+
+    /** Refetch cross-org capabilities. Call after any role/membership write that could
+     *  have changed what the current user can do. */
+    refreshOrgPermissions(): Observable<void> {
+        return this.permissionsService.loadOrgPermissions().pipe(map(() => undefined));
     }
 
     clearCurrentUser(): void {

@@ -4,9 +4,8 @@ export enum ActionCode {
     Update = 'update',
     Delete = 'delete',
     Export = 'export',
-    Download = 'download',
-    Use = 'use',
-    List = 'list',
+    Use = 'use', // for 'secrets' management only
+    List = 'list', // unused for now
 }
 
 export enum ResourceCode {
@@ -47,4 +46,19 @@ export interface CatalogResourceType {
 export interface CatalogResponse {
     actions: CatalogAction[];
     resource_types: CatalogResourceType[];
+}
+
+export interface OrgCapability {
+    org: { id: number; name: string };
+    role: { id: number; name: string };
+    permissions: Record<ResourceCode, ActionCode[]>;
+}
+
+/** Response from `GET /api/permissions/me/orgs/`.
+ *  - Superadmin: `{ is_superadmin: true, permissions: '*' }` (no `orgs`).
+ *  - Regular user: `{ is_superadmin: false, orgs: [...] }` (no `permissions`). */
+export interface MyOrgPermissionsResponse {
+    is_superadmin: boolean;
+    orgs?: OrgCapability[];
+    permissions?: '*';
 }

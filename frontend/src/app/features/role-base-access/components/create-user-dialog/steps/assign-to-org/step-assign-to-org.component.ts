@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, input, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
     AppTableCellDirective,
     AppTableColumnDef,
@@ -9,9 +10,10 @@ import {
     SelectItem,
     TableRow,
 } from '@shared/components';
-import { FullMembership, Organization, UserRole } from '@shared/models';
+import { FullMembership, GetRoleResponse, Organization, UserRole } from '@shared/models';
+import { catchError, EMPTY } from 'rxjs';
 
-import { USER_ROLES } from '../../../../constants/user-roles-select-items.constant';
+import { RolesService } from '../../../../services/admin/roles.service';
 import { OrgAvatarComponent } from '../../../org-avatar/org-avatar.component';
 
 export interface OrgAssignment {
@@ -34,6 +36,9 @@ export interface OrgAssignment {
     ],
 })
 export class StepAssignToOrgComponent implements OnInit {
+    private rolesService = inject(RolesService);
+    private destroyRef = inject(DestroyRef);
+
     organizations = input.required<Organization[]>();
     existingMemberships = input<FullMembership[]>([]);
 
@@ -42,6 +47,11 @@ export class StepAssignToOrgComponent implements OnInit {
     isOrgsLoading = signal<boolean>(false);
     selectedOrganizations = signal<TableRow[]>([]);
     selectedOrgIds = computed(() => new Set(this.selectedOrganizations().map((r) => r['id'] as number)));
+
+    /** Built-in role items — always applicable in every org. */
+    private builtInRoleItems = signal<SelectItem[]>([]);
+    /** Per-org custom role items (results grouped by `org_id`). */
+    private customRoleItemsByOrg = signal<Map<number, SelectItem[]>>(new Map());
 
     filteredOrganizations = computed(() => {
         const term = this.searchTerm().toLowerCase().trim();
@@ -68,6 +78,37 @@ export class StepAssignToOrgComponent implements OnInit {
 
         this.organizationsTableData.set(rows);
         this.selectionIds.set(memberships.map((m) => m.organization.id));
+
+        this.loadRolesForOrgs();
+    }
+
+    /** Fetches built-ins and custom roles for all orgs presented on this step in a single request.
+     *  Groups custom roles by `org_id` so each row can show `built-ins ∪ custom(row.orgId)`. */
+    private loadRolesForOrgs(): void {
+        const orgIds = this.organizations().map((o) => o.id);
+        this.rolesService
+            .loadRoles(orgIds.length ? { orgIds } : {})
+            .pipe(
+                catchError(() => EMPTY),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((res) => {
+                this.builtInRoleItems.set(res.built_in_roles.map(roleToSelectItem));
+                const grouped = new Map<number, SelectItem[]>();
+                for (const role of res.results) {
+                    if (role.org_id === null) continue;
+                    const list = grouped.get(role.org_id) ?? [];
+                    list.push(roleToSelectItem(role));
+                    grouped.set(role.org_id, list);
+                }
+                this.customRoleItemsByOrg.set(grouped);
+            });
+    }
+
+    /** Role options for a specific org row: built-ins + that org's custom roles. */
+    rolesForOrg(orgId: number): SelectItem[] {
+        const custom = this.customRoleItemsByOrg().get(orgId) ?? [];
+        return [...this.builtInRoleItems(), ...custom];
     }
 
     onSelection(items: TableRow[]): void {
@@ -91,6 +132,8 @@ export class StepAssignToOrgComponent implements OnInit {
                 roleId: row['role'] as number,
             }));
     }
+}
 
-    protected readonly USER_ROLES: SelectItem[] = USER_ROLES;
+function roleToSelectItem(role: GetRoleResponse): SelectItem<number> {
+    return { name: role.name, value: role.id };
 }

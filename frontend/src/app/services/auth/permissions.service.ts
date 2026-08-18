@@ -1,6 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
-import { ActionCode, ActivePermissions, CatalogResponse, ResourceCode } from '@shared/models';
+import {
+    ActionCode,
+    ActivePermissions,
+    CatalogResponse,
+    MyOrgPermissionsResponse,
+    OrgCapability,
+    ResourceCode,
+} from '@shared/models';
 import { StorageService } from '@shared/services';
 import { Observable, of, tap } from 'rxjs';
 
@@ -25,6 +32,10 @@ export class PermissionsService implements StorageService {
     private readonly _catalog = signal<CatalogResponse | null>(null);
     readonly catalog = this._catalog.asReadonly();
 
+    /** Cross-org capabilities from `GET /api/permissions/me/orgs/`. */
+    private readonly _orgCaps = signal<MyOrgPermissionsResponse | null>(null);
+    readonly orgCaps = this._orgCaps.asReadonly();
+
     setActivePermissions(p: ActivePermissions | null): void {
         this._active.set(p);
     }
@@ -45,6 +56,35 @@ export class PermissionsService implements StorageService {
 
     canAny(resource: ResourceCode, actions: ActionCode[]): boolean {
         return actions.some((action) => this.can(resource, action));
+    }
+
+    /** Multi-org gate: can the current user do `action` on `resource` in org `orgId`?
+     *  Backed by `/me/orgs/` capabilities. Superadmin short-circuits to true. */
+    // TODO can be replaced with 'can'?
+    canIn(orgId: number, resource: ResourceCode, action: ActionCode): boolean {
+        if (this._isSuperadmin()) return true;
+        const caps = this._orgCaps();
+        const org = caps?.orgs?.find((o) => o.org.id === orgId);
+        return !!org && (org.permissions[resource]?.includes(action) ?? false);
+    }
+
+    /** Orgs where the current user can perform `action` on `resource`.
+     *  Returns `[]` for superadmins — callers should fall back to the full org list. */
+    orgsWith(resource: ResourceCode, action: ActionCode): { id: number; name: string }[] {
+        if (this._isSuperadmin()) return [];
+        const caps = this._orgCaps();
+        return (
+            caps?.orgs
+                ?.filter((o: OrgCapability) => o.permissions[resource]?.includes(action) ?? false)
+                .map((o) => o.org) ?? []
+        );
+    }
+
+    /** Any org where the current user can read/create/update/delete roles.
+     *  Used to gate the "Roles" nav item. */
+    hasRolesAccess(action: ActionCode = ActionCode.Read): boolean {
+        if (this._isSuperadmin()) return true;
+        return this.orgsWith(ResourceCode.Roles, action).length > 0;
     }
 
     get isSuperadmin(): boolean {
@@ -75,6 +115,17 @@ export class PermissionsService implements StorageService {
         );
     }
 
+    /** Fetches the current user's cross-org capabilities.
+     *  Does NOT use the X-Organization-Id header (excluded in the interceptor). */
+    loadOrgPermissions(): Observable<MyOrgPermissionsResponse> {
+        return this.http.get<MyOrgPermissionsResponse>(`${this.baseUrl}me/orgs/`).pipe(
+            tap((res) => {
+                this._orgCaps.set(res);
+                this.setSuperadmin(res.is_superadmin);
+            })
+        );
+    }
+
     resolveDefaultRoute(): string {
         const active = this._active();
         if (this._isSuperadmin()) return '/workspace/main';
@@ -94,5 +145,6 @@ export class PermissionsService implements StorageService {
         this._active.set(null);
         this._isSuperadmin.set(false);
         this._catalog.set(null);
+        this._orgCaps.set(null);
     }
 }

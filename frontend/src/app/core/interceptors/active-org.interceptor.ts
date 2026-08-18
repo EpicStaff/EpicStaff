@@ -35,5 +35,10 @@ export const activeOrgInterceptor: HttpInterceptorFn = (req, next) => {
 };
 
 function shouldSkip(url: string): boolean {
-    return url.includes('/api/auth/') || /\/admin\/organizations\/\d+\//.test(url);
+    return (
+        url.includes('/api/auth/') ||
+        /\/admin\/organizations\/\d+\//.test(url) ||
+        url.includes('/admin/roles/') ||
+        url.endsWith('/permissions/me/orgs/')
+    );
 }

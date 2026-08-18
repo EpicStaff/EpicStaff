@@ -227,7 +227,7 @@
         [style.top.px]="moreMenuPosition().y"
     >
         <button
-            *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
+            *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
             class="storage-tree__context-menu-item"
             [class.storage-tree__context-menu-item--disabled]="selectedPaths().size === 0"
             [disabled]="selectedPaths().size === 0"
@@ -236,7 +236,7 @@
             Download Selected
         </button>
         <button
-            *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
+            *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
             class="storage-tree__context-menu-item"
             (click)="onMoreMenuAction('download-all')"
         >
@@ -274,7 +274,7 @@
             Add to flow
         </button>
         <button
-            *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
+            *appHasPermission="[ResourceCode.Files, ActionCode.Export]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('download')"
         >
