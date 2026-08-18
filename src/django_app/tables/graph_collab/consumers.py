@@ -58,6 +58,39 @@ def _lock_timeout() -> int:
     return getattr(settings, "GRAPH_LOCK_TIMEOUT_SECONDS", 300)
 
 
+def _extract_node_ref(message: BaseModel) -> dict:
+    """Build the `node_ref` field of `OpRejectedMessage` for *message*,
+    identifying the entry a rejected state-mutating op targeted.
+
+    Every message type in `_STATE_OP_TYPES` carries its identity in one of a
+    handful of attribute shapes, checked here in order:
+      - `.node` dict (NodeCreatedMessage, NodeUpdatedMessage) with "id"/"temp_id"
+      - `.connection` dict (ConnectionCreatedMessage) with "id"/"temp_id"
+      - `.refs` list of EntryDeleteRef (NodesDeletedMessage, ConnectionsDeletedMessage)
+        — a bulk op has no single identity, so the first ref is used
+      - `.connection_id` (ConnectionDeletedMessage: int | None, with a sibling
+        `.temp_id` attribute; ConnectionWaypointsUpdatedMessage: int | str,
+        a real DB id XOR a temp_id string, discriminated by type)
+    """
+    node = getattr(message, "node", None)
+    if node is not None:
+        return {"id": node.get("id"), "temp_id": node.get("temp_id")}
+
+    connection = getattr(message, "connection", None)
+    if connection is not None:
+        return {"id": connection.get("id"), "temp_id": connection.get("temp_id")}
+
+    refs = getattr(message, "refs", None)
+    if refs:
+        first_ref = refs[0]
+        return {"id": first_ref.id, "temp_id": first_ref.temp_id}
+
+    connection_id = getattr(message, "connection_id", None)
+    if isinstance(connection_id, str):
+        return {"id": None, "temp_id": connection_id}
+    return {"id": connection_id, "temp_id": getattr(message, "temp_id", None)}
+
+
 def _resolve_flows_permissions(user, org_id: int) -> EffectivePermissions | None:
     """Resolve `user`'s `EffectivePermissions` for `org_id`, treating a
     genuine loss of all access (no membership row, or org deactivated —
@@ -445,16 +478,12 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         # cursor/selection traffic but must not mutate the graph.
         if message.type in _STATE_OP_TYPES:
             if not self._can_edit:
-                node = getattr(message, "node", None) or {}
                 await self.send_json(
                     OpRejectedMessage(
                         op_type=message.type,
                         op_id=getattr(message, "op_id", None),
                         list_key=getattr(message, "list_key", ""),
-                        node_ref={
-                            "id": node.get("id"),
-                            "temp_id": node.get("temp_id"),
-                        },
+                        node_ref=_extract_node_ref(message),
                         reason="permission_denied",
                     ).model_dump()
                 )
@@ -462,13 +491,12 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
 
             result = await graph_state_service.apply_op(self.graph_id, message)
             if result is not None and not result.relay:
-                node = getattr(message, "node", None) or {}
                 await self.send_json(
                     OpRejectedMessage(
                         op_type=message.type,
                         op_id=getattr(message, "op_id", None),
                         list_key=getattr(message, "list_key", ""),
-                        node_ref={"id": node.get("id"), "temp_id": node.get("temp_id")},
+                        node_ref=_extract_node_ref(message),
                         reason=result.reason or "rejected",
                         details=result.details,
                     ).model_dump()

@@ -635,6 +635,201 @@ async def test_viewer_state_mutating_op_is_rejected_and_snapshot_unchanged(
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
+async def test_viewer_connection_created_rejection_reports_node_ref_from_connection(
+    org_graph, viewer_member
+):
+    """A rejected `connection_created` must build `node_ref` from the
+    `.connection` dict, not from a `.node` attribute that doesn't exist on
+    this message type (regression: previously always {id: None, temp_id: None})."""
+    communicator = _make_communicator(org_graph.pk, viewer_member)
+    connected, _ = await communicator.connect()
+    assert connected
+    await _drain_connect(communicator)
+
+    await communicator.send_json_to(
+        {
+            "type": "connection_created",
+            "connection": {"temp_id": "con-1", "start_node_id": 1, "end_node_id": 2},
+            "list_key": "edge_list",
+            "editor": editor_payload(viewer_member),
+        }
+    )
+
+    rejection = await communicator.receive_json_from()
+    assert rejection["type"] == "op_rejected"
+    assert rejection["op_type"] == "connection_created"
+    assert rejection["reason"] == "permission_denied"
+    assert rejection["node_ref"] == {"id": None, "temp_id": "con-1"}
+
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_viewer_connection_deleted_rejection_reports_node_ref_from_connection_id(
+    org_graph, viewer_member
+):
+    """A rejected single-entity `connection_deleted` must build `node_ref`
+    from its `.connection_id`/`.temp_id` sibling attributes (not a nested
+    `.connection` dict — this message type has no such attribute). Here the
+    connection is already persisted, so `connection_id` is a real int and
+    `temp_id` is None."""
+    communicator = _make_communicator(org_graph.pk, viewer_member)
+    connected, _ = await communicator.connect()
+    assert connected
+    await _drain_connect(communicator)
+
+    await communicator.send_json_to(
+        {
+            "type": "connection_deleted",
+            "connection_id": 7,
+            "list_key": "edge_list",
+            "editor": editor_payload(viewer_member),
+        }
+    )
+
+    rejection = await communicator.receive_json_from()
+    assert rejection["type"] == "op_rejected"
+    assert rejection["op_type"] == "connection_deleted"
+    assert rejection["reason"] == "permission_denied"
+    assert rejection["node_ref"] == {"id": 7, "temp_id": None}
+
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_viewer_connections_deleted_rejection_reports_node_ref_from_first_ref(
+    org_graph, viewer_member
+):
+    """A rejected bulk `connections_deleted` must build `node_ref` from the
+    first entry of `.refs` (regression: previously always
+    {id: None, temp_id: None} since this message type has no `.node`)."""
+    communicator = _make_communicator(org_graph.pk, viewer_member)
+    connected, _ = await communicator.connect()
+    assert connected
+    await _drain_connect(communicator)
+
+    await communicator.send_json_to(
+        {
+            "type": "connections_deleted",
+            "refs": [
+                {"list_key": "edge_list", "id": 42},
+                {"list_key": "edge_list", "id": 43},
+            ],
+            "editor": editor_payload(viewer_member),
+        }
+    )
+
+    rejection = await communicator.receive_json_from()
+    assert rejection["type"] == "op_rejected"
+    assert rejection["op_type"] == "connections_deleted"
+    assert rejection["reason"] == "permission_denied"
+    assert rejection["node_ref"] == {"id": 42, "temp_id": None}
+
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_viewer_connection_waypoints_updated_with_real_id_rejection_reports_node_ref_from_connection_id(
+    org_graph, viewer_member
+):
+    """A rejected `connection_waypoints_updated` targeting an already-persisted
+    connection (int `connection_id`) must build `node_ref` from
+    `.connection_id` (confirmed live-trace regression: this exact op type
+    always came back with node_ref: {id: None, temp_id: None} before the fix,
+    since it has neither `.node` nor `.connection`)."""
+    communicator = _make_communicator(org_graph.pk, viewer_member)
+    connected, _ = await communicator.connect()
+    assert connected
+    await _drain_connect(communicator)
+
+    await communicator.send_json_to(
+        {
+            "type": "connection_waypoints_updated",
+            "connection_id": 7,
+            "waypoints": [{"x": 1.0, "y": 2.0}],
+            "list_key": "edge_list",
+            "editor": editor_payload(viewer_member),
+        }
+    )
+
+    rejection = await communicator.receive_json_from()
+    assert rejection["type"] == "op_rejected"
+    assert rejection["op_type"] == "connection_waypoints_updated"
+    assert rejection["reason"] == "permission_denied"
+    assert rejection["node_ref"] == {"id": 7, "temp_id": None}
+
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_viewer_connection_waypoints_updated_with_temp_id_rejection_reports_node_ref_from_temp_id(
+    org_graph, viewer_member
+):
+    """A rejected `connection_waypoints_updated` targeting a not-yet-persisted
+    connection (str `connection_id` holding the client-side temp_id) must be
+    discriminated by type in `_extract_node_ref` and reported as
+    `{"id": None, "temp_id": "<temp_id>"}`, not misread as a real int id."""
+    communicator = _make_communicator(org_graph.pk, viewer_member)
+    connected, _ = await communicator.connect()
+    assert connected
+    await _drain_connect(communicator)
+
+    await communicator.send_json_to(
+        {
+            "type": "connection_waypoints_updated",
+            "connection_id": "con-temp-1",
+            "waypoints": [{"x": 1.0, "y": 2.0}],
+            "list_key": "edge_list",
+            "editor": editor_payload(viewer_member),
+        }
+    )
+
+    rejection = await communicator.receive_json_from()
+    assert rejection["type"] == "op_rejected"
+    assert rejection["op_type"] == "connection_waypoints_updated"
+    assert rejection["reason"] == "permission_denied"
+    assert rejection["node_ref"] == {"id": None, "temp_id": "con-temp-1"}
+
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_viewer_nodes_deleted_rejection_reports_node_ref_from_first_ref(
+    org_graph, viewer_member
+):
+    """A rejected bulk `nodes_deleted` must build `node_ref` from the first
+    entry of `.refs`, same as the `connections_deleted` bulk case."""
+    communicator = _make_communicator(org_graph.pk, viewer_member)
+    connected, _ = await communicator.connect()
+    assert connected
+    await _drain_connect(communicator)
+
+    await communicator.send_json_to(
+        {
+            "type": "nodes_deleted",
+            "refs": [
+                {"list_key": "crew_node_list", "temp_id": "n-ghost"},
+            ],
+            "editor": editor_payload(viewer_member),
+        }
+    )
+
+    rejection = await communicator.receive_json_from()
+    assert rejection["type"] == "op_rejected"
+    assert rejection["op_type"] == "nodes_deleted"
+    assert rejection["reason"] == "permission_denied"
+    assert rejection["node_ref"] == {"id": None, "temp_id": "n-ghost"}
+
+    await communicator.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
 async def test_viewer_node_locked_is_rejected_and_no_lock_granted(
     org_graph, viewer_member
 ):
