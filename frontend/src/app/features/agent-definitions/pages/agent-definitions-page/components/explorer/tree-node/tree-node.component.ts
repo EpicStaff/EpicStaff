@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
-import { DragHoverDirective } from '@shared/directives';
+import { DragHoverDirective, TooltipOnOverflowDirective } from '@shared/directives';
 
 import { StorageDragService } from '../../../../../../files/services/storage-drag.service';
 import { ExplorerSelection } from '../../../../../models/explorer.model';
@@ -28,7 +28,7 @@ export interface ExplorerTreeAttachSurfaceEvent {
 
 @Component({
     selector: 'app-tree-node',
-    imports: [AppSvgIconComponent, DragHoverDirective, MatTooltipModule],
+    imports: [AppSvgIconComponent, DragHoverDirective, MatTooltipModule, TooltipOnOverflowDirective],
     templateUrl: './tree-node.component.html',
     styleUrls: ['./tree-node.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
