@@ -2,16 +2,17 @@ import asyncio
 from typing import Literal
 
 from application import commands
+from application.commands import RemoveRag
 from application.orchestrators.indexing import build_indexer
 from application.orchestrators.prechunking import build_prechunker
+from application.orchestrators.removing.factory import build_remover
 from application.orchestrators.searching import build_search
 from application.ports import AbstractUnitOfWork
 from common.utils import make_key
 from domain.enums import RAGStrategy
-from litestar import Controller, post, status_codes, get, delete
-
 from domain.errors import NotRunningOperationError
 from infrastructure.task_register import TaskRegister
+from litestar import Controller, delete, post, status_codes
 from presentation.rest import schemas
 
 
@@ -38,7 +39,7 @@ class RagController(Controller):
         )
         orchestrator = build_indexer(strategy, uow)
         task = asyncio.create_task(orchestrator.execute(command))
-        key = make_key('rag', strategy, rag_id, 'index')
+        key = make_key("rag", strategy, rag_id, "index")
         task_register.register(key, task)
 
     @post(
@@ -82,7 +83,7 @@ class RagController(Controller):
         )
         orchestrator = build_prechunker(strategy, uow)
         task = asyncio.create_task(orchestrator.execute(command))
-        key = make_key('rag', strategy, rag_id, 'prechunk')
+        key = make_key("rag", strategy, rag_id, "prechunk")
         task_register.register(key, task)
 
     @delete(
@@ -93,9 +94,15 @@ class RagController(Controller):
         self,
         strategy: RAGStrategy,
         rag_id: int,
-        operation: Literal['index', 'prechunk'],
+        operation: Literal["index", "prechunk"],
         task_register: TaskRegister,
     ) -> None:
-        key = make_key('rag', strategy, rag_id, operation)
+        key = make_key("rag", strategy, rag_id, operation)
         if not task_register.cancel(key):
             raise NotRunningOperationError(operation=operation, rag_id=rag_id)
+
+    @delete(path="{rag_id:int}/", summary="Delete a RAG and its result storage.")
+    async def remove(self, strategy: RAGStrategy, rag_id: int, uow: AbstractUnitOfWork) -> None:
+        command = RemoveRag(rag_id=rag_id)
+        orchestrator = build_remover(strategy, uow)
+        await orchestrator.execute(command)

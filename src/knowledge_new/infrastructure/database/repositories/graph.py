@@ -9,7 +9,6 @@ from graphrag_input import TextDocument
 from graphrag_llm.config import ModelConfig
 from infrastructure.database.models import (
     DocumentMetadata,
-    EmbeddingConfig as ORMEmbeddingConfig,
     EmbeddingModel,
     GraphRag,
     GraphRagDocument,
@@ -17,11 +16,14 @@ from infrastructure.database.models import (
     LLMConfig,
     LLMModel,
 )
+from infrastructure.database.models import (
+    EmbeddingConfig as ORMEmbeddingConfig,
+)
 from infrastructure.database.repositories.base import BaseSQLAlchemyRepositoryMixin
 from infrastructure.file_text_extractors import build_file_text_extractor
 from infrastructure.graphrag.storages import create_storage_config
 from infrastructure.graphrag.vector_stores import create_vector_store_config
-from sqlalchemy import exists, select, update
+from sqlalchemy import delete, exists, select, update
 from sqlalchemy.orm import joinedload
 
 
@@ -158,6 +160,12 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
         if (rag := result.scalar_one_or_none()) is not None:
             return self._to_graph_rag_config(rag)
         return None
+
+    async def remove_rag(self, rag_id: int):
+        await self._session.execute(
+            delete(GraphRagDocument).where(GraphRagDocument.graph_rag_id == rag_id)
+        )
+        await self._session.execute(delete(GraphRag).where(GraphRag.graph_rag_id == rag_id))
 
     def _to_graph_rag_config(self, rag: GraphRag) -> GraphRagConfig:
         llm_config: LLMConfig = rag.llm

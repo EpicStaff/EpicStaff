@@ -3,7 +3,7 @@ import io
 import re
 from collections.abc import Coroutine, Iterator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Optional
 
 from settings import settings
 from graphrag_storage import Storage, StorageConfig, register_storage
@@ -14,11 +14,11 @@ from miniopy_async.deleteobjects import DeleteObject
 
 def create_storage_config(
     rag_id: int,
-    subdir: str,
+    subdir: Optional[str] = None,
 ) -> StorageConfig:
     return StorageConfig(
         type="minio",
-        prefix=f"graphrag/rag_{rag_id}/{subdir}",
+        prefix=f"graphrag/rag_{rag_id}/{subdir}" if subdir else f"graphrag/rag_{rag_id}",
         host=settings.MINIO_HOST,
         bucket=settings.MINIO_BUCKET,
         access_key=settings.MINIO_ACCESS_KEY,

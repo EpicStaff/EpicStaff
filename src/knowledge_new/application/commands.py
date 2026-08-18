@@ -4,6 +4,7 @@ from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
     "Command",
+    "RemoveRag",
     "RunIndex",
     "RunPrechunk",
     "RunSearch",
@@ -33,3 +34,8 @@ class RunPrechunk(Command):
     rag_id: int
     document_id: int
     chunking_config: ChunkingConfig
+
+
+@dataclass(frozen=True)
+class RemoveRag(Command):
+    rag_id: int

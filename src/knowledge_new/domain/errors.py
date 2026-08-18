@@ -8,10 +8,11 @@ __all__ = [
     "GraphRagConfigNotFoundError",
     "KnowledgeError",
     "NoPreviewChunksProducedError",
+    "NotRunningOperationError",
+    "RagInProcessingError",
     "RagNotFoundError",
     "RepositoryError",
     "UnsupportedError",
-    "NotRunningOperationError",
 ]
 
 
@@ -74,3 +75,7 @@ class RagNotFoundError(KnowledgeError):
 
 class NotRunningOperationError(KnowledgeError):
     default_message = "No running {operation} for RAG(id={rag_id})."
+
+
+class RagInProcessingError(KnowledgeError):
+    default_message = "Cannot remove RAG(id={rag_id}) while it is being processed."

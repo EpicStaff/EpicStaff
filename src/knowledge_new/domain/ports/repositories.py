@@ -219,3 +219,11 @@ class AbstractGraphRagRepository(abc.ABC):
         Args:
             rag_id: Primary key of the GraphRAG collection.
         """
+
+    @abc.abstractmethod
+    async def remove_rag(self, rag_id: int):
+        """Delete the GraphRAG collection `rag_id` and all its DB records.
+
+        Args:
+            rag_id: Primary key of the GraphRAG collection.
+        """
