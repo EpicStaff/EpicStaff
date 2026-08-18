@@ -27,9 +27,25 @@ class McpToolStrategy(EntityImportExportStrategy):
     def extract_dependencies_from_instance(self, instance):
         return {EntityType.LABEL: list(instance.labels.values_list("id", flat=True))}
 
+    def extract_org_scoped_dependencies(
+        self, instance: McpTool, org_id: int
+    ) -> dict[str, list[int]]:
+        return {
+            EntityType.LABEL: list(
+                instance.labels.filter(org_id=org_id).values_list("id", flat=True)
+            )
+        }
+
     def export_entity(self, instance: McpTool) -> dict:
         data = self.serializer_class(instance).data
         data["labels"] = list(instance.labels.values_list("id", flat=True))
+        return data
+
+    def export_entity_org_scoped(self, instance: McpTool, org_id: int) -> dict:
+        data = self.serializer_class(instance).data
+        data["labels"] = list(
+            instance.labels.filter(org_id=org_id).values_list("id", flat=True)
+        )
         return data
 
     def get_org_scope_q(self, org_id: int) -> Q:

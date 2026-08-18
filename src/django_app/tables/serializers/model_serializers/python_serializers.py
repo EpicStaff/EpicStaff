@@ -19,6 +19,10 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedUniqueValidator,
     OrgScopedUniqueTogetherValidator,
 )
+from tables.serializers.utils.org_scoped_labels import (
+    org_scoped_label_ids,
+    set_org_scoped_labels,
+)
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
@@ -93,6 +97,20 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "built_in"]
 
+    def to_representation(self, instance):
+        """Scope the serialized `labels` to the active org.
+
+        `PythonCodeTool.labels` is a single M2M; a shared built-in tool
+        (`org=None`) can carry attachments from several orgs on the same
+        row. Without this, GET would leak another org's label ids on that
+        shared row (EST-3773).
+        """
+        representation = super().to_representation(instance)
+        representation["labels"] = org_scoped_label_ids(
+            instance, self.context.get("request")
+        )
+        return representation
+
     def create(self, validated_data):
         labels = validated_data.pop("labels", [])
         python_code_data = validated_data.pop("python_code")
@@ -101,7 +119,9 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             python_code_tool = PythonCodeTool.objects.create(
                 python_code=python_code, **validated_data
             )
-            python_code_tool.labels.set(labels)
+            set_org_scoped_labels(
+                python_code_tool, labels, self.context.get("request")
+            )
         return python_code_tool
 
     def update(self, instance, validated_data):
@@ -126,7 +146,7 @@ class PythonCodeToolSerializer(serializers.ModelSerializer):
             instance.save()
 
             if labels is not None:
-                instance.labels.set(labels)
+                set_org_scoped_labels(instance, labels, self.context.get("request"))
 
         return instance
 

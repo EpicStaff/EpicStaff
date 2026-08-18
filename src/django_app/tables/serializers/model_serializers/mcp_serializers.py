@@ -8,6 +8,10 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
 )
+from tables.serializers.utils.org_scoped_labels import (
+    org_scoped_label_ids,
+    set_org_scoped_labels,
+)
 
 
 class McpToolSerializer(serializers.ModelSerializer):
@@ -38,11 +42,18 @@ class McpToolSerializer(serializers.ModelSerializer):
             data = {key: value for key, value in data.items() if key != "labels"}
         return super().to_internal_value(data)
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation["labels"] = org_scoped_label_ids(
+            instance, self.context.get("request")
+        )
+        return representation
+
     def create(self, validated_data):
         labels = validated_data.pop("labels", None) or []
         with transaction.atomic():
             instance = super().create(validated_data)
-            instance.labels.set(labels)
+            set_org_scoped_labels(instance, labels, self.context.get("request"))
         return instance
 
     def update(self, instance, validated_data):
@@ -50,5 +61,5 @@ class McpToolSerializer(serializers.ModelSerializer):
         with transaction.atomic():
             instance = super().update(instance, validated_data)
             if labels is not None:
-                instance.labels.set(labels)
+                set_org_scoped_labels(instance, labels, self.context.get("request"))
         return instance

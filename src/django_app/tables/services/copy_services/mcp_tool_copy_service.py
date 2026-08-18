@@ -29,5 +29,7 @@ class McpToolCopyService(BaseCopyService):
             auth=tool.auth,
             init_timeout=tool.init_timeout,
         )
-        new_tool.labels.set(tool.labels.filter(scope=Label.Scope.TOOL))
+        new_tool.labels.set(
+            tool.labels.filter(scope=Label.Scope.TOOL, org_id=new_tool.org_id)
+        )
         return new_tool

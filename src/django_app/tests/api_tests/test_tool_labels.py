@@ -45,6 +45,23 @@ def client_a(member_a, org_a):
 
 
 @pytest.fixture
+def member_b(db, django_user_model, org_b, org_admin_role):
+    user = django_user_model.objects.create_user(
+        email="member_b@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org_b, role=org_admin_role)
+    return user
+
+
+@pytest.fixture
+def client_b(member_b, org_b):
+    client = APIClient()
+    client.force_authenticate(user=member_b)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org_b.id))
+    return client
+
+
+@pytest.fixture
 def python_code_tool_a(org_a) -> PythonCodeTool:
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     return PythonCodeTool.objects.create(
@@ -328,6 +345,59 @@ def test_labels_plus_other_field_patch_on_built_in_tool_rejected(
     built_in_python_code_tool.refresh_from_db()
     assert built_in_python_code_tool.name == "BuiltInTool"
     assert list(built_in_python_code_tool.labels.values_list("id", flat=True)) == []
+
+
+# ---- EST-3773: two orgs labeling the same shared built-in tool ----
+
+
+@pytest.fixture
+def real_built_in_python_code_tool() -> PythonCodeTool:
+    # Real built-in tools are global (org=None), unlike `built_in_python_code_tool`
+    # above which stamps `org=org_a` and doesn't model how built-ins actually
+    # exist in production — every org's labels co-mingle on this one row's
+    # `labels` M2M since there is no per-org join.
+    code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
+    return PythonCodeTool.objects.create(
+        name="SharedBuiltInTool",
+        description="desc",
+        python_code=code,
+        org=None,
+        built_in=True,
+    )
+
+
+@pytest.mark.django_db
+def test_two_orgs_labeling_same_built_in_tool_no_400_no_cross_wipe(
+    client_a, client_b, org_a, org_b, real_built_in_python_code_tool
+):
+    label_a = Label.objects.create(name="OrgALabel", org=org_a, scope=Label.Scope.TOOL)
+    label_b = Label.objects.create(name="OrgBLabel", org=org_b, scope=Label.Scope.TOOL)
+    tool_id = real_built_in_python_code_tool.id
+
+    resp_a = client_a.patch(
+        f"/api/python-code-tool/{tool_id}/",
+        {"labels": [label_a.id]},
+        format="json",
+    )
+    assert resp_a.status_code == 200, resp_a.data
+
+    # org-2 attaching its own label to the same shared row must not 400.
+    resp_b = client_b.patch(
+        f"/api/python-code-tool/{tool_id}/",
+        {"labels": [label_b.id]},
+        format="json",
+    )
+    assert resp_b.status_code == 200, resp_b.data
+
+    # org-2's GET only shows org-2's label — no cross-org leak.
+    get_b = client_b.get(f"/api/python-code-tool/{tool_id}/")
+    assert get_b.status_code == 200
+    assert get_b.data["labels"] == [label_b.id]
+
+    # org-1's attachment was preserved, not wiped by org-2's write.
+    get_a = client_a.get(f"/api/python-code-tool/{tool_id}/")
+    assert get_a.status_code == 200
+    assert get_a.data["labels"] == [label_a.id]
 
 
 # ---- cascade delete ----

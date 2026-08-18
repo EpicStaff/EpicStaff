@@ -21,6 +21,11 @@ def org_a(db):
 
 
 @pytest.fixture
+def org_b(db):
+    return Organization.objects.create(name="Org B")
+
+
+@pytest.fixture
 def member_a(db, django_user_model, org_a, org_admin_role):
     user = django_user_model.objects.create_user(
         email="copy_member_a@example.com", password="StrongPass123!"
@@ -187,3 +192,24 @@ def test_copy_of_mcp_tool_inherits_labels(client_a, org_a):
 
     copy = McpTool.objects.get(id=resp.data["id"])
     assert list(copy.labels.values_list("id", flat=True)) == [label.id]
+
+
+# ---- EST-3773: copying a shared built-in tool must not carry another org's labels ----
+
+
+@pytest.mark.django_db
+def test_copy_of_built_in_tool_does_not_carry_other_org_labels(
+    client_a, org_a, org_b
+):
+    tool = _make_tool(built_in=True, org=None, name="SharedBuiltInWithForeignLabel")
+    foreign_label = Label.objects.create(
+        name="OrgBLabel", scope=Label.Scope.TOOL, org=org_b
+    )
+    tool.labels.set([foreign_label])
+
+    resp = client_a.post(f"/api/python-code-tool/{tool.id}/copy/", {}, format="json")
+    assert resp.status_code == 201, resp.data
+
+    copy = PythonCodeTool.objects.get(id=resp.data["id"])
+    assert copy.org_id == org_a.id
+    assert list(copy.labels.values_list("id", flat=True)) == []

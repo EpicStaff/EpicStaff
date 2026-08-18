@@ -870,7 +870,9 @@ class PythonCodeToolViewSet(
     @extend_schema(**PYTHON_CODE_TOOL_EXPORT_GET)
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
-        return self.import_export_service.export_entity(self.get_object())
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
+        )
 
     @extend_schema(**PYTHON_CODE_TOOL_BULK_EXPORT_POST)
     @action(detail=False, methods=["post"], url_path="bulk-export")
@@ -893,7 +895,9 @@ class PythonCodeToolViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids)
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id()
+        )
 
     @extend_schema(**PYTHON_CODE_TOOL_IMPORT_POST)
     @action(detail=False, methods=["post"], url_path="import")
@@ -1995,7 +1999,9 @@ class McpToolViewSet(
     @extend_schema(**MCP_TOOL_EXPORT_GET)
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
-        return self.import_export_service.export_entity(self.get_object())
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
+        )
 
     @extend_schema(**MCP_TOOL_BULK_EXPORT_POST)
     @action(detail=False, methods=["post"], url_path="bulk-export")
@@ -2013,7 +2019,9 @@ class McpToolViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return self.import_export_service.bulk_export(entity_ids)
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id()
+        )
 
     @extend_schema(**MCP_TOOL_IMPORT_POST)
     @action(detail=False, methods=["post"], url_path="import")

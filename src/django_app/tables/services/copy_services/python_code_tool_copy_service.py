@@ -20,12 +20,15 @@ class PythonCodeToolCopyService(BaseCopyService):
             existing_names=existing_names,
         )
 
+        target_org_id = org_id if org_id is not None else tool.org_id
         new_tool = PythonCodeTool.objects.create(
             name=new_name,
             description=tool.description,
             variables=tool.variables,
             python_code=new_code,
-            org_id=org_id if org_id is not None else tool.org_id,
+            org_id=target_org_id,
         )
-        new_tool.labels.set(tool.labels.filter(scope=Label.Scope.TOOL))
+        new_tool.labels.set(
+            tool.labels.filter(scope=Label.Scope.TOOL, org_id=target_org_id)
+        )
         return new_tool

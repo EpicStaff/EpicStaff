@@ -471,6 +471,84 @@ def test_mcptool_import_labels_false_skips_labels(client_a, mcp_tool_a):
     assert new_tool.labels.count() == 0
 
 
+# ---- EST-3773: exporting a shared built-in tool must not leak other orgs' label names ----
+
+
+@pytest.fixture
+def user_b(db, django_user_model, org_b, exporter_role_a):
+    # `exporter_role_a` is bound to org_a; org_b needs its own role instance
+    # with the same permission shape.
+    role_b = Role.objects.create(name="ToolExporterB", org=org_b, is_built_in=False)
+    RolePermission.objects.create(
+        role=role_b,
+        resource_type=ResourceType.TOOLS,
+        permissions=int(Permission.CREATE | Permission.READ | Permission.EXPORT),
+    )
+    user = django_user_model.objects.create_user(
+        email="exporter_b@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=user, org=org_b, role=role_b)
+    return user
+
+
+@pytest.fixture
+def client_b(user_b, org_b):
+    c = APIClient()
+    c.force_authenticate(user=user_b)
+    c.credentials(HTTP_X_ORGANIZATION_ID=str(org_b.id))
+    return c
+
+
+@pytest.fixture
+def shared_built_in_tool_with_both_orgs_labels(org_a, org_b):
+    code = PythonCode.objects.create(
+        code="def main(): return 1", entrypoint="main", libraries=""
+    )
+    tool = PythonCodeTool.objects.create(
+        name="SharedBuiltIn",
+        description="desc",
+        python_code=code,
+        org=None,
+        built_in=True,
+    )
+    label_a = Label.objects.create(name="OrgALabel", org=org_a, scope=Label.Scope.TOOL)
+    label_b = Label.objects.create(name="OrgBLabel", org=org_b, scope=Label.Scope.TOOL)
+    tool.labels.set([label_a, label_b])
+    return tool
+
+
+@pytest.mark.django_db
+def test_pythoncodetool_export_as_org_b_does_not_leak_org_a_label(
+    client_b, org_b, shared_built_in_tool_with_both_orgs_labels
+):
+    resp = client_b.get(
+        f"/api/python-code-tool/{shared_built_in_tool_with_both_orgs_labels.id}/export/"
+    )
+    assert resp.status_code == 200, resp.data
+
+    data = resp.json()
+    tool_data = data["PythonCodeTool"][0]
+    assert tool_data["labels"] == [
+        *shared_built_in_tool_with_both_orgs_labels.labels.filter(
+            org_id=org_b.id
+        ).values_list("id", flat=True)
+    ]
+    assert "OrgALabel" not in resp.content.decode()
+
+
+@pytest.mark.django_db
+def test_pythoncodetool_bulk_export_as_org_b_does_not_leak_org_a_label(
+    client_b, org_b, shared_built_in_tool_with_both_orgs_labels
+):
+    resp = client_b.post(
+        "/api/python-code-tool/bulk-export/",
+        {"ids": [shared_built_in_tool_with_both_orgs_labels.id]},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.data
+    assert "OrgALabel" not in resp.content.decode()
+
+
 # ---- cross-org isolation ----
 
 
