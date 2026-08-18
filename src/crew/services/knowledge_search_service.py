@@ -65,7 +65,6 @@ class RagSearchConfigFactory:
             data["rag_strategy"] = rag_type
             data["method"] = search_params["search_method"]
         else:
-            # naive-конфиг плоский: нет search_params/search_method
             data = {k: v for k, v in config_dict.items() if k != "rag_type"}
             data["rag_strategy"] = rag_type
 
