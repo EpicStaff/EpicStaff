@@ -1,6 +1,7 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { downloadBlob } from '@shared/utils';
 import { forkJoin, Subject } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -277,7 +278,7 @@ export class StorageTreeFacade {
                         .downloadZip([event.item.path])
                         .pipe(takeUntilDestroyed(this.destroyRef))
                         .subscribe({
-                            next: (blob) => this.downloadBlobFile(blob, `${event.item.name}.zip`),
+                            next: (blob) => downloadBlob(blob, `${event.item.name}.zip`),
                             error: () => this.toastService.error('Failed to download folder'),
                         });
                 } else {
@@ -285,7 +286,7 @@ export class StorageTreeFacade {
                         .downloadBlob(event.item.path)
                         .pipe(takeUntilDestroyed(this.destroyRef))
                         .subscribe({
-                            next: (blob) => this.downloadBlobFile(blob, event.item.name),
+                            next: (blob) => downloadBlob(blob, event.item.name),
                             error: () => this.toastService.error(`Failed to download "${event.item.name}"`),
                         });
                 }
@@ -527,7 +528,7 @@ export class StorageTreeFacade {
             .downloadZip(paths)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (blob) => this.downloadBlobFile(blob, 'selected-items.zip'),
+                next: (blob) => downloadBlob(blob, 'selected-items.zip'),
                 error: () => this.toastService.error('Failed to download selected items'),
             });
     }
@@ -548,7 +549,7 @@ export class StorageTreeFacade {
             .downloadZip(paths)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (blob) => this.downloadBlobFile(blob, 'storage-all.zip'),
+                next: (blob) => downloadBlob(blob, 'storage-all.zip'),
                 error: () => this.toastService.error('Failed to download all items'),
             });
     }
@@ -556,15 +557,6 @@ export class StorageTreeFacade {
     private handleDeleteAll(): void {
         const items = this.treeData();
         this.deleteItems(items, 'All items deleted', 'Nothing to delete', true);
-    }
-
-    private downloadBlobFile(blob: Blob, filename: string): void {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
     }
 
     private filterAllowedFiles(files: File[]): File[] {

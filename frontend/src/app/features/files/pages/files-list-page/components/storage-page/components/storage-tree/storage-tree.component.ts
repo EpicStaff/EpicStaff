@@ -10,7 +10,7 @@ import {
     viewChild,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -20,7 +20,13 @@ import { getFileExtension } from '../../../../../../utils/storage-file.utils';
 
 @Component({
     selector: 'app-storage-tree',
-    imports: [NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule, HasPermissionDirective],
+    imports: [
+        NgTemplateOutlet,
+        AppSvgIconComponent,
+        MatTooltipModule,
+        HasPermissionDirective,
+        TooltipOnOverflowDirective,
+    ],
     templateUrl: './storage-tree.component.html',
     styleUrls: ['./storage-tree.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

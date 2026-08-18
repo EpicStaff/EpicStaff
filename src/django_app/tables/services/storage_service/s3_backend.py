@@ -11,6 +11,7 @@ from tables.services.storage_service.dataclasses import (
     TreeNode,
     UploadResult,
 )
+from utils.logger import logger
 
 
 class S3StorageBackend(AbstractStorageBackend):
@@ -138,6 +139,7 @@ class S3StorageBackend(AbstractStorageBackend):
         full_path = self._full_path(path)
         self.client.upload_fileobj(file_object, self.bucket_name, full_path)
         head = self.client.head_object(Bucket=self.bucket_name, Key=full_path)
+        logger.info("Uploaded S3 object {}", full_path)
         return UploadResult(path=path, size=head["ContentLength"])
 
     def download(self, path: str) -> bytes:
@@ -157,6 +159,7 @@ class S3StorageBackend(AbstractStorageBackend):
         try:
             self.client.head_object(Bucket=self.bucket_name, Key=full_path)
             self.client.delete_object(Bucket=self.bucket_name, Key=full_path)
+            logger.info("Deleted S3 object {}", full_path)
             return
         except ClientError as error:
             if error.response["Error"]["Code"] != "404":
@@ -172,6 +175,9 @@ class S3StorageBackend(AbstractStorageBackend):
                     Bucket=self.bucket_name,
                     Delete={"Objects": objects},
                 )
+                logger.info(
+                    "Deleted {} S3 objects under prefix {}", len(objects), prefix
+                )
 
     def mkdir(self, path: str) -> None:
         full_path = self._full_path(path)
@@ -179,6 +185,7 @@ class S3StorageBackend(AbstractStorageBackend):
             full_path += "/"
         try:
             self.client.put_object(Bucket=self.bucket_name, Key=full_path, Body=b"")
+            logger.info("Created S3 folder {}", full_path)
         except ClientError as error:
             code = error.response["Error"]["Code"]
             if code in ("400", "XMinioInvalidObjectName"):
@@ -188,6 +195,7 @@ class S3StorageBackend(AbstractStorageBackend):
     def move(self, source_path: str, destination_path: str) -> str:
         actual_base, _ = self._copy_into(source_path, destination_path)
         self.delete(source_path)
+        logger.info("Moved S3 path {} to {}", source_path, destination_path)
         return actual_base
 
     def rename(self, source_path: str, destination_path: str) -> None:
@@ -210,6 +218,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 Key=full_destination,
             )
             self.client.delete_object(Bucket=self.bucket_name, Key=full_source)
+            logger.info("Renamed S3 object {} to {}", full_source, full_destination)
             return
 
         # Folder: map source_prefix/* -> destination_prefix/* (no extra nesting)
@@ -241,6 +250,7 @@ class S3StorageBackend(AbstractStorageBackend):
         self.client.delete_objects(
             Bucket=self.bucket_name, Delete={"Objects": keys_to_delete}
         )
+        logger.info("Renamed S3 prefix {} to {}", source_prefix, dest_prefix)
 
     def _key_exists(self, key: str, is_folder: bool) -> bool:
         if is_folder:

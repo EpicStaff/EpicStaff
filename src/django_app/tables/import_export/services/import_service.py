@@ -23,6 +23,7 @@ class ImportService:
         main_entity: str,
         settings: ImportSettings = None,
         org_id: int = None,
+        user=None,
         effective_permissions=None,
     ):
         if settings is None:
@@ -50,6 +51,7 @@ class ImportService:
                         entity_type == main_entity,
                         settings=settings,
                         org_id=org_id,
+                        user=user,
                         effective_permissions=effective_permissions,
                     )
                     if denied is not None:
@@ -85,6 +87,7 @@ class ImportService:
         is_main,
         settings: ImportSettings = None,
         org_id=None,
+        user=None,
         effective_permissions=None,
         **kwargs,
     ):
@@ -105,13 +108,18 @@ class ImportService:
                 denied = resource
 
         kwargs["org_id"] = org_id
+        kwargs["user"] = user
 
         instance = strategy.import_entity(
             entity_data, id_mapper, is_main, settings=settings, **kwargs
         )
         if instance is None:
             return denied
-        id_mapper.map(entity_type, old_id, instance.id, was_created)
+        # Some strategies (e.g. GraphStrategy) register their own mapping
+        # at creation time so downstream logic within the same
+        # create_entity call can resolve it. Don't overwrite that mapping.
+        if not id_mapper.has_mapping(entity_type, old_id):
+            id_mapper.map(entity_type, old_id, instance.id, was_created)
         return denied
 
     def _resolve_graph_order(self, graphs: List[dict]) -> List[dict]:

@@ -111,6 +111,7 @@
                 <div class="storage-tree__folder-meta">
                     <span
                         class="storage-tree__name storage-tree__name--folder-meta"
+                        appTooltipOnOverflow
                         [matTooltip]="node.name"
                         matTooltipPosition="above"
                         matTooltipShowDelay="500"
@@ -123,6 +124,7 @@
             } @else {
                 <span
                     class="storage-tree__name"
+                    appTooltipOnOverflow
                     [matTooltip]="node.name"
                     matTooltipPosition="above"
                     matTooltipShowDelay="500"
