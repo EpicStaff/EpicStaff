@@ -1,6 +1,7 @@
 from typing import Literal
 
 import httpx
+from loguru import logger
 
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.knowledge_new import ChunkingConfig
@@ -64,12 +65,16 @@ class KnowledgeClient:
     ) -> None:
         self._request(method="delete", url=f"rags/{strategy}/{rag_id}/{operation}/cancel/")
 
+    def delete(self, strategy: RAGStrategy, rag_id: int):
+        self._request(method="delete", url=f"rags/{strategy}/{rag_id}/")
+
     def _request(self, method: str, url: str, *, json: dict | None = None) -> httpx.Response:
         try:
             response = self._client.request(method, url, json=json)
         except httpx.TimeoutException as e:
             raise ClientTimeoutError("Knowledge service timed out.") from e
         except httpx.RequestError as e:
+            logger.exception('KNOWLEDGE CLIENT ERROR: {}', e)
             raise ClientNotAvailableError("Knowledge service is unreachable.") from e
 
         try:
