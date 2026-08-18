@@ -9,8 +9,14 @@
                     class="form-layout expanded"
                     [class.code-editor-fullwidth]="isCodeEditorFullWidth()"
                 >
+                    <!-- Keep the column, its divider and the flex-basis binding in this block: it is
+                    expanded-only, which is why the binding needs no isExpanded() gate. -->
                     @if (!isCodeEditorFullWidth()) {
-                        <div class="form-fields">
+                        <div
+                            #formColumn
+                            class="form-fields"
+                            [style.flex-basis.px]="leftColumnWidth.width()"
+                        >
                             <app-custom-input
                                 label="Node Name"
                                 tooltipText="Unique identifier for this Code Agent node within the flow."
@@ -141,9 +147,20 @@
                                 [activeColor]="activeColor"
                             ></app-custom-input>
                         </div>
+
+                        <app-column-resize-divider
+                            ariaLabel="Resize form and editor columns"
+                            [column]="formColumn"
+                            [opposite]="editorColumn"
+                            [(width)]="leftColumnWidth.width"
+                            [defaultWidth]="leftColumnWidth.defaultWidth"
+                        />
                     }
 
-                    <div class="editor-panel-wrapper">
+                    <div
+                        #editorColumn
+                        class="editor-panel-wrapper"
+                    >
                         <button
                             type="button"
                             class="toggle-icon-button"

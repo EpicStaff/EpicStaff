@@ -1,6 +1,7 @@
 import re
 import uuid
 from copy import deepcopy
+from typing import Optional
 
 from tables.models import (
     Graph,
@@ -170,6 +171,12 @@ class GraphStrategy(EntityImportExportStrategy):
         serializer.is_valid(raise_exception=True)
         graph = serializer.save()
 
+        # Register this graph's own GRAPH mapping immediately, keyed by its
+        # real old exported id.
+        old_id = data.get("id")
+        if old_id is not None:
+            id_mapper.map(EntityType.GRAPH, old_id, graph.id, was_created=True)
+
         GraphOrganization.objects.get_or_create(graph=graph)
 
         self.recreate_graph_children(
@@ -180,6 +187,7 @@ class GraphStrategy(EntityImportExportStrategy):
                 "conditional_edge_list": conditional_edges_data,
             },
             id_mapper,
+            old_graph_id=old_id,
         )
 
         if import_labels and labels_data:
@@ -188,7 +196,12 @@ class GraphStrategy(EntityImportExportStrategy):
         return graph
 
     def recreate_graph_children(
-        self, graph: Graph, data: dict, id_mapper: IDMapper, is_partial: bool = False
+        self,
+        graph: Graph,
+        data: dict,
+        id_mapper: IDMapper,
+        is_partial: bool = False,
+        old_graph_id: Optional[int] = None,
     ) -> IDMapper:
         nodes_data = data.get("nodes", [])
         edges_data = data.get("edge_list", [])
@@ -197,7 +210,7 @@ class GraphStrategy(EntityImportExportStrategy):
         node_mapper = IDMapper()
 
         # Pass 1: create all nodes and build the old→new node ID mapping
-        self._create_nodes(nodes_data, graph, node_mapper, id_mapper)
+        self._create_nodes(nodes_data, graph, node_mapper, id_mapper, old_graph_id)
 
         # Pass 2: create edges/conditional-edges with remapped node IDs,
         # then fix stale node-ID references in decision tables and metadata
@@ -235,7 +248,12 @@ class GraphStrategy(EntityImportExportStrategy):
         return nodes
 
     def _create_nodes(
-        self, nodes_data: list, graph: Graph, node_mapper: IDMapper, id_mapper: IDMapper
+        self,
+        nodes_data: list,
+        graph: Graph,
+        node_mapper: IDMapper,
+        id_mapper: IDMapper,
+        old_graph_id: Optional[int] = None,
     ) -> None:
         # Mirror the frontend's node numbering: a single graph-wide counter that
         # starts above the highest metadata["nodeNumber"] already present in the
@@ -261,17 +279,18 @@ class GraphStrategy(EntityImportExportStrategy):
                 node_data["metadata"] = metadata
 
             # Node strategies resolve their parent graph via
-            # id_mapper.get_or_none(GRAPH, node_data["graph"]). The exported node
-            # carries no "graph" key (it's write-only on the serializer), and the
-            # parent graph's id mapping isn't registered yet (the import service
-            # records it only after this method returns). Stamp the real graph id
-            # onto the node and register an identity mapping for it, so the
-            # strategy resolves the graph to this freshly-created instance.
-            # Guard against overwriting a real GRAPH mapping (e.g. an imported
-            # subgraph whose exported id happens to equal this graph's new id).
-            node_data["graph"] = graph.id
-            if not id_mapper.has_mapping(EntityType.GRAPH, graph.id):
-                id_mapper.map(EntityType.GRAPH, graph.id, graph.id, was_created=False)
+            # id_mapper.get_or_none(GRAPH, node_data["graph"]). For a full-graph
+            # import, create_entity already registered this graph's real GRAPH
+            # mapping (old exported id -> graph.id) before calling us, so this
+            # is a pure read below. For a partial import (old_graph_id is None,
+            # e.g. pasting nodes into a pre-existing graph with no exported id
+            # of its own), fall back to the graph's own current id and register
+            # an identity mapping for it, exactly as before.
+            node_data["graph"] = old_graph_id if old_graph_id is not None else graph.id
+            if not id_mapper.has_mapping(EntityType.GRAPH, node_data["graph"]):
+                id_mapper.map(
+                    EntityType.GRAPH, node_data["graph"], graph.id, was_created=False
+                )
 
             entity_type = NODE_TYPE_TO_ENTITY_TYPE[node_type]
             strategy = entity_registry.get_strategy(entity_type)

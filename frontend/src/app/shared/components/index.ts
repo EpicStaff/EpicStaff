@@ -10,6 +10,8 @@ export * from './checkbox/checkbox.component';
 export * from './chips-input/chips-input.component';
 export * from './chips-select/chips-select.component';
 export * from './cofirm-dialog';
+export * from './column-resize-divider/column-resize-divider.component';
+export * from './column-resize-divider/column-width-state';
 export * from './copy-button/copy-button.component';
 export * from './copy-field';
 export * from './create-agent-form-dialog/create-agent-form-dialog.component';

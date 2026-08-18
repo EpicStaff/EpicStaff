@@ -33,6 +33,11 @@ $compact-theme: mat.define-theme(
     max-height: 225px;
     overflow-y: auto;
 }
+
+.builtin-copy-tooltip .mdc-tooltip__surface {
+    max-width: 320px;
+    text-align: left;
+}
 .surface-tool-tooltip {
     --mdc-plain-tooltip-container-max-width: 60vw;
 }
