@@ -87,7 +87,7 @@ of caller and org. Cache-friendly.
     { "code": "export", "label": "Export", "bit": 16 }
   ],
   "resource_types": [
-    { "code": "organizations",     "label": "Organizations",       "group": "admin",     "description": "Create, rename, deactivate organizations",       "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "organizations",     "label": "Organizations",       "group": "admin",     "description": "Rename and manage organization settings",        "applicable_actions": ["read", "update"], "platform_actions": ["create", "delete"] },
     { "code": "users",             "label": "Users",               "group": "admin",     "description": "Add/remove members, assign roles within org",   "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "roles",             "label": "Roles",               "group": "admin",     "description": "Create/edit custom roles and assign to users",   "applicable_actions": ["create", "read", "update", "delete"] },
     { "code": "flows",             "label": "Flows",               "group": "workspace", "description": "Workflow definitions and their nodes",           "applicable_actions": ["create", "read", "update", "delete", "export"] },
@@ -104,10 +104,18 @@ of caller and org. Cache-friendly.
 
 `actions[]` is the full verb set. Each
 `resource_types[].applicable_actions` is the subset of actions that
-make sense for that resource — the matrix is resource rows × action
-columns, and cells outside `applicable_actions` render as `—` (cannot
-be checked). `group` (`admin` / `workspace` / `config`) sections the
-matrix in the UI.
+make sense for that resource **and are grantable into a custom role** —
+the matrix is resource rows × action columns, and cells outside
+`applicable_actions` render as `—` (cannot be checked). `group`
+(`admin` / `workspace` / `config`) sections the matrix in the UI.
+
+Every resource also carries **`platform_actions`** — global,
+superadmin-only actions that are **never grantable** into a custom role.
+It is `[]` for every resource except `organizations`, whose `create`
+(create a new org) and `delete` (deactivate/reactivate) are platform-level.
+Render `platform_actions` cells as disabled / "superadmin-only". Submitting
+a platform action in a role's `permissions[]` is a `400 invalid`
+("platform-level … cannot be granted").
 
 ---
 
