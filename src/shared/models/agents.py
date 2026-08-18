@@ -30,6 +30,8 @@ class AgentData(BaseModel):
 
     rag_type_id: str | None = None
     rag_search_config: RagSearchConfig | None = None
+    rag_embedder_api_key: str | None = None
+    rag_embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -41,6 +43,8 @@ class RealtimeAgentChatData(BaseModel):
     knowledge_collection_id: int | None
     rag_type_id: str | None = None
     rag_search_config: RagSearchConfig | None = None
+    rag_embedder_api_key: str | None = None
+    rag_embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
     llm: LLMData | None = None
     rt_model_name: str
     rt_api_key: str | None = None

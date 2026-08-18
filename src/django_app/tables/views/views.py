@@ -954,6 +954,9 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
                 rag_id=indexing_data["rag_id"],
                 rag_type=indexing_data["rag_type"],
                 collection_id=indexing_data["collection_id"],
+                org_id=self.get_active_org_id(),
+                embedder_api_key_secret_id=indexing_data["embedder_api_key_secret_id"],
+                llm_api_key_secret_id=indexing_data["llm_api_key_secret_id"],
             )
 
             return Response(

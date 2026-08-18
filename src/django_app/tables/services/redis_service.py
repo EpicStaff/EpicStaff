@@ -115,25 +115,33 @@ class RedisService(metaclass=SingletonMeta):
         logger.info(f"Sent collection_id: {collection_id} to {channel}.")
 
     def publish_rag_indexing(
-        self, rag_id: int, rag_type: str, collection_id: int
+        self,
+        *,
+        rag_id: int,
+        rag_type: str,
+        collection_id: int,
+        org_id: int,
+        embedder_api_key_secret_id: int | None = None,
+        llm_api_key_secret_id: int | None = None,
     ) -> None:
-        """
-        Publish RAG indexing message to knowledge service.
-
-        Args:
-            rag_id: ID of the specific RAG implementation (e.g., NaiveRag.naive_rag_id)
-            rag_type: Type of RAG ("naive" or "graph")
-            collection_id: Source collection ID
-        """
+        """Publish a RAG indexing request with its credentials resolved to plaintext."""
         message = ProcessRagIndexingMessage(
-            rag_id=rag_id, rag_type=rag_type, collection_id=collection_id
+            rag_id=rag_id,
+            rag_type=rag_type,
+            collection_id=collection_id,
+            embedder_api_key_secret_id=embedder_api_key_secret_id,
+            llm_api_key_secret_id=llm_api_key_secret_id,
         )
+        resolved = secret_resolver.resolve_payload(payload=message, org_id=org_id)
         self.redis_client.publish(
-            channel=KNOWLEDGE_INDEXING_CHANNEL, message=message.model_dump_json()
+            channel=KNOWLEDGE_INDEXING_CHANNEL, message=resolved.model_dump_json()
         )
         logger.info(
-            f"Sent RAG indexing request to {KNOWLEDGE_INDEXING_CHANNEL}: "
-            f"rag_type={rag_type}, rag_id={rag_id}, collection_id={collection_id}"
+            "Sent RAG indexing request to {}: rag_type={}, rag_id={}, collection_id={}",
+            KNOWLEDGE_INDEXING_CHANNEL,
+            rag_type,
+            rag_id,
+            collection_id,
         )
 
     def publish_realtime_agent_chat(

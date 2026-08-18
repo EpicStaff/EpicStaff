@@ -25,8 +25,10 @@ class KnowledgeSearchToolExecutor(BaseToolExecutor):
         redis_service: IRedisMessagingService,
         knowledge_search_get_channel: str,
         knowledge_search_response_channel: str,
+        rag_embedder_api_key: str | None = None,
     ):
         super().__init__(tool_name="knowledge_tool")
+        self.rag_embedder_api_key = rag_embedder_api_key
         self.knowledge_search_get_channel = knowledge_search_get_channel
         self.knowledge_collection_id = knowledge_collection_id
         self.knowledge_search_response_channel = knowledge_search_response_channel
@@ -53,6 +55,7 @@ class KnowledgeSearchToolExecutor(BaseToolExecutor):
             uuid=execution_uuid,
             query=query,
             rag_search_config=self.rag_search_config,
+            embedder_api_key=self.rag_embedder_api_key,
         )
         await self.redis_service.async_publish(
             channel=self.knowledge_search_get_channel,
