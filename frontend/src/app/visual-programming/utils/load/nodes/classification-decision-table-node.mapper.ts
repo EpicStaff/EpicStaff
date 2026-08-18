@@ -24,9 +24,11 @@ export function mapClassificationDecisionTableNodeToModel(
                 pre_computation_code: n.pre_python_code?.code ?? null,
                 pre_input_map: n.pre_input_map ?? {},
                 pre_output_variable_path: n.pre_output_variable_path,
+                pre_use_storage: n.pre_use_storage ?? false,
                 post_computation_code: n.post_python_code?.code ?? null,
                 post_input_map: n.post_input_map ?? {},
                 post_output_variable_path: n.post_output_variable_path,
+                post_use_storage: n.post_use_storage ?? false,
                 prompts: (() => {
                     const dict: Record<string, unknown> = {};
                     for (const p of n.prompt_configs ?? []) {

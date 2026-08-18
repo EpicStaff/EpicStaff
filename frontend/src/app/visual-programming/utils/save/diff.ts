@@ -316,10 +316,12 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
         pre_input_map: tableData?.pre_computation?.input_map || tableData?.pre_input_map || {},
         pre_output_variable_path:
             tableData?.pre_computation?.output_variable_path || tableData?.pre_output_variable_path || null,
+        pre_use_storage: tableData?.pre_use_storage ?? false,
         post_computation_code: postCode,
         post_input_map: tableData?.post_computation?.input_map || tableData?.post_input_map || {},
         post_output_variable_path:
             tableData?.post_computation?.output_variable_path || tableData?.post_output_variable_path || null,
+        post_use_storage: tableData?.post_use_storage ?? false,
         pre_libraries: tableData?.pre_computation?.libraries || [],
         post_libraries: tableData?.post_computation?.libraries || [],
         metadata: toNodeMetadata(node),

@@ -222,6 +222,7 @@ function buildCdtNodePayload(
                   },
         pre_input_map: preComp.input_map || tableData?.pre_input_map || {},
         pre_output_variable_path: preComp.output_variable_path || tableData?.pre_output_variable_path || null,
+        pre_use_storage: tableData?.pre_use_storage ?? false,
         post_python_code:
             postCodeValue.trim() === ''
                 ? null
@@ -233,6 +234,7 @@ function buildCdtNodePayload(
                   },
         post_input_map: postComp.input_map || tableData?.post_input_map || {},
         post_output_variable_path: postComp.output_variable_path || tableData?.post_output_variable_path || null,
+        post_use_storage: tableData?.post_use_storage ?? false,
         prompt_configs: Object.entries((tableData?.prompts || {}) as Record<string, PromptConfig>).map(
             ([key, cfg]) =>
                 ({

@@ -45,6 +45,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
@@ -65,6 +66,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         AppSvgIconComponent,
         ActionDropdownButtonComponent,
         SelectComponent,
+        NodeStorageSectionComponent,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -103,6 +105,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
+    public preUseStorage = signal(false);
+    public postUseStorage = signal(false);
     private readonly codeChange$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
@@ -255,6 +259,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         this.preCode = preComp.code || '';
         this.postCode = postComp.code || '';
+        this.preUseStorage.set(tableData.pre_use_storage ?? false);
+        this.postUseStorage.set(tableData.post_use_storage ?? false);
 
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
@@ -334,7 +340,9 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         const tableData: ClassificationDecisionTableData = {
             pre_computation_code: this.preCode,
+            pre_use_storage: this.preUseStorage(),
             post_computation_code: this.postCode,
+            post_use_storage: this.postUseStorage(),
             pre_computation: {
                 code: this.preCode,
                 input_map: preInputMap,
@@ -583,10 +591,12 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             preLibraries: this.parseLibraries(this.form.value.pre_libraries),
             preInputMap: this.serializeInputMap('pre_input_map'),
             preOutputVariablePath: this.form.value.pre_output_variable_path || null,
+            preUseStorage: this.preUseStorage(),
             postCode: this.postCode,
             postLibraries: this.parseLibraries(this.form.value.post_libraries),
             postInputMap: this.serializeInputMap('post_input_map'),
             postOutputVariablePath: this.form.value.post_output_variable_path || null,
+            postUseStorage: this.postUseStorage(),
             defaultLlmConfig: this.form.value.default_llm_config || null,
             conditionGroups: this.conditionGroups(),
             prompts: this.prompts(),
@@ -628,6 +638,56 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         this.postCode = code;
         this.notifyExternalChange();
         this.codeChange$.next();
+    }
+
+    // ── Storage toggle handlers ──
+
+    public onPreStorageToggle(value: boolean): void {
+        this.preUseStorage.set(value);
+        this.codeChange$.next();
+    }
+
+    public onPostStorageToggle(value: boolean): void {
+        this.postUseStorage.set(value);
+        this.codeChange$.next();
+    }
+
+    public insertPreStorageCode(code: string): void {
+        if (!this.preCode.includes('epicstaff_storage')) {
+            this.preCode = code + '\n\n' + this.preCode;
+            this.notifyExternalChange();
+            this.codeChange$.next();
+            this.cdr.markForCheck();
+        }
+    }
+
+    public removePreStorageCode(code: string): void {
+        const prefix = code + '\n\n';
+        if (this.preCode.startsWith(prefix)) {
+            this.preCode = this.preCode.slice(prefix.length);
+            this.notifyExternalChange();
+            this.codeChange$.next();
+            this.cdr.markForCheck();
+        }
+    }
+
+    public insertPostStorageCode(code: string): void {
+        if (!this.postCode.includes('epicstaff_storage')) {
+            this.postCode = code + '\n\n' + this.postCode;
+            this.notifyExternalChange();
+            this.codeChange$.next();
+            this.cdr.markForCheck();
+        }
+    }
+
+    public removePostStorageCode(code: string): void {
+        const prefix = code + '\n\n';
+        if (this.postCode.startsWith(prefix)) {
+            this.postCode = this.postCode.slice(prefix.length);
+            this.notifyExternalChange();
+            this.codeChange$.next();
+            this.cdr.markForCheck();
+        }
     }
 
     // ── Input map helpers ──

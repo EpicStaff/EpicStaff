@@ -147,6 +147,12 @@
                                 placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                                 [activeColor]="activeColor"
                             ></app-custom-input>
+                            <app-node-storage-section
+                                [useStorage]="preUseStorage()"
+                                (onToggleChange)="onPreStorageToggle($event)"
+                                (onInsertCode)="insertPreStorageCode($event)"
+                                (onRemoveCode)="removePreStorageCode($event)"
+                            ></app-node-storage-section>
                         </div>
                         <div class="code-editor-section">
                             <app-code-editor
@@ -180,6 +186,12 @@
                                 placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                                 [activeColor]="activeColor"
                             ></app-custom-input>
+                            <app-node-storage-section
+                                [useStorage]="postUseStorage()"
+                                (onToggleChange)="onPostStorageToggle($event)"
+                                (onInsertCode)="insertPostStorageCode($event)"
+                                (onRemoveCode)="removePostStorageCode($event)"
+                            ></app-node-storage-section>
                         </div>
                         <div class="code-editor-section">
                             <app-code-editor
