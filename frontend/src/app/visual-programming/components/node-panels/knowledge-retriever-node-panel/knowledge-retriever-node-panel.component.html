@@ -24,6 +24,37 @@
                                 <app-input-map [activeColor]="activeColor"></app-input-map>
                             </div>
 
+                            <div class="inputs-list-section">
+                                <button
+                                    type="button"
+                                    class="inputs-list-toggle"
+                                    (click)="toggleInputsList()"
+                                >
+                                    <span
+                                        class="chevron"
+                                        [class.open]="inputsListOpen()"
+                                        >▶</span
+                                    >
+                                    Inputs You Can Use
+                                </button>
+                                @if (inputsListOpen()) {
+                                    <div class="inputs-chip-list">
+                                        @for (name of availableInputs(); track name) {
+                                            <div
+                                                class="inputs-chip"
+                                                (click)="insertInputToQuery(name)"
+                                            >
+                                                {{ name }}
+                                            </div>
+                                        } @empty {
+                                            <span class="inputs-chip-empty">
+                                                Add entries to Input List to use them here.
+                                            </span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+
                             <app-custom-input
                                 label="Output Variable Path"
                                 tooltipText="Path where the retrieval result will be stored (must start with 'variables.')."
@@ -251,17 +282,19 @@
                                         size="14px"
                                     />
                                     Text Editor
-                                    <span class="tooltip"> Instructions </span>
+                                    <span class="tooltip"> Query </span>
                                 </div>
                             </div>
                             <div class="editor-panel-content">
                                 <app-template-textarea
+                                    #queryTextareaExpanded
                                     class="code-editor-section"
                                     formControlName="query"
-                                    placeholder="Enter instructions. Use {variable} to insert dynamic values..."
+                                    placeholder="Enter query. Use {variable} to insert dynamic values..."
                                     [stretch]="true"
                                     [resizable]="false"
                                     [showLineNumbers]="true"
+                                    [availableInputs]="availableInputs()"
                                 />
                             </div>
                         </div>
@@ -280,6 +313,50 @@
 
                     <div class="input-map">
                         <app-input-map [activeColor]="activeColor"></app-input-map>
+                    </div>
+
+                    <div class="template-textarea-wrapper">
+                        <app-tooltip
+                            tooltipText="Query text sent to the knowledge base. Supports template variables like {name}."
+                            label="Query"
+                            [required]="true"
+                        />
+                        <app-template-textarea
+                            #queryTextareaCollapsed
+                            class="template-textarea-rounded"
+                            placeholder="Enter query. Use {variable} to insert dynamic values..."
+                            formControlName="query"
+                            [availableInputs]="availableInputs()"
+                        />
+                    </div>
+
+                    <div class="inputs-list-section">
+                        <button
+                            type="button"
+                            class="inputs-list-toggle"
+                            (click)="toggleInputsList()"
+                        >
+                            <span
+                                class="chevron"
+                                [class.open]="inputsListOpen()"
+                                >▶</span
+                            >
+                            Inputs You Can Use
+                        </button>
+                        @if (inputsListOpen()) {
+                            <div class="inputs-chip-list">
+                                @for (name of availableInputs(); track name) {
+                                    <div
+                                        class="inputs-chip"
+                                        (click)="insertInputToQuery(name)"
+                                    >
+                                        {{ name }}
+                                    </div>
+                                } @empty {
+                                    <span class="inputs-chip-empty"> Add entries to Input List to use them here. </span>
+                                }
+                            </div>
+                        }
                     </div>
 
                     <app-custom-input
@@ -465,18 +542,6 @@
                             }
                         </div>
                     }
-
-                    <div class="template-textarea-wrapper">
-                        <app-tooltip
-                            tooltipText="Query text sent to the knowledge base. Supports template variables like {name}."
-                            label="Instructions"
-                        />
-                        <app-template-textarea
-                            class="template-textarea-rounded"
-                            placeholder="Enter instructions. Use {variable} to insert dynamic values..."
-                            formControlName="query"
-                        />
-                    </div>
                 </div>
             }
         </form>

@@ -237,3 +237,67 @@
     border-radius: 10px;
     overflow: hidden;
 }
+
+.inputs-list-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.inputs-list-toggle {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    color: var(--text-secondary-60);
+    font-size: 0.875rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    .chevron {
+        display: inline-block;
+        transition: transform 0.15s ease;
+        font-size: 0.5rem;
+
+        &.open {
+            transform: rotate(90deg);
+        }
+    }
+
+    &:hover {
+        color: #ffffff;
+    }
+}
+
+.inputs-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.inputs-chip {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease;
+
+    &:hover {
+        color: var(--accent-color);
+        border-color: var(--accent-color);
+    }
+}
+
+.inputs-chip-empty {
+    font-size: 0.75rem;
+    color: var(--text-secondary-60);
+}

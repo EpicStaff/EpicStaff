@@ -45,20 +45,32 @@ export class TemplateTextareaComponent implements ControlValueAccessor {
     showLineNumbers = input<boolean>(false);
     resizable = input<boolean>(true);
     stretch = input<boolean>(false);
+    // When omitted (undefined), every {var} match is highlighted (backward-compatible).
+    // When provided (even as empty []), only matches whose name is in the list are highlighted.
+    availableInputs = input<string[] | undefined>(undefined);
 
     private controlDisabled = signal(false);
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
 
     value = signal<string>('');
 
+    private readonly availableInputsSet = computed(() => {
+        const list = this.availableInputs();
+        return list === undefined ? null : new Set(list);
+    });
+
     // Trailing newline needs a padding char, otherwise <pre> collapses the last line.
     highlightedHtml = computed(() => {
         const source = this.value();
         const escaped = escapeHtml(source);
-        const highlighted = escaped.replace(
-            VAR_PATTERN,
-            (match) => `<span class="template-textarea__var">${match}</span>`
-        );
+        const knownSet = this.availableInputsSet();
+        const highlighted = escaped.replace(VAR_PATTERN, (match) => {
+            if (knownSet !== null) {
+                const name = match.slice(1, -1);
+                if (!knownSet.has(name)) return match;
+            }
+            return `<span class="template-textarea__var">${match}</span>`;
+        });
         return source.endsWith('\n') ? `${highlighted} ` : highlighted;
     });
 
@@ -147,5 +159,28 @@ export class TemplateTextareaComponent implements ControlValueAccessor {
         if (!this.resizing) return;
         this.resizing = false;
         (event.target as HTMLElement).releasePointerCapture(event.pointerId);
+    }
+
+    // Inserts `{name}` at the current caret position (or appends if the textarea is unavailable).
+    // Prepends a space when the preceding char is not whitespace / start-of-text so the variable
+    // does not collide with adjacent words.
+    insertVariable(name: string): void {
+        if (this.isDisabled()) return;
+        const current = this.value();
+        const textarea = this.textareaRef()?.nativeElement;
+        const start = textarea?.selectionStart ?? current.length;
+        const end = textarea?.selectionEnd ?? current.length;
+        const prevChar = start > 0 ? current.charAt(start - 1) : '';
+        const needsLeadingSpace = prevChar !== '' && !/\s/.test(prevChar);
+        const insertion = `${needsLeadingSpace ? ' ' : ''}{${name}}`;
+        const next = current.slice(0, start) + insertion + current.slice(end);
+        this.value.set(next);
+        this.onChange(next);
+        if (!textarea) return;
+        queueMicrotask(() => {
+            textarea.focus();
+            const pos = start + insertion.length;
+            textarea.setSelectionRange(pos, pos);
+        });
     }
 }

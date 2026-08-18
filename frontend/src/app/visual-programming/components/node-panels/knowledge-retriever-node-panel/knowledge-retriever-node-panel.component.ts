@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -102,6 +102,11 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
 
     readonly searchConfigOpen = signal<boolean>(true);
     readonly isCodeEditorFullWidth = signal<boolean>(false);
+    readonly availableInputs = signal<string[]>([]);
+    readonly inputsListOpen = signal<boolean>(true);
+
+    private readonly queryTextareaCollapsed = viewChild<TemplateTextareaComponent>('queryTextareaCollapsed');
+    private readonly queryTextareaExpanded = viewChild<TemplateTextareaComponent>('queryTextareaExpanded');
 
     searchConfigsFormGroup: FormGroup | null = null;
 
@@ -173,10 +178,16 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
             output_variable_path: [node.output_variable_path ?? ''],
             source_collection: [data.source_collection],
             rag_type: this.fb.control<RagChoice | null>(null),
-            query: [data.query ?? ''],
+            query: [data.query ?? '', Validators.required],
         });
 
         initializeInputMap(form, node.input_map as Record<string, unknown> | null | undefined, this.fb);
+
+        const inputMap = form.get('input_map') as FormArray;
+        this.updateAvailableInputs(inputMap);
+        inputMap.valueChanges
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.updateAvailableInputs(inputMap));
 
         form.get('source_collection')!
             .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
@@ -243,6 +254,20 @@ export class KnowledgeRetrieverNodePanelComponent extends BaseSidePanel<Knowledg
 
     toggleSearchConfig(): void {
         this.searchConfigOpen.update((v) => !v);
+    }
+
+    toggleInputsList(): void {
+        this.inputsListOpen.update((v) => !v);
+    }
+
+    insertInputToQuery(name: string): void {
+        const target = this.queryTextareaCollapsed() ?? this.queryTextareaExpanded();
+        target?.insertVariable(name);
+    }
+
+    private updateAvailableInputs(pairs: FormArray): void {
+        const keys = pairs.controls.map((c) => ((c.value?.key as string) ?? '').trim()).filter((k) => k !== '');
+        this.availableInputs.set(Array.from(new Set(keys)));
     }
 
     onTextUnitPropUpdate(value: number): void {
