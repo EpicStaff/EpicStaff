@@ -37,6 +37,13 @@ def flush_test_db_once(django_db_setup, django_db_blocker):
             "tables.migrations.0183_seed_builtin_role_permissions"
         )
         perms_module.seed_role_permissions(django_apps, None)
+        # 0209 grants Org Admin organizations=READ|UPDATE (6). flush wipes it,
+        # so replay it here too — otherwise cross-org org tests see the stale
+        # organizations=0 that 0183 seeds.
+        org_perm_module = import_module(
+            "tables.migrations.0209_seed_org_admin_organizations_perm"
+        )
+        org_perm_module.seed_org_admin_organizations_perm(django_apps, None)
 
 
 @pytest.fixture(autouse=True)

@@ -115,3 +115,37 @@ def test_validate_update_partial_only_present_keys(validator):
 def test_validate_update_rejects_reserved_name(validator):
     with pytest.raises(FormValidationError):
         validator.validate_update({"name": "Viewer"})
+
+
+def test_granting_org_create_rejected_as_platform_action(validator):
+    # organizations.create is platform-level (superadmin-only) — not grantable.
+    with pytest.raises(FormValidationError) as exc:
+        validator.validate_create(
+            {
+                "org_id": 10,
+                "name": "Bad",
+                "permissions": [
+                    {"resource_type": "organizations", "actions": ["create"]}
+                ],
+            }
+        )
+    reasons = " ".join(e["reason"] for e in exc.value.errors)
+    assert "platform" in reasons.lower()
+
+
+def test_granting_org_read_update_still_allowed(validator):
+    cleaned = validator.validate_create(
+        {
+            "org_id": 10,
+            "name": "Org Manager",
+            "permissions": [
+                {"resource_type": "organizations", "actions": ["read", "update"]}
+            ],
+        }
+    )
+    assert cleaned["permissions"] == [
+        {
+            "resource_type": "organizations",
+            "bitmask": int(Permission.READ | Permission.UPDATE),
+        }
+    ]

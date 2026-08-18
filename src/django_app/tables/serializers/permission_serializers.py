@@ -17,6 +17,7 @@ class CatalogResourceTypeSerializer(serializers.Serializer):
     group = serializers.CharField()
     description = serializers.CharField()
     applicable_actions = serializers.ListField(child=serializers.CharField())
+    platform_actions = serializers.ListField(child=serializers.CharField())
 
 
 class CatalogResponseSerializer(serializers.Serializer):

@@ -2,7 +2,10 @@ from typing import Any
 
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.base_rbac_validator import BaseRBACValidator, FieldError
-from tables.services.rbac.permission_catalog import applicable_actions_for
+from tables.services.rbac.permission_catalog import (
+    applicable_actions_for,
+    platform_actions_for,
+)
 from tables.services.rbac.utils.permission_bitmask import actions_to_bitmask
 
 _RESERVED_NAMES = frozenset(
@@ -144,6 +147,18 @@ class RoleValidationService(BaseRBACValidator):
             if not isinstance(actions, list):
                 errors.append(
                     FieldError(f"{field}.actions", actions, "Must be a list.")
+                )
+                continue
+            platform = platform_actions_for(resource_type)
+            bad_platform = [a for a in actions if a in platform]
+            if bad_platform:
+                errors.append(
+                    FieldError(
+                        f"{field}.{resource_type}.actions",
+                        actions,
+                        f"Actions {bad_platform} are platform-level (superadmin-only) "
+                        f"and cannot be granted.",
+                    )
                 )
                 continue
             bad = [a for a in actions if a not in applicable]
