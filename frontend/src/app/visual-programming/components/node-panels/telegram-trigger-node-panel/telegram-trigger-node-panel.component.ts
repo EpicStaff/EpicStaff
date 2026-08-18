@@ -45,8 +45,6 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
     public override readonly isExpanded = input<boolean>(false);
 
     private dialog = inject(Dialog);
-    private toastService = inject(ToastService);
-    private ngrokStorageService = inject(NgrokConfigStorageService);
 
     protected readonly leftColumnWidth = createColumnWidthState('telegram-trigger-node', 550);
 

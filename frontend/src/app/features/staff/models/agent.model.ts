@@ -7,10 +7,14 @@ export type ToolUniqueName = `python-code-tool:${number}` | `mcp-tool:${number}`
 export interface RealtimeAgentConfig {
     wake_word: string | null;
     stop_prompt: string | null;
+    language: string | null;
+    voice_recognition_prompt: string | null;
     voice: string;
     openai_config: number | null;
     elevenlabs_config: number | null;
     gemini_config: number | null;
+    realtime_config: number | null;
+    realtime_transcription_config: number | null;
 }
 export interface GetAgentRequest {
     id: number;

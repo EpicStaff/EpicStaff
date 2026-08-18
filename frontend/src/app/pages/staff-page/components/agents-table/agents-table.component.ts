@@ -260,10 +260,14 @@ export class AgentsTableComponent {
             realtime_agent: {
                 wake_word: '',
                 stop_prompt: 'stop',
+                language: null,
+                voice_recognition_prompt: null,
                 voice: 'alloy',
                 openai_config: null,
                 elevenlabs_config: null,
                 gemini_config: null,
+                realtime_config: null,
+                realtime_transcription_config: null,
             },
             // Additional fields from FullAgent
             fullLlmConfig: undefined,
@@ -655,6 +659,10 @@ export class AgentsTableComponent {
                 openai_config: null,
                 elevenlabs_config: null,
                 gemini_config: null,
+                voice_recognition_prompt: null,
+                realtime_transcription_config: null,
+                realtime_config: null,
+                language: null,
             };
         }
         return {
@@ -664,6 +672,10 @@ export class AgentsTableComponent {
             openai_config: toId(ra.openai_config),
             elevenlabs_config: toId(ra.elevenlabs_config),
             gemini_config: toId(ra.gemini_config),
+            voice_recognition_prompt: ra.voice_recognition_prompt,
+            realtime_transcription_config: ra.realtime_transcription_config,
+            realtime_config: ra.realtime_config,
+            language: ra.language,
         };
     }
 

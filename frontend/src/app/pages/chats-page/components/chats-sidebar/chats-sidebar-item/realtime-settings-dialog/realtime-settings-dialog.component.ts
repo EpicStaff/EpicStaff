@@ -171,10 +171,14 @@ export class RealtimeSettingsDialogComponent implements OnInit {
         const realtimeAgentData: RealtimeAgentConfig = {
             wake_word: formValues.wakeword,
             stop_prompt: formValues.stopword,
+            language: formValues.preferredLanguage,
             voice: formValues.voice,
             openai_config: formValues.openai_config,
             elevenlabs_config: formValues.elevenlabs_config,
             gemini_config: formValues.gemini_config,
+            voice_recognition_prompt: formValues.voice_recognition_prompt,
+            realtime_transcription_config: formValues.realtime_transcription_config,
+            realtime_config: this.data.agent.realtime_agent.realtime_config,
         };
 
         const existingGraph = this.data.agent.search_configs?.graph;
