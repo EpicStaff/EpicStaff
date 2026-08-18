@@ -3,7 +3,11 @@ import { Component, Input } from '@angular/core';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
-import { GraphMessage, UpdateSessionStatusMessageData } from '../../../../models/graph-session-message.model';
+import {
+    GraphMessage,
+    MessageType,
+    UpdateSessionStatusMessageData,
+} from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-status-update-message',
@@ -92,7 +96,7 @@ export class StatusUpdateMessageComponent {
     @Input() message!: GraphMessage;
 
     get updateStatusData(): UpdateSessionStatusMessageData | null {
-        if (this.message.message_data && this.message.message_data.message_type === 'update_session_status') {
+        if (this.message.message_data && this.message.message_data.message_type === MessageType.UPDATE_SESSION_STATUS) {
             return this.message.message_data as UpdateSessionStatusMessageData;
         }
         return null;

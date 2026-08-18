@@ -5,10 +5,7 @@ import { EditorInfo } from '../../../../../../../features/flows/services/graph-c
 import { ProfileService } from '../../../../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../../../../services/config/config.service';
 
-const AVATAR_COLORS = [
-    '#4A90D9', '#7B68EE', '#E05C5C', '#4ECDC4',
-    '#45B7D1', '#96CEB4', '#D4A843', '#C47ED4',
-];
+const AVATAR_COLORS = ['#4A90D9', '#7B68EE', '#E05C5C', '#4ECDC4', '#45B7D1', '#96CEB4', '#D4A843', '#C47ED4'];
 
 @Component({
     selector: 'app-graph-presence-indicators',
@@ -16,9 +13,8 @@ const AVATAR_COLORS = [
     imports: [MatTooltipModule],
     templateUrl: './graph-presence-indicators.component.html',
     styleUrl: './graph-presence-indicators.component.scss',
-    changeDetection: ChangeDetectionStrategy.OnPush
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
-
 export class GraphPresenceIndicatorsComponent {
     private readonly profileService = inject(ProfileService);
     private readonly configService = inject(ConfigService);
@@ -48,15 +44,13 @@ export class GraphPresenceIndicatorsComponent {
     );
 
     protected getColor(userId: number): string {
-        return AVATAR_COLORS[userId % AVATAR_COLORS.length]
+        return AVATAR_COLORS[userId % AVATAR_COLORS.length];
     }
 
     protected getInitials(editor: EditorInfo): string {
         if (!editor.display_name) return `U${editor.user_id}`;
         const words = editor.display_name.trim().split(/\s+/);
-        return words.length >= 2
-            ? (words[0][0] + words[1][0]).toUpperCase()
-            : words[0][0].toUpperCase();
+        return words.length >= 2 ? (words[0][0] + words[1][0]).toUpperCase() : words[0][0].toUpperCase();
     }
 
     protected getTooltip(editor: EditorInfo): string {

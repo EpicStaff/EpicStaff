@@ -3,9 +3,11 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
+from .agent_service import CollectionSpec, S3FileSpec
 from .agents import CrewData
 from .ai_providers import LLMData
-from .tools import PythonCodeData
+from .surfaces import CombinedSurfaceData
+from .tools import BaseToolData, PythonCodeData
 
 
 class CrewNodeData(BaseModel):
@@ -136,6 +138,69 @@ class CodeAgentNodeData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AgentDefinitionData(BaseModel):
+    id: int
+    name: str
+    description: str = ""
+    instructions: str = ""
+    llm_config_id: int | None = None
+    fcm_llm_config_id: int | None = None
+    max_iter: int | None = None
+    max_rpm: int | None = None
+    max_execution_time: int | None = None
+    cache: bool | None = None
+    max_retry_limit: int | None = None
+    default_temperature: float | None = None
+    max_tool_calls: int | None = None
+    tool_timeout: int | None = None
+    max_consecutive_failures: int | None = None
+    schema_max_retries: int | None = None
+    llm: LLMData | None = None
+    fcm_llm: LLMData | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskNodeData(BaseModel):
+    node_name: str
+    agent_definition: AgentDefinitionData | None = None
+    instructions: str = ""
+    input_map: dict[str, Any] = {}
+    output_variable_path: str | None = None
+    output_schema: dict[str, Any] = {}
+    remember_output: bool = False
+    surface: CombinedSurfaceData = CombinedSurfaceData()
+    tools: list[BaseToolData] = []
+    collections: list[CollectionSpec] = []
+    s3_files: list[S3FileSpec] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgentNodeTaskData(BaseModel):
+    name: str
+    order: int
+    instructions: str = ""
+    output_schema: dict[str, Any] = {}
+    context_tasks: list[str] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgentNodeData(BaseModel):
+    node_name: str
+    agent_definition: AgentDefinitionData | None = None
+    input_map: dict[str, Any] = {}
+    output_variable_path: str | None = None
+    surface: CombinedSurfaceData = CombinedSurfaceData()
+    tools: list[BaseToolData] = []
+    collections: list[CollectionSpec] = []
+    s3_files: list[S3FileSpec] = []
+    tasks: list[AgentNodeTaskData] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class EndNodeData(BaseModel):
     node_name: str
     output_map: dict[str, Any]
@@ -216,6 +281,8 @@ class GraphData(BaseModel):
     audio_transcription_node_list: list[AudioTranscriptionNodeData] = []
     subgraph_node_list: list[SubGraphNodeData] = []
     code_agent_node_list: list[CodeAgentNodeData] = []
+    task_node_list: list[TaskNodeData] = []
+    agent_node_list: list[AgentNodeData] = []
     edge_list: list[EdgeData] = []
     conditional_edge_list: list[ConditionalEdgeData] = []
     decision_table_node_list: list[DecisionTableNodeData] = []

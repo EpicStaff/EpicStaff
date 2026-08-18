@@ -1,0 +1,45 @@
+<div
+    class="header"
+    (click)="onToggle()"
+>
+    <app-svg-icon
+        class="header__chevron"
+        [class.header__chevron--rotated]="!expanded()"
+        icon="chevron-down-filled"
+        size="8px"
+    />
+    <app-svg-icon
+        class="header__icon"
+        [icon]="icon()"
+        size="0.95rem"
+    />
+    <span class="header__label">{{ label() }}</span>
+    <span class="header__actions">
+        @if (showAdd()) {
+            <button
+                type="button"
+                class="header__action"
+                aria-label="Add"
+                (click)="onAdd($event)"
+            >
+                <app-svg-icon
+                    icon="plus-filled"
+                    size="12px"
+                />
+            </button>
+        }
+        @if (showMenu()) {
+            <button
+                type="button"
+                class="header__action"
+                aria-label="More"
+                (click)="onMenu($event)"
+            >
+                <app-svg-icon
+                    icon="dots-vertical"
+                    size="16px"
+                />
+            </button>
+        }
+    </span>
+</div>

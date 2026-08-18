@@ -5,7 +5,7 @@ import { SliderWithStepperComponent } from '@shared/components';
 @Component({
     selector: 'app-execution-tab',
     templateUrl: './execution-tab.component.html',
-    styleUrls: ['../tab.component.scss'],
+    styleUrls: ['./execution-tab.component.scss'],
     imports: [FormsModule, ReactiveFormsModule, SliderWithStepperComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

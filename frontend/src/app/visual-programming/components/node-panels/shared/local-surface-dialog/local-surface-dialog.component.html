@@ -1,0 +1,44 @@
+<div
+    class="local-surface-dialog"
+    role="dialog"
+    [attr.aria-label]="title"
+>
+    <header class="local-surface-dialog__header">
+        <h2 class="local-surface-dialog__title">{{ title }}</h2>
+
+        <div class="local-surface-dialog__actions">
+            <button
+                type="button"
+                class="local-surface-dialog__btn local-surface-dialog__btn--cancel"
+                aria-label="Cancel"
+                (click)="onCancel()"
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="16px"
+                />
+            </button>
+            <button
+                type="button"
+                class="local-surface-dialog__btn local-surface-dialog__btn--confirm"
+                aria-label="Confirm"
+                (click)="onConfirm()"
+            >
+                <app-svg-icon
+                    icon="check"
+                    size="16px"
+                />
+            </button>
+        </div>
+    </header>
+
+    <div class="local-surface-dialog__body">
+        <app-surface-card
+            [surface]="workingSurface"
+            [readOnly]="false"
+            [hideHeader]="true"
+            [expanded]="true"
+            [isCreating]="isCreateMode"
+        />
+    </div>
+</div>

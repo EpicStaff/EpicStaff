@@ -759,7 +759,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     public emitSave(): void {
         if (this.nodePanelShell?.hasPanelInstance()) {
-            const updatedNode = this.nodePanelShell.captureCurrentNodeState();
+            // Use the validation-aware capture. Most panels (e.g. the task node panel) always
+            // get a node back here — even when their form is invalid — so their own invalid
+            // state can be reported by a flow-wide validation + blocking toast further down
+            // the save pipeline instead of a hard client-side abort. A panel with its own hard
+            // client-side validation that must never reach the backend (e.g. the
+            // schedule-trigger panel's date/timezone checks) can override
+            // `captureForValidation()` to return `null` on failure — which aborts the entire
+            // save right here (no request sent), matching this panel's pre-existing behavior.
+            const updatedNode = this.nodePanelShell.captureCurrentNodeStateForSave();
             if (updatedNode === null) {
                 return;
             }
@@ -1408,12 +1416,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
 
         const body: PartialExportRequest = {
-            start_node_list: [],
             crew_node_list: [],
+            agent_node_list: [],
+            task_node_list: [],
             python_node_list: [],
             audio_transcription_node_list: [],
             file_extractor_node_list: [],
-            end_node_list: [],
             subgraph_node_list: [],
             webhook_trigger_node_list: [],
             telegram_trigger_node_list: [],
@@ -1431,7 +1439,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const id = node.backendId;
             switch (node.type) {
                 case NodeType.AGENT:
+                    body.agent_node_list.push(id);
+                    break;
                 case NodeType.TASK:
+                    body.task_node_list.push(id);
+                    break;
                 case NodeType.TOOL:
                 case NodeType.PROJECT:
                 case NodeType.LLM:

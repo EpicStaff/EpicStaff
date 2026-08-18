@@ -4,6 +4,7 @@
     "scripts": {
         "ng": "ng",
         "start": "ng serve --no-hmr",
+        "start:local": "ng serve --no-hmr --configuration local",
         "build": "ng build",
         "watch": "ng build --watch --configuration development",
         "test": "ng test",
