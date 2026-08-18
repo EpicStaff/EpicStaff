@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.controllers import webhook_routes
-from app.core.auth import verify_webhook_auth
 from app.core.settings import settings
 from src.shared.models import WebhookConfigData
 from app.services.redis_service import (
@@ -94,7 +93,7 @@ def create_app() -> FastAPI:
 
     app.include_router(webhook_routes.router)
 
-    @app.get("/api/tunnel-url/{unique_id}", dependencies=[Depends(verify_webhook_auth)])
+    @app.get("/api/tunnel-url/{unique_id}")
     async def get_tunnel_url(
         unique_id: str,
         tunnel_registry: TunnelRegistry = Depends(get_tunnel_registry),

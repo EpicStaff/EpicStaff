@@ -34,7 +34,7 @@ Endpoints:
 
 Public route: e.g., @router.post("/webhooks/{trigger_id}/")
 
-Tunnel URL helper: /api/tunnel-url/{unique_id} dynamically fetches the public URL of a specific tunnel. Requires an `X-Webhook-Auth` header matching the `WEBHOOK_AUTH` setting.
+Tunnel URL helper: /api/tunnel-url/{unique_id} dynamically fetches the public URL of a specific tunnel.
 
 Core Logic: When a POST request hits /webhooks/{trigger_id}/:
 
