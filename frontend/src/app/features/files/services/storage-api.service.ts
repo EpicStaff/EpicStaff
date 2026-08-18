@@ -1,9 +1,10 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
-import { EMPTY, Observable, of } from 'rxjs';
+import { catchError, EMPTY, Observable, of, switchMap, throwError } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { ConfigService } from '../../../services/config/config.service';
+import { ConfirmationDialogData, ConfirmationDialogService } from '../../../shared/components/cofirm-dialog';
 import { AddFilesPayload } from '../components/create-folder-dialog/create-folder-dialog.component';
 import {
     GraphFileRecord,
@@ -14,6 +15,13 @@ import {
     StorageTreeResponse,
     StorageUploadResponse,
 } from '../models/storage.models';
+import { isArchiveFileName } from '../utils/storage-file.utils';
+
+interface OverwritePreview {
+    fileConflicts: string[];
+    folderConflicts: string[];
+    archiveRisk: boolean;
+}
 
 @Injectable({
     providedIn: 'root',
@@ -21,6 +29,7 @@ import {
 export class StorageApiService {
     private http = inject(HttpClient);
     private configService = inject(ConfigService);
+    private confirmationDialogService = inject(ConfirmationDialogService);
 
     readonly refreshTick = signal(0);
 
@@ -59,6 +68,124 @@ export class StorageApiService {
             : this.uploadMany('', validFiles).pipe(map(() => validFiles.length));
 
         return upload$.pipe(map((count) => ({ type: 'upload' as const, count })));
+    }
+
+    confirmOverwrite(targetPath: string, files: File[]): Observable<boolean> {
+        return this.findOverwritePreview(targetPath, files).pipe(
+            switchMap((preview) => {
+                if (!this.hasOverwriteRisk(preview)) return of(true);
+                const listed = preview.fileConflicts.length + preview.folderConflicts.length;
+                return this.confirmationDialogService
+                    .confirm(this.buildOverwriteDialogData(preview, targetPath), {
+                        width: listed > 3 ? '480px' : '400px',
+                    })
+                    .pipe(map((result) => result === true));
+            })
+        );
+    }
+
+    private hasOverwriteRisk(preview: OverwritePreview): boolean {
+        return preview.fileConflicts.length > 0 || preview.folderConflicts.length > 0 || preview.archiveRisk;
+    }
+
+    private findOverwritePreview(targetPath: string, files: File[]): Observable<OverwritePreview> {
+        return this.list(this.normalizePath(targetPath)).pipe(
+            map((items) => this.buildOverwritePreview(items, files)),
+            catchError((error: unknown) => {
+                if (error instanceof HttpErrorResponse && error.status === 404) {
+                    return of(this.buildOverwritePreview([], files));
+                }
+                return throwError(() => error);
+            })
+        );
+    }
+
+    private buildOverwritePreview(items: StorageItem[], files: File[]): OverwritePreview {
+        const existingFiles = new Set(items.filter((item) => item.type === 'file').map((item) => item.name));
+        const existingFolders = new Set(items.filter((item) => item.type === 'folder').map((item) => item.name));
+        const uploadedNames = [...new Set(files.map((file) => file.name))];
+        return {
+            fileConflicts: uploadedNames.filter((name) => existingFiles.has(name)),
+            folderConflicts: uploadedNames.filter((name) => existingFolders.has(name)),
+            archiveRisk: files.some((file) => isArchiveFileName(file.name)) && items.length > 0,
+        };
+    }
+
+    private buildOverwriteDialogData(preview: OverwritePreview, targetPath: string): ConfirmationDialogData {
+        const normalized = this.normalizePath(targetPath);
+        const folderLabel = this.escapeHtml(normalized ? `/${normalized}` : '/');
+        const fileCount = preview.fileConflicts.length;
+        const folderCount = preview.folderConflicts.length;
+        const listedNames = [...preview.fileConflicts, ...preview.folderConflicts];
+        const onlyFolders = folderCount > 0 && fileCount === 0 && !preview.archiveRisk;
+
+        const parts: string[] = [];
+        if (fileCount && folderCount) {
+            parts.push(`${folderLabel} already contains files and folders with these names.`);
+        } else if (fileCount) {
+            parts.push(
+                `${folderLabel} already contains ${fileCount > 1 ? 'files' : 'a file'} with ${
+                    fileCount > 1 ? 'these names' : 'this name'
+                }.`
+            );
+        } else if (folderCount) {
+            parts.push(
+                `${folderLabel} already contains ${folderCount > 1 ? 'folders' : 'a folder'} with ${
+                    folderCount > 1 ? 'these names' : 'this name'
+                }.`
+            );
+        } else {
+            parts.push(`${folderLabel} already has items.`);
+        }
+
+        if (fileCount) {
+            parts.push(`Uploading will replace the existing ${fileCount > 1 ? 'files' : 'file'}.`);
+        }
+        if (folderCount) {
+            parts.push('A folder with the same name will not be replaced.');
+        }
+        if (preview.archiveRisk) {
+            parts.push('Archives are extracted on the server and may replace existing files with matching names.');
+        }
+        parts.push('Cancel will skip the entire upload.');
+
+        let title = 'Items already exist';
+        if (preview.archiveRisk && !fileCount && !folderCount) {
+            title = 'Archive may replace files';
+        } else if (onlyFolders) {
+            title = folderCount > 1 ? 'Folders already exist' : 'Folder already exists';
+        } else if (fileCount && !folderCount) {
+            title = fileCount > 1 ? 'Files already exist' : 'File already exists';
+        }
+
+        return {
+            title,
+            message: parts.join('<br>'),
+            confirmText: onlyFolders ? 'Upload anyway' : 'Replace',
+            cancelText: 'Cancel',
+            type: 'warning',
+            cautionTitle: listedNames.length ? 'Existing names' : undefined,
+            caution: listedNames.length ? this.buildConflictListHtml(listedNames) : undefined,
+        };
+    }
+
+    private buildConflictListHtml(names: string[]): string {
+        const visible = names.slice(0, 12);
+        const extra = names.length - visible.length;
+        const lines = visible.map((name) => `• ${this.escapeHtml(name)}`);
+        if (extra > 0) {
+            lines.push(`and ${extra} more`);
+        }
+        return lines.join('<br>');
+    }
+
+    private escapeHtml(value: string): string {
+        return value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     ensureFolderAndUpload(targetFolder: string, files: File[]): Observable<{ uploadedCount: number }> {

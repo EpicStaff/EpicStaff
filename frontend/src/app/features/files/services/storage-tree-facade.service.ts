@@ -1,9 +1,10 @@
 import { Dialog } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { downloadBlob } from '@shared/utils';
-import { forkJoin, Subject } from 'rxjs';
-import { finalize } from 'rxjs/operators';
+import { EMPTY, forkJoin, Subject } from 'rxjs';
+import { finalize, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../services/notifications/toast.service';
 import { ConfirmationDialogService } from '../../../shared/components/cofirm-dialog';
@@ -348,15 +349,21 @@ export class StorageTreeFacade {
             return;
         }
         this.storageApiService
-            .uploadMany('', validFiles)
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .confirmOverwrite('', validFiles)
+            .pipe(
+                switchMap((confirmed) => (confirmed ? this.storageApiService.uploadMany('', validFiles) : EMPTY)),
+                takeUntilDestroyed(this.destroyRef)
+            )
             .subscribe({
                 next: () => {
                     this.toastService.success(`${validFiles.length} file(s) uploaded`);
                     this.loadTree();
                     this.notifyStorageChanged();
                 },
-                error: () => this.toastService.error('Failed to upload files'),
+                error: (error: unknown) => {
+                    const checking = error instanceof HttpErrorResponse && error.url?.includes('/storage/list/');
+                    this.toastService.error(checking ? 'Failed to check existing files' : 'Failed to upload files');
+                },
             });
     }
 
