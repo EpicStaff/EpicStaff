@@ -103,10 +103,6 @@ export class TimePickerComponent implements ControlValueAccessor {
     private onChange: (v: string) => void = () => {};
     private onTouched: () => void = () => {};
 
-    onFocus(): void {
-        this.openDropdown();
-    }
-
     onEnterKey(): void {
         if (this.isOpen()) {
             this.close();
@@ -138,9 +134,6 @@ export class TimePickerComponent implements ControlValueAccessor {
 
     onInput(): void {
         this.onChange(this.displayValue());
-        if (!this.isOpen()) {
-            this.openDropdown();
-        }
     }
 
     selectSlot(slot: string): void {
@@ -186,6 +179,14 @@ export class TimePickerComponent implements ControlValueAccessor {
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);
         this.isOpen.set(true);
+    }
+
+    toggleDropdown(): void {
+        if (this.isOpen()) {
+            this.close();
+        } else {
+            this.openDropdown();
+        }
     }
 
     close(): void {

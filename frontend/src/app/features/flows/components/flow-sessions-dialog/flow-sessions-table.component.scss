@@ -36,9 +36,23 @@
     min-height: 520px;
 }
 
+.sessions-table-wrapper.has-flow-name table {
+    min-width: 1165px;
+
+    .col-flow {
+        width: auto;
+        min-width: 120px;
+    }
+
+    .col-created {
+        width: 300px;
+        min-width: 300px;
+    }
+}
+
 table {
     width: 100%;
-    min-width: 860px;
+    min-width: 935px;
     border-collapse: collapse;
     margin-bottom: 0;
     table-layout: fixed;
@@ -52,8 +66,10 @@ table {
 
     th.col-select,
     td.col-select {
-        width: 40px;
-        min-width: 40px;
+        width: 56px;
+        min-width: 56px;
+        padding-left: 15px;
+        padding-right: 15px;
     }
 
     th.col-id,
@@ -80,8 +96,8 @@ table {
 
     th.col-trigger,
     td.col-trigger {
-        width: 130px;
-        min-width: 130px;
+        width: 170px;
+        min-width: 170px;
     }
 
     th.col-created,
@@ -90,24 +106,28 @@ table {
         min-width: 190px;
     }
 
-    th.col-created app-svg-icon {
-        vertical-align: middle;
-    }
-
     th.col-duration,
     td.col-duration {
-        min-width: 90px;
-        width: 90px;
+        min-width: 120px;
+        width: 120px;
     }
 
     th.col-actions,
     td.col-actions {
-        min-width: 140px;
-        width: 140px;
-        text-align: center;
+        min-width: 175px;
+        width: 175px;
         padding: 12px 8px;
     }
 
+    th.col-actions {
+        text-align: left;
+    }
+
+    td.col-actions {
+        text-align: center;
+    }
+
+    td[colspan='6'],
     td[colspan='7'],
     td[colspan='8'] {
         border-bottom: none;
@@ -146,6 +166,7 @@ table {
         display: table-row;
     }
 
+    td[colspan='6'],
     td[colspan='7'],
     td[colspan='8'] {
         padding: 40px;
@@ -156,24 +177,6 @@ table {
         background-color: var(--color-sidenav-background);
         color: var(--color-text-primary);
         font-weight: 600;
-
-        &.sortable {
-            cursor: pointer;
-            user-select: none;
-            white-space: nowrap;
-
-            &:hover {
-                color: var(--accent-color);
-            }
-
-            .sort-icon {
-                margin-left: 4px;
-                font-size: 0.85em;
-                opacity: 0.8;
-                position: relative;
-                top: -2px;
-            }
-        }
     }
 
     .trigger-chip {
@@ -199,10 +202,32 @@ table {
 
         .flow-link {
             cursor: pointer;
-            display: block;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 100%;
+            padding: 4px 10px;
+            border: 1px solid var(--color-divider-subtle);
+            border-radius: 6px;
+            color: var(--color-text-primary);
+            transition:
+                border-color 0.15s,
+                background 0.15s;
+
+            &:hover {
+                border-color: var(--color-divider-regular);
+            }
+
+            .flow-link-icon {
+                flex-shrink: 0;
+                color: var(--color-text-secondary);
+            }
+
+            .flow-link-name {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
         }
     }
 
@@ -215,7 +240,7 @@ table {
         gap: 8px;
         flex-shrink: 0;
         flex-wrap: nowrap;
-        justify-content: flex-end;
+        justify-content: flex-start;
     }
 
     .icon-img-btn {
@@ -250,6 +275,11 @@ table {
 .view-btn {
     background: var(--accent-color);
     color: #fff;
+    width: 88px;
+    min-width: 88px;
+    max-width: 88px;
+    margin-right: 0;
+    text-align: center;
 }
 .view-btn:hover {
     background: var(--accent-color-hover);
@@ -343,7 +373,7 @@ table {
 }
 
 app-icon-button {
-    margin-left: 10px;
+    margin-left: 0;
 }
 
 tr.row-expanded td {
