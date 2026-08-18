@@ -1,16 +1,13 @@
 from drf_spectacular.utils import extend_schema
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.permission_serializers import RoleResponseSerializer
-from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
-from tables.services.rbac.permissions import HasResourcePermissionAnywhere
-from tables.services.rbac.rbac_exceptions import OrgContextRequiredError
 from tables.services.rbac.role_management_service import RoleManagementService
 from tables.services.rbac.role_validation_service import RoleValidationService
+from tables.views.cross_org_admin import CrossOrgAdminViewSet
 from tables.swagger_schemas.role_admin_schema import (
     ROLES_CREATE_POST,
     ROLES_DESTROY_DELETE,
@@ -26,7 +23,7 @@ class RolesPagination(PageNumberPagination):
     max_page_size = 200
 
 
-class RoleAdminViewSet(viewsets.ViewSet):
+class RoleAdminViewSet(CrossOrgAdminViewSet):
     """Flat, permission-gated role management surface.
 
     list:            GET    /api/admin/roles/            (?org_ids= filter)
@@ -39,10 +36,7 @@ class RoleAdminViewSet(viewsets.ViewSet):
     authorization + the ceiling rule are enforced in RoleManagementService.
     """
 
-    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
-    permission_classes = [IsAuthenticated, HasResourcePermissionAnywhere]
     pagination_class = RolesPagination
-    lookup_value_regex = "[0-9]+"
 
     rbac_resource_type = ResourceType.ROLES
     rbac_action_map = {
@@ -58,7 +52,7 @@ class RoleAdminViewSet(viewsets.ViewSet):
 
     @extend_schema(**ROLES_LIST_GET)
     def list(self, request):
-        org_ids = self._parse_org_ids(request.query_params.get("org_ids"))
+        org_ids = self.parse_org_ids(request.query_params.get("org_ids"))
         scopes = getattr(request, "_rbac_org_scopes", None)
         custom_qs = self._service.list_custom_roles(
             actor=request.user, org_ids=org_ids, scopes=scopes
@@ -109,15 +103,6 @@ class RoleAdminViewSet(viewsets.ViewSet):
             return Response(preview, status=status.HTTP_200_OK)
         reassigned = self._service.delete_role(actor=request.user, role_id=pk)
         return Response({"reassigned_count": reassigned}, status=status.HTTP_200_OK)
-
-    @staticmethod
-    def _parse_org_ids(raw):
-        if not raw:
-            return None
-        try:
-            return [int(part) for part in raw.split(",") if part != ""]
-        except ValueError as exc:
-            raise OrgContextRequiredError() from exc
 
     @staticmethod
     def _is_truthy(raw):

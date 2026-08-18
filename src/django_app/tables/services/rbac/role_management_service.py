@@ -16,10 +16,7 @@ from tables.models.rbac_models import (
     RolePermission,
 )
 from tables.models.rbac_models.rbac_enums import BuiltInRole, Permission, ResourceType
-from tables.services.rbac.cross_org_permission_resolver import (
-    CrossOrgPermissionResolver,
-)
-from tables.services.rbac.permission_resolver import PermissionResolver
+from tables.services.rbac.cross_org_service import CrossOrgResourceService
 from tables.services.rbac.rbac_exceptions import (
     BuiltInRoleImmutableError,
     OrganizationNotFoundError,
@@ -30,9 +27,9 @@ from tables.services.rbac.rbac_exceptions import (
 )
 
 
-class RoleManagementService:
-    _resolver = PermissionResolver()
-    _org_access = CrossOrgPermissionResolver()
+class RoleManagementService(CrossOrgResourceService):
+    rbac_resource_type = ResourceType.ROLES
+    not_found_exception = RoleNotFoundError
 
     def assert_mutable(self, role: Role) -> None:
         """Future write methods call this before update/delete. Shipped
@@ -66,7 +63,7 @@ class RoleManagementService:
         CREATE. Atomic."""
         with transaction.atomic():
             effective = self._resolver.resolve(user=actor, org_id=org_id)
-            self._assert_can(effective=effective, action=Permission.CREATE)
+            self.assert_can(effective=effective, action=Permission.CREATE)
             self._assert_within_ceiling(effective=effective, permissions=permissions)
             self._assert_name_available(org_id=org_id, name=name, exclude_role_id=None)
             # For non-superadmin callers the resolve() above already proved
@@ -87,8 +84,8 @@ class RoleManagementService:
         with transaction.atomic():
             role = self._get_locked_role(role_id=role_id)
             self.assert_mutable(role)
-            effective = self._resolve_for_write(actor=actor, role=role)
-            self._assert_can(effective=effective, action=Permission.UPDATE)
+            effective = self.resolve_for_write(actor, role.org_id)
+            self.assert_can(effective=effective, action=Permission.UPDATE)
             if "permissions" in changes:
                 self._assert_within_ceiling(
                     effective=effective, permissions=changes["permissions"]
@@ -118,8 +115,8 @@ class RoleManagementService:
         the role is fetched without a row lock."""
         role = self._fetch_role_or_404(role_id=role_id)
         self.assert_mutable(role)
-        effective = self._resolve_for_write(actor=actor, role=role)
-        self._assert_can(effective=effective, action=Permission.DELETE)
+        effective = self.resolve_for_write(actor, role.org_id)
+        self.assert_can(effective=effective, action=Permission.DELETE)
         memberships = OrganizationUser.objects.filter(role_id=role.id).select_related(
             "user"
         )
@@ -144,8 +141,8 @@ class RoleManagementService:
         with transaction.atomic():
             role = self._get_locked_role(role_id=role_id)
             self.assert_mutable(role)
-            effective = self._resolve_for_write(actor=actor, role=role)
-            self._assert_can(effective=effective, action=Permission.DELETE)
+            effective = self.resolve_for_write(actor, role.org_id)
+            self.assert_can(effective=effective, action=Permission.DELETE)
             viewer_role = Role.objects.get(
                 name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True
             )
@@ -231,41 +228,20 @@ class RoleManagementService:
         raises PermissionDenied (fail-loud). `org_ids=None` means every
         readable org. Superadmin reads all orgs. `scopes` is the caller's
         pre-resolved cross-org scopes (from the door gate's per-request
-        cache); when None the service resolves them itself."""
-        is_superadmin = getattr(actor, "is_superadmin", False)
-        if is_superadmin:
-            readable = None  # all
-        else:
-            if scopes is None:
-                scopes = self._org_access.resolve_all(user=actor)
-            readable = {
-                scope.org.id
-                for scope in scopes
-                if scope.effective.can(ResourceType.ROLES.value, Permission.READ)
-            }
-
-        if org_ids is not None:
-            requested = set(org_ids)
-            if not is_superadmin:
-                forbidden = requested - readable
-                if forbidden:
-                    raise PermissionDenied(
-                        f"You do not have permission to read roles in organization(s) "
-                        f"{sorted(forbidden)}."
-                    )
-            effective_org_ids = requested
-        else:
-            effective_org_ids = readable  # None for superadmin → no filter
-
-        qs = (
+        cache); when None the base resolves them itself."""
+        base_qs = (
             Role.objects.filter(is_built_in=False)
             .select_related("org")
             .prefetch_related("permissions_set")
             .order_by("org__name", "name")
         )
-        if effective_org_ids is not None:
-            qs = qs.filter(org_id__in=effective_org_ids)
-        return qs
+        return self.apply_org_scope(
+            actor=actor,
+            org_ids=org_ids,
+            base_qs=base_qs,
+            org_field="org_id",
+            scopes=scopes,
+        )
 
     # ---- display attributes ----
 
@@ -307,25 +283,11 @@ class RoleManagementService:
         except Role.DoesNotExist as exc:
             raise RoleNotFoundError() from exc
 
-    def _resolve_for_write(self, actor, role):
-        """Resolve the actor's permissions in the role's org for a write.
-
-        A non-member (or inactive org) surfaces as RoleNotFoundError (404 —
-        no existence leak), matching a role the caller cannot see, rather
-        than a 403 that reveals the row exists in another org. Superadmin
-        short-circuits inside the resolver. Note: this gates on membership,
-        not READ — a role granting only CREATE/UPDATE/DELETE (without READ)
-        can still be written by its holder."""
-        try:
-            return self._resolver.resolve(user=actor, org_id=role.org_id)
-        except OrgMembershipRequiredError as exc:
-            raise RoleNotFoundError() from exc
-
-    def _assert_can(self, effective, action) -> None:
-        """Verb gate: `effective` must include `action` on ROLES. Callers
-        resolve once — which also raises OrgMembershipRequiredError for a
-        non-member — and pass the result here. Superadmin's
-        EffectivePermissions.can() returns True for every action."""
+    def assert_can(self, effective, action) -> None:
+        """Verb gate override with a roles-specific message. `effective` must
+        include `action` on ROLES. Callers resolve once — which also raises
+        OrgMembershipRequiredError for a non-member — and pass the result here.
+        Superadmin's EffectivePermissions.can() returns True for every action."""
         if not effective.can(ResourceType.ROLES.value, action):
             raise PermissionDenied(
                 "You do not have permission to manage roles in this organization."
