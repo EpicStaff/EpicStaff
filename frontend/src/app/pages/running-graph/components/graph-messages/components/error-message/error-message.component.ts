@@ -4,7 +4,7 @@ import { Component, Input } from '@angular/core';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
-import { GraphMessage } from '../../../../models/graph-session-message.model';
+import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-error-message',
@@ -279,7 +279,7 @@ export class ErrorMessageComponent {
     get errorDetails(): string | Record<string, unknown> {
         if (
             this.message.message_data &&
-            this.message.message_data.message_type === 'error' &&
+            this.message.message_data.message_type === MessageType.ERROR &&
             'details' in this.message.message_data
         ) {
             return this.message.message_data.details;
@@ -303,7 +303,7 @@ export class ErrorMessageComponent {
     get errorData(): unknown {
         if (
             this.message.message_data &&
-            this.message.message_data.message_type === 'error' &&
+            this.message.message_data.message_type === MessageType.ERROR &&
             'data' in this.message.message_data
         ) {
             return this.message.message_data.data;

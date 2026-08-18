@@ -170,6 +170,14 @@ export class LeftSidebarComponent implements AfterViewInit {
                 showTooltip: false,
             },
             {
+                id: 'agents',
+                routeLink: 'agents',
+                icon: 'agents',
+                label: 'Agents',
+                isPermitted: true,
+                showTooltip: false,
+            },
+            {
                 id: 'tools',
                 routeLink: 'tools',
                 icon: 'tools',

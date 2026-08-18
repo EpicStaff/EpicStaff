@@ -26,18 +26,10 @@
                     (click)="onStepDown()"
                     [disabled]="isDisabled() || (value() ?? min()) <= min()"
                 >
-                    <svg
-                        width="10"
-                        height="2"
-                        viewBox="0 0 10 2"
-                        fill="none"
-                    >
-                        <path
-                            d="M0 1H10"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                        />
-                    </svg>
+                    <app-svg-icon
+                        icon="minus-fit"
+                        size="12px"
+                    />
                 </button>
 
                 <span class="slider-stepper__value">{{ displayValue() }}</span>
@@ -48,18 +40,10 @@
                     (click)="onStepUp()"
                     [disabled]="isDisabled() || (value() ?? min()) >= max()"
                 >
-                    <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 10 10"
-                        fill="none"
-                    >
-                        <path
-                            d="M5 0V10M0 5H10"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                        />
-                    </svg>
+                    <app-svg-icon
+                        icon="plus-fit"
+                        size="12px"
+                    />
                 </button>
             </div>
         }
@@ -67,6 +51,13 @@
 
     @if (!optional() || enabled()) {
         <div class="slider-stepper__track-wrapper">
+            <div class="slider-stepper__track">
+                <div class="slider-stepper__track-dashed"></div>
+                <div
+                    class="slider-stepper__track-fill"
+                    [style.--slider-progress]="sliderPercentage()"
+                ></div>
+            </div>
             <input
                 type="range"
                 class="slider-stepper__slider"
@@ -77,7 +68,6 @@
                 (input)="onSliderChange($event)"
                 (blur)="onTouched()"
                 [disabled]="isDisabled()"
-                [style.--slider-percentage]="sliderPercentage() + '%'"
             />
             <div
                 class="slider-stepper__thumb"

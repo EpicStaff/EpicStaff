@@ -32,6 +32,7 @@ class TestCollectionList:
         assert len(data) == 2
         assert all("collection_id" in item for item in data)
         assert all("collection_name" in item for item in data)
+        assert all("description" in item for item in data)
         assert all("document_count" in item for item in data)
 
 
@@ -68,6 +69,37 @@ class TestCollectionCreate:
         assert response.status_code == status.HTTP_201_CREATED
         response_data = response.json()
         assert "Untitled Collection" in response_data["collection_name"]
+
+    def test_create_collection_with_description(self, auth_client):
+        """Test creating a collection with a description."""
+        url = reverse("sourcecollection-list")
+        data = {
+            "collection_name": "Documented Collection",
+            "description": "Contains onboarding docs for new hires.",
+        }
+
+        response = auth_client.post(url, data, format="json")
+
+        assert response.status_code == status.HTTP_201_CREATED
+        response_data = response.json()
+        assert response_data["description"] == "Contains onboarding docs for new hires."
+
+        collection = SourceCollection.objects.get(
+            collection_id=response_data["collection_id"]
+        )
+        assert collection.description == "Contains onboarding docs for new hires."
+
+    def test_create_collection_with_too_long_description_rejected(self, auth_client):
+        """Test creating a collection with a description over 2000 chars fails."""
+        url = reverse("sourcecollection-list")
+        data = {
+            "collection_name": "Overlong Description Collection",
+            "description": "x" * 2001,
+        }
+
+        response = auth_client.post(url, data, format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_create_duplicate_collection_name(self, auth_client, source_collection):
         """Test that duplicate collection names are handled correctly.
@@ -115,6 +147,7 @@ class TestCollectionRetrieve:
         data = response.json()
         assert data["collection_id"] == source_collection.collection_id
         assert data["collection_name"] == source_collection.collection_name
+        assert data["description"] == source_collection.description
         assert "document_count" in data
 
     def test_retrieve_nonexistent_collection(self, auth_client):
@@ -143,6 +176,31 @@ class TestCollectionUpdate:
         # Verify in database
         source_collection.refresh_from_db()
         assert source_collection.collection_name == "Updated Name"
+
+    def test_update_collection_description(self, auth_client, source_collection):
+        """Test updating a collection's description."""
+        url = reverse("sourcecollection-detail", args=[source_collection.collection_id])
+        data = {"description": "Updated description."}
+
+        response = auth_client.patch(url, data, format="json")
+
+        assert response.status_code == status.HTTP_200_OK
+        response_data = response.json()
+        assert response_data["description"] == "Updated description."
+
+        source_collection.refresh_from_db()
+        assert source_collection.description == "Updated description."
+
+    def test_update_collection_with_too_long_description_rejected(
+        self, auth_client, source_collection
+    ):
+        """Test updating with a description over 2000 chars fails validation."""
+        url = reverse("sourcecollection-detail", args=[source_collection.collection_id])
+        data = {"description": "x" * 2001}
+
+        response = auth_client.patch(url, data, format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_update_collection_with_empty_name(self, auth_client, source_collection):
         """Test updating with empty name fails validation."""
@@ -289,6 +347,18 @@ class TestCollectionCopy:
             source_collection_id=new_collection_id
         ).count()
         assert original_count == copied_count
+
+    def test_copy_collection_carries_description(self, auth_client, source_collection):
+        """Test copying a collection carries the source description to the copy."""
+        source_collection.description = "Source description."
+        source_collection.save()
+
+        url = reverse("sourcecollection-copy", args=[source_collection.collection_id])
+        response = auth_client.post(url, {}, format="json")
+
+        assert response.status_code == status.HTTP_201_CREATED
+        response_data = response.json()
+        assert response_data["collection"]["description"] == "Source description."
 
     def test_copy_collection_without_name(self, auth_client, source_collection):
         """Test copying without providing a new name."""

@@ -157,6 +157,12 @@ class ToolConfigSerializer(serializers.ModelSerializer):
 
 
 class AgentReadSerializer(serializers.ModelSerializer):
+    """
+    DEPRECATED: AgentReadSerializer is deprecated. Use agents.AgentDefinition
+    serializers + AgentNode instead. Exists only for backward compatibility
+    with existing Agent rows.
+    """
+
     tools = serializers.SerializerMethodField()
     realtime_agent = RealtimeAgentSerializer(read_only=True)
     rag = serializers.SerializerMethodField()
@@ -261,6 +267,12 @@ class AgentReadSerializer(serializers.ModelSerializer):
 
 
 class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
+    """
+    DEPRECATED: AgentWriteSerializer is deprecated. Use agents.AgentDefinition
+    serializers + AgentNode instead. Exists only for backward compatibility
+    with existing Agent rows.
+    """
+
     tool_ids = serializers.ListField(
         child=serializers.CharField(),
         required=False,
@@ -445,6 +457,9 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
 class TaskContextListField(serializers.Field):
     """
+    DEPRECATED: TaskContextListField is deprecated. Use AgentNodeTask.context_tasks
+    instead. Exists only for backward compatibility with existing Task rows.
+
     Custom field to handle task context list as integers.
     """
 
@@ -532,6 +547,12 @@ class TaskContextListField(serializers.Field):
 
 
 class TaskReadSerializer(serializers.ModelSerializer):
+    """
+    DEPRECATED: TaskReadSerializer is deprecated. Use TaskNode/AgentNodeTask
+    serializers instead. Exists only for backward compatibility with existing
+    Task rows.
+    """
+
     task_context_list = TaskContextListField(read_only=True)
     tools = serializers.SerializerMethodField()
 
@@ -550,6 +571,12 @@ class TaskReadSerializer(serializers.ModelSerializer):
 
 
 class TaskWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
+    """
+    DEPRECATED: TaskWriteSerializer is deprecated. Use TaskNode/AgentNodeTask
+    serializers instead. Exists only for backward compatibility with existing
+    Task rows.
+    """
+
     task_context_list = TaskContextListField(required=False)
     tool_ids = serializers.ListField(
         child=serializers.CharField(),
@@ -671,6 +698,12 @@ class TaskWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
 
 class CrewSerializer(serializers.ModelSerializer):
+    """
+    DEPRECATED: CrewSerializer is deprecated. Use the new Agent/Task graph node
+    serializers (AgentNode, TaskNode) instead. Exists only for backward
+    compatibility with existing Crew rows.
+    """
+
     tasks = serializers.PrimaryKeyRelatedField(
         many=True, read_only=True, source="task_set"
     )

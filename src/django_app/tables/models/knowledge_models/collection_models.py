@@ -31,6 +31,15 @@ class SourceCollection(OrgScopedModel, SoftDeleteMixin, models.Model):
 
     collection_id = models.AutoField(primary_key=True)
     collection_name = models.CharField(max_length=255, blank=True)
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "LLM-facing context describing this collection's contents. Appended to "
+            "the description of every knowledge tool generated for this collection "
+            "so agents know when to use it. Blank means no extra context is added."
+        ),
+    )
     collection_origin = models.CharField(
         max_length=20,
         choices=SourceCollectionOrigin.choices,

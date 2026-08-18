@@ -126,6 +126,12 @@
                 &.active .sidenav-link-icon {
                     color: #685fff;
                 }
+
+                &.epic-chat-slot {
+                    align-items: flex-start;
+                    padding-top: 0.25rem;
+                    overflow: visible;
+                }
             }
         }
     }
@@ -150,6 +156,10 @@
 
     &:hover {
         background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    &.active {
+        background-color: rgba(104, 95, 255, 0.15);
     }
 }
 

@@ -81,7 +81,7 @@
         flex-shrink: 0;
         color: var(--color-input-text-placeholder);
         transition: transform 0.2s ease;
-        pointer-events: none;
+        cursor: pointer;
 
         &--open {
             transform: rotate(180deg);

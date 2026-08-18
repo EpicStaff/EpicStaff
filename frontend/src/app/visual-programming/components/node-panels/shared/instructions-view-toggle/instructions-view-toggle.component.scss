@@ -1,0 +1,28 @@
+.ivt {
+    display: inline-flex;
+    border: 1px solid var(--color-input-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.ivt__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    height: 24px;
+    padding: 0 0.5rem;
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    cursor: pointer;
+
+    &:hover:not(.ivt__btn--active) {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &--active {
+        background-color: var(--accent-color);
+        color: #fff;
+    }
+}

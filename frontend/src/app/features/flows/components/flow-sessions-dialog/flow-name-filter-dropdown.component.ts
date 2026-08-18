@@ -46,6 +46,7 @@ interface FlowOption {
         <div
             class="node-filter-dropdown"
             [class.open]="open"
+            [class.has-value]="hasValue"
             (appClickOutside)="onCancel()"
         >
             <button
@@ -129,6 +130,10 @@ export class FlowNameFilterDropdownComponent implements OnChanges {
     @Input() flows: FlowOption[] = [];
     @Input() value: string[] = [];
     @Output() valueChange = new EventEmitter<string[]>();
+
+    public get hasValue(): boolean {
+        return this.value.length > 0;
+    }
 
     public open = false;
     public searchQuery = '';
