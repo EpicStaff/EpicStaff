@@ -174,13 +174,13 @@ export class TemplateTextareaComponent implements ControlValueAccessor {
         const needsLeadingSpace = prevChar !== '' && !/\s/.test(prevChar);
         const insertion = `${needsLeadingSpace ? ' ' : ''}{${name}}`;
         const next = current.slice(0, start) + insertion + current.slice(end);
+        const caretPos = start + insertion.length;
         this.value.set(next);
         this.onChange(next);
         if (!textarea) return;
-        queueMicrotask(() => {
+        setTimeout(() => {
             textarea.focus();
-            const pos = start + insertion.length;
-            textarea.setSelectionRange(pos, pos);
+            textarea.setSelectionRange(caretPos, caretPos);
         });
     }
 }
