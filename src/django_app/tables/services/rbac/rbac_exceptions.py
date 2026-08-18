@@ -172,18 +172,6 @@ class LastSuperadminError(CustomAPIExeption):
     default_code = "last_superadmin"
 
 
-class LastOrgAdminError(CustomAPIExeption):
-    """Raised by UserManagementService.remove_membership /change_role when
-    the operation would leave the organization with zero Org Admins."""
-
-    status_code = 400
-    default_detail = (
-        "Cannot remove or demote the last Org Admin of this organization. "
-        "Promote another member to Org Admin first."
-    )
-    default_code = "last_org_admin"
-
-
 class InvalidRoleAssignmentError(CustomAPIExeption):
     """Raised by UserManagementGuards.assert_role_is_assignable when the
     target role cannot be assigned via membership — either because it is
@@ -202,18 +190,6 @@ class RoleNotFoundError(CustomAPIExeption):
     status_code = 404
     default_detail = "Role not found."
     default_code = "role_not_found"
-
-
-class CannotSelfAssignError(CustomAPIExeption):
-    """Raised by UserManagementService.assign_users when a non-superadmin
-    caller includes their own user_id in the batch. Superadmins bypass
-    this rule. Caller-relationship UX safety, not a system-integrity
-    invariant — the single-row PATCH endpoint exists for deliberate
-    self-modification."""
-
-    status_code = 400
-    default_detail = "You cannot include yourself in the assignment batch."
-    default_code = "cannot_self_assign"
 
 
 class InvalidPasswordChangeTicketError(CustomAPIExeption):
@@ -346,3 +322,24 @@ class RoleNameConflictError(CustomAPIExeption):
     status_code = 400
     default_detail = "A role with this name already exists in this organization."
     default_code = "role_name_conflict"
+
+
+class MembershipNotFoundError(CustomAPIExeption):
+    """Raised by MembershipManagementService when a membership id does not
+    exist, or exists in an org the caller cannot access. Cross-org rows are
+    indistinguishable from missing ones (404 — no existence leak)."""
+
+    status_code = 404
+    default_detail = "Membership not found."
+    default_code = "membership_not_found"
+
+
+class SelfMembershipModificationError(CustomAPIExeption):
+    """Raised when a non-superadmin attempts to change or remove their own
+    membership (role up/down, or removal). Self-service membership changes are
+    not allowed — another admin or a superadmin manages you. Superadmin
+    bypasses."""
+
+    status_code = 403
+    default_detail = "You cannot modify your own membership."
+    default_code = "cannot_modify_self_membership"

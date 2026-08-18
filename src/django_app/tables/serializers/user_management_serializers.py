@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from tables.models.rbac_models import OrganizationUser, User
+from tables.models.rbac_models import User
 
 
 class OrganizationNestedSerializer(serializers.Serializer):
@@ -61,33 +61,6 @@ class UserResponseSerializer(serializers.ModelSerializer):
             return None
 
 
-class _OrgMemberMembershipSerializer(serializers.Serializer):
-    """Flat membership block embedded in OrgMemberResponseSerializer."""
-
-    id = serializers.IntegerField(read_only=True)
-    role = RoleNestedSerializer(read_only=True)
-    joined_at = serializers.DateTimeField(read_only=True)
-
-
-class OrgMemberResponseSerializer(serializers.Serializer):
-    """Per-org membership payload. Used by
-    /api/admin/organizations/{org_id}/users/* endpoints. Source is an
-    OrganizationUser instance; we pull the user fields off `.user` and
-    flatten the membership block."""
-
-    id = serializers.IntegerField(source="user.id", read_only=True)
-    email = serializers.CharField(source="user.email", read_only=True)
-    display_name = serializers.CharField(source="user.display_name", read_only=True)
-    is_superadmin = serializers.BooleanField(
-        source="user.is_superadmin", read_only=True
-    )
-    is_active = serializers.BooleanField(source="user.is_active", read_only=True)
-    membership = serializers.SerializerMethodField()
-
-    def get_membership(self, instance: OrganizationUser):
-        return _OrgMemberMembershipSerializer(instance).data
-
-
 # ---- request serializers (schema-only; real validation in
 #      UserValidationService) ----
 
@@ -99,44 +72,3 @@ class UserCreateRequestSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
     organization_id = serializers.IntegerField(required=False)
     role_id = serializers.IntegerField(required=False)
-
-
-class MembershipCreateRequestSerializer(serializers.Serializer):
-    """`POST /api/admin/organizations/{org_id}/users/` — create a new
-    User and link to the org. Linking existing users is handled by the
-    batch assign-users endpoint."""
-
-    email = serializers.EmailField()
-    password = serializers.CharField(write_only=True)
-    role_id = serializers.IntegerField(required=False)
-
-
-class MembershipUpdateRequestSerializer(serializers.Serializer):
-    """`PATCH /api/admin/organizations/{org_id}/users/{user_id}/`."""
-
-    role_id = serializers.IntegerField()
-
-
-class MembershipAssignmentItemSerializer(serializers.Serializer):
-    """Single row in the assign-users batch."""
-
-    user_id = serializers.IntegerField()
-    role_id = serializers.IntegerField()
-
-
-class MembershipAssignmentRequestSerializer(serializers.Serializer):
-    """`POST /api/admin/organizations/{org_id}/assign-users/` request body."""
-
-    assignments = MembershipAssignmentItemSerializer(many=True)
-
-
-class MembershipAssignmentResponseSerializer(serializers.Serializer):
-    """`POST /api/admin/organizations/{org_id}/assign-users/` response body.
-
-    `created` lists rows that did not exist before this batch.
-    `updated` lists pre-existing memberships that appeared in the batch
-    (whether or not the role actually changed). Both arrays preserve
-    submission order."""
-
-    created = OrgMemberResponseSerializer(many=True)
-    updated = OrgMemberResponseSerializer(many=True)

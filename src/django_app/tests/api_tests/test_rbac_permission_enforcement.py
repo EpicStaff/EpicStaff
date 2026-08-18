@@ -109,7 +109,9 @@ def test_permission_catalog_returns_actions_and_resource_types(
     assert "organizations" in resource_codes
     assert "secrets" in resource_codes
     orgs_entry = next(r for r in body["resource_types"] if r["code"] == "organizations")
-    assert orgs_entry["applicable_actions"] == ["create", "read", "update", "delete"]
+    # create/delete are platform-level (superadmin-only); only read/update are grantable.
+    assert orgs_entry["applicable_actions"] == ["read", "update"]
+    assert orgs_entry["platform_actions"] == ["create", "delete"]
     assert orgs_entry["group"] == "admin"
 
 
@@ -143,30 +145,26 @@ def test_superadmin_role_has_no_role_permissions(role_superadmin):
     assert not RolePermission.objects.filter(role=role_superadmin).exists()
 
 
-# ---- HasOrgPermission integration ----
+# ---- Cross-org membership door gate ----
 
 
 @pytest.mark.django_db
-def test_org_users_list_org_admin_allowed(auth_client, org_admin_user, org_acme):
+def test_memberships_list_org_admin_allowed(auth_client, org_admin_user, org_acme):
     response = auth_client(org_admin_user).get(
-        f"/api/admin/organizations/{org_acme.id}/users/"
+        f"/api/admin/memberships/?org_ids={org_acme.id}"
     )
     assert response.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db
-def test_org_users_list_member_denied(auth_client, member_user, org_acme):
-    response = auth_client(member_user).get(
-        f"/api/admin/organizations/{org_acme.id}/users/"
-    )
+def test_memberships_list_member_denied(auth_client, member_user):
+    response = auth_client(member_user).get("/api/admin/memberships/")
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.django_db
-def test_org_users_list_superadmin_allowed(auth_client, superadmin_user, org_acme):
-    response = auth_client(superadmin_user).get(
-        f"/api/admin/organizations/{org_acme.id}/users/"
-    )
+def test_memberships_list_superadmin_allowed(auth_client, superadmin_user):
+    response = auth_client(superadmin_user).get("/api/admin/memberships/")
     assert response.status_code == status.HTTP_200_OK
 
 
@@ -286,4 +284,5 @@ def test_permissions_me_org_admin(auth_client, org_admin_user, org_acme):
     assert body["is_superadmin"] is False
     assert body["role"]["name"] == "Org Admin"
     assert "export" in body["permissions"]["flows"]
-    assert body["permissions"]["organizations"] == []
+    # Org Admin now holds organizations READ|UPDATE (rename/manage own org).
+    assert body["permissions"]["organizations"] == ["read", "update"]
