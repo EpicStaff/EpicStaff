@@ -483,7 +483,6 @@ export class StoragePageComponent {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => {
-                    this.toastService.success(`"${event.item.name}" moved`);
                     if (this.selectedFile()?.path === from) {
                         this.selectedFile.set({ ...event.item, path: to });
                     }
