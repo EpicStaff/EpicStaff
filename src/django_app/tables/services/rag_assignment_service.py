@@ -492,10 +492,9 @@ class SearchConfigService:
         AgentGraphRag.objects.filter(agent=agent).update(search_method=search_method)
 
     @staticmethod
-    def update_graph_basic_search_config(agent: Agent, **kwargs):
-        """Update basic search config. Creates if doesn't exist."""
-        config, _ = GraphRagBasicSearchConfig.objects.get_or_create(agent=agent)
-        valid_fields = ("prompt", "k", "max_context_tokens")
+    def _upsert_search_config(model_cls, agent: Agent, valid_fields, **kwargs):
+        """Get-or-create the config for agent, apply a partial update, save if changed."""
+        config, _ = model_cls.objects.get_or_create(agent=agent)
         updated = False
         for field, value in kwargs.items():
             if field in valid_fields and value is not None:
@@ -504,90 +503,88 @@ class SearchConfigService:
         if updated:
             config.save()
         return config
+
+    @staticmethod
+    def update_graph_basic_search_config(agent: Agent, **kwargs):
+        """Update basic search config. Creates if doesn't exist."""
+        return SearchConfigService._upsert_search_config(
+            GraphRagBasicSearchConfig,
+            agent,
+            ("prompt", "k", "max_context_tokens"),
+            **kwargs,
+        )
 
     @staticmethod
     def update_graph_local_search_config(agent: Agent, **kwargs):
         """Update local search config. Creates if doesn't exist."""
-        config, _ = GraphRagLocalSearchConfig.objects.get_or_create(agent=agent)
-        valid_fields = (
-            "prompt",
-            "text_unit_prop",
-            "community_prop",
-            "conversation_history_max_turns",
-            "top_k_entities",
-            "top_k_relationships",
-            "max_context_tokens",
+        return SearchConfigService._upsert_search_config(
+            GraphRagLocalSearchConfig,
+            agent,
+            (
+                "prompt",
+                "text_unit_prop",
+                "community_prop",
+                "conversation_history_max_turns",
+                "top_k_entities",
+                "top_k_relationships",
+                "max_context_tokens",
+            ),
+            **kwargs,
         )
-        updated = False
-        for field, value in kwargs.items():
-            if field in valid_fields and value is not None:
-                setattr(config, field, value)
-                updated = True
-        if updated:
-            config.save()
-        return config
 
     @staticmethod
     def update_graph_global_search_config(agent: Agent, **kwargs):
         """Update global search config. Creates if doesn't exist."""
-        config, _ = GraphRagGlobalSearchConfig.objects.get_or_create(agent=agent)
-        valid_fields = (
-            "map_prompt",
-            "reduce_prompt",
-            "knowledge_prompt",
-            "max_context_tokens",
-            "data_max_tokens",
-            "map_max_length",
-            "reduce_max_length",
-            "dynamic_community_selection",
-            "dynamic_search_threshold",
-            "dynamic_search_keep_parent",
-            "dynamic_search_num_repeats",
-            "dynamic_search_use_summary",
-            "dynamic_search_max_level",
+        return SearchConfigService._upsert_search_config(
+            GraphRagGlobalSearchConfig,
+            agent,
+            (
+                "map_prompt",
+                "reduce_prompt",
+                "knowledge_prompt",
+                "max_context_tokens",
+                "data_max_tokens",
+                "map_max_length",
+                "reduce_max_length",
+                "dynamic_community_selection",
+                "dynamic_search_threshold",
+                "dynamic_search_keep_parent",
+                "dynamic_search_num_repeats",
+                "dynamic_search_use_summary",
+                "dynamic_search_max_level",
+            ),
+            **kwargs,
         )
-        updated = False
-        for field, value in kwargs.items():
-            if field in valid_fields and value is not None:
-                setattr(config, field, value)
-                updated = True
-        if updated:
-            config.save()
-        return config
 
     @staticmethod
     def update_graph_drift_search_config(agent: Agent, **kwargs):
         """Update drift search config. Creates if doesn't exist."""
-        config, _ = GraphRagDriftSearchConfig.objects.get_or_create(agent=agent)
-        valid_fields = (
-            "prompt",
-            "reduce_prompt",
-            "data_max_tokens",
-            "reduce_max_tokens",
-            "reduce_temperature",
-            "reduce_max_completion_tokens",
-            "concurrency",
-            "drift_k_followups",
-            "primer_folds",
-            "primer_llm_max_tokens",
-            "n_depth",
-            "community_level",
-            "local_search_text_unit_prop",
-            "local_search_community_prop",
-            "local_search_top_k_mapped_entities",
-            "local_search_top_k_relationships",
-            "local_search_max_data_tokens",
-            "local_search_temperature",
-            "local_search_top_p",
-            "local_search_n",
-            "local_search_llm_max_gen_tokens",
-            "local_search_llm_max_gen_completion_tokens",
+        return SearchConfigService._upsert_search_config(
+            GraphRagDriftSearchConfig,
+            agent,
+            (
+                "prompt",
+                "reduce_prompt",
+                "data_max_tokens",
+                "reduce_max_tokens",
+                "reduce_temperature",
+                "reduce_max_completion_tokens",
+                "concurrency",
+                "drift_k_followups",
+                "primer_folds",
+                "primer_llm_max_tokens",
+                "n_depth",
+                "community_level",
+                "local_search_text_unit_prop",
+                "local_search_community_prop",
+                "local_search_top_k_mapped_entities",
+                "local_search_top_k_relationships",
+                "local_search_max_data_tokens",
+                "local_search_temperature",
+                "local_search_top_p",
+                "local_search_n",
+                "local_search_llm_max_gen_tokens",
+                "local_search_llm_max_gen_completion_tokens",
+            ),
+            **kwargs,
         )
-        updated = False
-        for field, value in kwargs.items():
-            if field in valid_fields and value is not None:
-                setattr(config, field, value)
-                updated = True
-        if updated:
-            config.save()
-        return config
