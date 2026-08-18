@@ -972,15 +972,41 @@ def _make_empty_deleted() -> dict:
     return {delete_key: [] for delete_key in _LIST_KEY_TO_DELETE_KEY.values()}
 
 
+def _list_keys_exposing_content_hash() -> set[str]:
+    """List keys whose GraphSerializer child serializer declares `content_hash`
+    as a field — i.e. list keys for which a reseed from the DB would produce
+    an entry carrying a content_hash key. Derived from GraphSerializer itself
+    (rather than hardcoded) so this stays correct if a serializer's exposure
+    of content_hash ever changes.
+    """
+    from tables.serializers.model_serializers.graph_serializers import GraphSerializer
+
+    exposing_list_keys: set[str] = set()
+    for list_key, field in GraphSerializer().fields.items():
+        child = getattr(field, "child", None)
+        if child is not None and "content_hash" in child.fields:
+            exposing_list_keys.add(list_key)
+    return exposing_list_keys
+
+
 @sync_to_async
 def _refresh_flushed_content_hashes(snapshot: dict) -> None:
-    """Refresh each snapshot node/edge entry's content_hash — and any nested
-    python_code content_hash — from the row just written to the DB.
+    """Add or refresh each snapshot node/edge entry's content_hash — and any
+    nested python_code content_hash — from the row just written to the DB.
 
     Runs from apply_id_remap after a successful flush. One batched query per
-    model. Only overwrites a content_hash key that is already present on an
-    entry with a real id; never adds one where the serializer doesn't expose it.
+    model. For list keys whose serializer exposes content_hash (mirrored via
+    _list_keys_exposing_content_hash(), not hardcoded), the key is added when
+    missing (e.g. a node created during the session, whose snapshot entry was
+    built from the frontend's node_created payload rather than GraphSerializer)
+    and overwritten when already present. List keys whose serializer does NOT
+    expose content_hash (e.g. classification_decision_table_node_list,
+    code_agent_node_list) are left untouched, so the live snapshot's shape
+    keeps matching what a reseed from the DB would produce. Nested python_code
+    entries always get the same add-or-update treatment, since PythonCodeSerializer
+    exposes content_hash unconditionally wherever it is nested.
     """
+    from tables.models.base_models import ContentHashMixin
     from tables.models.graph_models import (
         ClassificationDecisionTableNode,
         ConditionalEdge,
@@ -1005,6 +1031,8 @@ def _refresh_flushed_content_hashes(snapshot: dict) -> None:
         ClassificationDecisionTableNode: ("pre_python_code", "post_python_code"),
     }
 
+    exposing_list_keys = _list_keys_exposing_content_hash()
+
     for list_key, model_class in model_by_list_key.items():
         entries = snapshot.get(list_key) or []
         id_to_entry: dict[int, dict] = {
@@ -1015,6 +1043,7 @@ def _refresh_flushed_content_hashes(snapshot: dict) -> None:
         if not id_to_entry:
             continue
 
+        top_level_exposes_content_hash = list_key in exposing_list_keys
         nested_fields = nested_python_code_fields.get(model_class, ())
         queryset = model_class.objects.filter(id__in=id_to_entry.keys())
         if nested_fields:
@@ -1022,16 +1051,16 @@ def _refresh_flushed_content_hashes(snapshot: dict) -> None:
 
         for instance in queryset:
             entry = id_to_entry[instance.id]
-            if "content_hash" in entry:
+            if top_level_exposes_content_hash and isinstance(
+                instance, ContentHashMixin
+            ):
                 entry["content_hash"] = instance.content_hash
 
             for field_name in nested_fields:
                 nested_entry = entry.get(field_name)
                 nested_instance = getattr(instance, field_name, None)
-                if (
-                    isinstance(nested_entry, dict)
-                    and nested_instance is not None
-                    and "content_hash" in nested_entry
+                if isinstance(nested_entry, dict) and isinstance(
+                    nested_instance, ContentHashMixin
                 ):
                     nested_entry["content_hash"] = nested_instance.content_hash
 

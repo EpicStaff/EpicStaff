@@ -192,6 +192,13 @@ class NestedPythonCodeMixin:
         return self._create_with_python_code(self.Meta.model, validated_data)
 
     def update(self, instance, validated_data):
+        expected_hash = validated_data.pop("content_hash", None) or getattr(
+            instance, "_expected_hash", None
+        )
+        if expected_hash is not None:
+            instance.assert_content_hash(expected_hash)
+            instance._expected_hash = None
+
         self._update_python_code(instance, validated_data)
 
         for attr, value in validated_data.items():
