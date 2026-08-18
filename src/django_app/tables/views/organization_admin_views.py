@@ -1,57 +1,102 @@
 from drf_spectacular.utils import OpenApiResponse, extend_schema
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.organization_serializers import (
     OrganizationCreateRequestSerializer,
     OrganizationListResponseSerializer,
     OrganizationRenameRequestSerializer,
     OrganizationResponseSerializer,
 )
-from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.organization_management_service import (
     OrganizationManagementService,
 )
 from tables.services.rbac.organization_validation_service import (
     OrganizationValidationService,
 )
-from tables.services.rbac.permissions import IsSuperadmin
+from tables.views.cross_org_admin import CrossOrgAdminViewSet
+
+_ORG_ORDERING_WHITELIST = {
+    "name": "name",
+    "created_at": "created_at",
+    "member_count": "member_count",
+}
 
 
-class OrganizationAdminViewSet(viewsets.ViewSet):
-    """Superadmin-only management of Organizations.
+class OrganizationsPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 200
 
-    GET (list), POST (create), PATCH (rename), POST {id}/deactivate/,
-    POST {id}/reactivate/.See docs/rbac/organization_management.md
-    for the FE contract.
 
-    Domain errors (404 not-found, 400 name-conflict, 400 last-active-org)
-    are raised by the service layer as CustomAPIExeption subclasses and
-    rendered through the project's `custom_exception_handler` envelope; the
-    view layer does not catch or translate them.
+class OrganizationAdminViewSet(CrossOrgAdminViewSet):
+    """Adaptive management of Organizations.
+
+    list / retrieve / partial_update are permission-aware (ORGANIZATIONS bits;
+    superadmin sees all). create / deactivate / reactivate are platform-level
+    and stay superadmin-only via `superadmin_actions`.
+
+    Domain errors (404 not-found, 400 name-conflict, 400 last-active-org) are
+    raised by the service layer as CustomAPIExeption subclasses and rendered
+    through the project's `custom_exception_handler` envelope; the view layer
+    does not catch or translate them.
     """
 
-    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
-    permission_classes = [IsAuthenticated, IsSuperadmin]
-    lookup_value_regex = "[0-9]+"
+    superadmin_actions = frozenset({"create", "deactivate", "reactivate"})
+    pagination_class = OrganizationsPagination
+    rbac_resource_type = ResourceType.ORGANIZATIONS
+    rbac_action_map = {
+        "list": Permission.READ,
+        "retrieve": Permission.READ,
+        "partial_update": Permission.UPDATE,
+    }
 
     _service = OrganizationManagementService()
     _validator = OrganizationValidationService()
 
     @extend_schema(
-        summary="List organizations (superadmin)",
+        summary="List organizations (permission-aware)",
         responses={200: OrganizationListResponseSerializer(many=True)},
     )
     def list(self, request):
         is_active = self._parse_is_active(request.query_params.get("is_active"))
-        orgs = self._service.list_organizations_with_admins(is_active=is_active)
-        return Response(
+        org_ids = self.parse_org_ids(request.query_params.get("org_ids"))
+        scopes = getattr(request, "_rbac_org_scopes", None)
+        qs = self._service.list_for_actor(
+            actor=request.user,
+            is_active=is_active,
+            search=request.query_params.get("search"),
+            org_ids=org_ids,
+            scopes=scopes,
+        )
+        qs = self._apply_ordering(qs, request.query_params.get("ordering"))
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        self._service.attach_admins(
+            page,
+            include_superadmin_fallback=getattr(request.user, "is_superadmin", False),
+        )
+        return paginator.get_paginated_response(
             OrganizationListResponseSerializer(
-                orgs, many=True, context={"request": request}
+                page, many=True, context={"request": request}
             ).data
         )
+
+    @extend_schema(
+        summary="Get one organization (settings surface)",
+        responses={
+            200: OrganizationResponseSerializer,
+            404: OpenApiResponse(
+                description="Organization not found or not accessible"
+            ),
+        },
+    )
+    def retrieve(self, request, pk=None):
+        org = self._service.get_for_read(actor=request.user, org_id=int(pk))
+        return Response(OrganizationResponseSerializer(org).data)
 
     @extend_schema(
         summary="Create an organization (superadmin)",
@@ -70,17 +115,21 @@ class OrganizationAdminViewSet(viewsets.ViewSet):
         )
 
     @extend_schema(
-        summary="Rename an organization (superadmin)",
+        summary="Rename an organization (ORGANIZATIONS.UPDATE or superadmin)",
         request=OrganizationRenameRequestSerializer,
         responses={
             200: OrganizationResponseSerializer,
             400: OpenApiResponse(description="Validation error or duplicate name"),
-            404: OpenApiResponse(description="Organization not found"),
+            404: OpenApiResponse(
+                description="Organization not found or not accessible"
+            ),
         },
     )
     def partial_update(self, request, pk=None):
         cleaned = self._validator.validate_rename(request.data)
-        org = self._service.rename_organization(org_id=int(pk), name=cleaned["name"])
+        org = self._service.rename_organization(
+            actor=request.user, org_id=int(pk), name=cleaned["name"]
+        )
         return Response(OrganizationResponseSerializer(org).data)
 
     @action(detail=True, methods=["post"], url_path="deactivate")
@@ -109,6 +158,16 @@ class OrganizationAdminViewSet(viewsets.ViewSet):
     def reactivate(self, request, pk=None):
         org = self._service.reactivate_organization(org_id=int(pk))
         return Response(OrganizationResponseSerializer(org).data)
+
+    def _apply_ordering(self, qs, raw):
+        if not raw:
+            return qs  # default: -is_active, name (from _list_organizations)
+        descending = raw.startswith("-")
+        key = raw.lstrip("-")
+        field = _ORG_ORDERING_WHITELIST.get(key)
+        if field is None:
+            return qs
+        return qs.order_by(f"-{field}" if descending else field, "id")
 
     @staticmethod
     def _parse_is_active(value):
