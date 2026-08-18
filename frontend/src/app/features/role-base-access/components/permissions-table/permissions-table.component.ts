@@ -22,6 +22,9 @@ export class PermissionsTableComponent {
     catalog = input.required<CatalogResponse>();
     selectedPermissions = input.required<Set<string>>();
     readonly = input(false);
+    /** Set of `${resource}:${action}` keys the actor is NOT allowed to grant (ceiling rule).
+     *  Ignored in readonly mode (all cells are already non-interactive). */
+    disabledPermissions = input<Set<string>>(new Set<string>());
 
     permissionToggle = output<{ resourceType: string; action: string }>();
     selectAllClick = output<void>();
@@ -97,6 +100,10 @@ export class PermissionsTableComponent {
 
     isChecked(resourceCode: string, actionCode: string): boolean {
         return this.selectedPermissions().has(`${resourceCode}:${actionCode}`);
+    }
+
+    isCellDisabled(resourceCode: string, actionCode: string): boolean {
+        return this.readonly() || this.disabledPermissions().has(`${resourceCode}:${actionCode}`);
     }
 
     resourceDescription(resourceCode: string): string {

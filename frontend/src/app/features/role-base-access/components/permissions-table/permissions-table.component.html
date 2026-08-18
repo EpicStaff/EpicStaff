@@ -126,7 +126,7 @@
                                     @if (isApplicable(resource, action)) {
                                         <app-checkbox
                                             [checked]="isChecked(resource.code, action.code)"
-                                            [disabled]="readonly()"
+                                            [disabled]="isCellDisabled(resource.code, action.code)"
                                             (checkedChange)="
                                                 permissionToggle.emit({
                                                     resourceType: resource.code,

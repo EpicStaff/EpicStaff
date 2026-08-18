@@ -51,6 +51,14 @@
         .required {
             color: var(--accent-color);
         }
+
+        .server-error {
+            display: block;
+            margin-left: 96px;
+            margin-top: 4px;
+            color: var(--color-danger, #e05252);
+            font-size: 0.8125rem;
+        }
     }
 
     .content {

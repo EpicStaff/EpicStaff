@@ -1,3 +1,4 @@
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { AdminUserService } from '../../services/admin/admin-user.service';
 import { UserService } from '../../services/users/user.service';
@@ -8,7 +9,8 @@ import { UserFetchStrategy } from './user-fetch.strategy';
 export function createUserFetchStrategy(
     currentUserService: ProfileService,
     adminUserService: AdminUserService,
-    userService: UserService
+    userService: UserService,
+    permissionsService: PermissionsService
 ): UserFetchStrategy {
     const isSuperAdmin = currentUserService.isMeSuperAdmin();
 
@@ -16,5 +18,5 @@ export function createUserFetchStrategy(
         return new SuperAdminUserFetchStrategy(adminUserService);
     }
 
-    return new OrgAdminUserFetchStrategy(userService, currentUserService);
+    return new OrgAdminUserFetchStrategy(userService, permissionsService);
 }

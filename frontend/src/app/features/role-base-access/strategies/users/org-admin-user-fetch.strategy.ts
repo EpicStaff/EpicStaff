@@ -1,28 +1,25 @@
-import { FullMembership, OrgUserResponse, UserRole } from '@shared/models';
+import { ActionCode, FullMembership, OrgUserResponse, ResourceCode } from '@shared/models';
 import { forkJoin, map, Observable, of } from 'rxjs';
 
-import { ProfileService } from '../../../../services/auth/profile.service';
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { UserService } from '../../services/users/user.service';
 import { NormalizedUser, UserFetchStrategy } from './user-fetch.strategy';
 
 export class OrgAdminUserFetchStrategy implements UserFetchStrategy {
     constructor(
         private userService: UserService,
-        private currentUserService: ProfileService
+        private permissionsService: PermissionsService
     ) {}
 
     fetchUsers(): Observable<NormalizedUser[]> {
-        const currentUser = this.currentUserService.currentUserSignal();
-        if (!currentUser) return of([]);
+        const readableOrgs = this.permissionsService.orgsWith(ResourceCode.Users, ActionCode.Read);
+        if (!readableOrgs.length) return of([]);
 
-        const adminMemberships = currentUser.memberships.filter(({ role }) => role.id === UserRole.ORG_ADMIN);
-        if (!adminMemberships.length) return of([]);
+        // Build orgId → org lookup (per-org endpoint doesn't return org info).
+        const orgById = new Map(readableOrgs.map((org) => [org.id, org]));
 
-        // Build orgId → org lookup from /me data (per-org endpoint doesn't return org info)
-        const orgById = new Map(adminMemberships.map(({ organization }) => [organization.id, organization]));
-
-        const requests = adminMemberships.map(({ organization }) =>
-            this.userService.getUsers(organization.id).pipe(map((users) => ({ orgId: organization.id, users })))
+        const requests = readableOrgs.map((org) =>
+            this.userService.getUsers(org.id).pipe(map((users) => ({ orgId: org.id, users })))
         );
 
         return forkJoin(requests).pipe(map((results) => this.mergeAndDeduplicate(results, orgById)));

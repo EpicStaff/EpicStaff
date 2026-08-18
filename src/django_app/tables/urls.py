@@ -116,10 +116,7 @@ from tables.views.flow_assistant_views import (
 )
 
 from tables.views.organization_admin_views import OrganizationAdminViewSet
-from tables.views.role_admin_views import (
-    OrgScopedRoleAdminViewSet,
-    RoleAdminViewSet,
-)
+from tables.views.role_admin_views import RoleAdminViewSet
 from tables.views.user_management_views import (
     OrganizationMembershipAdminViewSet,
     UserAdminViewSet,
@@ -228,11 +225,6 @@ urlpatterns = [
         "admin/organizations/<int:org_id>/assign-users/",
         OrganizationMembershipAdminViewSet.as_view({"post": "assign_users"}),
         name="admin-org-users-assign",
-    ),
-    path(
-        "admin/organizations/<int:org_id>/roles/",
-        OrgScopedRoleAdminViewSet.as_view({"get": "list"}),
-        name="admin-org-roles-list",
     ),
     path("admin/", include(admin_router.urls)),
     path("", include(router.urls)),

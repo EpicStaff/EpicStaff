@@ -324,3 +324,25 @@ class ApiKeyLimitExceededError(CustomAPIExeption):
         "Revoke or delete an existing key first."
     )
     default_code = "api_key_limit_exceeded"
+
+
+class PermissionEscalationError(CustomAPIExeption):
+    """Raised by RoleManagementService when a create/update would grant a
+    permission bit the caller does not itself hold in that org (ceiling /
+    no-escalation rule). Superadmin bypasses the rule."""
+
+    status_code = 403
+    default_detail = (
+        "You cannot grant permissions you do not have in this organization."
+    )
+    default_code = "permission_escalation_denied"
+
+
+class RoleNameConflictError(CustomAPIExeption):
+    """Raised by RoleManagementService when a role name already exists in
+    the target org (case-insensitive). The caller renames — names are
+    never silently overwritten."""
+
+    status_code = 400
+    default_detail = "A role with this name already exists in this organization."
+    default_code = "role_name_conflict"

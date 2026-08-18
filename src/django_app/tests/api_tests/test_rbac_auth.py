@@ -38,7 +38,7 @@ from tables.models.rbac_models import (
 )
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.reset_user_service import ResetUserService
-from tables.services.rbac.sse_ticket_service import SseTicketService
+from tables.services.rbac.ticket_service import sse_ticket_service
 from tables.services.rbac.utils.superadmin_bootstrap import SuperadminBootstrap
 
 LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"

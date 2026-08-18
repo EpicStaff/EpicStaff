@@ -58,14 +58,6 @@
                 appOverflowItems
                 #roleOverflow="overflowItems"
             >
-                @if (row['isSuperadmin']) {
-                    <span
-                        appOverflowItem
-                        appOverflowLabel="Super Admin"
-                        class="role-chip"
-                        >Super Admin</span
-                    >
-                }
                 @for (role of row['roles']; track role) {
                     <span
                         appOverflowItem

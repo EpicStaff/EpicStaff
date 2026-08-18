@@ -48,7 +48,7 @@
                     size="18px"
                 />
                 Organizations
-                <span class="count">{{ organizations().length }}</span>
+                <span class="count">{{ memberships().length }}</span>
             </h3>
 
             <app-select
@@ -72,7 +72,7 @@
                         </div>
 
                         <div class="right">
-                            <span class="org-role">{{ roleLabel(item.role.id) }}</span>
+                            <span class="org-role">{{ roleLabel(item.role) }}</span>
                         </div>
                     </app-list-row>
                 </ng-template>
