@@ -13,7 +13,7 @@ import {
     SimpleChanges,
     ViewChildren,
 } from '@angular/core';
-import { DateRangeFilter } from 'src/app/features/flows/services/flows-sessions.service';
+import { DateRangeFilter } from '@shared/models';
 
 const MONTH_NAMES = [
     'January',

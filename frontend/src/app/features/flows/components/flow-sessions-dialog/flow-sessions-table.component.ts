@@ -20,13 +20,12 @@ import {
     LoadingSpinnerComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { GraphDto } from '../../models/graph.model';
 import {
-    DateRangeFilter,
     DurationFilter,
     GraphSessionLight,
     GraphSessionStatus,

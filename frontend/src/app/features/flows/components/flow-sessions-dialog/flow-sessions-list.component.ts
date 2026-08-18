@@ -25,7 +25,7 @@ import {
     SelectItem,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
 import { catchError, EMPTY, finalize, interval, map, merge, Subject, switchMap, takeUntil } from 'rxjs';
 import { NodeGroup } from 'src/app/shared/models/node-group.model';
 
@@ -34,7 +34,6 @@ import { ToastService } from '../../../../services/notifications/toast.service';
 import { downloadBlob } from '../../../../shared/utils/download-blob.util';
 import { GraphDto } from '../../models/graph.model';
 import {
-    DateRangeFilter,
     GraphSessionLight,
     GraphSessionService,
     GraphSessionStatus,

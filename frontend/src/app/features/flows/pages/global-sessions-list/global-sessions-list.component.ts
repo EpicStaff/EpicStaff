@@ -21,7 +21,7 @@ import {
     SelectItem,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
 import { catchError, EMPTY, finalize, interval, Observable, Subject, switchMap, takeUntil } from 'rxjs';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
@@ -32,7 +32,6 @@ import { FlowSessionsTableComponent } from '../../components/flow-sessions-dialo
 import { GetGraphLightRequest } from '../../models/graph.model';
 import { FlowsApiService } from '../../services/flows-api.service';
 import {
-    DateRangeFilter,
     DurationFilter,
     GraphSessionLight,
     GraphSessionService,

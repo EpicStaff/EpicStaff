@@ -23,8 +23,8 @@ input[type='checkbox']:hover:not(:checked):not(:indeterminate):not(:disabled) {
 }
 
 input[type='checkbox']:checked {
-    background: #fff;
-    border-color: #fff;
+    background: var(--accent-color);
+    border-color: var(--accent-color);
 }
 
 input[type='checkbox']:checked::after {
@@ -34,14 +34,14 @@ input[type='checkbox']:checked::after {
     left: 50%;
     width: 5px;
     height: 9px;
-    border: solid #000;
+    border: solid var(--color-text-primary);
     border-width: 0 2px 2px 0;
     transform: rotate(45deg) translate(-100%, -25%);
 }
 
 input[type='checkbox']:indeterminate {
-    background: #fff;
-    border-color: #fff;
+    background: var(--accent-color);
+    border-color: var(--accent-color);
 }
 
 input[type='checkbox']:indeterminate::after {
@@ -52,7 +52,7 @@ input[type='checkbox']:indeterminate::after {
     transform: translate(-50%, -50%);
     width: 8px;
     height: 1px;
-    background: #000;
+    background: var(--color-text-primary);
     border-radius: 1px;
 }
 

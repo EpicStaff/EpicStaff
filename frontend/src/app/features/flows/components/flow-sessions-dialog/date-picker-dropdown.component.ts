@@ -13,10 +13,10 @@ import {
     ViewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { DateRangeFilter } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { DateRangePickerComponent } from '../../../../shared/components/date-range-picker/date-range-picker.component';
-import { DateRangeFilter } from '../../services/flows-sessions.service';
 
 @Component({
     selector: 'app-created-at-filter-dropdown',

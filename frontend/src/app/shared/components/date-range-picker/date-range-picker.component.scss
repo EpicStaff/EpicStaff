@@ -5,7 +5,7 @@
     padding: 16px;
     border-radius: 10px;
     border: 1px solid var(--color-input-border);
-    background-color: rgb(33, 35, 37);
+    background-color: var(--color-background-body);
     color: var(--color-text-primary);
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
 
@@ -123,7 +123,7 @@
         gap: 6px;
         width: 264px;
         padding: 10px;
-        background: rgba(33, 35, 37, 1);
+        background: var(--color-background-body);
         border: 1px solid var(--color-input-border);
         border-radius: 8px;
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
@@ -191,7 +191,7 @@
         }
 
         &--today {
-            border-color: #fff;
+            border-color: var(--color-white);
             border-radius: 4px;
         }
 
@@ -203,7 +203,7 @@
 
         &--edge {
             background: rgb(104, 95, 255);
-            color: #fff;
+            color: var(--color-white);
             font-weight: 500;
             border-radius: 4px;
         }
@@ -276,7 +276,7 @@
         border: none;
         border-radius: 4px;
         background: var(--active-color, var(--accent-color, #685fff));
-        color: #fff;
+        color: var(--color-white);
         font-family: 'Inter', sans-serif;
         font-weight: 500;
         font-size: 12px;

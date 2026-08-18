@@ -6,6 +6,7 @@ import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { GraphMessage } from '../../../pages/running-graph/models/graph-session-message.model';
 import { WarningMessages } from '../../../pages/running-graph/models/warning-messages.model';
 import { ConfigService } from '../../../services/config/config.service';
+import { DateRangeFilter } from '../../../shared/models/date-range-filter.model';
 
 export interface GraphSessionGraph {
     id: number;
@@ -68,11 +69,6 @@ export interface DurationFilter {
     operator: DurationOperator;
     value: number;
     value2?: number;
-}
-
-export interface DateRangeFilter {
-    after: string | null;
-    before: string | null;
 }
 
 export type DurationOperator = 'lessThan' | 'greaterThan' | 'equal' | 'between';
