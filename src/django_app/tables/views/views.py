@@ -1022,16 +1022,24 @@ class RegisterWebhooksApiView(APIView):
 
 
 class PythonNodeLastTestInputView(OrgScopedServiceViewSetMixin, APIView):
+    """
+    GET last tests input for python node from last
+    successfull session with that node
+    """
+
+    _PYTHONNODE_ORG_PATH = "graph__org_id"
+
     @extend_schema(**_LAST_TEST_INPUT_SWAGGER)
     def get(self, request, pk):
-        python_node = self.get_in_active_org_or_404(
-            PythonNode, pk, org_path="graph__org_id"
-        )
         assert_org_permission(
             request.user,
             self.get_active_org_id(),
             ResourceType.FLOWS,
             Permission.READ,
+        )
+
+        python_node = self.get_in_active_org_or_404(
+            PythonNode, pk, org_path=self._PYTHONNODE_ORG_PATH
         )
 
         python_node_name = f"{python_node.node_name} #{python_node.pk}"
