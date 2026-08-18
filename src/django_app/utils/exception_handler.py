@@ -46,7 +46,7 @@ def custom_exception_handler(exc, context):
                 {
                     "field": field,
                     "value": None,
-                    "reason": "; ".join(reason if isinstance(reason, list) else [reason])
+                    "reason": "; ".join(reason if isinstance(reason, list) else [str(reason)])
                 }
                 for data in detail
                 for field, reason in data.items()
