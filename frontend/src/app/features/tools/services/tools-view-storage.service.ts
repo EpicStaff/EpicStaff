@@ -1,9 +1,19 @@
-import { computed, Injectable, signal } from '@angular/core';
+import { computed, effect, Injectable, signal } from '@angular/core';
 import { IncludeExcludeTab } from '@shared/components';
 import { StorageService } from '@shared/services';
 import { Subject } from 'rxjs';
 
 import { EMPTY_TOOLS_FILTER, ToolsFilterState, USAGE_DEPENDENT_SORTS } from '../models/tool-filter.model';
+
+const SHOW_USAGE_AND_UNUSED_STORAGE_KEY = 'tools:showUsageAndUnused';
+
+function readShowUsageAndUnusedFromStorage(): boolean {
+    try {
+        return localStorage.getItem(SHOW_USAGE_AND_UNUSED_STORAGE_KEY) === 'true';
+    } catch {
+        return false;
+    }
+}
 
 export type ToolsBulkActionKind =
     | 'select-all'
@@ -49,7 +59,7 @@ export class ToolsViewStorageService implements StorageService {
     public readonly selectedCount = computed(() => this._selectedIds().size);
     public readonly hasSelection = computed(() => this._selectedIds().size > 0);
 
-    public readonly showUsageAndUnused = signal<boolean>(false);
+    public readonly showUsageAndUnused = signal<boolean>(readShowUsageAndUnusedFromStorage());
 
     private readonly _visibleToolIds = signal<number[]>([]);
     public readonly visibleToolIds = this._visibleToolIds.asReadonly();
@@ -86,6 +96,17 @@ export class ToolsViewStorageService implements StorageService {
     );
 
     public readonly action$ = new Subject<ToolsBulkActionEvent>();
+
+    constructor() {
+        effect(() => {
+            const value = this.showUsageAndUnused();
+            try {
+                localStorage.setItem(SHOW_USAGE_AND_UNUSED_STORAGE_KEY, String(value));
+            } catch {
+                /* ignore storage errors (e.g. private mode / quota) */
+            }
+        });
+    }
 
     public isSelected(id: number): boolean {
         return this._selectedIds().has(id);
@@ -142,7 +163,8 @@ export class ToolsViewStorageService implements StorageService {
         this._visibleToolIds.set([]);
         this._selectedToolsMeta.set([]);
         this.selectMode.set(false);
-        this.showUsageAndUnused.set(false);
+        // `showUsageAndUnused` intentionally NOT reset — it's a persisted UI preference
+        // (stored in localStorage) that should survive logout
         this._filter.set({ ...EMPTY_TOOLS_FILTER });
     }
 

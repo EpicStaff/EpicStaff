@@ -21,7 +21,7 @@ export interface ToolFilterAdapter<T> {
 export interface ToolFilterContext {
     filter: ToolsFilterState;
     sidebarLabelFilter: 'all' | 'unlabeled' | number;
-    labelNameById: Map<number, string>;
+    labelById: Map<number, { name: string; full_path: string }>;
     /** Pre-lowercased + trimmed search term (empty string when not searching). */
     searchTerm: string;
     /** Per-tool usage counts; used both by the sort and the `used_in_*` filter guards. */
@@ -35,7 +35,7 @@ export interface ToolFilterContext {
  * a zero usage count for the corresponding scope).
  */
 export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: ToolFilterAdapter<T>): boolean {
-    const { filter, sidebarLabelFilter, labelNameById, searchTerm, usage } = ctx;
+    const { filter, sidebarLabelFilter, labelById, searchTerm, usage } = ctx;
     const labels = adapter.labelIdsOf(tool);
     const id = adapter.idOf(tool);
 
@@ -58,7 +58,7 @@ export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: T
         if (filter.customFilter.scope === 'tool_name') {
             if (!evaluateCustomCondition(adapter.nameOf(tool), filter.customFilter)) return false;
         } else {
-            const names = labels.map((lId) => labelNameById.get(lId) ?? '');
+            const names = labels.map((lId) => labelById.get(lId)?.name ?? '');
             if (!evaluateCustomCondition(names, filter.customFilter)) return false;
         }
     }
@@ -71,10 +71,16 @@ export function matchesToolFilter<T>(tool: T, ctx: ToolFilterContext, adapter: T
         if (filter.sortOrder === 'used_in_agents' && (usage.get(id)?.staff_count ?? 0) === 0) return false;
     }
 
-    // Free-text search.
+    // Free-text search: match the tool's own searchable text OR any assigned
+    // label's name / full_path.
     if (searchTerm) {
         const haystack = adapter.searchableTextOf(tool);
-        if (!haystack.some((s) => s.toLowerCase().includes(searchTerm))) return false;
+        if (haystack.some((s) => s.toLowerCase().includes(searchTerm))) return true;
+        const labelHit = labels.some((lId) => {
+            const l = labelById.get(lId);
+            return !!l && (l.name.toLowerCase().includes(searchTerm) || l.full_path.toLowerCase().includes(searchTerm));
+        });
+        if (!labelHit) return false;
     }
     return true;
 }

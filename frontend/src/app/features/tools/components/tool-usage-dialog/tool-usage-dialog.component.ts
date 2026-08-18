@@ -45,7 +45,7 @@ export class ToolUsageDialogComponent {
     }
 
     public openAgent(): void {
-        this.openInNewTab(['/agents']);
+        this.openInNewTab(['/staff']);
     }
 
     public openProject(id: number): void {

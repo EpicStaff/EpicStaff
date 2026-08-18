@@ -138,6 +138,7 @@
                     class="tree-row"
                     [class.selected]="isSelected(item.node.id)"
                     [style.paddingLeft]="getIndentPadding(item.depth)"
+                    (click)="toggleSelection(item.node.id)"
                 >
                     <button
                         type="button"
@@ -158,7 +159,6 @@
                     <app-checkbox
                         [checked]="isSelected(item.node.id)"
                         [indeterminate]="isIndeterminate(item.node.id)"
-                        (changed)="toggleSelection(item.node.id)"
                     />
 
                     <span class="label-name">{{ item.node.name }}</span>

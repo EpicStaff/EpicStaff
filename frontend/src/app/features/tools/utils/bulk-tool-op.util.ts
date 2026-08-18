@@ -24,6 +24,8 @@ export function runSettledBulk<T>(
         applySuccess: (items: T[]) => void;
         successMessage: (count: number) => string;
         failureMessage: (count: number) => string;
+        /** Called when at least one request fails, so callers can refetch the list to stay in sync. */
+        onError?: () => void;
     }
 ): void {
     if (requests.length === 0) return;
@@ -38,6 +40,7 @@ export function runSettledBulk<T>(
             }
             if (failures.length > 0) {
                 opts.toast.error(opts.failureMessage(failures.length));
+                opts.onError?.();
             }
         });
 }
@@ -63,6 +66,8 @@ export function runBulkDeleteWithConfirm<T extends { id: number }>(
         entityLabel: string;
         /** Scope word rendered in the success toast (e.g. 'unused', 'selected'). */
         scopeLabel: 'unused' | 'selected';
+        /** Called when the delete request fails, so callers can refetch the list to stay in sync. */
+        onError?: () => void;
     }
 ): void {
     if (ids.length === 0) return;
@@ -84,6 +89,7 @@ export function runBulkDeleteWithConfirm<T extends { id: number }>(
                         opts.toast.error(
                             err.error?.message || `Failed to delete ${opts.scopeLabel} ${opts.entityLabel}s.`
                         );
+                        opts.onError?.();
                     },
                 });
         });
@@ -109,6 +115,8 @@ export function runDeleteUnused<T extends { id: number }>(
         entityLabel: string;
         /** Plural noun used in the confirm dialog message (e.g. 'custom tools', 'MCP tools'). */
         entityLabelPlural: string;
+        /** Called when the usage lookup or delete request fails, so callers can refetch the list. */
+        onError?: () => void;
     }
 ): void {
     if (filteredIds.length === 0) return;
@@ -120,7 +128,7 @@ export function runDeleteUnused<T extends { id: number }>(
                     .filter((i) => i.projects_count === 0 && i.staff_count === 0 && !i.is_built_in)
                     .map((i) => i.id);
                 if (unusedIds.length === 0) {
-                    opts.toast.info(`No unused ${opts.entityLabel}s to delete.`);
+                    opts.toast.success(`No unused ${opts.entityLabel}s to delete.`);
                     return;
                 }
                 runBulkDeleteWithConfirm(unusedIds, {
@@ -133,10 +141,12 @@ export function runDeleteUnused<T extends { id: number }>(
                     entityLabel: opts.entityLabel,
                     scopeLabel: 'unused',
                     dialogData: buildUnusedDeleteDialog(unusedIds.length, opts.entityLabelPlural),
+                    onError: opts.onError,
                 });
             },
             error: (err: HttpErrorResponse) => {
                 opts.toast.error(err.error?.message || 'Failed to load usage data.');
+                opts.onError?.();
             },
         });
 }

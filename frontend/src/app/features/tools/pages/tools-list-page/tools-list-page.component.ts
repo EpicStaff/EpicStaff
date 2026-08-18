@@ -197,7 +197,6 @@ export class ToolsListPageComponent implements OnDestroy, OnInit {
         this.toolsSearchService.clearSearch();
         this.viewState.setSelectMode(false);
         this.viewState.clearSelection();
-        this.viewState.showUsageAndUnused.set(false);
         this.viewState.resetFilter();
     }
 

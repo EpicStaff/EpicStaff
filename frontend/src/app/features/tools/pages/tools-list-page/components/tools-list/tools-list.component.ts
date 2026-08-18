@@ -84,7 +84,9 @@ export class ToolsListComponent implements OnInit {
         const ctx = {
             filter: this.viewState.filter(),
             sidebarLabelFilter: this.labelsStorage.activeLabelFilter(),
-            labelNameById: new Map(this.labelsStorage.labels().map((l) => [l.id, l.name] as const)),
+            labelById: new Map(
+                this.labelsStorage.labels().map((l) => [l.id, { name: l.name, full_path: l.full_path }] as const)
+            ),
             searchTerm: this.searchTerm().trim().toLowerCase(),
             usage,
         };
@@ -268,6 +270,7 @@ export class ToolsListComponent implements OnInit {
                         bulkDelete: (ids) => this.port.bulkDelete(ids),
                         entityLabel: this.port.entityLabel,
                         entityLabelPlural: this.port.entityLabelPlural,
+                        onError: () => this.loadTools(),
                     }
                 );
                 return;
@@ -325,6 +328,7 @@ export class ToolsListComponent implements OnInit {
                     next: () => {
                         this.toastService.success(`${capitalise(this.port.entityLabelPlural)} imported successfully.`);
                         this.loadTools();
+                        this.labelsStorage.loadLabels(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
                     },
                     error: (err: HttpErrorResponse) => {
                         this.toastService.error(
@@ -395,6 +399,7 @@ export class ToolsListComponent implements OnInit {
             applySuccess: (succeededIds) => this.setFavoriteInState(succeededIds, true),
             successMessage: (n) => `Marked ${n} ${this.port.entityLabel}(s) as favorite.`,
             failureMessage: (n) => `Failed to update ${n} ${this.port.entityLabel}(s).`,
+            onError: () => this.loadTools(),
         });
     }
 
@@ -411,6 +416,7 @@ export class ToolsListComponent implements OnInit {
             applySuccess: (copies) => this.allTools.update((list) => [...copies, ...list]),
             successMessage: (n) => `Duplicated ${n} ${this.port.entityLabel}(s).`,
             failureMessage: (n) => `Failed to duplicate ${n} ${this.port.entityLabel}(s).`,
+            onError: () => this.loadTools(),
         });
     }
 
@@ -443,6 +449,7 @@ export class ToolsListComponent implements OnInit {
             applySuccess: (updated) => this.replaceManyInState(updated),
             successMessage: (n) => `Updated labels for ${n} ${this.port.entityLabel}(s).`,
             failureMessage: (n) => `Failed to update labels for ${n} ${this.port.entityLabel}(s).`,
+            onError: () => this.loadTools(),
         });
     }
 
@@ -544,6 +551,7 @@ export class ToolsListComponent implements OnInit {
                         entityLabel: this.port.entityLabel,
                         scopeLabel: 'selected',
                         dialogData: buildBulkSelectedDeleteDialog(tools),
+                        onError: () => this.loadTools(),
                     });
                 },
                 error: (err: HttpErrorResponse) => {
