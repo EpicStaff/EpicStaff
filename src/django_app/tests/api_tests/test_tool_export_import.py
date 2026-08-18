@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from rest_framework.test import APIClient
 
@@ -185,6 +187,48 @@ def test_mcptool_import_after_export_does_not_carry_over_auth(
     )
     assert new_tool.auth is None
     assert new_tool.transport == mcp_tool_with_auth_a.transport
+
+
+@pytest.mark.django_db
+def test_pythoncodetool_import_ignores_stale_created_by_reference(
+    client_a, python_tool_a
+):
+    """
+    EST-3777: an import payload with a `created_by` referencing a user id
+    that no longer exists must not blow up with a 400 ValidationError
+    ("Invalid pk ... - object does not exist"). `created_by` is
+    server-managed (excluded on `PythonCodeToolImportSerializer`) and must
+    be ignored on import, not validated against the DB.
+    """
+    export_resp = client_a.get(f"/api/python-code-tool/{python_tool_a.id}/export/")
+    assert export_resp.status_code == 200
+    payload = export_resp.json()
+    payload["PythonCodeTool"][0]["created_by"] = 999999999
+
+    file = _as_upload(json.dumps(payload).encode(), "python_tool.json")
+    resp = client_a.post(
+        "/api/python-code-tool/import/",
+        {"file": file, "import_labels": "false"},
+        format="multipart",
+    )
+    assert resp.status_code == 200, resp.data
+
+
+@pytest.mark.django_db
+def test_mcptool_import_ignores_stale_created_by_reference(client_a, mcp_tool_a):
+    """EST-3777, MCP tool side of the same fix."""
+    export_resp = client_a.get(f"/api/mcp-tools/{mcp_tool_a.id}/export/")
+    assert export_resp.status_code == 200
+    payload = export_resp.json()
+    payload["MCPTool"][0]["created_by"] = 999999999
+
+    file = _as_upload(json.dumps(payload).encode(), "mcp_tool.json")
+    resp = client_a.post(
+        "/api/mcp-tools/import/",
+        {"file": file, "import_labels": "false"},
+        format="multipart",
+    )
+    assert resp.status_code == 200, resp.data
 
 
 # ---- bulk export ----

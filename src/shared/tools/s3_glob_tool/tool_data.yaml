@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 Glob Tool"
+  description: "Find files in S3 storage by name pattern (fnmatch-style glob, e.g. '*.py', 'src/**/*.json', 'reports/2024-*.csv'). Params: pattern (required) - matched against the full org-relative path, '*' and '**' both match across '/' segments; path - folder to search under; path must be within your flow's allowed files (the files attached to this flow) - root/whole-bucket listing is not available, pass one of your allowed paths. Results are sorted newest-first by last-modified time (entries with no modified timestamp last), capped at 100 matches with a truncation notice if more exist - narrow pattern or path to see the rest."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

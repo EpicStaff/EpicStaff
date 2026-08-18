@@ -319,6 +319,15 @@ export const routes: Routes = [
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.Roles, ActionCode.Read] },
                             },
+                            {
+                                path: 'api-keys',
+                                loadComponent: () =>
+                                    import('./features/role-base-access/pages/overview-page/api-keys-tab/api-keys-tab.component').then(
+                                        (m) => m.ApiKeysTabComponent
+                                    ),
+                                canActivate: [permissionGuard],
+                                data: { permission: [ResourceCode.Secrets, ActionCode.Read] },
+                            },
                         ],
                     },
                     {
@@ -327,6 +336,27 @@ export const routes: Routes = [
                             import('./features/role-base-access/pages/profile-page/profile-page.component').then(
                                 (m) => m.ProfilePageComponent
                             ),
+                        children: [
+                            {
+                                path: '',
+                                redirectTo: 'overview',
+                                pathMatch: 'full',
+                            },
+                            {
+                                path: 'overview',
+                                loadComponent: () =>
+                                    import('./features/role-base-access/pages/profile-page/overview-tab/profile-overview-tab.component').then(
+                                        (m) => m.ProfileOverviewTabComponent
+                                    ),
+                            },
+                            {
+                                path: 'api-keys',
+                                loadComponent: () =>
+                                    import('./features/role-base-access/pages/profile-page/api-keys-tab/profile-api-keys-tab.component').then(
+                                        (m) => m.ProfileApiKeysTabComponent
+                                    ),
+                            },
+                        ],
                     },
                 ],
             },

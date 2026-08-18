@@ -113,12 +113,14 @@ def upload_llm_models():
         for model_data in model_list:
             model_name = model_data["name"]
             is_recommended = model_data["recommended"]
+            is_deprecated = model_data.get("deprecated", False)
 
             llm_model, created = LLMModel.objects.update_or_create(
                 llm_provider=provider,
                 name=model_name,
                 defaults={
                     "predefined": True,
+                    "is_visible": not is_deprecated,
                 },
             )
 

@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
+import { downloadBlob } from '@shared/utils';
 import { forkJoin } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -325,7 +326,7 @@ export class StoragePageComponent {
                         .downloadZip([event.item.path])
                         .pipe(takeUntilDestroyed(this.destroyRef))
                         .subscribe({
-                            next: (blob) => this.downloadBlobFile(blob, `${event.item.name}.zip`),
+                            next: (blob) => downloadBlob(blob, `${event.item.name}.zip`),
                             error: () => this.toastService.error('Failed to download folder'),
                         });
                 } else {
@@ -333,7 +334,7 @@ export class StoragePageComponent {
                         .downloadBlob(event.item.path)
                         .pipe(takeUntilDestroyed(this.destroyRef))
                         .subscribe({
-                            next: (blob) => this.downloadBlobFile(blob, event.item.name),
+                            next: (blob) => downloadBlob(blob, event.item.name),
                             error: () => this.toastService.error(`Failed to download "${event.item.name}"`),
                         });
                 }
@@ -565,7 +566,7 @@ export class StoragePageComponent {
             .downloadZip(paths)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (blob) => this.downloadBlobFile(blob, 'selected-items.zip'),
+                next: (blob) => downloadBlob(blob, 'selected-items.zip'),
                 error: () => this.toastService.error('Failed to download selected items'),
             });
     }
@@ -586,7 +587,7 @@ export class StoragePageComponent {
             .downloadZip(paths)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (blob) => this.downloadBlobFile(blob, 'storage-all.zip'),
+                next: (blob) => downloadBlob(blob, 'storage-all.zip'),
                 error: () => this.toastService.error('Failed to download all items'),
             });
     }
@@ -594,15 +595,6 @@ export class StoragePageComponent {
     private handleDeleteAll(): void {
         const items = this.treeData();
         this.deleteItems(items, 'All items deleted', 'Nothing to delete', true);
-    }
-
-    private downloadBlobFile(blob: Blob, filename: string): void {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
     }
 
     private filterAllowedFiles(files: File[]): File[] {

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.db import models
 
 from tables.models.base_models import ContentHashMixin
@@ -47,9 +49,23 @@ class PythonCodeToolConfig(OrgScopedModel, models.Model):
         )
 
 
-class PythonCodeResult(models.Model):
+class PythonCodeResult(OrgScopedModel, models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending"
+        COMPLETED = "completed"
+        ERROR = "error"
+
+    python_code = models.ForeignKey(
+        "PythonCode", on_delete=models.SET_NULL, null=True, related_name="executions"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, default=None)
+
     execution_id = models.CharField(max_length=255, primary_key=True)
     result_data = models.TextField(null=True, default=None)
     stderr = models.TextField(default="")
     stdout = models.TextField(default="")
-    returncode = models.IntegerField(default=0)
+    returncode = models.IntegerField(null=True, default=None)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.PENDING
+    )

@@ -40,6 +40,19 @@ class RunSessionSerializer(serializers.Serializer):
     files = serializers.DictField(
         child=serializers.CharField(), required=False, allow_null=True, default=dict
     )
+    # Optional: links the newly created Session to a caller session via the
+    # existing Session.parent_session self-FK (see migration 0162). Used by
+    # the built-in "subflow_tool" so a sub-flow run is traceable back to the
+    # agent session that triggered it. Not exposed by any UI form — purely a
+    # programmatic/tool-runtime input.
+    parent_session_id = serializers.IntegerField(required=False, allow_null=True)
+    # EST-3285 4.2c: optional run-level token budget hard stop. Not exposed
+    # by any UI form. Threaded to crew via SessionData.initial_state's
+    # reserved "__token_budget__" key (see
+    # SessionManagerService.create_session_data) rather than a new typed
+    # SessionData field. Omitted/None (default) means "no limit" -- inert
+    # for every existing caller.
+    token_budget = serializers.IntegerField(required=False, allow_null=True, min_value=1)
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
@@ -59,6 +72,14 @@ class AnswerToLLMSerializer(serializers.Serializer):
     execution_order = serializers.IntegerField(required=True)
     name = serializers.CharField()
     answer = serializers.CharField()
+
+
+class NotifyEmailSerializer(serializers.Serializer):
+    to = serializers.EmailField(required=True)
+    subject = serializers.CharField(
+        required=False, default="EpicStaff notification", max_length=200
+    )
+    message = serializers.CharField(required=True, max_length=1000)
 
 
 class InitRealtimeSerializer(serializers.Serializer):

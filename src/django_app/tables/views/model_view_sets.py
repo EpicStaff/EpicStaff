@@ -294,6 +294,10 @@ from tables.swagger_schemas.twilio_schemas import (
     TWILIO_PHONE_NUMBERS_GET,
     TWILIO_CONFIGURE_WEBHOOK_POST,
 )
+from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
+from tables.models.rbac_models.rbac_enums import ResourceType
+from tables.services.rbac.org_context_service import OrgContextService
+from tables.services.rbac.permissions import HasOrgPermission
 from tables.graph_collab.notifications import GraphEditNotifier
 from utils.logger import logger
 
@@ -916,9 +920,11 @@ class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
     filterset_fields = ["tool", "name"]
 
 
-class PythonCodeResultReadViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
-    # Superadmin-only
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+class PythonCodeResultReadViewSet(
+    OrgScopedViewSetMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
     queryset = PythonCodeResult.objects.all()
     serializer_class = PythonCodeResultSerializer
 
@@ -1105,6 +1111,7 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
             export_data=data,
             graph=graph,
             org_id=org_id,
+            user=request.user,
             effective_permissions=effective_permissions,
         )
         summary = id_mapper.get_detailed_summary(entity_registry)
@@ -1798,7 +1805,13 @@ class DecisionTableNodeModelViewSet(
         node.save()
 
 
-class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
+class ClassificationDecisionTableNodeModelViewSet(
+    OrgScopedChildViewSetMixin, viewsets.ModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "export": Permission.EXPORT}
+    org_filter_path = "graph__org_id"
     queryset = ClassificationDecisionTableNode.objects.all()
     serializer_class = ClassificationDecisionTableNodeSerializer
     filter_backends = [DjangoFilterBackend]
@@ -1810,7 +1823,9 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        node, _ = self._node_service.create_or_update(data=request.data)
+        node, _ = self._node_service.create_or_update(
+            data=request.data, request=request
+        )
         return Response(self.get_serializer(node).data, status=status.HTTP_201_CREATED)
 
     @transaction.atomic
@@ -1818,7 +1833,10 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
         node, _ = self._node_service.create_or_update(
-            data=request.data, instance=instance, partial=partial
+            data=request.data,
+            instance=instance,
+            partial=partial,
+            request=request,
         )
         return Response(self.get_serializer(node).data, status=status.HTTP_200_OK)
 
@@ -1838,7 +1856,9 @@ class ClassificationDecisionTableNodeModelViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="export")
     def export(self, request, pk=None):
         export_format = request.query_params.get("export_format", "json")
-        result = self._node_service.export(pk=pk, export_format=export_format)
+        result = self._node_service.export(
+            pk=pk, export_format=export_format, org_id=self.get_active_org_id()
+        )
         if result.errors is not None:
             return Response(
                 {"errors": result.errors}, status=status.HTTP_400_BAD_REQUEST

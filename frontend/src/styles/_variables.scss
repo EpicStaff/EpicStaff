@@ -85,14 +85,22 @@
     --color-ks-status-processing: #ff8f3f;
     --color-ks-status-failed: #dc5b60;
     --color-error: #f54242;
+    --color-findings: #f5a623;
+
+    //elevation
+    --shadow-message-card: 0 4px 16px rgba(0, 0, 0, 0.2);
 
     //ui-kit colors
+    --orange: rgba(255, 143, 63, 1);
+    --red: rgba(245, 66, 66, 1);
     --inactive-purple: rgba(104, 95, 255, 0.4);
     --purple-primary: rgba(104, 95, 255, 1);
     --transparent-white-8: rgba(217, 217, 222, 0.08);
+    --transparent-white-4: rgba(217, 217, 222, 0.04);
     --transparent-white-16: rgba(217, 217, 222, 0.16);
     --transparent-green-8: rgba(42, 186, 107, 0.08);
     --transparent-orange-8: rgba(255, 143, 63, 0.08);
+    --transparent-red-8: rgba(245, 66, 66, 0.08);
 
     --text: rgba(217, 217, 222, 1);
     --text-secondary-60: rgba(217, 217, 222, 0.6);

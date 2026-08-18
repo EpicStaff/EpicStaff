@@ -46,6 +46,13 @@ export interface SessionUpdates {
     status: GraphSessionStatus;
 }
 
+export type TriggerType = 'manual' | 'schedule' | 'webhook' | 'telegram' | 'parent_flow';
+
+export interface SessionTrigger {
+    trigger_type: TriggerType | string;
+    trigger_id: number | null;
+}
+
 export interface GraphSessionLight {
     id: number;
     graph_id: number;
@@ -54,6 +61,7 @@ export interface GraphSessionLight {
     status_updated_at: string;
     created_at: string;
     finished_at: string | null;
+    trigger: SessionTrigger | null;
 }
 
 export interface DurationFilter {
@@ -152,7 +160,8 @@ export class GraphSessionService {
         status?: string[],
         nodeName?: string | null,
         isErrorCause?: boolean,
-        durationFilter?: DurationFilter | null
+        durationFilter?: DurationFilter | null,
+        triggerType?: TriggerType[]
     ): Observable<ApiGetRequest<GraphSessionLight>>;
 
     getSessionsByGraphId(
@@ -163,7 +172,8 @@ export class GraphSessionService {
         status?: string[],
         nodeName?: string | null,
         isErrorCause?: boolean,
-        durationFilter?: DurationFilter | null
+        durationFilter?: DurationFilter | null,
+        triggerType?: TriggerType[]
     ): Observable<ApiGetRequest<GraphSession | GraphSessionLight>> {
         let params = new HttpParams().set('graph_id', graphId.toString());
 
@@ -174,6 +184,7 @@ export class GraphSessionService {
         if (nodeName) params = params.set('node_name', nodeName);
         if (isErrorCause) params = params.set('is_error_cause', 'true');
         if (durationFilter) params = this.applyDurationParams(params, durationFilter);
+        if (triggerType && triggerType.length > 0) params = params.set('trigger_type', triggerType.join(','));
         if (detailed === false) {
             return this.http.get<ApiGetRequest<GraphSessionLight>>(this.apiUrl, {
                 params,
@@ -232,7 +243,8 @@ export class GraphSessionService {
         offset?: number,
         status?: string[],
         ordering?: string,
-        graphName?: string | null,
+        graphName?: string[],
+        triggerType?: TriggerType[],
         isErrorCause?: boolean,
         durationFilter?: DurationFilter | null
     ): Observable<ApiGetRequest<GraphSessionLight>> {
@@ -242,7 +254,8 @@ export class GraphSessionService {
         if (offset !== undefined) params = params.set('offset', offset.toString());
         if (status && !status.includes('all')) params = params.set('status', status.join(','));
         if (ordering) params = params.set('ordering', ordering);
-        if (graphName) params = params.set('graph_name', graphName);
+        if (graphName && graphName.length > 0) params = params.set('graph_name', graphName.join(','));
+        if (triggerType && triggerType.length > 0) params = params.set('trigger_type', triggerType.join(','));
         if (isErrorCause) params = params.set('is_error_cause', 'true');
         if (durationFilter) params = this.applyDurationParams(params, durationFilter);
 

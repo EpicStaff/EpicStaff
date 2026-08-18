@@ -53,11 +53,6 @@ export class MainTabComponent implements OnInit {
             value: this.rolesService.roles().length,
             loading: this.isRolesLoading(),
         },
-        {
-            label: 'ROLES',
-            icon: 'briefcase',
-            value: this.rolesService.roles().length,
-        },
     ]);
 
     ngOnInit(): void {

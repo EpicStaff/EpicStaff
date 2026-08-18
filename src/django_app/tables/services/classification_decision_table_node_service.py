@@ -3,9 +3,12 @@ from dataclasses import dataclass
 
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
+from tables.exceptions import ClassificationDecisionTableNodeNotFoundError
 from tables.models.graph_models import ClassificationDecisionTableNode
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     ClassificationDecisionTableNodeSerializer,
+    ClassificationDecisionTablePromptSerializer,
+    ClassificationConditionGroupSerializer,
 )
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
@@ -41,15 +44,29 @@ class ClassificationDecisionTableNodeService:
         data: dict,
         instance: ClassificationDecisionTableNode | None = None,
         partial: bool = False,
+        *,
+        request=None,
     ) -> tuple[ClassificationDecisionTableNode, list | None]:
         data = data.copy()
-        condition_groups_data = data.pop("condition_groups", None)
-        prompt_configs_data = data.pop("prompt_configs", None)
+        raw_condition_groups = data.pop("condition_groups", None)
+        raw_prompt_configs = data.pop("prompt_configs", None)
 
         serializer = ClassificationDecisionTableNodeSerializer(
-            instance, data=data, partial=partial
+            instance, data=data, partial=partial, context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
+
+        prompt_configs_data = self._validate_children(
+            serializer_class=ClassificationDecisionTablePromptSerializer,
+            raw=raw_prompt_configs,
+            request=request,
+        )
+        condition_groups_data = self._validate_children(
+            serializer_class=ClassificationConditionGroupSerializer,
+            raw=raw_condition_groups,
+            request=request,
+        )
+
         node = serializer.save()
 
         if partial and condition_groups_data is None and prompt_configs_data is None:
@@ -63,7 +80,34 @@ class ClassificationDecisionTableNodeService:
 
         return node, condition_groups_data
 
-    def export(self, pk, export_format: str = "json") -> NodeExportResult:
+    @staticmethod
+    def _validate_children(serializer_class, raw, request):
+        """Field-level validation only; prompt resolution happens later in sync.
+        Returns None if raw is None (untouched), else the validated list
+        (including [] to remove all)."""
+        if raw is None:
+            return None
+        child = serializer_class(
+            data=raw, many=True, partial=True, context={"request": request}
+        )
+        child.is_valid(raise_exception=True)
+        return child.validated_data
+
+    @staticmethod
+    def _get_node_or_404(pk, org_id: int, *, select_related: str | None = None):
+        """Fetch the node scoped to org_id (bypasses viewset scoping). Cross-org
+        and nonexistent ids both 404 (no leak)."""
+        qs = ClassificationDecisionTableNode.objects.filter(pk=pk, graph__org_id=org_id)
+        if select_related:
+            qs = qs.select_related(select_related)
+        node = qs.first()
+        if node is None:
+            raise ClassificationDecisionTableNodeNotFoundError(pk)
+        return node
+
+    def export(
+        self, pk, export_format: str = "json", *, org_id: int
+    ) -> NodeExportResult:
         export_format = (export_format or "json").lower()
         if export_format not in ("json", "csv"):
             raise DRFValidationError(
@@ -71,9 +115,9 @@ class ClassificationDecisionTableNodeService:
             )
 
         if export_format == "csv":
-            node = ClassificationDecisionTableNode.objects.select_related(
-                "default_llm_config__model"
-            ).get(pk=pk)
+            node = self._get_node_or_404(
+                pk, org_id, select_related="default_llm_config__model"
+            )
             buf = export_condition_groups_csv(node)
             return NodeExportResult(
                 content=buf.getvalue(),
@@ -83,7 +127,7 @@ class ClassificationDecisionTableNodeService:
 
         # JSON: reuse the partial-export pipeline so the file is identical in
         # structure to a partial export (and re-importable via partial-import).
-        node = ClassificationDecisionTableNode.objects.get(pk=pk)
+        node = self._get_node_or_404(pk, org_id)
         result = self._partial_export_service.export(
             [
                 NodeRef(

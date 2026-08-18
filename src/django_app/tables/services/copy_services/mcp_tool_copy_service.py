@@ -1,6 +1,7 @@
 from tables.import_export.utils import ensure_unique_identifier
 from tables.models import Label
 from tables.models.mcp_models import McpTool
+from tables.models.rbac_models.organization import Organization
 from tables.services.copy_services.base_copy_service import BaseCopyService
 
 
@@ -21,12 +22,12 @@ class McpToolCopyService(BaseCopyService):
 
         new_tool = McpTool.objects.create(
             name=new_name,
+            org=tool.org if org_id is None else Organization.objects.get(id=org_id),
             transport=tool.transport,
             tool_name=tool.tool_name,
             timeout=tool.timeout,
             auth=tool.auth,
             init_timeout=tool.init_timeout,
-            org_id=org_id if org_id is not None else tool.org_id,
         )
         new_tool.labels.set(tool.labels.filter(scope=Label.Scope.TOOL))
         return new_tool

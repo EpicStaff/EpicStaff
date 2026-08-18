@@ -189,4 +189,13 @@ class PythonCodeToolConfigSerializer(serializers.ModelSerializer):
 class PythonCodeResultSerializer(serializers.ModelSerializer):
     class Meta:
         model = PythonCodeResult
-        fields = "__all__"
+        fields = [
+            "execution_id",
+            "status",
+            "result_data",
+            "stderr",
+            "stdout",
+            "returncode",
+            "created_at",
+            "finished_at",
+        ]
