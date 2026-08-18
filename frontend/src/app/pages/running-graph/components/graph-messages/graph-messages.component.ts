@@ -306,7 +306,12 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     requestAnimationFrame(() => this.scrollToBottom());
                 }
             } else {
-                this.unseenMessageCount = Math.max(0, this.messages.length - this.seenMessageCount);
+                // Invariant: unseenMessageCount and seenMessageCount must both be measured in
+                // visibleMessageEntries (rendered cards), never in the raw messages array — stream
+                // chunks collapse into one card, so counting raw messages inflates the badge.
+                const visibleCount = this.visibleMessageEntries.length;
+                this.seenMessageCount = Math.min(this.seenMessageCount, visibleCount);
+                this.unseenMessageCount = Math.max(0, visibleCount - this.seenMessageCount);
             }
         });
 
