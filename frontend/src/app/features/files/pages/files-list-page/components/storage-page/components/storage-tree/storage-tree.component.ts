@@ -18,7 +18,6 @@ import { getFileExtension } from '../../../../../../utils/storage-file.utils';
 export class StorageTreeComponent {
     items = input<StorageItem[]>([]);
     fileSelected = output<StorageItem>();
-    folderSelected = output<StorageItem>();
     folderToggled = output<StorageItem>();
     contextAction = output<{
         action: string;
@@ -72,8 +71,6 @@ export class StorageTreeComponent {
         }
         if (item.type === 'file') {
             this.fileSelected.emit(item);
-        } else {
-            this.folderSelected.emit(item);
         }
     }
 

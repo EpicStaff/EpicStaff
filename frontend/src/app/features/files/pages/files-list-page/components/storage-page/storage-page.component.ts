@@ -279,12 +279,7 @@ export class StoragePageComponent {
         this.setSelectedItem(item);
     }
 
-    onFolderSelect(item: StorageItem): void {
-        this.setSelectedItem(item);
-    }
-
     onFolderToggle(item: StorageItem): void {
-        this.selectedFile.set(null);
         if (item.isExpanded && (!item.children || item.children.length === 0)) {
             this.storageApiService
                 .list(item.path)
