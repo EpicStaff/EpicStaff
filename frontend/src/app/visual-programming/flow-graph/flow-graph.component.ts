@@ -151,6 +151,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
     @Input() hasUnsavedChanges: boolean = false;
+    @Input() canEdit: boolean = true;
     /** @deprecated set only by the deprecated manual REST save path; no bindings remain. */
     @Input() isSaving: boolean = false;
 
@@ -494,6 +495,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onReassignConnection(event: FReassignConnectionEvent): void {
+        if (!this.canEdit) return;
         this.hasUnarrangedChanges.set(true);
         if (!event.newTargetId && !event.newSourceId) {
             console.warn('No new target or source provided for reassignment');
@@ -561,6 +563,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onConnectionAdded(event: FCreateConnectionEvent): void {
+        if (!this.canEdit) return;
         this.hasUnarrangedChanges.set(true);
         this.recordAfterChange();
 
@@ -809,6 +812,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onAddNodeFromContextMenu(event: CreateNodeRequest): void {
+        if (!this.canEdit) return;
         this.hasUnarrangedChanges.set(true);
         this.recordAfterChange();
         this.showContextMenu.set(false);
@@ -865,7 +869,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
 
             const dialogRef = this.dialog.open(NoteEditDialogComponent, {
-                data: { node: noteNode },
+                data: { node: noteNode, readonly: !this.canEdit },
                 disableClose: true,
             });
 
@@ -1281,6 +1285,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onAutoArrange(): void {
+        if (!this.canEdit) return;
         if (this._arrangingLock) return;
         this._arrangingLock = true;
         this.isArranging.set(true);
@@ -1466,7 +1471,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         const startNodeInitialState = startNode.data?.initialState || {};
-        this.wsService.sendNodeLocked(startNode.id, 'initialState');
+        if (this.canEdit) {
+            this.wsService.sendNodeLocked(startNode.id, 'initialState');
+        }
 
         const dialogRef = this.dialog.open(DomainDialogComponent, {
             disableClose: true,
@@ -1478,11 +1485,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             backdropClass: 'domain-dialog-backdrop',
             data: {
                 initialData: startNodeInitialState,
+                readonly: !this.canEdit,
             },
         });
 
         dialogRef.closed.subscribe((result: unknown) => {
-            this.wsService.sendNodeUnlocked(startNode.id, 'initialState');
+            if (this.canEdit) {
+                this.wsService.sendNodeUnlocked(startNode.id, 'initialState');
+            }
+            if (!this.canEdit) return;
             if (result !== null && typeof result === 'object' && result !== undefined) {
                 this.updateStartNodeInitialState(result as Record<string, unknown>);
             }
@@ -1910,6 +1921,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     private deleteSelections(selections: ICurrentSelection): void {
+        if (!this.canEdit) return;
         if (!selections || (selections.fNodeIds.length === 0 && selections.fConnectionIds.length === 0)) {
             console.warn('No items selected to delete.');
             return;

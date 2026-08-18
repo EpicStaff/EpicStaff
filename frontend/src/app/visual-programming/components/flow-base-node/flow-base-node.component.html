@@ -46,7 +46,7 @@
     </div>
     <!-- Delete Button -->
     <div
-        *ngIf="node.type !== NodeType.START"
+        *ngIf="node.type !== NodeType.START && canEdit"
         class="action-button delete-button"
         matTooltip="Delete node"
         matTooltipPosition="above"

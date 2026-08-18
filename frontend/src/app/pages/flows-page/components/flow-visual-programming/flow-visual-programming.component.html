@@ -35,6 +35,7 @@
             [flowName]="graph.name"
             [initialNodeId]="initialNodeId"
             [hasUnsavedChanges]="hasUnsavedChanges()"
+            [canEdit]="canEditFlow()"
             (openShortcuts)="openShortcutsModal($event)"
             (requestReload)="refreshCurrentFlow()"
             (importComplete)="handlePartialImportComplete()"

@@ -10,6 +10,13 @@
     color: hsl(0, 0%, 94%);
     height: auto;
 
+    .context-menu-readonly {
+        padding: 16px;
+        color: #888;
+        font-size: 13px;
+        text-align: center;
+    }
+
     .search-container {
         display: flex;
         align-items: center;

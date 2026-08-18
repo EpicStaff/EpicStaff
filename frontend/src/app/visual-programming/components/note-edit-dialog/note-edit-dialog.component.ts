@@ -62,7 +62,7 @@ import { GraphNoteModel } from '../../core/models/node.model';
                             class="note-textarea"
                             [(ngModel)]="noteContent"
                             placeholder="Add note text..."
-                            [disabled]="lockedByOther()"
+                            [disabled]="lockedByOther() || !!data.readonly"
                             autofocus
                         ></textarea>
                         @if (lockedByOther()) {
@@ -215,7 +215,7 @@ export class NoteEditDialogComponent implements OnInit, OnDestroy {
 
     constructor(
         public dialogRef: DialogRef<{ content: string }>,
-        @Inject(DIALOG_DATA) public data: { node: GraphNoteModel },
+        @Inject(DIALOG_DATA) public data: { node: GraphNoteModel; readonly?: boolean },
         private cdr: ChangeDetectorRef,
         private destroyRef: DestroyRef
     ) {}
@@ -225,7 +225,7 @@ export class NoteEditDialogComponent implements OnInit, OnDestroy {
         this.noteContent = this.data.node.data.content || '';
         this.cdr.detectChanges();
 
-        if (!this.lockedByOther()) {
+        if (!this.data.readonly && !this.lockedByOther()) {
             this.wsService.sendNodeLocked(this.data.node.id, 'content');
         }
 

@@ -13,12 +13,14 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 
+import { EditorInfo } from '../../../features/flows/services/graph-collaboration.ws.service';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GoToButtonComponent } from '../../../shared/components/go-to-button/go-to-button.component';
 import { flowUrl } from '../../../shared/utils/flow-links';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import { NodeType } from '../../core/enums/node-type';
+import { getAvatarColor } from '../../core/helpers/avatar-colors';
 import {
     AgentNodeModel,
     ClassificationDecisionTableNodeModel,
@@ -43,8 +45,6 @@ import { ConditionalEdgeNodeComponent } from '../nodes-components/conditional-ed
 import { DecisionTableNodeComponent } from '../nodes-components/decision-table-node/decision-table-node.component';
 import { GraphNoteComponent } from '../nodes-components/graph-note/graph-note.component';
 import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay.component';
-import { EditorInfo } from '../../../features/flows/services/graph-collaboration.ws.service';
-import { getAvatarColor } from '../../core/helpers/avatar-colors';
 
 @Component({
     selector: 'app-flow-base-node',
@@ -85,6 +85,7 @@ export class FlowBaseNodeComponent {
     public isToggleDisabled = signal(false);
     @Input() showVariables: boolean = false;
     @Input() lockedByEditor: EditorInfo | null = null;
+    @Input() canEdit: boolean = true;
     multiSelectActive = input<boolean>(false);
 
     @Output() projectExpandToggled = new EventEmitter<ProjectNodeModel>();
@@ -121,6 +122,7 @@ export class FlowBaseNodeComponent {
     public onDeleteClick(event: MouseEvent): void {
         event.preventDefault();
         event.stopPropagation();
+        if (!this.canEdit) return;
         this.deleteClicked.emit(this.node);
     }
 

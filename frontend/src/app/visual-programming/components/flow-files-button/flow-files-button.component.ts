@@ -23,6 +23,7 @@ import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app
 export class FlowFilesButtonComponent implements OnInit {
     readonly flowId = input.required<number>();
     readonly flowName = input.required<string>();
+    readonly canEdit = input<boolean>(true);
 
     private wsService = inject(GraphCollaborationWsService);
     private storageApiService = inject(StorageApiService);
@@ -41,6 +42,7 @@ export class FlowFilesButtonComponent implements OnInit {
     }
 
     openDialog(): void {
+        if (!this.canEdit()) return;
         const ref = this.dialog.open<SelectStorageFilesDialogResult, SelectStorageFilesDialogData>(
             SelectStorageFilesDialogComponent,
             {

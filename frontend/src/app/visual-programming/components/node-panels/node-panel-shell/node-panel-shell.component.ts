@@ -79,7 +79,10 @@ import { SidePanelService } from '../../../services/side-panel.service';
                     </div>
                 </header>
 
-                <main>
+                <main
+                    [class.readonly]="!canEdit()"
+                    [attr.inert]="canEdit() || selfGatesReadonly() ? null : ''"
+                >
                     <ng-container
                         [ngComponentOutlet]="panelComponent()"
                         [ngComponentOutletInputs]="componentInputs()"
@@ -95,6 +98,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 export class NodePanelShellComponent {
     public readonly node = input<NodeModel | null>(null);
     public readonly currentFlowId = input<number | null>(null);
+    public readonly canEdit = input<boolean>(true);
     public readonly save = output<NodeModel>();
     public readonly autosave = output<NodeModel>();
 
@@ -132,8 +136,17 @@ export class NodePanelShellComponent {
             isExpanded: this.isExpanded(),
             graphId: this.currentFlowId(),
             ...(node?.type === 'subgraph' ? { currentFlowId: this.currentFlowId() } : {}),
+            // Only panels that declare a `canEdit` input should receive it — NgComponentOutlet
+            // throws NG0303 for any component without a matching declared input.
+            ...(node?.type === 'classification-decision-table' ? { canEdit: this.canEdit() } : {}),
         };
     });
+
+    // Panels whose own template puts non-mutating navigation (e.g. tab switching)
+    // alongside editable content — inert can't be selectively un-set on a
+    // descendant, so these self-gate their content via their own `canEdit` input
+    // instead of relying on the blanket <main> inert below.
+    protected readonly selfGatesReadonly = computed(() => this.node()?.type === 'classification-decision-table');
 
     protected readonly isShaking = signal(false);
     protected readonly isExpanded = signal(false);

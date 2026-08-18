@@ -67,7 +67,8 @@ type ServerMessage =
     | SaveFailedMessage
     | PresenceStateUpdated
     | GraphFilesChangedMessage
-    | OpRejectedMessage;
+    | OpRejectedMessage
+    | EditRightsChangedMessage;
 
 type PresenceStateMessage = { type: 'presence_state'; editors: EditorInfo[] };
 type UserJoinedMessage = { type: 'user_joined'; editor: EditorInfo };
@@ -112,6 +113,7 @@ export type OpRejectedMessage = {
     reason: string;
     details: Record<string, unknown> | null;
 };
+export type EditRightsChangedMessage = { type: 'edit_rights_changed'; can_edit: boolean };
 export type NodesDeletedMessage = { type: 'nodes_deleted'; refs: EntryDeleteRef[]; editor: EditorInfo };
 export type ConnectionCreatedMessage = {
     type: 'connection_created';
@@ -528,6 +530,7 @@ export class GraphCollaborationWsService {
     public nodeCreated$ = new Subject<NodeCreatedMessage>();
     public nodeUpdated$ = new Subject<NodeUpdatedMessage>();
     public opRejected$ = new Subject<OpRejectedMessage>();
+    public editRightsChanged$ = new Subject<EditRightsChangedMessage>();
     public reconnected$ = new Subject<void>();
     public nodesDeleted$ = new Subject<NodesDeletedMessage>();
     public connectionCreated$ = new Subject<ConnectionCreatedMessage>();
@@ -691,6 +694,9 @@ export class GraphCollaborationWsService {
                 break;
             case 'op_rejected':
                 this.opRejected$.next(message);
+                break;
+            case 'edit_rights_changed':
+                this.editRightsChanged$.next(message);
                 break;
             case 'nodes_deleted':
                 this.nodesDeleted$.next(message);

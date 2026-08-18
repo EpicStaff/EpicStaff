@@ -1,6 +1,7 @@
 <button
     class="flow-files-btn"
     [class.flow-files-btn--active]="attachedCount() > 0"
+    [disabled]="!canEdit()"
     (click)="openDialog()"
     matTooltip="Add files to flow"
 >

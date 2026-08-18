@@ -35,6 +35,7 @@ declare const monaco: typeof import('monaco-editor');
 
 export interface DomainDialogData {
     initialData: Record<string, unknown>;
+    readonly?: boolean;
 }
 
 export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
@@ -384,7 +385,11 @@ export class DomainDialogComponent implements OnDestroy {
 
     public onEditorReady(editor: import('monaco-editor').editor.IStandaloneCodeEditor): void {
         this.monacoEditor = editor;
-        this.setupAutocomplete();
+        if (this.data.readonly) {
+            editor.updateOptions({ readOnly: true });
+        } else {
+            this.setupAutocomplete();
+        }
     }
 
     private setupAutocomplete(): void {

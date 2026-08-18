@@ -76,6 +76,7 @@ const LOCKABLE_TABS: ReadonlySet<TabType> = new Set(['precomputation', 'postcomp
 export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel<ClassificationDecisionTableNodeModel> {
     public override readonly isExpanded = input<boolean>(true);
     public readonly graphId = input<number | null>(null);
+    public readonly canEdit = input<boolean>(true);
 
     private flowService = inject(FlowService);
 

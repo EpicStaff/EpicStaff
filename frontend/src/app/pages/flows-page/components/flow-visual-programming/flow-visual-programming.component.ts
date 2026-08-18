@@ -149,6 +149,11 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public isRunning = signal(false);
     public restoreWarnings = signal<RestoreWarning[]>([]);
 
+    private readonly canEditOverride = signal<boolean | null>(null);
+    public readonly canEditFlow = computed<boolean>(
+        () => this.canEditOverride() ?? this.permissionsService.can(ResourceCode.Flows, ActionCode.Update)
+    );
+
     public isPanelOpen = signal(false);
     public isPanelCollapsed = signal(true);
     public currentSessionId: string | null = null;
@@ -274,6 +279,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.wsService.saveFailed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
             this.toastService.error(`Auto-save failed: ${event.reason}`, 5000, 'bottom-right');
+        });
+
+        this.wsService.editRightsChanged$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            this.canEditOverride.set(msg.can_edit);
         });
 
         this.wsService.opRejected$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
