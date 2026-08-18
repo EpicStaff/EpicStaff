@@ -2,7 +2,7 @@ from datetime import datetime
 
 from django.db import models
 
-from tables.models.base_models import ContentHashMixin
+from tables.models.base_models import ActiveManager, ContentHashMixin, SoftDeleteMixin
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
@@ -16,7 +16,10 @@ class PythonCode(ContentHashMixin, models.Model):
         return list(filter(None, self.libraries.split(" ")))
 
 
-class PythonCodeTool(OrgScopedModel, models.Model):
+class PythonCodeTool(OrgScopedModel, SoftDeleteMixin, models.Model):
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
     name = models.TextField()
     description = models.TextField()
     variables = models.JSONField(default=list, blank=True)
@@ -29,6 +32,7 @@ class PythonCodeTool(OrgScopedModel, models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["org", "name"],
+                condition=models.Q(is_active=True),
                 name="unique_pythoncodetool_name_per_org",
             ),
         ]

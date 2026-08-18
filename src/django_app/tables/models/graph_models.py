@@ -9,6 +9,7 @@ from django.utils import timezone
 from loguru import logger
 
 from tables.models.base_models import (
+    ActiveManager,
     BaseGlobalNode,
     BaseGraphEntity,
     TimestampMixin,
@@ -20,7 +21,7 @@ from tables.models.rbac_models.org_scoped import OrgScopedModel
 from tables.exceptions import GraphSaveVersionConflictError
 
 
-class GraphManager(models.Manager):
+class GraphManager(ActiveManager):
     def get_transitive_subflows(self, graph_id):
         """Return a queryset of all transitively referenced subgraphs using a recursive CTE."""
         from django.db import connection
@@ -46,8 +47,9 @@ class GraphManager(models.Manager):
         return self.filter(id__in=subgraph_ids).prefetch_related("tags")
 
 
-class Graph(OrgScopedModel, TimestampMixin):
+class Graph(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
     objects = GraphManager()
+    all_objects = models.Manager()
 
     tags = models.ManyToManyField(to="GraphTag", blank=True, default=[])
     labels = models.ManyToManyField(Label, blank=True, related_name="flows")
@@ -89,7 +91,9 @@ class Graph(OrgScopedModel, TimestampMixin):
         abstract = False
         constraints = [
             models.UniqueConstraint(
-                fields=["org", "name"], name="unique_graph_name_per_org"
+                fields=["org", "name"],
+                condition=models.Q(is_active=True),
+                name="unique_graph_name_per_org",
             ),
         ]
 
@@ -810,16 +814,6 @@ class GraphNote(BaseGraphEntity, BaseGlobalNode):
         "Graph", on_delete=models.CASCADE, related_name="graph_note_list"
     )
     content = models.TextField()
-
-
-class ActiveManager(models.Manager):
-    """
-    Manager for models that using SoftDeleteMixin.
-    Filters the active records
-    """
-
-    def get_queryset(self):
-        return super().get_queryset().filter(is_active=True, deleted_at__isnull=True)
 
 
 class GraphVersion(SoftDeleteMixin, models.Model):

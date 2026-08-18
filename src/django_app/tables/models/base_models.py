@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Self
 
 from django.apps import apps
+from django.conf import settings
 from django.db import connection, models
 from django.db.models import Func, Value
 from django.utils import timezone
@@ -142,6 +143,9 @@ class SoftDeleteMixin(models.Model):
         abstract = True
 
     def delete(self, using=None, keep_parents=False):
+        if not settings.SOFT_DELETE:
+            super().delete(using=using, keep_parents=keep_parents)
+            return
         self.is_active = False
         self.deleted_at = timezone.now()
         self.save(update_fields=["is_active", "deleted_at"])
@@ -153,6 +157,16 @@ class SoftDeleteMixin(models.Model):
         self.is_active = True
         self.deleted_at = None
         self.save(update_fields=["is_active", "deleted_at"])
+
+
+class ActiveManager(models.Manager):
+    """
+    Manager for models that using SoftDeleteMixin.
+    Filters the active records
+    """
+
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True, deleted_at__isnull=True)
 
 
 class TimestampMixin(models.Model):

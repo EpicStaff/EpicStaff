@@ -1,4 +1,5 @@
 import pytest
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
@@ -101,6 +102,56 @@ def test_graph_delete(auth_client, graph):
     response = auth_client.get(url)
 
     assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
+
+
+@pytest.mark.django_db
+def test_graph_delete_soft_delete_default_leaves_row_in_all_objects(auth_client, graph):
+    """SOFT_DELETE=True (default): DELETE hides the graph from `objects` but
+    keeps it in `all_objects` with `is_active=False` and `deleted_at` set."""
+    graph_id = graph.id
+    url = reverse("graphs-detail", args=[graph_id])
+
+    response = auth_client.delete(url)
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
+    assert not Graph.objects.filter(id=graph_id).exists()
+    assert Graph.all_objects.filter(id=graph_id).exists()
+    deleted_graph = Graph.all_objects.get(id=graph_id)
+    assert deleted_graph.is_active is False
+    assert deleted_graph.deleted_at is not None
+
+
+@pytest.mark.django_db
+@override_settings(SOFT_DELETE=False)
+def test_graph_delete_hard_deletes_when_soft_delete_disabled(auth_client, graph):
+    """SOFT_DELETE=False: DELETE removes the row entirely, even from `all_objects`."""
+    graph_id = graph.id
+    url = reverse("graphs-detail", args=[graph_id])
+
+    response = auth_client.delete(url)
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT, response.content
+    assert not Graph.all_objects.filter(id=graph_id).exists()
+
+
+@pytest.mark.django_db
+def test_graph_create_with_name_of_soft_deleted_graph_succeeds(auth_client, graph):
+    """The (org, name) unique constraint only applies to active rows — soft-deleting
+    a graph must free up its name for reuse within the same org."""
+    original_name = graph.name
+    delete_url = reverse("graphs-detail", args=[graph.id])
+    delete_response = auth_client.delete(delete_url)
+    assert delete_response.status_code == status.HTTP_204_NO_CONTENT
+
+    create_url = reverse("graphs-list")
+    create_response = auth_client.post(
+        create_url, {"name": original_name}, format="json"
+    )
+
+    assert (
+        create_response.status_code == status.HTTP_201_CREATED
+    ), create_response.content
+    assert create_response.data["name"] == original_name
 
 
 @pytest.mark.django_db

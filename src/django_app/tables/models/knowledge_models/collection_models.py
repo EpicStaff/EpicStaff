@@ -2,10 +2,14 @@ from django.db import models
 
 from loguru import logger
 
+from tables.models.base_models import ActiveManager, SoftDeleteMixin
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
-class SourceCollection(OrgScopedModel, models.Model):
+class SourceCollection(OrgScopedModel, SoftDeleteMixin, models.Model):
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
     class SourceCollectionStatus(models.TextChoices):
         """
         Status of SourceCollection
@@ -48,6 +52,7 @@ class SourceCollection(OrgScopedModel, models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["org", "collection_name"],
+                condition=models.Q(is_active=True),
                 name="unique_collection_name_per_org",
             )
         ]

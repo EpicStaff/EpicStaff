@@ -36,6 +36,9 @@ if os.getenv("LOAD_DEBUG_ENV", "True").lower() in ("true", "1", "yes", "on"):
 # SECURITY WARNING: keep the secret key used in production secret!
 DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes", "on")
 
+# Controls whether SoftDeleteMixin.delete() soft-deletes (mark inactive) or hard-deletes.
+SOFT_DELETE = os.getenv("SOFT_DELETE", "True").lower() in ("true", "1", "yes", "on")
+
 SECRET_KEY = os.getenv("SECRET_KEY") or (
     "321567143216717121" if DEBUG else get_random_secret_key()
 )
