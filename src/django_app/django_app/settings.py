@@ -178,7 +178,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = (*default_headers, "x-organization-id")
 
-JWT_SECRET = _require_env("JWT_SECRET")
+JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)
 
 SIMPLE_JWT = {
     "SIGNING_KEY": JWT_SECRET,
