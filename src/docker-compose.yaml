@@ -142,9 +142,6 @@ services:
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
       CREW_SAVEFILES_PATH: ${CREW_SAVEFILES_PATH}
-    volumes:
-      - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
-      - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
     networks:
       - backend-network
     tty: true
@@ -242,9 +239,6 @@ services:
       AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:-agent.results}
       AGENT_RESULT_TIMEOUT_S: ${AGENT_RESULT_TIMEOUT_S:-600}
       REMEMBERED_OUTPUTS_TTL_S: ${REMEMBERED_OUTPUTS_TTL_S:-3600}
-    volumes:
-      - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
-      - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
     networks:
       - backend-network
     tty: true
