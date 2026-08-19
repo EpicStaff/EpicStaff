@@ -99,6 +99,9 @@ services:
       - DB_MANAGER_USER=manager_user_integ
       - DB_MANAGER_PASSWORD=manager_password_integ
     volumes:
+      # SECURITY-EXCEPTION(FOR TESTING PURPOSES ONLY): host Docker socket mounted for
+      # the integration test environment. This mount is currently not used by any code
+      # in src/manager; the team has reviewed it and is intentionally keeping it for now.
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker
     networks:
@@ -189,6 +192,9 @@ services:
       - SESSION_STATUS_CHANNEL=sessions:session_status
       - CODE_RESULT_CHANNEL=code_results
     volumes:
+      # SECURITY-EXCEPTION(FOR TESTING PURPOSES ONLY): host Docker socket mounted for
+      # the integration test environment. This mount is currently not used by any code
+      # in src/crew; the team has reviewed it and is intentionally keeping it for now.
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker
     networks:
@@ -276,6 +282,9 @@ services:
       - DJANGO_ADMIN_EMAIL=${DJANGO_ADMIN_EMAIL:-admin@example.com}
       - DJANGO_ADMIN_PASSWORD=${DJANGO_ADMIN_PASSWORD:-AdminPass123!}
     volumes:
+      # SECURITY-EXCEPTION(FOR TESTING PURPOSES ONLY): the pytest suite inspects
+      # container status and logs to assert the stack is up before running assertions.
+      # Scope: test_runner service in integration_tests/ only.
       - /var/run/docker.sock:/var/run/docker.sock
       # - /usr/bin/docker:/usr/bin/docker
     networks:
