@@ -4,16 +4,16 @@ import { RealtimeUtils } from "./utils.js";
 export class RealtimeAPI extends RealtimeEventHandler {
   /**
    * Create a new RealtimeAPI instance
-   * @param {{url?: string, apiKey?: string, dangerouslyAllowAPIKeyInBrowser?: boolean, debug?: boolean}} [settings]
+   * @param {{url?: string, apiKey?: string, dangerouslyAllowAPIKeyInBrowser?: boolean, debug?: boolean, connectionKey?: string}} [settings]
    * @returns {RealtimeAPI}
    */
-  constructor({ url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug, token } = {}) {
+  constructor({ url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug, connectionKey } = {}) {
     super();
     this.defaultUrl = "wss://api.openai.com/v1/realtime";
     this.url = url || this.defaultUrl;
     this.apiKey = apiKey || null;
     this.debug = !!debug;
-    this.token = token || null;
+    this.connectionKey = connectionKey || null;
     this.ws = null;
     if (globalThis.document && this.apiKey) {
       if (!dangerouslyAllowAPIKeyInBrowser) {
@@ -74,14 +74,9 @@ export class RealtimeAPI extends RealtimeEventHandler {
         );
       }
       const WebSocket = globalThis.WebSocket;
-      const key = localStorage.getItem("connectionKey"); // Retrieve connection key
-
-      const params = new URLSearchParams();
-      if (key) params.set("connection_key", key);
-      if (this.token) params.set("token", this.token);
-      const queryString = params.toString();
+      const key = this.connectionKey;
       const ws = new WebSocket(
-        `${this.url}${queryString ? `?${queryString}` : ""}`,
+        `${this.url}${key ? `?connection_key=${key}` : ""}`,
         [
           "realtime",
           `openai-insecure-api-key.${this.apiKey}`,
