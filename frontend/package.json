@@ -10,9 +10,10 @@
         "test": "ng test",
         "build-mym": "ng build --base-href /epicstaff/",
         "prepare": "cd .. && npx husky frontend/.husky",
-        "lint": "eslint src",
+        "lint": "eslint src --max-warnings=0",
         "lint:fix": "eslint src --fix",
-        "format": "prettier --write \"src/**/*.{ts,html,scss,json}\""
+        "format": "prettier --write \"src/**/*.{ts,html,scss,json}\"",
+        "format:check": "prettier --check \"src/**/*.{ts,html,scss,json}\""
     },
     "lint-staged": {
         "src/**/*.ts": [
