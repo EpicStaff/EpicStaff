@@ -227,6 +227,41 @@ class TestTwilioChannelWebhookTrigger:
 
 
 @pytest.mark.django_db
+class TestTwilioChannelCrossOrgCreateGuard:
+    """EST-1869: create() looks up an existing TwilioChannel row via a raw,
+    unfiltered `TwilioChannel.objects.filter(channel_id=...)` (channel_id is
+    the global PK, not scoped by get_queryset()) before it ever checks org.
+    Without an explicit guard, an org A caller could POST an org B channel_id
+    and overwrite org B's account_sid/auth_token/phone_number."""
+
+    def test_create_rejects_overwrite_of_other_org_channel(
+        self, auth_client, db, default_org
+    ):
+        org_b = Organization.objects.create(name="Org B")
+        rc_b = _make_realtime_channel(db, org_b)
+        tc_b = _make_twilio_channel(rc_b, org_b, phone_number="+10000000000")
+
+        url = reverse("twiliochannel-list")
+        response = auth_client.post(
+            url,
+            {
+                "channel": rc_b.pk,
+                "account_sid": "AC_hijacked",
+                "auth_token": "hijacked-token",
+                "phone_number": "+19999999999",
+            },
+            format="json",
+        )
+
+        assert response.status_code == 404, response.json()
+
+        tc_b.refresh_from_db()
+        assert tc_b.account_sid == "AC_test"
+        assert tc_b.auth_token == "auth_test"
+        assert tc_b.phone_number == "+10000000000"
+
+
+@pytest.mark.django_db
 class TestTwilioChannelAuthTokenNotLeaked:
     """EST-3633: auth_token must never appear in a twilio-channels response
     body (list/retrieve/create/update), though it must remain writable.
@@ -384,11 +419,46 @@ class TestRealtimeChannelLookupByToken:
         self, auth_client, db, default_org
     ):
         """A regular JWT-authenticated user must NOT be able to use this
-        org-bypass path even for their own org's channel — IsApiKeyAuthenticated
+        org-bypass path even for their own org's channel — IsSystemApiKeyAuthenticated
         requires ApiKey auth specifically, not just IsAuthenticated."""
         rc = _make_realtime_channel(db, default_org)
 
         response = auth_client.get(self._url(), {"token": str(rc.token)})
+
+        assert response.status_code == 403
+
+    def test_lookup_by_token_rejects_user_scoped_api_key(
+        self, api_client, db, default_org, user_api_key
+    ):
+        """EST-3633 regression: a self-issued `key_type=USER` API key (any org
+        member can mint one via POST /api/profile/api-keys/) must NOT be able
+        to use this org-bypass path, even for their own org's channel.
+        IsSystemApiKeyAuthenticated requires key_type=SYSTEM specifically —
+        the generic IsApiKeyAuthenticated (system OR user) is not enough here,
+        since this action performs no org filter of its own."""
+        raw_key, _key = user_api_key
+        rc = _make_realtime_channel(db, default_org)
+        api_client.credentials(HTTP_X_API_KEY=raw_key)
+
+        response = api_client.get(self._url(), {"token": str(rc.token)})
+
+        assert response.status_code == 403
+
+    def test_lookup_by_token_user_scoped_api_key_cannot_leak_other_org_twilio_secret(
+        self, api_client, db, user_api_key
+    ):
+        """EST-3633 regression: a USER-scoped API key must not be able to read
+        another org's TwilioChannel.auth_token by guessing/observing a
+        RealtimeChannel token — it is rejected before any lookup happens."""
+        raw_key, _key = user_api_key
+        other_org = Organization.objects.create(name="Other Org")
+        rc = _make_realtime_channel(db, other_org)
+        TwilioChannel.objects.create(
+            channel=rc, account_sid="AC_test", auth_token="other-org-secret"
+        )
+        api_client.credentials(HTTP_X_API_KEY=raw_key)
+
+        response = api_client.get(self._url(), {"token": str(rc.token)})
 
         assert response.status_code == 403
 
@@ -420,8 +490,10 @@ class TestRealtimeChannelLookupByToken:
         consumer that must still receive twilio.auth_token — `realtime`'s
         get_channel_config()/_twilio_voice_webhook() needs it to validate the
         inbound X-Twilio-Signature header. This is gated by
-        IsApiKeyAuthenticated, so it does not reopen the public leak fixed by
-        TestTwilioChannelAuthTokenNotLeaked."""
+        IsSystemApiKeyAuthenticated (key_type=SYSTEM only), so it does not
+        reopen the public leak fixed by TestTwilioChannelAuthTokenNotLeaked,
+        nor the USER-key regression fixed in
+        test_lookup_by_token_rejects_user_scoped_api_key."""
         raw_key, _key = env_api_key
         rc = _make_realtime_channel(db, default_org)
         TwilioChannel.objects.create(

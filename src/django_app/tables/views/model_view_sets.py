@@ -219,7 +219,7 @@ from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permissions import (
     HasOrgPermission,
     IsSuperadmin,
-    IsApiKeyAuthenticated,
+    IsSystemApiKeyAuthenticated,
 )
 from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
@@ -1797,7 +1797,6 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     rt_agent is NULL (orphaned) are not visible — acceptable for chat history.
     """
 
-    permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
     org_filter_path = "rt_agent__agent__org_id"
     queryset = RealtimeAgentChat.objects.all()
@@ -1806,7 +1805,6 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     filterset_fields = ["rt_agent", "rt_agent_definition"]
     permission_classes = [IsAuthenticatedOrApiKey]
 
-
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         instance.delete()
@@ -1814,9 +1812,33 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
             {"detail": "Deleted successfully"}, status=status.HTTP_204_NO_CONTENT
         )
 
-    @action(detail=False, methods=["post"], url_path="end")
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="end",
+        permission_classes=[IsSystemApiKeyAuthenticated],
+    )
     def end(self, request):
-        """Mark a RealtimeAgentChat as ended (called by the realtime service after a call)."""
+        """Mark a RealtimeAgentChat as ended.
+
+        Called server-to-server by the `realtime`/`voice_app` services
+        (`voice_call_service._patch_agent_chat`) once a call ends. That caller
+        has no logged-in user/org context and identifies the target chat by
+        its opaque `connection_key` alone, so this action cannot be scoped
+        through `self.get_queryset()` (which requires an active org via
+        `OrgContextService`/`X-Organization-Id`) the way `destroy`/`retrieve`
+        are.
+
+        Restricted to `key_type=SYSTEM` API-key callers
+        (`IsSystemApiKeyAuthenticated`)
+        `RealtimeChannelViewSet.lookup_by_token` / `InitRealtimeAPIView`. Do
+        not widen this to `IsAuthenticated` or the class-level
+        `IsAuthenticatedOrApiKey`: either would let a caller who has no
+        relationship to the chat's org (a plain JWT session, or a self-issued
+        `key_type=USER` API key any org member can mint) end/mutate another
+        org's realtime chat by guessing/observing its `connection_key`, since
+        the lookup below performs no org filter of its own.
+        """
         from django.utils import timezone
 
         connection_key = request.data.get("connection_key")
@@ -1881,7 +1903,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         detail=False,
         methods=["get"],
         url_path="lookup-by-token",
-        permission_classes=[IsApiKeyAuthenticated],
+        permission_classes=[IsSystemApiKeyAuthenticated],
     )
     def lookup_by_token(self, request):
         """Resolve a channel by its unique `token`, unscoped by org.
@@ -1891,10 +1913,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         no logged-in user and cannot supply `X-Organization-Id`. The token
         itself (an unguessable UUID) is the lookup/authorization key, so the
         normal `HasOrgPermission` + `OrgScopedViewSetMixin.get_queryset` org
-        filter is deliberately bypassed here. Restricted to API-key callers
-        (`IsApiKeyAuthenticated`) — do not widen this to `IsAuthenticated`,
-        that would let any JWT-session user resolve another org's channel by
-        guessing/observing its token.
+        filter is deliberately bypassed here.
         """
         raw_token = request.query_params.get("token")
         if not raw_token:
@@ -1916,11 +1935,6 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
         )
         if channel is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        # Internal-only serializer: includes twilio.auth_token so the trusted
-        # realtime/voice_app caller (IsApiKeyAuthenticated) can validate Twilio's
-        # inbound X-Twilio-Signature header. Never use self.get_serializer here —
-        # that resolves to the user-facing RealtimeChannelSerializer, which
-        # deliberately omits auth_token (EST-3633).
         return Response(RealtimeChannelInternalSerializer(channel).data)
 
 
@@ -1940,6 +1954,7 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         if instance:
             serializer = self.get_serializer(instance, data=request.data)
             serializer.is_valid(raise_exception=True)
+            self._assert_parent_in_active_org(serializer)
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return super().create(request, *args, **kwargs)
@@ -1982,6 +1997,9 @@ class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
                 raise DRFValidationError(
                     {"connection_key": "No matching RealtimeAgentChat found"}
                 )
+            serializer.validated_data["rt_agent_chat"] = rt_agent_chat
+
+        self._assert_parent_in_active_org(serializer)
 
         serializer.save(
             file_size=file_size,

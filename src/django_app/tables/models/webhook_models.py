@@ -1,6 +1,7 @@
 import uuid
 from typing import Protocol
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.validators import RegexValidator
 from django.db import models
 
@@ -102,14 +103,20 @@ class WebhookTrigger(OrgScopedModel, models.Model):
     class Meta(OrgScopedModel.Meta):
         abstract = False
         unique_together = [
-            ("path", "provider_type"),
+            ("org", "path", "provider_type"),
         ]
 
     def get_active_config(self) -> "TunnelConfig | None":
         if self.provider_type == ProviderType.NGROK:
-            return self.ngrok
+            try:
+                return self.ngrok
+            except ObjectDoesNotExist:
+                return None
         if self.provider_type == ProviderType.LOCALHOST:
-            return self.localhost
+            try:
+                return self.localhost
+            except ObjectDoesNotExist:
+                return None
         return None
 
     def __str__(self):

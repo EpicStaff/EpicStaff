@@ -235,7 +235,7 @@ class TestProviderRealtimeConfigCrossOrg:
 @pytest.mark.django_db
 class TestWebhookAndGraphCrossOrg:
     def test_webhook_find_existing_is_org_scoped(self, default_org, org_b):
-        wt = WebhookTrigger.objects.create(path="shared-path")
+        wt = WebhookTrigger.objects.create(path="shared-path", org=default_org)
         graph = Graph.objects.create(name="src flow", org=default_org)
         code = PythonCode.objects.create(
             code="def main(): ...", entrypoint="main", libraries=""

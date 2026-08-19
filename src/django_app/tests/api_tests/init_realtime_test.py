@@ -8,20 +8,16 @@ from tests.fixtures import *
 
 
 def _make_realtime_agent(agent, org):
-    """Self-contained RealtimeAgent creation used by the tests below.
-
-    NOTE: the shared `wikipedia_agent_with_configured_realtime` fixture
-    (tests/fixtures.py) is currently broken independent of this change — it
-    still passes the pre-EST-3629/3630 kwargs `realtime_config=` /
-    `realtime_transcription_config=` to `RealtimeAgent.objects.create()`,
-    but the model was migrated to per-provider FKs (`openai_config`,
-    `elevenlabs_config`, `gemini_config`). This is a pre-existing gap on
-    this branch (reproduces on a clean checkout too, unrelated to this
-    fix) — flagged for the user rather than fixed here, since it is out of
-    this task's scope. New tests below build their own valid RealtimeAgent
-    to avoid depending on it.
-    """
-    config = OpenAIRealtimeConfig.objects.create(custom_name="test-openai", org=org)
+    """Self-contained RealtimeAgent creation used by the tests below (kept
+    separate from the shared `wikipedia_agent_with_configured_realtime`
+    fixture so these org/API-key tests can control the agent's org
+    independently)."""
+    config = OpenAIRealtimeConfig.objects.create(
+        custom_name="test-openai",
+        org=org,
+        model_name="gpt-4o-realtime-preview",
+        api_key="sk-test-key",
+    )
     return RealtimeAgent.objects.create(agent=agent, openai_config=config)
 
 
@@ -130,6 +126,63 @@ class TestInitRealtimeApiKeyCaller:
         — the API-key branch must not weaken this path."""
         rt_agent = _make_realtime_agent(wikipedia_agent, default_org)
         api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
+
+        response = api_client.post(
+            self._url(),
+            data={"agent_id": rt_agent.agent_id},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.json().get("code") == "org_context_required"
+
+    def test_user_scoped_api_key_rejected_from_starting_session_on_other_org_agent(
+        self, wikipedia_agent, default_org, api_client, user_api_key, redis_client_mock
+    ):
+        """Companion fix to EST-3633: a self-issued `key_type=USER` API key
+        (any org member can mint one via POST /api/profile/api-keys/) must NOT
+        hit the trusted-caller ApiKey branch above — that branch derives org
+        straight from the agent's own `org` FK with no membership check, which
+        would let a USER-scoped key start a realtime session on ANY org's
+        agent. Only key_type=SYSTEM may use that bypass (mirrors
+        RealtimeChannelViewSet.lookup_by_token / IsSystemApiKeyAuthenticated).
+        A USER key must instead fall through to the normal org-scoped path and
+        be rejected exactly like a JWT session would be for a foreign-org
+        agent."""
+        other_org = Organization.objects.create(name="Some Other Org")
+        # `wikipedia_agent` is saved with org=default_org by its fixture;
+        # `_make_realtime_agent`'s `org` arg only scopes the provider config,
+        # not the agent itself. Re-home the agent in other_org so this is a
+        # genuine cross-org agent, otherwise org_id == default_org.id trivially
+        # matches the request's X-Organization-Id and the rejection never
+        # exercises the intended cross-org path.
+        wikipedia_agent.org = other_org
+        wikipedia_agent.save(update_fields=["org"])
+        rt_agent = _make_realtime_agent(wikipedia_agent, other_org)
+        raw_key, _key = user_api_key
+        api_client.credentials(
+            HTTP_X_API_KEY=raw_key, HTTP_X_ORGANIZATION_ID=str(default_org.id)
+        )
+
+        response = api_client.post(
+            self._url(),
+            data={"agent_id": rt_agent.agent_id},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST, response.json()
+        redis_client_mock.publish.assert_not_called()
+
+    def test_user_scoped_api_key_still_requires_org_context(
+        self, wikipedia_agent, default_org, api_client, user_api_key
+    ):
+        """Same fix, the no-header case: a USER-scoped key with no
+        X-Organization-Id must be rejected exactly like a JWT session (see
+        test_jwt_session_still_requires_org_context above), not silently
+        trusted via the ApiKey branch."""
+        rt_agent = _make_realtime_agent(wikipedia_agent, default_org)
+        raw_key, _key = user_api_key
+        api_client.credentials(HTTP_X_API_KEY=raw_key)
 
         response = api_client.post(
             self._url(),

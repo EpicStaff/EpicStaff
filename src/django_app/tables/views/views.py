@@ -759,7 +759,10 @@ class InitRealtimeAPIView(APIView):
         agent_definition_id = serializer.validated_data.get("agent_definition_id")
         config = serializer.validated_data.get("config", {})
 
-        if isinstance(request.auth, ApiKey):
+        if (
+            isinstance(request.auth, ApiKey)
+            and request.auth.key_type == ApiKey.KeyType.SYSTEM
+        ):
             # Trusted internal caller (realtime's Twilio MediaStream bridge, see
             # _voice_stream_handler) has no end-user session and therefore no
             # X-Organization-Id to send. It already resolved agent_id server-side
@@ -769,6 +772,16 @@ class InitRealtimeAPIView(APIView):
             # lookup_by_token. This branch never runs for a JWT/user session:
             # request.auth is only an ApiKey instance for API-key-authenticated
             # requests (see IsApiKeyAuthenticated / ApiKeyAuthentication).
+            #
+            # Restricted to key_type=SYSTEM (same EST-3633 pattern as
+            # RealtimeChannelViewSet.lookup_by_token / IsSystemApiKeyAuthenticated):
+            # a self-issued key_type=USER ApiKey must NOT hit this bypass — it
+            # would let any org member start a realtime session on ANY org's
+            # agent (org is derived here from the agent's own row, with no
+            # ownership/membership check). A USER-type key instead falls
+            # through to the else branch below, which resolves org from
+            # X-Organization-Id / the key owner's membership and enforces
+            # AGENTS.READ normally — same as a JWT session.
             if agent_definition_id is not None:
                 agent_definition = AgentDefinition.objects.filter(
                     pk=agent_definition_id

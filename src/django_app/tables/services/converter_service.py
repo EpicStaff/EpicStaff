@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db.models import Prefetch
 
 from tables.serializers.model_serializers.crew_serializers import (
@@ -555,6 +556,15 @@ class ConverterService(metaclass=SingletonMeta):
             rt_provider = "gemini"
             rt_model_name = cfg.model_name
             rt_api_key = cfg.api_key
+
+        if rt_provider is None or rt_model_name is None or rt_api_key is None:
+            raise ValidationError(
+                f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
+                "provider config (openai_config, elevenlabs_config, and "
+                "gemini_config are all null on this session snapshot) — "
+                "cannot build realtime session data. The referenced provider "
+                "config was likely deleted after this chat was created."
+            )
 
         rt_agent_chat_data = RealtimeAgentChatData(
             role=agent.role,

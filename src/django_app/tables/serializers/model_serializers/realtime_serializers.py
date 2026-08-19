@@ -23,6 +23,7 @@ from tables.serializers.org_scoped_fields import (
     OrganizationScopedPrimaryKeyRelatedField,
     OrgScopedPrimaryKeyRelatedField,
 )
+from tables.serializers.utils.secret_fields import SecretCharField
 
 
 class RealtimeAgentSerializer(serializers.ModelSerializer):
@@ -74,6 +75,9 @@ class RealtimeAgentChatSerializer(serializers.ModelSerializer):
 
 
 class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
+    api_key = SecretCharField()
+    transcription_api_key = SecretCharField()
+
     class Meta:
         model = OpenAIRealtimeConfig
         fields = "__all__"
@@ -81,6 +85,8 @@ class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
 
 
 class ElevenLabsRealtimeConfigSerializer(serializers.ModelSerializer):
+    api_key = SecretCharField()
+
     class Meta:
         model = ElevenLabsRealtimeConfig
         fields = "__all__"
@@ -88,6 +94,8 @@ class ElevenLabsRealtimeConfigSerializer(serializers.ModelSerializer):
 
 
 class GeminiRealtimeConfigSerializer(serializers.ModelSerializer):
+    api_key = SecretCharField()
+
     class Meta:
         model = GeminiRealtimeConfig
         fields = "__all__"
@@ -155,10 +163,11 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     """Internal-only variant of `_TwilioChannelReadSerializer` that includes `auth_token`.
 
     Used exclusively by `RealtimeChannelViewSet.lookup_by_token`, which is gated by
-    `IsApiKeyAuthenticated` (the trusted `realtime`/`voice_app` services only, never a
-    logged-in user). That caller needs `auth_token` to validate the `X-Twilio-Signature`
-    header on inbound Twilio webhook requests. Do NOT reuse this serializer for any
-    user-facing endpoint — that would reopen the EST-3633 leak.
+    `IsSystemApiKeyAuthenticated` (the trusted `realtime`/`voice_app` services only,
+    never a logged-in user AND never a self-issued `key_type=USER` API key). That
+    caller needs `auth_token` to validate the `X-Twilio-Signature` header on inbound
+    Twilio webhook requests. Do NOT reuse this serializer for any user-facing
+    endpoint — that would reopen the EST-3633 leak.
     """
 
     class Meta(_TwilioChannelReadSerializer.Meta):
@@ -169,7 +178,7 @@ class RealtimeChannelInternalSerializer(RealtimeChannelSerializer):
     """Internal-only variant of `RealtimeChannelSerializer` used by `lookup_by_token`.
 
     Nests `_TwilioChannelInternalSerializer` so the response includes `twilio.auth_token`.
-    Only ever instantiated behind `IsApiKeyAuthenticated` — see
+    Only ever instantiated behind `IsSystemApiKeyAuthenticated` — see
     `RealtimeChannelViewSet.lookup_by_token`.
     """
 

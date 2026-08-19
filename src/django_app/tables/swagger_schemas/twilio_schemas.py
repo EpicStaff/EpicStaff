@@ -59,7 +59,8 @@ REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET = dict(
     "itself the authorization/lookup key — used by the `realtime` service to "
     "resolve which agent answers an inbound Twilio call, a request Twilio makes "
     "with no logged-in user and no `X-Organization-Id` header. Restricted to "
-    "API-key-authenticated callers (`IsApiKeyAuthenticated`); a JWT session "
+    "system API-key-authenticated callers (`IsSystemApiKeyAuthenticated`, "
+    "`key_type=SYSTEM` only); a JWT session or a self-issued user API key "
     "cannot use this endpoint.",
     parameters=[
         OpenApiParameter(
@@ -89,7 +90,7 @@ REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET = dict(
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Forbidden - caller is not API-key-authenticated.",
+            description="Forbidden - caller is not authenticated with a system API key.",
         ),
         404: OpenApiResponse(
             response=OpenApiTypes.STR,

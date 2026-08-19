@@ -133,6 +133,144 @@ def test_provider_config_update_cross_org_rejected(
 
 
 # ---------------------------------------------------------------------------
+# EST-1869 — api_key / transcription_api_key must never be echoed in
+# plaintext on read (GET detail, GET list, or nested under
+# RealtimeAgentReadSerializer.openai_config on GET /api/agents/), matching
+# the SecretCharField convention already used for
+# RealtimeConfigSerializer/RealtimeTranscriptionConfigSerializer
+# (llm_serializers.py). The secret must still be write-through: a fresh
+# value on create/update persists to the model, and re-submitting the
+# masked value on update preserves the original secret.
+# ---------------------------------------------------------------------------
+
+SECRET_FIELD_CASES = [
+    pytest.param(
+        "openairealtimeconfig",
+        OpenAIRealtimeConfig,
+        {"custom_name": "openai-cfg"},
+        "api_key",
+        id="openai-api_key",
+    ),
+    pytest.param(
+        "openairealtimeconfig",
+        OpenAIRealtimeConfig,
+        {"custom_name": "openai-cfg"},
+        "transcription_api_key",
+        id="openai-transcription_api_key",
+    ),
+    pytest.param(
+        "elevenlabsrealtimeconfig",
+        ElevenLabsRealtimeConfig,
+        {"custom_name": "elevenlabs-cfg"},
+        "api_key",
+        id="elevenlabs-api_key",
+    ),
+    pytest.param(
+        "geminirealtimeconfig",
+        GeminiRealtimeConfig,
+        {"custom_name": "gemini-cfg"},
+        "api_key",
+        id="gemini-api_key",
+    ),
+]
+
+RAW_SECRET = "sk-supersecretvalue1234"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename, model, payload, secret_field", SECRET_FIELD_CASES)
+def test_provider_config_retrieve_masks_secret_field(
+    auth_client, default_org, basename, model, payload, secret_field
+):
+    instance = model.objects.create(
+        org=default_org, **payload, **{secret_field: RAW_SECRET}
+    )
+    url = reverse(f"{basename}-detail", args=[instance.pk])
+    resp = auth_client.get(url)
+    assert resp.status_code == 200
+    returned = resp.data[secret_field]
+    assert returned != RAW_SECRET
+    assert RAW_SECRET not in returned
+    assert returned.endswith(RAW_SECRET[-4:])
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename, model, payload, secret_field", SECRET_FIELD_CASES)
+def test_provider_config_list_masks_secret_field(
+    auth_client, default_org, basename, model, payload, secret_field
+):
+    model.objects.create(org=default_org, **payload, **{secret_field: RAW_SECRET})
+    url = reverse(f"{basename}-list")
+    resp = auth_client.get(url)
+    assert resp.status_code == 200
+    for row in resp.data["results"]:
+        assert row[secret_field] != RAW_SECRET
+        assert RAW_SECRET not in row[secret_field]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename, model, payload, secret_field", SECRET_FIELD_CASES)
+def test_provider_config_create_accepts_raw_secret_but_masks_response(
+    auth_client, default_org, basename, model, payload, secret_field
+):
+    url = reverse(f"{basename}-list")
+    resp = auth_client.post(
+        url, {**payload, secret_field: RAW_SECRET}, format="json"
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data[secret_field] != RAW_SECRET
+
+    instance = model.objects.get(pk=resp.data["id"])
+    assert getattr(instance, secret_field) == RAW_SECRET
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("basename, model, payload, secret_field", SECRET_FIELD_CASES)
+def test_provider_config_update_with_masked_value_preserves_secret(
+    auth_client, default_org, basename, model, payload, secret_field
+):
+    instance = model.objects.create(
+        org=default_org, **payload, **{secret_field: RAW_SECRET}
+    )
+    url = reverse(f"{basename}-detail", args=[instance.pk])
+
+    masked_value = auth_client.get(url).data[secret_field]
+    resp = auth_client.patch(url, {secret_field: masked_value}, format="json")
+    assert resp.status_code == 200, resp.data
+
+    instance.refresh_from_db()
+    assert getattr(instance, secret_field) == RAW_SECRET
+
+
+@pytest.mark.django_db
+def test_agent_list_nested_realtime_config_masks_secret_fields(
+    auth_client, default_org
+):
+    """GET /api/agents/ nests RealtimeAgentReadSerializer.openai_config
+    (AgentReadSerializer), which in turn nests OpenAIRealtimeConfigSerializer.
+    Confirm the mask applies through that nesting too, not just on the
+    dedicated openai-realtime-configs/ endpoint."""
+    config = OpenAIRealtimeConfig.objects.create(
+        org=default_org,
+        custom_name="agent-nested-cfg",
+        api_key=RAW_SECRET,
+        transcription_api_key=RAW_SECRET,
+    )
+    agent = Agent.objects.create(role="r", goal="g", backstory="b", org=default_org)
+    RealtimeAgent.objects.create(agent=agent, openai_config=config)
+
+    resp = auth_client.get(reverse("agent-list"))
+    assert resp.status_code == 200
+
+    row = next(r for r in resp.data["results"] if r["id"] == agent.id)
+    nested_config = row["realtime_agent"]["openai_config"]
+    assert nested_config["api_key"] != RAW_SECRET
+    assert nested_config["transcription_api_key"] != RAW_SECRET
+    assert RAW_SECRET not in nested_config["api_key"]
+    assert RAW_SECRET not in nested_config["transcription_api_key"]
+
+
+# ---------------------------------------------------------------------------
 # EST-3630 — RealtimeChannel.realtime_agent must reject cross-org agents
 # ---------------------------------------------------------------------------
 
