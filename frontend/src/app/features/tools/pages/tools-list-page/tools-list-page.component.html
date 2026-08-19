@@ -91,6 +91,7 @@
     <section class="body">
         @if (showSidebar()) {
             <app-label-sidebar
+                [storageKey]="'tools'"
                 [allItemsLabel]="'All Tools'"
                 [resourceCode]="ResourceCode.Tools"
                 (closeSidebar)="toggleSidebar()"

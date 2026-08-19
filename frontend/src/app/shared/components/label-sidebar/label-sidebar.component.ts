@@ -27,7 +27,6 @@ interface FlatLabelNode {
     node: LabelTreeNode;
     depth: number;
 }
-const SIDEBAR_STORAGE_KEY = 'flows';
 
 /**
  * Reusable label branches sidebar. Consumers must provide the LABELS_STORE
@@ -73,8 +72,9 @@ export class LabelSidebarComponent implements OnInit {
     private readonly el = inject(ElementRef);
     private readonly sidebarWidthService = inject(SidebarWidthService);
 
-    protected readonly sidebarStorageKey = SIDEBAR_STORAGE_KEY;
-    protected readonly sidebarWidth = this.sidebarWidthService.getWidth(SIDEBAR_STORAGE_KEY);
+    readonly storageKey = input.required<string>();
+
+    protected readonly sidebarWidth = computed(() => this.sidebarWidthService.getWidth(this.storageKey())());
 
     @HostBinding('style.width.px')
     get hostWidth(): number {

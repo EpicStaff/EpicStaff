@@ -193,6 +193,7 @@
     <section class="body">
         @if (showSidebar()) {
             <app-label-sidebar
+                [storageKey]="'flows'"
                 [allItemsLabel]="'All Flows'"
                 [resourceCode]="ResourceCode.Flows"
                 [deleteCaution]="deleteCautionForLabel"
