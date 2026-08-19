@@ -52,8 +52,6 @@ export class MultiSelectComponent implements OnInit {
     checkboxPosition = input<'left' | 'right'>('right');
     color = input<'primary' | 'white'>('primary');
     disabled = input<boolean>(false);
-    showClearFilter = input<boolean>(false);
-    saveLabel = input<string>('Save Selection');
     panelWidth = input<string>('338px');
     panelHeight = input<string>('475px');
     emptyText = input<string>('No items available');

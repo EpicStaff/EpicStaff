@@ -539,6 +539,9 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     private saveFlowState(flowState: FlowModel, showSuccessToast: boolean): Observable<void> {
         if (!this.graph?.id) return EMPTY;
+        if (this.getBlockingNodeValidationIssues(flowState).length > 0) {
+            return EMPTY;
+        }
         const graphId = this.graph.id;
 
         this.isSaving.set(true);
@@ -555,10 +558,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                         restoreFlowSecretIds(this.savedFlowState(), graphId, index, this.secretDeclarationIndexService)
                     )
                 );
-
-        if (this.getBlockingNodeValidationIssues(flowState).length > 0) {
-            return EMPTY;
-        }
 
                 const previous = this.loadedFlowState();
                 const flowToSave = clearStaleIds(previous, flowState);
