@@ -10,7 +10,6 @@ type DeleteCellRendererParams = ICellRendererParams & {
 
 @Component({
     selector: 'app-delete-cell-renderer',
-    standalone: true,
     imports: [AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `

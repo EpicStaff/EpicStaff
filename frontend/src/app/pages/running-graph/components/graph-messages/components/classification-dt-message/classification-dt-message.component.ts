@@ -12,7 +12,6 @@ import {
 
 @Component({
     selector: 'app-classification-dt-message',
-    standalone: true,
     imports: [CommonModule],
     animations: [expandCollapseAnimation],
     template: `

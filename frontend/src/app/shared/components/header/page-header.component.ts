@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { ProjectCreateButtonComponent } from './header-components/header-create/header-create-button.component';
@@ -9,9 +8,7 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
 
 @Component({
     selector: 'app-page-header',
-    standalone: true,
     imports: [
-        CommonModule,
         ProjectSearchComponent,
         ProjectFilterButtonComponent,
         ProjectSortButtonComponent,
@@ -25,37 +22,36 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
         >
             <div class="title-search">
                 <div class="title">{{ headerTitle }}</div>
-                <span
-                    *ngIf="projectCount !== 0"
-                    class="projects-page-project-count-badge"
-                    >({{ projectCount }})</span
-                >
+                @if (projectCount !== 0) {
+                    <span class="projects-page-project-count-badge">({{ projectCount }})</span>
+                }
             </div>
             <div class="header-actions">
-                <app-project-search
-                    *ngIf="showSearch"
-                    [searchTerm]="searchTerm"
-                    [placeholder]="searchPlaceholder"
-                    (searchInput)="onSearchInput($event)"
-                ></app-project-search>
-                <app-project-filter-button
-                    *ngIf="showFilter"
-                    (filterEvent)="toggleTagsMenu()"
-                ></app-project-filter-button>
-                <app-project-sort-button
-                    *ngIf="showSort"
-                    (sortEvent)="onSort()"
-                ></app-project-sort-button>
-                <app-project-favorite-button
-                    *ngIf="showFavoriteToggle"
-                    [active]="showFavorites"
-                    (favoriteToggle)="toggleFavorite()"
-                ></app-project-favorite-button>
-                <app-project-create-button
-                    *ngIf="showCreate"
-                    [buttonTitle]="createButtonTitle"
-                    (createEvent)="openCreateForm()"
-                ></app-project-create-button>
+                @if (showSearch) {
+                    <app-project-search
+                        [searchTerm]="searchTerm"
+                        [placeholder]="searchPlaceholder"
+                        (searchInput)="onSearchInput($event)"
+                    ></app-project-search>
+                }
+                @if (showFilter) {
+                    <app-project-filter-button (filterEvent)="toggleTagsMenu()"></app-project-filter-button>
+                }
+                @if (showSort) {
+                    <app-project-sort-button (sortEvent)="onSort()"></app-project-sort-button>
+                }
+                @if (showFavoriteToggle) {
+                    <app-project-favorite-button
+                        [active]="showFavorites"
+                        (favoriteToggle)="toggleFavorite()"
+                    ></app-project-favorite-button>
+                }
+                @if (showCreate) {
+                    <app-project-create-button
+                        [buttonTitle]="createButtonTitle"
+                        (createEvent)="openCreateForm()"
+                    ></app-project-create-button>
+                }
             </div>
         </div>
     `,

@@ -16,7 +16,6 @@ import {
 
 @Component({
     selector: 'app-finish-message',
-    standalone: true,
     imports: [CommonModule, NgxJsonViewerModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
@@ -39,21 +38,22 @@ import {
                     />
                 </div>
                 <h3>
-                    <span
-                        class="project-name"
-                        *ngIf="project && project.name"
-                        >{{ project.name }}</span
-                    >
-                    <span *ngIf="!project || !project.name">Default Project</span>
+                    @if (project && project.name) {
+                        <span class="project-name">{{ project.name }}</span>
+                    }
+                    @if (!project || !project.name) {
+                        <span>Default Project</span>
+                    }
                     finished
                 </h3>
-                <span
-                    class="stop-reason-badge"
-                    [ngClass]="'stop-reason-badge--' + getStopReason()"
-                    *ngIf="getStopReason() as stopReason"
-                >
-                    {{ getStopReasonLabel(stopReason) }}
-                </span>
+                @if (getStopReason(); as stopReason) {
+                    <span
+                        class="stop-reason-badge"
+                        [ngClass]="'stop-reason-badge--' + getStopReason()"
+                    >
+                        {{ getStopReasonLabel(stopReason) }}
+                    </span>
+                }
             </div>
 
             <!-- Collapsible Finish Content -->
@@ -63,33 +63,32 @@ import {
             >
                 <div class="finish-content">
                     <!-- Variables Section -->
-                    <div
-                        class="variables-container"
-                        *ngIf="hasVariables()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('variables')"
-                        >
-                            <app-svg-icon
-                                [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1rem"
-                            />
-                            Variables
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="variables-content">
-                                <app-copy-button [text]="variablesJson" />
-                                <ngx-json-viewer
-                                    [json]="getVariables()"
-                                    [expanded]="false"
-                                ></ngx-json-viewer>
+                    @if (hasVariables()) {
+                        <div class="variables-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('variables')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isVariablesExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1rem"
+                                />
+                                Variables
+                            </div>
+                            <div
+                                class="collapsible-content"
+                                [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
+                            >
+                                <div class="variables-content">
+                                    <app-copy-button [text]="variablesJson" />
+                                    <ngx-json-viewer
+                                        [json]="getVariables()"
+                                        [expanded]="false"
+                                    ></ngx-json-viewer>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Final Output Section -->
                     <div class="output-container">
@@ -120,25 +119,24 @@ import {
                     </div>
 
                     <!-- Schema-validated output (schema_satisfied): parsed JSON view of output.message -->
-                    <div
-                        class="schema-output-container"
-                        *ngIf="getSchemaOutput() as schemaOutput"
-                    >
-                        <div class="section-heading">
-                            <app-svg-icon
-                                icon="caret-down-filled"
-                                size="1rem"
-                            />
-                            Schema-Validated Output
+                    @if (getSchemaOutput(); as schemaOutput) {
+                        <div class="schema-output-container">
+                            <div class="section-heading">
+                                <app-svg-icon
+                                    icon="caret-down-filled"
+                                    size="1rem"
+                                />
+                                Schema-Validated Output
+                            </div>
+                            <div class="output-content">
+                                <app-copy-button [text]="schemaOutputJson" />
+                                <ngx-json-viewer
+                                    [json]="schemaOutput"
+                                    [expanded]="true"
+                                ></ngx-json-viewer>
+                            </div>
                         </div>
-                        <div class="output-content">
-                            <app-copy-button [text]="schemaOutputJson" />
-                            <ngx-json-viewer
-                                [json]="schemaOutput"
-                                [expanded]="true"
-                            ></ngx-json-viewer>
-                        </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>

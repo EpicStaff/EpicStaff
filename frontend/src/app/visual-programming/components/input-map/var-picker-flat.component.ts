@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, Input, output, ViewChild } from '@angular/core';
 
 export interface PickerItem {
@@ -11,8 +10,7 @@ export interface PickerItem {
 
 @Component({
     selector: 'app-var-picker-flat',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div class="vpf-container">
             <div class="vpf-search">

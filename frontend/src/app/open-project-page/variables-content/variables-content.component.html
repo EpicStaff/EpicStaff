@@ -1,88 +1,89 @@
 <div class="panel-content">
     <div class="variables-container">
         <!-- Existing variables -->
-        <div
-            class="variable-card"
-            *ngFor="let variable of getVariables(); let i = index"
-            [class.editing]="editingIndex === i"
-            [class.duplicate]="variable.name === duplicateVariableName"
-        >
+        @for (variable of getVariables(); track variable; let i = $index) {
             <div
-                class="variable-content"
-                *ngIf="editingIndex !== i"
+                class="variable-card"
+                [class.editing]="editingIndex === i"
+                [class.duplicate]="variable.name === duplicateVariableName"
             >
-                <div class="variable-item">
-                    <span class="variable-name">{{ variable.name }}</span>
-                    <span class="chain-separator">→</span>
-                    <span
-                        class="variable-value"
-                        [class.no-value]="!variable.value"
-                    >
-                        {{ variable.value || '(empty)' }}
-                    </span>
+                @if (editingIndex !== i) {
+                    <div class="variable-content">
+                        <div class="variable-item">
+                            <span class="variable-name">{{ variable.name }}</span>
+                            <span class="chain-separator">→</span>
+                            <span
+                                class="variable-value"
+                                [class.no-value]="!variable.value"
+                            >
+                                {{ variable.value || '(empty)' }}
+                            </span>
+                        </div>
+                    </div>
+                }
+                @if (editingIndex === i) {
+                    <div class="variable-edit-form">
+                        <input
+                            type="text"
+                            class="variable-input name-input"
+                            [(ngModel)]="editingVariable.name"
+                            [class.invalid]="isDuplicateName(editingVariable.name, i)"
+                            (keydown.enter)="onSaveEdit()"
+                        />
+                        <span class="chain-separator">→</span>
+                        <input
+                            type="text"
+                            class="variable-input value-input"
+                            [(ngModel)]="editingVariable.value"
+                            placeholder="(optional)"
+                            (keydown.enter)="onSaveEdit()"
+                        />
+                    </div>
+                }
+                <div class="variable-actions">
+                    @if (editingIndex !== i) {
+                        <button
+                            class="action-button edit-button"
+                            (click)="onEditVariable(i)"
+                            aria-label="Edit variable"
+                            matTooltip="Edit variable"
+                        >
+                            <i class="ti ti-edit"></i>
+                        </button>
+                    }
+                    @if (editingIndex === i) {
+                        <button
+                            class="action-button save-button"
+                            (click)="onSaveEdit()"
+                            aria-label="Save changes"
+                            matTooltip="Save changes"
+                        >
+                            <i class="ti ti-check"></i>
+                        </button>
+                    }
+                    @if (editingIndex === i) {
+                        <button
+                            class="action-button cancel-button"
+                            (click)="onCancelEdit()"
+                            aria-label="Cancel editing"
+                            matTooltip="Cancel editing"
+                        >
+                            <i class="ti ti-x"></i>
+                        </button>
+                    }
+                    @if (editingIndex !== i) {
+                        <button
+                            class="action-button remove-button"
+                            (click)="onRemoveVariable(variable)"
+                            aria-label="Remove variable"
+                            matTooltip="Remove variable"
+                        >
+                            <i class="ti ti-trash"></i>
+                        </button>
+                    }
                 </div>
             </div>
-
-            <div
-                class="variable-edit-form"
-                *ngIf="editingIndex === i"
-            >
-                <input
-                    type="text"
-                    class="variable-input name-input"
-                    [(ngModel)]="editingVariable.name"
-                    [class.invalid]="isDuplicateName(editingVariable.name, i)"
-                    (keydown.enter)="onSaveEdit()"
-                />
-                <span class="chain-separator">→</span>
-                <input
-                    type="text"
-                    class="variable-input value-input"
-                    [(ngModel)]="editingVariable.value"
-                    placeholder="(optional)"
-                    (keydown.enter)="onSaveEdit()"
-                />
-            </div>
-
-            <div class="variable-actions">
-                <button
-                    class="action-button edit-button"
-                    *ngIf="editingIndex !== i"
-                    (click)="onEditVariable(i)"
-                    aria-label="Edit variable"
-                    matTooltip="Edit variable"
-                >
-                    <i class="ti ti-edit"></i>
-                </button>
-                <button
-                    class="action-button save-button"
-                    *ngIf="editingIndex === i"
-                    (click)="onSaveEdit()"
-                    aria-label="Save changes"
-                    matTooltip="Save changes"
-                >
-                    <i class="ti ti-check"></i>
-                </button>
-                <button
-                    class="action-button cancel-button"
-                    *ngIf="editingIndex === i"
-                    (click)="onCancelEdit()"
-                    aria-label="Cancel editing"
-                    matTooltip="Cancel editing"
-                >
-                    <i class="ti ti-x"></i>
-                </button>
-                <button
-                    class="action-button remove-button"
-                    *ngIf="editingIndex !== i"
-                    (click)="onRemoveVariable(variable)"
-                    aria-label="Remove variable"
-                    matTooltip="Remove variable"
-                >
-                    <i class="ti ti-trash"></i>
-                </button>
-            </div>
-        </div>
+        }
 
         <!-- Add variable form -->
         <div

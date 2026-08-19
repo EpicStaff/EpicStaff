@@ -10,7 +10,6 @@ import { GetPythonCodeToolRequest } from '../../../../../../models/python-code-t
 
 @Component({
     selector: 'app-custom-tool-card',
-    standalone: true,
     templateUrl: './custom-tool-card.component.html',
     styleUrls: ['./custom-tool-card.component.scss'],
     imports: [AppSvgIconComponent, ToggleSwitchComponent, ButtonComponent, MatTooltipModule, HasPermissionDirective],

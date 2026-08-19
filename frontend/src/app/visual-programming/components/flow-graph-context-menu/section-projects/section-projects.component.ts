@@ -8,7 +8,6 @@ import { CreateNodeRequest } from '../../../core/models/node-creation.types';
 
 @Component({
     selector: 'app-flow-projects-context-menu',
-    standalone: true,
     template: `
         <ul>
             @for (project of filteredProjects(); track project.id) {

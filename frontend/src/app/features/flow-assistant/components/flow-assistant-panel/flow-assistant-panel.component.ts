@@ -1,5 +1,4 @@
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -36,9 +35,7 @@ type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
 @Component({
     selector: 'app-flow-assistant-panel',
-    standalone: true,
     imports: [
-        CommonModule,
         FormsModule,
         MarkdownModule,
         OverlayModule,

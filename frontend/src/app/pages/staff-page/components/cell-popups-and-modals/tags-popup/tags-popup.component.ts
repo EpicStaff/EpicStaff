@@ -1,4 +1,4 @@
-import { NgClass, NgFor } from '@angular/common';
+import { NgClass } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -7,8 +7,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
 
 @Component({
     selector: 'app-tags-popup',
-    standalone: true,
-    imports: [NgFor, FormsModule, NgClass, AppSvgIconComponent, MatTooltip],
+    imports: [FormsModule, NgClass, AppSvgIconComponent, MatTooltip],
     template: `
         <div
             class="tags-popup"
@@ -24,22 +23,23 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
             </div>
             <div class="content">
                 <div class="tags-container">
-                    <div
-                        class="tag-item"
-                        *ngFor="let tag of tags; let i = index"
-                        [ngClass]="{ duplicate: duplicateTagIndex === i }"
-                    >
-                        <div class="tag-text">#{{ tag }}</div>
-                        <button
-                            type="button"
-                            class="remove-btn"
-                            matTooltip="Remove tag"
-                            (click)="removeTag(i)"
-                            aria-label="Remove tag"
+                    @for (tag of tags; track tag; let i = $index) {
+                        <div
+                            class="tag-item"
+                            [ngClass]="{ duplicate: duplicateTagIndex === i }"
                         >
-                            ×
-                        </button>
-                    </div>
+                            <div class="tag-text">#{{ tag }}</div>
+                            <button
+                                type="button"
+                                class="remove-btn"
+                                matTooltip="Remove tag"
+                                (click)="removeTag(i)"
+                                aria-label="Remove tag"
+                            >
+                                ×
+                            </button>
+                        </div>
+                    }
                     <div class="tag-input-item">
                         <input
                             type="text"

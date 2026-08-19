@@ -8,7 +8,6 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
 
 @Component({
     selector: 'app-toast',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
@@ -16,32 +15,33 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
             class="toast-container"
             [ngClass]="position"
         >
-            <div
-                *ngFor="let toast of toasts"
-                [@toastAnimation]="position"
-                class="toast-item"
-                [ngClass]="toast.type"
-                (click)="closeToast(toast.id)"
-            >
-                <div class="toast-content">
-                    <div class="toast-icon-wrapper">
-                        <app-svg-icon
-                            [icon]="getIconId(toast.type)"
-                            size="20px"
-                        ></app-svg-icon>
-                    </div>
-                    <span class="toast-message">{{ toast.message }}</span>
-                </div>
-                <button
-                    class="toast-close-btn"
-                    (click)="closeToast(toast.id); $event.stopPropagation()"
+            @for (toast of toasts; track toast) {
+                <div
+                    [@toastAnimation]="position"
+                    class="toast-item"
+                    [ngClass]="toast.type"
+                    (click)="closeToast(toast.id)"
                 >
-                    <app-svg-icon
-                        icon="x"
-                        size="16px"
-                    ></app-svg-icon>
-                </button>
-            </div>
+                    <div class="toast-content">
+                        <div class="toast-icon-wrapper">
+                            <app-svg-icon
+                                [icon]="getIconId(toast.type)"
+                                size="20px"
+                            ></app-svg-icon>
+                        </div>
+                        <span class="toast-message">{{ toast.message }}</span>
+                    </div>
+                    <button
+                        class="toast-close-btn"
+                        (click)="closeToast(toast.id); $event.stopPropagation()"
+                    >
+                        <app-svg-icon
+                            icon="x"
+                            size="16px"
+                        ></app-svg-icon>
+                    </button>
+                </div>
+            }
         </div>
     `,
     styles: [

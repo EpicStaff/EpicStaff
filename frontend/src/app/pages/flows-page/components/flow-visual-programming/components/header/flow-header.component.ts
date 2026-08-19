@@ -1,7 +1,6 @@
 import { Dialog as CdkDialog } from '@angular/cdk/dialog';
 import { DialogModule } from '@angular/cdk/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, inject, Input, Output, signal } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router, RouterModule } from '@angular/router';
@@ -21,9 +20,7 @@ import { SaveDropdownComponent } from './save-dropdown/save-dropdown.component';
 
 @Component({
     selector: 'app-flow-header',
-    standalone: true,
     imports: [
-        CommonModule,
         RouterModule,
         Spinner2Component,
         AppSvgIconComponent,

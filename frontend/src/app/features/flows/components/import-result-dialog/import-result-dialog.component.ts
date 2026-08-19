@@ -30,7 +30,6 @@ import { DEFAULT_ENTITY_ICON, ENTITY_ICONS } from '../../../../shared/constants/
 
 @Component({
     selector: 'app-import-result-dialog',
-    standalone: true,
     imports: [CommonModule, AppIconComponent, MatTooltipModule],
     templateUrl: './import-result-dialog.component.html',
     styleUrls: ['./import-result-dialog.component.scss'],

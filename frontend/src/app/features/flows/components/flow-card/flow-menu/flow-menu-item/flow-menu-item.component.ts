@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
 
 @Component({
     selector: 'app-flow-menu-item',
-    standalone: true,
     imports: [NgClass],
     templateUrl: './flow-menu-item.component.html',
     styleUrls: ['./flow-menu-item.component.scss'],

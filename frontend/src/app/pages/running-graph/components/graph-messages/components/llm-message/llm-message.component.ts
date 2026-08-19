@@ -9,7 +9,6 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
 
 @Component({
     selector: 'app-llm-message',
-    standalone: true,
     imports: [CommonModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
@@ -63,13 +62,14 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                                 <app-copy-button [text]="llmResponse" />
                                 <markdown [data]="llmResponse"></markdown>
                             </div>
-                            <button
-                                *ngIf="shouldShowToggle() && isResponseExpanded"
-                                class="toggle-button"
-                                (click)="toggleCollapse()"
-                            >
-                                {{ isCollapsed ? 'Show more' : 'Show less' }}
-                            </button>
+                            @if (shouldShowToggle() && isResponseExpanded) {
+                                <button
+                                    class="toggle-button"
+                                    (click)="toggleCollapse()"
+                                >
+                                    {{ isCollapsed ? 'Show more' : 'Show less' }}
+                                </button>
+                            }
                         </div>
                     </div>
                 </div>

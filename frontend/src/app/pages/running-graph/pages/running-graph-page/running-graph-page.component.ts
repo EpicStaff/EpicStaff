@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { RouterModule } from '@angular/router';
@@ -15,8 +14,7 @@ import { GraphMessage } from '../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-running-graph',
-    standalone: true,
-    imports: [CommonModule, RouterModule, RunningGraphHeaderComponent, GraphMessagesComponent],
+    imports: [RouterModule, RunningGraphHeaderComponent, GraphMessagesComponent],
     template: `
         <div class="running-graph-container">
             <app-running-graph-header

@@ -2,7 +2,6 @@ import { Directive, DOCUMENT, EventEmitter, Inject, NgZone, OnDestroy, OnInit, O
 
 @Directive({
     selector: '[appMouseTracker]',
-    standalone: true,
 })
 export class MouseTrackerDirective implements OnInit, OnDestroy {
     @Output() mousePosition = new EventEmitter<{ x: number; y: number }>();

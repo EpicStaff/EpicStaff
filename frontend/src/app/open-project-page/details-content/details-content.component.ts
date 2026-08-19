@@ -22,7 +22,6 @@ import { ToastService } from '../../services/notifications/toast.service';
     selector: 'app-details-content',
     templateUrl: './details-content.component.html',
     styleUrls: ['./details-content.component.scss'],
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.Eager,
     imports: [FormsModule],
 })

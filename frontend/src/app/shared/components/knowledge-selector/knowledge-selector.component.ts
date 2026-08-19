@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 
@@ -7,8 +6,7 @@ import { ClickOutsideDirective } from '../../directives/click-outside.directive'
 
 @Component({
     selector: 'app-knowledge-selector',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ReactiveFormsModule, ClickOutsideDirective],
+    imports: [FormsModule, ReactiveFormsModule, ClickOutsideDirective],
     templateUrl: './knowledge-selector.component.html',
     styleUrls: ['./knowledge-selector.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

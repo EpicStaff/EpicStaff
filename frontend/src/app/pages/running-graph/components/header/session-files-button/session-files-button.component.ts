@@ -36,7 +36,6 @@ const POST_TERMINAL_RETRY_DELAYS_MS = [1000, 2000, 4000];
 
 @Component({
     selector: 'app-session-files-button',
-    standalone: true,
     imports: [AppSvgIconComponent, CollapseOnOverflowDirective, MatTooltip],
     templateUrl: './session-files-button.component.html',
     styleUrls: ['./session-files-button.component.scss'],

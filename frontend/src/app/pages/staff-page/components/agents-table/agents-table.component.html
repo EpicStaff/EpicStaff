@@ -3,13 +3,14 @@
     class="wrapper"
     [class.agents-table-wrap--saving]="isSaving"
 >
-    <app-spinner
-        *ngIf="isLoading()"
-        [text]="'Agents coming...'"
-        [size]="48"
-        [accentColor]="'#6562f5'"
-        [borderColor]="'rgba(101, 98, 245, 0.3)'"
-    ></app-spinner>
+    @if (isLoading()) {
+        <app-spinner
+            [text]="'Agents coming...'"
+            [size]="48"
+            [accentColor]="'#6562f5'"
+            [borderColor]="'rgba(101, 98, 245, 0.3)'"
+        ></app-spinner>
+    }
 
     <ag-grid-angular
         [class.hidden-grid]="isLoading()"

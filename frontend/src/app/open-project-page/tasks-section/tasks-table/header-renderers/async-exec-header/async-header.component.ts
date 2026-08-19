@@ -1,6 +1,5 @@
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
     Component,
@@ -18,8 +17,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
 
 @Component({
     selector: 'app-async-header',
-    standalone: true,
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [AppSvgIconComponent],
     template: `
         <div
             class="header-container"

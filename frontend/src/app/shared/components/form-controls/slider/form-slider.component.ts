@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -11,8 +10,7 @@ import {
 
 @Component({
     selector: 'app-form-slider',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     templateUrl: './form-slider.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./form-slider.component.scss'],

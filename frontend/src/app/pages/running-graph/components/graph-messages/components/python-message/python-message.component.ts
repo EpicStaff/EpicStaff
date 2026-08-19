@@ -10,7 +10,6 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
 @Component({
     selector: 'app-python-message',
-    standalone: true,
     imports: [CommonModule, NgxJsonViewerModule, FormatExecutionDataPipe, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
@@ -42,129 +41,129 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             >
                 <div class="python-content">
                     <!-- Code Section -->
-                    <div
-                        class="code-container"
-                        *ngIf="hasCode()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('code')"
-                        >
-                            <app-svg-icon
-                                [icon]="isCodeExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Python Code
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isCodeExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="code-wrapper">
-                                <div class="result-content">
-                                    <pre>{{ getCode() }}</pre>
+                    @if (hasCode()) {
+                        <div class="code-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('code')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isCodeExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Python Code
+                            </div>
+                            <div
+                                class="collapsible-content"
+                                [@expandCollapse]="isCodeExpanded ? 'expanded' : 'collapsed'"
+                            >
+                                <div class="code-wrapper">
+                                    <div class="result-content">
+                                        <pre>{{ getCode() }}</pre>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Input Section -->
-                    <div
-                        class="input-container"
-                        *ngIf="hasInput()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('input')"
-                        >
-                            <app-svg-icon
-                                [icon]="isInputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Input
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isInputExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="input-wrapper">
-                                <div class="result-content">
-                                    <ngx-json-viewer
-                                        *ngIf="getParsedInput() && isValidJson(getInput())"
-                                        [json]="getParsedInput()"
-                                        [expanded]="false"
-                                    ></ngx-json-viewer>
-                                    <pre *ngIf="!isValidJson(getInput())">{{ getInput() }}</pre>
+                    @if (hasInput()) {
+                        <div class="input-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('input')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isInputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Input
+                            </div>
+                            <div
+                                class="collapsible-content"
+                                [@expandCollapse]="isInputExpanded ? 'expanded' : 'collapsed'"
+                            >
+                                <div class="input-wrapper">
+                                    <div class="result-content">
+                                        @if (getParsedInput() && isValidJson(getInput())) {
+                                            <ngx-json-viewer
+                                                [json]="getParsedInput()"
+                                                [expanded]="false"
+                                            ></ngx-json-viewer>
+                                        }
+                                        @if (!isValidJson(getInput())) {
+                                            <pre>{{ getInput() }}</pre>
+                                        }
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Output Section -->
-                    <div
-                        class="output-container"
-                        *ngIf="hasOutput()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('output')"
-                        >
-                            <app-svg-icon
-                                [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Output
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="output-wrapper">
-                                <div
-                                    class="result-content"
-                                    [ngClass]="{
-                                        collapsed: isCollapsed && shouldShowToggle(),
-                                    }"
-                                >
-                                    <pre>{{ getOutput() }}</pre>
+                    @if (hasOutput()) {
+                        <div class="output-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('output')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isOutputExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Output
+                            </div>
+                            <div
+                                class="collapsible-content"
+                                [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
+                            >
+                                <div class="output-wrapper">
+                                    <div
+                                        class="result-content"
+                                        [ngClass]="{
+                                            collapsed: isCollapsed && shouldShowToggle(),
+                                        }"
+                                    >
+                                        <pre>{{ getOutput() }}</pre>
+                                    </div>
+                                    @if (shouldShowToggle() && isOutputExpanded) {
+                                        <button
+                                            class="toggle-button"
+                                            (click)="toggleCollapse()"
+                                        >
+                                            {{ isCollapsed ? 'Show more' : 'Show less' }}
+                                        </button>
+                                    }
                                 </div>
-                                <button
-                                    *ngIf="shouldShowToggle() && isOutputExpanded"
-                                    class="toggle-button"
-                                    (click)="toggleCollapse()"
-                                >
-                                    {{ isCollapsed ? 'Show more' : 'Show less' }}
-                                </button>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Error Section -->
-                    <div
-                        class="error-container"
-                        *ngIf="hasError()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('error')"
-                        >
-                            <app-svg-icon
-                                [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Error
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isErrorExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="error-wrapper">
-                                <div class="result-content error-content">
-                                    <pre>{{ getError() }}</pre>
+                    @if (hasError()) {
+                        <div class="error-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('error')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isErrorExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Error
+                            </div>
+                            <div
+                                class="collapsible-content"
+                                [@expandCollapse]="isErrorExpanded ? 'expanded' : 'collapsed'"
+                            >
+                                <div class="error-wrapper">
+                                    <div class="result-content error-content">
+                                        <pre>{{ getError() }}</pre>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Raw Data Section -->
                     <div class="raw-data-container">

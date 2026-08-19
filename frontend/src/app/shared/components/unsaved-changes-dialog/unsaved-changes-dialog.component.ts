@@ -23,7 +23,6 @@ export interface UnsavedChangesDialogData {
 
 @Component({
     selector: 'app-unsaved-changes-dialog',
-    standalone: true,
     imports: [CommonModule, DialogModule, IconButtonComponent, Spinner2Component, AppSvgIconComponent],
     templateUrl: './unsaved-changes-dialog.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,

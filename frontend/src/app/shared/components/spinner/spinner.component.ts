@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 @Component({
     selector: 'app-spinner',
-    standalone: true,
     imports: [CommonModule],
     template: `
         <div
@@ -22,13 +21,14 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
                     'border-top-color': accentColor,
                 }"
             ></div>
-            <div
-                *ngIf="text"
-                class="loading-text"
-                [ngStyle]="{ color: textColor, 'font-size': textSize + 'px' }"
-            >
-                {{ text }}
-            </div>
+            @if (text) {
+                <div
+                    class="loading-text"
+                    [ngStyle]="{ color: textColor, 'font-size': textSize + 'px' }"
+                >
+                    {{ text }}
+                </div>
+            }
         </div>
     `,
     changeDetection: ChangeDetectionStrategy.Eager,

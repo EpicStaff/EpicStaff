@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
 
 @Component({
     selector: 'app-tab-button',
-    standalone: true,
     templateUrl: './tab-button.component.html',
     styleUrls: ['./tab-button.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

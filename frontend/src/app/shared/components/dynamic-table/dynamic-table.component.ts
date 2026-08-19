@@ -1,5 +1,4 @@
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -20,7 +19,7 @@ import { TableColumnDef, TableRow } from './dynamic-table.models';
 
 @Component({
     selector: 'app-dynamic-table',
-    imports: [CommonModule, FormsModule, ReactiveFormsModule, DragDropModule, AppSvgIconComponent, CheckboxComponent],
+    imports: [FormsModule, ReactiveFormsModule, DragDropModule, AppSvgIconComponent, CheckboxComponent],
     templateUrl: './dynamic-table.component.html',
     styleUrls: ['./dynamic-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

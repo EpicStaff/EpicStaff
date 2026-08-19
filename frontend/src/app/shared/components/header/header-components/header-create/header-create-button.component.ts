@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
 
 @Component({
     selector: 'app-project-create-button',
-    standalone: true,
     template: `
         <button
             class="create-project-button"

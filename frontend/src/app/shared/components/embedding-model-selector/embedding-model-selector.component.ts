@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -25,8 +24,7 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
 
 @Component({
     selector: 'app-embedding-model-selector',
-    standalone: true,
-    imports: [CommonModule, FormsModule, AppSvgIconComponent, EmbeddingModelItemComponent],
+    imports: [FormsModule, AppSvgIconComponent, EmbeddingModelItemComponent],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -41,29 +39,24 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
                 [class.placeholder]="!selectedConfig"
                 (click)="toggleDropdown($event)"
             >
-                <div
-                    *ngIf="selectedConfig; else placeholderTemplate"
-                    class="model-info"
-                >
-                    <app-svg-icon
-                        [icon]="getProviderIcon(selectedConfig)"
-                        size="20px"
-                        [ariaLabel]="selectedConfig.providerDetails?.name || ''"
-                        class="provider-icon"
-                    />
-                    <div class="model-text">
-                        <span class="model-name">{{ selectedConfig.modelDetails?.name || 'Unknown Model' }}</span>
-                        <span
-                            *ngIf="selectedConfig.custom_name"
-                            class="custom-name"
-                        >
-                            ({{ selectedConfig.custom_name }})
-                        </span>
+                @if (selectedConfig) {
+                    <div class="model-info">
+                        <app-svg-icon
+                            [icon]="getProviderIcon(selectedConfig)"
+                            size="20px"
+                            [ariaLabel]="selectedConfig.providerDetails?.name || ''"
+                            class="provider-icon"
+                        />
+                        <div class="model-text">
+                            <span class="model-name">{{ selectedConfig.modelDetails?.name || 'Unknown Model' }}</span>
+                            @if (selectedConfig.custom_name) {
+                                <span class="custom-name"> ({{ selectedConfig.custom_name }}) </span>
+                            }
+                        </div>
                     </div>
-                </div>
-                <ng-template #placeholderTemplate>
+                } @else {
                     <div class="placeholder-text">{{ placeholder }}</div>
-                </ng-template>
+                }
                 <div class="dropdown-icon">
                     <svg
                         width="16"
@@ -84,41 +77,37 @@ import { EmbeddingModelItemComponent } from './embedding-model-item/embedding-mo
             </div>
 
             <!-- Dropdown Menu -->
-            <div
-                class="dropdown-menu"
-                [class.dropdown-top]="dropdownPosition === 'top'"
-                *ngIf="isDropdownOpen"
-            >
-                <!-- Search Input -->
-                <div class="search-container">
-                    <input
-                        type="text"
-                        [(ngModel)]="searchTerm"
-                        placeholder="Search models..."
-                        (click)="$event.stopPropagation()"
-                        (input)="filterConfigs()"
-                    />
-                </div>
-
-                <!-- Models List -->
-                <div class="models-list">
-                    <div
-                        *ngIf="filteredConfigs.length === 0"
-                        class="no-results"
-                    >
-                        No matching models found
+            @if (isDropdownOpen) {
+                <div
+                    class="dropdown-menu"
+                    [class.dropdown-top]="dropdownPosition === 'top'"
+                >
+                    <!-- Search Input -->
+                    <div class="search-container">
+                        <input
+                            type="text"
+                            [(ngModel)]="searchTerm"
+                            placeholder="Search models..."
+                            (click)="$event.stopPropagation()"
+                            (input)="filterConfigs()"
+                        />
                     </div>
-
-                    @for (config of filteredConfigs; track config.id) {
-                        <app-embedding-model-item
-                            [config]="config"
-                            [isSelected]="selectedConfigId === config.id"
-                            (selected)="selectConfig($event)"
-                        >
-                        </app-embedding-model-item>
-                    }
+                    <!-- Models List -->
+                    <div class="models-list">
+                        @if (filteredConfigs.length === 0) {
+                            <div class="no-results">No matching models found</div>
+                        }
+                        @for (config of filteredConfigs; track config.id) {
+                            <app-embedding-model-item
+                                [config]="config"
+                                [isSelected]="selectedConfigId === config.id"
+                                (selected)="selectConfig($event)"
+                            >
+                            </app-embedding-model-item>
+                        }
+                    </div>
                 </div>
-            </div>
+            }
         </div>
     `,
     styles: [

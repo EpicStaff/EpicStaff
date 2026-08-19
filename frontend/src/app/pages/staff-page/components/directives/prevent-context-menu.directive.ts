@@ -1,7 +1,6 @@
 import { Directive, ElementRef, OnInit } from '@angular/core';
 
 @Directive({
-    standalone: true,
     selector: '[appPreventContextMenu]',
 })
 export class PreventContextMenuDirective implements OnInit {

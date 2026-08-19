@@ -16,7 +16,6 @@ import { AddProjectCardComponent } from './add-project-card/add-project-card.com
 
 @Component({
     selector: 'app-my-projects',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="project-grid">

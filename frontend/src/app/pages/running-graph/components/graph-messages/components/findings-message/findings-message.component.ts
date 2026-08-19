@@ -12,7 +12,6 @@ import {
 
 @Component({
     selector: 'app-findings-message',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent],
     templateUrl: './findings-message.component.html',
     styleUrls: ['./findings-message.component.scss'],

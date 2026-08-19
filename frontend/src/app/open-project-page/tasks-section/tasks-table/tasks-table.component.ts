@@ -74,7 +74,6 @@ export interface TaskPendingEvent {
 
 @Component({
     selector: 'app-tasks-table',
-    standalone: true,
     imports: [
         AgGridModule,
         DialogModule,

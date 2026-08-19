@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -41,14 +40,7 @@ import { QuickstartService } from '../../services/quickstart.service';
 
 @Component({
     selector: 'app-quickstart-section',
-    imports: [
-        CommonModule,
-        ReactiveFormsModule,
-        CustomInputComponent,
-        ButtonComponent,
-        HelpTooltipComponent,
-        SelectComponent,
-    ],
+    imports: [ReactiveFormsModule, CustomInputComponent, ButtonComponent, HelpTooltipComponent, SelectComponent],
     templateUrl: './quickstart-section.component.html',
     styleUrls: ['./quickstart-section.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

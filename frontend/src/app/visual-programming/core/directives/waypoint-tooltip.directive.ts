@@ -2,7 +2,6 @@ import { Directive, DOCUMENT, HostListener, Inject, OnDestroy, Renderer2 } from 
 
 @Directive({
     selector: '[appWaypointTooltip]',
-    standalone: true,
 })
 export class WaypointTooltipDirective implements OnDestroy {
     private tooltipEl: HTMLElement | null = null;

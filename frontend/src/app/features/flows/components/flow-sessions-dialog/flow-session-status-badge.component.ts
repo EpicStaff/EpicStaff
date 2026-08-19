@@ -5,7 +5,6 @@ import { GraphSessionStatus } from '../../services/flows-sessions.service';
 
 @Component({
     selector: 'app-flow-session-status-badge',
-    standalone: true,
     imports: [CommonModule],
     template: `
         <span

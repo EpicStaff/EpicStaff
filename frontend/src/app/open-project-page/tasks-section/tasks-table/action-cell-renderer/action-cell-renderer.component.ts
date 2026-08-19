@@ -4,7 +4,6 @@ import { ICellRendererAngularComp } from 'ag-grid-angular';
 
 @Component({
     selector: 'app-action-cell-renderer',
-    standalone: true,
     imports: [MatTooltipModule],
     template: `<i
         class="ti ti-settings action-icon"

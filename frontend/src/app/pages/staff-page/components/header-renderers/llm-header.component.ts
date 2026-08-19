@@ -3,7 +3,6 @@ import { IHeaderParams } from 'ag-grid-community';
 
 @Component({
     selector: 'app-llm-header',
-    standalone: true,
     template: `
         <div class="header-container">
             <svg

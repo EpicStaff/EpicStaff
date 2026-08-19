@@ -32,17 +32,17 @@
         </div>
     </div>
 
-    <div
-        class="dropdown-menu"
-        *ngIf="isOpen"
-    >
-        <div
-            *ngFor="let lang of languages"
-            class="dropdown-item"
-            [class.selected]="lang.id === selectedLanguage"
-            (click)="selectLanguage(lang.id)"
-        >
-            {{ lang.name }}
+    @if (isOpen) {
+        <div class="dropdown-menu">
+            @for (lang of languages; track lang) {
+                <div
+                    class="dropdown-item"
+                    [class.selected]="lang.id === selectedLanguage"
+                    (click)="selectLanguage(lang.id)"
+                >
+                    {{ lang.name }}
+                </div>
+            }
         </div>
-    </div>
+    }
 </div>

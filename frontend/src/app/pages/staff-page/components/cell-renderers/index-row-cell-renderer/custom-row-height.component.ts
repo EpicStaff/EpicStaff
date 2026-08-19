@@ -14,7 +14,6 @@ import { ICellRendererParams } from 'ag-grid-community';
 
 @Component({
     selector: 'app-index-cell-renderer',
-    standalone: true,
     imports: [CommonModule, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `

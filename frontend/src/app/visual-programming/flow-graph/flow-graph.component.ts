@@ -102,7 +102,6 @@ function waypointsEqual(a: IPoint[], b: IPoint[]): boolean {
     selector: 'app-flow-graph',
     templateUrl: './flow-graph.component.html',
     styleUrls: ['../styles/_variables.scss', './flow-graph.component.scss'],
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [
         {

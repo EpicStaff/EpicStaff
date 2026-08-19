@@ -1,6 +1,5 @@
 import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -47,7 +46,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
     selector: 'app-input-map',
     imports: [
         ReactiveFormsModule,
-        CommonModule,
         HelpTooltipComponent,
         ToggleSwitchComponent,
         AppSvgIconComponent,

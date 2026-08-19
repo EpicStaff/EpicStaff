@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -21,14 +20,7 @@ import { UnsavedIndicatorComponent } from '../../../shared/components/unsaved-in
 
 @Component({
     selector: 'app-project-dialog',
-    standalone: true,
-    imports: [
-        CommonModule,
-        OpenProjectPageComponent,
-        SaveWithIndicatorComponent,
-        UnsavedIndicatorComponent,
-        AppSvgIconComponent,
-    ],
+    imports: [OpenProjectPageComponent, SaveWithIndicatorComponent, UnsavedIndicatorComponent, AppSvgIconComponent],
     template: `
         <div class="project-dialog-wrapper">
             <div class="dialog-header">

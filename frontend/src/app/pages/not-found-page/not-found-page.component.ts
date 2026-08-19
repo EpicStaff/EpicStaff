@@ -6,7 +6,6 @@ import { PermissionsService } from '../../services/auth/permissions.service';
 
 @Component({
     selector: 'app-not-found-page',
-    standalone: true,
     imports: [],
     templateUrl: './not-found-page.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,

@@ -81,7 +81,6 @@ interface ImportFileEntity {
 type ImportFileData = Record<string, ImportFileEntity[]>;
 
 @Component({
-    standalone: true,
     templateUrl: './flows-list-page.component.html',
     styleUrls: ['./flows-list-page.component.scss'],
     imports: [

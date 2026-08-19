@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -22,8 +21,7 @@ export interface AddTranscriptionConfigDialogData {
 
 @Component({
     selector: 'app-add-transcription-config-dialog',
-    standalone: true,
-    imports: [CommonModule, ReactiveFormsModule, SelectComponent, MatTooltip],
+    imports: [ReactiveFormsModule, SelectComponent, MatTooltip],
     templateUrl: './add-transcription-config-dialog.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./add-transcription-config-dialog.component.scss'],

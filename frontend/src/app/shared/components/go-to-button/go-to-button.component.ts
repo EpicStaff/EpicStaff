@@ -1,12 +1,10 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterModule } from '@angular/router';
 
 @Component({
     selector: 'app-go-to-button',
-    standalone: true,
-    imports: [CommonModule, RouterModule, MatTooltipModule],
+    imports: [RouterModule, MatTooltipModule],
     templateUrl: './go-to-button.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrl: './go-to-button.component.scss',

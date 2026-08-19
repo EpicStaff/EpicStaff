@@ -1,5 +1,4 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -23,8 +22,7 @@ export interface ShortcutSection {
 
 @Component({
     selector: 'app-shortcuts-modal',
-    standalone: true,
-    imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     templateUrl: './shortcuts-modal.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrl: './shortcuts-modal.component.scss',

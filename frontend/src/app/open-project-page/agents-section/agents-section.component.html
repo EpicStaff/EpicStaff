@@ -7,23 +7,23 @@
     <!-- Grid controls - search and size switcher -->
     <div class="grid-container">
         <!-- Loading Animation -->
-        <div
-            *ngIf="!isLoaded"
-            class="loading-container"
-        >
-            <div class="loading-spinner"></div>
-            <p class="loading-text">Loading agents...</p>
-        </div>
+        @if (!isLoaded) {
+            <div class="loading-container">
+                <div class="loading-spinner"></div>
+                <p class="loading-text">Loading agents...</p>
+            </div>
+        }
 
         <!-- Staff Agent Cards -->
-        <app-staff-agent-card
-            *ngFor="let agent of agents; trackBy: trackAgentById"
-            [agent]="agent"
-            [size]="currentGridSize"
-            [cardState]="cardState"
-            (removeAgent)="onRemoveStaffAgent($event)"
-        >
-        </app-staff-agent-card>
+        @for (agent of agents; track trackAgentById($index, agent)) {
+            <app-staff-agent-card
+                [agent]="agent"
+                [size]="currentGridSize"
+                [cardState]="cardState"
+                (removeAgent)="onRemoveStaffAgent($event)"
+            >
+            </app-staff-agent-card>
+        }
     </div>
 
     <app-grid-controls

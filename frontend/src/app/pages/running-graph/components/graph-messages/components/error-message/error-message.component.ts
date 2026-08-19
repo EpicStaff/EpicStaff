@@ -8,7 +8,6 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 
 @Component({
     selector: 'app-error-message',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
@@ -61,40 +60,40 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                                 <app-copy-button [text]="getFormattedErrorDetails()" />
                                 <pre>{{ getFormattedErrorDetails() }}</pre>
                             </div>
-                            <button
-                                *ngIf="shouldShowToggle() && isErrorExpanded"
-                                class="toggle-button"
-                                (click)="toggleCollapse($event)"
-                            >
-                                {{ isCollapsed ? 'Show more' : 'Show less' }}
-                            </button>
+                            @if (shouldShowToggle() && isErrorExpanded) {
+                                <button
+                                    class="toggle-button"
+                                    (click)="toggleCollapse($event)"
+                                >
+                                    {{ isCollapsed ? 'Show more' : 'Show less' }}
+                                </button>
+                            }
                         </div>
                     </div>
 
                     <!-- Optional Data Subsection -->
-                    <div
-                        class="error-data-container"
-                        *ngIf="hasErrorData()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleDataSection($event)"
-                        >
-                            <app-svg-icon
-                                [icon]="isDataExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1rem"
-                            />
-                            Data
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isDataExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="result-content">
-                                <pre>{{ getFormattedErrorData() }}</pre>
+                    @if (hasErrorData()) {
+                        <div class="error-data-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleDataSection($event)"
+                            >
+                                <app-svg-icon
+                                    [icon]="isDataExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1rem"
+                                />
+                                Data
+                            </div>
+                            <div
+                                class="collapsible-content"
+                                [@expandCollapse]="isDataExpanded ? 'expanded' : 'collapsed'"
+                            >
+                                <div class="result-content">
+                                    <pre>{{ getFormattedErrorData() }}</pre>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>

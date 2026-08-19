@@ -18,7 +18,6 @@ import { ProjectsStorageService } from '../../services/projects-storage.service'
 
 @Component({
     selector: 'app-projects-list-page',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './projects-list-page.component.html',
     styleUrls: ['./projects-list-page.component.scss'],

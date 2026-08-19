@@ -1,5 +1,4 @@
 import { DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -46,7 +45,6 @@ export type AgentDialogResult =
     templateUrl: './create-agent-form-dialog.component.html',
     styleUrls: ['./create-agent-form-dialog.component.scss'],
     imports: [
-        CommonModule,
         FormsModule,
         ReactiveFormsModule,
         ...MATERIAL_FORMS,

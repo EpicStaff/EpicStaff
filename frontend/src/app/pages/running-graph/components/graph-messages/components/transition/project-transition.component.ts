@@ -1,10 +1,8 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 
 @Component({
     selector: 'app-project-transition',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div class="project-transition">
             <div class="divider">

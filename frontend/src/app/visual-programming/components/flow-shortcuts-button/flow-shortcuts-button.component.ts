@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -16,8 +15,7 @@ function isMacPlatform(): boolean {
 
 @Component({
     selector: 'app-flow-shortcuts-button',
-    standalone: true,
-    imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
+    imports: [AppSvgIconComponent, MatTooltipModule],
     templateUrl: './flow-shortcuts-button.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./flow-shortcuts-button.component.scss'],

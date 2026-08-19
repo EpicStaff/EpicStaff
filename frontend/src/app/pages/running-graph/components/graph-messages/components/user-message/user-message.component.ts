@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
@@ -6,8 +5,7 @@ import { GraphMessage, MessageType, UserMessageData } from '../../../../models/g
 
 @Component({
     selector: 'app-user-message',
-    standalone: true,
-    imports: [CommonModule, CopyButtonComponent],
+    imports: [CopyButtonComponent],
     template: `
         <div class="user-message-container">
             <div class="message-bubble">

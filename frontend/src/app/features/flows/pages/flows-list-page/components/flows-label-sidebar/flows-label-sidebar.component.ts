@@ -1,5 +1,4 @@
 import { Dialog, DialogModule } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -35,7 +34,6 @@ const SIDEBAR_STORAGE_KEY = 'flows';
 @Component({
     selector: 'app-flows-label-sidebar',
     imports: [
-        CommonModule,
         FormsModule,
         DialogModule,
         AppSvgIconComponent,

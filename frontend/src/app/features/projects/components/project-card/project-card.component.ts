@@ -7,7 +7,6 @@ import { ProjectMenuComponent } from './project-menu/project-menu.component';
 
 @Component({
     selector: 'app-project-card',
-    standalone: true,
     imports: [NgStyle, ProjectMenuComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './project-card.component.html',

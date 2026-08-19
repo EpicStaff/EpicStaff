@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { NgIf } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -17,14 +16,7 @@ import { NgrokConfigStorageService } from '@shared/services';
     selector: 'app-create-ngrok-config-dialog',
     templateUrl: './add-ngrok-config-dialog.component.html',
     styleUrls: ['./add-ngrok-config-dialog.component.scss'],
-    imports: [
-        ReactiveFormsModule,
-        CustomInputComponent,
-        SelectComponent,
-        ButtonComponent,
-        ValidationErrorsComponent,
-        NgIf,
-    ],
+    imports: [ReactiveFormsModule, CustomInputComponent, SelectComponent, ButtonComponent, ValidationErrorsComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AddNgrokConfigDialogComponent implements OnInit {

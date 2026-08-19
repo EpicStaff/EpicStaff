@@ -1,5 +1,5 @@
 // chat.component.ts
-import { CommonModule } from '@angular/common';
+
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -10,8 +10,7 @@ import { ChatMessagesComponent } from './chat-messages/chat-messages.component';
 
 @Component({
     selector: 'app-chat',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ChatMessagesComponent, ChatHeaderComponent, ChatControlsComponent],
+    imports: [FormsModule, ChatMessagesComponent, ChatHeaderComponent, ChatControlsComponent],
     templateUrl: './chat.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./chat.component.scss'],

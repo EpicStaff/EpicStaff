@@ -2,35 +2,38 @@
 <div class="dropdown-container">
     <div class="agent-grid">
         <!-- Loading Animation -->
-        <div
-            *ngIf="isLoading"
-            class="loading-container"
-        >
-            <div class="loading-spinner"></div>
-            <p class="loading-text">Loading staff agents...</p>
-        </div>
+        @if (isLoading) {
+            <div class="loading-container">
+                <div class="loading-spinner"></div>
+                <p class="loading-text">Loading staff agents...</p>
+            </div>
+        }
 
         <!-- Empty State Message -->
-        <div
-            *ngIf="!isLoading && filteredStaffAgents.length === 0"
-            class="empty-state"
-        >
-            <app-svg-icon
-                icon="search-off"
-                size="2rem"
-            />
-            <p *ngIf="searchTerm && searchTerm.trim() !== ''">No staff agents found matching "{{ searchTerm }}"</p>
-            <p *ngIf="!searchTerm || searchTerm.trim() === ''">No available staff agents found</p>
-        </div>
+        @if (!isLoading && filteredStaffAgents.length === 0) {
+            <div class="empty-state">
+                <app-svg-icon
+                    icon="search-off"
+                    size="2rem"
+                />
+                @if (searchTerm && searchTerm.trim() !== '') {
+                    <p>No staff agents found matching "{{ searchTerm }}"</p>
+                }
+                @if (!searchTerm || searchTerm.trim() === '') {
+                    <p>No available staff agents found</p>
+                }
+            </div>
+        }
 
         <!-- Staff Agent Cards -->
-        <app-staff-agent-card
-            *ngFor="let staffAgent of filteredStaffAgents; trackBy: trackStaffAgentById"
-            [agent]="staffAgent"
-            [size]="currentSize"
-            cardState="adding"
-            (addAgent)="onAddStaffAgent($event)"
-        >
-        </app-staff-agent-card>
+        @for (staffAgent of filteredStaffAgents; track trackStaffAgentById($index, staffAgent)) {
+            <app-staff-agent-card
+                [agent]="staffAgent"
+                [size]="currentSize"
+                cardState="adding"
+                (addAgent)="onAddStaffAgent($event)"
+            >
+            </app-staff-agent-card>
+        }
     </div>
 </div>

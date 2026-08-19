@@ -6,7 +6,6 @@ import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg
 
 @Component({
     selector: 'app-python-tool-item',
-    standalone: true,
     imports: [NgClass, AppSvgIconComponent],
     template: `
         <div

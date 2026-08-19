@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
@@ -6,48 +5,45 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 
 @Component({
     selector: 'app-warning-messages',
-    standalone: true,
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [AppSvgIconComponent],
     animations: [expandCollapseAnimation],
     template: `
-        <div
-            class="warning-container"
-            *ngIf="messages && messages.length > 0"
-        >
-            <div
-                class="warning-header"
-                (click)="toggleExpand()"
-            >
-                <div class="play-arrow">
-                    <app-svg-icon
-                        [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                        size="1rem"
-                    />
+        @if (messages && messages.length > 0) {
+            <div class="warning-container">
+                <div
+                    class="warning-header"
+                    (click)="toggleExpand()"
+                >
+                    <div class="play-arrow">
+                        <app-svg-icon
+                            [icon]="isExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                            size="1rem"
+                        />
+                    </div>
+                    <div class="icon-container">
+                        <app-svg-icon
+                            icon="alert-triangle"
+                            size="1rem"
+                        />
+                    </div>
+                    <h3>Warnings</h3>
+                    <span class="warning-count">({{ messages.length }})</span>
                 </div>
-                <div class="icon-container">
-                    <app-svg-icon
-                        icon="alert-triangle"
-                        size="1rem"
-                    />
-                </div>
-                <h3>Warnings</h3>
-                <span class="warning-count">({{ messages.length }})</span>
-            </div>
-
-            <div
-                class="collapsible-content"
-                [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
-            >
-                <div class="warning-content">
-                    @for (message of messages; track message; let i = $index) {
-                        <div class="warning-item">
-                            <span class="warning-bullet">{{ i + 1 }}.</span>
-                            <p class="warning-text">{{ message }}</p>
-                        </div>
-                    }
+                <div
+                    class="collapsible-content"
+                    [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
+                >
+                    <div class="warning-content">
+                        @for (message of messages; track message; let i = $index) {
+                            <div class="warning-item">
+                                <span class="warning-bullet">{{ i + 1 }}.</span>
+                                <p class="warning-text">{{ message }}</p>
+                            </div>
+                        }
+                    </div>
                 </div>
             </div>
-        </div>
+        }
     `,
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [

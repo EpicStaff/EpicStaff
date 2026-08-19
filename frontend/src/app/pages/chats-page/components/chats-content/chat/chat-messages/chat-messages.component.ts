@@ -19,7 +19,6 @@ export interface GroupedMessage {
 
 @Component({
     selector: 'app-chat-messages',
-    standalone: true,
     imports: [CommonModule, MarkdownModule, NgxJsonViewerModule, HasToolOutputPipe, AppSvgIconComponent],
     templateUrl: './chat-messages.component.html',
     styleUrls: ['./chat-messages.component.scss'],

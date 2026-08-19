@@ -4,7 +4,6 @@ import { ICellRendererAngularComp } from 'ag-grid-angular';
 
 @Component({
     selector: 'app-delete-cell-renderer',
-    standalone: true,
     imports: [MatTooltipModule],
     template: `
         <i

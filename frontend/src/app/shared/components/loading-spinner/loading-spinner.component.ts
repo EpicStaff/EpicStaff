@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 @Component({
     selector: 'app-loading-spinner',
-    standalone: true,
     imports: [CommonModule],
     template: `
         <div class="loading-spinner-container">
@@ -11,12 +10,11 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
                 class="spinner"
                 [ngClass]="size"
             ></div>
-            <div
-                *ngIf="message"
-                class="loading-message"
-            >
-                {{ message }}
-            </div>
+            @if (message) {
+                <div class="loading-message">
+                    {{ message }}
+                </div>
+            }
         </div>
     `,
     changeDetection: ChangeDetectionStrategy.Eager,

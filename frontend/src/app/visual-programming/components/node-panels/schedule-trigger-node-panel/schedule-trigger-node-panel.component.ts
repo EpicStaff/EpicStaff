@@ -47,7 +47,6 @@ const panelFadeSlide = trigger('panelFadeSlide', [
 ]);
 
 @Component({
-    standalone: true,
     selector: 'app-schedule-trigger-node-panel',
     imports: [
         ReactiveFormsModule,

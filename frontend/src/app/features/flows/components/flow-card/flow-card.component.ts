@@ -19,7 +19,6 @@ export interface FlowCardAction {
 
 @Component({
     selector: 'app-flow-card',
-    standalone: true,
     imports: [
         CommonModule,
         ButtonComponent,

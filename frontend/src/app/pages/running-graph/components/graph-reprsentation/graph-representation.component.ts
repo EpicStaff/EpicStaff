@@ -15,35 +15,35 @@ interface NodeStatus {
 
 @Component({
     selector: 'app-flow-representation',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent],
     template: `
         <div class="flow-container">
             <div class="flow-content">
-                <div *ngIf="orderedNodesStatus?.length; else noNodes">
-                    <ul>
-                        <li
-                            *ngFor="let item of orderedNodesStatus; trackBy: trackByNode"
-                            [ngClass]="getItemClass(item.status)"
-                        >
-                            <div class="node-name">{{ item.node.node_name }}</div>
-                            <div
-                                class="status-badge"
-                                [ngClass]="getStatusClass(item.status)"
-                            >
-                                <app-svg-icon
-                                    *ngIf="getStatusIcon(item.status)"
-                                    [icon]="getStatusIcon(item.status)"
-                                    size="1rem"
-                                />
-                                {{ getStatusText(item.status) }}
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-                <ng-template #noNodes>
+                @if (orderedNodesStatus?.length) {
+                    <div>
+                        <ul>
+                            @for (item of orderedNodesStatus; track trackByNode($index, item)) {
+                                <li [ngClass]="getItemClass(item.status)">
+                                    <div class="node-name">{{ item.node.node_name }}</div>
+                                    <div
+                                        class="status-badge"
+                                        [ngClass]="getStatusClass(item.status)"
+                                    >
+                                        @if (getStatusIcon(item.status)) {
+                                            <app-svg-icon
+                                                [icon]="getStatusIcon(item.status)"
+                                                size="1rem"
+                                            />
+                                        }
+                                        {{ getStatusText(item.status) }}
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                } @else {
                     <div class="placeholder">No nodes found</div>
-                </ng-template>
+                }
             </div>
         </div>
     `,

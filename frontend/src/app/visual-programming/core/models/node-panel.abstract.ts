@@ -7,7 +7,6 @@ import { NodeModel } from './node.model';
 
 @Component({
     template: '',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.Eager,
     imports: [],
 })

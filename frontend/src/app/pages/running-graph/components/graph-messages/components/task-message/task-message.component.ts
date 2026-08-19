@@ -10,7 +10,6 @@ import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/g
 
 @Component({
     selector: 'app-task-message',
-    standalone: true,
     imports: [CommonModule, MarkdownModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
@@ -44,107 +43,101 @@ import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/g
             >
                 <div class="agent-content">
                     <!-- Task Details Section -->
-                    <div
-                        class="details-container"
-                        *ngIf="hasDetails()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('details')"
-                        >
-                            <app-svg-icon
-                                [icon]="isDetailsExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1rem"
-                            />
-                            Task Details
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isDetailsExpanded ? 'expanded' : 'collapsed'"
-                        >
+                    @if (hasDetails()) {
+                        <div class="details-container">
                             <div
-                                class="details-content"
-                                *ngIf="taskMessageData as data"
+                                class="section-heading"
+                                (click)="toggleSection('details')"
                             >
-                                <div
-                                    class="description-section"
-                                    *ngIf="data.description"
-                                >
-                                    <div class="subsection-heading">Description:</div>
-                                    <div class="description-content">
-                                        {{ data.description }}
+                                <app-svg-icon
+                                    [icon]="isDetailsExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1rem"
+                                />
+                                Task Details
+                            </div>
+                            <div
+                                class="collapsible-content"
+                                [@expandCollapse]="isDetailsExpanded ? 'expanded' : 'collapsed'"
+                            >
+                                @if (taskMessageData; as data) {
+                                    <div class="details-content">
+                                        @if (data.description) {
+                                            <div class="description-section">
+                                                <div class="subsection-heading">Description:</div>
+                                                <div class="description-content">
+                                                    {{ data.description }}
+                                                </div>
+                                            </div>
+                                        }
+                                        @if (data.expected_output) {
+                                            <div class="expected-output-section">
+                                                <div class="subsection-heading">Expected Output:</div>
+                                                <div class="expected-output-content">
+                                                    {{ data.expected_output }}
+                                                </div>
+                                            </div>
+                                        }
+                                        @if (data.agent) {
+                                            <div class="agent-section">
+                                                <div class="subsection-heading">Assigned To:</div>
+                                                <div class="agentData-content">
+                                                    {{ data.agent }}
+                                                </div>
+                                            </div>
+                                        }
                                     </div>
-                                </div>
-
-                                <div
-                                    class="expected-output-section"
-                                    *ngIf="data.expected_output"
-                                >
-                                    <div class="subsection-heading">Expected Output:</div>
-                                    <div class="expected-output-content">
-                                        {{ data.expected_output }}
-                                    </div>
-                                </div>
-
-                                <div
-                                    class="agent-section"
-                                    *ngIf="data.agent"
-                                >
-                                    <div class="subsection-heading">Assigned To:</div>
-                                    <div class="agentData-content">
-                                        {{ data.agent }}
-                                    </div>
-                                </div>
+                                }
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Result Section -->
-                    <div
-                        class="raw-container"
-                        *ngIf="hasRawData()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('raw')"
-                        >
-                            <app-svg-icon
-                                [icon]="isRawExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1rem"
-                            />
-                            Result
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isRawExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="result-content">
-                                <app-copy-button [text]="getRawData()" />
-                                <!-- JSON Viewer when raw data is valid JSON -->
-                                <ngx-json-viewer
-                                    *ngIf="isValidJson(getRawData())"
-                                    [json]="parsedRawData"
-                                    [expanded]="false"
-                                ></ngx-json-viewer>
-
-                                <!-- Markdown Output when raw data is not valid JSON -->
-                                <div
-                                    class="markdown-content"
-                                    [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
-                                    *ngIf="!isValidJson(getRawData())"
-                                >
-                                    <markdown [data]="getRawData()"></markdown>
+                    @if (hasRawData()) {
+                        <div class="raw-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('raw')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isRawExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1rem"
+                                />
+                                Result
+                            </div>
+                            <div
+                                class="collapsible-content"
+                                [@expandCollapse]="isRawExpanded ? 'expanded' : 'collapsed'"
+                            >
+                                <div class="result-content">
+                                    <app-copy-button [text]="getRawData()" />
+                                    <!-- JSON Viewer when raw data is valid JSON -->
+                                    @if (isValidJson(getRawData())) {
+                                        <ngx-json-viewer
+                                            [json]="parsedRawData"
+                                            [expanded]="false"
+                                        ></ngx-json-viewer>
+                                    }
+                                    <!-- Markdown Output when raw data is not valid JSON -->
+                                    @if (!isValidJson(getRawData())) {
+                                        <div
+                                            class="markdown-content"
+                                            [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
+                                        >
+                                            <markdown [data]="getRawData()"></markdown>
+                                        </div>
+                                    }
+                                    @if (shouldShowToggle() && isRawExpanded && !isValidJson(getRawData())) {
+                                        <button
+                                            class="toggle-button"
+                                            (click)="toggleCollapse()"
+                                        >
+                                            {{ isCollapsed ? 'Show more' : 'Show less' }}
+                                        </button>
+                                    }
                                 </div>
-                                <button
-                                    *ngIf="shouldShowToggle() && isRawExpanded && !isValidJson(getRawData())"
-                                    class="toggle-button"
-                                    (click)="toggleCollapse()"
-                                >
-                                    {{ isCollapsed ? 'Show more' : 'Show less' }}
-                                </button>
                             </div>
                         </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>

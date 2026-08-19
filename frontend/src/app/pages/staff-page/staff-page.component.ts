@@ -21,7 +21,6 @@ import { AgentsTableComponent } from './components/agents-table/agents-table.com
 
 @Component({
     selector: 'app-staff-page',
-    standalone: true,
     imports: [
         AgentsTableComponent,
         ButtonComponent,

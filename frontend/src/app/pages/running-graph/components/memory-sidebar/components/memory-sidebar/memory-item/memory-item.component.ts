@@ -12,7 +12,6 @@ import {
 
 @Component({
     selector: 'app-memory-item',
-    standalone: true,
     imports: [CommonModule, NgStyle, AppSvgIconComponent, MatTooltip],
     template: `
         <div class="memory-item">
@@ -58,45 +57,41 @@ import {
                 </button>
 
                 <!-- Expandable Details Section -->
-                <div
-                    class="memory-details"
-                    *ngIf="isExpanded(memory.id)"
-                >
-                    <!-- Entity Memory Details -->
-                    @if (memory.payload.type === 'entity') {
-                        <div class="memory-relationships">
-                            <p class="details-title">Relationships:</p>
-                            <p class="details-content">{{ getEntityRelationships(memory) }}</p>
-                        </div>
-                    }
-
-                    <!-- Short Term Memory Details -->
-                    @if (memory.payload.type === 'short_term') {
-                        <div class="memory-observation">
-                            <p class="details-title">Observation:</p>
-                            <p class="details-content">{{ getShortTermObservation(memory) }}</p>
-                        </div>
-                    }
-
-                    <!-- Long Term Memory Details -->
-                    @if (memory.payload.type === 'long_term') {
-                        <div class="memory-quality">
-                            <p class="details-title">Quality: {{ getLongTermQuality(memory) }}/10</p>
-                            <p class="details-title">Expected output: {{ getLongTermExpectedOutput(memory) }}</p>
-
-                            @if (hasLongTermSuggestions(memory)) {
-                                <div class="suggestions">
-                                    <p class="details-title">Suggestions:</p>
-                                    <ul class="suggestions-list">
-                                        @for (suggestion of getLongTermSuggestions(memory); track $index) {
-                                            <li>{{ suggestion }}</li>
-                                        }
-                                    </ul>
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
+                @if (isExpanded(memory.id)) {
+                    <div class="memory-details">
+                        <!-- Entity Memory Details -->
+                        @if (memory.payload.type === 'entity') {
+                            <div class="memory-relationships">
+                                <p class="details-title">Relationships:</p>
+                                <p class="details-content">{{ getEntityRelationships(memory) }}</p>
+                            </div>
+                        }
+                        <!-- Short Term Memory Details -->
+                        @if (memory.payload.type === 'short_term') {
+                            <div class="memory-observation">
+                                <p class="details-title">Observation:</p>
+                                <p class="details-content">{{ getShortTermObservation(memory) }}</p>
+                            </div>
+                        }
+                        <!-- Long Term Memory Details -->
+                        @if (memory.payload.type === 'long_term') {
+                            <div class="memory-quality">
+                                <p class="details-title">Quality: {{ getLongTermQuality(memory) }}/10</p>
+                                <p class="details-title">Expected output: {{ getLongTermExpectedOutput(memory) }}</p>
+                                @if (hasLongTermSuggestions(memory)) {
+                                    <div class="suggestions">
+                                        <p class="details-title">Suggestions:</p>
+                                        <ul class="suggestions-list">
+                                            @for (suggestion of getLongTermSuggestions(memory); track $index) {
+                                                <li>{{ suggestion }}</li>
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
             }
         </div>
     `,

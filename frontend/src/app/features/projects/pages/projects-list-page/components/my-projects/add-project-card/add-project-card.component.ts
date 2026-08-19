@@ -5,7 +5,6 @@ import { AppSvgIconComponent } from '../../../../../../../shared/components/app-
 
 @Component({
     selector: 'app-add-project-card',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [AppSvgIconComponent],
     template: `

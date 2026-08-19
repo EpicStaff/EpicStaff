@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -8,15 +7,15 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
 
 @Component({
     selector: 'app-memories-sidebar',
-    standalone: true,
-    imports: [CommonModule, MemoryItemComponent, AppSvgIconComponent, MatTooltipModule],
+    imports: [MemoryItemComponent, AppSvgIconComponent, MatTooltipModule],
     template: `
         <!-- Memories Sidebar Overlay -->
-        <div
-            class="sidebar-overlay"
-            *ngIf="isOpen"
-            (click)="close.emit()"
-        ></div>
+        @if (isOpen) {
+            <div
+                class="sidebar-overlay"
+                (click)="close.emit()"
+            ></div>
+        }
 
         <!-- Memories Sidebar -->
         <div
@@ -48,38 +47,42 @@ import { MemoryItemComponent } from './memory-item/memory-item.component';
                         >
                             All ({{ memories.length }})
                         </button>
-                        <button
-                            class="filter-chip"
-                            [class.active]="activeFilter === 'entity'"
-                            (click)="setFilter('entity')"
-                            *ngIf="getMemoriesByType('entity').length > 0"
-                        >
-                            Entity ({{ getMemoriesByType('entity').length }})
-                        </button>
-                        <button
-                            class="filter-chip"
-                            [class.active]="activeFilter === 'short_term'"
-                            (click)="setFilter('short_term')"
-                            *ngIf="getMemoriesByType('short_term').length > 0"
-                        >
-                            Short Term ({{ getMemoriesByType('short_term').length }})
-                        </button>
-                        <button
-                            class="filter-chip"
-                            [class.active]="activeFilter === 'long_term'"
-                            (click)="setFilter('long_term')"
-                            *ngIf="getMemoriesByType('long_term').length > 0"
-                        >
-                            Long Term ({{ getMemoriesByType('long_term').length }})
-                        </button>
-                        <button
-                            class="filter-chip"
-                            [class.active]="activeFilter === 'user'"
-                            (click)="setFilter('user')"
-                            *ngIf="getMemoriesByType('user').length > 0"
-                        >
-                            User ({{ getMemoriesByType('user').length }})
-                        </button>
+                        @if (getMemoriesByType('entity').length > 0) {
+                            <button
+                                class="filter-chip"
+                                [class.active]="activeFilter === 'entity'"
+                                (click)="setFilter('entity')"
+                            >
+                                Entity ({{ getMemoriesByType('entity').length }})
+                            </button>
+                        }
+                        @if (getMemoriesByType('short_term').length > 0) {
+                            <button
+                                class="filter-chip"
+                                [class.active]="activeFilter === 'short_term'"
+                                (click)="setFilter('short_term')"
+                            >
+                                Short Term ({{ getMemoriesByType('short_term').length }})
+                            </button>
+                        }
+                        @if (getMemoriesByType('long_term').length > 0) {
+                            <button
+                                class="filter-chip"
+                                [class.active]="activeFilter === 'long_term'"
+                                (click)="setFilter('long_term')"
+                            >
+                                Long Term ({{ getMemoriesByType('long_term').length }})
+                            </button>
+                        }
+                        @if (getMemoriesByType('user').length > 0) {
+                            <button
+                                class="filter-chip"
+                                [class.active]="activeFilter === 'user'"
+                                (click)="setFilter('user')"
+                            >
+                                User ({{ getMemoriesByType('user').length }})
+                            </button>
+                        }
                     </div>
                 </div>
 

@@ -1,5 +1,4 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, HostListener, Input } from '@angular/core';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
@@ -17,9 +16,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
 
 @Component({
     selector: 'app-running-graph-header',
-    standalone: true,
     imports: [
-        CommonModule,
         RouterModule,
         MatButtonModule,
         MatBadgeModule,
@@ -73,12 +70,13 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
                     (click)="toggleMemoriesSidebar()"
                 >
                     <span class="btn-label">Memories</span>
-                    <span
-                        class="memories-badge"
-                        matBadge="{{ memoriesCount }}"
-                        matBadgeColor="accent"
-                        *ngIf="memoriesCount > 0"
-                    ></span>
+                    @if (memoriesCount > 0) {
+                        <span
+                            class="memories-badge"
+                            matBadge="{{ memoriesCount }}"
+                            matBadgeColor="accent"
+                        ></span>
+                    }
                 </button>
             </div>
         </div>

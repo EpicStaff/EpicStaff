@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
 import { MarkdownModule } from 'ngx-markdown';
 
@@ -20,8 +19,7 @@ interface ThinkingStep {
 
 @Component({
     selector: 'app-code-agent-stream-message',
-    standalone: true,
-    imports: [CommonModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div
@@ -50,17 +48,14 @@ interface ThinkingStep {
                 </div>
                 <div class="header-text">
                     <span class="node-name">{{ message.name }}</span>
-                    <span
-                        class="status-badge"
-                        *ngIf="!isFinal()"
-                        >working...</span
-                    >
-                    <span
-                        class="step-count"
-                        *ngIf="thinkingSteps.length > 0"
-                    >
-                        {{ thinkingSteps.length }} step{{ thinkingSteps.length !== 1 ? 's' : '' }}
-                    </span>
+                    @if (!isFinal()) {
+                        <span class="status-badge">working...</span>
+                    }
+                    @if (thinkingSteps.length > 0) {
+                        <span class="step-count">
+                            {{ thinkingSteps.length }} step{{ thinkingSteps.length !== 1 ? 's' : '' }}
+                        </span>
+                    }
                 </div>
             </div>
 
@@ -69,78 +64,69 @@ interface ThinkingStep {
                 class="collapsible-content"
                 [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
             >
-                <div
-                    class="steps-container"
-                    *ngIf="thinkingSteps.length > 0"
-                >
-                    <div
-                        class="step-item"
-                        *ngFor="let step of thinkingSteps; let i = index"
-                    >
-                        <div
-                            class="step-header"
-                            (click)="toggleStep(i)"
-                        >
-                            <app-svg-icon
-                                [icon]="expandedSteps[i] ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1rem"
-                            />
-                            <span class="step-summary">{{ getStepSummary(step, i) }}</span>
-                        </div>
-
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="expandedSteps[i] ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="step-content">
+                @if (thinkingSteps.length > 0) {
+                    <div class="steps-container">
+                        @for (step of thinkingSteps; track step; let i = $index) {
+                            <div class="step-item">
                                 <div
-                                    class="tool-call-item"
-                                    *ngFor="let tc of step.toolCalls"
+                                    class="step-header"
+                                    (click)="toggleStep(i)"
                                 >
-                                    <div class="tool-call-name">
-                                        <app-svg-icon
-                                            icon="tool"
-                                            size="1rem"
-                                        />
-                                        {{ tc.name }}
-                                    </div>
-                                    <div
-                                        class="tool-call-input"
-                                        *ngIf="tc.input"
-                                    >
-                                        {{ truncate(tc.input, 200) }}
-                                    </div>
-                                    <div
-                                        class="tool-call-output"
-                                        *ngIf="tc.output"
-                                    >
-                                        {{ truncate(tc.output, 300) }}
-                                    </div>
+                                    <app-svg-icon
+                                        [icon]="expandedSteps[i] ? 'caret-down-filled' : 'caret-right-filled'"
+                                        size="1rem"
+                                    />
+                                    <span class="step-summary">{{ getStepSummary(step, i) }}</span>
                                 </div>
-
                                 <div
-                                    class="thinking-text"
-                                    *ngIf="step.text"
+                                    class="collapsible-content"
+                                    [@expandCollapse]="expandedSteps[i] ? 'expanded' : 'collapsed'"
                                 >
-                                    {{ truncate(step.text, 2000) }}
+                                    <div class="step-content">
+                                        @for (tc of step.toolCalls; track tc) {
+                                            <div class="tool-call-item">
+                                                <div class="tool-call-name">
+                                                    <app-svg-icon
+                                                        icon="tool"
+                                                        size="1rem"
+                                                    />
+                                                    {{ tc.name }}
+                                                </div>
+                                                @if (tc.input) {
+                                                    <div class="tool-call-input">
+                                                        {{ truncate(tc.input, 200) }}
+                                                    </div>
+                                                }
+                                                @if (tc.output) {
+                                                    <div class="tool-call-output">
+                                                        {{ truncate(tc.output, 300) }}
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                        @if (step.text) {
+                                            <div class="thinking-text">
+                                                {{ truncate(step.text, 2000) }}
+                                            </div>
+                                        }
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        }
                     </div>
-                </div>
+                }
             </div>
 
             <!-- Final result (below steps) -->
-            <div
-                class="final-result"
-                *ngIf="getText()"
-            >
-                <app-copy-button [text]="getText()" />
-                <markdown
-                    [data]="getText()"
-                    class="markdown-content"
-                ></markdown>
-            </div>
+            @if (getText()) {
+                <div class="final-result">
+                    <app-copy-button [text]="getText()" />
+                    <markdown
+                        [data]="getText()"
+                        class="markdown-content"
+                    ></markdown>
+                </div>
+            }
         </div>
     `,
     changeDetection: ChangeDetectionStrategy.Eager,

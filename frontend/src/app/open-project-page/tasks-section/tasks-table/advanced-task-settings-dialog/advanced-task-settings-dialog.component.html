@@ -53,23 +53,25 @@ Note: If properties is empty, the output model will be set to null."
             </div>
 
             <!-- JSON Editor - only show when toggle is enabled -->
-            <div *ngIf="useOutputModel()">
-                <div class="form-group json-group">
-                    <app-json-editor
-                        [jsonData]="jsonConfig()"
-                        (jsonChange)="jsonConfig.set($event)"
-                        (validationChange)="onJsonValidChange($event)"
-                        [fullHeight]="false"
-                        [editorHeight]="400"
-                    ></app-json-editor>
+            @if (useOutputModel()) {
+                <div>
+                    <div class="form-group json-group">
+                        <app-json-editor
+                            [jsonData]="jsonConfig()"
+                            (jsonChange)="jsonConfig.set($event)"
+                            (validationChange)="onJsonValidChange($event)"
+                            [fullHeight]="false"
+                            [editorHeight]="400"
+                        ></app-json-editor>
+                    </div>
+                    <button
+                        class="reset-button"
+                        (click)="resetToDefault()"
+                    >
+                        Reset to Default
+                    </button>
                 </div>
-                <button
-                    class="reset-button"
-                    (click)="resetToDefault()"
-                >
-                    Reset to Default
-                </button>
-            </div>
+            }
         </div>
 
         <!-- Context Section -->
@@ -83,37 +85,34 @@ Note: If properties is empty, the output model will be set to null."
             </h3>
             <div class="full-width-container">
                 <div class="context-list">
-                    <div
-                        class="context-item"
-                        *ngFor="let task of availableTasks; let i = index"
-                        [ngClass]="{ selected: isTaskSelected(task.id) }"
-                        (click)="toggleTaskSelection(task.id)"
-                    >
-                        <span class="task-order">{{ formatOrder(task.order) }}</span>
-                        <span class="task-name">{{ task.name }}</span>
-                        <div class="task-meta">
-                            <span class="task-id">ID: {{ task.id }}</span>
-                            <span class="checkbox-wrapper">
-                                <input
-                                    type="checkbox"
-                                    [checked]="isTaskSelected(task.id)"
-                                    (click)="$event.stopPropagation()"
-                                    (change)="toggleTaskSelection(task.id)"
-                                    class="transparent-checkbox"
-                                />
-                                <span
-                                    class="checkmark"
-                                    *ngIf="isTaskSelected(task.id)"
-                                ></span>
-                            </span>
+                    @for (task of availableTasks; track task; let i = $index) {
+                        <div
+                            class="context-item"
+                            [ngClass]="{ selected: isTaskSelected(task.id) }"
+                            (click)="toggleTaskSelection(task.id)"
+                        >
+                            <span class="task-order">{{ formatOrder(task.order) }}</span>
+                            <span class="task-name">{{ task.name }}</span>
+                            <div class="task-meta">
+                                <span class="task-id">ID: {{ task.id }}</span>
+                                <span class="checkbox-wrapper">
+                                    <input
+                                        type="checkbox"
+                                        [checked]="isTaskSelected(task.id)"
+                                        (click)="$event.stopPropagation()"
+                                        (change)="toggleTaskSelection(task.id)"
+                                        class="transparent-checkbox"
+                                    />
+                                    @if (isTaskSelected(task.id)) {
+                                        <span class="checkmark"></span>
+                                    }
+                                </span>
+                            </div>
                         </div>
-                    </div>
-                    <div
-                        *ngIf="availableTasks.length === 0"
-                        class="empty-state"
-                    >
-                        No task contexts available
-                    </div>
+                    }
+                    @if (availableTasks.length === 0) {
+                        <div class="empty-state">No task contexts available</div>
+                    }
                 </div>
             </div>
         </div>

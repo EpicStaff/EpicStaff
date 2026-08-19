@@ -1,5 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { NgClass, NgFor, NgIf } from '@angular/common';
+import { NgClass } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, Inject, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -22,10 +22,7 @@ export interface AdvancedTaskSettingsData {
 
 @Component({
     selector: 'app-advanced-task-settings-dialog',
-    standalone: true,
     imports: [
-        NgIf,
-        NgFor,
         NgClass,
         FormsModule,
         MatSlideToggleModule,

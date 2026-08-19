@@ -1,13 +1,11 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 
 @Component({
     selector: 'app-edit-title-dialog',
-    standalone: true,
-    imports: [FormsModule, CommonModule],
+    imports: [FormsModule],
     template: `
         <div class="dialog-container">
             <h2 class="dialog-title">Edit Project Name</h2>

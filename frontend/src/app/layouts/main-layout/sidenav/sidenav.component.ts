@@ -40,7 +40,6 @@ interface NavItem {
 
 @Component({
     selector: 'app-left-sidebar',
-    standalone: true,
     imports: [
         TooltipComponent,
         RouterLinkActive,

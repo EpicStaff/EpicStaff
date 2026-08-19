@@ -9,41 +9,34 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
 
 @Component({
     selector: 'app-config-cell-renderer',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent],
     template: `
         <div class="configs-cell-wrapper">
-            <div
-                *ngIf="!configs || configs.length === 0"
-                class="no-configs"
-            >
-                No configurations assigned
-            </div>
+            @if (!configs || configs.length === 0) {
+                <div class="no-configs">No configurations assigned</div>
+            }
 
-            <div
-                *ngFor="let config of configs"
-                class="config-item"
-                [ngClass]="config.type"
-            >
-                <app-svg-icon
-                    [icon]="getProviderIcon(config)"
-                    size="20px"
-                    [ariaLabel]="config.provider_name || ''"
-                    class="provider-icon"
-                />
-
-                <div class="item-content">
-                    <div class="item-text">
-                        {{ config.model_name }}
-                        <span
-                            *ngIf="config.custom_name"
-                            class="custom-name"
-                        >
-                            ({{ config.custom_name }})
-                        </span>
+            @for (config of configs; track config) {
+                <div
+                    class="config-item"
+                    [ngClass]="config.type"
+                >
+                    <app-svg-icon
+                        [icon]="getProviderIcon(config)"
+                        size="20px"
+                        [ariaLabel]="config.provider_name || ''"
+                        class="provider-icon"
+                    />
+                    <div class="item-content">
+                        <div class="item-text">
+                            {{ config.model_name }}
+                            @if (config.custom_name) {
+                                <span class="custom-name"> ({{ config.custom_name }}) </span>
+                            }
+                        </div>
                     </div>
                 </div>
-            </div>
+            }
         </div>
     `,
     changeDetection: ChangeDetectionStrategy.Eager,

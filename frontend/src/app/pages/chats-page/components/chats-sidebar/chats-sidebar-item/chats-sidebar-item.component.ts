@@ -1,5 +1,4 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, EventEmitter, inject, Input, Output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -16,8 +15,7 @@ import { RealtimeSettingsDialogComponent } from './realtime-settings-dialog/real
 
 @Component({
     selector: 'app-chats-sidebar-item',
-    standalone: true,
-    imports: [CommonModule, MatTooltipModule],
+    imports: [MatTooltipModule],
     templateUrl: './chats-sidebar-item.component.html',
     styleUrls: ['./chats-sidebar-item.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

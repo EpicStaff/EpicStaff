@@ -1,5 +1,5 @@
 // agents-section.component.ts
-import { CommonModule } from '@angular/common';
+
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -33,7 +33,7 @@ export type AgentPendingAction =
     selector: 'app-agents-section',
     templateUrl: './agents-section.component.html',
     styleUrls: ['./agents-section.component.scss'],
-    imports: [CommonModule, FormsModule, ClickOutsideDirective, GridControlsComponent, StaffAgentCardComponent],
+    imports: [FormsModule, ClickOutsideDirective, GridControlsComponent, StaffAgentCardComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentsSectionComponent implements OnInit {

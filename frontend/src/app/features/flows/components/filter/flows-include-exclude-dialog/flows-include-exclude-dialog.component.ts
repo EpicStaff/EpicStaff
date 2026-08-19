@@ -1,5 +1,4 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -30,8 +29,7 @@ interface FlatLabelNode {
 
 @Component({
     selector: 'app-flows-include-exclude-dialog',
-    standalone: true,
-    imports: [CommonModule, FormsModule, ButtonComponent, AppSvgIconComponent, CheckboxComponent],
+    imports: [FormsModule, ButtonComponent, AppSvgIconComponent, CheckboxComponent],
     templateUrl: './flows-include-exclude-dialog.component.html',
     styleUrls: ['./flows-include-exclude-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

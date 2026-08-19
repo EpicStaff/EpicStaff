@@ -19,51 +19,49 @@
     <!-- Wrapper for the list -->
     <div class="agent-list-wrapper">
         <ul class="agents-list">
-            <li
-                class="agent-item"
-                *ngFor="let agent of filteredAgents"
-                (click)="onSelect(agent)"
-                (keydown.enter)="onSelect(agent)"
-                [class.selected]="agent.id === selectedAgentId"
-                tabindex="0"
-            >
-                <div class="agent-avatar">
-                    <app-svg-icon
-                        icon="agent"
-                        size="16px"
-                    />
-                </div>
-
-                <div class="item-content">
-                    <div class="item-text">
-                        <div class="agent-role">{{ agent.role }}</div>
-                    </div>
-                </div>
-
-                <button
-                    class="select-button"
-                    [matTooltip]="agent.id === selectedAgentId ? 'Deselect this agent' : 'Select this agent'"
+            @for (agent of filteredAgents; track agent) {
+                <li
+                    class="agent-item"
+                    (click)="onSelect(agent)"
+                    (keydown.enter)="onSelect(agent)"
+                    [class.selected]="agent.id === selectedAgentId"
+                    tabindex="0"
                 >
-                    <app-svg-icon
-                        [icon]="agent.id === selectedAgentId ? 'x' : 'plus'"
-                        size="14px"
-                    />
-                </button>
-            </li>
+                    <div class="agent-avatar">
+                        <app-svg-icon
+                            icon="agent"
+                            size="16px"
+                        />
+                    </div>
+                    <div class="item-content">
+                        <div class="item-text">
+                            <div class="agent-role">{{ agent.role }}</div>
+                        </div>
+                    </div>
+                    <button
+                        class="select-button"
+                        [matTooltip]="agent.id === selectedAgentId ? 'Deselect this agent' : 'Select this agent'"
+                    >
+                        <app-svg-icon
+                            [icon]="agent.id === selectedAgentId ? 'x' : 'plus'"
+                            size="14px"
+                        />
+                    </button>
+                </li>
+            }
 
             <!-- No results message -->
-            <li
-                class="no-results"
-                *ngIf="filteredAgents.length === 0"
-            >
-                <div class="empty-state">
-                    <app-svg-icon
-                        icon="search"
-                        size="24px"
-                    />
-                    <p>No matching agents found</p>
-                </div>
-            </li>
+            @if (filteredAgents.length === 0) {
+                <li class="no-results">
+                    <div class="empty-state">
+                        <app-svg-icon
+                            icon="search"
+                            size="24px"
+                        />
+                        <p>No matching agents found</p>
+                    </div>
+                </li>
+            }
         </ul>
     </div>
 </div>

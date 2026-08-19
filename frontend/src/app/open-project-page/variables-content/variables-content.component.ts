@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -20,8 +19,7 @@ import { Variable } from '../models/variable.model';
 
 @Component({
     selector: 'app-variables-content',
-    standalone: true,
-    imports: [CommonModule, FormsModule, AppSvgIconComponent, MatTooltip],
+    imports: [FormsModule, AppSvgIconComponent, MatTooltip],
     templateUrl: './variables-content.component.html',
     styleUrls: ['./variables-content.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,38 +1,36 @@
 <!-- Updated header.component.html -->
 <div class="header">
     <div class="title-section">
-        <div
-            class="title"
-            *ngIf="project"
-        >
-            <div
-                class="project-prefix"
-                routerLink="/projects"
-            >
-                <app-svg-icon
-                    icon="arrow-left"
-                    size="20px"
-                    class="back-arrow"
-                />
-                <span>Projects</span>
+        @if (project) {
+            <div class="title">
+                <div
+                    class="project-prefix"
+                    routerLink="/projects"
+                >
+                    <app-svg-icon
+                        icon="arrow-left"
+                        size="20px"
+                        class="back-arrow"
+                    />
+                    <span>Projects</span>
+                </div>
+                <span class="separator"> / </span>
+                <div class="project-name">
+                    <span class="project-name__text">
+                        {{ project.name }}
+                    </span>
+                    <app-svg-icon
+                        *appHasPermission="[ResourceCode.Projects, ActionCode.Update]"
+                        icon="edit"
+                        size="1rem"
+                        class="project-name__edit"
+                        (click)="openEditTitleDialog()"
+                        matTooltip="Edit project name"
+                        matTooltipPosition="above"
+                    />
+                </div>
             </div>
-            <span class="separator"> / </span>
-            <div class="project-name">
-                <span class="project-name__text">
-                    {{ project.name }}
-                </span>
-
-                <app-svg-icon
-                    *appHasPermission="[ResourceCode.Projects, ActionCode.Update]"
-                    icon="edit"
-                    size="1rem"
-                    class="project-name__edit"
-                    (click)="openEditTitleDialog()"
-                    matTooltip="Edit project name"
-                    matTooltipPosition="above"
-                />
-            </div>
-        </div>
+        }
         <app-unsaved-indicator [show]="hasUnsavedChanges"></app-unsaved-indicator>
     </div>
 

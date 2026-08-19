@@ -4,7 +4,6 @@ import { IHeaderParams } from 'ag-grid-community';
 
 @Component({
     selector: 'app-delegation-header',
-    standalone: true,
     imports: [MatTooltipModule],
     template: `
         <div

@@ -11,7 +11,6 @@ import {
 
 @Component({
     selector: 'app-status-update-message',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="status-update-message">
@@ -19,22 +18,21 @@ import {
                 <span class="project-name">{{ projectName }}</span>
                 <span class="status-value">Status: {{ status }}</span>
             </div>
-            <div
-                class="status-data"
-                *ngIf="hasStatusData()"
-            >
-                <div class="status-data-label">
-                    <app-svg-icon
-                        icon="info-circle"
-                        size="1rem"
-                    />
-                    Status Data:
+            @if (hasStatusData()) {
+                <div class="status-data">
+                    <div class="status-data-label">
+                        <app-svg-icon
+                            icon="info-circle"
+                            size="1rem"
+                        />
+                        Status Data:
+                    </div>
+                    <div class="status-data-wrapper">
+                        <app-copy-button [text]="statusDataJson" />
+                        <pre class="status-data-content">{{ statusData | json }}</pre>
+                    </div>
                 </div>
-                <div class="status-data-wrapper">
-                    <app-copy-button [text]="statusDataJson" />
-                    <pre class="status-data-content">{{ statusData | json }}</pre>
-                </div>
-            </div>
+            }
         </div>
     `,
     styles: [

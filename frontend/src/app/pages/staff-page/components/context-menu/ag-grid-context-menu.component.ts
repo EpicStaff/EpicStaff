@@ -7,7 +7,6 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 
 @Component({
     selector: 'app-ag-grid-context-menu',
-    standalone: true,
     imports: [NgStyle, AppSvgIconComponent, HasPermissionDirective],
     templateUrl: './ag-grid-context-menu.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,

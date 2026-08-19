@@ -1,6 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -35,7 +34,6 @@ import { LlmLibraryCardComponent } from '../llm-library-card/llm-library-card.co
 @Component({
     selector: 'app-llm-library-section',
     imports: [
-        CommonModule,
         FormsModule,
         LlmLibraryCardComponent,
         AppSvgIconComponent,

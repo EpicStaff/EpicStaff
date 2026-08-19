@@ -1,6 +1,5 @@
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -20,8 +19,7 @@ import { DateRangePickerComponent } from '../../../../shared/components/date-ran
 
 @Component({
     selector: 'app-created-at-filter-dropdown',
-    standalone: true,
-    imports: [CommonModule, OverlayModule, AppSvgIconComponent, DateRangePickerComponent],
+    imports: [OverlayModule, AppSvgIconComponent, DateRangePickerComponent],
     templateUrl: './date-picker-dropdown.component.html',
     styleUrls: ['./date-picker-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.Eager,

@@ -32,17 +32,17 @@
         </div>
     </div>
 
-    <div
-        class="dropdown-menu"
-        *ngIf="isOpen"
-    >
-        <div
-            *ngFor="let voice of voices"
-            class="dropdown-item"
-            [class.selected]="voice.id === selectedVoice"
-            (click)="selectVoice(voice.id)"
-        >
-            {{ voice.name }}
+    @if (isOpen) {
+        <div class="dropdown-menu">
+            @for (voice of voices; track voice) {
+                <div
+                    class="dropdown-item"
+                    [class.selected]="voice.id === selectedVoice"
+                    (click)="selectVoice(voice.id)"
+                >
+                    {{ voice.name }}
+                </div>
+            }
         </div>
-    </div>
+    }
 </div>

@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -24,8 +23,7 @@ import { StaffAgentCardComponent } from './staff-agent-card/staff-agent-card.com
 
 @Component({
     selector: 'app-search-dropdown',
-    standalone: true,
-    imports: [CommonModule, FormsModule, StaffAgentCardComponent, AppSvgIconComponent],
+    imports: [FormsModule, StaffAgentCardComponent, AppSvgIconComponent],
     templateUrl: './search-dropdown.component.html',
     styleUrls: ['./search-dropdown.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

@@ -6,395 +6,394 @@
     (scroll)="onMessagesScroll()"
 >
     <!-- Connection status indicator -->
-    <div
-        class="connection-status"
-        *ngIf="sseEnabled && (connectionStatus === 'reconnecting' || connectionStatus === 'disconnected')"
-    >
-        <div
-            class="status-indicator"
-            [class]="connectionStatus"
-        >
-            <span class="status-icon">
-                <app-svg-icon
-                    [icon]="connectionStatus === 'reconnecting' ? 'loader' : 'alert-triangle'"
-                    size="14px"
-                    [class.spin]="connectionStatus === 'reconnecting'"
-                ></app-svg-icon>
-            </span>
-            <span class="status-text">
-                <ng-container [ngSwitch]="connectionStatus">
-                    <span *ngSwitchCase="'reconnecting'">Reconnecting...</span>
-                    <span *ngSwitchCase="'disconnected'">Connection lost</span>
-                </ng-container>
-            </span>
+    @if (sseEnabled && (connectionStatus === 'reconnecting' || connectionStatus === 'disconnected')) {
+        <div class="connection-status">
+            <div
+                class="status-indicator"
+                [class]="connectionStatus"
+            >
+                <span class="status-icon">
+                    <app-svg-icon
+                        [icon]="connectionStatus === 'reconnecting' ? 'loader' : 'alert-triangle'"
+                        size="14px"
+                        [class.spin]="connectionStatus === 'reconnecting'"
+                    ></app-svg-icon>
+                </span>
+                <span class="status-text">
+                    @switch (connectionStatus) {
+                        @case ('reconnecting') {
+                            <span>Reconnecting...</span>
+                        }
+                        @case ('disconnected') {
+                            <span>Connection lost</span>
+                        }
+                    }
+                </span>
+            </div>
         </div>
-    </div>
+    }
 
     <!-- Messages list -->
-    <div
-        class="messages-list"
-        *ngIf="messages.length > 0"
-    >
-        <!-- Warnings -->
-        <app-warning-messages [messages]="warningMessages" />
-        @for (entry of visibleMessageEntries; track entry.key; let i = $index) {
-            <div
-                class="message"
-                #messageRow
-            >
-                <app-project-transition *ngIf="entry.shouldShowTransition"></app-project-transition>
-
-                @switch (entry.message.message_data.message_type) {
-                    @case (MessageType.START) {
-                        <app-start-message [message]="entry.message"></app-start-message>
+    @if (messages.length > 0) {
+        <div class="messages-list">
+            <!-- Warnings -->
+            <app-warning-messages [messages]="warningMessages" />
+            @for (entry of visibleMessageEntries; track entry.key; let i = $index) {
+                <div
+                    class="message"
+                    #messageRow
+                >
+                    @if (entry.shouldShowTransition) {
+                        <app-project-transition></app-project-transition>
                     }
-                    @case (MessageType.USER) {
-                        <app-user-message [message]="entry.message"></app-user-message>
-                    }
-                    @case (MessageType.AGENT) {
-                        <app-agent-message
-                            [message]="entry.message"
-                            [agent]="entry.agent"
-                        ></app-agent-message>
-                    }
-                    @case (MessageType.AGENT_FINISH) {
-                        <app-agent-finish-message
-                            [message]="entry.message"
-                            [agent]="entry.agent"
-                        ></app-agent-finish-message>
-                    }
-                    @case (MessageType.PYTHON) {
-                        <app-python-message [message]="entry.message"></app-python-message>
-                    }
-                    @case (MessageType.LLM) {
-                        <app-llm-message [message]="entry.message"></app-llm-message>
-                    }
-                    @case (MessageType.EXTRACTED_CHUNKS) {
-                        <app-extracted-chunks-message [message]="entry.message"></app-extracted-chunks-message>
-                    }
-                    @case (MessageType.FINDINGS) {
-                        <app-findings-message [message]="entry.message"></app-findings-message>
-                    }
-                    @case (MessageType.ERROR) {
-                        <app-error-message [message]="entry.message"></app-error-message>
-                    }
-                    @case (MessageType.TASK) {
-                        <app-task-message [message]="entry.message"></app-task-message>
-                    }
-                    @case (MessageType.CONDITION_GROUP) {
-                        <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
-                    }
-                    @case (MessageType.CLASSIFICATION_PROMPT) {
-                        <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
-                    }
-                    @case (MessageType.CONDITION_GROUP_MANIPULATION) {
-                        <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
-                    }
-                    @case (MessageType.FINISH) {
-                        <app-finish-message
-                            [message]="entry.message"
-                            [project]="entry.project"
-                        ></app-finish-message>
-                    }
-                    @case (MessageType.CODE_AGENT_STREAM) {
-                        <app-code-agent-stream-message
-                            [message]="entry.message"
-                            [allMessages]="messages"
-                        ></app-code-agent-stream-message>
-                    }
-                    @case (MessageType.TASK_NODE_STREAM) {
-                        <app-node-stream-message
-                            [message]="entry.message"
-                            [allMessages]="messages"
-                            [nodeCompleted]="entry.nodeCompleted"
-                        ></app-node-stream-message>
-                    }
-                    @case (MessageType.AGENT_NODE_STREAM) {
-                        <app-node-stream-message
-                            [message]="entry.message"
-                            [allMessages]="messages"
-                            [nodeCompleted]="entry.nodeCompleted"
-                        ></app-node-stream-message>
-                    }
-                    @case (MessageType.SUBGRAPH_START) {
-                        <ng-container *ngIf="entry.rootView as rootView">
-                            <div
-                                class="subgraph-drilldown"
-                                [class.is-closing]="rootView.isClosing"
-                            >
-                                <div class="subgraph-drilldown__breadcrumbs">
-                                    <div class="breadcrumbs-control breadcrumbs-control--left">
-                                        <button
-                                            type="button"
-                                            class="breadcrumbs-arrow"
-                                            aria-label="Scroll breadcrumbs left"
-                                            (click)="scrollBreadcrumbs(breadcrumbsScroller, 'left')"
-                                            *ngIf="rootView.hasBreadcrumbOverflow"
-                                        >
-                                            <app-svg-icon
-                                                icon="chevron-left"
-                                                size="23px"
-                                            />
-                                        </button>
-                                        <div
-                                            class="breadcrumbs-search"
-                                            [class.is-expanded]="rootView.breadcrumbSearchExpanded"
-                                        >
-                                            <button
-                                                type="button"
-                                                class="breadcrumbs-search-button"
-                                                aria-label="Search subflow"
-                                                (click)="toggleBreadcrumbSearch(rootView.rootKey)"
+                    @switch (entry.message.message_data.message_type) {
+                        @case (MessageType.START) {
+                            <app-start-message [message]="entry.message"></app-start-message>
+                        }
+                        @case (MessageType.USER) {
+                            <app-user-message [message]="entry.message"></app-user-message>
+                        }
+                        @case (MessageType.AGENT) {
+                            <app-agent-message
+                                [message]="entry.message"
+                                [agent]="entry.agent"
+                            ></app-agent-message>
+                        }
+                        @case (MessageType.AGENT_FINISH) {
+                            <app-agent-finish-message
+                                [message]="entry.message"
+                                [agent]="entry.agent"
+                            ></app-agent-finish-message>
+                        }
+                        @case (MessageType.PYTHON) {
+                            <app-python-message [message]="entry.message"></app-python-message>
+                        }
+                        @case (MessageType.LLM) {
+                            <app-llm-message [message]="entry.message"></app-llm-message>
+                        }
+                        @case (MessageType.EXTRACTED_CHUNKS) {
+                            <app-extracted-chunks-message [message]="entry.message"></app-extracted-chunks-message>
+                        }
+                        @case (MessageType.FINDINGS) {
+                            <app-findings-message [message]="entry.message"></app-findings-message>
+                        }
+                        @case (MessageType.ERROR) {
+                            <app-error-message [message]="entry.message"></app-error-message>
+                        }
+                        @case (MessageType.TASK) {
+                            <app-task-message [message]="entry.message"></app-task-message>
+                        }
+                        @case (MessageType.CONDITION_GROUP) {
+                            <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
+                        }
+                        @case (MessageType.CLASSIFICATION_PROMPT) {
+                            <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
+                        }
+                        @case (MessageType.CONDITION_GROUP_MANIPULATION) {
+                            <app-classification-dt-message [message]="entry.message"></app-classification-dt-message>
+                        }
+                        @case (MessageType.FINISH) {
+                            <app-finish-message
+                                [message]="entry.message"
+                                [project]="entry.project"
+                            ></app-finish-message>
+                        }
+                        @case (MessageType.CODE_AGENT_STREAM) {
+                            <app-code-agent-stream-message
+                                [message]="entry.message"
+                                [allMessages]="messages"
+                            ></app-code-agent-stream-message>
+                        }
+                        @case (MessageType.TASK_NODE_STREAM) {
+                            <app-node-stream-message
+                                [message]="entry.message"
+                                [allMessages]="messages"
+                                [nodeCompleted]="entry.nodeCompleted"
+                            ></app-node-stream-message>
+                        }
+                        @case (MessageType.AGENT_NODE_STREAM) {
+                            <app-node-stream-message
+                                [message]="entry.message"
+                                [allMessages]="messages"
+                                [nodeCompleted]="entry.nodeCompleted"
+                            ></app-node-stream-message>
+                        }
+                        @case (MessageType.SUBGRAPH_START) {
+                            @if (entry.rootView; as rootView) {
+                                <div
+                                    class="subgraph-drilldown"
+                                    [class.is-closing]="rootView.isClosing"
+                                >
+                                    <div class="subgraph-drilldown__breadcrumbs">
+                                        <div class="breadcrumbs-control breadcrumbs-control--left">
+                                            @if (rootView.hasBreadcrumbOverflow) {
+                                                <button
+                                                    type="button"
+                                                    class="breadcrumbs-arrow"
+                                                    aria-label="Scroll breadcrumbs left"
+                                                    (click)="scrollBreadcrumbs(breadcrumbsScroller, 'left')"
+                                                >
+                                                    <app-svg-icon
+                                                        icon="chevron-left"
+                                                        size="23px"
+                                                    />
+                                                </button>
+                                            }
+                                            <div
+                                                class="breadcrumbs-search"
+                                                [class.is-expanded]="rootView.breadcrumbSearchExpanded"
                                             >
-                                                <app-svg-icon
-                                                    icon="search"
-                                                    size="19px"
-                                                    class="search-icon"
+                                                <button
+                                                    type="button"
+                                                    class="breadcrumbs-search-button"
+                                                    aria-label="Search subflow"
+                                                    (click)="toggleBreadcrumbSearch(rootView.rootKey)"
+                                                >
+                                                    <app-svg-icon
+                                                        icon="search"
+                                                        size="19px"
+                                                        class="search-icon"
+                                                    />
+                                                </button>
+                                                <input
+                                                    type="text"
+                                                    class="breadcrumbs-search-input"
+                                                    placeholder="Search subflow"
+                                                    [value]="rootView.breadcrumbSearchTerm"
+                                                    (input)="
+                                                        onBreadcrumbSearch(rootView.rootKey, $any($event.target).value)
+                                                    "
+                                                    (blur)="onBreadcrumbSearchBlur(rootView.rootKey)"
                                                 />
-                                            </button>
-                                            <input
-                                                type="text"
-                                                class="breadcrumbs-search-input"
-                                                placeholder="Search subflow"
-                                                [value]="rootView.breadcrumbSearchTerm"
-                                                (input)="
-                                                    onBreadcrumbSearch(rootView.rootKey, $any($event.target).value)
-                                                "
-                                                (blur)="onBreadcrumbSearchBlur(rootView.rootKey)"
-                                            />
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div
-                                        class="breadcrumbs-scroll"
-                                        #breadcrumbsScroller
-                                        [attr.data-root-key]="rootView.rootKey"
-                                        (scroll)="onBreadcrumbsScroll(rootView.rootKey, breadcrumbsScroller)"
-                                    >
-                                        <span
-                                            class="breadcrumb-item"
-                                            *ngFor="let crumb of rootView.filteredBreadcrumbs; let isLast = last"
+                                        <div
+                                            class="breadcrumbs-scroll"
+                                            #breadcrumbsScroller
+                                            [attr.data-root-key]="rootView.rootKey"
+                                            (scroll)="onBreadcrumbsScroll(rootView.rootKey, breadcrumbsScroller)"
                                         >
-                                            <button
-                                                type="button"
-                                                class="breadcrumb-button"
-                                                (click)="onBreadcrumbClick(rootView.rootKey, crumb.index)"
-                                            >
-                                                {{ crumb.label }}
-                                            </button>
-
-                                            <span
-                                                class="breadcrumb-separator icon-container"
-                                                *ngIf="!isLast"
-                                            >
+                                            @for (
+                                                crumb of rootView.filteredBreadcrumbs;
+                                                track crumb;
+                                                let isLast = $last
+                                            ) {
+                                                <span class="breadcrumb-item">
+                                                    <button
+                                                        type="button"
+                                                        class="breadcrumb-button"
+                                                        (click)="onBreadcrumbClick(rootView.rootKey, crumb.index)"
+                                                    >
+                                                        {{ crumb.label }}
+                                                    </button>
+                                                    @if (!isLast) {
+                                                        <span class="breadcrumb-separator icon-container">
+                                                            <app-svg-icon
+                                                                icon="chevron-right"
+                                                                size="23px"
+                                                            />
+                                                        </span>
+                                                    }
+                                                </span>
+                                            }
+                                            <div class="icon-container">
                                                 <app-svg-icon
-                                                    icon="chevron-right"
+                                                    icon="corner-right-down"
                                                     size="23px"
                                                 />
-                                            </span>
-                                        </span>
-                                        <div class="icon-container">
-                                            <app-svg-icon
-                                                icon="corner-right-down"
-                                                size="23px"
-                                            />
+                                            </div>
                                         </div>
+                                        @if (rootView.hasBreadcrumbOverflow) {
+                                            <div class="breadcrumbs-control breadcrumbs-control--right">
+                                                <button
+                                                    type="button"
+                                                    class="breadcrumbs-arrow"
+                                                    aria-label="Scroll breadcrumbs right"
+                                                    (click)="scrollBreadcrumbs(breadcrumbsScroller, 'right')"
+                                                >
+                                                    <app-svg-icon
+                                                        icon="chevron-right"
+                                                        size="23px"
+                                                    />
+                                                </button>
+                                            </div>
+                                        }
                                     </div>
-                                    <div
-                                        class="breadcrumbs-control breadcrumbs-control--right"
-                                        *ngIf="rootView.hasBreadcrumbOverflow"
-                                    >
-                                        <button
-                                            type="button"
-                                            class="breadcrumbs-arrow"
-                                            aria-label="Scroll breadcrumbs right"
-                                            (click)="scrollBreadcrumbs(breadcrumbsScroller, 'right')"
-                                        >
-                                            <app-svg-icon
-                                                icon="chevron-right"
-                                                size="23px"
-                                            />
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <ng-container *ngIf="rootView.currentDrillEntry as drillEntry">
-                                    <div class="subgraph-drilldown__header">
-                                        <app-subgraph-start-message
-                                            [message]="drillEntry.message"
-                                            [subgraphName]="drillEntry.subgraphName"
-                                            [showViewNestedMessages]="drillEntry.hasNestedMessages"
-                                            [nestedMessagesCount]="drillEntry.nestedMessagesCount"
-                                            [isNestedMessagesOpen]="drillEntry.isNestedMessagesOpen"
-                                            (viewNestedMessages)="onViewNestedMessages(drillEntry.message)"
-                                        ></app-subgraph-start-message>
-                                    </div>
-                                </ng-container>
-
-                                <div class="subgraph-drilldown__messages">
-                                    @for (
-                                        nestedEntry of rootView.drilldownEntries;
-                                        track nestedEntry.key;
-                                        let nestedIndex = $index
-                                    ) {
-                                        <div class="message">
-                                            @switch (nestedEntry.message.message_data.message_type) {
-                                                @case (MessageType.START) {
-                                                    <app-start-message
-                                                        [message]="nestedEntry.message"
-                                                    ></app-start-message>
-                                                }
-                                                @case (MessageType.USER) {
-                                                    <app-user-message
-                                                        [message]="nestedEntry.message"
-                                                    ></app-user-message>
-                                                }
-                                                @case (MessageType.AGENT) {
-                                                    <app-agent-message
-                                                        [message]="nestedEntry.message"
-                                                        [agent]="nestedEntry.agent"
-                                                    ></app-agent-message>
-                                                }
-                                                @case (MessageType.AGENT_FINISH) {
-                                                    <app-agent-finish-message
-                                                        [message]="nestedEntry.message"
-                                                        [agent]="nestedEntry.agent"
-                                                    ></app-agent-finish-message>
-                                                }
-                                                @case (MessageType.PYTHON) {
-                                                    <app-python-message
-                                                        [message]="nestedEntry.message"
-                                                    ></app-python-message>
-                                                }
-                                                @case (MessageType.LLM) {
-                                                    <app-llm-message [message]="nestedEntry.message"></app-llm-message>
-                                                }
-                                                @case (MessageType.EXTRACTED_CHUNKS) {
-                                                    <app-extracted-chunks-message
-                                                        [message]="nestedEntry.message"
-                                                    ></app-extracted-chunks-message>
-                                                }
-                                                @case (MessageType.FINDINGS) {
-                                                    <app-findings-message
-                                                        [message]="nestedEntry.message"
-                                                    ></app-findings-message>
-                                                }
-                                                @case (MessageType.ERROR) {
-                                                    <app-error-message
-                                                        [message]="nestedEntry.message"
-                                                    ></app-error-message>
-                                                }
-                                                @case (MessageType.TASK) {
-                                                    <app-task-message
-                                                        [message]="nestedEntry.message"
-                                                    ></app-task-message>
-                                                }
-                                                @case (MessageType.CONDITION_GROUP) {
-                                                    <app-classification-dt-message
-                                                        [message]="nestedEntry.message"
-                                                    ></app-classification-dt-message>
-                                                }
-                                                @case (MessageType.CLASSIFICATION_PROMPT) {
-                                                    <app-classification-dt-message
-                                                        [message]="nestedEntry.message"
-                                                    ></app-classification-dt-message>
-                                                }
-                                                @case (MessageType.CONDITION_GROUP_MANIPULATION) {
-                                                    <app-classification-dt-message
-                                                        [message]="nestedEntry.message"
-                                                    ></app-classification-dt-message>
-                                                }
-                                                @case (MessageType.FINISH) {
-                                                    <app-finish-message
-                                                        [message]="nestedEntry.message"
-                                                        [project]="nestedEntry.project"
-                                                    ></app-finish-message>
-                                                }
-                                                @case (MessageType.CODE_AGENT_STREAM) {
-                                                    <app-code-agent-stream-message
-                                                        [message]="nestedEntry.message"
-                                                        [allMessages]="messages"
-                                                    ></app-code-agent-stream-message>
-                                                }
-                                                @case (MessageType.TASK_NODE_STREAM) {
-                                                    <app-node-stream-message
-                                                        [message]="nestedEntry.message"
-                                                        [allMessages]="messages"
-                                                        [nodeCompleted]="nestedEntry.nodeCompleted"
-                                                    ></app-node-stream-message>
-                                                }
-                                                @case (MessageType.AGENT_NODE_STREAM) {
-                                                    <app-node-stream-message
-                                                        [message]="nestedEntry.message"
-                                                        [allMessages]="messages"
-                                                        [nodeCompleted]="nestedEntry.nodeCompleted"
-                                                    ></app-node-stream-message>
-                                                }
-                                                @case (MessageType.SUBGRAPH_START) {
-                                                    <app-subgraph-start-message
-                                                        [message]="nestedEntry.message"
-                                                        [subgraphName]="nestedEntry.subgraphName"
-                                                        [showViewNestedMessages]="nestedEntry.hasNestedMessages"
-                                                        [nestedMessagesCount]="nestedEntry.nestedMessagesCount"
-                                                        [isNestedMessagesOpen]="nestedEntry.isNestedMessagesOpen"
-                                                        (viewNestedMessages)="onViewNestedMessages(nestedEntry.message)"
-                                                    ></app-subgraph-start-message>
-                                                }
-                                                @case (MessageType.SUBGRAPH_FINISH) {
-                                                    <app-subgraph-finish-message
-                                                        [message]="nestedEntry.message"
-                                                    ></app-subgraph-finish-message>
-                                                }
-                                            }
+                                    @if (rootView.currentDrillEntry; as drillEntry) {
+                                        <div class="subgraph-drilldown__header">
+                                            <app-subgraph-start-message
+                                                [message]="drillEntry.message"
+                                                [subgraphName]="drillEntry.subgraphName"
+                                                [showViewNestedMessages]="drillEntry.hasNestedMessages"
+                                                [nestedMessagesCount]="drillEntry.nestedMessagesCount"
+                                                [isNestedMessagesOpen]="drillEntry.isNestedMessagesOpen"
+                                                (viewNestedMessages)="onViewNestedMessages(drillEntry.message)"
+                                            ></app-subgraph-start-message>
                                         </div>
                                     }
+                                    <div class="subgraph-drilldown__messages">
+                                        @for (
+                                            nestedEntry of rootView.drilldownEntries;
+                                            track nestedEntry.key;
+                                            let nestedIndex = $index
+                                        ) {
+                                            <div class="message">
+                                                @switch (nestedEntry.message.message_data.message_type) {
+                                                    @case (MessageType.START) {
+                                                        <app-start-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-start-message>
+                                                    }
+                                                    @case (MessageType.USER) {
+                                                        <app-user-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-user-message>
+                                                    }
+                                                    @case (MessageType.AGENT) {
+                                                        <app-agent-message
+                                                            [message]="nestedEntry.message"
+                                                            [agent]="nestedEntry.agent"
+                                                        ></app-agent-message>
+                                                    }
+                                                    @case (MessageType.AGENT_FINISH) {
+                                                        <app-agent-finish-message
+                                                            [message]="nestedEntry.message"
+                                                            [agent]="nestedEntry.agent"
+                                                        ></app-agent-finish-message>
+                                                    }
+                                                    @case (MessageType.PYTHON) {
+                                                        <app-python-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-python-message>
+                                                    }
+                                                    @case (MessageType.LLM) {
+                                                        <app-llm-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-llm-message>
+                                                    }
+                                                    @case (MessageType.EXTRACTED_CHUNKS) {
+                                                        <app-extracted-chunks-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-extracted-chunks-message>
+                                                    }
+                                                    @case (MessageType.FINDINGS) {
+                                                        <app-findings-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-findings-message>
+                                                    }
+                                                    @case (MessageType.ERROR) {
+                                                        <app-error-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-error-message>
+                                                    }
+                                                    @case (MessageType.TASK) {
+                                                        <app-task-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-task-message>
+                                                    }
+                                                    @case (MessageType.CONDITION_GROUP) {
+                                                        <app-classification-dt-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-classification-dt-message>
+                                                    }
+                                                    @case (MessageType.CLASSIFICATION_PROMPT) {
+                                                        <app-classification-dt-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-classification-dt-message>
+                                                    }
+                                                    @case (MessageType.CONDITION_GROUP_MANIPULATION) {
+                                                        <app-classification-dt-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-classification-dt-message>
+                                                    }
+                                                    @case (MessageType.FINISH) {
+                                                        <app-finish-message
+                                                            [message]="nestedEntry.message"
+                                                            [project]="nestedEntry.project"
+                                                        ></app-finish-message>
+                                                    }
+                                                    @case (MessageType.CODE_AGENT_STREAM) {
+                                                        <app-code-agent-stream-message
+                                                            [message]="nestedEntry.message"
+                                                            [allMessages]="messages"
+                                                        ></app-code-agent-stream-message>
+                                                    }
+                                                    @case (MessageType.TASK_NODE_STREAM) {
+                                                        <app-node-stream-message
+                                                            [message]="nestedEntry.message"
+                                                            [allMessages]="messages"
+                                                            [nodeCompleted]="nestedEntry.nodeCompleted"
+                                                        ></app-node-stream-message>
+                                                    }
+                                                    @case (MessageType.AGENT_NODE_STREAM) {
+                                                        <app-node-stream-message
+                                                            [message]="nestedEntry.message"
+                                                            [allMessages]="messages"
+                                                            [nodeCompleted]="nestedEntry.nodeCompleted"
+                                                        ></app-node-stream-message>
+                                                    }
+                                                    @case (MessageType.SUBGRAPH_START) {
+                                                        <app-subgraph-start-message
+                                                            [message]="nestedEntry.message"
+                                                            [subgraphName]="nestedEntry.subgraphName"
+                                                            [showViewNestedMessages]="nestedEntry.hasNestedMessages"
+                                                            [nestedMessagesCount]="nestedEntry.nestedMessagesCount"
+                                                            [isNestedMessagesOpen]="nestedEntry.isNestedMessagesOpen"
+                                                            (viewNestedMessages)="
+                                                                onViewNestedMessages(nestedEntry.message)
+                                                            "
+                                                        ></app-subgraph-start-message>
+                                                    }
+                                                    @case (MessageType.SUBGRAPH_FINISH) {
+                                                        <app-subgraph-finish-message
+                                                            [message]="nestedEntry.message"
+                                                        ></app-subgraph-finish-message>
+                                                    }
+                                                }
+                                            </div>
+                                        }
+                                    </div>
                                 </div>
-                            </div>
-                        </ng-container>
-
-                        <ng-container *ngIf="!entry.rootView">
-                            <app-subgraph-start-message
-                                [message]="entry.message"
-                                [subgraphName]="entry.subgraphName"
-                                [showViewNestedMessages]="entry.hasNestedMessages"
-                                [nestedMessagesCount]="entry.nestedMessagesCount"
-                                [isNestedMessagesOpen]="entry.isNestedMessagesOpen"
-                                (viewNestedMessages)="onViewNestedMessages(entry.message)"
-                            ></app-subgraph-start-message>
-                        </ng-container>
+                            }
+                            @if (!entry.rootView) {
+                                <app-subgraph-start-message
+                                    [message]="entry.message"
+                                    [subgraphName]="entry.subgraphName"
+                                    [showViewNestedMessages]="entry.hasNestedMessages"
+                                    [nestedMessagesCount]="entry.nestedMessagesCount"
+                                    [isNestedMessagesOpen]="entry.isNestedMessagesOpen"
+                                    (viewNestedMessages)="onViewNestedMessages(entry.message)"
+                                ></app-subgraph-start-message>
+                            }
+                        }
+                        @case (MessageType.SUBGRAPH_FINISH) {
+                            <app-subgraph-finish-message [message]="entry.message"></app-subgraph-finish-message>
+                        }
                     }
-                    @case (MessageType.SUBGRAPH_FINISH) {
-                        <app-subgraph-finish-message [message]="entry.message"></app-subgraph-finish-message>
-                    }
-                }
-            </div>
-        }
-    </div>
+                </div>
+            }
+        </div>
+    }
 
-    <div
-        class="empty-list"
-        *ngIf="messages.length === 0 && !isLoadingMore"
-    >
-        No messages to show
-    </div>
+    @if (messages.length === 0 && !isLoadingMore) {
+        <div class="empty-list">No messages to show</div>
+    }
 
-    <div
-        *ngIf="isLoadingMore"
-        class="loading-more-indicator"
-    >
-        <app-loading-dots></app-loading-dots>
-    </div>
+    @if (isLoadingMore) {
+        <div class="loading-more-indicator">
+            <app-loading-dots></app-loading-dots>
+        </div>
+    }
 
     <!-- Loading dots for running session -->
-    <app-loading-dots
-        *ngIf="isProcessing"
-        class="loading-indicator"
-    ></app-loading-dots>
+    @if (isProcessing) {
+        <app-loading-dots class="loading-indicator"></app-loading-dots>
+    }
 
     <!-- Waiting for user input component -->
-    <app-wait-for-user-input
-        *ngIf="statusWaitForUser"
-        (messageSubmitted)="onUserMessageSubmitted($event)"
-    ></app-wait-for-user-input>
+    @if (statusWaitForUser) {
+        <app-wait-for-user-input (messageSubmitted)="onUserMessageSubmitted($event)"></app-wait-for-user-input>
+    }
 
     @if (showScrollToTop) {
         <button

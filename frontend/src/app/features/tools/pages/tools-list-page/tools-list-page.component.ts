@@ -19,7 +19,6 @@ import { ToolsSearchService } from '../../services/tools-search.service';
 
 @Component({
     selector: 'app-tools-list-page',
-    standalone: true,
     imports: [
         RouterOutlet,
         RouterLink,

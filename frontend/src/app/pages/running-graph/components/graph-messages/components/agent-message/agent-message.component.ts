@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
 
@@ -10,8 +9,7 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
 
 @Component({
     selector: 'app-agent-message',
-    standalone: true,
-    imports: [CommonModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="agent-flow-container">
@@ -45,107 +43,103 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
             >
                 <div class="agent-content">
                     <!-- Thought Section -->
-                    <div
-                        class="thought-container"
-                        *ngIf="hasThought()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('thought')"
-                        >
-                            <app-svg-icon
-                                [icon]="isThoughtExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Thought
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isThoughtExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="thought-bubble">
-                                <app-copy-button [text]="copyText" />
-                                <span class="thought-quote">"</span>{{ cleanThought(getThought())
-                                }}<span class="thought-quote">"</span>
+                    @if (hasThought()) {
+                        <div class="thought-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('thought')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isThoughtExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Thought
+                            </div>
+                            <div
+                                class="collapsible-content"
+                                [@expandCollapse]="isThoughtExpanded ? 'expanded' : 'collapsed'"
+                            >
+                                <div class="thought-bubble">
+                                    <app-copy-button [text]="copyText" />
+                                    <span class="thought-quote">"</span>{{ cleanThought(getThought())
+                                    }}<span class="thought-quote">"</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Tool Section -->
-                    <div
-                        class="tool-container"
-                        *ngIf="hasTool()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('tool')"
-                        >
-                            <app-svg-icon
-                                [icon]="isToolExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Tool
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isToolExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="tool-wrapper">
-                                <div class="tool-name">{{ getTool() }}</div>
-                                <div
-                                    class="tool-input-container"
-                                    *ngIf="hasToolInput()"
-                                >
-                                    <ngx-json-viewer
-                                        *ngIf="isValidJson(getToolInput())"
-                                        [json]="getParsedJson('tool')"
-                                        [expanded]="false"
-                                    ></ngx-json-viewer>
-                                    <div
-                                        class="code-content"
-                                        *ngIf="!isValidJson(getToolInput())"
-                                    >
-                                        {{ formatJson(getToolInput()) }}
-                                    </div>
+                    @if (hasTool()) {
+                        <div class="tool-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('tool')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isToolExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Tool
+                            </div>
+                            <div
+                                class="collapsible-content"
+                                [@expandCollapse]="isToolExpanded ? 'expanded' : 'collapsed'"
+                            >
+                                <div class="tool-wrapper">
+                                    <div class="tool-name">{{ getTool() }}</div>
+                                    @if (hasToolInput()) {
+                                        <div class="tool-input-container">
+                                            @if (isValidJson(getToolInput())) {
+                                                <ngx-json-viewer
+                                                    [json]="getParsedJson('tool')"
+                                                    [expanded]="false"
+                                                ></ngx-json-viewer>
+                                            }
+                                            @if (!isValidJson(getToolInput())) {
+                                                <div class="code-content">
+                                                    {{ formatJson(getToolInput()) }}
+                                                </div>
+                                            }
+                                        </div>
+                                    }
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    }
 
                     <!-- Tool Output Section at same level as Thought and Tool -->
-                    <div
-                        class="result-container"
-                        *ngIf="getResult()"
-                    >
-                        <div
-                            class="section-heading"
-                            (click)="toggleSection('result')"
-                        >
-                            <app-svg-icon
-                                [icon]="isResultExpanded ? 'caret-down-filled' : 'caret-right-filled'"
-                                size="1.1rem"
-                            />
-                            Tool Output
-                        </div>
-                        <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isResultExpanded ? 'expanded' : 'collapsed'"
-                        >
-                            <div class="result-content">
-                                <ngx-json-viewer
-                                    *ngIf="isValidJson(getResult())"
-                                    [json]="getParsedJson('result')"
-                                    [expanded]="true"
-                                ></ngx-json-viewer>
-                                <div
-                                    class="formatted-content"
-                                    *ngIf="!isValidJson(getResult())"
-                                >
-                                    {{ getResult() }}
+                    @if (getResult()) {
+                        <div class="result-container">
+                            <div
+                                class="section-heading"
+                                (click)="toggleSection('result')"
+                            >
+                                <app-svg-icon
+                                    [icon]="isResultExpanded ? 'caret-down-filled' : 'caret-right-filled'"
+                                    size="1.1rem"
+                                />
+                                Tool Output
+                            </div>
+                            <div
+                                class="collapsible-content"
+                                [@expandCollapse]="isResultExpanded ? 'expanded' : 'collapsed'"
+                            >
+                                <div class="result-content">
+                                    @if (isValidJson(getResult())) {
+                                        <ngx-json-viewer
+                                            [json]="getParsedJson('result')"
+                                            [expanded]="true"
+                                        ></ngx-json-viewer>
+                                    }
+                                    @if (!isValidJson(getResult())) {
+                                        <div class="formatted-content">
+                                            {{ getResult() }}
+                                        </div>
+                                    }
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    }
                 </div>
             </div>
         </div>

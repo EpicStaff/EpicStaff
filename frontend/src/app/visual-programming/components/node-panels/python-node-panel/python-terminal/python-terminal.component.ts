@@ -23,7 +23,6 @@ import { TerminalLogEntry } from './terminal-log.model';
 export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
 
 @Component({
-    standalone: true,
     selector: 'app-python-terminal',
     imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,

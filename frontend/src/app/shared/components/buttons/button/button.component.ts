@@ -6,7 +6,6 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-button',
-    standalone: true,
     imports: [CommonModule, AppSvgIconComponent, CollapseOnOverflowDirective],
     templateUrl: './button.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,

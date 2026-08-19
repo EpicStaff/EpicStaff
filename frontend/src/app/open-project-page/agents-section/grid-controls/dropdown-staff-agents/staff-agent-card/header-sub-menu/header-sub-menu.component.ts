@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { FullAgent } from '../../../../../../features/staff/services/full-agent.service';
@@ -9,46 +8,46 @@ import { CardState } from '../staff-agent-card.component';
 
 @Component({
     selector: 'app-agent-menu',
-    standalone: true,
-    imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent],
+    imports: [ClickOutsideDirective, AppSvgIconComponent],
     template: `
-        <div
-            class="menu-container"
-            *ngIf="isOpen"
-            appClickOutside
-            (appClickOutside)="onClickOutside()"
-        >
-            <!-- <div class="menu-item" (click)="onEditAgent()">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-          <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
-          <path d="M13.5 6.5l4 4" />
-        </svg>
-        <span>Edit Agent</span>
-      </div> -->
-
+        @if (isOpen) {
             <div
-                *ngIf="state === 'removing'"
-                class="menu-item remove-item"
-                (click)="onRemoveAgent()"
+                class="menu-container"
+                appClickOutside
+                (appClickOutside)="onClickOutside()"
             >
-                <app-svg-icon
-                    icon="trash"
-                    size="16px"
-                />
-                <span>Remove Agent</span>
+                <!-- <div class="menu-item" (click)="onEditAgent()">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              >
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+              <path d="M13.5 6.5l4 4" />
+            </svg>
+            <span>Edit Agent</span>
+          </div> -->
+                @if (state === 'removing') {
+                    <div
+                        class="menu-item remove-item"
+                        (click)="onRemoveAgent()"
+                    >
+                        <app-svg-icon
+                            icon="trash"
+                            size="16px"
+                        />
+                        <span>Remove Agent</span>
+                    </div>
+                }
             </div>
-        </div>
+        }
     `,
     styles: [
         `

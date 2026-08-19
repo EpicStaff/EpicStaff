@@ -1,9 +1,7 @@
 <section class="chats-content">
-    <ng-container *ngIf="hasSelection; else noAgentSelected">
+    @if (hasSelection) {
         <app-chat></app-chat>
-    </ng-container>
-
-    <ng-template #noAgentSelected>
+    } @else {
         <div class="no-agent-message">
             <h3>No Agents Available</h3>
             @if (isAgentsTab) {
@@ -23,5 +21,5 @@
                 >{{ emptyCtaLabel }}</a
             >
         </div>
-    </ng-template>
+    }
 </section>

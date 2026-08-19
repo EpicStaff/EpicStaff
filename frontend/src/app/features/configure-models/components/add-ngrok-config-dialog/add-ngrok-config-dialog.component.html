@@ -6,12 +6,11 @@
         class="dialog__form"
         [formGroup]="form"
     >
-        <div
-            *ngIf="errorMessage()"
-            class="dialog__error-message"
-        >
-            <p>{{ errorMessage() }}</p>
-        </div>
+        @if (errorMessage()) {
+            <div class="dialog__error-message">
+                <p>{{ errorMessage() }}</p>
+            </div>
+        }
         <div>
             <app-custom-input
                 label="Name"

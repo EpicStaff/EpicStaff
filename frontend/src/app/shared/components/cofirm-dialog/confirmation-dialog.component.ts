@@ -20,7 +20,6 @@ export interface ConfirmationDialogData {
 
 @Component({
     selector: 'app-confirmation-dialog',
-    standalone: true,
     imports: [CommonModule, DialogModule, IconButtonComponent, AppSvgIconComponent],
     templateUrl: './confirmation-dialog.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,

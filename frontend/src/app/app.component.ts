@@ -7,7 +7,6 @@ import { ToastComponent } from './services/notifications/notification/toast.comp
 
 @Component({
     selector: 'app-root',
-    standalone: true,
     imports: [RouterOutlet, ToastComponent],
     template: `
         <router-outlet></router-outlet>

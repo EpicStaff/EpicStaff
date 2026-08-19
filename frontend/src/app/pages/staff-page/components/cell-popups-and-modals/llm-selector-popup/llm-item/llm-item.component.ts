@@ -1,4 +1,4 @@
-import { NgClass, NgIf } from '@angular/common';
+import { NgClass } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -16,8 +16,7 @@ import { MergedConfig } from '../../../../../../features/staff/services/full-age
 
 @Component({
     selector: 'app-llm-item',
-    standalone: true,
-    imports: [NgClass, NgIf, AppSvgIconComponent],
+    imports: [NgClass, AppSvgIconComponent],
     template: `
         <div class="llm-item-container">
             <div
@@ -34,12 +33,9 @@ import { MergedConfig } from '../../../../../../features/staff/services/full-age
 
                 <div class="llm-name">
                     {{ getModelName(item) }}
-                    <span
-                        *ngIf="item.custom_name"
-                        class="custom-name"
-                    >
-                        ({{ item.custom_name }})
-                    </span>
+                    @if (item.custom_name) {
+                        <span class="custom-name"> ({{ item.custom_name }}) </span>
+                    }
                 </div>
 
                 <input

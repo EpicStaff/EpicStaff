@@ -13,7 +13,6 @@ import { ICellRendererParams } from 'ag-grid-community';
 
 @Component({
     selector: 'app-index-cell-renderer',
-    standalone: true,
     imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `

@@ -1,6 +1,5 @@
 import { animate, style, transition, trigger } from '@angular/animations';
 import { Dialog } from '@angular/cdk/dialog';
-import { NgFor, NgIf } from '@angular/common';
 import {
     AfterViewInit,
     ChangeDetectionStrategy,
@@ -32,7 +31,7 @@ import { PythonToolItemComponent } from './python-tool-item/python-tool-item.com
 
 @Component({
     selector: 'app-tools-list',
-    imports: [NgFor, NgIf, FormsModule, PythonToolItemComponent, McpToolItemComponent, ButtonComponent],
+    imports: [FormsModule, PythonToolItemComponent, McpToolItemComponent, ButtonComponent],
     templateUrl: './tools-popup.component.html',
     styleUrls: ['./tools-popup.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

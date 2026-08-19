@@ -6,7 +6,6 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
 
 @Component({
     selector: 'app-human-input-header',
-    standalone: true,
     imports: [MatTooltipModule, AppSvgIconComponent],
     template: `
         <div

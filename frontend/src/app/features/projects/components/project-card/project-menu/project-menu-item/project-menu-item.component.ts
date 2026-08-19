@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
 
 @Component({
     selector: 'app-project-menu-item',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [],
     templateUrl: './project-menu-item.component.html',

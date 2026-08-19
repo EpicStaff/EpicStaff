@@ -1,4 +1,3 @@
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { EnhancedTranscriptionConfig } from '@shared/models';
@@ -8,8 +7,7 @@ import { ClickOutsideDirective } from '../../../../../../../shared/directives/cl
 
 @Component({
     selector: 'app-transcription-config-selector',
-    standalone: true,
-    imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent, MatTooltip],
+    imports: [ClickOutsideDirective, AppSvgIconComponent, MatTooltip],
     templateUrl: './transcription-config-selector.component.html',
     changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./transcription-config-selector.component.scss'],

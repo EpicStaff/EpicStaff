@@ -1,5 +1,4 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -29,9 +28,7 @@ export interface AgentDefinitionRealtimeSettingsDialogData {
 
 @Component({
     selector: 'app-agent-definition-realtime-settings-dialog',
-    standalone: true,
     imports: [
-        CommonModule,
         FormsModule,
         ReactiveFormsModule,
         LanguageSelectorComponent,

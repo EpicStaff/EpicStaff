@@ -5,7 +5,6 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-icon-button',
-    standalone: true,
     imports: [AppSvgIconComponent, MatTooltip],
     template: `
         <button

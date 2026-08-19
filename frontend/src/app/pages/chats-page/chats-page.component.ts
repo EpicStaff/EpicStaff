@@ -16,7 +16,6 @@ import { ConsoleService } from './services/console.service';
 
 @Component({
     selector: 'app-chats-page',
-    standalone: true,
     imports: [
         ChatsSidebarComponent,
         ChatsContentComponent,

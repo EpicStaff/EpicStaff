@@ -1,7 +1,6 @@
 import { Dialog, DialogModule } from '@angular/cdk/dialog';
 import { ConnectedPosition, Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { NgIf } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -89,14 +88,12 @@ interface PendingChange {
 
 @Component({
     selector: 'app-agents-table',
-    standalone: true,
     imports: [
         AgGridModule,
         DialogModule,
         ClickOutsideDirective,
         PreventContextMenuDirective,
         AgGridContextMenuComponent,
-        NgIf,
         SpinnerComponent,
     ],
     templateUrl: './agents-table.component.html',

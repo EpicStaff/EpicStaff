@@ -1,5 +1,4 @@
 import { Dialog, DialogModule } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -19,7 +18,7 @@ import { CustomToolCardComponent } from './components/custom-tool-card/custom-to
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './custom-tools.component.html',
     styleUrls: ['./custom-tools.component.scss'],
-    imports: [LoadingSpinnerComponent, CustomToolCardComponent, DialogModule, CommonModule],
+    imports: [LoadingSpinnerComponent, CustomToolCardComponent, DialogModule],
 })
 export class CustomToolsComponent implements OnInit {
     private readonly customToolsService = inject(CustomToolsService);

@@ -10,7 +10,6 @@ import { GetMcpToolRequest } from '../../../../../../models/mcp-tool.model';
 
 @Component({
     selector: 'app-mcp-tool-card',
-    standalone: true,
     templateUrl: './mcp-tool-card.component.html',
     styleUrls: ['./mcp-tool-card.component.scss'],
     imports: [AppSvgIconComponent, ToggleSwitchComponent, ButtonComponent, MatTooltipModule, HasPermissionDirective],

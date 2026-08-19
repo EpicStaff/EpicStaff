@@ -2,7 +2,6 @@ import { Directive, ElementRef, EventEmitter, HostListener, NgZone, Output, Rend
 
 @Directive({
     selector: '[appSearchShortcut]',
-    standalone: true,
 })
 export class SearchShortcutDirective {
     @Output() public clearByShortcut = new EventEmitter<void>();

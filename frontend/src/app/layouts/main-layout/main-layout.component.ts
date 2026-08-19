@@ -16,7 +16,6 @@ const TABBED_ROUTES: Record<string, string[]> = {
 
 @Component({
     selector: 'app-main-layout',
-    standalone: true,
     imports: [LeftSidebarComponent, RouterOutlet],
     styles: [
         `

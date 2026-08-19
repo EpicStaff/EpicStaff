@@ -21,62 +21,56 @@
         </div>
     </div>
 
-    <div
-        class="dropdown-menu"
-        *ngIf="isOpen"
-    >
-        <div
-            *ngIf="loading"
-            class="dropdown-item loading"
-        >
-            Loading configurations...
+    @if (isOpen) {
+        <div class="dropdown-menu">
+            @if (loading) {
+                <div class="dropdown-item loading">Loading configurations...</div>
+            }
+            @if (!loading) {
+                <!-- None option -->
+                <div
+                    class="dropdown-item"
+                    [class.selected]="selectedConfigId === null"
+                    (click)="selectConfig(null)"
+                >
+                    None
+                </div>
+                <!-- Config options -->
+                @for (config of configs; track config) {
+                    <div
+                        class="dropdown-item"
+                        [class.selected]="config.id === selectedConfigId"
+                        (click)="selectConfig(config.id)"
+                    >
+                        <span class="config-name">{{ config.custom_name }} ({{ config.model_name }})</span>
+                        <span class="item-actions">
+                            <app-svg-icon
+                                icon="settings"
+                                size="16px"
+                                class="edit-icon"
+                                matTooltip="Edit configuration"
+                                (click)="onEditConfig($event, config.id)"
+                                aria-label="Edit configuration"
+                            />
+                            <app-svg-icon
+                                icon="x"
+                                size="16px"
+                                class="delete-icon"
+                                matTooltip="Delete configuration"
+                                (click)="onDeleteConfig($event, config.id)"
+                                aria-label="Delete configuration"
+                            />
+                        </span>
+                    </div>
+                }
+                <!-- Create new option -->
+                <div
+                    class="dropdown-item create-new"
+                    (click)="onCreateNew()"
+                >
+                    Create New Configuration
+                </div>
+            }
         </div>
-
-        <ng-container *ngIf="!loading">
-            <!-- None option -->
-            <div
-                class="dropdown-item"
-                [class.selected]="selectedConfigId === null"
-                (click)="selectConfig(null)"
-            >
-                None
-            </div>
-
-            <!-- Config options -->
-            <div
-                *ngFor="let config of configs"
-                class="dropdown-item"
-                [class.selected]="config.id === selectedConfigId"
-                (click)="selectConfig(config.id)"
-            >
-                <span class="config-name">{{ config.custom_name }} ({{ config.model_name }})</span>
-                <span class="item-actions">
-                    <app-svg-icon
-                        icon="settings"
-                        size="16px"
-                        class="edit-icon"
-                        matTooltip="Edit configuration"
-                        (click)="onEditConfig($event, config.id)"
-                        aria-label="Edit configuration"
-                    />
-                    <app-svg-icon
-                        icon="x"
-                        size="16px"
-                        class="delete-icon"
-                        matTooltip="Delete configuration"
-                        (click)="onDeleteConfig($event, config.id)"
-                        aria-label="Delete configuration"
-                    />
-                </span>
-            </div>
-
-            <!-- Create new option -->
-            <div
-                class="dropdown-item create-new"
-                (click)="onCreateNew()"
-            >
-                Create New Configuration
-            </div>
-        </ng-container>
-    </div>
+    }
 </div>

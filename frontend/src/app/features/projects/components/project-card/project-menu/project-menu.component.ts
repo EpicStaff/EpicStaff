@@ -1,4 +1,4 @@
-import { NgClass, NgIf } from '@angular/common';
+import { NgClass } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -20,8 +20,7 @@ import { ProjectMenuItemComponent } from './project-menu-item/project-menu-item.
 
 @Component({
     selector: 'app-project-menu',
-    standalone: true,
-    imports: [NgIf, NgClass, ProjectMenuItemComponent, AppSvgIconComponent, HasPermissionDirective, MatTooltipModule],
+    imports: [NgClass, ProjectMenuItemComponent, AppSvgIconComponent, HasPermissionDirective, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './project-menu.component.html',
     styleUrls: ['./project-menu.component.scss'],

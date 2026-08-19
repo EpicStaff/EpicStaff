@@ -1,6 +1,5 @@
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
-import { CommonModule } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, OnDestroy, TemplateRef, ViewChild } from '@angular/core';
 import { ViewContainerRef } from '@angular/core';
 import { IHeaderParams } from 'ag-grid-community';
@@ -9,8 +8,7 @@ import { takeUntil } from 'rxjs/operators';
 
 @Component({
     selector: 'app-memory-header',
-    standalone: true,
-    imports: [CommonModule],
+    imports: [],
     template: `
         <div
             class="header-container"

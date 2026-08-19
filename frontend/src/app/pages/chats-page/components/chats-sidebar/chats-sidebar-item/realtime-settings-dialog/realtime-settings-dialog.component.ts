@@ -22,7 +22,6 @@ import { VoiceSelectorComponent } from './voice-selector/voice-selector.componen
 
 @Component({
     selector: 'app-realtime-settings-dialog',
-    standalone: true,
     imports: [
         CommonModule,
         FormsModule,

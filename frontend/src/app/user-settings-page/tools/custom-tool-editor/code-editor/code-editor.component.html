@@ -1,30 +1,29 @@
 <!-- Editor Header -->
 
-<div
-    class="editor-header"
-    *ngIf="showHeader"
->
-    <div class="left-section">
-        <span class="editor-title">
-            <app-svg-icon
-                icon="python"
-                size="1.2rem"
-                class="python-icon"
-            ></app-svg-icon>
-            Python3 <span class="entrypoint-main"> (entrypoint "main")</span>
-        </span>
+@if (showHeader) {
+    <div class="editor-header">
+        <div class="left-section">
+            <span class="editor-title">
+                <app-svg-icon
+                    icon="python"
+                    size="1.2rem"
+                    class="python-icon"
+                ></app-svg-icon>
+                Python3 <span class="entrypoint-main"> (entrypoint "main")</span>
+            </span>
+        </div>
+        <div class="right-section">
+            <app-icon-button
+                icon="copy"
+                size="2rem"
+                ariaLabel="Copy code"
+                matTooltip="Copy code"
+                matTooltipPosition="above"
+                (onClick)="copyCode()"
+            ></app-icon-button>
+        </div>
     </div>
-    <div class="right-section">
-        <app-icon-button
-            icon="copy"
-            size="2rem"
-            ariaLabel="Copy code"
-            matTooltip="Copy code"
-            matTooltipPosition="above"
-            (onClick)="copyCode()"
-        ></app-icon-button>
-    </div>
-</div>
+}
 
 <!-- Editor Container -->
 <div
@@ -40,11 +39,10 @@
     ></ngx-monaco-editor>
 
     <!-- Loading Overlay -->
-    <div
-        class="editor-loading-overlay"
-        *ngIf="!editorLoaded"
-    >
-        <div class="spinner"></div>
-        <span>Loading editor...</span>
-    </div>
+    @if (!editorLoaded) {
+        <div class="editor-loading-overlay">
+            <div class="spinner"></div>
+            <span>Loading editor...</span>
+        </div>
+    }
 </div>
