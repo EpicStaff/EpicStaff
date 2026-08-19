@@ -33,7 +33,7 @@ A plain `npm start` keeps using the repository's `environment.ts`. The swap is w
 ## Build
 
 ```powershell
-npm run build                  # production build → dist/
+npm run build                  # production build → dist/epicstaff-frontend/
 npm run watch                  # dev build with rebuild on changes
 npm run build-mym              # production build with base-href /epicstaff/
 ```
@@ -101,6 +101,18 @@ npm audit --audit-level=high    # what CI enforces
 npm audit                       # everything, including moderate and low
 ```
 
+**Third-party licence notices:**
+```powershell
+node ../scripts/check-third-party-notices.mjs        # are the notices in sync?
+node scripts/generate-third-party-notices.mjs       # regenerate after a dependency change
+```
+
+[THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) documents the licences of every
+**production** dependency, so it has to be regenerated whenever that set changes. The check
+compares the lockfile hash stamped in the file header, so it needs neither network access nor a
+`license-checker` run. The generator does need network — it fetches `license-checker` through
+`npx`.
+
 ### Staged files only
 
 The `lint-staged` config lives in [package.json](./package.json) under the `"lint-staged"` field. Manual run:
@@ -127,7 +139,7 @@ The same sequence CI runs, in the same order, plus a type-check that CI only cov
 the Docker build:
 
 ```powershell
-npm run lint; if ($?) { npm run format:check }; if ($?) { node ../scripts/check-undeclared-imports.mjs }; if ($?) { npm test }; if ($?) { npm audit --audit-level=high }; if ($?) { npx tsc --noEmit -p tsconfig.app.json }
+npm run lint; if ($?) { npm run format:check }; if ($?) { node ../scripts/check-undeclared-imports.mjs }; if ($?) { node ../scripts/check-third-party-notices.mjs }; if ($?) { npm test }; if ($?) { npm audit --audit-level=high }; if ($?) { npx tsc --noEmit -p tsconfig.app.json }
 ```
 
 Stops at the first failing check. If this passes, `frontend-checks` in CI will too.
@@ -144,6 +156,7 @@ its own, so a PR that touches nothing here can still be the first to surface a n
 | lint                 | `npm run lint`                                           |
 | format               | `npm run format:check`                                   |
 | undeclared imports   | `node scripts/check-undeclared-imports.mjs`              |
+| licence notices      | `node scripts/check-third-party-notices.mjs`             |
 | tests                | `npm test`                                               |
 | advisories           | `npm audit --audit-level=high`                           |
 
@@ -176,7 +189,7 @@ Only `pre-commit` is configured ([.husky/pre-commit](./.husky/pre-commit)). No o
 - Does not check files outside `src/**` (`*.json`, `*.md`, config files)
 - Does not run `tsc` — type errors slip through if the file is lint-clean
 - Does not run tests
-- Does not check for undeclared imports or dependency advisories
+- Does not check for undeclared imports, advisories or stale licence notices
 - Does not validate commit messages
 - Does not fire on `git push` or during merge commits
 

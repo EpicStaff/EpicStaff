@@ -78,6 +78,13 @@ jobs:
         working-directory: .
         run: node scripts/check-undeclared-imports.mjs
 
+      # Licence attribution has to follow the production dependency set. Compares the
+      # lockfile hash stamped in the notices header, so it needs neither network nor
+      # a license-checker run.
+      - name: Check third-party notices are in sync
+        working-directory: .
+        run: node scripts/check-third-party-notices.mjs
+
       - name: Unit tests
         run: npm test
 

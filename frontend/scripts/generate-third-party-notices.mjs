@@ -42,7 +42,7 @@ if (lcResult.status !== 0) {
 }
 const data = JSON.parse(lcResult.stdout);
 
-const OWN_PKG_PREFIX = 'frontend-crewai@';
+const OWN_PKG_PREFIX = 'epicstaff-frontend@';
 
 // Build entries
 const entries = [];
@@ -186,7 +186,7 @@ lines.push('');
 lines.push('### Manual overrides applied');
 lines.push('');
 lines.push('- `@openai/realtime-api-beta` is installed directly from a GitHub tarball with `"private": true` in its `package.json`, which causes `license-checker` to report it as `UNLICENSED`. Its repository declares `"license": "MIT"` and ships a standard MIT LICENSE file (`Copyright (c) 2024 OpenAI`). The generator records it as MIT and includes the verbatim license text below.');
-lines.push('- The EpicStaff frontend project itself (`frontend-crewai`) is filtered out of the list — this notices file only covers third-party code.');
+lines.push('- The EpicStaff frontend project itself (`epicstaff-frontend`) is filtered out of the list — this notices file only covers third-party code.');
 lines.push('');
 
 const md = lines.join('\n');

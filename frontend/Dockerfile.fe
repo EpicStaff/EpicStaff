@@ -35,7 +35,7 @@ RUN npm run build -- --configuration production
 # ─── Stage: production ────────────────────────────────────────────────────────
 FROM docker.io/library/nginx:alpine AS production
 
-COPY --from=build /app/dist/frontend-crewai/browser/ /usr/share/nginx/html/
+COPY --from=build /app/dist/epicstaff-frontend/browser/ /usr/share/nginx/html/
 
 COPY 50x.html /usr/share/nginx/html/
 COPY nginx.conf /etc/nginx/conf.d/default.conf

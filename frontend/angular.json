@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "frontend-crewai": {
+    "epicstaff-frontend": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -18,7 +18,7 @@
           "builder": "@angular/build:application",
           "options": {
             "outputPath": {
-              "base": "dist/frontend-crewai",
+              "base": "dist/epicstaff-frontend",
               "media": "fonts"
             },
             "index": "src/index.html",
@@ -134,13 +134,13 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "frontend-crewai:build:production"
+              "buildTarget": "epicstaff-frontend:build:production"
             },
             "development": {
-              "buildTarget": "frontend-crewai:build:development"
+              "buildTarget": "epicstaff-frontend:build:development"
             },
             "local": {
-              "buildTarget": "frontend-crewai:build:local"
+              "buildTarget": "epicstaff-frontend:build:local"
             }
           },
           "defaultConfiguration": "development"

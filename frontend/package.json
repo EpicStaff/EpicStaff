@@ -1,5 +1,5 @@
 {
-    "name": "frontend-crewai",
+    "name": "epicstaff-frontend",
     "version": "0.0.0",
     "scripts": {
         "ng": "ng",
