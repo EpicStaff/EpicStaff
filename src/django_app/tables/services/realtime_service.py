@@ -117,7 +117,7 @@ class RealtimeService(metaclass=SingletonMeta):
         )
 
     def init_realtime_agent_definition(
-        self, agent_definition_id: int, config: dict
+        self, *, agent_definition_id: int, config: dict, org_id: int
     ) -> str:
         rt_agent_definition = self.get_rt_agent_definition(
             agent_definition_id=agent_definition_id
@@ -135,6 +135,7 @@ class RealtimeService(metaclass=SingletonMeta):
                 setattr(rt_agent_chat_data, key, value)
 
         self.redis_service.publish_realtime_agent_chat(
-            rt_agent_chat_data=rt_agent_chat_data
+            rt_agent_chat_data=rt_agent_chat_data,
+            org_id=org_id,
         )
         return rt_agent_chat_data.connection_key

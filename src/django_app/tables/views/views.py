@@ -788,6 +788,7 @@ class InitRealtimeAPIView(APIView):
                 connection_key = realtime_service.init_realtime_agent_definition(
                     agent_definition_id=agent_definition_id,
                     config=config,
+                    org_id=org_id,
                 )
             else:
                 connection_key = realtime_service.init_realtime(

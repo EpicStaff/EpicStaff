@@ -618,52 +618,6 @@ class ConverterService(metaclass=SingletonMeta):
 
         return rt_agent_chat_data
 
-    def convert_rt_agent_definition_chat_to_pydantic(
-        self, rt_agent_chat: RealtimeAgentChat
-    ) -> RealtimeAgentChatData:
-        ad = rt_agent_chat.rt_agent_definition.agent_definition.fill_with_defaults()
-
-        rt_config: RealtimeConfig = rt_agent_chat.realtime_config
-        rt_transcription_config: RealtimeTranscriptionConfig = (
-            rt_agent_chat.realtime_transcription_config
-        )
-
-        surface_resolution = self.realtime_surface_service.resolve(ad)
-
-        rt_agent_chat_data = RealtimeAgentChatData(
-            role=ad.name,
-            goal=ad.description or "assist the user",
-            backstory=ad.instructions or "You are a helpful voice assistant",
-            knowledge_collection_id=surface_resolution.knowledge_collection_id,
-            rag_type_id=surface_resolution.rag_type_id,
-            rag_search_config=surface_resolution.rag_search_config,
-            llm=self.convert_llm_config_to_pydantic(ad.llm_config),
-            memory=False,
-            tools=surface_resolution.tools,
-            rt_model_name=rt_config.realtime_model.name,
-            rt_api_key=rt_config.api_key,
-            transcript_model_name=rt_transcription_config.realtime_transcription_model.name
-            if rt_transcription_config
-            else None,
-            transcript_api_key=rt_transcription_config.api_key
-            if rt_transcription_config
-            else None,
-            temperature=ad.default_temperature,
-            connection_key=rt_agent_chat.connection_key,
-            wake_word=rt_agent_chat.wake_word,
-            stop_prompt=rt_agent_chat.stop_prompt,
-            language=rt_agent_chat.language,
-            voice_recognition_prompt=rt_agent_chat.voice_recognition_prompt,
-            voice=rt_agent_chat.voice,
-            input_audio_format=rt_agent_chat.input_audio_format.value,
-            output_audio_format=rt_agent_chat.output_audio_format.value,
-            rt_provider=rt_config.realtime_model.provider.name
-            if rt_config.realtime_model.provider
-            else "openai",
-        )
-
-        return rt_agent_chat_data
-
     def convert_python_code_to_pydantic(
         self,
         python_code: PythonCode,
