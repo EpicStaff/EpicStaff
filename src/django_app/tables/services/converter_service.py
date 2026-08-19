@@ -343,7 +343,8 @@ class ConverterService(metaclass=SingletonMeta):
             if agent.knowledge_collection is not None:
                 knowledge_collection_id = agent.knowledge_collection.pk
 
-            rag_type_id, rag_embedder_api_key_secret_id = agent.get_rag_assignment()
+            rag_type_id = agent.get_rag_type_and_id()
+            rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
             all_search_configs = SearchConfigService.get_search_configs(agent)
             rag_search_config = self.build_rag_search_config(
                 rag_type_id, all_search_configs
@@ -487,7 +488,8 @@ class ConverterService(metaclass=SingletonMeta):
             knowledge_collection_id = agent.knowledge_collection.pk
 
         # Build RAG search config using factory method
-        rag_type_id, rag_embedder_api_key_secret_id = agent.get_rag_assignment()
+        rag_type_id = agent.get_rag_type_and_id()
+        rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
         all_search_configs = SearchConfigService.get_search_configs(agent)
         rag_search_config = self.build_rag_search_config(
             rag_type_id, all_search_configs
@@ -531,7 +533,8 @@ class ConverterService(metaclass=SingletonMeta):
             knowledge_collection_id = agent.knowledge_collection.pk
 
         # Build RAG search config using factory method
-        rag_type_id, rag_embedder_api_key_secret_id = agent.get_rag_assignment()
+        rag_type_id = agent.get_rag_type_and_id()
+        rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
         all_search_configs = SearchConfigService.get_search_configs(agent)
         rag_search_config = self.build_rag_search_config(
             rag_type_id, all_search_configs

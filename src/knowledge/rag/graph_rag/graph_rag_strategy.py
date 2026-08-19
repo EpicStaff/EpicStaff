@@ -221,7 +221,6 @@ class GraphRAGStrategy(BaseRAGStrategy):
         query: str,
         collection_id: int,
         rag_search_config: GraphRagSearchConfig,
-        credentials: RagCredentials | None = None,
     ) -> dict:
         """
         Search using GraphRAG. Dispatches to basic or local search

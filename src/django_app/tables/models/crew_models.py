@@ -157,39 +157,27 @@ class Agent(OrgScopedModel, AbstractDefaultFillableModel):
 
         return None
 
-    def get_rag_assignment(self) -> tuple[str | None, int | None]:
-        """Return the assigned RAG's "type:id" string and its embedder Secret id."""
+    def get_rag_embedder_secret_id(self) -> int | None:
+        """Get the assigned RAG embedder's Secret id, or None if there is none."""
         agent_naive_rag = self.agent_naive_rags.select_related(
             "naive_rag__embedder"
         ).first()
         if agent_naive_rag:
-            naive_rag = agent_naive_rag.naive_rag
-            return (
-                f"naive:{naive_rag.naive_rag_id}",
-                self._embedder_secret_id(rag=naive_rag),
-            )
+            return self._embedder_secret_id(rag=agent_naive_rag.naive_rag)
 
         agent_graph_rag = self.agent_graph_rags.select_related(
             "graph_rag__embedder"
         ).first()
         if agent_graph_rag:
-            graph_rag = agent_graph_rag.graph_rag
-            return (
-                f"graph:{graph_rag.graph_rag_id}",
-                self._embedder_secret_id(rag=graph_rag),
-            )
+            return self._embedder_secret_id(rag=agent_graph_rag.graph_rag)
 
-        return None, None
+        return None
 
     @staticmethod
     def _embedder_secret_id(*, rag) -> int | None:
-        """Return the RAG embedder's Secret id, tolerating both nullable hops."""
+        """Get the RAG embedder's Secret id, tolerating both nullable hops."""
         embedder = rag.embedder
         return embedder.api_key_secret_id if embedder else None
-
-    def get_rag_embedder_secret_id(self) -> int | None:
-        """Return the assigned RAG embedder's Secret id, or None if there is none."""
-        return self.get_rag_assignment()[1]
 
     def __str__(self):
         return self.role

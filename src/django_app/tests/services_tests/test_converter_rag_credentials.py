@@ -85,22 +85,17 @@ def test_a_rag_whose_embedder_has_no_secret_reports_none(org, collection):
 
 
 @pytest.mark.django_db
-def test_the_assignment_is_fetched_in_one_query(
+def test_the_secret_id_lookup_is_a_single_query(
     org, collection, django_assert_num_queries
 ):
-    """One query, not two: converter_service calls this per agent in a crew loop.
-
-    A separate get_rag_embedder_secret_id() lookup would re-fetch the same RAG row
-    that the rag_type_id needs, doubling the per-agent queries.
-    """
+    """One query per agent in the crew loop: select_related joins the embedder hop."""
     secret = secret_service.create(text="sk-emb-q", org=org, name="emb-queries")
     embedder = _embedder(org=org, secret=secret, custom_name="conv-emb-queries")
     agent = _agent_with_naive_rag(org=org, collection=collection, embedder=embedder)
 
     with django_assert_num_queries(1):
-        rag_type_id, secret_id = agent.get_rag_assignment()
+        secret_id = agent.get_rag_embedder_secret_id()
 
-    assert rag_type_id.startswith("naive:")
     assert secret_id == secret.pk
 
 
