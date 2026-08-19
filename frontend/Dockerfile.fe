@@ -1,19 +1,29 @@
 ARG TARGET=production
 
 # ─── Stage: deps ─────────────────────────────────────────────────────────────
-FROM node:20.17.0 AS deps
+FROM node:24.15.0 AS deps
 
 WORKDIR /app
 
+# The `prepare` script installs husky git hooks, which need the repo root and a .git
+# dir this stage does not have. HUSKY=0 skips just that script, so esbuild's
+# postinstall and the native prebuild steps (lmdb, msgpackr-extract, @parcel/watcher)
+# still run — `--ignore-scripts` would silently break them.
+ENV HUSKY=0
+
 COPY package*.json ./
-RUN npm install --force || npm install --force && npm cache clean --force
+RUN npm ci && npm cache clean --force
 
 # ─── Stage: development ───────────────────────────────────────────────────────
 FROM deps AS development
 
 EXPOSE 4200
 
-CMD ["sh", "-c", "npm install --force && npm run start -- --host 0.0.0.0 --poll=1000"]
+# Incremental, not `npm ci`: the deps stage already installed, and `npm ci` would wipe
+# and refetch node_modules on every container start. This only reconciles what a
+# bind-mounted package.json changed. Dropping --force is safe now that the
+# compiler-cli/compiler mismatch that needed it is fixed.
+CMD ["sh", "-c", "npm install && npm run start -- --host 0.0.0.0 --poll=1000"]
 
 # ─── Stage: build ─────────────────────────────────────────────────────────────
 FROM deps AS build

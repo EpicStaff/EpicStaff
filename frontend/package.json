@@ -27,6 +27,9 @@
         ]
     },
     "private": true,
+    "engines": {
+        "node": "^18.19.1 || ^20.11.1 || >=22.0.0"
+    },
     "dependencies": {
         "@angular/animations": "19.2.18",
         "@angular/cdk": "19.2.19",
@@ -36,7 +39,6 @@
         "@angular/forms": "19.2.18",
         "@angular/material": "19.2.19",
         "@angular/platform-browser": "19.2.18",
-        "@angular/platform-browser-dynamic": "19.2.18",
         "@angular/router": "19.2.18",
         "@astral-sh/ruff-wasm-web": "0.15.2",
         "@foblex/2d": "1.2.2",
@@ -44,31 +46,33 @@
         "@foblex/mediator": "1.1.3",
         "@foblex/platform": "1.0.4",
         "@foblex/utils": "1.1.1",
-        "@fontsource/inter": "^5.2.8",
-        "@fontsource/roboto": "^5.2.10",
+        "@fontsource/inter": "5.2.8",
+        "@fontsource/roboto": "5.2.10",
         "@openai/realtime-api-beta": "github:openai/openai-realtime-api-beta#a5cb94824f625423858ebacb9f769226ca98945f",
-        "@tabler/icons-webfont": "^3.36.1",
         "ag-grid-angular": "33.3.2",
         "ag-grid-community": "33.3.2",
         "docx-preview": "^0.3.7",
+        "jsonc-parser": "3.3.1",
         "monaco-editor": "0.52.2",
         "ngx-image-cropper": "9.1.6",
         "ngx-json-viewer": "3.2.1",
         "ngx-markdown": "19.1.1",
         "ngx-monaco-editor-v2": "19.0.2",
-        "papaparse": "^5.5.3",
-        "read-excel-file": "^9.2.0",
+        "papaparse": "5.5.3",
+        "read-excel-file": "9.2.0",
         "rxjs": "7.8.2",
         "tslib": "2.8.1",
         "wavtools": "0.1.5",
         "zone.js": "0.15.1"
     },
     "devDependencies": {
-        "@angular-devkit/build-angular": "^19.2.0",
         "@angular-eslint/eslint-plugin": "^19.8.1",
-        "@angular/cli": "^19.2.0",
-        "@angular/compiler-cli": "^19.2.0",
+        "@angular/build": "19.2.20",
+        "@angular/cli": "19.2.20",
+        "@angular/compiler-cli": "19.2.18",
+        "@tabler/icons-webfont": "3.36.1",
         "@types/jasmine": "~5.1.0",
+        "@types/json-schema": "^7.0.15",
         "@types/papaparse": "^5.5.2",
         "eslint": "^9.39.4",
         "eslint-plugin-simple-import-sort": "^12.1.1",
@@ -80,8 +84,11 @@
         "karma-jasmine": "^5.1.0",
         "karma-jasmine-html-reporter": "^2.1.0",
         "lint-staged": "^16.3.3",
-        "prettier": "^3.8.1",
+        "prettier": "3.8.1",
         "typescript": "~5.5.2",
         "typescript-eslint": "^8.57.0"
+    },
+    "overrides": {
+        "dompurify": "^3.4.14"
     }
 }
