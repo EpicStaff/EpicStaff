@@ -247,10 +247,12 @@ from tables.serializers.model_serializers import (
 )
 
 from tables.serializers.serializers import (
+    BulkDeleteRequestSerializer,
     BulkExportSerializer,
     GraphNodesPartialExportSerializer,
     ImportRequestSerializer,
 )
+from tables.services import graph_delete_service
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.partial_export_service import (
     GraphPartialExportService,
@@ -799,6 +801,7 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         "import_entity": Permission.CREATE,
         "partial_import": Permission.UPDATE,
         "save_flow": Permission.UPDATE,
+        "bulk_delete": Permission.DELETE,
     }
     copy_service_class = GraphCopyService
     copy_serializer_class = GraphLightSerializer
@@ -877,9 +880,35 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         created_graph = serializer.save(org_id=org_id, created_by=self.request.user)
         GraphOrganization.objects.create(graph=created_graph)
 
+    def perform_destroy(self, instance):
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(self.request.user, org_id)
+        graph_delete_service.assert_graph_deletable(instance, org_id, effective)
+        instance.delete()
+
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(self.get_object())
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(request.user, org_id)
+        result = graph_delete_service.bulk_delete_graphs(
+            ids, org_id, effective, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"] and not result["skipped_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
 
     @action(detail=False, methods=["post"], url_path="bulk-export")
     def bulk_export(self, request):
