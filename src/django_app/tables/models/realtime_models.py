@@ -185,15 +185,71 @@ class RealtimeAgentDefinition(AbstractDefaultFillableModel):
         help_text="The prompt to use for the transcription, to guide the model (e.g. 'Expect words related to technology')",
     )
     voice = models.CharField(max_length=100, default="alloy")
-    realtime_config = models.ForeignKey(
-        "RealtimeConfig", on_delete=models.SET_NULL, null=True, default=None
-    )
-    realtime_transcription_config = models.ForeignKey(
-        "RealtimeTranscriptionConfig",
+
+    # Exactly one of these should be non-null; enforced in clean()
+    openai_config = models.ForeignKey(
+        "OpenAIRealtimeConfig",
         on_delete=models.SET_NULL,
         null=True,
+        blank=True,
         default=None,
+        related_name="realtime_agent_definitions",
     )
+    elevenlabs_config = models.ForeignKey(
+        "ElevenLabsRealtimeConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="realtime_agent_definitions",
+    )
+    gemini_config = models.ForeignKey(
+        "GeminiRealtimeConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="realtime_agent_definitions",
+    )
+
+    def clean(self):
+        set_count = sum(
+            [
+                self.openai_config_id is not None,
+                self.elevenlabs_config_id is not None,
+                self.gemini_config_id is not None,
+            ]
+        )
+        if set_count > 1:
+            raise ValidationError(
+                "A RealtimeAgentDefinition may have at most one provider config "
+                "set (openai_config, elevenlabs_config, or gemini_config)."
+            )
+
+    @property
+    def active_provider_config(self):
+        """Return whichever provider config FK is set, or None."""
+        return self.openai_config or self.elevenlabs_config or self.gemini_config
+
+    @property
+    def active_provider_config_id(self) -> int | None:
+        """Return the id of whichever provider config FK is set, or None."""
+        return (
+            self.openai_config_id
+            or self.elevenlabs_config_id
+            or self.gemini_config_id
+        )
+
+    @property
+    def provider_name(self) -> str | None:
+        """Return 'openai', 'elevenlabs', 'gemini', or None."""
+        if self.openai_config_id is not None:
+            return "openai"
+        if self.elevenlabs_config_id is not None:
+            return "elevenlabs"
+        if self.gemini_config_id is not None:
+            return "gemini"
+        return None
 
     def save(self, *args, **kwargs):
         if self.wake_word is None:

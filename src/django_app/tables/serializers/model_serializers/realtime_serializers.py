@@ -48,18 +48,71 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
     agent_definition = OrganizationScopedPrimaryKeyRelatedField(
         queryset=AgentDefinition.objects.all()
     )
-    realtime_config = OrgScopedPrimaryKeyRelatedField(
-        queryset=RealtimeConfig.objects.all(), required=False, allow_null=True
+    openai_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=OpenAIRealtimeConfig.objects.all(), required=False, allow_null=True
     )
-    realtime_transcription_config = OrgScopedPrimaryKeyRelatedField(
-        queryset=RealtimeTranscriptionConfig.objects.all(),
+    elevenlabs_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=ElevenLabsRealtimeConfig.objects.all(),
         required=False,
         allow_null=True,
+    )
+    gemini_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=GeminiRealtimeConfig.objects.all(), required=False, allow_null=True
     )
 
     class Meta:
         model = RealtimeAgentDefinition
         fields = "__all__"
+
+    def validate(self, attrs):
+        # `agent_definition` is this model's own primary key (a OneToOneField).
+        # It is writable so `create()` can specify which AgentDefinition a new
+        # row belongs to, but on `update()` it must never actually change: if
+        # a caller ever sent a value different from the instance being
+        # updated, `setattr()` + `instance.save()` would attempt an UPDATE
+        # that affects 0 rows, and Django's save() silently falls back to an
+        # INSERT — creating an orphan row while leaving the real target
+        # completely untouched (looks exactly like "the update didn't save").
+        # Reject the mismatch explicitly instead of allowing that silent
+        # fallback.
+        if self.instance is not None and "agent_definition" in attrs:
+            new_agent_definition = attrs["agent_definition"]
+            if new_agent_definition.pk != self.instance.pk:
+                raise serializers.ValidationError(
+                    {
+                        "agent_definition": (
+                            "agent_definition cannot be changed on an existing "
+                            "RealtimeAgentDefinition; it is the record's own "
+                            "identity (its primary key)."
+                        )
+                    }
+                )
+
+        openai_config = attrs.get(
+            "openai_config", getattr(self.instance, "openai_config", None)
+        )
+        elevenlabs_config = attrs.get(
+            "elevenlabs_config", getattr(self.instance, "elevenlabs_config", None)
+        )
+        gemini_config = attrs.get(
+            "gemini_config", getattr(self.instance, "gemini_config", None)
+        )
+
+        set_count = sum(
+            [
+                openai_config is not None,
+                elevenlabs_config is not None,
+                gemini_config is not None,
+            ]
+        )
+
+        if set_count > 1:
+            raise serializers.ValidationError(
+                "A RealtimeAgentDefinition may have at most one provider config "
+                "set (openai_config, elevenlabs_config, or gemini_config)."
+            )
+
+        return attrs
 
 
 class RealtimeSessionItemSerializer(serializers.ModelSerializer):

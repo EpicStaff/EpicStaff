@@ -44,7 +44,12 @@ class RealtimeService(metaclass=SingletonMeta):
         self, agent_definition_id: int
     ) -> RealtimeAgentDefinition:
         rt_agent_definition = get_object_or_404(
-            RealtimeAgentDefinition, pk=agent_definition_id
+            RealtimeAgentDefinition.objects.select_related(
+                "openai_config",
+                "elevenlabs_config",
+                "gemini_config",
+            ),
+            pk=agent_definition_id,
         )
         self.validate_rt_agent_definition(rt_agent_definition)
         return rt_agent_definition
@@ -52,27 +57,11 @@ class RealtimeService(metaclass=SingletonMeta):
     def validate_rt_agent_definition(
         self, rt_agent_definition: RealtimeAgentDefinition
     ):
-        missing_fields = []
-
-        if rt_agent_definition.realtime_config is None:
-            missing_fields.append("realtime_config")
-
-        # ElevenLabs/Gemini handle STT internally — transcription config not required
-        provider = (
-            rt_agent_definition.realtime_config.realtime_model.provider.name
-            if rt_agent_definition.realtime_config
-            else None
-        )
-        if (
-            provider not in ("elevenlabs", "gemini")
-            and rt_agent_definition.realtime_transcription_config is None
-        ):
-            missing_fields.append("realtime_transcription_config")
-
-        if missing_fields:
+        if rt_agent_definition.active_provider_config is None:
             raise ValidationError(
-                f"RealtimeAgentDefinition ID {rt_agent_definition.pk} is missing "
-                f"required fields: {', '.join(missing_fields)}"
+                f"RealtimeAgentDefinition ID {rt_agent_definition.pk} has no "
+                "provider config set. Assign an openai_config, "
+                "elevenlabs_config, or gemini_config."
             )
 
     def generate_connection_key(self):
@@ -133,17 +122,37 @@ class RealtimeService(metaclass=SingletonMeta):
         self, rt_agent_definition: RealtimeAgentDefinition
     ) -> RealtimeAgentChat:
         connection_key = self.generate_connection_key()
-        return RealtimeAgentChat.objects.create(
+
+        # RealtimeAgentDefinition (unlike RealtimeAgent) still carries its own
+        # language/voice_recognition_prompt fields — snapshot those directly,
+        # only falling back to the config's own value when the definition
+        # doesn't set one.
+        chat_kwargs = dict(
             rt_agent_definition=rt_agent_definition,
             wake_word=rt_agent_definition.wake_word,
             stop_prompt=rt_agent_definition.stop_prompt,
+            voice=rt_agent_definition.voice,
             language=rt_agent_definition.language,
             voice_recognition_prompt=rt_agent_definition.voice_recognition_prompt,
-            voice=rt_agent_definition.voice,
-            realtime_config=rt_agent_definition.realtime_config,
-            realtime_transcription_config=rt_agent_definition.realtime_transcription_config,
             connection_key=connection_key,
         )
+
+        if rt_agent_definition.openai_config:
+            chat_kwargs.update(
+                openai_config=rt_agent_definition.openai_config,
+                input_audio_format="pcm16",
+                output_audio_format="pcm16",
+            )
+        elif rt_agent_definition.elevenlabs_config:
+            cfg = rt_agent_definition.elevenlabs_config
+            chat_kwargs.update(
+                elevenlabs_config=cfg,
+                language=rt_agent_definition.language or cfg.language,
+            )
+        elif rt_agent_definition.gemini_config:
+            chat_kwargs.update(gemini_config=rt_agent_definition.gemini_config)
+
+        return RealtimeAgentChat.objects.create(**chat_kwargs)
 
     def init_realtime_agent_definition(
         self, agent_definition_id: int, config: dict

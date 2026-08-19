@@ -9,7 +9,7 @@ from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
 from tables.models.python_models import PythonCodeToolConfig
-from tables.models.realtime_models import RealtimeAgent
+from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgent
 from tables.models.llm_models import (
     RealtimeConfig,
     RealtimeModel,
@@ -448,13 +448,24 @@ def realtime_transcription_config(realtime_transcription_model, default_org):
 
 
 @pytest.fixture
+def openai_realtime_provider_config(default_org):
+    return OpenAIRealtimeConfig.objects.create(
+        custom_name="test_openai_realtime_config",
+        api_key="test",
+        model_name="gpt-realtime-1.5",
+        transcription_model_name="whisper-1",
+        transcription_api_key="test",
+        org=default_org,
+    )
+
+
+@pytest.fixture
 def wikipedia_agent_with_configured_realtime(
-    wikipedia_agent, openai_realtime_model_config, realtime_transcription_config
+    wikipedia_agent, openai_realtime_provider_config
 ):
     RealtimeAgent.objects.create(
         agent=wikipedia_agent,
-        realtime_config=openai_realtime_model_config,
-        realtime_transcription_config=realtime_transcription_config,
+        openai_config=openai_realtime_provider_config,
     )
 
     return wikipedia_agent
