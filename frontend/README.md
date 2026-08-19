@@ -38,6 +38,13 @@ npm run watch                  # dev build with rebuild on changes
 npm run build-mym              # production build with base-href /epicstaff/
 ```
 
+`allowedCommonJsDependencies` in [angular.json](./angular.json) lists `papaparse` and `jszip`.
+Both are CommonJS-only with no ESM build published — papaparse has none even in its latest
+release, and jszip arrives through `docx-preview`, so its import is not ours to change. The entry
+suppresses the build warning; it does not change the output. Both land in the lazy chunk for the
+file-preview screen, not the initial bundle, so the tree-shaking cost is confined to that route.
+Add to this list only after confirming a package genuinely has no ESM entry point.
+
 ## Tests
 
 ```powershell

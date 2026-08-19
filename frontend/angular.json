@@ -61,10 +61,8 @@
             ],
             "scripts": [],
             "allowedCommonJsDependencies": [
-              "core-js",
-              "moment",
-              "numbro",
-              "dompurify"
+              "papaparse",
+              "jszip"
             ]
           },
           "configurations": {
