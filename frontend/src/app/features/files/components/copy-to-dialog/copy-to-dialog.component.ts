@@ -35,6 +35,7 @@ export interface FolderNode {
     hasChildren: boolean;
     children: FolderNode[];
     isLoaded: boolean;
+    isEmpty: boolean;
 }
 
 @Component({
@@ -153,6 +154,7 @@ export class CopyToDialogComponent {
                                 hasChildren: !i.is_empty,
                                 children: [],
                                 isLoaded: false,
+                                isEmpty: i.is_empty ?? false,
                             })
                         );
 

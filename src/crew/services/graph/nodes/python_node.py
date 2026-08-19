@@ -49,8 +49,10 @@ class PythonNode(BaseNode):
                 "message_type": "python_stream",
                 "text": f"Executing '{self.node_name}'...",
                 "is_final": False,
-                "sse_visible": not self.stream_config
-                or self.stream_config.get("execution_status", True),
+                "sse_visible": bool(
+                    not self.stream_config
+                    or self.stream_config.get("execution_status", True)
+                ),
             },
         )
 

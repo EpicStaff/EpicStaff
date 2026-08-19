@@ -43,12 +43,10 @@ services:
       DJANGO_PORT: ${DJANGO_PORT:-8000}
       LOAD_DEBUG_ENV: ${LOAD_DEBUG_ENV}
       TIMEZONE: ${TIMEZONE:-UTC}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
       STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-epicstaff}
-      STORAGE_LOCAL_ROOT: ${STORAGE_LOCAL_ROOT:-/app/storage}
       JWT_SECRET: ${JWT_SECRET:-}
       JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-15}
       JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-7}
@@ -240,6 +238,10 @@ services:
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT}
       GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT}
       LLM_HEADERS: ${LLM_HEADERS:-}
+      AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:-agent.requests}
+      AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:-agent.results}
+      AGENT_RESULT_TIMEOUT_S: ${AGENT_RESULT_TIMEOUT_S:-600}
+      REMEMBERED_OUTPUTS_TTL_S: ${REMEMBERED_OUTPUTS_TTL_S:-3600}
     volumes:
       - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
       - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
@@ -476,6 +478,30 @@ services:
       - "8025:8025"   # web UI: http://localhost:8025/
     networks:
       - backend-network
+  
+  agent:
+    image: ghcr.io/epicstaff/agent:${IMAGE_TAG:-latest}
+    container_name: agent
+    build:
+      context: .
+      dockerfile: ./agent/Dockerfile.agent
+    environment:
+      <<: *common_env
+      AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:-agent.requests}
+      AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:-agent.results}
+      AGENT_CONSUMER_GROUP: ${AGENT_CONSUMER_GROUP:-agent-executors}
+      AGENT_DEFAULT_MAX_RETRIES: ${AGENT_DEFAULT_MAX_RETRIES:-5}
+      AGENT_DEFAULT_MAX_ITER: ${AGENT_DEFAULT_MAX_ITER:-25}
+      AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:-2}
+      AGENT_DROP_UNSUPPORTED_LLM_PARAMS: ${AGENT_DROP_UNSUPPORTED_LLM_PARAMS:-true}
+      AGENT_CONTEXT_WARNING_RATIO: ${AGENT_CONTEXT_WARNING_RATIO:-0.8}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-network
+
 
 volumes:
   sandbox_venvs:

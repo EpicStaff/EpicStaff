@@ -1,4 +1,8 @@
 import {
+    AgentNodeTaskUi,
+    AgentNodeTaskWrite,
+} from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
+import {
     CreateClassificationDecisionTableNodeRequest,
     CreatePromptConfigRequest,
 } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
@@ -259,6 +263,41 @@ function buildCdtNodePayload(
     } satisfies CreateClassificationDecisionTableNodeRequest & Record<string, unknown>;
 }
 
+function buildAgentTasksPayload(tasks: AgentNodeTaskUi[]): AgentNodeTaskWrite[] {
+    const idByTempId = new Map<string, number>();
+    for (const sibling of tasks ?? []) {
+        if (sibling.tempId && sibling.id != null) idByTempId.set(sibling.tempId, sibling.id);
+    }
+
+    return (tasks ?? []).map((t, index) => {
+        const contextTaskIds: number[] = [];
+        const contextTaskTempIds: string[] = [];
+
+        for (const r of t.contextRefs ?? []) {
+            if (r.id != null) {
+                contextTaskIds.push(r.id);
+            } else if (r.tempId != null) {
+                const resolvedId = idByTempId.get(r.tempId);
+                if (resolvedId != null) {
+                    contextTaskIds.push(resolvedId);
+                } else {
+                    contextTaskTempIds.push(r.tempId);
+                }
+            }
+        }
+
+        return {
+            ...(t.id != null ? { id: t.id } : { temp_id: t.tempId }),
+            name: t.name,
+            order: index,
+            instructions: t.instructions,
+            output_schema: t.output_schema ?? {},
+            context_task_ids: contextTaskIds,
+            context_task_temp_ids: contextTaskTempIds,
+        } satisfies AgentNodeTaskWrite;
+    });
+}
+
 export function buildBulkSavePayload(
     graphId: number,
     nodeDiff: NodeDiffByType,
@@ -304,6 +343,8 @@ export function buildBulkSavePayload(
         start_node_ids: nodeDiff.startNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         crew_node_ids: nodeDiff.crewNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         python_node_ids: nodeDiff.pythonNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
+        task_node_ids: nodeDiff.taskNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
+        agent_node_ids: nodeDiff.agentNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         llm_node_ids: nodeDiff.llmNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         file_extractor_node_ids: nodeDiff.fileExtractorNodes.toDelete
             .map((n) => n.backendId!)
@@ -357,6 +398,30 @@ export function buildBulkSavePayload(
                 metadata: toNodeMetadata(n),
             };
         }),
+        task_node_list: nodeItems(nodeDiff.taskNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            instructions: n.data.instructions,
+            output_schema: n.data.output_schema ?? {},
+            remember_output: n.data.remember_output ?? false,
+            agent_definition: n.data.agent_definition ?? null,
+            input_map: n.input_map || {},
+            output_variable_path: n.output_variable_path || null,
+            surface_list: n.data.surface_list ?? [],
+            inline_surface: n.data.inline_surface ?? null,
+            metadata: toNodeMetadata(n),
+        })),
+        agent_node_list: nodeItems(nodeDiff.agentNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            agent_definition: n.data.agent_definition ?? null,
+            input_map: n.input_map || {},
+            output_variable_path: n.output_variable_path || null,
+            surface_list: n.data.surface_list ?? [],
+            inline_surface: n.data.inline_surface ?? null,
+            tasks: buildAgentTasksPayload(n.data.tasks ?? []),
+            metadata: toNodeMetadata(n),
+        })),
         llm_node_list: nodeItems(nodeDiff.llmNodes, (n) => ({
             node_name: n.node_name,
             graph: graphId,

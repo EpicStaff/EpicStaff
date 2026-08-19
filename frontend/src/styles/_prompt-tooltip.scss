@@ -24,7 +24,9 @@
     background: #1e1e1e;
     border: 1px solid rgba(104, 95, 255, 0.4);
     border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.05);
     padding: 12px;
     display: flex;
     flex-direction: column;

@@ -69,6 +69,12 @@ class DefaultAgentConfig(DefaultBaseModel):
 
 
 class Agent(OrgScopedModel, AbstractDefaultFillableModel):
+    """
+    DEPRECATED: Agent is deprecated. Use agents.AgentDefinition + AgentNode instead.
+    New flows must not create Agent rows; this model exists only for backward
+    compatibility with existing crews.
+    """
+
     tags = models.ManyToManyField(to="AgentTag", blank=True, default=[])
     role = models.TextField()
     goal = models.TextField()
@@ -190,6 +196,12 @@ class Agent(OrgScopedModel, AbstractDefaultFillableModel):
 
 
 class AgentConfiguredTools(models.Model):
+    """
+    DEPRECATED: AgentConfiguredTools is deprecated. Use agents.AgentDefinition +
+    AgentNode instead. Exists only for backward compatibility with existing
+    Agent rows.
+    """
+
     agent = models.ForeignKey(
         "Agent", on_delete=models.CASCADE, related_name="configured_tools"
     )
@@ -201,6 +213,12 @@ class AgentConfiguredTools(models.Model):
 
 
 class AgentPythonCodeTools(models.Model):
+    """
+    DEPRECATED: AgentPythonCodeTools is deprecated. Use agents.AgentDefinition +
+    AgentNode instead. Exists only for backward compatibility with existing
+    Agent rows.
+    """
+
     agent = models.ForeignKey(
         "Agent",
         on_delete=models.CASCADE,
@@ -214,6 +232,12 @@ class AgentPythonCodeTools(models.Model):
 
 
 class AgentPythonCodeToolConfigs(models.Model):
+    """
+    DEPRECATED: AgentPythonCodeToolConfigs is deprecated. Use
+    agents.AgentDefinition + AgentNode instead. Exists only for backward
+    compatibility with existing Agent rows.
+    """
+
     agent = models.ForeignKey(
         "Agent", on_delete=models.CASCADE, related_name="python_code_tool_configs"
     )
@@ -229,6 +253,12 @@ class AgentPythonCodeToolConfigs(models.Model):
 
 
 class AgentMcpTools(models.Model):
+    """
+    DEPRECATED: AgentMcpTools is deprecated. Use agents.AgentDefinition +
+    AgentNode instead. Exists only for backward compatibility with existing
+    Agent rows.
+    """
+
     agent = models.ForeignKey(
         "Agent", on_delete=models.CASCADE, related_name="mcp_tools"
     )
@@ -240,6 +270,12 @@ class AgentMcpTools(models.Model):
 
 
 class Crew(OrgScopedModel, AbstractDefaultFillableModel):
+    """
+    DEPRECATED: Crew is deprecated. Use the new Agent/Task graph nodes
+    (AgentNode, TaskNode) instead. New flows must not create Crew rows; this
+    model exists only for backward compatibility with existing flows.
+    """
+
     metadata = models.JSONField(default=dict)
     tags = models.ManyToManyField(to="CrewTag", blank=True, default=[])
     description = models.TextField(null=True, blank=True)
@@ -410,6 +446,12 @@ class DefaultToolConfig(DefaultBaseModel):
 
 
 class TemplateAgent(models.Model):
+    """
+    DEPRECATED: TemplateAgent is deprecated. Use agents.AgentDefinition +
+    AgentNode instead. Exists only for backward compatibility with existing
+    templates.
+    """
+
     role = models.TextField()
     goal = models.TextField()
     backstory = models.TextField()
@@ -438,6 +480,12 @@ class TemplateAgent(models.Model):
 
 
 class Task(models.Model):
+    """
+    DEPRECATED: Task is deprecated. Use TaskNode/AgentNodeTask instead. New
+    flows must not create Task rows; this model exists only for backward
+    compatibility with existing crews.
+    """
+
     crew = models.ForeignKey("Crew", on_delete=models.SET_NULL, null=True, default=None)
     name = models.TextField()
     agent = models.ForeignKey(
@@ -457,6 +505,11 @@ class Task(models.Model):
 
 
 class TaskConfiguredTools(models.Model):
+    """
+    DEPRECATED: TaskConfiguredTools is deprecated. Use TaskNode/AgentNodeTask
+    instead. Exists only for backward compatibility with existing Task rows.
+    """
+
     task = models.ForeignKey(
         "Task", on_delete=models.CASCADE, related_name="task_configured_tool_list"
     )
@@ -467,6 +520,11 @@ class TaskConfiguredTools(models.Model):
 
 
 class TaskPythonCodeTools(models.Model):
+    """
+    DEPRECATED: TaskPythonCodeTools is deprecated. Use TaskNode/AgentNodeTask
+    instead. Exists only for backward compatibility with existing Task rows.
+    """
+
     task = models.ForeignKey(
         "Task", on_delete=models.CASCADE, related_name="task_python_code_tool_list"
     )
@@ -477,6 +535,11 @@ class TaskPythonCodeTools(models.Model):
 
 
 class TaskPythonCodeToolConfigs(models.Model):
+    """
+    DEPRECATED: TaskPythonCodeToolConfigs is deprecated. Use TaskNode/AgentNodeTask
+    instead. Exists only for backward compatibility with existing Task rows.
+    """
+
     task = models.ForeignKey(
         "Task",
         on_delete=models.CASCADE,
@@ -489,6 +552,11 @@ class TaskPythonCodeToolConfigs(models.Model):
 
 
 class TaskMcpTools(models.Model):
+    """
+    DEPRECATED: TaskMcpTools is deprecated. Use TaskNode/AgentNodeTask instead.
+    Exists only for backward compatibility with existing Task rows.
+    """
+
     task = models.ForeignKey(
         "Task", on_delete=models.CASCADE, related_name="task_mcp_tool_list"
     )
@@ -500,6 +568,11 @@ class TaskMcpTools(models.Model):
 
 
 class TaskContext(models.Model):
+    """
+    DEPRECATED: TaskContext is deprecated. Use AgentNodeTask.context_tasks
+    instead. Exists only for backward compatibility with existing Task rows.
+    """
+
     task = models.ForeignKey(
         "Task", on_delete=models.CASCADE, related_name="task_context_list"
     )

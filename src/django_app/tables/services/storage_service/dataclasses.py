@@ -8,6 +8,7 @@ from typing import Literal
 class FileListItem:
     """Single entry returned by list_(): a file or folder."""
 
+    id: int | None
     name: str
     type: Literal["file", "folder"]
     size: int
@@ -22,6 +23,7 @@ class FileListItem:
 class FileInfo:
     """Metadata returned by info()."""
 
+    id: int | None
     name: str
     path: str
     size: int
@@ -36,6 +38,7 @@ class FileInfo:
 class FolderInfo:
     """Metadata returned by info() for folders."""
 
+    id: int | None
     name: str
     path: str
     modified: str
@@ -83,6 +86,7 @@ UploadFileResult = FileUploadResult | ArchiveUploadResult
 
 @dataclass(frozen=True, slots=True)
 class TreeNode:
+    id: int | None
     name: str
     path: str
     type: Literal["file", "folder"]
@@ -94,6 +98,7 @@ class TreeNode:
 
     def to_dict(self) -> dict:
         return {
+            "id": self.id,
             "name": self.name,
             "path": self.path,
             "type": self.type,

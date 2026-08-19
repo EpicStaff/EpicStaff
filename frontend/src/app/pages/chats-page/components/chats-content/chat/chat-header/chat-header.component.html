@@ -1,18 +1,16 @@
 <div
     class="chat-header"
-    *ngIf="agent"
+    *ngIf="vm"
 >
     <div class="agent-info">
         <div>
-            <h3>{{ agent.role }}</h3>
+            <h3>{{ vm.title }}</h3>
             <div
                 class="model-info"
-                *ngIf="agent.fullRealtimeConfig?.modelDetails?.name; else noModel"
+                *ngIf="vm.modelName; else noModel"
             >
-                {{ agent.fullRealtimeConfig?.modelDetails?.name }}
-                <ng-container *ngIf="agent.fullRealtimeConfig?.custom_name"
-                    >({{ agent.fullRealtimeConfig?.custom_name }})</ng-container
-                >
+                {{ vm.modelName }}
+                <ng-container *ngIf="vm.customName">({{ vm.customName }})</ng-container>
             </div>
             <ng-template #noModel>
                 <div class="model-info">Realtime Model not specified</div>

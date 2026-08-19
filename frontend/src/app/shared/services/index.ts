@@ -23,6 +23,7 @@ export * from './realtime-llms/realtime-models-storage.service';
 export * from './secrets/secret-declaration-index.service';
 export * from './secrets/secrets-api.service';
 export * from './secrets/secrets-storage.service';
+export * from './sidebar-width.service';
 export * from './transcription-llms/transcription-config.service';
 export * from './transcription-llms/transcription-config-storage.service';
 export * from './transcription-llms/transcription-models.service';

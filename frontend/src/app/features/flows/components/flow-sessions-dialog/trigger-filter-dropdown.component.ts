@@ -43,6 +43,7 @@ const ALL_TRIGGER_TYPES: TriggerType[] = ['manual', 'schedule', 'webhook', 'tele
         <div
             class="node-filter-dropdown"
             [class.open]="open"
+            [class.has-value]="hasValue"
             (appClickOutside)="onCancel()"
         >
             <button
@@ -107,6 +108,10 @@ const ALL_TRIGGER_TYPES: TriggerType[] = ['manual', 'schedule', 'webhook', 'tele
 export class TriggerFilterDropdownComponent implements OnChanges {
     @Input() value: TriggerType[] = [];
     @Output() valueChange = new EventEmitter<TriggerType[]>();
+
+    public get hasValue(): boolean {
+        return this.value.length > 0;
+    }
 
     public open = false;
     public draftValue: TriggerType[] = [];

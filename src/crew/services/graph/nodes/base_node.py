@@ -135,6 +135,10 @@ class BaseNode(ABC):
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any
     ): ...
 
+    def get_output_variable_value(self, output: Any) -> Any:
+        """Value stored at output_variable_path. Default: whole output."""
+        return output
+
     async def run(self, state: State, writer: StreamWriter) -> State:
         """
         Run the node.
@@ -173,7 +177,7 @@ class BaseNode(ABC):
             set_output_variables(
                 state=state,
                 output_variable_path=self.output_variable_path,
-                output=output,
+                output=self.get_output_variable_value(output),
             )
 
             self.update_state_history(

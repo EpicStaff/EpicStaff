@@ -130,6 +130,8 @@
             <app-collection-details-info
                 [collection]="fullCollection()!"
                 [documents]="documents()"
+                [saveFailedTick]="descriptionSaveFailedTick()"
+                (descriptionSave)="onDescriptionSave($event)"
             />
         </section>
     }

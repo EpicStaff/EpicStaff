@@ -84,6 +84,26 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         }
     }
 
+    /**
+     * Captures the panel's current node state for a flow-wide save, regardless of whether
+     * the form is currently valid. Unlike `onSaveSilently()` (which returns `null` on an
+     * invalid form and therefore hides in-progress edits from the caller), this always
+     * returns the node built from the current form values, and marks every control touched
+     * so invalid fields render their error state. Used by the global "Save Flow" action so an
+     * open panel's incomplete edits are still visible to flow-wide validation instead of being
+     * silently dropped.
+     */
+    public captureForValidation(): T | null {
+        if (!this.form) return null;
+        this.form.markAllAsTouched();
+        this.notifyExternalChange();
+        try {
+            return this.createUpdatedNode();
+        } catch {
+            return null;
+        }
+    }
+
     protected notifyExternalChange(): void {
         this.dirtyCheckTick.update((v) => v + 1);
     }

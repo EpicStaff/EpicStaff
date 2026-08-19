@@ -112,6 +112,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "tables",
+    "agents",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -357,12 +358,10 @@ AVATAR_ALLOWED_FORMATS = [
 ]
 
 # Object storage
-STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "s3")
 STORAGE_ENDPOINT = os.getenv("STORAGE_ENDPOINT", "")
 STORAGE_ACCESS_KEY = os.getenv("STORAGE_ACCESS_KEY", "")
 STORAGE_SECRET_KEY = os.getenv("STORAGE_SECRET_KEY", "")
 STORAGE_BUCKET_NAME = os.getenv("STORAGE_BUCKET_NAME", "epicstaff")
-STORAGE_LOCAL_ROOT = os.getenv("STORAGE_LOCAL_ROOT", "/app/storage")
 
 MAX_TOTAL_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
@@ -411,7 +410,7 @@ WEBHOOK_HOST_NAME = os.getenv("WEBHOOK_HOST_NAME", "localhost")
 WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", 8009))
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "CrewAI SheetsUI API",
+    "TITLE": "EpicStaff API",
     "VERSION": "v1",
     "SERVE_INCLUDE_SCHEMA": False,
     "SWAGGER_UI_SETTINGS": {

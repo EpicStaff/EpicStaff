@@ -206,6 +206,15 @@
                             ></app-toggle-switch>
                         </div>
                     </div>
+
+                    <div class="storage-mode-switch">
+                        <span>Enable Storage</span>
+                        <app-help-tooltip
+                            text="Allow this tool to read and write files in EpicStaff storage."
+                        ></app-help-tooltip>
+                        <app-toggle-switch formControlName="useStorage"></app-toggle-switch>
+                    </div>
+
                     @if (parametersTableMode()) {
                         <app-parameters-table-view
                             [variables]="tableVariables()"
