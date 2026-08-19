@@ -223,6 +223,16 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
 
         await self.send_function_result(call_id, str(tool_result))
 
+        if self.is_twilio:
+            # Appending a function_call_output item does NOT by itself make the
+            # model speak — OpenAI requires an explicit response.create afterward.
+            # On the Twilio bridge there is no client driving that follow-up
+            # request, so we trigger it here. The browser path already gets one
+            # (the vendored realtime client sends response.create itself once it
+            # sees the tool-call item complete), so skip it there to avoid firing
+            # a redundant response.create while one is already in flight.
+            await self.request_response()
+
     async def process_message(
         self, message: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
