@@ -9,6 +9,10 @@ from ..crew_models import Agent
 
 
 class GraphRag(models.Model):
+    class Slot(models.TextChoices):
+        A = "a"
+        B = "b"
+
     class GraphRagStatus(models.TextChoices):
         """
         - NEW - new rag
@@ -74,6 +78,7 @@ class GraphRag(models.Model):
         default=list,
         blank=True,
     )
+    slot = models.CharField(max_length=1, choices=Slot.choices, default=Slot.A)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
