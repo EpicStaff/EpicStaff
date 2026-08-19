@@ -5,12 +5,8 @@ from tables.models.graph_models import (
     ConditionGroup,
     DecisionTableNode,
 )
-from tables.models.knowledge_models import (
-    KnowledgeNodeGraphRagBasicSearchConfig,
-    KnowledgeNodeGraphRagLocalSearchConfig,
-    KnowledgeNodeNaiveRagSearchConfig,
-)
 from tables.services.graph_bulk_save_service.data_types import NodeRef
+from tables.services.rag_assignment_service import SearchConfigService
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 
 
@@ -451,30 +447,16 @@ class ClassificationDecisionTableNodeSaveable:
 
 
 class KnowledgeNodeSaveable:
-    """
-    Wraps a validated KnowledgeNodeBulkSerializer and its three optional nested
-    search-config rows (naive / graph-basic / graph-local).
-
-    The config rows are reverse OneToOne relations, not KnowledgeNode fields, so
-    the serializer never sees them — the factory pops them into nested_configs and
-    this saveable persists them here. Non-destructive merge: a provided block is
-    upserted (get_or_create + set sent fields); an omitted block is left as-is, so
-    the FE can save a flow without resending unchanged search configs.
-
-    _CONFIG_MODELS is the single extension point: a new graph search method needs
-    only its config model added here plus the matching payload key in the factory.
+    """Wraps a validated KnowledgeNodeBulkSerializer plus the node's already
+    validated nested search_configs (validated by the factory via
+    NestedSearchConfigSerializer). Config rows are reverse OneToOne relations, not
+    node fields, so they are written through the shared SearchConfigService — the
+    same non-destructive merge path the CRUD serializer uses.
     """
 
-    _CONFIG_MODELS = {
-        "naive_search_config": KnowledgeNodeNaiveRagSearchConfig,
-        "graph_basic_search_config": KnowledgeNodeGraphRagBasicSearchConfig,
-        "graph_local_search_config": KnowledgeNodeGraphRagLocalSearchConfig,
-    }
-    _CONFIG_EXCLUDED_FIELDS = frozenset({"id", "knowledge_node"})
-
-    def __init__(self, serializer, nested_configs, instance=None):
+    def __init__(self, serializer, search_configs, instance=None):
         self._serializer = serializer
-        self._nested_configs = nested_configs or {}
+        self._search_configs = search_configs
         self._instance = instance
 
     def save(self):
@@ -488,21 +470,8 @@ class KnowledgeNodeSaveable:
             else s.update(s.instance, validated)
         )
 
-        for key, model in self._CONFIG_MODELS.items():
-            config_data = self._nested_configs.get(key)
-            if not config_data:
-                # Omitted block → keep the stored row untouched (non-destructive).
-                continue
-            cleaned = {
-                k: v
-                for k, v in config_data.items()
-                if k not in self._CONFIG_EXCLUDED_FIELDS
-            }
-            _clean_for_write(cleaned)
-            row, _ = model.objects.get_or_create(knowledge_node=node)
-            for field, value in cleaned.items():
-                setattr(row, field, value)
-            row.save()
+        if self._search_configs:
+            SearchConfigService.apply_node_search_configs(node, self._search_configs)
 
         return node
 

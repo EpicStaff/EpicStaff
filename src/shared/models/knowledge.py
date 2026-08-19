@@ -146,7 +146,7 @@ class ChunkDocumentMessageResponse(BaseModel):
     chunking_job_id: str  # UUID
     rag_type: Literal["naive", "graph"]
     document_config_id: int
-    status: KnowledgeStatus
+    status: str
     chunk_count: int | None = None
     message: str | None = None
     elapsed_time: float | None = None

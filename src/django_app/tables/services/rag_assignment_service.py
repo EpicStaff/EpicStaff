@@ -363,7 +363,7 @@ class SearchConfigService:
             )
 
         if any(graph_cfg[method] is not None for method in graph_cfg):
-            graph_cfg["search_method"] = node.search_method
+            graph_cfg["search_method"] = node.search_method or "basic"
             configs["graph"] = graph_cfg
 
         return configs or None

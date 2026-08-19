@@ -85,6 +85,51 @@ def test_create_knowledge_node_with_graph_basic_search_config(auth_client, graph
 
 
 @pytest.mark.django_db
+def test_create_knowledge_node_malformed_search_configs_returns_400(auth_client, graph):
+    """A non-dict search_configs must be rejected with 400, not crash the write."""
+    payload = {
+        "save_version": graph.save_version,
+        "knowledge_node_list": [
+            {
+                "graph": graph.id,
+                "node_name": "KB Bad Shape",
+                "search_configs": ["not", "a", "dict"],
+            }
+        ],
+    }
+    resp = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
+    assert not KnowledgeNode.objects.filter(
+        graph=graph, node_name="KB Bad Shape"
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_create_knowledge_node_out_of_range_value_returns_400(auth_client, graph):
+    """Out-of-range config values must be rejected with 400 (same validation as
+    the CRUD path), not written to the DB."""
+    payload = {
+        "save_version": graph.save_version,
+        "knowledge_node_list": [
+            {
+                "graph": graph.id,
+                "node_name": "KB Bad Value",
+                "search_configs": {
+                    "naive": {"search_limit": 3, "similarity_threshold": 5.0}
+                },
+            }
+        ],
+    }
+    resp = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
+    assert not KnowledgeNode.objects.filter(
+        graph=graph, node_name="KB Bad Value"
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_update_knowledge_node_without_search_configs_keeps_existing(
     auth_client, graph
 ):

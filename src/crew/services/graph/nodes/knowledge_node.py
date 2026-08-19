@@ -2,6 +2,7 @@ import asyncio
 from dataclasses import asdict
 from typing import Any
 
+from loguru import logger
 from langgraph.types import StreamWriter
 
 from models.graph_models import NodeExtractedChunksMessageData, GraphMessage
@@ -48,15 +49,35 @@ class KnowledgeNode(BaseNode):
     def _build_query(self, input_: Any) -> str:
         """Interpolate mapped variables into the template ({name}).
 
-        Variables not referenced in the template are ignored — the frontend
-        composes the full query text. Without a template, returns an empty query.
+        Partial-safe: a placeholder whose variable is absent is left intact
+        instead of dropping the whole substitution; unmapped variables are logged.
+        The FE composes the full query text. Empty template → empty query.
         """
         if not self.query_template:
             return ""
-        try:
-            return self.query_template.format(**input_)
-        except (KeyError, IndexError, ValueError, TypeError):
+        if not isinstance(input_, dict):
             return self.query_template
+
+        missing: set[str] = set()
+
+        class _Fillable(dict):
+            def __missing__(self, key):
+                missing.add(key)
+                return "{" + key + "}"
+
+        try:
+            result = self.query_template.format_map(_Fillable(input_))
+        except (ValueError, IndexError) as e:
+            logger.warning(
+                f"Knowledge node '{self.node_name}' query template not formattable: {e}"
+            )
+            return self.query_template
+        if missing:
+            logger.warning(
+                f"Knowledge node '{self.node_name}' query references unmapped "
+                f"variables: {sorted(missing)}"
+            )
+        return result
 
     async def execute(
         self, state: State, writer: StreamWriter, execution_order: int, input_: Any

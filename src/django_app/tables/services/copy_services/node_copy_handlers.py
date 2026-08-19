@@ -2,6 +2,7 @@ from typing import Callable
 
 from tables.import_export.enums import NodeType
 from tables.models import Graph
+from tables.models.knowledge_models import KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS
 from tables.models.graph_models import (
     AudioTranscriptionNode,
     ClassificationConditionGroup,
@@ -146,14 +147,6 @@ def copy_code_agent_node(graph: Graph, node: CodeAgentNode) -> CodeAgentNode:
     )
 
 
-# Node-bound OneToOne search configs; a new graph search method adds one entry.
-_KNOWLEDGE_SEARCH_CONFIG_RELATIONS = (
-    "naive_search_config",
-    "graph_basic_search_config",
-    "graph_local_search_config",
-)
-
-
 def copy_knowledge_node(graph: Graph, node: KnowledgeNode) -> KnowledgeNode:
     new_node = KnowledgeNode.objects.create(
         graph=graph,
@@ -164,7 +157,7 @@ def copy_knowledge_node(graph: Graph, node: KnowledgeNode) -> KnowledgeNode:
         search_method=node.search_method,
         **get_base_node_fields(node),
     )
-    for relation in _KNOWLEDGE_SEARCH_CONFIG_RELATIONS:
+    for relation in KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS:
         # Reverse OneToOne raises RelatedObjectDoesNotExist (a subclass of
         # AttributeError) when absent, so getattr default returns None.
         config = getattr(node, relation, None)

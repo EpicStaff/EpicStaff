@@ -1,10 +1,9 @@
 from typing import Optional
 
+from tables.exceptions import RagException
 from tables.models import KnowledgeNode
 from tables.models.knowledge_models import (
-    KnowledgeNodeGraphRagBasicSearchConfig,
-    KnowledgeNodeGraphRagLocalSearchConfig,
-    KnowledgeNodeNaiveRagSearchConfig,
+    KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS,
     SourceCollection,
 )
 from tables.import_export.strategies.base import EntityImportExportStrategy
@@ -13,18 +12,14 @@ from tables.import_export.serializers.knowledge_node import (
 )
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
-from tables.services.rag_registry import RAG_TYPE_REGISTRY
+from tables.services.rag_registry import resolve_rag_in_collection
 
 
 class KnowledgeNodeStrategy(EntityImportExportStrategy):
     entity_type = EntityType.KNOWLEDGE_NODE
     serializer_class = KnowledgeNodeImportSerializer
 
-    _CONFIG_MODELS = {
-        "naive_search_config": KnowledgeNodeNaiveRagSearchConfig,
-        "graph_basic_search_config": KnowledgeNodeGraphRagBasicSearchConfig,
-        "graph_local_search_config": KnowledgeNodeGraphRagLocalSearchConfig,
-    }
+    _CONFIG_MODELS = KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS
 
     def get_instance(self, entity_id: int) -> Optional[KnowledgeNode]:
         return KnowledgeNode.objects.filter(id=entity_id).first()
@@ -43,23 +38,22 @@ class KnowledgeNodeStrategy(EntityImportExportStrategy):
 
         configs = {key: data.pop(key, None) for key in self._CONFIG_MODELS}
 
-        source_collection_exists = SourceCollection.objects.filter(
+        source_collection = SourceCollection.objects.filter(
             pk=data.get("source_collection")
-        ).exists()
-        if not source_collection_exists:
+        ).first()
+        if source_collection is None:
             data["source_collection"] = None
 
         rag_type = data.get("rag_type")
         rag_id = data.get("rag_id")
-        descriptor = RAG_TYPE_REGISTRY.get(rag_type)
-        rag_impl_exists = (
-            descriptor is not None
-            and rag_id is not None
-            and descriptor.model.objects.filter(
-                **{descriptor.id_field: rag_id}
-            ).exists()
-        )
-        if not source_collection_exists or not rag_impl_exists:
+        rag_ok = False
+        if source_collection is not None and rag_type and rag_id is not None:
+            try:
+                resolve_rag_in_collection(rag_type, rag_id, source_collection)
+                rag_ok = True
+            except RagException:
+                rag_ok = False
+        if not rag_ok:
             data["rag_type"] = None
             data["rag_id"] = None
 
