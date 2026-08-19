@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { TaskNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -8,7 +8,7 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 export function mapTaskNodeToModel(tn: TaskNode): TaskNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(tn.metadata, NodeType.TASK);
     return {
-        id: uuidv4(),
+        id: generateUuid(),
         backendId: tn.id,
         type: NodeType.TASK,
         node_name: tn.node_name,
