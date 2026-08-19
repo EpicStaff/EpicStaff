@@ -16,9 +16,9 @@ from application.orchestrators.searching.strategies.graph_search import (
     GraphSearchOrchestrator,
     SearchSpecification,
 )
+from application.results import SearchResult
 from domain.enums import GraphSearchMethodEnum
 from domain.errors import UnsupportedError
-from application.results import SearchResult
 from domain.models import SearchRequest
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from src.shared.models.knowledge_new import (

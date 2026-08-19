@@ -1,7 +1,7 @@
 from application.orchestrators.searching.strategies import naive_search
 from application.orchestrators.searching.strategies.naive_search import NaiveSearchOrchestrator
-from domain.enums import EmbedderProviderEnum
 from application.results import SearchResult
+from domain.enums import EmbedderProviderEnum
 from domain.models import (
     EmbeddingConfig,
     FoundChunk,
