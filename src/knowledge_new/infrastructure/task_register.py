@@ -1,6 +1,6 @@
 import asyncio
 
-__all__ = ["TaskRegister", "task_register"]
+__all__ = ["TaskRegister"]
 
 
 class TaskRegister:
