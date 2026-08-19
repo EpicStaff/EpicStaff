@@ -31,7 +31,10 @@
                         [size]="'18px'"
                     ></app-svg-icon>
                 }
-                <span class="selector__text">
+                <span
+                    class="selector__text"
+                    [attr.title]="selectedItem()?.name || null"
+                >
                     {{ selectedItem() ? selectedItem()!.name : placeholder() }}
                 </span>
 

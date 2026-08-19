@@ -359,13 +359,15 @@ def test_telegram_trigger_handler_warning_fields(telegram_trigger_node_dict):
 # ---------------------------------------------------------------------------
 
 
-def test_handler_registry_contains_all_five_node_types():
+def test_handler_registry_contains_all_seven_node_types():
     expected_types = {
         NodeType.CREW_NODE,
         NodeType.SUBGRAPH_NODE,
         NodeType.CODE_AGENT_NODE,
         NodeType.WEBHOOK_TRIGGER_NODE,
         NodeType.TELEGRAM_TRIGGER_NODE,
+        NodeType.AGENT_NODE,
+        NodeType.TASK_NODE,
     }
 
     assert set(HANDLER_REGISTRY.keys()) == expected_types

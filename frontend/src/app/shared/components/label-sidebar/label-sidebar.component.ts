@@ -6,6 +6,7 @@ import {
     Component,
     computed,
     ElementRef,
+    HostBinding,
     inject,
     input,
     OnInit,
@@ -14,9 +15,9 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, getLabelColorOption, LabelColor, LabelDto, LabelTreeNode, ResourceCode } from '@shared/models';
-import { LABELS_STORE } from '@shared/services';
+import { LABELS_STORE, SidebarWidthService } from '@shared/services';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ConfirmationDialogComponent, DialogResult } from '../cofirm-dialog';
@@ -26,14 +27,16 @@ interface FlatLabelNode {
     node: LabelTreeNode;
     depth: number;
 }
+const SIDEBAR_STORAGE_KEY = 'flows';
 
 /**
  * Reusable label branches sidebar. Consumers must provide the LABELS_STORE
  * injection token (see @shared/services/labels-store.token). Feature-specific
  * wording, permissions, and delete-confirmation caution copy are passed in
- * as inputs. A `labelDeleted` output is emitted so parents can trigger any
+ * as inputs. A labelDeleted output is emitted so parents can trigger any
  * post-delete side effects (e.g. refreshing their item list).
  */
+
 @Component({
     selector: 'app-label-sidebar',
     imports: [
@@ -44,6 +47,7 @@ interface FlatLabelNode {
         LabelColorPickerComponent,
         MatTooltipModule,
         HasPermissionDirective,
+        ResizableSidebarDirective,
     ],
     templateUrl: './label-sidebar.component.html',
     styleUrls: ['./label-sidebar.component.scss'],
@@ -53,7 +57,7 @@ export class LabelSidebarComponent implements OnInit {
     // Wording
     readonly allItemsLabel = input<string>('All Items');
     // Optional callback that returns caution HTML for the delete confirmation
-    // dialog. Return `undefined` for no caution row.
+    // dialog. Return undefined for no caution row.
     readonly deleteCaution = input<((node: LabelTreeNode) => string | undefined) | null>(null);
     // Delete confirmation message (HTML). Falls back to a generic message
     // if not provided.
@@ -67,6 +71,19 @@ export class LabelSidebarComponent implements OnInit {
     private readonly labelsStorage = inject(LABELS_STORE);
     private readonly dialog = inject(Dialog);
     private readonly el = inject(ElementRef);
+    private readonly sidebarWidthService = inject(SidebarWidthService);
+
+    protected readonly sidebarStorageKey = SIDEBAR_STORAGE_KEY;
+    protected readonly sidebarWidth = this.sidebarWidthService.getWidth(SIDEBAR_STORAGE_KEY);
+
+    @HostBinding('style.width.px')
+    get hostWidth(): number {
+        return this.sidebarWidth();
+    }
+
+    protected get hostElement(): HTMLElement {
+        return this.el.nativeElement;
+    }
 
     readonly labelTree = this.labelsStorage.labelTree;
     readonly activeLabelFilter = this.labelsStorage.activeLabelFilter;
@@ -226,7 +243,7 @@ export class LabelSidebarComponent implements OnInit {
         const caution = cautionFn ? cautionFn(label) : undefined;
         const message = messageFn
             ? messageFn(label)
-            : `Are you sure you want to delete <strong>${label.name}</strong> label?`;
+            : 'Are you sure you want to delete <strong>${label.name}</strong> label?';
 
         const dialogRef = this.dialog.open<DialogResult>(ConfirmationDialogComponent, {
             width: '500px',

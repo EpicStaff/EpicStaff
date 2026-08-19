@@ -118,12 +118,24 @@ class AbstractStorageBackend(ABC):
         """Create a folder."""
 
     @abstractmethod
-    def move(self, source_path: str, destination_path: str) -> None:
-        """Move / rename file or folder."""
+    def move(self, source_path: str, destination_path: str) -> str:
+        """
+        Move source into the destination folder (never overwrites destination_path
+        itself — source is placed as a child of it).
+
+        Returns the actual destination base created after name-dedup: the exact
+        new file key for a file, or the folder base path (ending in "/") for a
+        folder.
+        """
 
     @abstractmethod
     def rename(self, source_path: str, destination_path: str) -> None:
-        """Rename/move source to the exact destination path (never into it)."""
+        """
+        Rename/move source to the exact destination path (never into it).
+
+        Raises FileExistsError when a file or folder already exists at the
+        exact destination path.
+        """
 
     @abstractmethod
     def copy(self, source_path: str, destination_path: str) -> list[str]:
@@ -142,10 +154,6 @@ class AbstractStorageBackend(ABC):
         """Recursively list all file keys under prefix (excludes folder markers)."""
 
     @abstractmethod
-    def download_zip(self, paths: list[str]) -> Iterator[bytes]:
-        """Yield a streaming zip archive containing the given paths."""
-
-    @abstractmethod
     def upload_archive(self, prefix: str, archive_file, archive_name: str) -> list[str]:
         """Extract archive into prefix. Returns list of extracted paths."""
 
@@ -154,3 +162,16 @@ class AbstractStorageBackend(ABC):
         self, prefix: str, max_depth: int | None = None, max_entries: int = 50_000
     ) -> tuple[TreeNode, bool]:
         """Return (root_node, truncated). Root path ends with '/'."""
+
+    @abstractmethod
+    def list_all_objects(self, prefix: str) -> list[tuple[str, int, str]]:
+        """
+        Recursively list all file objects under prefix.
+
+        Returns a list of (key, size, modified_iso) tuples where:
+          - key: full storage key as returned by the backend (not stripped)
+          - size: file size in bytes
+          - modified_iso: ISO-8601 datetime string (UTC)
+
+        Folder marker keys (ending in '/') and '.keep' files are excluded.
+        """

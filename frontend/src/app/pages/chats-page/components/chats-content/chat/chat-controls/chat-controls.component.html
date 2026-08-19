@@ -31,10 +31,12 @@
         <button
             class="start-speaking-btn"
             [appCollapseOnOverflow]="true"
-            [collapseOnOverflowTarget]="'.start-speaking-btn__label'"
-            [collapseOnOverflowClass]="'start-speaking-btn--only-icon'"
+            collapseOnOverflowTarget=".start-speaking-btn__label"
+            collapseOnOverflowClass="start-speaking-btn--only-icon"
             [collapseOnOverflowCheckExternalClip]="true"
             [attr.aria-label]="isConnecting() ? 'Connecting...' : 'Start Speaking'"
+            [matTooltip]="isConnecting() ? 'Connecting...' : 'Start Speaking'"
+            matTooltipShowDelay="400"
             (click)="onStartSpeaking()"
             [disabled]="!canStartSpeaking()"
         >

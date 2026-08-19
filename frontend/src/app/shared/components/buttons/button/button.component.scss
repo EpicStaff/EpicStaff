@@ -152,14 +152,15 @@
 
 button:disabled {
     opacity: 0.6;
-    cursor: not-allowed;
+    cursor: default;
 }
 
 .btn-content {
     display: flex;
     align-items: center;
     justify-content: center;
-    line-height: 1;
+    // 1 leaves no room for descenders (g, y, p); with overflow:hidden they get clipped.
+    line-height: 1.25;
     min-width: 0;
     max-width: 100%;
     flex: 1 1 auto;

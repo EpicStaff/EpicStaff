@@ -73,6 +73,7 @@ class SessionFilter(filters.FilterSet):
     is_error_cause = filters.BooleanFilter(method="filter_by_error_cause")
     trigger_type = CharInFilter(field_name="trigger__trigger_type", lookup_expr="in")
 
+    created_at = filters.DateTimeFromToRangeFilter(field_name="created_at")
     # duration filters
     duration_lt = filters.NumberFilter(method="filter_duration_lt")
     duration_gt = filters.NumberFilter(method="filter_duration_gt")

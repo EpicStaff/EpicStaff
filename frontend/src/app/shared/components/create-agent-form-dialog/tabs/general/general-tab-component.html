@@ -16,7 +16,20 @@
         ></app-llm-model-selector>
     </div>
 
-    @if (form().get('llm_config')) {
+    @if (form().get('realtime_config')) {
+    <div class="form-group">
+        <app-tooltip
+            tooltipText="Select the realtime (voice) model this agent uses for live voice interaction."
+            label="Realtime Config"
+        />
+        <app-llm-model-selector
+            kind="realtime"
+            formControlName="realtime_config"
+            placeholder="Select realtime config"
+            [loading]="loadingLLMs()"
+        ></app-llm-model-selector>
+    </div>
+    } @if (form().get('llm_config')) {
     <div class="form-group">
         <app-tooltip
             tooltipText="Select the language model that will power this agent's reasoning and responses."

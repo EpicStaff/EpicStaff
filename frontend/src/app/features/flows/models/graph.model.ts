@@ -1,3 +1,4 @@
+import { AgentNode } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { GetAudioToTextNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
 import { GetClassificationDecisionTableNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
 import { GetCodeAgentNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
@@ -16,6 +17,7 @@ import {
 } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
 import { StartNode } from '../../../pages/flows-page/components/flow-visual-programming/models/start-node.model';
 import { SubGraphNode } from '../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
+import { TaskNode } from '../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { GetTelegramTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { GetWebhookTriggerNodeRequest } from '../../../pages/flows-page/components/flow-visual-programming/models/webhook-trigger';
 import { FlowModel } from '../../../visual-programming/core/models/flow.model';
@@ -49,6 +51,8 @@ export interface GraphDto extends GetGraphLightRequest {
     start_node_list: StartNode[];
     crew_node_list: CrewNode[];
     python_node_list: PythonNode[];
+    task_node_list: TaskNode[];
+    agent_node_list?: AgentNode[];
     edge_list: Edge[];
     conditional_edge_list: ConditionalEdge[];
     llm_node_list: GetLLMNodeRequest[];

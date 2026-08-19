@@ -162,7 +162,14 @@
                     />
                 </button>
             } @else {
-                <span class="label-name">{{ item.node.name }}</span>
+                <span
+                    class="label-name"
+                    [matTooltip]="item.node.name"
+                    matTooltipPosition="above"
+                    matTooltipShowDelay="500"
+                    matTooltipClass="tree-name-tooltip"
+                    >{{ item.node.name }}</span
+                >
 
                 <div class="item-actions">
                     <button
@@ -281,3 +288,9 @@
         <span>Unlabeled</span>
     </div>
 </div>
+
+<div
+    class="resizable-sidebar-handle"
+    [appResizableSidebar]="sidebarStorageKey"
+    [sidebarTarget]="hostElement"
+></div>

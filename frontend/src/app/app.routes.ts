@@ -125,6 +125,14 @@ export const routes: Routes = [
                         data: { permission: [ResourceCode.Agents, ActionCode.Read] },
                     },
                     {
+                        path: 'agents',
+                        loadComponent: () =>
+                            import('./features/agent-definitions/pages/agent-definitions-page/agent-definitions-page.component').then(
+                                (m) => m.AgentDefinitionsPageComponent
+                            ),
+                        canDeactivate: [UnsavedChangesGuard],
+                    },
+                    {
                         path: 'tools',
                         loadComponent: () =>
                             import('./features/tools/pages/tools-list-page/tools-list-page.component').then(

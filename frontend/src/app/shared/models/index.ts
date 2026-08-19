@@ -3,6 +3,7 @@ export * from './api-error.model';
 export * from './auth';
 export * from './crew_run_message.model';
 export * from './custom-filter.model';
+export * from './date-range-filter.model';
 export * from './embeddings/embedding.model';
 export * from './embeddings/embedding-config.model';
 export * from './http-status.enum';

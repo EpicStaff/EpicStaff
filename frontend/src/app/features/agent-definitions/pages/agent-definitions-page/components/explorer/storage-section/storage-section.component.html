@@ -1,0 +1,16 @@
+@if (facade.isLoading() && items().length === 0) {
+    <div class="section-state">Loading storage…</div>
+} @else if (items().length === 0) {
+    <div class="section-state">Storage is empty</div>
+} @else {
+    <app-storage-tree
+        [items]="items()"
+        [showHeader]="false"
+        (fileSelected)="onItemSelected($event)"
+        (folderSelected)="onItemSelected($event)"
+        (folderToggled)="facade.onFolderToggle($event)"
+        (contextAction)="facade.onContextAction($event)"
+        (openCreateFolder)="facade.openCreateFolderDialog($event)"
+        (selectionChange)="facade.selectedItems.set($event)"
+    />
+}
