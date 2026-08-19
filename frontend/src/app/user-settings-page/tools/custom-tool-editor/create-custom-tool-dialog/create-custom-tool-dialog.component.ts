@@ -217,8 +217,9 @@ export class CreateCustomToolDialogComponent {
             this.lastValidJson.set(initialJson);
         }
 
-        if (this.selectedTool) {
-            const toolName = this.selectedTool.name;
+        const editingToolOnInit = this.selectedTool();
+        if (editingToolOnInit) {
+            const toolName = editingToolOnInit.name;
             this.secretDeclarationIndexService
                 .getIndex()
                 .pipe(takeUntilDestroyed(this.destroyRef))
