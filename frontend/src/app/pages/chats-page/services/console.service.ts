@@ -118,7 +118,7 @@ export class ConsoleService implements OnDestroy {
             });
         }
 
-        if (!chatAgentTranscriptionConfigId(selected)) {
+        if (selected.kind === 'definition' && !chatAgentTranscriptionConfigId(selected)) {
             this.toastService.warning('The selected agent does not have a transcription config');
             return of<ConnectionResult>({
                 success: false,

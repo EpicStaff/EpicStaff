@@ -187,12 +187,12 @@ export class RealtimeSettingsDialogComponent implements OnInit {
             ...(existingGraph ? { graph: existingGraph } : {}),
         };
 
-        const configured_tool: number[] = [];
+        const mcp_tool: number[] = [];
         const python_code_tool: number[] = [];
         this.data.agent.tools.forEach(({ data, unique_name }) => {
             const parts = unique_name.split(':');
-            if (parts[0] === 'configured-tool') {
-                configured_tool.push((data as { id: number }).id);
+            if (parts[0] === 'mcp-tool') {
+                mcp_tool.push((data as { id: number }).id);
             } else {
                 python_code_tool.push((data as { id: number }).id);
             }
@@ -206,7 +206,7 @@ export class RealtimeSettingsDialogComponent implements OnInit {
             realtime_agent: realtimeAgentData,
             search_configs: searchConfigsData,
             python_code_tools: python_code_tool,
-            tool_ids: buildToolIdsArray(configured_tool, python_code_tool),
+            tool_ids: buildToolIdsArray(python_code_tool, mcp_tool),
         };
 
         this.agentsService

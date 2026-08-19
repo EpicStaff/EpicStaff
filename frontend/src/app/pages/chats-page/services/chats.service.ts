@@ -22,24 +22,36 @@ export class ChatsService {
 
     readonly selectedChatAgent$ = computed(() => this.selectedChatAgent());
 
-    // Display projection. Resolves realtime model name/custom name from the reactive
-    // realtime-config store, so it updates if configs load after selection.
     readonly selectedAgentVM$ = computed<ChatAgentVM | null>(() => {
         const sel = this.selectedChatAgent();
         if (!sel) return null;
+
         const realtimeConfigId = chatAgentRealtimeConfigId(sel);
-        const full =
-            realtimeConfigId != null
-                ? (this.fullRealtimeConfigService.fullRealtimeConfigs().find((c) => c.id === realtimeConfigId) ?? null)
-                : null;
+        let modelName: string | null = null;
+        let customName: string | null = null;
+
+        if (sel.kind === 'staff') {
+            const rt = sel.agent.realtime_agent;
+            const slot = rt?.openai_config ?? rt?.elevenlabs_config ?? rt?.gemini_config ?? null;
+            if (slot != null && typeof slot === 'object') {
+                modelName = slot.model_name ?? null;
+                customName = slot.custom_name ?? null;
+            }
+        } else if (realtimeConfigId != null) {
+            const full =
+                this.fullRealtimeConfigService.fullRealtimeConfigs().find((c) => c.id === realtimeConfigId) ?? null;
+            modelName = full?.modelDetails?.name ?? null;
+            customName = full?.custom_name ?? null;
+        }
+
         return {
             kind: sel.kind,
             id: sel.agent.id,
             title: chatAgentTitle(sel),
             realtimeConfigId,
             transcriptionConfigId: chatAgentTranscriptionConfigId(sel),
-            modelName: full?.modelDetails?.name ?? null,
-            customName: full?.custom_name ?? null,
+            modelName,
+            customName,
         };
     });
 

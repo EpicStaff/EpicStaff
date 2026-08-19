@@ -4,15 +4,23 @@ import { GetPythonCodeToolRequest } from '../../tools/models/python-code-tool.mo
 
 export type ToolUniqueName = `python-code-tool:${number}` | `mcp-tool:${number}`;
 
+export interface RealtimeProviderConfigInline {
+    id: number;
+    custom_name: string;
+    model_name: string;
+}
+
+export type RealtimeProviderConfigSlot = RealtimeProviderConfigInline | number | null;
+
 export interface RealtimeAgentConfig {
     wake_word: string | null;
     stop_prompt: string | null;
     language: string | null;
     voice_recognition_prompt: string | null;
     voice: string;
-    openai_config: number | null;
-    elevenlabs_config: number | null;
-    gemini_config: number | null;
+    openai_config: RealtimeProviderConfigSlot;
+    elevenlabs_config: RealtimeProviderConfigSlot;
+    gemini_config: RealtimeProviderConfigSlot;
     realtime_config: number | null;
     realtime_transcription_config: number | null;
 }

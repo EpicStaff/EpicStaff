@@ -31,13 +31,17 @@ export function chatAgentTitle(a: ChatAgent): string {
 }
 
 export function chatAgentRealtimeConfigId(a: ChatAgent): number | null {
-    return a.kind === 'staff' ? (a.agent.realtime_agent?.realtime_config ?? null) : a.realtime.realtime_config;
+    if (a.kind === 'staff') {
+        const rt = a.agent.realtime_agent;
+        const slot = rt?.openai_config ?? rt?.elevenlabs_config ?? rt?.gemini_config;
+        if (slot == null) return null;
+        return typeof slot === 'number' ? slot : slot.id;
+    }
+    return a.realtime.realtime_config;
 }
 
 export function chatAgentTranscriptionConfigId(a: ChatAgent): number | null {
-    return a.kind === 'staff'
-        ? (a.agent.realtime_agent?.realtime_transcription_config ?? null)
-        : a.realtime.realtime_transcription_config;
+    return a.kind === 'staff' ? null : a.realtime.realtime_transcription_config;
 }
 
 export function toInitRealtimePayload(a: ChatAgent): InitRealtimePayload {
