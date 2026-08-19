@@ -142,10 +142,6 @@ export class RealtimeSettingsDialogComponent implements OnInit {
 
     onProviderSelect(provider: RealtimeProvider): void {
         this.activeProvider.set(provider);
-        // Reset all provider FK controls; the selected provider keeps its value
-        if (provider !== 'openai') this.settingsForm.patchValue({ openai_config: null });
-        if (provider !== 'elevenlabs') this.settingsForm.patchValue({ elevenlabs_config: null });
-        if (provider !== 'gemini') this.settingsForm.patchValue({ gemini_config: null });
         if (provider === 'elevenlabs') this.settingsForm.patchValue({ voice: '' });
     }
 
@@ -168,14 +164,15 @@ export class RealtimeSettingsDialogComponent implements OnInit {
 
         const formValues = this.settingsForm.value;
 
+        const provider = this.activeProvider();
         const realtimeAgentData: RealtimeAgentConfig = {
             wake_word: formValues.wakeword,
             stop_prompt: formValues.stopword,
             language: formValues.preferredLanguage,
             voice: formValues.voice,
-            openai_config: formValues.openai_config,
-            elevenlabs_config: formValues.elevenlabs_config,
-            gemini_config: formValues.gemini_config,
+            openai_config: provider === 'openai' ? formValues.openai_config : null,
+            elevenlabs_config: provider === 'elevenlabs' ? formValues.elevenlabs_config : null,
+            gemini_config: provider === 'gemini' ? formValues.gemini_config : null,
             voice_recognition_prompt: formValues.voice_recognition_prompt,
             realtime_transcription_config: formValues.realtime_transcription_config,
             realtime_config: this.data.agent.realtime_agent.realtime_config,

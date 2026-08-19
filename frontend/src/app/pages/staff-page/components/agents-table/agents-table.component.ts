@@ -1509,19 +1509,14 @@ export class AgentsTableComponent {
                         // Update the mergedConfigs in the row data
                         rowNode.setDataValue('mergedConfigs', mergedConfigs);
 
-                        // Update related fullLlmConfig and fullRealtimeConfig properties
+                        // Update related fullLlmConfig property
                         const llmConfig = mergedConfigs.find((config) => config.type === 'llm');
-                        const realtimeConfig = mergedConfigs.find((config) => config.type === 'realtime');
 
                         if (llmConfig) {
                             rowNode.setDataValue('llm_config', llmConfig.id);
                         } else {
                             rowNode.setDataValue('llm_config', null);
                             rowNode.setDataValue('fullLlmConfig', null);
-                        }
-
-                        if (!realtimeConfig) {
-                            rowNode.setDataValue('fullRealtimeConfig', null);
                         }
 
                         const freshRowData = rowNode.data;

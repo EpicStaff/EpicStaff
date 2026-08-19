@@ -64,9 +64,7 @@ export class ChatsPageComponent implements OnInit, OnDestroy {
             )
             .subscribe({
                 next: ({ fullAgents, definitions, realtimeDefs }) => {
-                    const staff: ChatAgent[] = fullAgents
-                        .filter((a) => a.realtime_agent?.realtime_config != null)
-                        .map((agent) => ({ kind: 'staff', agent }));
+                    const staff: ChatAgent[] = fullAgents.map((agent) => ({ kind: 'staff', agent }));
 
                     const realtimeByDef = new Map(realtimeDefs.map((r) => [r.agent_definition, r]));
                     const defs: ChatAgent[] = definitions
