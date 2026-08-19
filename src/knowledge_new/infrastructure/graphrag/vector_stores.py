@@ -1,12 +1,13 @@
 import lancedb
-from settings import settings
 from graphrag_vectors import register_vector_store
 from graphrag_vectors.lancedb import LanceDBVectorStore
 from graphrag_vectors.vector_store_config import VectorStoreConfig
+from settings import settings
 
 
 def create_vector_store_config(
     rag_id: int,
+    subdir: str | None = None,
     vector_size: int = 1536,
     type: str = "minio_lancedb",
     host: str = settings.MINIO_HOST,
@@ -14,10 +15,14 @@ def create_vector_store_config(
     access_key: str = settings.MINIO_ACCESS_KEY,
     secret_key: str = settings.MINIO_SECRET_KEY,
 ) -> VectorStoreConfig:
+    if subdir:
+        db_uri = f"s3://{bucket}/graphrag/rag_{rag_id}/{subdir}/lancedb"
+    else:
+        db_uri = f"s3://{bucket}/graphrag/rag_{rag_id}/lancedb"
     return VectorStoreConfig(
         type=type,
         vector_size=vector_size,
-        db_uri=f"s3://{bucket}/graphrag/rag_{rag_id}/lancedb",
+        db_uri=db_uri,
         host=host,
         access_key=access_key,
         secret_key=secret_key,

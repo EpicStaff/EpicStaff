@@ -1,3 +1,5 @@
+from typing import Literal
+
 from domain.enums import DocumentStatusEnum
 from domain.models import Rag
 from domain.ports.repositories import AbstractGraphRagRepository
@@ -39,6 +41,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
                 indexing_document_ids=set(data.indexing_document_config_ids),
                 error_message=data.error_message,
                 outdated_reasons=data.outdated_reasons or {},
+                slot=data.slot,
             )
         return None
 
@@ -51,6 +54,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
                 indexing_document_config_ids=list(rag.indexing_document_ids),
                 error_message=rag.error_message,
                 outdated_reasons=rag.outdated_reasons or {},
+                slot=rag.slot,
             )
         )
 
@@ -181,13 +185,18 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
             chunking=self._build_chunking_config(index_config),
             extract_graph=self._build_extract_graph_config(index_config),
             cluster_graph=self._build_cluster_graph_config(index_config),
-            input_storage=create_storage_config(rag_id=rag.graph_rag_id, subdir="input"),
-            output_storage=create_storage_config(rag_id=rag.graph_rag_id, subdir="output"),
-            update_output_storage=create_storage_config(
-                rag_id=rag.graph_rag_id,
-                subdir="update_output",
+            input_storage=create_storage_config(
+                rag_id=rag.graph_rag_id, subdir=f"{rag.slot}/input"
             ),
-            vector_store=create_vector_store_config(rag_id=rag.graph_rag_id),
+            output_storage=create_storage_config(
+                rag_id=rag.graph_rag_id, subdir=f"{rag.slot}/output"
+            ),
+            update_output_storage=create_storage_config(
+                rag_id=rag.graph_rag_id, subdir=f"{rag.slot}/update_output"
+            ),
+            vector_store=create_vector_store_config(
+                rag_id=rag.graph_rag_id, subdir=rag.slot
+            ),
         )
 
     @staticmethod

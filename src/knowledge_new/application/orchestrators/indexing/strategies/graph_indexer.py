@@ -3,11 +3,15 @@ from dataclasses import asdict
 import pandas
 from application.commands import RunIndex
 from application.orchestrators.indexing.base import AbstractIndexOrchestrator
-from domain.enums import DocumentStatusEnum, IndexStatusEnum
+from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
 from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
 from domain.models import Rag
 from graphrag.api import build_index
+from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
+from graphrag_storage import create_storage
+from infrastructure.graphrag.storages import create_storage_config
+from infrastructure.graphrag.vector_stores import create_vector_store_config
 from loguru import logger
 
 
@@ -24,6 +28,9 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
                 documents += await self._get_indexed_documents_excluding(
                     rag.id, command.document_ids
                 )
+                target_slot = SlotEnum.A if rag.slot == SlotEnum.B else SlotEnum.B
+                self.state['target_slot'] = target_slot
+                self._swap_slot_for_config(target_slot, rag.id, config)
             else:
                 is_update_run = True
 
@@ -58,18 +65,26 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         logger.info("Finished indexing in RAG(id={}, status={}).", rag.id, rag.status.value)
 
     async def on_cancel(self, command: RunIndex):
-        if (rag := self.state.get("rag")) is not None:
-            rag: Rag
+        rag: Rag | None = self.state.get("rag")
+        target_slot: SlotEnum | None = self.state.get("target_slot")
+
+        if rag:
             rag.mark_as_cancelled()
             rag.finish_document(*command.document_ids)
             await self._update_rag(rag)
+            if target_slot:
+                await self._clear_slot_storage(rag.id, target_slot)
 
     async def on_error(self, command: RunIndex, error: Exception):
-        if (rag := self.state.get("rag")) is not None:
-            rag: Rag
+        rag: Rag | None = self.state.get("rag")
+        target_slot: SlotEnum | None = self.state.get("target_slot")
+
+        if rag:
             rag.mark_as_failed(error)
             rag.finish_document(*command.document_ids)
             await self._update_rag(rag)
+            if target_slot:
+                await self._clear_slot_storage(rag.id, target_slot)
 
     async def _get_rag_under_uow(self, rag_id: int) -> Rag:
         rag = await self.uow.graph_rag_repo.get_rag(rag_id=rag_id)
@@ -122,6 +137,9 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             await self.uow.commit()
 
     async def _finish_rag(self, rag: Rag, document_ids: set[int]):
+        old_slot = rag.slot
+        target_slot = self.state.get('target_slot')
+
         async with self.uow:
             rag.finish_document(*document_ids)
 
@@ -144,5 +162,24 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             if not has_outdated:
                 rag.outdated_reasons.clear()
 
+            if target_slot:
+                rag.slot = target_slot
+
             await self.uow.graph_rag_repo.update_rag(rag=rag)
             await self.uow.commit()
+
+            if target_slot:
+                await self._clear_slot_storage(rag.id, old_slot)
+
+    @staticmethod
+    def _swap_slot_for_config(target_slot: SlotEnum, rag_id: int, config: GraphRagConfig):
+        config.input_storage = create_storage_config(rag_id=rag_id, subdir=f"{target_slot}/input")
+        config.output_storage = create_storage_config(rag_id=rag_id, subdir=f"{target_slot}/output")
+        config.update_output_storage = create_storage_config(rag_id=rag_id, subdir=f"{target_slot}/update_output")
+        config.vector_store = create_vector_store_config(rag_id=rag_id, subdir=target_slot)
+
+    @staticmethod
+    async def _clear_slot_storage(rag_id: int, target_slot: SlotEnum):
+        storage_config = create_storage_config(rag_id=rag_id, subdir=target_slot)
+        storage = create_storage(storage_config)
+        await storage.clear()

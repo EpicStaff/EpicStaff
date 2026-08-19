@@ -5,20 +5,23 @@ from collections.abc import Coroutine, Iterator
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
-from settings import settings
 from graphrag_storage import Storage, StorageConfig, register_storage
 from graphrag_storage.storage import get_timestamp_formatted_with_local_tz
 from miniopy_async import Minio, S3Error
 from miniopy_async.deleteobjects import DeleteObject
+from settings import settings
 
 
 def create_storage_config(
     rag_id: int,
     subdir: Optional[str] = None,
 ) -> StorageConfig:
+    prefix = f"graphrag/rag_{rag_id}"
+    if subdir:
+        prefix += f'/{subdir}'
     return StorageConfig(
         type="minio",
-        prefix=f"graphrag/rag_{rag_id}/{subdir}" if subdir else f"graphrag/rag_{rag_id}",
+        prefix=prefix,
         host=settings.MINIO_HOST,
         bucket=settings.MINIO_BUCKET,
         access_key=settings.MINIO_ACCESS_KEY,

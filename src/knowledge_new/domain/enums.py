@@ -56,3 +56,8 @@ class FileExtensionEnum(StrEnum):
     DOCX = ".docx"
     CSV = ".csv"
     HTML = ".html"
+
+
+class SlotEnum(StrEnum):
+    A = 'a'
+    B = 'b'

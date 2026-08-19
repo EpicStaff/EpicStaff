@@ -4,7 +4,7 @@ from pathlib import Path
 from domain.enums import (
     DocumentStatusEnum,
     EmbedderProviderEnum,
-    IndexStatusEnum,
+    IndexStatusEnum, SlotEnum,
 )
 from pydantic import Field, computed_field
 from src.shared.models.base import Entity, ValueObject
@@ -48,6 +48,7 @@ class Rag(Entity):
     indexing_document_ids: set[int]
     error_message: str | None = None
     outdated_reasons: dict[str, str] = Field(default_factory=dict)
+    slot: SlotEnum | None = None
 
     def finish_document(self, *ids: int):
         self.indexing_document_ids.difference_update(ids)
