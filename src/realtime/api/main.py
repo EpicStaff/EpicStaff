@@ -73,7 +73,9 @@ app.add_middleware(
 )
 
 
-connection_repository = ConnectionRepository()
+connection_repository = ConnectionRepository(
+    ttl_seconds=settings.CONNECTION_KEY_TTL_SECONDS
+)
 
 # ---------------------------------------------------------------------------
 # Per-channel config cache  (keyed by channel token, TTL=60s)
@@ -286,7 +288,20 @@ async def root(
         await websocket.close(code=1011)
         return
 
+    if not user_info.get("is_superadmin") and realtime_agent_chat_data.org_id not in (
+        user_info.get("org_ids") or []
+    ):
+        logger.warning(
+            f"WebSocket auth rejected: user {user_info.get('user_id')} has no "
+            f"membership in org {realtime_agent_chat_data.org_id} for "
+            f"connection_key={connection_key}"
+        )
+        await websocket.close(code=1008)
+        return
+
     connection_key = realtime_agent_chat_data.connection_key
+
+    connection_repository.delete_connection(connection_key)
 
     instructions = generate_instruction(
         role=realtime_agent_chat_data.role,
@@ -459,6 +474,8 @@ async def _voice_stream_handler(
         logger.error(f"No agent data found for connection_key={conn_key}")
         await twilio_ws.close()
         return
+
+    connection_repository.delete_connection(conn_key)
 
     instructions = generate_instruction(
         role=realtime_agent_chat_data.role,

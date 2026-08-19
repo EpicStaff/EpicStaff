@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: str = "knowledge:search:response"
     REALTIME_AGENTS_SCHEMA_CHANNEL: str = "realtime_agents:schema"
 
+    CONNECTION_KEY_TTL_SECONDS: int = 300
+
     # --- Manager Service ---
     MANAGER_HOST: str
     MANAGER_PORT: int

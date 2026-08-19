@@ -10,6 +10,7 @@ from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
 def _make_config(**overrides) -> RealtimeAgentChatData:
     defaults = dict(
         connection_key="test_key",
+        org_id=1,
         rt_api_key="api_key",
         rt_model_name="gpt-4o-realtime-preview",
         rt_provider="openai",

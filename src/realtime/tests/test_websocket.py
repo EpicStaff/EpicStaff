@@ -9,7 +9,12 @@ def test_ws_connection(sample_chat_data, monkeypatch):
 
     monkeypatch.setattr(
         "utils.auth.introspect_token",
-        lambda token: {"active": True, "user_id": 1, "username": "test"},
+        lambda token: {
+            "active": True,
+            "user_id": 1,
+            "username": "test",
+            "org_ids": [sample_chat_data.org_id],
+        },
     )
 
     ConnectionRepository().save_connection(
