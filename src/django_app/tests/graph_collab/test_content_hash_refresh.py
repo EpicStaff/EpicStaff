@@ -11,6 +11,7 @@ from asgiref.sync import sync_to_async
 
 from tables.graph_collab.flush_service import FlushStatus
 from tables.graph_collab.graph_state_service import graph_state_service
+from tables.graph_collab.protocol import NodeCreatedMessage, NodeUpdatedMessage
 
 from tests.graph_collab.conftest import get_node
 
@@ -264,8 +265,127 @@ async def test_apply_id_remap_refreshes_newly_created_node_content_hash(
     assert entry["id"] == node.id
     assert "temp_id" not in entry
     assert entry["python_code"]["content_hash"] == real_python_code_hash
-    # The entry had no top-level "content_hash" key to begin with (matches
-    # NodeCreatedMessage payload shape from the FE) — refresh must not
-    # fabricate one where the seed shape never had it.
-    assert "content_hash" not in entry
+    # python_node_list is a list key whose serializer (PythonNodeSerializer,
+    # via ContentHashWritableMixin) exposes "content_hash" — refresh must ADD
+    # the key here even though the seed shape (matching the FE's
+    # NodeCreatedMessage payload) never had it, so the node gets
+    # optimistic-concurrency protection at its first flush instead of
+    # waiting for a reseed.
     assert real_hash is not None
+    assert entry["content_hash"] == real_hash
+
+
+# ---------------------------------------------------------------------------
+# End-to-end via the real op + flush pipeline: a node created during a live
+# session (no content_hash in its payload) must gain one after its first
+# flush, and a further edit/flush on top of it must succeed.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_session_created_python_node_gains_content_hash_after_first_flush(
+    graph, base_snapshot, flush_service, editor
+):
+    await graph_state_service.seed(
+        graph.id, base_snapshot(save_version=graph.save_version)
+    )
+
+    temp_id = "tmp-session-created-py"
+    create_msg = NodeCreatedMessage(
+        node={
+            "temp_id": temp_id,
+            "graph": graph.id,
+            "python_code": {
+                "code": "def main(): return 1",
+                "entrypoint": "main",
+                "libraries": [],
+            },
+        },
+        list_key="python_node_list",
+        editor=editor,
+    )
+    op_result = await graph_state_service.apply_op(graph.id, create_msg)
+    assert op_result.status.value == "applied"
+
+    first_flush = await flush_service.flush(graph.id)
+    assert first_flush.status is FlushStatus.SAVED, (
+        f"First flush failed: {first_flush.failure_reason!r}"
+    )
+
+    snapshot_after_first_flush = await graph_state_service.get_snapshot(graph.id)
+    entries = snapshot_after_first_flush["python_node_list"]
+    assert len(entries) == 1
+    entry = entries[0]
+    assert "temp_id" not in entry
+    real_node_id = entry["id"]
+
+    real_node_hash, real_python_code_hash = await _python_node_content_hashes(
+        real_node_id
+    )
+    assert entry["content_hash"] == real_node_hash, (
+        "A node created during the session must have its content_hash "
+        "populated in the live snapshot immediately after its first flush."
+    )
+    assert entry["python_code"]["content_hash"] == real_python_code_hash
+
+    # Edit on top of the now-hashed entry and flush again — must succeed.
+    update_msg = NodeUpdatedMessage(
+        node={
+            "id": real_node_id,
+            "graph": graph.id,
+            "content_hash": entry["content_hash"],
+            "python_code": {
+                "code": "def main(): return 2",
+                "entrypoint": "main",
+                "libraries": [],
+                "content_hash": entry["python_code"]["content_hash"],
+            },
+        },
+        list_key="python_node_list",
+        editor=editor,
+    )
+    await graph_state_service.apply_op(graph.id, update_msg)
+
+    second_flush = await flush_service.flush(graph.id)
+    assert second_flush.status is FlushStatus.SAVED, (
+        f"Second flush (edit on top of a freshly-hashed session-created node) "
+        f"failed: {second_flush.failure_reason!r}"
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_refresh_does_not_add_content_hash_for_list_key_serializer_omits(
+    graph, base_snapshot, flush_service, editor
+):
+    """code_agent_node_list's serializer does not expose content_hash — a
+    freshly-flushed entry in that list must not gain a content_hash key,
+    so the live snapshot's shape keeps matching what a DB reseed produces."""
+    await graph_state_service.seed(
+        graph.id, base_snapshot(save_version=graph.save_version)
+    )
+
+    temp_id = "tmp-session-created-code-agent"
+    create_msg = NodeCreatedMessage(
+        node={"temp_id": temp_id, "graph": graph.id},
+        list_key="code_agent_node_list",
+        editor=editor,
+    )
+    await graph_state_service.apply_op(graph.id, create_msg)
+
+    outcome = await flush_service.flush(graph.id)
+    assert outcome.status is FlushStatus.SAVED, (
+        f"Flush failed: {outcome.failure_reason!r}"
+    )
+
+    snapshot = await graph_state_service.get_snapshot(graph.id)
+    entries = snapshot["code_agent_node_list"]
+    assert len(entries) == 1
+    entry = entries[0]
+    assert "temp_id" not in entry
+    assert entry["id"] is not None
+    assert "content_hash" not in entry, (
+        "code_agent_node_list's serializer does not declare content_hash — "
+        "the refresh step must not fabricate the key for this list."
+    )
