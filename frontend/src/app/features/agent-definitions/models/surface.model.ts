@@ -92,12 +92,3 @@ export interface CombinedSurface {
     storage_items: SurfaceStorageItem[];
     knowledge: SurfaceKnowledge[];
 }
-
-export interface SurfaceListItem {
-    id: number;
-    name: string;
-}
-
-export function toSurfaceListItem(s: Surface): SurfaceListItem {
-    return { id: s.id, name: s.name };
-}
