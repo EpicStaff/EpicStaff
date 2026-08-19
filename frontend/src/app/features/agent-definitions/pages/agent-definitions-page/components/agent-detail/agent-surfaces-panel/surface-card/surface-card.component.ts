@@ -454,7 +454,12 @@ export class SurfaceCardComponent {
     // A collection with no RAG picked yet (none of the three configs set). The backend rejects
     // such rows, so they're kept in the UI but excluded from the saved payload until a RAG is set.
     readonly collectionsWithoutRag = computed<ReadonlySet<number>>(
-        () => new Set(this.knowledgeItems().filter((k) => !this.hasRag(k)).map((k) => k.collection))
+        () =>
+            new Set(
+                this.knowledgeItems()
+                    .filter((k) => !this.hasRag(k))
+                    .map((k) => k.collection)
+            )
     );
     readonly collectionAdvancedOpen = signal<boolean>(false);
 
