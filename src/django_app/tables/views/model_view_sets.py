@@ -214,7 +214,7 @@ from tables.views.mixins import (
     OrgScopedViewSetMixin,
     SuperadminWriteMixin,
 )
-from tables.models.rbac_models import Organization
+from tables.models.rbac_models import ApiKey, Organization
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permissions import (
     HasOrgPermission,
@@ -1965,6 +1965,20 @@ class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
     Scoped through the recording's chat -> realtime agent to its agent's org
     (mirrors RealtimeAgentChatViewSet's scoping). Recordings whose chat has no
     rt_agent (orphaned) are not visible — same accepted trade-off as chat history.
+
+    `create` is reachable two ways:
+    - An authenticated org member (JWT) or a self-issued USER API key, sending
+      `X-Organization-Id` as usual — org-scoping is enforced via
+      `_assert_parent_in_active_org` exactly like any other child resource.
+    - The `realtime`/`voice_app` services (`voice_call_service._post_recording`),
+      authenticated with a `key_type=SYSTEM` API key, once a call ends. That
+      caller has no logged-in user/org context and can never supply
+      `X-Organization-Id`, and identifies its target purely by the opaque
+      `connection_key` — same trust model as `RealtimeAgentChatViewSet.end`.
+      For that caller only, `_assert_parent_in_active_org` is skipped (the
+      SYSTEM key itself is the authorization check); a self-issued USER key
+      still goes through the normal org check, so it cannot attach a
+      recording to another org's chat by guessing a `connection_key`.
     """
 
     queryset = ConversationRecording.objects.all()
@@ -1975,6 +1989,12 @@ class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
     rbac_resource_type = ResourceType.AGENTS
     org_filter_path = "rt_agent_chat__rt_agent__agent__org_id"
     permission_classes = [IsAuthenticatedOrApiKey]
+
+    def _is_system_api_key_request(self) -> bool:
+        return (
+            isinstance(self.request.auth, ApiKey)
+            and self.request.auth.key_type == ApiKey.KeyType.SYSTEM
+        )
 
     def perform_create(self, serializer):
         file = self.request.FILES.get("file")
@@ -1999,7 +2019,13 @@ class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelVie
                 )
             serializer.validated_data["rt_agent_chat"] = rt_agent_chat
 
-        self._assert_parent_in_active_org(serializer)
+        # A trusted SYSTEM API key (the realtime/voice_app services) has no
+        # X-Organization-Id to check against — skip the org assertion for it,
+        # same trust boundary as RealtimeAgentChatViewSet.end. Any other
+        # caller (JWT session or a self-issued USER key) still goes through
+        # the normal parent-org check.
+        if not self._is_system_api_key_request():
+            self._assert_parent_in_active_org(serializer)
 
         serializer.save(
             file_size=file_size,
