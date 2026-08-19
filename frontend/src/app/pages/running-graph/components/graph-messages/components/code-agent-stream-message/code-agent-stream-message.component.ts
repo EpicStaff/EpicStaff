@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
 import { MarkdownModule } from 'ngx-markdown';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
@@ -143,6 +143,7 @@ interface ThinkingStep {
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: `
         :host {
             display: flex;

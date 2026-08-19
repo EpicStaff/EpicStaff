@@ -1,6 +1,6 @@
 // voice-visualizer.component.ts
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
 
 import { WavRecorderService } from '../../../../../services/wav-recorder.service';
 
@@ -19,6 +19,7 @@ import { WavRecorderService } from '../../../../../services/wav-recorder.service
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             :host {

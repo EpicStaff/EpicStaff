@@ -1,8 +1,9 @@
-import { CommonModule, DOCUMENT } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    DOCUMENT,
     effect,
     ElementRef,
     Inject,

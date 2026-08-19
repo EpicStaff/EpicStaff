@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import {
@@ -188,6 +188,7 @@ import {
             </div>
         }
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .dt-flow-container {

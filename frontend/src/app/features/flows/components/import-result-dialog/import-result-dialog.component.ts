@@ -3,6 +3,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
+    ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
@@ -33,6 +34,7 @@ import { DEFAULT_ENTITY_ICON, ENTITY_ICONS } from '../../../../shared/constants/
     imports: [CommonModule, AppIconComponent, MatTooltipModule],
     templateUrl: './import-result-dialog.component.html',
     styleUrls: ['./import-result-dialog.component.scss'],
+    changeDetection: ChangeDetectionStrategy.Eager,
     animations: [
         trigger('collapseExpand', [
             state('expanded', style({ height: '*', opacity: 1, overflow: 'hidden' })),

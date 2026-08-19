@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
 
 import { GetAgentRequest } from '../../../../../../features/staff/models/agent.model';
@@ -150,6 +150,7 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: `
         :host {
             display: flex;

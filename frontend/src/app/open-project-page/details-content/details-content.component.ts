@@ -1,4 +1,5 @@
 import {
+    ChangeDetectionStrategy,
     Component,
     DestroyRef,
     EventEmitter,
@@ -22,6 +23,7 @@ import { ToastService } from '../../services/notifications/toast.service';
     templateUrl: './details-content.component.html',
     styleUrls: ['./details-content.component.scss'],
     standalone: true,
+    changeDetection: ChangeDetectionStrategy.Eager,
     imports: [FormsModule],
 })
 export class DetailsContentComponent implements OnInit, OnChanges {

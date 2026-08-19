@@ -1,6 +1,6 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, Inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, Inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { EnhancedTranscriptionConfig } from '@shared/models';
@@ -33,6 +33,7 @@ import { VoiceSelectorComponent } from './voice-selector/voice-selector.componen
         HelpTooltipComponent,
     ],
     templateUrl: './realtime-settings-dialog.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./realtime-settings-dialog.component.scss'],
 })
 export class RealtimeSettingsDialogComponent implements OnInit {

@@ -1,5 +1,5 @@
 import { NgStyle } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
@@ -10,6 +10,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
     standalone: true,
     imports: [NgStyle, AppSvgIconComponent, HasPermissionDirective],
     templateUrl: './ag-grid-context-menu.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./ag-grid-context-menu.component.scss'],
 })
 export class AgGridContextMenuComponent {

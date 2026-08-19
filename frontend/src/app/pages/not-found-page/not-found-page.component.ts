@@ -1,5 +1,5 @@
 import { Location } from '@angular/common';
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
@@ -9,6 +9,7 @@ import { PermissionsService } from '../../services/auth/permissions.service';
     standalone: true,
     imports: [],
     templateUrl: './not-found-page.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrl: './not-found-page.component.scss',
 })
 export class NotFoundPageComponent {

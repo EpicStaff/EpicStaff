@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
 import { MarkdownModule } from 'ngx-markdown';
 
@@ -64,7 +64,8 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
                             [@expandCollapse]="isThoughtExpanded ? 'expanded' : 'collapsed'"
                         >
                             <div class="thought-bubble">
-                                <span class="thought-quote">"</span>{{ cleanThought(agentFinishMessageData?.thought)
+                                <span class="thought-quote">"</span
+                                >{{ cleanThought($safeNavigationMigration(agentFinishMessageData?.thought))
                                 }}<span class="thought-quote">"</span>
                             </div>
                         </div>
@@ -79,21 +80,22 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             *ngIf="agentFinishMessageData?.output"
         >
             <div class="result-content">
-                <app-copy-button [text]="cleanOutput(agentFinishMessageData?.output)" />
+                <app-copy-button [text]="cleanOutput($safeNavigationMigration(agentFinishMessageData?.output))" />
                 <ngx-json-viewer
-                    *ngIf="isValidJson(agentFinishMessageData?.output)"
-                    [json]="getParsedJson(agentFinishMessageData?.output)"
+                    *ngIf="isValidJson($safeNavigationMigration(agentFinishMessageData?.output))"
+                    [json]="getParsedJson($safeNavigationMigration(agentFinishMessageData?.output))"
                     [expanded]="true"
                 ></ngx-json-viewer>
                 <markdown
-                    *ngIf="!isValidJson(agentFinishMessageData?.output)"
-                    [data]="cleanOutput(agentFinishMessageData?.output)"
+                    *ngIf="!isValidJson($safeNavigationMigration(agentFinishMessageData?.output))"
+                    [data]="cleanOutput($safeNavigationMigration(agentFinishMessageData?.output))"
                     class="markdown-content"
                 >
                 </markdown>
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             :host {

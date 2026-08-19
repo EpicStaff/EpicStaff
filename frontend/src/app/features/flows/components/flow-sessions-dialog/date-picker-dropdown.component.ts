@@ -24,7 +24,7 @@ import { DateRangePickerComponent } from '../../../../shared/components/date-ran
     imports: [CommonModule, OverlayModule, AppSvgIconComponent, DateRangePickerComponent],
     templateUrl: './date-picker-dropdown.component.html',
     styleUrls: ['./date-picker-dropdown.component.scss'],
-    changeDetection: ChangeDetectionStrategy.Default,
+    changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class DatePickerDropdownComponent {
     @Input() value: DateRangeFilter | null = null;

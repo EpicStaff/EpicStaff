@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { GraphSessionStatus } from '../../services/flows-sessions.service';
 
@@ -16,6 +16,7 @@ import { GraphSessionStatus } from '../../services/flows-sessions.service';
             {{ statusLabel }}
         </span>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./flow-session-status-badge.component.scss'],
 })
 export class FlowSessionStatusBadgeComponent {

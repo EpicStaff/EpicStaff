@@ -1,6 +1,6 @@
-import { DOCUMENT } from '@angular/common';
 import {
     Directive,
+    DOCUMENT,
     ElementRef,
     EventEmitter,
     Inject,

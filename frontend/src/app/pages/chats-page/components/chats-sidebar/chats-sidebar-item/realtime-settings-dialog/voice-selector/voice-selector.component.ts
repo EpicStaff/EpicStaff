@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { Voice } from '../../../../../../../shared/constants/realtime-voice.constants';
@@ -10,6 +10,7 @@ import { ClickOutsideDirective } from '../../../../../../../shared/directives/cl
     standalone: true,
     imports: [CommonModule, FormsModule, ReactiveFormsModule, ClickOutsideDirective],
     templateUrl: './voice-selector.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./voice-selector.component.scss'],
 })
 export class VoiceSelectorComponent {

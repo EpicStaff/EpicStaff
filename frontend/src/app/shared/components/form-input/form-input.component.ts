@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
+    ChangeDetectionStrategy,
     Component,
     ElementRef,
     EventEmitter,
@@ -189,6 +190,7 @@ import { HelpTooltipComponent } from '../help-tooltip/help-tooltip.component';
             }
         `,
     ],
+    changeDetection: ChangeDetectionStrategy.Eager,
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,

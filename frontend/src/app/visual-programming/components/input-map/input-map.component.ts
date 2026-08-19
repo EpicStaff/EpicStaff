@@ -2,6 +2,7 @@ import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
 import {
+    ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
@@ -224,6 +225,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
             }
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .input-map-container {

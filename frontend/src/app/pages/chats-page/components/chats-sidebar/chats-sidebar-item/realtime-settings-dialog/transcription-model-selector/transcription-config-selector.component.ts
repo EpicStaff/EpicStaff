@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { EnhancedTranscriptionConfig } from '@shared/models';
 
@@ -11,6 +11,7 @@ import { ClickOutsideDirective } from '../../../../../../../shared/directives/cl
     standalone: true,
     imports: [CommonModule, ClickOutsideDirective, AppSvgIconComponent, MatTooltip],
     templateUrl: './transcription-config-selector.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./transcription-config-selector.component.scss'],
 })
 export class TranscriptionConfigSelectorComponent {

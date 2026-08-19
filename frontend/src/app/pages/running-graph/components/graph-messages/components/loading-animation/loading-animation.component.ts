@@ -81,7 +81,7 @@ import { ChangeDetectionStrategy, Component, OnDestroy, OnInit } from '@angular/
             }
         `,
     ],
-    changeDetection: ChangeDetectionStrategy.Default,
+    changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class LoadingDotsComponent implements OnInit, OnDestroy {
     private processingTexts = ['Processing', 'Executing', 'Running', 'Computing'];

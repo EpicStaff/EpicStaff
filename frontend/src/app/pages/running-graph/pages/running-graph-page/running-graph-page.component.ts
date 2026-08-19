@@ -22,7 +22,7 @@ import { GraphMessage } from '../../models/graph-session-message.model';
             <app-running-graph-header
                 [graphId]="graphId"
                 [sessionId]="sessionId"
-                [graphName]="graphData?.name"
+                [graphName]="$safeNavigationMigration(graphData?.name)"
                 [sessionStatus]="currentSessionStatus"
                 [graphData]="graphData"
             >

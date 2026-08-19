@@ -1,5 +1,5 @@
 import { NgClass, NgIf } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { GraphSessionStatus } from '../../../features/flows/services/flows-sessions.service';
 import { CollapseOnOverflowDirective } from '../../../shared/directives/collapse-on-overflow.directive';
@@ -27,6 +27,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
             <span class="status-text">{{ statusText }}</span>
         </span>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .status-badge {

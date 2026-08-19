@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { IHeaderParams } from 'ag-grid-community';
 
@@ -20,6 +20,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
             />
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             :host {

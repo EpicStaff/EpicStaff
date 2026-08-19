@@ -1,11 +1,20 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    EventEmitter,
+    Input,
+    OnChanges,
+    Output,
+    SimpleChanges,
+} from '@angular/core';
 
 @Component({
     selector: 'app-form-slider',
     standalone: true,
     imports: [CommonModule],
     templateUrl: './form-slider.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./form-slider.component.scss'],
 })
 export class FormSliderComponent implements OnChanges {

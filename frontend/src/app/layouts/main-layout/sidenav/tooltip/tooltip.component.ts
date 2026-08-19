@@ -13,6 +13,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, Input, OnDestroy, OnIni
             <span class="tooltip-arrow"></span>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./tooltip.component.scss'],
 })
 export class TooltipContentComponent {

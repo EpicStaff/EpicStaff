@@ -1,11 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
 @Component({
     selector: 'app-form-footer',
     standalone: true,
     imports: [CommonModule],
     templateUrl: './form-footer.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./form-footer.component.scss'],
 })
 export class FormFooterComponent {

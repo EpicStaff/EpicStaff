@@ -1,6 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -25,6 +25,7 @@ export interface AddTranscriptionConfigDialogData {
     standalone: true,
     imports: [CommonModule, ReactiveFormsModule, SelectComponent, MatTooltip],
     templateUrl: './add-transcription-config-dialog.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./add-transcription-config-dialog.component.scss'],
 })
 export class AddTranscriptionConfigDialogComponent implements OnInit {

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterModule } from '@angular/router';
 
@@ -8,6 +8,7 @@ import { RouterModule } from '@angular/router';
     standalone: true,
     imports: [CommonModule, RouterModule, MatTooltipModule],
     templateUrl: './go-to-button.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrl: './go-to-button.component.scss',
 })
 export class GoToButtonComponent {

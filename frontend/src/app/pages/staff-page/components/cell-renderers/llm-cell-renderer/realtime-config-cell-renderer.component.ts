@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 import { getProviderIconPath } from '@shared/utils';
 import { ICellRendererAngularComp } from 'ag-grid-angular';
@@ -46,6 +46,7 @@ import { MergedConfig } from '../../../../../features/staff/services/full-agent.
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: `
         .configs-cell-wrapper {
             display: flex;

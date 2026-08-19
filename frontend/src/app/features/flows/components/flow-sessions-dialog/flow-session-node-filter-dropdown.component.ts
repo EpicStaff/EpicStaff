@@ -16,7 +16,7 @@ import { NodeGroup } from 'src/app/shared/models/node-group.model';
     selector: 'app-flow-session-node-filter-dropdown',
     standalone: true,
     imports: [CommonModule, FormsModule],
-    changeDetection: ChangeDetectionStrategy.Default,
+    changeDetection: ChangeDetectionStrategy.Eager,
     template: `
         <div
             class="node-filter-dropdown"

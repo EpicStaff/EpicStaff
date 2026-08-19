@@ -1,6 +1,6 @@
 import { Dialog } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, Input } from '@angular/core';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
 import { Router, RouterModule } from '@angular/router';
@@ -91,6 +91,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
             (deleteMemoryEvent)="handleDeleteMemory($event)"
         ></app-memories-sidebar>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .header {

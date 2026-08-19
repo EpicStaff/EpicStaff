@@ -1,12 +1,13 @@
 // pagination-controls.component.ts
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
 @Component({
     selector: 'app-pagination-controls',
     standalone: true,
     imports: [CommonModule],
     templateUrl: './pagination-controls.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./pagination-controls.component.scss'],
 })
 export class PaginationControlsComponent {

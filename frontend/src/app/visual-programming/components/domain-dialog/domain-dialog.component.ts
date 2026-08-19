@@ -3,6 +3,7 @@ import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
 import {
+    ChangeDetectionStrategy,
     Component,
     computed,
     DestroyRef,
@@ -103,6 +104,7 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .dialog-container {

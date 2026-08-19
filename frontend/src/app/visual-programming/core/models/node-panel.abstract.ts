@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ValidatorFn, Validators } from '@angular/forms';
 
@@ -8,6 +8,7 @@ import { NodeModel } from './node.model';
 @Component({
     template: '',
     standalone: true,
+    changeDetection: ChangeDetectionStrategy.Eager,
     imports: [],
 })
 export abstract class BaseSidePanel<T extends NodeModel> {

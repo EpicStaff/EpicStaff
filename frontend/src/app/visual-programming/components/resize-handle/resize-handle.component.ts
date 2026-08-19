@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 
 @Component({
@@ -12,6 +12,7 @@ import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
             [fResizeHandleType]="handleType"
         ></div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             :host {

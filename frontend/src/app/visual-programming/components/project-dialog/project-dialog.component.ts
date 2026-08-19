@@ -2,6 +2,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import {
     AfterViewInit,
+    ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
     DestroyRef,
@@ -66,6 +67,7 @@ import { UnsavedIndicatorComponent } from '../../../shared/components/unsaved-in
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./project-dialog.component.scss'],
 })
 export class ProjectDialogComponent implements AfterViewInit {

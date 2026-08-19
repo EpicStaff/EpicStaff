@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog'; // Import from CDK instead of Material
-import { Component, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable, of } from 'rxjs';
@@ -31,6 +31,7 @@ import { AgentsTableComponent } from './components/agents-table/agents-table.com
         HasPermissionDirective,
     ],
     templateUrl: './staff-page.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./staff-page.component.scss'],
 })
 export class StaffPageComponent implements CanComponentDeactivate, OnInit, OnDestroy {

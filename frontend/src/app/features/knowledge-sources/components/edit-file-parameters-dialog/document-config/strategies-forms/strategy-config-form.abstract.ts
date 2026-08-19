@@ -1,9 +1,10 @@
-import { Component, inject, input, OnChanges, OnDestroy } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, OnChanges, OnDestroy } from '@angular/core';
 import { AbstractControl, FormBuilder, FormGroup } from '@angular/forms';
 
 import { StrategyModel } from '../../../../models/strategy.model';
 
 @Component({
+    changeDetection: ChangeDetectionStrategy.Eager,
     template: '',
 })
 export abstract class StrategyForm<T extends StrategyModel> implements OnChanges, OnDestroy {

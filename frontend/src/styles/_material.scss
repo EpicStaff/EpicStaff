@@ -1,5 +1,6 @@
 @use '@angular/material' as mat;
-@include mat.core();
+@include mat.elevation-classes();
+@include mat.app-background();
 
 $compact-theme: mat.define-theme(
     (
@@ -13,8 +14,8 @@ $compact-theme: mat.define-theme(
 );
 
 :root {
-    --mdc-plain-tooltip-container-color: rgba(33, 35, 37, 1);
-    --mdc-plain-tooltip-supporting-text-color: #d9d9de;
+    --mat-tooltip-container-color: rgba(33, 35, 37, 1);
+    --mat-tooltip-supporting-text-color: #d9d9de;
 
     @include mat.form-field-density($compact-theme);
 }
@@ -39,7 +40,7 @@ $compact-theme: mat.define-theme(
     text-align: left;
 }
 .surface-tool-tooltip {
-    --mdc-plain-tooltip-container-max-width: 60vw;
+    --mat-tooltip-container-max-width: 60vw;
 }
 
 .surface-tool-tooltip .mdc-tooltip__surface {
@@ -53,7 +54,7 @@ $compact-theme: mat.define-theme(
 }
 
 .tree-name-tooltip {
-    --mdc-plain-tooltip-container-max-width: 60vw;
+    --mat-tooltip-container-max-width: 60vw;
 }
 
 .tree-name-tooltip .mdc-tooltip__surface {

@@ -1,4 +1,4 @@
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { provideHttpClient, withInterceptors, withXhr } from '@angular/common/http';
 import { APP_INITIALIZER, ApplicationConfig, importProvidersFrom, provideZoneChangeDetection } from '@angular/core';
 import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
@@ -24,6 +24,7 @@ export const appConfig: ApplicationConfig = {
         provideAnimationsAsync(),
 
         provideHttpClient(
+            withXhr(),
             withInterceptors([authInterceptor, activeOrgInterceptor, validationErrorsInterceptor, forbiddenInterceptor])
         ),
         importProvidersFrom(MarkdownModule.forRoot({}), MonacoEditorModule.forRoot()),

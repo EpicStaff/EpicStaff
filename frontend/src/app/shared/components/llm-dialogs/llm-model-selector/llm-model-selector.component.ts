@@ -96,12 +96,12 @@ export class LlmModelSelectorComponent implements ControlValueAccessor {
     expandedProviders = signal<Set<number>>(new Set());
 
     modelsResource = rxResource({
-        request: () => ({
+        params: () => ({
             provider: this.provider(),
         }),
 
-        loader: ({ request }) => {
-            return this.llmLibraryService.loadModels(request.provider);
+        stream: ({ params }) => {
+            return this.llmLibraryService.loadModels(params.provider);
         },
     });
 

@@ -1,6 +1,6 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { EnhancedTranscriptionConfig } from '@shared/models';
@@ -40,6 +40,7 @@ export interface AgentDefinitionRealtimeSettingsDialogData {
         HelpTooltipComponent,
     ],
     templateUrl: './agent-definition-realtime-settings-dialog.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styleUrls: ['./agent-definition-realtime-settings-dialog.component.scss'],
 })
 export class AgentDefinitionRealtimeSettingsDialogComponent implements OnInit {

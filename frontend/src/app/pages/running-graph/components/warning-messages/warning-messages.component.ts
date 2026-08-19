@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -49,6 +49,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             .warning-container {

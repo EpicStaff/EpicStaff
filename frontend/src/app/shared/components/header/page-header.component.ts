@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 
 import { ProjectCreateButtonComponent } from './header-components/header-create/header-create-button.component';
 import { ProjectFavoriteButtonComponent } from './header-components/header-favorite/header-favorite-button.component';
@@ -59,6 +59,7 @@ import { ProjectSortButtonComponent } from './header-components/header-sort/head
             </div>
         </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [
         `
             :host {
