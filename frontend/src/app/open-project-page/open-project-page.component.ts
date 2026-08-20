@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { animate, state, style, transition, trigger } from '@angular/animations';
 import { Dialog } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -48,28 +47,6 @@ import { SettingsSectionComponent } from './settings-section/settings-section.co
 import { TasksSectionComponent } from './tasks-section/tasks-section.component';
 import { TaskPendingEvent } from './tasks-section/tasks-table/tasks-table.component';
 
-// Improved animations that work properly with content visibility
-export const expandCollapseAnimation = trigger('expandCollapse', [
-    state(
-        'collapsed',
-        style({
-            height: '0',
-            opacity: '0',
-            visibility: 'hidden',
-        })
-    ),
-    state(
-        'expanded',
-        style({
-            height: '*',
-            opacity: '1',
-            visibility: 'visible',
-        })
-    ),
-    transition('expanded => collapsed', [animate('225ms cubic-bezier(0.4, 0.0, 0.2, 1)')]),
-    transition('collapsed => expanded', [animate('225ms cubic-bezier(0.4, 0.0, 0.2, 1)')]),
-]);
-
 // Interface for section configuration
 interface SectionConfig {
     id: string;
@@ -116,7 +93,6 @@ function asTaskPendingPayloadRecord(payload: unknown): Record<string, unknown> {
         SpinnerComponent,
         AppSvgIconComponent,
     ],
-    animations: [expandCollapseAnimation],
     changeDetection: ChangeDetectionStrategy.OnPush,
     providers: [ProjectStateService],
 })

@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core
 import { JsonViewerComponent } from '@shared/components';
 import { MarkdownModule } from 'ngx-markdown';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/graph-session-message.model';
@@ -11,7 +10,6 @@ import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/g
 @Component({
     selector: 'app-task-message',
     imports: [CommonModule, MarkdownModule, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="agent-flow-container">
             <!-- Task Message Header with Toggle -->
@@ -38,8 +36,8 @@ import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/g
 
             <!-- Collapsible Task Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="agent-content">
                     <!-- Task Details Section -->
@@ -56,8 +54,8 @@ import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/g
                                 Task Details
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isDetailsExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isDetailsExpanded"
                             >
                                 @if (taskMessageData; as data) {
                                     <div class="details-content">
@@ -105,8 +103,8 @@ import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/g
                                 Result
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isRawExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isRawExpanded"
                             >
                                 <div class="result-content">
                                     <app-copy-button [text]="getRawData()" />
@@ -215,10 +213,6 @@ import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/g
         .collapsible-content {
             overflow: hidden;
             position: relative;
-
-            &.ng-animating {
-                overflow: hidden;
-            }
         }
 
         /* Section styling */

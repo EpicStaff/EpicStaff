@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, input, signal } 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { expandCollapseAnimation } from '@shared/animations';
 import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
@@ -44,7 +43,6 @@ import { DEFAULT_OUTPUT_SCHEMA } from './default-output-schema';
         LlmModelSelectorComponent,
         ColumnResizeDividerComponent,
     ],
-    animations: [expandCollapseAnimation],
     templateUrl: './code-agent-node-panel.component.html',
     styleUrls: ['./code-agent-node-panel.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

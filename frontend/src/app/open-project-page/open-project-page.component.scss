@@ -93,6 +93,11 @@ $inactive-tab-bg: #2a2a2a;
         min-width: 0;
     }
 
+    .section-content {
+        --collapse-duration: 225ms;
+        --collapse-easing: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
     .section-item {
         margin-bottom: 8px;
         border-radius: 4px;

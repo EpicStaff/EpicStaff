@@ -1,4 +1,3 @@
-import { animate, state, style, transition, trigger } from '@angular/animations';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy, OnInit } from '@angular/core';
 import { Subscription } from 'rxjs';
@@ -15,9 +14,10 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
             class="toast-container"
             [ngClass]="position"
         >
-            @for (toast of toasts; track toast) {
+            @for (toast of toasts; track toast.id) {
                 <div
-                    [@toastAnimation]="position"
+                    animate.enter="toast-enter"
+                    animate.leave="toast-leave"
                     class="toast-item"
                     [ngClass]="toast.type"
                     (click)="closeToast(toast.id)"
@@ -188,85 +188,82 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                     color: #e0e0e0;
                 }
             }
+
+            @keyframes toast-enter-y {
+                from {
+                    opacity: 0;
+                    transform: translateY(-100%);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            @keyframes toast-leave-y {
+                from {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+                to {
+                    opacity: 0;
+                    transform: translateY(-100%);
+                }
+            }
+
+            @keyframes toast-enter-x {
+                from {
+                    opacity: 0;
+                    transform: translateX(100%);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+            }
+
+            @keyframes toast-leave-x {
+                from {
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+                to {
+                    opacity: 0;
+                    transform: translateX(100%);
+                }
+            }
+
+            .toast-container.top-center,
+            .toast-container.top-right,
+            .toast-container.top-left {
+                .toast-item.toast-enter {
+                    animation: toast-enter-y 300ms ease-out;
+                }
+
+                .toast-item.toast-leave {
+                    animation: toast-leave-y 200ms ease-in;
+                }
+            }
+
+            .toast-container.bottom-right,
+            .toast-container.bottom-center,
+            .toast-container.bottom-left {
+                .toast-item.toast-enter {
+                    animation: toast-enter-x 300ms ease-out;
+                }
+
+                .toast-item.toast-leave {
+                    animation: toast-leave-x 200ms ease-in;
+                }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                .toast-item.toast-enter,
+                .toast-item.toast-leave {
+                    animation-duration: 1ms;
+                }
+            }
         `,
-    ],
-    animations: [
-        trigger('toastAnimation', [
-            state(
-                'top-center',
-                style({
-                    opacity: 1,
-                    transform: 'translateY(0)',
-                })
-            ),
-            state(
-                'top-right',
-                style({
-                    opacity: 1,
-                    transform: 'translateY(0)',
-                })
-            ),
-            state(
-                'top-left',
-                style({
-                    opacity: 1,
-                    transform: 'translateY(0)',
-                })
-            ),
-            state(
-                'bottom-right',
-                style({
-                    opacity: 1,
-                    transform: 'translateX(0)',
-                })
-            ),
-            state(
-                'bottom-left',
-                style({
-                    opacity: 1,
-                    transform: 'translateX(0)',
-                })
-            ),
-            state(
-                'bottom-center',
-                style({
-                    opacity: 1,
-                    transform: 'translateX(0)',
-                })
-            ),
-            transition('void => top-center, void => top-right, void => top-left', [
-                style({
-                    opacity: 0,
-                    transform: 'translateY(-100%)',
-                }),
-                animate('300ms ease-out'),
-            ]),
-            transition('top-center => void, top-right => void, top-left => void', [
-                animate(
-                    '200ms ease-in',
-                    style({
-                        opacity: 0,
-                        transform: 'translateY(-100%)',
-                    })
-                ),
-            ]),
-            transition('void => bottom-right, void => bottom-center, void => bottom-left', [
-                style({
-                    opacity: 0,
-                    transform: 'translateX(100%)',
-                }),
-                animate('300ms ease-out'),
-            ]),
-            transition('bottom-right => void, bottom-center => void, bottom-left => void', [
-                animate(
-                    '200ms ease-in',
-                    style({
-                        opacity: 0,
-                        transform: 'translateX(100%)',
-                    })
-                ),
-            ]),
-        ]),
     ],
 })
 export class ToastComponent implements OnInit, OnDestroy {

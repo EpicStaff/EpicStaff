@@ -1,12 +1,10 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
-import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-warning-messages',
     imports: [AppSvgIconComponent],
-    animations: [expandCollapseAnimation],
     template: `
         @if (messages && messages.length > 0) {
             <div class="warning-container">
@@ -30,8 +28,8 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
                     <span class="warning-count">({{ messages.length }})</span>
                 </div>
                 <div
-                    class="collapsible-content"
-                    [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
+                    class="collapsible-content grid-collapsible"
+                    [class.expanded]="isExpanded"
                 >
                     <div class="warning-content">
                         @for (message of messages; track message; let i = $index) {

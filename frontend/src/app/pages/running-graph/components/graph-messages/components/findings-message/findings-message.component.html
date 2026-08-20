@@ -32,60 +32,62 @@
             </div>
         </div>
         <div
-            class="content"
+            class="content grid-collapsible"
             [class.collapsed]="!isExpanded"
-            [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
+            [class.expanded]="isExpanded"
         >
-            @if (data.findings.length === 0) {
-                <div class="empty-state">No findings reported</div>
-            }
-            @if (data.findings.length > 0) {
-                <div class="findings-table-wrapper">
-                    <table class="findings-table">
-                        <thead>
-                            <tr>
-                                <th class="col-severity">Severity</th>
-                                <th class="col-title">Title</th>
-                                <th class="col-category">Category</th>
-                                <th class="col-location">File</th>
-                                <th class="col-detail">Detail</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @for (finding of data.findings; track trackByIndex($index)) {
+            <div class="grid-collapsible__inner">
+                @if (data.findings.length === 0) {
+                    <div class="empty-state">No findings reported</div>
+                }
+                @if (data.findings.length > 0) {
+                    <div class="findings-table-wrapper">
+                        <table class="findings-table">
+                            <thead>
                                 <tr>
-                                    <td class="col-severity">
-                                        <span
-                                            class="severity-badge"
-                                            [ngClass]="severityClass(finding.severity)"
-                                        >
-                                            {{ finding.severity }}
-                                        </span>
-                                    </td>
-                                    <td class="col-title">{{ finding.title }}</td>
-                                    <td class="col-category">{{ finding.category || '—' }}</td>
-                                    <td class="col-location">
-                                        @if (fileLocation(finding); as location) {
-                                            <code>{{ location }}</code>
-                                        }
-                                        @if (!fileLocation(finding)) {
-                                            <span class="muted">—</span>
-                                        }
-                                    </td>
-                                    <td class="col-detail">
-                                        @if (finding.detail) {
-                                            <span class="detail-text">{{ finding.detail }}</span>
-                                        }
-                                        @if (!finding.detail) {
-                                            <span class="muted">—</span>
-                                        }
-                                    </td>
+                                    <th class="col-severity">Severity</th>
+                                    <th class="col-title">Title</th>
+                                    <th class="col-category">Category</th>
+                                    <th class="col-location">File</th>
+                                    <th class="col-detail">Detail</th>
                                 </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            }
+                            </thead>
+                            <tbody>
+                                @for (finding of data.findings; track trackByIndex($index)) {
+                                    <tr>
+                                        <td class="col-severity">
+                                            <span
+                                                class="severity-badge"
+                                                [ngClass]="severityClass(finding.severity)"
+                                            >
+                                                {{ finding.severity }}
+                                            </span>
+                                        </td>
+                                        <td class="col-title">{{ finding.title }}</td>
+                                        <td class="col-category">{{ finding.category || '—' }}</td>
+                                        <td class="col-location">
+                                            @if (fileLocation(finding); as location) {
+                                                <code>{{ location }}</code>
+                                            }
+                                            @if (!fileLocation(finding)) {
+                                                <span class="muted">—</span>
+                                            }
+                                        </td>
+                                        <td class="col-detail">
+                                            @if (finding.detail) {
+                                                <span class="detail-text">{{ finding.detail }}</span>
+                                            }
+                                            @if (!finding.detail) {
+                                                <span class="muted">—</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
         </div>
     </div>
 }

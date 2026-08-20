@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
 import { MarkdownModule } from 'ngx-markdown';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import {
@@ -20,7 +19,6 @@ interface ThinkingStep {
 @Component({
     selector: 'app-code-agent-stream-message',
     imports: [MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
     template: `
         <div
             class="code-agent-container"
@@ -61,8 +59,8 @@ interface ThinkingStep {
 
             <!-- Steps (at the top, always visible when expanded) -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isExpanded"
             >
                 @if (thinkingSteps.length > 0) {
                     <div class="steps-container">
@@ -79,8 +77,8 @@ interface ThinkingStep {
                                     <span class="step-summary">{{ getStepSummary(step, i) }}</span>
                                 </div>
                                 <div
-                                    class="collapsible-content"
-                                    [@expandCollapse]="expandedSteps[i] ? 'expanded' : 'collapsed'"
+                                    class="collapsible-content grid-collapsible"
+                                    [class.expanded]="expandedSteps[i]"
                                 >
                                     <div class="step-content">
                                         @for (tc of step.toolCalls; track tc) {
@@ -237,10 +235,6 @@ interface ThinkingStep {
         .collapsible-content {
             overflow: hidden;
             position: relative;
-
-            &.ng-animating {
-                overflow: hidden;
-            }
         }
 
         .steps-container {

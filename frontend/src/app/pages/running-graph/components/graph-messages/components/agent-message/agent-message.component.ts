@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core
 import { JsonViewerComponent } from '@shared/components';
 
 import { GetAgentRequest } from '../../../../../../features/staff/models/agent.model';
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
@@ -10,7 +9,6 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
 @Component({
     selector: 'app-agent-message',
     imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="agent-flow-container">
             <!-- Agent Message Header with Toggle -->
@@ -38,8 +36,8 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
 
             <!-- Collapsible Agent Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="agent-content">
                     <!-- Thought Section -->
@@ -56,8 +54,8 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
                                 Thought
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isThoughtExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isThoughtExpanded"
                             >
                                 <div class="thought-bubble">
                                     <app-copy-button [text]="copyText" />
@@ -82,8 +80,8 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
                                 Tool
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isToolExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isToolExpanded"
                             >
                                 <div class="tool-wrapper">
                                     <div class="tool-name">{{ getTool() }}</div>
@@ -121,8 +119,8 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
                                 Tool Output
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isResultExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isResultExpanded"
                             >
                                 <div class="result-content">
                                     @if (isValidJson(getResult())) {
@@ -227,10 +225,6 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
         .collapsible-content {
             overflow: hidden;
             position: relative;
-
-            &.ng-animating {
-                overflow: hidden;
-            }
         }
 
         .section-heading {

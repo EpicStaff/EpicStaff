@@ -1,4 +1,3 @@
-import { animate, state, style, transition, trigger } from '@angular/animations';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
@@ -6,23 +5,6 @@ import { FormsModule } from '@angular/forms';
     selector: 'app-chats-header',
     imports: [FormsModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    animations: [
-        trigger('modelSwitch', [
-            state(
-                'mini',
-                style({
-                    transform: 'translateX(0)',
-                })
-            ),
-            state(
-                'full',
-                style({
-                    transform: 'translateX(100%)',
-                })
-            ),
-            transition('mini <=> full', [animate('0.3s ease-in-out')]),
-        ]),
-    ],
     template: `
         <div class="header">
             <div class="title-container">

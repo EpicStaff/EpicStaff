@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, ViewEncapsulation } from '@angular/core';
 import { JsonViewerComponent } from '@shared/components';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../models/graph-session-message.model';
@@ -10,7 +9,6 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
     selector: 'app-subgraph-start-message',
     imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
-    animations: [expandCollapseAnimation],
     template: `
         <div class="subgraph-start-container">
             <div
@@ -58,8 +56,8 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
 
             <!-- Collapsible Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="subgraph-start-content">
                     <!-- Input Parameters Section -->
@@ -76,8 +74,8 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                                 Input Parameters
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isInputsExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isInputsExpanded"
                             >
                                 <div class="input-content">
                                     <app-copy-button [text]="inputJson" />
@@ -104,8 +102,8 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
                                 Variables
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isVariablesExpanded"
                             >
                                 <div class="variables-content">
                                     <app-copy-button [text]="variablesJson" />
@@ -185,10 +183,6 @@ import { GraphMessage, MessageType, StartSubflowMessageData } from '../../../../
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-            }
-
-            .collapsible-content.ng-animating {
-                overflow: hidden;
             }
 
             .subgraph-start-content {

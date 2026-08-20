@@ -1,7 +1,6 @@
 import { provideHttpClient, withInterceptors, withXhr } from '@angular/common/http';
 import { APP_INITIALIZER, ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
 import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
-import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideMarkdown } from 'ngx-markdown';
 import { provideMonacoEditor } from 'ngx-monaco-editor-v2';
@@ -21,7 +20,6 @@ export const appConfig: ApplicationConfig = {
     providers: [
         provideZoneChangeDetection({ eventCoalescing: true }),
         provideRouter(routes, withComponentInputBinding()),
-        provideAnimationsAsync(),
 
         provideHttpClient(
             withXhr(),

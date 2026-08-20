@@ -1,6 +1,5 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { expandCollapseAnimation } from '@shared/animations';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
@@ -17,7 +16,6 @@ import {
     templateUrl: './extracted-chunks-message.component.html',
     styleUrls: ['./extracted-chunks-message.component.scss'],
     changeDetection: ChangeDetectionStrategy.Eager,
-    animations: [expandCollapseAnimation],
 })
 export class ExtractedChunksMessageComponent {
     @Input() message!: GraphMessage;

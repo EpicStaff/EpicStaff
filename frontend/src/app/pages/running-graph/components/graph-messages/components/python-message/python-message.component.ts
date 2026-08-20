@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
 import { JsonViewerComponent } from '@shared/components';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { FormatExecutionDataPipe } from '../../../../../../shared/pipes/format-execution-data.pipe';
@@ -11,7 +10,6 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 @Component({
     selector: 'app-python-message',
     imports: [CommonModule, JsonViewerComponent, FormatExecutionDataPipe, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="python-flow-container">
             <!-- Python Message Header with Toggle -->
@@ -36,8 +34,8 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
             <!-- Collapsible Python Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="python-content">
                     <!-- Code Section -->
@@ -54,8 +52,8 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 Python Code
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isCodeExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isCodeExpanded"
                             >
                                 <div class="code-wrapper">
                                     <div class="result-content">
@@ -80,8 +78,8 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 Input
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isInputExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isInputExpanded"
                             >
                                 <div class="input-wrapper">
                                     <div class="result-content">
@@ -114,8 +112,8 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 Output
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isOutputExpanded"
                             >
                                 <div class="output-wrapper">
                                     <div
@@ -153,8 +151,8 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 Error
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isErrorExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isErrorExpanded"
                             >
                                 <div class="error-wrapper">
                                     <div class="result-content error-content">
@@ -178,8 +176,8 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                             Raw Execution Data
                         </div>
                         <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isRawDataExpanded ? 'expanded' : 'collapsed'"
+                            class="collapsible-content grid-collapsible"
+                            [class.expanded]="isRawDataExpanded"
                         >
                             <div class="raw-data-wrapper">
                                 <div class="raw-data-content">
@@ -261,10 +259,6 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-            }
-
-            .collapsible-content.ng-animating {
-                overflow: hidden;
             }
 
             /* Section styling */

@@ -17,9 +17,11 @@
     </div>
 
     <div
-        class="collapsible-content"
-        [@expandCollapse]="expandedState() ? 'expanded' : 'collapsed'"
+        class="collapsible-content grid-collapsible"
+        [class.expanded]="expandedState()"
     >
-        <ng-content></ng-content>
+        <div class="grid-collapsible__inner">
+            <ng-content></ng-content>
+        </div>
     </div>
 </div>

@@ -134,10 +134,13 @@ impossible to attribute. Both are queued as follow-ups.
 - `withXhr()` in `app.config.ts`. Angular 22 switched the default `HttpClient` backend to
   fetch; the migration added `withXhr()` to preserve behaviour. It should not be removed
   casually — four interceptors and cookie handling depend on the backend.
-- `@angular/animations` → native CSS. Nine files, but 18 `state()` and 16 `transition()`
-  calls: these are state machines, while `animate.enter`/`animate.leave` cover only entry and
-  exit, so each animation has to be rewritten as classes plus CSS and checked by eye.
 - `@foblex/flow` 18.4.0 → 19.1.6 and `ag-grid` 33.3.2 → 36.1.0, both awaiting a team decision.
+- Two pre-existing defects surfaced while removing `@angular/animations`, both left alone
+  because fixing them changes appearance and neither is a dependency concern: the toast
+  container animates every `bottom-*` position along X with `translateX(100%)`, so a
+  `bottom-left` toast enters and leaves to the right; and `.details-content` in
+  `staff-agent-card` caps at `max-height: 800px` with `overflow: hidden`, silently clipping
+  taller content.
 
 ## Closed since
 
@@ -149,6 +152,24 @@ eslint rule; and `ngx-json-viewer`, replaced by a vendored component under
 `shared/components/json-viewer/`, so the unmaintained dependency is gone rather than merely
 flagged. Its MIT attribution is recorded in the Vendored code section of
 THIRD-PARTY-NOTICES.md.
+
+`@angular/animations` is also gone, which the deferred list above had scoped as state-machine
+work. Reading the nine files rather than counting their calls showed why it was smaller than it
+looked: of nine triggers, five were dead — two defined and never bound, two registered as
+component metadata with no binding, and one duplicating an opacity transition the component's
+own stylesheet already ran at the same 300ms. Of the four live ones, three were plain
+enter/leave and became `animate.enter` / `animate.leave` with CSS keyframes; the fourth,
+`expandCollapse`, was a boolean class toggle at 44 call sites needing no framework at all.
+Those became one `grid-collapsible` class using `grid-template-rows: 0fr → 1fr`, chosen over
+`interpolate-size: allow-keywords` because the repository declares no browserslist and the
+default Angular targets include Firefox. Per-site timings are preserved through
+`--collapse-duration` / `--collapse-easing`. The trick needs a single grid child, so seven
+sites with two or more children gained a wrapper; a script verified all 46 sites end with
+exactly one. This also removes the shared trigger's `max-height: 1000px` ceiling, above which
+content used to spill, and drops the 64 kB animations chunk that `provideAnimationsAsync()` had
+been fetching lazily. Material and CDK read `ANIMATION_MODULE_TYPE` with `{ optional: true }`
+and compare it against `'NoopAnimations'`, so removing the provider leaves their own animations
+enabled.
 
 ---
 

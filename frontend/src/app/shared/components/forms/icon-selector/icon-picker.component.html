@@ -27,7 +27,8 @@
     @if (showIconPicker) {
         <div
             class="icon-picker-popup"
-            @fadeInOut
+            animate.enter="icon-picker-enter"
+            animate.leave="icon-picker-leave"
         >
             <div class="icons-grid">
                 @for (iconName of availableIcons; track iconName) {

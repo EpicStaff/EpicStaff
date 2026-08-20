@@ -4,7 +4,6 @@ import { JsonViewerComponent } from '@shared/components';
 import { MarkdownModule } from 'ngx-markdown';
 
 import { GetProjectRequest } from '../../../../../../features/projects/models/project.model';
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import {
@@ -17,7 +16,6 @@ import {
 @Component({
     selector: 'app-finish-message',
     imports: [CommonModule, JsonViewerComponent, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="finish-container">
             <!-- Finish Message Header with Toggle -->
@@ -58,8 +56,8 @@ import {
 
             <!-- Collapsible Finish Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="finish-content">
                     <!-- Variables Section -->
@@ -76,8 +74,8 @@ import {
                                 Variables
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isVariablesExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isVariablesExpanded"
                             >
                                 <div class="variables-content">
                                     <app-copy-button [text]="variablesJson" />
@@ -105,8 +103,8 @@ import {
 
                         <!-- Always use JSON viewer for output -->
                         <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isOutputExpanded ? 'expanded' : 'collapsed'"
+                            class="collapsible-content grid-collapsible"
+                            [class.expanded]="isOutputExpanded"
                         >
                             <div class="output-content">
                                 <app-copy-button [text]="outputJson" />
@@ -252,10 +250,6 @@ import {
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-
-                &.ng-animating {
-                    overflow: hidden;
-                }
             }
 
             .variables-content,

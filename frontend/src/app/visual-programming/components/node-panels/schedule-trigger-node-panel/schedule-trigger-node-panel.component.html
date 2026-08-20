@@ -94,7 +94,8 @@
                     <!-- Repeat settings (visible when run_mode = repeat) -->
                     @if (showRepeatFields()) {
                         <div
-                            [@panelFadeSlide]
+                            animate.enter="panel-enter"
+                            animate.leave="panel-leave"
                             class="repeat-fields"
                         >
                             <div class="section">
@@ -120,7 +121,8 @@
                             <!-- Repeat on -->
                             @if (showWeekdays()) {
                                 <div
-                                    [@panelFadeSlide]
+                                    animate.enter="panel-enter"
+                                    animate.leave="panel-leave"
                                     class="section"
                                 >
                                     <div class="section-header">
@@ -158,7 +160,8 @@
                             <!-- End date/time (visible when end_mode = on_date) -->
                             @if (showEndDateTime()) {
                                 <div
-                                    [@panelFadeSlide]
+                                    animate.enter="panel-enter"
+                                    animate.leave="panel-leave"
                                     class="section"
                                 >
                                     <div class="date-time-row">
@@ -200,7 +203,8 @@
                             <!-- Max runs (visible when end_mode = after_n_runs) -->
                             @if (showMaxRuns()) {
                                 <div
-                                    [@panelFadeSlide]
+                                    animate.enter="panel-enter"
+                                    animate.leave="panel-leave"
                                     class="half-row"
                                 >
                                     <div class="field-label">

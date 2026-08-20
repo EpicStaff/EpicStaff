@@ -1,7 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
@@ -9,7 +8,6 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 @Component({
     selector: 'app-error-message',
     imports: [CommonModule, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="error-container">
             <div
@@ -33,8 +31,8 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 
             <!-- Collapsible Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="error-content">
                     <!-- Error Details Section -->
@@ -50,24 +48,26 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                             Error Details
                         </div>
                         <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isErrorExpanded ? 'expanded' : 'collapsed'"
+                            class="collapsible-content grid-collapsible"
+                            [class.expanded]="isErrorExpanded"
                         >
-                            <div
-                                class="result-content"
-                                [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
-                            >
-                                <app-copy-button [text]="getFormattedErrorDetails()" />
-                                <pre>{{ getFormattedErrorDetails() }}</pre>
-                            </div>
-                            @if (shouldShowToggle() && isErrorExpanded) {
-                                <button
-                                    class="toggle-button"
-                                    (click)="toggleCollapse($event)"
+                            <div class="grid-collapsible__inner">
+                                <div
+                                    class="result-content"
+                                    [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
                                 >
-                                    {{ isCollapsed ? 'Show more' : 'Show less' }}
-                                </button>
-                            }
+                                    <app-copy-button [text]="getFormattedErrorDetails()" />
+                                    <pre>{{ getFormattedErrorDetails() }}</pre>
+                                </div>
+                                @if (shouldShowToggle() && isErrorExpanded) {
+                                    <button
+                                        class="toggle-button"
+                                        (click)="toggleCollapse($event)"
+                                    >
+                                        {{ isCollapsed ? 'Show more' : 'Show less' }}
+                                    </button>
+                                }
+                            </div>
                         </div>
                     </div>
 
@@ -85,8 +85,8 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                                 Data
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isDataExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isDataExpanded"
                             >
                                 <div class="result-content">
                                     <pre>{{ getFormattedErrorData() }}</pre>
@@ -154,10 +154,6 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-
-                &.ng-animating {
-                    overflow: hidden;
-                }
             }
 
             .error-content {

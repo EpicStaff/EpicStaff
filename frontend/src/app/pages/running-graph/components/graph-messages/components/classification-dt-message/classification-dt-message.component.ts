@@ -1,7 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import {
     ClassificationPromptMessageData,
     ConditionGroupManipulationMessageData,
@@ -13,7 +12,6 @@ import {
 @Component({
     selector: 'app-classification-dt-message',
     imports: [CommonModule],
-    animations: [expandCollapseAnimation],
     template: `
         <!-- Condition Group -->
         @if (isConditionGroup()) {
@@ -49,8 +47,8 @@ import {
                 </div>
 
                 <div
-                    class="collapsible-content"
-                    [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                    class="collapsible-content grid-collapsible"
+                    [class.expanded]="isMessageExpanded"
                 >
                     <div class="dt-content">
                         @if (getConditionData()?.expression) {
@@ -92,8 +90,8 @@ import {
                 </div>
 
                 <div
-                    class="collapsible-content"
-                    [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                    class="collapsible-content grid-collapsible"
+                    [class.expanded]="isMessageExpanded"
                 >
                     <div class="dt-content">
                         <!-- Prompt Text -->
@@ -109,8 +107,8 @@ import {
                                 Prompt
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isPromptExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isPromptExpanded"
                             >
                                 <pre class="code-block">{{ getPromptData()?.prompt_text }}</pre>
                             </div>
@@ -129,8 +127,8 @@ import {
                                 Raw Response
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isResponseExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isResponseExpanded"
                             >
                                 <pre class="code-block">{{ getPromptData()?.raw_response }}</pre>
                             </div>
@@ -177,8 +175,8 @@ import {
                 </div>
 
                 <div
-                    class="collapsible-content"
-                    [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                    class="collapsible-content grid-collapsible"
+                    [class.expanded]="isMessageExpanded"
                 >
                     <div class="dt-content">
                         <pre class="code-block">{{ getManipulationDisplay() | json }}</pre>
@@ -386,10 +384,6 @@ import {
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-            }
-
-            .collapsible-content.ng-animating {
-                overflow: hidden;
             }
         `,
     ],

@@ -1,4 +1,3 @@
-import { animate, state, style, transition, trigger } from '@angular/animations';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -31,23 +30,6 @@ interface SectionStates {
     templateUrl: './staff-agent-card.component.html',
     styleUrls: ['./staff-agent-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    animations: [
-        trigger('expandCollapse', [
-            state(
-                'collapsed',
-                style({
-                    opacity: '0',
-                })
-            ),
-            state(
-                'expanded',
-                style({
-                    opacity: '1',
-                })
-            ),
-            transition('collapsed <=> expanded', [animate('300ms ease')]),
-        ]),
-    ],
 })
 export class StaffAgentCardComponent implements OnInit, OnChanges {
     @HostBinding('attr.size') @Input() size: 'small' | 'medium' | 'large' = 'medium';

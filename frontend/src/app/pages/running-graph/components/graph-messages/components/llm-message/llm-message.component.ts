@@ -2,7 +2,6 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { MarkdownModule } from 'ngx-markdown';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/graph-session-message.model';
@@ -10,7 +9,6 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
 @Component({
     selector: 'app-llm-message',
     imports: [CommonModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="llm-flow-container">
             <!-- LLM Message Header with Toggle -->
@@ -35,8 +33,8 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
 
             <!-- Collapsible LLM Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="llm-content">
                     <!-- Response Subsection -->
@@ -52,24 +50,26 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
                             Response
                         </div>
                         <div
-                            class="collapsible-content"
-                            [@expandCollapse]="isResponseExpanded ? 'expanded' : 'collapsed'"
+                            class="collapsible-content grid-collapsible"
+                            [class.expanded]="isResponseExpanded"
                         >
-                            <div
-                                class="result-content"
-                                [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
-                            >
-                                <app-copy-button [text]="llmResponse" />
-                                <markdown [data]="llmResponse"></markdown>
-                            </div>
-                            @if (shouldShowToggle() && isResponseExpanded) {
-                                <button
-                                    class="toggle-button"
-                                    (click)="toggleCollapse()"
+                            <div class="grid-collapsible__inner">
+                                <div
+                                    class="result-content"
+                                    [ngClass]="{ collapsed: isCollapsed && shouldShowToggle() }"
                                 >
-                                    {{ isCollapsed ? 'Show more' : 'Show less' }}
-                                </button>
-                            }
+                                    <app-copy-button [text]="llmResponse" />
+                                    <markdown [data]="llmResponse"></markdown>
+                                </div>
+                                @if (shouldShowToggle() && isResponseExpanded) {
+                                    <button
+                                        class="toggle-button"
+                                        (click)="toggleCollapse()"
+                                    >
+                                        {{ isCollapsed ? 'Show more' : 'Show less' }}
+                                    </button>
+                                }
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -159,10 +159,6 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-            }
-
-            .collapsible-content.ng-animating {
-                overflow: hidden;
             }
 
             .result-content {

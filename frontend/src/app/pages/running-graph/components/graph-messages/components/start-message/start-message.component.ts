@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, Input, ViewEncapsulation } from '@angular/core';
 import { JsonViewerComponent } from '@shared/components';
 
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
@@ -10,7 +9,6 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
     selector: 'app-start-message',
     imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
-    animations: [expandCollapseAnimation],
     template: `
         <div class="start-container">
             <div
@@ -38,8 +36,8 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 
             <!-- Collapsible Content -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="start-content">
                     <!-- Input Parameters Section -->
@@ -56,8 +54,8 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                                 Input Parameters
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isInputsExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isInputsExpanded"
                             >
                                 <div class="input-content">
                                     <app-copy-button [text]="startInputJson" />
@@ -134,10 +132,6 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-            }
-
-            .collapsible-content.ng-animating {
-                overflow: hidden;
             }
 
             .start-content {

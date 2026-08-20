@@ -3,7 +3,6 @@ import { JsonViewerComponent } from '@shared/components';
 import { MarkdownModule } from 'ngx-markdown';
 
 import { GetAgentRequest } from '../../../../../../features/staff/models/agent.model';
-import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
 import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
@@ -11,7 +10,6 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
 @Component({
     selector: 'app-agent-finish-message',
     imports: [MarkdownModule, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="agent-flow-container">
             <!-- Agent Message Header with Toggle -->
@@ -38,8 +36,8 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
 
             <!-- Collapsible Agent Content - Thought Section Only -->
             <div
-                class="collapsible-content"
-                [@expandCollapse]="isMessageExpanded ? 'expanded' : 'collapsed'"
+                class="collapsible-content grid-collapsible"
+                [class.expanded]="isMessageExpanded"
             >
                 <div class="agent-content">
                     <!-- Thought Section -->
@@ -56,8 +54,8 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
                                 Thought
                             </div>
                             <div
-                                class="collapsible-content"
-                                [@expandCollapse]="isThoughtExpanded ? 'expanded' : 'collapsed'"
+                                class="collapsible-content grid-collapsible"
+                                [class.expanded]="isThoughtExpanded"
                             >
                                 <div class="thought-bubble">
                                     <span class="thought-quote">"</span>{{ cleanThought(agentFinishMessageData.thought)
@@ -169,10 +167,6 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
             .collapsible-content {
                 overflow: hidden;
                 position: relative;
-            }
-
-            .collapsible-content.ng-animating {
-                overflow: hidden;
             }
 
             /* Section styling */

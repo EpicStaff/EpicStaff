@@ -1,4 +1,3 @@
-import { animate, style, transition, trigger } from '@angular/animations';
 import { Dialog } from '@angular/cdk/dialog';
 import {
     AfterViewInit,
@@ -35,18 +34,6 @@ import { PythonToolItemComponent } from './python-tool-item/python-tool-item.com
     templateUrl: './tools-popup.component.html',
     styleUrls: ['./tools-popup.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    animations: [
-        trigger('expandCollapse', [
-            transition(':enter', [
-                style({ height: '0', opacity: 0 }),
-                animate('300ms cubic-bezier(0.34, 1.56, 0.64, 1)', style({ height: '*', opacity: 1 })),
-            ]),
-            transition(':leave', [
-                style({ height: '*', opacity: 1 }),
-                animate('200ms ease-out', style({ height: '0', opacity: 0 })),
-            ]),
-        ]),
-    ],
 })
 export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterViewInit {
     @ViewChild('searchInput') private searchInput!: ElementRef;

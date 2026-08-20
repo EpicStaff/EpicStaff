@@ -78,42 +78,44 @@
                                 }
                             </div>
                             <div
-                                class="section-content"
-                                [@expandCollapse]="isSectionExpanded(section.id) ? 'expanded' : 'collapsed'"
+                                class="section-content grid-collapsible"
+                                [class.expanded]="isSectionExpanded(section.id)"
                             >
-                                @if (section.id === 'settings') {
-                                    <app-settings-section
-                                        [project]="project"
-                                        (settingsChange)="onSettingsChanged($event)"
-                                    >
-                                    </app-settings-section>
-                                } @else if (section.id === 'details') {
-                                    <app-details-content
-                                        [projectId]="project.id"
-                                        [description]="project.description ?? ''"
-                                        (detailsChange)="onDetailsChanged($event)"
-                                        (dirtyChange)="onDetailsDirtyChange($event)"
-                                    ></app-details-content>
-                                } @else if (section.id === 'agents') {
-                                    <app-agents-section
-                                        (agentsIdsChange)="onAgentsIdsChanged($event)"
-                                        (agentUpdatePending)="onAgentUpdatePending($event)"
-                                        (dirtyChange)="onAgentsDirtyChange()"
-                                    ></app-agents-section>
-                                } @else if (section.id === 'tasks') {
-                                    <app-tasks-section
-                                        [project]="project"
-                                        [isSaving]="isSaving"
-                                        (taskPending)="onTaskPending($event)"
-                                        (dirtyChange)="onTasksDirtyChange($event)"
-                                    ></app-tasks-section>
-                                } @else {
-                                    <ng-container
-                                        [ngComponentOutlet]="section.component"
-                                        [ngComponentOutletInputs]="section.inputs"
-                                    >
-                                    </ng-container>
-                                }
+                                <div class="grid-collapsible__inner">
+                                    @if (section.id === 'settings') {
+                                        <app-settings-section
+                                            [project]="project"
+                                            (settingsChange)="onSettingsChanged($event)"
+                                        >
+                                        </app-settings-section>
+                                    } @else if (section.id === 'details') {
+                                        <app-details-content
+                                            [projectId]="project.id"
+                                            [description]="project.description ?? ''"
+                                            (detailsChange)="onDetailsChanged($event)"
+                                            (dirtyChange)="onDetailsDirtyChange($event)"
+                                        ></app-details-content>
+                                    } @else if (section.id === 'agents') {
+                                        <app-agents-section
+                                            (agentsIdsChange)="onAgentsIdsChanged($event)"
+                                            (agentUpdatePending)="onAgentUpdatePending($event)"
+                                            (dirtyChange)="onAgentsDirtyChange()"
+                                        ></app-agents-section>
+                                    } @else if (section.id === 'tasks') {
+                                        <app-tasks-section
+                                            [project]="project"
+                                            [isSaving]="isSaving"
+                                            (taskPending)="onTaskPending($event)"
+                                            (dirtyChange)="onTasksDirtyChange($event)"
+                                        ></app-tasks-section>
+                                    } @else {
+                                        <ng-container
+                                            [ngComponentOutlet]="section.component"
+                                            [ngComponentOutletInputs]="section.inputs"
+                                        >
+                                        </ng-container>
+                                    }
+                                </div>
                             </div>
                         </div>
                     }

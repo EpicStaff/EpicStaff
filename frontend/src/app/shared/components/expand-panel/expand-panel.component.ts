@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
-import { expandCollapseAnimation } from '@shared/animations';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -8,7 +7,6 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
     selector: 'app-expand-panel',
     templateUrl: './expand-panel.component.html',
     styleUrls: ['./expand-panel.component.scss'],
-    animations: [expandCollapseAnimation],
     imports: [TooltipComponent, AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

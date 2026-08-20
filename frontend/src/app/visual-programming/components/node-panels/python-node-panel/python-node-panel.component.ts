@@ -4,7 +4,6 @@ import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Subject, switchMap } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
-import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ColumnResizeDividerComponent } from '../../../../shared/components/column-resize-divider/column-resize-divider.component';
 import { createColumnWidthState } from '../../../../shared/components/column-resize-divider/column-width-state';
@@ -44,7 +43,6 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
         HelpTooltipComponent,
         ColumnResizeDividerComponent,
     ],
-    animations: [expandCollapseAnimation],
     template: `
         <div class="panel-container">
             <div class="panel-content">
