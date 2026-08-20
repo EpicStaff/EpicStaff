@@ -143,6 +143,7 @@ venv.bak/
 *venv
 venvs/
 run_program/manager.env
+!src/debug.env
 
 # Spyder project settings
 .spyderproject

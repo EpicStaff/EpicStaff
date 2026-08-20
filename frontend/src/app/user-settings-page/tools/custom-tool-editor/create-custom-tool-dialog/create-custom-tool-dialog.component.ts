@@ -173,6 +173,7 @@ export class CreateCustomToolDialogComponent {
     public readonly pythonSectionExpanded = signal(false);
     public readonly jsonSectionExpanded = signal(false);
     public readonly parametersTableMode = signal(true);
+    public readonly parametersSwitchOn = signal(true);
     public readonly isJsonValid = signal(true);
     public readonly jsonIssues = signal<JsonError[]>([]);
     public readonly lastValidJson = signal('');
@@ -246,6 +247,8 @@ export class CreateCustomToolDialogComponent {
     }
 
     public setParametersTableMode(enabled: boolean): void {
+        this.parametersSwitchOn.set(enabled);
+
         if (this.parametersTableMode() === enabled) {
             return;
         }
@@ -268,7 +271,9 @@ export class CreateCustomToolDialogComponent {
                         if (result === false) {
                             this.applyEnableTableMode([]);
                             this.tableImportWasInvalid = true;
+                            return;
                         }
+                        this.revertParametersSwitch();
                     });
                 return;
             }
@@ -294,7 +299,9 @@ export class CreateCustomToolDialogComponent {
                 .subscribe((result) => {
                     if (result === false) {
                         this.applyDisableTableMode();
+                        return;
                     }
+                    this.revertParametersSwitch();
                 });
             return;
         }
@@ -302,8 +309,13 @@ export class CreateCustomToolDialogComponent {
         this.applyDisableTableMode();
     }
 
+    private revertParametersSwitch(): void {
+        this.parametersSwitchOn.set(this.parametersTableMode());
+    }
+
     private applyDisableTableMode(): void {
         this.parametersTableMode.set(false);
+        this.parametersSwitchOn.set(false);
         if (!this.isBuiltIn()) {
             this.form.controls.variablesJson.setValue(
                 JSON.stringify(serializeVariables(this.tableVariables()), null, 2)
@@ -322,6 +334,7 @@ export class CreateCustomToolDialogComponent {
     private applyEnableTableMode(variables: ToolVariable[]): void {
         this.tableVariables.set(variables);
         this.parametersTableMode.set(true);
+        this.parametersSwitchOn.set(true);
         this.jsonSectionExpanded.set(false);
         this.jsonIssues.set([]);
         if (this.activeEditor() === ActiveEditor.Json) {
