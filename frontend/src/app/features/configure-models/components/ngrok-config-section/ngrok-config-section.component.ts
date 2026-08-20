@@ -76,7 +76,7 @@ export class AppNgrokSectionComponent implements OnInit {
 
     private openConfigDialog(action: 'create' | 'update', config?: GetNgrokConfigResponse): void {
         this.dialog.open(AddNgrokConfigDialogComponent, {
-            width: '500px',
+            width: '600px',
             disableClose: true,
             data: { config, action },
         });

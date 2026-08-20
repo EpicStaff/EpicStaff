@@ -121,7 +121,7 @@ def copy_telegram_trigger_node(
     new_node = TelegramTriggerNode.objects.create(
         graph=graph,
         node_name=node.node_name,
-        telegram_bot_api_key=node.telegram_bot_api_key,
+        telegram_bot_api_key_secret=node.telegram_bot_api_key_secret,
         webhook_trigger=node.webhook_trigger,
         metadata=node.metadata,
     )

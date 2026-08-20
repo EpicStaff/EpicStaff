@@ -1,6 +1,16 @@
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input, OnChanges, OnInit, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    effect,
+    inject,
+    input,
+    OnChanges,
+    OnInit,
+    signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -11,13 +21,15 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { NgrokConfigStorageService } from '@shared/services';
+import { NgrokConfigStorageService, SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
 import { startWith } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom-tool-editor/code-editor/code-editor.component';
+import { NodeType } from '../../../core/enums/node-type';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 
 export const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
 
@@ -32,6 +44,7 @@ export const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
         ClipboardModule,
         SelectComponent,
         MatTooltipModule,
+        NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
     ],
     templateUrl: 'webhook-trigger-node-panel.component.html',
@@ -45,8 +58,12 @@ export class WebhookTriggerNodePanelComponent
     private readonly ngrokStorageService = inject(NgrokConfigStorageService);
     private readonly clipboard = inject(Clipboard);
     private readonly toastService = inject(ToastService);
+    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
+    private readonly secretsStorageService = inject(SecretsStorageService);
+    private secretsRestoredForNodeId: string | null = null;
 
     public override readonly isExpanded = input<boolean>(false);
+    public readonly graphId = input<number | null>(null);
 
     public readonly isCodeEditorFullWidth = signal<boolean>(true);
     protected readonly leftColumnWidth = createColumnWidthState('webhook-trigger-node', 400);
@@ -59,6 +76,14 @@ export class WebhookTriggerNodePanelComponent
     pythonCode: string = '';
     initialPythonCode: string = '';
     codeEditorHasError: boolean = false;
+    public readonly selectedSecretIds = signal<number[]>([]);
+    public readonly secretNames = computed(() => {
+        const selected = new Set(this.selectedSecretIds());
+        return this.secretsStorageService
+            .secrets()
+            .filter((secret) => selected.has(secret.id))
+            .map((secret) => secret.name);
+    });
 
     selectedNgrokConfigUrl = computed<string | null>(() => {
         const config = this.ngrokConfigs().find((c) => c.id === this.ngrokConfigId());
@@ -81,6 +106,41 @@ export class WebhookTriggerNodePanelComponent
 
     constructor() {
         super();
+        effect(() => {
+            const graphId = this.graphId();
+            const node = this.node();
+            if (graphId == null || this.secretsRestoredForNodeId === node.id) return;
+            this.secretsRestoredForNodeId = node.id;
+            if (node.data.python_code.secret_ids !== undefined) return;
+
+            const nodeId = node.id;
+            const nodeName = node.node_name;
+            this.secretDeclarationIndexService
+                .getIndex()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((index) => {
+                    if (this.node().id !== nodeId) return;
+                    const declared = this.secretDeclarationIndexService.lookup(
+                        index,
+                        graphId,
+                        nodeName,
+                        NodeType.WEBHOOK_TRIGGER,
+                        'python_code'
+                    );
+                    if (declared.length) {
+                        this.selectedSecretIds.set(declared);
+                        // Patch only secret_ids into the baseline — resetBaseline() would
+                        // recompute the whole node snapshot and bake in any other field the
+                        // user edited while this async lookup was in flight.
+                        if (this.initialNodeSnapshot) {
+                            const snapshot = JSON.parse(this.initialNodeSnapshot);
+                            snapshot.data.python_code.secret_ids = [...declared].sort();
+                            this.initialNodeSnapshot = JSON.stringify(snapshot);
+                            this.notifyExternalChange();
+                        }
+                    }
+                });
+        });
     }
 
     ngOnInit() {
@@ -117,6 +177,11 @@ export class WebhookTriggerNodePanelComponent
         this.codeEditorHasError = hasError;
     }
 
+    onSecretsChange(values: number[]): void {
+        this.selectedSecretIds.set(values);
+        this.notifyExternalChange();
+    }
+
     onNgrokConfigChanged(value: unknown): void {
         if (value == null) {
             this.ngrokConfigId.set(null);
@@ -147,6 +212,7 @@ export class WebhookTriggerNodePanelComponent
             });
         this.pythonCode = this.node().data.python_code.code || '';
         this.initialPythonCode = this.pythonCode;
+        this.selectedSecretIds.set(this.node().data.python_code.secret_ids ?? []);
         return form;
     }
 
@@ -180,6 +246,7 @@ export class WebhookTriggerNodePanelComponent
                     code: this.pythonCode,
                     entrypoint: 'main',
                     libraries: librariesArray,
+                    secret_ids: this.selectedSecretIds(),
                 },
             },
         };

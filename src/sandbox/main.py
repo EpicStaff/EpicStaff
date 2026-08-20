@@ -6,6 +6,7 @@ from pathlib import Path
 from src.shared.models import CodeTaskData
 from services.redis_service import RedisService
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
+from secret_scrubber import MASK_SECRET_ENV_VAR, masking_enabled
 from utils.logger import logger
 
 
@@ -52,8 +53,22 @@ def sweep_output_path():
     )
 
 
+def log_secret_masking_state():
+    """Announce the MASK_SECRET setting once per process."""
+    if masking_enabled():
+        logger.info("Secret masking is ON: secret values are redacted from output.")
+    else:
+        logger.warning(
+            "Secret masking is OFF ({}=false): plaintext secret values will appear "
+            "in stdout, stderr, execution results and these logs. Do not use this "
+            "with real credentials.",
+            MASK_SECRET_ENV_VAR,
+        )
+
+
 async def init():
     sweep_output_path()
+    log_secret_masking_state()
     await redis_service.connect()
 
 
@@ -66,14 +81,19 @@ async def listen_redis():
             async for message in pubsub.listen():
                 if message["type"] == "message":
                     try:
-                        logger.info(f"Received message: {message['data']}")
                         data = json.loads(message["data"])
                         code_task_data = CodeTaskData(**data)
+                        # Never log message["data"]: it carries resolved secret
+                        # plaintext. log_summary() is the safe projection.
+                        logger.info(
+                            "Received code execution task: {}",
+                            code_task_data.log_summary(),
+                        )
                         asyncio.create_task(run(code_task_data=code_task_data))
                     except Exception as e:
-                        logger.error(f"Error processing message: {e}")
+                        logger.error("Error processing message: {}", e)
         except Exception as e:
-            logger.error(f"Redis listener disconnected, reconnecting in 1s: {e}")
+            logger.error("Redis listener disconnected, reconnecting in 1s: {}", e)
             await asyncio.sleep(1)
 
 
@@ -94,6 +114,7 @@ async def run(code_task_data: CodeTaskData):
             use_storage=code_task_data.use_storage,
             storage_allowed_paths=code_task_data.storage_allowed_paths,
             storage_org_prefix=code_task_data.storage_org_prefix,
+            secrets=code_task_data.secrets,
         )
         if code_task_data.use_storage and code_task_data.storage_org_prefix:
             try:

@@ -570,8 +570,12 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode):
 
 class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode):
     node_name = models.CharField(max_length=255, blank=False)
-    telegram_bot_api_key = models.CharField(
-        max_length=255, blank=True, null=True, default=None
+    telegram_bot_api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="telegram_trigger_nodes",
     )
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="telegram_trigger_node_list"

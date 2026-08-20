@@ -4,7 +4,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC \
     DISPLAY=:99 \
     VNC_GEOMETRY=1600x900 \
-    VNC_PASS=secret \
     PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -28,8 +27,6 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 
 RUN mkdir -p /home/appuser/work 
 WORKDIR /home/appuser/work 
-
-RUN x11vnc -storepasswd "${VNC_PASS}" /home/appuser/.vncpass
 
 COPY --chown=appuser:appuser requirements.txt /home/appuser/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \

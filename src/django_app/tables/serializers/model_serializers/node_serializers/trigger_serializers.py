@@ -1,5 +1,6 @@
-from tables.serializers.utils.secret_fields import SecretCharField
 from rest_framework import serializers
+
+from tables.models.secret_models import Secret
 
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.models.graph_models import (
@@ -109,9 +110,16 @@ class TelegramTriggerNodeFieldSerializer(
 
 
 class TelegramTriggerNodeSerializer(
-    ContentHashWritableMixin, WebhookCreationMixin, serializers.ModelSerializer
+    ContentHashWritableMixin,
+    WebhookCreationMixin,
+    serializers.ModelSerializer,
 ):
-    telegram_bot_api_key = SecretCharField()
+    telegram_bot_api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="telegram_bot_api_key_secret",
+        required=False,
+        allow_null=True,
+    )
     webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
     fields = TelegramTriggerNodeFieldSerializer(many=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
@@ -121,7 +129,7 @@ class TelegramTriggerNodeSerializer(
         fields = [
             "id",
             "node_name",
-            "telegram_bot_api_key",
+            "telegram_bot_api_key_secret_id",
             "graph",
             "fields",
             "webhook_trigger",

@@ -11,6 +11,7 @@ from rag.base_rag_strategy import BaseRAGStrategy
 from rag.graph_rag.graph_rag_file_manager import GraphRagFileManager
 from rag.graph_rag.graph_rag_config_builder import GraphRagConfigBuilder
 from rag.graph_rag.exceptions import GraphRAGUnavailableError
+from services.credential_mapper import RagCredentials, apply_credential
 from src.shared.models import (
     GraphRagSearchConfig,
     BaseKnowledgeSearchMessageResponse,
@@ -57,7 +58,9 @@ class GraphRAGStrategy(BaseRAGStrategy):
 
     # ==================== Indexing ====================
 
-    def process_rag_indexing(self, rag_id: int):
+    def process_rag_indexing(
+        self, rag_id: int, credentials: RagCredentials | None = None
+    ):
         """
         Process RAG indexing for a GraphRag.
 
@@ -100,6 +103,19 @@ class GraphRAGStrategy(BaseRAGStrategy):
                 )
                 embedder_config = uow_ctx.graph_rag_storage.get_embedder_configuration(
                     graph_rag_id
+                )
+
+                creds = credentials or RagCredentials()
+                creds_llm = creds.llm_api_key
+                llm_config = apply_credential(
+                    config=llm_config,
+                    api_key=creds_llm,
+                    context=f"graph_rag_id={graph_rag_id} llm",
+                )
+                embedder_config = apply_credential(
+                    config=embedder_config,
+                    api_key=creds.embedder_api_key,
+                    context=f"graph_rag_id={graph_rag_id} embedder",
                 )
 
                 # Get all documents linked to this GraphRag

@@ -1,5 +1,22 @@
 ## Run command
-`docker compose up`
+`cp .env.example .env` (optional - defaults are safe), then `docker compose up`
+
+## Outbound URL allow-list
+
+Tool calls carry a caller-supplied `url` plus a token, so the service refuses to
+send that token anywhere outside an operator-configured allow-list.
+
+Configure in `.env` (see `.env.example`):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `GIT_TOOLS_ALLOWED_URLS` | `https://gitlab.com,https://github.com,https://api.github.com` | Comma-separated allowed URL bases. Scheme/host/port must match exactly; a path acts as a required prefix; `*.` wildcards subdomains. |
+| `GIT_TOOLS_ALLOW_PRIVATE_HOSTS` | `false` | When `false`, allow-listed hosts that resolve to private / loopback / link-local addresses (e.g. `169.254.169.254`) are still blocked. Set `true` only for a trusted self-hosted GitLab on an internal network. |
+
+A URL outside the list, an embedded credential, a non-http(s) scheme, or an
+empty allow-list all raise `UrlNotAllowedError` before any request is made.
+GitHub tools always target `https://api.github.com`, which must be allow-listed
+for them to work.
 
 ### Available methods:
 - get_open_pull_requests

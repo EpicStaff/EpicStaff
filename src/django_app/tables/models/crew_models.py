@@ -157,6 +157,28 @@ class Agent(OrgScopedModel, AbstractDefaultFillableModel):
 
         return None
 
+    def get_rag_embedder_secret_id(self) -> int | None:
+        """Get the assigned RAG embedder's Secret id, or None if there is none."""
+        agent_naive_rag = self.agent_naive_rags.select_related(
+            "naive_rag__embedder"
+        ).first()
+        if agent_naive_rag:
+            return self._embedder_secret_id(rag=agent_naive_rag.naive_rag)
+
+        agent_graph_rag = self.agent_graph_rags.select_related(
+            "graph_rag__embedder"
+        ).first()
+        if agent_graph_rag:
+            return self._embedder_secret_id(rag=agent_graph_rag.graph_rag)
+
+        return None
+
+    @staticmethod
+    def _embedder_secret_id(*, rag) -> int | None:
+        """Get the RAG embedder's Secret id, tolerating both nullable hops."""
+        embedder = rag.embedder
+        return embedder.api_key_secret_id if embedder else None
+
     def __str__(self):
         return self.role
 

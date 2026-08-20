@@ -18,6 +18,7 @@ export * from './realtime-voice/realtime-model.model';
 export * from './realtime-voice/voice-settings.model';
 export * from './role-based-access';
 export * from './RunCrewSession.model';
+export * from './secrets/secret.model';
 export * from './tag.model';
 export * from './task-message.model';
 export * from './user-message.model';
