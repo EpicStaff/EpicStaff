@@ -7,32 +7,34 @@ from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
 from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
 from domain.models import Rag
 from graphrag.api import build_index
-from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
 from graphrag_storage import create_storage
 from infrastructure.graphrag.storages import create_storage_config
-from infrastructure.graphrag.vector_stores import create_vector_store_config
 from loguru import logger
+
+from infrastructure.graphrag.vector_stores import create_vector_store_config
 
 
 class GraphIndexOrchestrator(AbstractIndexOrchestrator):
     async def on_execute(self, command: RunIndex):
         async with self.uow:
             rag = await self._get_rag_under_uow(command.rag_id)
-            config = await self._get_config_under_uow(rag.id)
             documents = await self._get_documents_under_uow(rag.id, command.document_ids)
 
         is_update_run = False
+        target_slot = None
         if rag.status == IndexStatusEnum.COMPLETED:
             if self._has_indexed_document(documents):
+                logger.debug('REINDEX')
                 documents += await self._get_indexed_documents_excluding(
                     rag.id, command.document_ids
                 )
                 target_slot = SlotEnum.A if rag.slot == SlotEnum.B else SlotEnum.B
                 self.state['target_slot'] = target_slot
-                self._swap_slot_for_config(target_slot, rag.id, config)
             else:
                 is_update_run = True
+
+        config = await self._get_config_under_uow(rag.id, slot=target_slot)
 
         rag.mark_as_processing(command.document_ids)
         await self._update_rag(rag)
@@ -93,8 +95,9 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         self.state["rag"] = rag
         return rag
 
-    async def _get_config_under_uow(self, rag_id: int):
-        config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id)
+    async def _get_config_under_uow(self, rag_id: int, slot: SlotEnum | None = None):
+        async with self.uow:
+            config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id, slot=slot)
         if not config:
             raise GraphRagConfigNotFoundError(rag_id=rag_id)
         return config
@@ -168,8 +171,8 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             await self.uow.graph_rag_repo.update_rag(rag=rag)
             await self.uow.commit()
 
-            if target_slot:
-                await self._clear_slot_storage(rag.id, old_slot)
+        if target_slot:
+            await self._clear_slot_storage(rag.id, old_slot)
 
     @staticmethod
     def _swap_slot_for_config(target_slot: SlotEnum, rag_id: int, config: GraphRagConfig):

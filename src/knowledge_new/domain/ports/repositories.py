@@ -3,6 +3,7 @@ import abc
 from domain.enums import (
     DocumentStatusEnum,
     FileExtensionEnum,
+    SlotEnum,
 )
 from domain.models import (
     Document,
@@ -174,11 +175,16 @@ class AbstractGraphRagRepository(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_config(self, rag_id: int) -> GraphRagConfig:
+    async def get_config(self, rag_id: int, slot: SlotEnum | None = None) -> GraphRagConfig | None:
         """Return a fully-populated `GraphRagConfig` assembled from the DB records for `rag_id`.
+
+        When `slot` is provided the config is built for that slot, overriding the slot
+        stored on the DB row.  This ensures the `GraphRagConfig` constructor runs its
+        `@model_validator`, which populates `vector_store.index_schema`.
 
         Args:
             rag_id: Primary key of the GraphRAG collection.
+            slot: Optional slot override; when None the active slot from the DB row is used.
         """
 
     @abc.abstractmethod

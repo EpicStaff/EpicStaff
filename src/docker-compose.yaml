@@ -499,6 +499,8 @@ services:
       dockerfile: ./knowledge_new/Dockerfile
     networks:
       - backend-network
+    ports:
+      - "8100:8100"
     depends_on:
       communication_redis_broker:
         condition: service_healthy

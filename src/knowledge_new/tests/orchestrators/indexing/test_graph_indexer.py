@@ -56,6 +56,9 @@ class FakeGraphRagRepo:
 
     get_rag_raises / get_documents_raises inject a failure at the preparation stage,
     mimicking transient repo errors or intentional test scenarios (e.g. missing RAG).
+
+    get_config_calls records the (rag_id, slot) kwargs for each get_config invocation so
+    tests can verify the correct slot is requested.
     """
 
     def __init__(
@@ -80,13 +83,15 @@ class FakeGraphRagRepo:
         self.status_updates: list[tuple[frozenset[int], str]] = []
         self.build_index_call_count: int = 0
         self._document_statuses: dict[int, str] = {}
+        self.get_config_calls: list[tuple[int, SlotEnum | None]] = []
 
     async def get_rag(self, rag_id: int) -> Rag | None:
         if self._get_rag_raises is not None:
             raise self._get_rag_raises
         return self._rag
 
-    async def get_config(self, rag_id: int) -> object | None:
+    async def get_config(self, rag_id: int, slot: SlotEnum | None = None) -> object | None:
+        self.get_config_calls.append((rag_id, slot))
         return self._config
 
     async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[TextDocument]:
@@ -252,7 +257,7 @@ async def test_is_update_run_computed_correctly(
     )
     repo = FakeGraphRagRepo(rag=rag, config=config, documents=[document])
     uow = FakeUoW(repo)
-    _make_slot_monkeypatches(monkeypatch)
+    _make_slot_monkeypatches(monkeypatch)  # noqa: prevent real MinIO calls in _clear_slot_storage
 
     captured_is_update_run: list[bool] = []
 
@@ -516,16 +521,6 @@ class _StorageConfigSentinel:
         return f"StorageConfigSentinel(subdir={self.subdir!r})"
 
 
-class _VectorStoreConfigSentinel:
-    """Lightweight stand-in returned by the fake create_vector_store_config."""
-
-    def __init__(self, subdir: str):
-        self.subdir = subdir
-
-    def __repr__(self):
-        return f"VectorStoreConfigSentinel(subdir={self.subdir!r})"
-
-
 class _FakeStorage:
     """Fake storage object whose async clear() records that it was called."""
 
@@ -539,22 +534,21 @@ class _FakeStorage:
 
 def _make_slot_monkeypatches(monkeypatch):
     """
-    Patch the three names imported into graph_indexer so no real MinIO/config work
-    happens.  Returns (storage_configs_called, vector_store_configs_called, storages_created)
-    where each is a list of the sentinel objects produced.
+    Patch the two names still imported into graph_indexer so no real MinIO work happens.
+    `create_storage_config` is used only by `_clear_slot_storage`; `create_storage` wraps
+    it into a fake storage whose `clear()` is tracked.
+
+    `create_vector_store_config` was removed from graph_indexer after the fix — the repo
+    now builds the full config through its constructor, so there is nothing to patch here.
+
+    Returns (storage_configs_called, storages_created).
     """
     storage_configs_called: list[_StorageConfigSentinel] = []
-    vector_store_configs_called: list[_VectorStoreConfigSentinel] = []
     storages_created: list[_FakeStorage] = []
 
     def fake_create_storage_config(*, rag_id: int, subdir: str) -> _StorageConfigSentinel:
         sentinel = _StorageConfigSentinel(subdir=subdir)
         storage_configs_called.append(sentinel)
-        return sentinel
-
-    def fake_create_vector_store_config(*, rag_id: int, subdir: str) -> _VectorStoreConfigSentinel:
-        sentinel = _VectorStoreConfigSentinel(subdir=subdir)
-        vector_store_configs_called.append(sentinel)
         return sentinel
 
     def fake_create_storage(config: _StorageConfigSentinel) -> _FakeStorage:
@@ -563,10 +557,9 @@ def _make_slot_monkeypatches(monkeypatch):
         return storage
 
     monkeypatch.setattr(graph_indexer, "create_storage_config", fake_create_storage_config)
-    monkeypatch.setattr(graph_indexer, "create_vector_store_config", fake_create_vector_store_config)
     monkeypatch.setattr(graph_indexer, "create_storage", fake_create_storage)
 
-    return storage_configs_called, vector_store_configs_called, storages_created
+    return storage_configs_called, storages_created
 
 
 def _make_full_reindex_setup(*, rag_slot: SlotEnum = SlotEnum.A):
@@ -575,12 +568,13 @@ def _make_full_reindex_setup(*, rag_slot: SlotEnum = SlotEnum.A):
     - rag is COMPLETED with rag.slot = rag_slot
     - request contains a single doc (id=10) whose status is 'completed'
     This combination triggers the full-reindex branch in on_execute.
+
+    The config is a sentinel that the fake repo returns; the orchestrator no longer
+    mutates it — instead it requests a fresh config for the target slot via get_config.
     """
     rag = _completed_rag(rag_id=1)
     rag.slot = rag_slot
 
-    # A SimpleNamespace stands in for GraphRagConfig — _swap_slot_for_config sets
-    # attributes on it, so it needs to be a mutable object.
     config = types.SimpleNamespace(
         input_storage=None,
         output_storage=None,
@@ -601,16 +595,16 @@ def _make_full_reindex_setup(*, rag_slot: SlotEnum = SlotEnum.A):
     return rag, config, repo, uow, request
 
 
-async def test_full_reindex_swaps_config_to_target_slot(monkeypatch):
+async def test_full_reindex_requests_config_for_target_slot(monkeypatch):
     """
     Full-reindex branch: when rag.slot=A and the request contains a completed doc,
-    create_storage_config must be called with the B-slot subdirs and
-    create_vector_store_config with subdir=SlotEnum.B.
-    The config object passed to build_index is the same mutable object whose fields
-    were reassigned (identity check), and is_update_run must be False.
+    get_config must be called with slot=SlotEnum.B so that a fresh GraphRagConfig is
+    built through the constructor (ensuring vector_store.index_schema is populated).
+    The config returned by the repo is forwarded unchanged to build_index, and
+    is_update_run must be False.
     """
     rag, config, repo, uow, request = _make_full_reindex_setup(rag_slot=SlotEnum.A)
-    storage_configs, vector_configs, _ = _make_slot_monkeypatches(monkeypatch)
+    _make_slot_monkeypatches(monkeypatch)
 
     captured: dict = {}
 
@@ -622,16 +616,13 @@ async def test_full_reindex_swaps_config_to_target_slot(monkeypatch):
 
     await GraphIndexOrchestrator(uow).execute(request)
 
-    # _swap_slot_for_config calls create_storage_config three times (input/output/update_output)
-    # and create_vector_store_config once.
-    swap_subdirs = [sc.subdir for sc in storage_configs if sc.subdir.startswith("b/")]
-    assert sorted(swap_subdirs) == ["b/input", "b/output", "b/update_output"]
+    # get_config must have been called with the target slot (B), not the active slot (A).
+    assert len(repo.get_config_calls) == 1
+    called_rag_id, called_slot = repo.get_config_calls[0]
+    assert called_rag_id == rag.id
+    assert called_slot == SlotEnum.B
 
-    assert len(vector_configs) >= 1
-    # The first vector_store_config call (from _swap_slot_for_config) must be SlotEnum.B.
-    assert vector_configs[0].subdir == SlotEnum.B
-
-    # config identity: build_index received the exact same object that was mutated.
+    # config identity: build_index received the exact object the repo returned.
     assert captured["config"] is config
 
     # Full-reindex → is_update_run must be False.
@@ -648,7 +639,7 @@ async def test_full_reindex_success_promotes_slot(monkeypatch):
     because clear() IS called on the old slot (production behaviour).
     """
     rag, config, repo, uow, request = _make_full_reindex_setup(rag_slot=SlotEnum.A)
-    _make_slot_monkeypatches(monkeypatch)
+    _make_slot_monkeypatches(monkeypatch)  # prevent real MinIO calls in _clear_slot_storage
 
     async def fake_build_index(**kwargs):
         return [_result("extract_graph")]
@@ -675,10 +666,10 @@ async def test_full_reindex_success_promotes_slot(monkeypatch):
 async def test_target_slot_computation(monkeypatch, initial_slot, expected_target_slot):
     """
     Target slot is always the opposite of the current rag.slot:
-    A → B, B → A.  Verified via the subdir recorded by create_vector_store_config.
+    A → B, B → A.  Verified via the slot passed to get_config.
     """
     rag, config, repo, uow, request = _make_full_reindex_setup(rag_slot=initial_slot)
-    _, vector_configs, _ = _make_slot_monkeypatches(monkeypatch)
+    _make_slot_monkeypatches(monkeypatch)
 
     async def fake_build_index(**kwargs):
         return [_result("extract_graph")]
@@ -687,8 +678,10 @@ async def test_target_slot_computation(monkeypatch, initial_slot, expected_targe
 
     await GraphIndexOrchestrator(uow).execute(request)
 
-    # The first create_vector_store_config call is from _swap_slot_for_config.
-    assert vector_configs[0].subdir == expected_target_slot
+    # get_config must have been called with the target slot.
+    assert len(repo.get_config_calls) == 1
+    _, called_slot = repo.get_config_calls[0]
+    assert called_slot == expected_target_slot
 
 
 async def test_full_reindex_cancelled_clears_target_and_keeps_slot(monkeypatch):
@@ -699,7 +692,7 @@ async def test_full_reindex_cancelled_clears_target_and_keeps_slot(monkeypatch):
     - rag.status must be CANCELLED.
     """
     rag, config, repo, uow, request = _make_full_reindex_setup(rag_slot=SlotEnum.A)
-    _, _, storages_created = _make_slot_monkeypatches(monkeypatch)
+    _, storages_created = _make_slot_monkeypatches(monkeypatch)
 
     async def fake_build_index(**kwargs):
         raise asyncio.CancelledError()
@@ -731,7 +724,7 @@ async def test_full_reindex_error_clears_target_and_keeps_slot(monkeypatch):
     - The request documents must be marked FAILED.
     """
     rag, config, repo, uow, request = _make_full_reindex_setup(rag_slot=SlotEnum.A)
-    _, _, storages_created = _make_slot_monkeypatches(monkeypatch)
+    _, storages_created = _make_slot_monkeypatches(monkeypatch)
 
     async def fake_build_index(**kwargs):
         return [_result("extract_graph", ValueError("boom"))]
@@ -776,7 +769,7 @@ async def test_normal_index_no_slot_ops_no_keyerror(monkeypatch):
     repo = FakeGraphRagRepo(rag=rag, config=config, documents=[document])
     uow = FakeUoW(repo)
 
-    _, _, storages_created = _make_slot_monkeypatches(monkeypatch)
+    _, storages_created = _make_slot_monkeypatches(monkeypatch)
 
     async def fake_build_index(**kwargs):
         return [_result("extract_graph")]

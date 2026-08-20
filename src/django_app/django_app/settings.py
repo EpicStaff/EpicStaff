@@ -23,6 +23,8 @@ from loguru import logger
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+sys.path.insert(0, str(BASE_DIR / "../.."))
+
 if os.getenv("LOAD_DEBUG_ENV", "True").lower() in ("true", "1", "yes", "on"):
     logger.info("LOAD_DEBUG_ENV=True")
     load_dotenv(find_dotenv(BASE_DIR.parent / "debug.env"))
@@ -36,9 +38,7 @@ if os.getenv("LOAD_DEBUG_ENV", "True").lower() in ("true", "1", "yes", "on"):
 # SECURITY WARNING: keep the secret key used in production secret!
 DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes", "on")
 
-SECRET_KEY = os.getenv("SECRET_KEY") or (
-    "321567143216717121" if DEBUG else get_random_secret_key()
-)
+SECRET_KEY = os.getenv("SECRET_KEY") or ("321567143216717121" if DEBUG else get_random_secret_key())
 
 ALLOWED_HOSTS = [
     "*",  # host.strip() for host in os.getenv("ALLOWED_HOSTS", "0.0.0.0, 127.0.0.1").split(",")
@@ -110,9 +110,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_THROTTLE_RATES": {
         "login": os.getenv("LOGIN_THROTTLE_RATE", "5/min"),
-        "password_reset_request": os.getenv(
-            "PASSWORD_RESET_REQUEST_THROTTLE_RATE", "5/hour"
-        ),
+        "password_reset_request": os.getenv("PASSWORD_RESET_REQUEST_THROTTLE_RATE", "5/hour"),
     },
 }
 
@@ -125,9 +123,7 @@ JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)
 SIMPLE_JWT = {
     "SIGNING_KEY": JWT_SECRET,
     "ALGORITHM": "HS256",
-    "ACCESS_TOKEN_LIFETIME": timedelta(
-        minutes=int(os.getenv("JWT_ACCESS_MINUTES", "15"))
-    ),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("JWT_ACCESS_MINUTES", "15"))),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("JWT_REFRESH_DAYS", "7"))),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
@@ -187,9 +183,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-TELEGRAM_TRIGGER_FIELDS_PATH = (
-    BASE_DIR / "tables" / "utils" / "data" / "telegram_fields.json"
-)
+TELEGRAM_TRIGGER_FIELDS_PATH = BASE_DIR / "tables" / "utils" / "data" / "telegram_fields.json"
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
@@ -274,23 +268,17 @@ else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:4200").rstrip("/")
-FRONTEND_PASSWORD_RESET_PATH = os.getenv(
-    "FRONTEND_PASSWORD_RESET_PATH", "/reset-password"
-)
+FRONTEND_PASSWORD_RESET_PATH = os.getenv("FRONTEND_PASSWORD_RESET_PATH", "/reset-password")
 
 SSE_TICKET_TTL_SECONDS = 30
 
 DEFAULT_ORGANIZATION_NAME = os.getenv("DEFAULT_ORGANIZATION_NAME", "Organization")
 
 # Story 6 — User profile
-PASSWORD_CHANGE_TICKET_TTL_SECONDS = int(
-    os.getenv("PASSWORD_CHANGE_TICKET_TTL_SECONDS", "300")
-)
+PASSWORD_CHANGE_TICKET_TTL_SECONDS = int(os.getenv("PASSWORD_CHANGE_TICKET_TTL_SECONDS", "300"))
 AVATAR_MAX_BYTES = int(os.getenv("AVATAR_MAX_BYTES", str(5 * 1024 * 1024)))
 AVATAR_ALLOWED_FORMATS = [
-    fmt.strip()
-    for fmt in os.getenv("AVATAR_ALLOWED_FORMATS", "JPEG,PNG").split(",")
-    if fmt.strip()
+    fmt.strip() for fmt in os.getenv("AVATAR_ALLOWED_FORMATS", "JPEG,PNG").split(",") if fmt.strip()
 ]
 
 # Object storage
@@ -307,15 +295,11 @@ REDIS_TUNNEL_CONFIG_CHANNEL = os.getenv(
     "REDIS_TUNNEL_CONFIG_CHANNEL", "REDIS_TUNNEL_CONFIG_CHANNEL"
 )
 TUNNEL_URLS_HASH_KEY = os.getenv("TUNNEL_URLS_HASH_KEY", "tunnel_urls")
-KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL = os.getenv(
-    "KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL", "knowledge:chunk"
-)
+KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL = os.getenv("KNOWLEDGE_DOCUMENT_CHUNK_CHANNEL", "knowledge:chunk")
 KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE = os.getenv(
     "KNOWLEDGE_DOCUMENT_CHUNK_RESPONSE", "knowledge:chunk:response"
 )
-KNOWLEDGE_INDEXING_CHANNEL = os.getenv(
-    "KNOWLEDGE_INDEXING_CHANNEL", "knowledge:indexing"
-)
+KNOWLEDGE_INDEXING_CHANNEL = os.getenv("KNOWLEDGE_INDEXING_CHANNEL", "knowledge:indexing")
 KNOWLEDGE_CANCEL_CHANNEL = os.getenv("KNOWLEDGE_CANCEL_CHANNEL", "knowledge:cancel")
 STOP_SESSION_CHANNEL = os.getenv("STOP_SESSION_CHANNEL", "sessions:stop")
 
@@ -329,18 +313,14 @@ else:
 REQUEST_WEBHOOK_UPDATE_CHANNEL = os.getenv(
     "REQUEST_WEBHOOK_UPDATE_CHANNEL", "REQUEST_WEBHOOK_UPDATE_CHANNEL"
 )
-SESSION_STATUS_CHANNEL = os.environ.get(
-    "SESSION_STATUS_CHANNEL", "sessions:session_status"
-)
+SESSION_STATUS_CHANNEL = os.environ.get("SESSION_STATUS_CHANNEL", "sessions:session_status")
 CODE_RESULT_CHANNEL = os.environ.get("CODE_RESULT_CHANNEL", "code_results")
 GRAPH_MESSAGES_CHANNEL = os.environ.get("GRAPH_MESSAGES_CHANNEL", "graph:messages")
 GRAPH_MESSAGE_UPDATE_CHANNEL = os.environ.get(
     "GRAPH_MESSAGE_UPDATE_CHANNEL", "graph:message:update"
 )
 WEBHOOK_MESSAGE_CHANNEL = os.environ.get("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
-STORAGE_MUTATION_CHANNEL = os.environ.get(
-    "STORAGE_MUTATION_CHANNEL", "storage_mutations"
-)
+STORAGE_MUTATION_CHANNEL = os.environ.get("STORAGE_MUTATION_CHANNEL", "storage_mutations")
 TELEGRAM_TRIGGER_PREFIX = "telegram-trigger/"
 SCHEDULE_CHANNEL = os.environ.get("SCHEDULE_CHANNEL", "schedule_channel")
 

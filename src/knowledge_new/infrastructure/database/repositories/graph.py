@@ -1,6 +1,6 @@
 from typing import Literal
 
-from domain.enums import DocumentStatusEnum
+from domain.enums import DocumentStatusEnum, SlotEnum
 from domain.models import Rag
 from domain.ports.repositories import AbstractGraphRagRepository
 from graphrag.config.models.cluster_graph_config import ClusterGraphConfig
@@ -147,7 +147,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
         )
         return result.scalar_one()
 
-    async def get_config(self, rag_id: int) -> GraphRagConfig | None:
+    async def get_config(self, rag_id: int, slot: SlotEnum | None = None) -> GraphRagConfig | None:
         result = await self._session.execute(
             select(GraphRag)
             .where(GraphRag.graph_rag_id == rag_id)
@@ -162,7 +162,8 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
             )
         )
         if (rag := result.scalar_one_or_none()) is not None:
-            return self._to_graph_rag_config(rag)
+            resolved_slot = slot if slot is not None else rag.slot
+            return self._to_graph_rag_config(rag, slot=resolved_slot)
         return None
 
     async def remove_rag(self, rag_id: int):
@@ -171,7 +172,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
         )
         await self._session.execute(delete(GraphRag).where(GraphRag.graph_rag_id == rag_id))
 
-    def _to_graph_rag_config(self, rag: GraphRag) -> GraphRagConfig:
+    def _to_graph_rag_config(self, rag: GraphRag, *, slot: SlotEnum) -> GraphRagConfig:
         llm_config: LLMConfig = rag.llm
         embedding_config: ORMEmbeddingConfig = rag.embedder
         index_config: GraphRagIndexConfig = rag.index_config
@@ -186,16 +187,16 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
             extract_graph=self._build_extract_graph_config(index_config),
             cluster_graph=self._build_cluster_graph_config(index_config),
             input_storage=create_storage_config(
-                rag_id=rag.graph_rag_id, subdir=f"{rag.slot}/input"
+                rag_id=rag.graph_rag_id, subdir=f"{slot}/input"
             ),
             output_storage=create_storage_config(
-                rag_id=rag.graph_rag_id, subdir=f"{rag.slot}/output"
+                rag_id=rag.graph_rag_id, subdir=f"{slot}/output"
             ),
             update_output_storage=create_storage_config(
-                rag_id=rag.graph_rag_id, subdir=f"{rag.slot}/update_output"
+                rag_id=rag.graph_rag_id, subdir=f"{slot}/update_output"
             ),
             vector_store=create_vector_store_config(
-                rag_id=rag.graph_rag_id, subdir=rag.slot
+                rag_id=rag.graph_rag_id, subdir=slot
             ),
         )
 

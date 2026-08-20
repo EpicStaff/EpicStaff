@@ -13,4 +13,4 @@ def utcnow() -> datetime:
 
 def make_key(*values: Any) -> str:
     """Join `values` into a colon-delimited key, in order."""
-    return ':'.join(str(v) for v in values)
+    return ":".join(str(v) for v in values)

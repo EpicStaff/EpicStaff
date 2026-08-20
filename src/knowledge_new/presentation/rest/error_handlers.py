@@ -5,8 +5,9 @@ from domain.errors import (
     EmbeddingConfigNotFoundError,
     GraphRagConfigNotFoundError,
     KnowledgeError,
+    NotRunningOperationError,
     RagNotFoundError,
-    UnsupportedError, NotRunningOperationError,
+    UnsupportedError,
 )
 from litestar import Request, Response, status_codes
 from loguru import logger
