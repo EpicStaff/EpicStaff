@@ -1,10 +1,10 @@
 import { provideHttpClient, withInterceptors, withXhr } from '@angular/common/http';
-import { APP_INITIALIZER, ApplicationConfig, importProvidersFrom, provideZoneChangeDetection } from '@angular/core';
+import { APP_INITIALIZER, ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
 import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
-import { MarkdownModule } from 'ngx-markdown';
-import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
+import { provideMarkdown } from 'ngx-markdown';
+import { provideMonacoEditor } from 'ngx-monaco-editor-v2';
 
 import { routes } from './app.routes';
 import { activeOrgInterceptor } from './core/interceptors/active-org.interceptor';
@@ -27,7 +27,8 @@ export const appConfig: ApplicationConfig = {
             withXhr(),
             withInterceptors([authInterceptor, activeOrgInterceptor, validationErrorsInterceptor, forbiddenInterceptor])
         ),
-        importProvidersFrom(MarkdownModule.forRoot({}), MonacoEditorModule.forRoot()),
+        provideMarkdown(),
+        provideMonacoEditor(),
 
         {
             provide: APP_INITIALIZER,

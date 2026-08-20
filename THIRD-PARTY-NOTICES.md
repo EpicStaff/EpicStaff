@@ -1,7 +1,7 @@
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Wed, 19 Aug 2026 20:47:32 GMT -->
-<!-- commit: 7016fdc949b047b254f0fa945eca430e513d7faa -->
-<!-- package-lock.json sha256: 050e19c2c9e2dcbf -->
+<!-- generated: Thu, 20 Aug 2026 08:15:33 GMT -->
+<!-- commit: 7cdbf161a3a2c4db6ba8e2f563d52e4ad4595513 -->
+<!-- package-lock.json sha256: e2f2abc3c1793568 -->
 
 # Third-Party Notices
 
@@ -94,7 +94,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 | `wavtools` | 0.1.5 | MIT |
 | `ws` | 8.21.3 | MIT |
 | `zod` | 4.4.3 | MIT |
-| `zone.js` | 0.15.1 | MIT |
+| `zone.js` | 0.16.2 | MIT |
 
 ---
 
@@ -3834,7 +3834,7 @@ SOFTWARE.
 
 </details>
 
-### zone.js@0.15.1
+### zone.js@0.16.2
 
 - **License:** MIT
 - **Publisher:** Brian Ford
@@ -3845,7 +3845,7 @@ SOFTWARE.
 ```
 The MIT License
 
-Copyright (c) 2010-2025 Google LLC. https://angular.dev/license
+Copyright (c) 2010-2026 Google LLC. https://angular.dev/license
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
