@@ -1,23 +1,5 @@
 from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class ToolClassDataArgsSchema(BaseModel):
-    """JSON Schema from the container's `.schema()` call; extra keys are ignored on purpose."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    properties: dict[str, Any] = Field(default_factory=dict)
-    required: list[str] = Field(default_factory=list)
-
-
-class ToolClassData(BaseModel):
-    """Payload returned by the tool container's `/tool/{alias}/class-data/` endpoint."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    description: str
-    args_schema: ToolClassDataArgsSchema = Field(default_factory=ToolClassDataArgsSchema)
+from pydantic import BaseModel
 
 
 class ToolParameters(BaseModel):

@@ -53,8 +53,6 @@ tool_manager_service = ToolManagerService(
     python_code_executor_service=python_code_executor_service,
     knowledge_search_get_channel=settings.KNOWLEDGE_SEARCH_GET_CHANNEL,
     knowledge_search_response_channel=settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
-    manager_host=settings.MANAGER_HOST,
-    manager_port=settings.MANAGER_PORT,
 )
 elevenlabs_agent_provisioner = ElevenLabsAgentProvisioner(redis_service=redis_service)
 factory = RealtimeAgentClientFactory(

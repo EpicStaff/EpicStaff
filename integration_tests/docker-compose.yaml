@@ -57,8 +57,6 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - MANAGER_HOST=manager_container
-      - MANAGER_PORT=8000
       - DB_NAME=crew
       - DB_HOST_NAME=crewdb
       - DB_PORT=5432
