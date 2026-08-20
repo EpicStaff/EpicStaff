@@ -177,12 +177,6 @@ export class FlowSessionsListComponent implements OnInit, OnDestroy {
                 nodes: this.extractNodeNames(this.flow?.subgraph_node_list),
             },
             {
-                label: 'Code Agent',
-                icon: 'ti ti-robot',
-                color: '#4ade80',
-                nodes: this.extractNodeNames(this.flow?.code_agent_node_list),
-            },
-            {
                 label: 'End',
                 icon: 'ti ti-square-rounded',
                 color: '#d3d3d3',
