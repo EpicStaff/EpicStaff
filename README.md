@@ -1,166 +1,140 @@
-![EpicStaff Logo](LOGO_ver2.png)
+# 🧪 Prototype — DDL Domain Editor
 
-   <div align="center">  
-      
-# EpicStaff: AI Agent Orchestration for Operations Teams
- Source-Available Agent Orchestration Platform — Self-Hosted, Django-Backed
-</div>
+> **This is a prototype branch.** Exploratory, intentionally unrefactored, not reviewed, and
+> never merged to `main`. It exists to preserve an idea and to demo it.
+> Looking for the project? → [EpicStaff README](https://github.com/EpicStaff/EpicStaff#readme)
 
-<a id="readme-top"></a>
+**Branch** `proto/ddl-domain-editor-20-08-26` · **Created** 20-08-26 · **From** `main` @ `4b491d02a` · **Status** parked
 
-<div align="center">  
-   
-[![GitHub Stars](https://img.shields.io/github/stars/EpicStaff/EpicStaff?style=social)](https://github.com/EpicStaff/EpicStaff/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/EpicStaff/EpicStaff?style=social)](https://github.com/EpicStaff/EpicStaff/network/members)
-[![License](https://img.shields.io/github/license/EpicStaff/EpicStaff)](https://github.com/EpicStaff/EpicStaff/blob/main/LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/EpicStaff/EpicStaff)](https://github.com/EpicStaff/EpicStaff/commits/main)
-[![Open Issues](https://img.shields.io/github/issues/EpicStaff/EpicStaff)](https://github.com/EpicStaff/EpicStaff/issues)
+## What this explores
 
-</div>
+A flow's Domain is currently authored as raw `initialState` JSON on the Start node — untyped,
+undocumented, and re-derived by hand for every flow. This prototype replaces that with a small
+typed schema language (a "DDL") written in a Monaco editor: you declare classes and fields, and
+one source compiles to three outputs — the `initialState` JSON, a TypeScript interface, and a
+mermaid ER diagram.
 
-<p align="center">
-<br />
-  <a href="https://www.epicstaff.ai">Website</a> •
-  <a href="https://github.com/EpicStaff/EpicStaff/wiki">Wiki</a> •
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#key-features">Key Features</a> •
-  <a href="https://github.com/EpicStaff/EpicStaff/issues">Report Bug</a>
-</div>
+The Domain dialog becomes two panes — a **schema** pane and a **JSON** pane — kept in step by a
+deliberately conservative one-way merge back from JSON into the schema.
 
-  <p align="center">
-    <b>EpicStaff is a platform for building AI agent flows that operations teams own.</b>
-    <br />
-The deployment model is self-hosted and source-available. Engineers connect EpicStaff to your internal systems through MCP and Python — the same way they would connect any other in-house service. The visual editor runs over a Django backend, so every node can be inspected, every step edited, and every decision the agent makes reviewed.
-     <div align="center">
-   
-Our core philosophy: **We hide the complexity, not the logic.**
+## Why it might matter
 
-**⭐ Star the repository if EpicStaff is useful in your work.**
-</div>
+Every flow author currently invents the shape of `variables` from scratch, and nothing catches a
+typo until the flow runs. A schema moves those errors to authoring time — completions and
+red squiggles while typing — and hands you a TypeScript interface for code nodes plus a diagram
+for documentation, both generated rather than maintained. If it were ever productionised, the
+same schema is the obvious place to validate `variables` server-side; that part does **not**
+exist here (see *What doesn't*).
 
----
-## Keep your coding agent
+## How it works
 
-Keep your coding agent. It writes tools, flows, and routing rules brilliantly — EpicStaff is the governed runtime they run in: session ledger, sandboxed execution, per-agent permissions, and a canvas your operations team can read.
+One source text, one compile, three emitters:
 
----
- <p align="center">
-    
-## Visual Agent Orchestrator in Action
-
-![Watch the EpicStaff Demo](https://github.com/EpicStaff/EpicStaff-resources/blob/main/how_to_create_flow.gif?raw=true)
-</div>
-    
----
-
-## Why did we create EpicStaff?
-
-Agent workflows have an ownership problem. Today, most agent flows live in code — written by engineers, readable only by engineers, and inaccessible to the operations teams that run the processes or the auditors who have to approve them. Operations teams cannot inspect or modify flows without engineering involvement. When something goes wrong mid-process, there is no audit trail. When the business logic changes, someone files a ticket and waits.
-
-EpicStaff is built to close that gap: a platform where operations teams own the flows, engineers integrate the systems, and every decision an agent makes is reviewable and editable — without rebuilding from scratch.
-
-* **Visual Logic, Python Core:** Design flows in a drag-and-drop AI workflow editor; inject custom Python logic directly into any node.
-* **Cross-Flow Agent Context:** Built-in persistent agent memory (Redis/PostgreSQL) to retain context across multiple sessions.
-* **Production-Ready Persistence:** Built-in state management for user and organization variables.
-* **Django Multi-Agent Backend:** Powered by Django for robust, low-latency, and production-ready Pythonic agent orchestration.
-
----
-
-## ⚡ Quick Start
-
-Deploy self-hosted AI agents wherever you want to run them. EpicStaff runs in any environment you control — your laptop, your servers, your cloud.
-Follow these two steps to get the application running.
-
-### Step 1: Get the necessary tools
-Before we start, make sure you have these two applications installed:
-* **[Download & Install Git](https://git-scm.com/downloads)** (Required to download the app)
-* **[Download & Install Docker Desktop](https://www.docker.com/products/docker-desktop/)** (Required to run the app)
-
-### Step 2: Download and Setup
-Choose your operating system below, open your **Terminal** (or PowerShell on Windows), and **paste the entire block of code**. This command will automatically download EpicStaff, configure the database, and start the system.
-
-#### 🪟 Windows (PowerShell)
-```
-git clone https://github.com/EpicStaff/EpicStaff.git; cd EpicStaff/src; $savefiles = "$HOME/savefiles"; $file = ".env"; (Get-Content $file) -replace "CREW_SAVEFILES_PATH=/c/savefiles", "CREW_SAVEFILES_PATH=$savefiles" | Set-Content $file; docker volume create sandbox_venvs; docker volume create crew_pgdata; docker volume create graph_data; docker volume create crew_config; docker volume create media_data; docker network create mcp-network; docker-compose up --build
-```
-#### 🍎 macOS (Terminal)
-```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && savefiles="$HOME/savefiles" && sed -i '' "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
-```
-#### 🐧 Linux (Terminal)
-```
-git clone -b main https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff && savefiles="$HOME/savefiles" && sed -i "s|CREW_SAVEFILES_PATH=/c/savefiles|CREW_SAVEFILES_PATH=$savefiles|" src/.env && docker volume create sandbox_venvs && docker volume create crew_pgdata && docker volume create graph_data && docker volume create crew_config && docker volume create media_data && docker network create mcp-network && cd src && docker-compose up --build
+```mermaid
+flowchart LR
+    SRC["DDL source text"] -->|characters| LEX["tokenize()"]
+    LEX -->|tokens| PAR["parse()"]
+    PAR -->|AST| RES["resolve()"]
+    RES --> SCH["Schema + diagnostics"]
+    SCH --> J["emitJson()"]
+    SCH --> T["emitTypeScript()"]
+    SCH --> M["emitMermaid()"]
+    J --> IS["initialState JSON"]
+    T --> TS["TypeScript interface"]
+    M --> ER["mermaid ER diagram"]
 ```
 
-Once running, open http://localhost to start building.
+Diagnostics are **collected at each stage rather than thrown**, and `generate()` emits all three
+outputs best-effort even when the source is invalid — so the preview keeps updating while you are
+still mid-edit.
 
-<details>
-<summary>Alternative Setup Options</summary>
+The interesting half is the other direction. Edits in the JSON pane are merged back into the
+schema through a guard that would rather do nothing than corrupt your source:
 
-EpicStaff can be configured and launched using alternative setup methods:
+```mermaid
+flowchart TD
+    JEDIT["Edit in the JSON pane"] -->|JsonObject| G{"Schema compiles<br/>without errors?"}
+    G -->|no| P["Sync paused — nothing written"]
+    G -->|yes| M["mergeJsonIntoDdl()"]
+    M -->|additive only| RC{"Merged result<br/>recompiles clean?"}
+    RC -->|no| D["Discard every edit<br/>(changed: false)"]
+    RC -->|yes| OUT["Updated DDL source"]
+    OUT --> REP["SyncReport — what was added,<br/>what was removed but kept"]
+```
 
-- **[Partly Local Setup](https://github.com/EpicStaff/EpicStaff/blob/main/partly-local-setup.md)** — run specific services locally while other services remain in Docker. Useful for controlled local development and testing.  
-- **[Podman Support](https://github.com/EpicStaff/EpicStaff/blob/main/podman-setup.md)** — provides instructions for deploying EpicStaff using **Podman** instead of Docker.
+The merge is **additive and non-destructive by design**: new keys become new properties or
+classes with inferred types, existing properties are never retyped or deleted, and keys you
+removed from the JSON are *reported* rather than deleted from the schema.
 
-> These methods are optional and intended for users requiring advanced control over their environment.
+## Screenshots
 
-**For more [details](https://github.com/EpicStaff/EpicStaff/wiki)**
-</details>
+**A schema and the `variables` object it produces, side by side.** The right pane regenerates on
+every keystroke.
 
----
+<img src="docs/prototypes/ddl-domain-editor/screenshots/01-schema-ddl-live-sample.png" width="700" alt="Domain Variables dialog: a DDL schema defining Article, Person and Author on the left, the generated sample variables JSON on the right">
 
-## Key Features 
+**Two typos, and the guard doing its job.** `Strng` and `Persn` are flagged inline, the DDL tab
+picks up a severity dot, "Replace variables with sample" is disabled, and the footer reads
+*Sync paused — schema has errors*. Note the sample pane still renders best-effort output rather
+than going blank.
 
-<details>
-<summary>Key features For AI Engineers</summary>
+<img src="docs/prototypes/ddl-domain-editor/screenshots/02-diagnostics-sync-paused.png" width="700" alt="The same dialog with the unknown type Strng and unknown base class Persn underlined in red, and a sync paused message in the footer">
 
-EpicStaff is built for engineers shipping multi-agent systems to production. A node-based visual editor sits over a Django backend; any node can hold custom Python, RAG runs against a built-in vector store, and integration with internal systems happens via MCP or directly in Python. Self-hosted, source-available — full control over the runtime.
+## What works
 
-| Feature | Technical Description |
+- The full `tokenize → parse → resolve` pipeline, with diagnostics staged rather than thrown.
+- Three emitters from one schema: JSON, TypeScript, mermaid.
+- Best-effort emission while the source is invalid, so the live preview never goes blank.
+- Monaco integration — a registered DDL language with syntax highlighting and error markers.
+- Editor intelligence: hover, completions, `describeClass`, and did-you-mean suggestions for
+  unknown type names.
+- The guarded JSON → DDL merge above, with a `SyncReport` of what changed.
+- A reusable `<app-ddl-editor>` shared component — OnPush, `input()`/`output()`, no decorators.
+- `ddlSource` persisted on `StartNodeData`, so the schema text survives save/load. The dialog
+  opens on the schema tab when a source exists and the JSON tab when it doesn't.
+- Type-checks clean. The single `tsc --noEmit` error (`Permission` in `role-base-access`)
+  pre-dates this branch and is unrelated.
+
+## What doesn't
+
+- **Zero tests.** No specs for the lexer, parser, resolver, emitters, or sync. This is the
+  riskiest gap by a wide margin — a hand-written parser with no tests regresses silently.
+- **A possible settings-dialog regression.** `_overlays.scss` deletes the
+  `.settings-dialog-panel` / `.settings-dialog-backdrop` z-index rules while adding
+  `.domain-dialog-backdrop`. Whether that breaks the settings dialog's stacking was never
+  verified.
+- **No backend contract.** `ddlSource` is frontend-only. It has no Django model field and no
+  crew `GraphData` field, so it does not satisfy the cross-layer field name contract and nothing
+  validates the schema server-side.
+- **The language is undocumented.** There is no grammar reference; `parser.ts` is the only spec
+  for what the DDL accepts.
+- **Based on a stale `main`.** `4b491d02a` is roughly a month behind `origin/main`, so picking
+  this up means a rebase — most likely conflicting in `domain-dialog.component.ts`, which
+  carries the +878-line integration.
+
+## Where the interesting code is
+
+| File | What's there |
 |---|---|
-| Node UI | Construct complex workflows using a node-based architecture. Design execution graphs with various specialized nodes to define exact logic paths. |
-| LLM & Embedder Providers | Native support for switching between major providers like OpenAI and Anthropic, or integrate your own custom local LLMs and embedding models. |
-| Retrieval-Augmented Generation (RAG) | Upload documents, create knowledge collections and customize index parameters directly in the UI. Index data using strategies like Naive Vector Search or GraphRAG to enhance agent context. |
-| Custom Tools | Write custom Python functions that agents can invoke dynamically. Build your own integrations, and the orchestration engine will automatically evaluate and use them during execution. |
-| Code Execution | Inject and run Python code within nodes. Read, modify, and manipulate flow variables dynamically to handle custom logic during workflow traversal. |
-| Flow Messages | Debug flow execution seamlessly. Read detailed, structured state messages and execution logs for each specific node in real-time. |
-| Webhooks | Trigger flow executions programmatically. Initiate workflows via HTTP POST payloads from any external system, application, or custom source. |
-| Persistent Agent Memory | Dual-Layer Memory: Short-term window context combined with long-term stateful memory across multiple sessions, stored in PostgreSQL (with pgvector) and Redis. |
-</details>
+| [`shared/ddl/core/index.ts:24`](https://github.com/EpicStaff/EpicStaff/blob/proto/ddl-domain-editor-20-08-26/frontend/src/app/shared/ddl/core/index.ts#L24) | `compile()` and `generate()` — the whole pipeline in one readable place. **Start here.** |
+| [`shared/ddl/core/parser.ts:246`](https://github.com/EpicStaff/EpicStaff/blob/proto/ddl-domain-editor-20-08-26/frontend/src/app/shared/ddl/core/parser.ts#L246) | The hand-written parser — the heart of it, and the only grammar spec. |
+| [`shared/ddl/core/lexer.ts:47`](https://github.com/EpicStaff/EpicStaff/blob/proto/ddl-domain-editor-20-08-26/frontend/src/app/shared/ddl/core/lexer.ts#L47) | `tokenize()` — where diagnostics start being collected instead of thrown. |
+| [`shared/ddl/core/resolver.ts:26`](https://github.com/EpicStaff/EpicStaff/blob/proto/ddl-domain-editor-20-08-26/frontend/src/app/shared/ddl/core/resolver.ts#L26) | Inheritance flattening and cycle detection. |
+| [`shared/ddl/sync/merge-json-into-ddl.ts:40`](https://github.com/EpicStaff/EpicStaff/blob/proto/ddl-domain-editor-20-08-26/frontend/src/app/shared/ddl/sync/merge-json-into-ddl.ts#L40) | The genuinely tricky part — folding JSON edits back into DDL text, with the discard-on-error safety net. |
+| [`shared/ddl/core/service.ts:60`](https://github.com/EpicStaff/EpicStaff/blob/proto/ddl-domain-editor-20-08-26/frontend/src/app/shared/ddl/core/service.ts#L60) | Editor intelligence — hover, completions, did-you-mean. |
+| [`shared/ddl/monaco/register-ddl-language.ts:23`](https://github.com/EpicStaff/EpicStaff/blob/proto/ddl-domain-editor-20-08-26/frontend/src/app/shared/ddl/monaco/register-ddl-language.ts#L23) | How the language gets into Monaco. |
+| [`shared/components/ddl-editor/ddl-editor.component.ts:52`](https://github.com/EpicStaff/EpicStaff/blob/proto/ddl-domain-editor-20-08-26/frontend/src/app/shared/components/ddl-editor/ddl-editor.component.ts#L52) | The reusable component's API surface. |
+| [`domain-dialog.component.ts:1052`](https://github.com/EpicStaff/EpicStaff/blob/proto/ddl-domain-editor-20-08-26/frontend/src/app/visual-programming/components/domain-dialog/domain-dialog.component.ts#L1052) | `attemptMergePaneIntoDdl()` — the integration, and the largest single change (+878 lines). |
 
----
+## Picking this up again
 
-<details>
-<summary>Key Features For Business</summary>
+```bash
+git switch proto/ddl-domain-editor-20-08-26
+```
 
-EpicStaff is designed for operations teams that need to build, own, and audit AI agent workflows — running on their own infrastructure, approved by their own auditors. The platform bridges the gap between engineering (who build integrations) and operations (who run the process): engineers integrate via MCP and Python; operations teams configure, edit, and review in the visual workflow editor.
-
-| Feature | Strategic Business Value |
-|---|---|
-| Visual Workflow Builder | A drag-and-drop interface, automate any process without any deep tech knowledge. You can build, validate, and visually debug multi-step workflows using our pre-built node library. |
-| Multi-Agent Collaboration| Build a digital crew. Let multiple AI agents work together to automate entire departments. |
-| Enterprise Security | Secure your organization with access controls. Create custom roles and assign specific permissions to safely manage your organisation's workflows and data. |
-| Custom Python Tools | Build exactly what you need. Write custom logic in Python to easily connect with any external API or service, giving your business unlimited automation capabilities. | 
-| Web Scraping & Image Generation | Scales content creation and research by automatically gathering web data and generating visual assets without requiring additional operational resources. |
-| Webhook Triggers | Set up the agent workflow to respond to external events, like new emails, changes in CRM, or webhooks. It'll automatically start a chat with the customer, update the database, generate a report. |
-| Voice Agent Capabilities | Control workflows with your voice. Speak naturally to your agents in multiple languages for completely hands-free automation. |
-|Human Input Control| Maintains human oversight over sensitive operations by pausing workflows for manual review and validation before an agent executes a final decision.
-
-</details>
-
----
-
-## Contributing
-
-EpicStaff accepts contributions on GitHub. Pull requests, issues, and new tool contributions are welcome.
-
-* **⭐ Star the repository** if EpicStaff solves a problem you recognise.
-* **🤝 Contribute** — see [CONTRIBUTING.md](CONTRIBUTING.md) to add a feature, fix a bug, or build a new tool.
-
-## 🙏 Special Thanks
-
-EpicStaff builds on work from the broader open-source ecosystem. Particular thanks to **[Foblex](https://github.com/Foblex)**.
-
-* The **[f-flow library](https://github.com/Foblex/f-flow)** is the core interactive engine for the EpicStaff visual editor.
-* Foblex features EpicStaff in their articles and educational materials at **[flow.foblex.com](https://flow.foblex.com/)**.
-
+1. **Write tests for `lexer` / `parser` / `resolver` before touching anything else.** Everything
+   below is unsafe without them.
+2. Rebase onto current `origin/main` and expect conflicts in `domain-dialog.component.ts`.
+3. Verify the `_overlays.scss` settings-dialog stacking regression.
+4. Decide whether `ddlSource` needs a real backend contract or stays a frontend convenience.
+5. Write a short grammar reference so `parser.ts` stops being the only spec.
