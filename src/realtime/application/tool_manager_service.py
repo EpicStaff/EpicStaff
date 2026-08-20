@@ -65,6 +65,7 @@ class ToolManagerService(metaclass=SingletonMeta):
                 redis_service=self.redis_service,
                 knowledge_search_get_channel=self.knowledge_search_get_channel,
                 knowledge_search_response_channel=self.knowledge_search_response_channel,
+                rag_embedder_api_key=realtime_agent_chat_data.rag_embedder_api_key,
             )
             self.connection_tool_executors[connection_key].append(
                 knowledge_tool_executor

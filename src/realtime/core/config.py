@@ -68,7 +68,7 @@ class Settings(BaseSettings):
 def get_settings():
     is_debug = "--debug" in sys.argv
 
-    env_file = BASE_DIR.parent / ("debug.env" if is_debug else ".env")
+    env_file = BASE_DIR.parent / (".debug.env" if is_debug else ".env")
 
     return Settings(
         _env_file=env_file, REALTIME_RELOAD=is_debug, REALTIME_DEBUG_MODE=is_debug

@@ -72,6 +72,13 @@
                         </div>
                     </div>
 
+                    <app-node-secrets-field
+                        [activeColor]="activeColor"
+                        [value]="selectedSecretIds()"
+                        tooltipText="Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                        (valueChange)="onSecretsChange($event)"
+                    />
+
                     <app-custom-input
                         label="Libraries"
                         tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
@@ -121,6 +128,7 @@
                         <div class="code-editor-section">
                             <app-code-editor
                                 [pythonCode]="pythonCode"
+                                [secretNames]="secretNames()"
                                 (pythonCodeChange)="onPythonCodeChange($event)"
                                 (errorChange)="onCodeErrorChange($event)"
                             ></app-code-editor>
@@ -130,6 +138,7 @@
                     <div class="code-editor-section">
                         <app-code-editor
                             [pythonCode]="pythonCode"
+                            [secretNames]="secretNames()"
                             (pythonCodeChange)="onPythonCodeChange($event)"
                             (errorChange)="onCodeErrorChange($event)"
                         ></app-code-editor>

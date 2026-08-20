@@ -14,7 +14,7 @@ from utils.logger import logger
 
 if "--debug" in sys.argv:
     logger.info("RUNNING IN DEBUG MODE")
-    load_dotenv(find_dotenv("debug.env"), override=True)
+    load_dotenv(find_dotenv(".debug.env"), override=True)
 else:
     load_dotenv(find_dotenv(".env"))
 
