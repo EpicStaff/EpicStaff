@@ -1,13 +1,13 @@
 import asyncio
+
 import aiohttp
 from src.shared.models import (
     ConfiguredToolData,
     ToolInitConfigurationModel,
 )
 from domain.models.response_models import ToolResponse
-from domain.models.realtime_tool import RealtimeTool, ToolParameters
+from domain.models.realtime_tool import RealtimeTool, ToolClassData, ToolParameters
 
-from utils.pickle_encode import txt_to_obj
 from utils.request_utils import post_data_with_retry
 from .base_tool_executor import BaseToolExecutor
 
@@ -50,18 +50,15 @@ class ConfiguredToolExecutor(BaseToolExecutor):
             ).model_dump(),
         )
         data_txt = resp["classdata"]
-        data: dict = txt_to_obj(data_txt)
-
-        description = data["description"]
-        args_schema: dict = data.get("args_schema", dict())
+        data = ToolClassData.model_validate_json(data_txt)
 
         return RealtimeTool(
             type="function",
             name=self.tool_name,
-            description=description,
+            description=data.description,
             parameters=ToolParameters(
-                properties=args_schema.get("properties", dict()),
-                required=args_schema.get("required", list()),
+                properties=data.args_schema.properties,
+                required=data.args_schema.required,
             ),
         )
 

@@ -1,3 +1,4 @@
+import json
 import os
 from fastapi import FastAPI, Response, status
 from models.models import (
@@ -7,7 +8,6 @@ from models.models import (
     ToolInitConfigurationModel,
 )
 from utils import get_tool_data, load_env_from_yaml_config, run_tool, init_tools
-from pickle_encode import obj_to_txt
 from loguru import logger
 from tool_factory import DynamicToolFactory, ToolNotFoundException
 
@@ -40,7 +40,7 @@ def get_class_data(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     tool_data = get_tool_data(tool)
-    txt = obj_to_txt(tool_data)
+    txt = json.dumps(tool_data)
     return ClassDataResponseModel(classdata=txt)
 
 
