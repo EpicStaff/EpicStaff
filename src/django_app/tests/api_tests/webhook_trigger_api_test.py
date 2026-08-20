@@ -1,3 +1,4 @@
+import itertools
 from unittest import mock
 
 import pytest
@@ -13,7 +14,22 @@ from tables.models.webhook_models import (
     WebhookTrigger,
 )
 from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
+from tables.services.secrets import secret_service
 from rest_framework.test import APIClient
+
+# `NgrokWebhookConfig.auth_token` is now a Secret reference
+# (`auth_token_secret`) rather than a plaintext CharField — every place this
+# module used to pass `auth_token="..."` directly now creates a Secret first
+# via `secret_service.create(...)` and references it by id, mirroring the
+# fixture pattern already established for Telegram in
+# `telegram_trigger_node_api_test.py`.
+_secret_name_counter = itertools.count(1)
+
+
+def _make_secret(org, text):
+    return secret_service.create(
+        text=text, org=org, name=f"webhook-test-secret-{next(_secret_name_counter)}"
+    )
 
 
 @pytest.fixture
@@ -130,12 +146,13 @@ class TestWebhookTriggerAndNodeAPI:
         assert data["webhook_trigger"] is None
 
     def test_create_webhook_trigger_node_with_ngrok_trigger(
-        self, auth_client, graph: Graph
+        self, auth_client, graph: Graph, default_org
     ):
         """
         Create a WebhookTrigger with a nested ngrok config via
         /api/webhook-triggers/, then attach it to a node by id.
         """
+        secret = _make_secret(default_org, "test-token-abc")
         trigger_response = auth_client.post(
             reverse("webhooktrigger-list"),
             {
@@ -143,7 +160,7 @@ class TestWebhookTriggerAndNodeAPI:
                 "provider_type": "ngrok",
                 "ngrok_config": {
                     "name": "test-ngrok",
-                    "auth_token": "test-token-abc",
+                    "auth_token_secret_id": secret.id,
                     "domain": None,
                 },
             },
@@ -225,7 +242,7 @@ class TestWebhookTriggerAndNodeAPI:
         assert LocalhostWebhookConfig.objects.filter(trigger=trigger).exists()
 
     def test_get_webhook_trigger_node_expands_nested_trigger_info(
-        self, auth_client, graph: Graph
+        self, auth_client, graph: Graph, default_org
     ):
         """
         GET on /api/webhook-trigger-nodes/{id}/ (and the list endpoint) must
@@ -233,6 +250,7 @@ class TestWebhookTriggerAndNodeAPI:
         provider_type, ngrok_config) instead of the bare id — the write side
         (POST/PATCH) still takes/returns a plain id.
         """
+        secret = _make_secret(default_org, "super-secret-value")
         trigger_response = auth_client.post(
             reverse("webhooktrigger-list"),
             {
@@ -240,7 +258,7 @@ class TestWebhookTriggerAndNodeAPI:
                 "provider_type": "ngrok",
                 "ngrok_config": {
                     "name": "get-test-ngrok",
-                    "auth_token": "super-secret-value",
+                    "auth_token_secret_id": secret.id,
                     "domain": None,
                 },
             },
@@ -465,8 +483,9 @@ class TestWebhookTriggerOrgIsolation:
         assert response.status_code == 400
 
     def test_non_superadmin_can_set_ngrok_config_on_own_org_trigger(
-        self, auth_client
+        self, auth_client, default_org
     ):
+        secret = _make_secret(default_org, "secret-token-value")
         response = auth_client.post(
             reverse("webhooktrigger-list"),
             {
@@ -474,7 +493,7 @@ class TestWebhookTriggerOrgIsolation:
                 "provider_type": "ngrok",
                 "ngrok_config": {
                     "name": "own-org-ngrok-config",
-                    "auth_token": "secret-token-value",
+                    "auth_token_secret_id": secret.id,
                     "domain": None,
                 },
             },
@@ -484,7 +503,10 @@ class TestWebhookTriggerOrgIsolation:
         trigger = WebhookTrigger.objects.get(path="own-org-ngrok")
         assert NgrokWebhookConfig.objects.filter(trigger=trigger).exists()
 
-    def test_auth_token_absent_from_get_response(self, auth_client, graph: Graph):
+    def test_auth_token_absent_from_get_response(
+        self, auth_client, graph: Graph, default_org
+    ):
+        secret = _make_secret(default_org, "super-secret-value")
         create = auth_client.post(
             reverse("webhooktrigger-list"),
             {
@@ -492,7 +514,7 @@ class TestWebhookTriggerOrgIsolation:
                 "provider_type": "ngrok",
                 "ngrok_config": {
                     "name": "hide-token-config",
-                    "auth_token": "super-secret-value",
+                    "auth_token_secret_id": secret.id,
                     "domain": None,
                 },
             },
@@ -542,7 +564,9 @@ class TestWebhookTriggerProviderSwitchCleanup:
         trigger = WebhookTrigger.objects.create(
             path="switchNgrokToLocal", provider_type=ProviderType.NGROK, org=default_org
         )
-        NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token="tok")
+        NgrokWebhookConfig.objects.create(
+            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "tok")
+        )
 
         self._update(
             trigger,
@@ -569,7 +593,11 @@ class TestWebhookTriggerProviderSwitchCleanup:
             trigger,
             {
                 "provider_type": ProviderType.NGROK,
-                "ngrok_config": {"name": "ng", "auth_token": "tok", "domain": None},
+                "ngrok_config": {
+                    "name": "ng",
+                    "auth_token_secret": _make_secret(default_org, "tok"),
+                    "domain": None,
+                },
             },
         )
 
@@ -591,7 +619,9 @@ class TestWebhookTriggerProviderSwitchCleanup:
         trigger = WebhookTrigger.objects.create(
             path="switchNoData", provider_type=ProviderType.NGROK, org=default_org
         )
-        NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token="tok")
+        NgrokWebhookConfig.objects.create(
+            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "tok")
+        )
 
         self._update(trigger, {"provider_type": ProviderType.LOCALHOST})
 
@@ -618,20 +648,27 @@ class TestWebhookTriggerProviderSwitchCleanup:
         trigger = WebhookTrigger.objects.create(
             path="sameProvider", provider_type=ProviderType.NGROK, org=default_org
         )
-        NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token="old")
+        NgrokWebhookConfig.objects.create(
+            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "old")
+        )
 
+        new_secret = _make_secret(default_org, "new")
         self._update(
             trigger,
             {
                 "provider_type": ProviderType.NGROK,
-                "ngrok_config": {"name": "ng", "auth_token": "new", "domain": None},
+                "ngrok_config": {
+                    "name": "ng",
+                    "auth_token_secret": new_secret,
+                    "domain": None,
+                },
             },
         )
 
         trigger.refresh_from_db()
         assert trigger.provider_type == ProviderType.NGROK
         cfg = NgrokWebhookConfig.objects.get(trigger=trigger)
-        assert cfg.auth_token == "new"
+        assert cfg.auth_token_secret_id == new_secret.id
 
 
 @pytest.mark.django_db
@@ -654,7 +691,7 @@ class TestWebhookTriggerTwilioOnlyVisibility:
         TwilioChannel.objects.create(
             channel=realtime_channel,
             account_sid="AC_test",
-            auth_token="auth_test",
+            auth_token_secret=_make_secret(default_org, "auth_test"),
             webhook_trigger=twilio_only_trigger,
         )
 
@@ -683,7 +720,7 @@ class TestWebhookTriggerTwilioOnlyVisibility:
         TwilioChannel.objects.create(
             channel=realtime_channel,
             account_sid="AC_test",
-            auth_token="auth_test",
+            auth_token_secret=_make_secret(default_org, "auth_test"),
             webhook_trigger=twilio_only_trigger,
         )
 
@@ -742,6 +779,10 @@ class TestWebhookTriggerDuplicatePathValidation:
             path="my-own-path", provider_type=ProviderType.NGROK, org=default_org
         )
 
+        # `auth_token_secret_id` is intentionally omitted (it's optional and
+        # would need serializer context to resolve an
+        # OrgScopedPrimaryKeyRelatedField) — this test only exercises the
+        # path-collision rejection in `validate()`, not credential handling.
         serializer = WebhookTriggerNestedSerializer(
             instance=other_trigger,
             data={
@@ -749,7 +790,6 @@ class TestWebhookTriggerDuplicatePathValidation:
                 "provider_type": "ngrok",
                 "ngrok_config": {
                     "name": "ng",
-                    "auth_token": "tok",
                     "domain": None,
                 },
             },
@@ -801,7 +841,9 @@ class TestWebhookTriggerDuplicatePathValidation:
         trigger = WebhookTrigger.objects.create(
             path="original-path", provider_type=ProviderType.NGROK, org=default_org
         )
-        NgrokWebhookConfig.objects.create(trigger=trigger, name="ng", auth_token="tok")
+        NgrokWebhookConfig.objects.create(
+            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "tok")
+        )
 
         serializer = WebhookTriggerNestedSerializer(
             instance=trigger,
@@ -831,9 +873,13 @@ class TestWebhookTriggerCreateDoesNotMerge:
             provider_type=ProviderType.NGROK,
             org=default_org,
         )
+        original_secret = _make_secret(default_org, "original-token")
         NgrokWebhookConfig.objects.create(
-            trigger=existing, name="original-ngrok", auth_token="original-token"
+            trigger=existing,
+            name="original-ngrok",
+            auth_token_secret=original_secret,
         )
+        hijack_secret = _make_secret(default_org, "hijack-token")
 
         response = auth_client.post(
             reverse("webhooktrigger-list"),
@@ -842,7 +888,7 @@ class TestWebhookTriggerCreateDoesNotMerge:
                 "provider_type": "ngrok",
                 "ngrok_config": {
                     "name": "hijack-attempt",
-                    "auth_token": "hijack-token",
+                    "auth_token_secret_id": hijack_secret.id,
                     "domain": None,
                 },
             },
@@ -861,7 +907,7 @@ class TestWebhookTriggerCreateDoesNotMerge:
         assert existing.provider_type == ProviderType.NGROK
         ngrok_config = NgrokWebhookConfig.objects.get(trigger=existing)
         assert ngrok_config.name == "original-ngrok"
-        assert ngrok_config.auth_token == "original-token"
+        assert ngrok_config.auth_token_secret_id == original_secret.id
 
     def test_same_path_different_provider_type_creates_separate_row(
         self, auth_client, default_org
@@ -880,6 +926,7 @@ class TestWebhookTriggerCreateDoesNotMerge:
             trigger=existing, name="local-cfg", domain="localhost:9000"
         )
 
+        secret = _make_secret(default_org, "new-token")
         response = auth_client.post(
             reverse("webhooktrigger-list"),
             {
@@ -887,7 +934,7 @@ class TestWebhookTriggerCreateDoesNotMerge:
                 "provider_type": "ngrok",
                 "ngrok_config": {
                     "name": "new-ngrok-cfg",
-                    "auth_token": "new-token",
+                    "auth_token_secret_id": secret.id,
                     "domain": None,
                 },
             },
@@ -946,7 +993,7 @@ class TestWebhookTriggerLiveUrlIncludesPath:
             org=default_org,
         )
         NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="ng", auth_token="tok"
+            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "tok")
         )
 
         with mock.patch(
@@ -978,7 +1025,7 @@ class TestWebhookTriggerLiveUrlIncludesPath:
             webhook_trigger=trigger,
         )
         NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="ng-tg", auth_token="tok"
+            trigger=trigger, name="ng-tg", auth_token_secret=_make_secret(default_org, "tok")
         )
 
         with mock.patch(
@@ -1002,7 +1049,7 @@ class TestWebhookTriggerLiveUrlIncludesPath:
             org=default_org,
         )
         NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="ng", auth_token="tok"
+            trigger=trigger, name="ng", auth_token_secret=_make_secret(default_org, "tok")
         )
 
         with mock.patch(

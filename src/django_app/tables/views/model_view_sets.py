@@ -226,7 +226,7 @@ from tables.services.rbac.permissions import (
 from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
-from tables.services.secrets import secret_usage_service
+from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     validate_classification_condition_group_names,
@@ -286,6 +286,7 @@ from tables.serializers.model_serializers import (
     TaskReadSerializer,
     TaskWriteSerializer,
     VoiceSettingsSerializer,
+    VoiceSettingsInternalSerializer,
     WebhookTriggerNodeSerializer,
     WebhookTriggerNodeReadSerializer,
     ScheduleTriggerNodeSerializer,
@@ -316,6 +317,7 @@ from tables.services.redis_service import RedisService
 from tables.swagger_schemas.twilio_schemas import (
     TWILIO_PHONE_NUMBERS_GET,
     TWILIO_CONFIGURE_WEBHOOK_POST,
+    TWILIO_CHANNEL_PHONE_NUMBERS_GET,
     REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET,
 )
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
@@ -1954,7 +1956,7 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         "webhook_trigger__ngrok", "webhook_trigger__localhost"
     )
     rbac_resource_type = ResourceType.VOICE
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "phone_numbers": Permission.READ}
     serializer_class = TwilioChannelSerializer
 
     def create(self, request, *args, **kwargs):
@@ -1967,6 +1969,33 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return super().create(request, *args, **kwargs)
+
+    @extend_schema(**TWILIO_CHANNEL_PHONE_NUMBERS_GET)
+    @action(detail=True, methods=["get"], url_path="phone-numbers")
+    def phone_numbers(self, request, pk=None):
+        """Return this channel's Twilio incoming phone numbers.
+
+        Unlike `TwilioPhoneNumbersView` (raw account_sid/auth_token via
+        headers, superadmin-only, for browsing an arbitrary Twilio account),
+        this resolves the credentials server-side from the channel's stored
+        `Secret` (EST-1869: `auth_token` is now write-only and the frontend
+        can no longer supply it directly for an existing channel).
+        `get_object()` already scopes by the active org via
+        `OrgScopedChildViewSetMixin.get_queryset` — same as `retrieve`.
+        """
+        twilio = self.get_object()
+        if not twilio.account_sid or twilio.auth_token_secret_id is None:
+            return Response(
+                {"error": "No Twilio credentials configured for this channel"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        auth_token = secret_resolver.resolve(
+            secret_id=twilio.auth_token_secret_id,
+            org_id=resolve_active_org_id(request),
+            context="TwilioChannel.auth_token",
+        )
+        return _twilio_phone_numbers_response(twilio.account_sid, auth_token)
 
 
 class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
@@ -2537,6 +2566,23 @@ class VoiceSettingsView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated, IsSuperadmin]
     serializer_class = VoiceSettingsSerializer
 
+    def get_serializer_class(self):
+        # SystemServicePrincipal (a `key_type=SYSTEM` ApiKey — see
+        # `IsSystemApiKeyAuthenticated`) already satisfies IsSuperadmin, so
+        # the `realtime` service's legacy `GET /voice-settings/` call (used
+        # to validate `X-Twilio-Signature` on the deprecated `POST /voice`
+        # webhook) reaches this same view. Only that trusted, system-key
+        # caller gets the resolved plaintext Twilio credentials; a regular
+        # superadmin JWT session only ever sees the `*_secret_id` fields.
+        # Same trust boundary as `RealtimeChannelViewSet.lookup_by_token`'s
+        # `RealtimeChannelInternalSerializer` (EST-3633).
+        if (
+            isinstance(self.request.auth, ApiKey)
+            and self.request.auth.key_type == ApiKey.KeyType.SYSTEM
+        ):
+            return VoiceSettingsInternalSerializer
+        return VoiceSettingsSerializer
+
     def get_object(self):
         return VoiceSettings.load()
 
@@ -2562,6 +2608,33 @@ def _twilio_request(
         return json.loads(resp.read().decode())
 
 
+def _twilio_phone_numbers_response(account_sid: str, auth_token: str) -> Response:
+    """Call Twilio's IncomingPhoneNumbers API and shape the response.
+
+    Shared by `TwilioPhoneNumbersView` (raw account_sid/auth_token via
+    headers, superadmin-only) and `TwilioChannelViewSet.phone_numbers`
+    (credentials resolved from a stored `Secret`) so both surfaces return
+    the exact same response shape and error handling.
+    """
+    try:
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers.json?PageSize=100"
+        data = _twilio_request(account_sid, auth_token, url)
+        numbers = [
+            {
+                "sid": n["sid"],
+                "phone_number": n["phone_number"],
+                "friendly_name": n["friendly_name"],
+                "voice_url": n.get("voice_url") or "",
+            }
+            for n in data.get("incoming_phone_numbers", [])
+        ]
+        return Response({"results": numbers})
+    except urllib.error.HTTPError as e:
+        return Response({"error": e.read().decode(), "status": e.code}, status=400)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+
 class TwilioPhoneNumbersView(generics.GenericAPIView):
     """Return the list of incoming phone numbers from Twilio."""
 
@@ -2579,23 +2652,7 @@ class TwilioPhoneNumbersView(generics.GenericAPIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers.json?PageSize=100"
-            data = _twilio_request(account_sid, auth_token, url)
-            numbers = [
-                {
-                    "sid": n["sid"],
-                    "phone_number": n["phone_number"],
-                    "friendly_name": n["friendly_name"],
-                    "voice_url": n.get("voice_url") or "",
-                }
-                for n in data.get("incoming_phone_numbers", [])
-            ]
-            return Response({"results": numbers})
-        except urllib.error.HTTPError as e:
-            return Response({"error": e.read().decode(), "status": e.code}, status=400)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        return _twilio_phone_numbers_response(account_sid, auth_token)
 
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):
@@ -2648,7 +2705,11 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
             return Response(
                 {"error": "Channel not found"}, status=status.HTTP_404_NOT_FOUND
             )
-        if not twilio or not twilio.account_sid or not twilio.auth_token:
+        if (
+            not twilio
+            or not twilio.account_sid
+            or twilio.auth_token_secret_id is None
+        ):
             logger.warning(
                 f"configure-webhook: no Twilio credentials for channel {channel.id}"
             )
@@ -2658,7 +2719,11 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
             )
 
         account_sid = twilio.account_sid
-        auth_token = twilio.auth_token
+        auth_token = secret_resolver.resolve(
+            secret_id=twilio.auth_token_secret_id,
+            org_id=channel.org_id,
+            context="TwilioChannel.auth_token",
+        )
         logger.info(
             f"configure-webhook: using stored credentials for account_sid={account_sid}"
         )

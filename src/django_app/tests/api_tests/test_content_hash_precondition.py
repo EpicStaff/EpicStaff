@@ -9,6 +9,7 @@ from tables.exceptions import ContentHashConflictError
 from tables.models import CrewNode, Graph, StartNode
 from tables.models.graph_models import ConditionalEdge, WebhookTriggerNode
 from tables.models.python_models import PythonCode
+from tables.services.secrets import secret_service
 from tables.models.webhook_models import (
     NgrokWebhookConfig,
     ProviderType,
@@ -232,14 +233,18 @@ def conditional_edge(graph, python_code):
 
 
 @pytest.fixture
-def ngrok_config():
+def ngrok_config(default_org):
     trigger = WebhookTrigger.objects.create(
         path="ngrokConfigFixturePath",
         provider_type=ProviderType.NGROK,
+        org=default_org,
+    )
+    secret = secret_service.create(
+        text="test_token_123", org=default_org, name="ngrok-config-fixture-secret"
     )
     return NgrokWebhookConfig.objects.create(
         name="test_ngrok",
-        auth_token="test_token_123",
+        auth_token_secret=secret,
         region="eu",
         trigger=trigger,
     )
@@ -335,7 +340,6 @@ class TestWebhookNodeNestedHashValidation:
                     "provider_type": "ngrok",
                     "ngrok_config": {
                         "name": "test",
-                        "auth_token": "tok",
                         "domain": None,
                     },
                 },

@@ -34,8 +34,12 @@ class NgrokWebhookConfig(models.Model):
         max_length=50,
     )
 
-    auth_token = models.CharField(
-        max_length=255, help_text="Token from dashboard.ngrok.com"
+    auth_token_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="ngrok_webhook_configs",
     )
 
     domain = models.CharField(
@@ -198,7 +202,13 @@ class TwilioChannel(models.Model):
         primary_key=True,
     )
     account_sid = models.CharField(max_length=255)
-    auth_token = models.CharField(max_length=255)
+    auth_token_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="twilio_channels",
+    )
     phone_number = models.CharField(
         max_length=50,
         null=True,
@@ -250,8 +260,20 @@ class VoiceSettings(DefaultBaseModel):
     class Meta:
         db_table = "voice_settings"
 
-    twilio_account_sid = models.CharField(max_length=255, blank=True, default="")
-    twilio_auth_token = models.CharField(max_length=255, blank=True, default="")
+    twilio_account_sid_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="voice_settings_account_sid_uses",
+    )
+    twilio_auth_token_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="voice_settings_auth_token_uses",
+    )
     voice_agent = models.ForeignKey(
         "RealtimeAgent", on_delete=models.SET_NULL, null=True, blank=True, default=None
     )

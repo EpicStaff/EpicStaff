@@ -186,7 +186,11 @@ class TestTelegramTriggerViewSet:
             org=default_org,
         )
         NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="tg-ngrok", auth_token="tok"
+            trigger=trigger,
+            name="tg-ngrok",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="tg-ngrok-secret"
+            ),
         )
 
         url = reverse("telegramtriggernode-list")
@@ -264,7 +268,11 @@ class TestTelegramTriggerServiceLocalhostGuard:
             path="tg-ngrok-ok", provider_type=ProviderType.NGROK, org=default_org
         )
         NgrokWebhookConfig.objects.create(
-            trigger=trigger, name="tg-ngrok", auth_token="tok"
+            trigger=trigger,
+            name="tg-ngrok",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name="tg-ngrok-secret"
+            ),
         )
         secret = secret_service.create(
             text="123456:fake", org=default_org, name="tg-ngrok-ok-key"

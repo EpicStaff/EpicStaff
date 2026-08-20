@@ -98,7 +98,7 @@ from tables.models.realtime_models import (
 )
 from tables.models.webhook_models import LocalhostWebhookConfig, NgrokWebhookConfig
 from tables.services.realtime_surface_service import RealtimeSurfaceService
-from tables.services.secrets import assert_tool_secrets_declared
+from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from tables.validators.crew_memory_validator import CrewMemoryValidator
 from tables.validators.task_validator import TaskValidator
 from tables.validators.tool_config_validator import (
@@ -1237,9 +1237,17 @@ class ConverterService(metaclass=SingletonMeta):
         # `name` must match `NgrokWebhookConfig.get_redis_key()` and the
         # `webhook` service's tunnel-registry resolution — both webhook and
         # telegram-linked triggers register under the bare trigger path.
+        auth_token = (
+            secret_resolver.resolve(
+                secret_id=ngrok_webhook_config.auth_token_secret_id,
+                org_id=ngrok_webhook_config.trigger.org_id,
+                context="NgrokWebhookConfig.auth_token",
+            )
+            or ""
+        )
         return NgrokConfigData(
             name=ngrok_webhook_config.trigger.path,
-            auth_token=ngrok_webhook_config.auth_token,
+            auth_token=auth_token,
             domain=ngrok_webhook_config.domain,
             region=ngrok_webhook_config.region,
         )

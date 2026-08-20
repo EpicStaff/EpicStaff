@@ -52,6 +52,66 @@ TWILIO_PHONE_NUMBERS_GET = dict(
     },
 )
 
+TWILIO_CHANNEL_PHONE_NUMBERS_GET = dict(
+    summary="Return the list of incoming phone numbers from Twilio for this channel.",
+    description="Fetches up to 100 incoming phone numbers for the Twilio account configured on this "
+    "`TwilioChannel`. Unlike `TWILIO_PHONE_NUMBERS_GET` (which takes a raw account SID/auth token via "
+    "headers and is superadmin-only), this resolves `account_sid` and the auth token server-side from "
+    "the channel's stored `Secret` — the raw auth token is never exposed to the client. Any authenticated "
+    "member of the channel's own org may call this for their own org's channel (same org scoping as the "
+    "rest of `TwilioChannelViewSet`). Each number includes its SID, phone number, friendly name, and "
+    "currently configured voice URL.",
+    responses={
+        200: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="List of incoming phone numbers returned successfully.",
+            examples=[
+                OpenApiExample(
+                    "Phone numbers list",
+                    value={
+                        "results": [
+                            {
+                                "sid": "PNxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                                "phone_number": "+15551234567",
+                                "friendly_name": "My Twilio Number",
+                                "voice_url": "https://example.com/voice",
+                            }
+                        ]
+                    },
+                    response_only=True,
+                ),
+            ],
+        ),
+        400: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Bad Request - Twilio credentials are not configured on this channel.",
+            examples=[
+                OpenApiExample(
+                    "Missing credentials",
+                    value={"error": "No Twilio credentials configured for this channel"},
+                    response_only=True,
+                ),
+            ],
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        404: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Not Found - channel does not exist or does not belong to the active org.",
+        ),
+        502: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description="Bad Gateway - Twilio API request failed.",
+            examples=[
+                OpenApiExample(
+                    "Twilio API error",
+                    value={"error": "Unable to reach Twilio API"},
+                    response_only=True,
+                ),
+            ],
+        ),
+    },
+)
+
 REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET = dict(
     summary="Resolve a RealtimeChannel by its unique token (internal, API-key only).",
     description="Looks up a RealtimeChannel directly by its unique `token` field, "

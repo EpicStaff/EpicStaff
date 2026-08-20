@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     RealtimeChannel,
@@ -24,6 +25,7 @@ from tables.serializers.org_scoped_fields import (
     OrgScopedPrimaryKeyRelatedField,
 )
 from tables.serializers.utils.secret_fields import SecretCharField
+from tables.services.secrets import secret_resolver
 
 
 class RealtimeAgentSerializer(serializers.ModelSerializer):
@@ -159,17 +161,22 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
     webhook_trigger = OrgScopedPrimaryKeyRelatedField(
         queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
     )
+    auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="auth_token_secret",
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = TwilioChannel
         fields = [
             "channel",
             "account_sid",
-            "auth_token",
+            "auth_token_secret_id",
             "phone_number",
             "webhook_trigger",
         ]
-        extra_kwargs = {"auth_token": {"write_only": True}}
 
     def validate(self, attrs):
         wt = attrs.get("webhook_trigger")
@@ -221,10 +228,26 @@ class _TwilioChannelInternalSerializer(_TwilioChannelReadSerializer):
     caller needs `auth_token` to validate the `X-Twilio-Signature` header on inbound
     Twilio webhook requests. Do NOT reuse this serializer for any user-facing
     endpoint — that would reopen the EST-3633 leak.
+
+    `TwilioChannel.auth_token` is now a Secret reference (`auth_token_secret`), so
+    it must be resolved at the point of use rather than read as a plain model
+    attribute — a plain `ModelSerializer` field named "auth_token" would fail: the
+    model no longer has that attribute.
     """
+
+    auth_token = serializers.SerializerMethodField()
 
     class Meta(_TwilioChannelReadSerializer.Meta):
         fields = _TwilioChannelReadSerializer.Meta.fields + ["auth_token"]
+
+    def get_auth_token(self, obj) -> str | None:
+        if obj.auth_token_secret_id is None:
+            return None
+        return secret_resolver.resolve(
+            secret_id=obj.auth_token_secret_id,
+            org_id=obj.channel.org_id,
+            context="TwilioChannel.auth_token",
+        )
 
 
 class RealtimeChannelInternalSerializer(RealtimeChannelSerializer):

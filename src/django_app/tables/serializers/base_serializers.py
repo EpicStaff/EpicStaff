@@ -1,5 +1,6 @@
 from django.db import transaction
 
+from tables.models.secret_models import Secret
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     LocalhostWebhookConfig,
@@ -7,14 +8,22 @@ from tables.models.webhook_models import (
     ProviderType,
     WebhookTrigger,
 )
-from tables.serializers.org_scoped_fields import resolve_active_org_id
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    resolve_active_org_id,
+)
 from rest_framework import serializers
 from utils.logger import logger
 
 
 class NgrokConfigInlineSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=50)
-    auth_token = serializers.CharField(max_length=255, write_only=True)
+    auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="auth_token_secret",
+        required=False,
+        allow_null=True,
+    )
     domain = serializers.CharField(
         max_length=255, required=False, allow_blank=True, allow_null=True
     )

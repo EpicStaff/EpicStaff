@@ -31,6 +31,7 @@ from tables.models.webhook_models import (
 )
 from tables.services import redis_pubsub
 from tables.services.converter_service import ConverterService
+from tables.services.secrets import secret_service
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
@@ -93,7 +94,7 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
             webhook_trigger=trigger,
         )
         ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg", auth_token="tok", trigger=trigger
+            name="cfg", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-secret"), trigger=trigger
         )
 
         pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
@@ -149,7 +150,7 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
             python_code=python_code,
         )
         ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg-plain", auth_token="tok", trigger=trigger
+            name="cfg-plain", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-plain-secret"), trigger=trigger
         )
 
         pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
@@ -185,7 +186,7 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
             node_name="dual-telegram-node", graph=graph, webhook_trigger=trigger
         )
         ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg-dual", auth_token="tok", trigger=trigger
+            name="cfg-dual", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-dual-secret"), trigger=trigger
         )
 
         pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
@@ -201,7 +202,7 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
             path="unlinked-path", provider_type=ProviderType.NGROK, org=default_org
         )
         ngrok_config = NgrokWebhookConfig.objects.create(
-            name="cfg-unlinked", auth_token="tok", trigger=trigger
+            name="cfg-unlinked", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-unlinked-secret"), trigger=trigger
         )
 
         pydantic_config = ConverterService().convert_ngrok_webhook_config_to_pydantic(
@@ -251,7 +252,7 @@ class TestRedisPubsubTelegramDispatch:
             node_name="tg-e2e-node", graph=graph, webhook_trigger=trigger
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-e2e", auth_token="tok", trigger=trigger
+            name="cfg-e2e", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-e2e-secret"), trigger=trigger
         )
 
         _stub_publish(monkeypatch)
@@ -288,7 +289,7 @@ class TestRedisPubsubTelegramDispatch:
             python_code=python_code,
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-wh-e2e", auth_token="tok", trigger=trigger
+            name="cfg-wh-e2e", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-wh-e2e-secret"), trigger=trigger
         )
 
         _stub_publish(monkeypatch)
@@ -331,7 +332,7 @@ class TestRedisPubsubTelegramDispatch:
             node_name="dual-e2e-telegram-node", graph=graph, webhook_trigger=trigger
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-dual-e2e", auth_token="tok", trigger=trigger
+            name="cfg-dual-e2e", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-dual-e2e-secret"), trigger=trigger
         )
 
         _stub_publish(monkeypatch)
@@ -366,7 +367,7 @@ class TestRedisPubsubTelegramDispatch:
             webhook_trigger=trigger,
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-isolation-e2e", auth_token="tok", trigger=trigger
+            name="cfg-isolation-e2e", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-isolation-e2e-secret"), trigger=trigger
         )
 
         _stub_publish(monkeypatch)
@@ -419,7 +420,7 @@ class TestTelegramNodeAttachResyncsTunnelRegistration:
             org=default_org,
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-attach", auth_token="tok", trigger=trigger
+            name="cfg-attach", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-attach-secret"), trigger=trigger
         )
 
         calls = []
@@ -456,7 +457,7 @@ class TestTelegramNodeAttachResyncsTunnelRegistration:
             org=default_org,
         )
         NgrokWebhookConfig.objects.create(
-            name="cfg-detach", auth_token="tok", trigger=trigger
+            name="cfg-detach", auth_token_secret=secret_service.create(text="tok", org=default_org, name="cfg-detach-secret"), trigger=trigger
         )
         graph = Graph.objects.create(name="g-detach-resync", org=default_org)
         node = TelegramTriggerNode.objects.create(

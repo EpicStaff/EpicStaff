@@ -22,6 +22,7 @@ from tables.models.webhook_models import (
     ProviderType,
     WebhookTrigger,
 )
+from tables.services.secrets import secret_service
 
 
 @pytest.fixture
@@ -57,8 +58,9 @@ class TestGetActiveConfigMissingChildRow:
         trigger = WebhookTrigger.objects.create(
             path="ready-ngrok", provider_type=ProviderType.NGROK, org=default_org
         )
+        secret = secret_service.create(text="tok", org=default_org, name="cfg-secret")
         config = NgrokWebhookConfig.objects.create(
-            name="cfg", auth_token="tok", trigger=trigger
+            name="cfg", auth_token_secret=secret, trigger=trigger
         )
 
         assert trigger.get_active_config() == config

@@ -126,14 +126,24 @@ class TestTelegramRegistrationReadsSecret:
     ):
         from types import SimpleNamespace
 
-        from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
+        from tables.models.webhook_models import (
+            NgrokWebhookConfig,
+            ProviderType,
+            WebhookTrigger,
+        )
         from tables.services.secrets import secret_service
 
         graph = Graph.objects.create(name="telegram-with-secret", org=org)
         webhook_trigger = WebhookTrigger.objects.create(
             path="telegram-secret-path",
-            ngrok_webhook_config=NgrokWebhookConfig.objects.create(
-                name="ngrok-telegram-test", auth_token="ngrok-token-test"
+            provider_type=ProviderType.NGROK,
+            org=org,
+        )
+        NgrokWebhookConfig.objects.create(
+            name="ngrok-telegram-test",
+            trigger=webhook_trigger,
+            auth_token_secret=secret_service.create(
+                text="ngrok-token-test", org=org, name="ngrok-telegram-test-secret"
             ),
         )
         node = TelegramTriggerNode.objects.create(
@@ -148,7 +158,7 @@ class TestTelegramRegistrationReadsSecret:
         service = fresh_telegram_service(
             session_manager_service=SimpleNamespace(),
             webhook_trigger_service=SimpleNamespace(
-                get_tunnel_url=lambda ngrok_webhook_config: "https://tunnel.test"
+                wait_for_tunnel_url_for_trigger=lambda trigger: "https://tunnel.test"
             ),
         )
 

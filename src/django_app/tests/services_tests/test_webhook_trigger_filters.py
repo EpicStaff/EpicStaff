@@ -36,6 +36,7 @@ from tables.models.webhook_models import (
     WebhookTrigger,
 )
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.secrets import secret_service
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 
@@ -104,8 +105,13 @@ class TestGetTriggerFilters:
         trigger = WebhookTrigger.objects.create(
             path="valid_path", provider_type=ProviderType.NGROK, org=default_org
         )
+        secret = secret_service.create(
+            text="tok", org=default_org, name="some-unrelated-config-secret"
+        )
         NgrokWebhookConfig.objects.create(
-            name="some-unrelated-config-name", auth_token="tok", trigger=trigger
+            name="some-unrelated-config-name",
+            auth_token_secret=secret,
+            trigger=trigger,
         )
 
         filters = service.get_trigger_filters(
