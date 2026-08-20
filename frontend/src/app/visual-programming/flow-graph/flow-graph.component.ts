@@ -1428,7 +1428,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             decision_table_node_list: [],
             classification_decision_table_node_list: [],
             graph_note_list: [],
-            code_agent_node_list: [],
             schedule_trigger_node_list: [],
             edge_list: [],
         };
@@ -1475,9 +1474,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     break;
                 case NodeType.NOTE:
                     body.graph_note_list.push(id);
-                    break;
-                case NodeType.CODE_AGENT:
-                    body.code_agent_node_list.push(id);
                     break;
                 case NodeType.SCHEDULE_TRIGGER:
                     body.schedule_trigger_node_list.push(id);
