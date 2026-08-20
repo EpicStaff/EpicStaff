@@ -1,0 +1,18 @@
+<div
+    class="ddl-editor-container"
+    #editorContainer
+>
+    <ngx-monaco-editor
+        class="ddl-monaco-editor"
+        [options]="editorOptions"
+        (onInit)="onEditorInit($event)"
+    ></ngx-monaco-editor>
+
+    <div
+        class="ddl-editor-loading-overlay"
+        *ngIf="!editorLoaded()"
+    >
+        <div class="spinner"></div>
+        <span>Loading editor...</span>
+    </div>
+</div>

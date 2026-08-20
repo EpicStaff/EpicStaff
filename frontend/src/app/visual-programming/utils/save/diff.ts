@@ -110,7 +110,10 @@ function toDecisionTableComparable(node: DecisionTableNodeModel, allNodes: NodeM
 }
 
 function toStartComparable(node: StartNodeModel): unknown {
-    return { variables: node.data.initialState ?? {}, metadata: toNodeMetadata(node) };
+    return {
+        variables: node.data.initialState ?? {},
+        metadata: { ...toNodeMetadata(node), ...(typeof node.data.ddlSource === 'string' && node.data.ddlSource ? { ddl_source: node.data.ddlSource } : {}) },
+    };
 }
 
 function toCrewComparable(node: ProjectNodeModel): unknown {

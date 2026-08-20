@@ -7,13 +7,17 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 
 export function mapStartNodeToModel(sn: StartNode): StartNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(sn.metadata, NodeType.START);
+    const ddlSource = sn.metadata?.['ddl_source'];
     return {
         id: generateUuid(),
         backendId: sn.id,
         type: NodeType.START,
         node_name: '__start__',
         nodeNumber: ui.nodeNumber,
-        data: { initialState: sn.variables ?? {} },
+        data: {
+            initialState: sn.variables ?? {},
+            ...(typeof ddlSource === 'string' ? { ddlSource } : {}),
+        },
         position: ui.position,
         ports: null,
         color: ui.color,

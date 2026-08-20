@@ -44,7 +44,7 @@ import { Subject } from 'rxjs';
 import { ImportExportService, PartialExportRequest } from '../../core/services/import-export.service';
 import { ToastService } from '../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../shared/components/app-svg-icon/app-svg-icon.component';
-import { DomainDialogComponent } from '../components/domain-dialog/domain-dialog.component';
+import { DomainDialogComponent, DomainDialogResult } from '../components/domain-dialog/domain-dialog.component';
 import { FlowActionPanelComponent } from '../components/flow-action-panel/flow-action-panel.component';
 import { FlowBaseNodeComponent } from '../components/flow-base-node/flow-base-node.component';
 import { FlowExportImportButtonComponent } from '../components/flow-export-import-button/flow-export-import-button.component';
@@ -696,12 +696,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 backdropClass: 'domain-dialog-backdrop',
                 data: {
                     initialData: startNodeInitialState,
+                    ddlSource: startNode.data.ddlSource ?? null,
                 },
             });
 
             dialogRef.closed.subscribe((result: unknown) => {
                 if (result !== null && typeof result === 'object' && result !== undefined) {
-                    this.updateStartNodeInitialState(result as Record<string, unknown>);
+                    this.updateStartNodeDomain(result as DomainDialogResult);
                 }
             });
         } else {
@@ -1141,7 +1142,10 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     public onDomainClick(): void {
-        const startNodeInitialState = this.flowService.startNodeInitialState();
+        const startNode = this.flowService.nodes().find((node) => node.type === NodeType.START) as
+            | StartNodeModel
+            | undefined;
+        const startNodeInitialState = startNode?.data?.initialState ?? {};
 
         const dialogRef = this.dialog.open(DomainDialogComponent, {
             width: '1000px',
@@ -1152,12 +1156,13 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             backdropClass: 'domain-dialog-backdrop',
             data: {
                 initialData: startNodeInitialState,
+                ddlSource: startNode?.data.ddlSource ?? null,
             },
         });
 
         dialogRef.closed.subscribe((result: unknown) => {
             if (result !== null && typeof result === 'object' && result !== undefined) {
-                this.updateStartNodeInitialState(result as Record<string, unknown>);
+                this.updateStartNodeDomain(result as DomainDialogResult);
             }
         });
     }
@@ -1549,7 +1554,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         return this.isDialogOpen() || this.isSaving;
     }
 
-    private updateStartNodeInitialState(newState: Record<string, unknown>): void {
+    private updateStartNodeDomain(result: DomainDialogResult): void {
         const startNode = this.flowService.nodes().find((node) => node.type === NodeType.START) as
             | StartNodeModel
             | undefined;
@@ -1559,7 +1564,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                 ...startNode,
                 data: {
                     ...startNode.data,
-                    initialState: newState,
+                    initialState: result.initialState,
+                    // `undefined` (not `null`) so the ddl_source metadata key is omitted on save.
+                    ddlSource: result.ddlSource ?? undefined,
                 },
             };
 

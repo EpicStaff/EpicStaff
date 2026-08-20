@@ -14,9 +14,21 @@ import {
     ViewEncapsulation,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+    conformValuesToSample,
+    type Diagnostic,
+    type GenerateResult,
+    type JsonObject,
+    type JsonValue,
+    mergeJsonIntoDdl,
+    type SyncEntryKind,
+    type SyncReport,
+    type SyncReportEntry,
+} from '@shared/ddl';
 import { findNodeAtOffset, Node as JsonNode, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { DdlEditorComponent } from '../../../shared/components/ddl-editor/ddl-editor.component';
 import { JsonEditorComponent } from '../../../shared/components/json-editor/json-editor.component';
 import {
     EMPTY_VALIDATION_RESULT,
@@ -35,6 +47,12 @@ declare const monaco: typeof import('monaco-editor');
 
 export interface DomainDialogData {
     initialData: Record<string, unknown>;
+    ddlSource: string | null;
+}
+
+export interface DomainDialogResult {
+    initialState: Record<string, unknown>;
+    ddlSource: string | null;
 }
 
 export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
@@ -47,10 +65,32 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
     },
 };
 
+type DomainDialogTab = 'schema' | 'json';
+type DdlSyncStatus = 'never' | 'in-sync' | 'stale';
+
+/** Debounce between the pane's last keystroke and the additive JSON→DDL merge. */
+const PANE_MERGE_DEBOUNCE_MS = 300;
+
+/** A pane edit newer than this is considered "in progress" — a DDL-driven reconcile defers to the pending merge instead. */
+const RECENT_PANE_EDIT_THRESHOLD_MS = 1000;
+
+function isPlainJsonObject(value: unknown): value is JsonObject {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Parses `text` and re-serializes it with no whitespace so structurally-equal-but-differently-formatted JSON compares equal. */
+function canonicalizeJson(text: string): string | null {
+    try {
+        return JSON.stringify(JSON.parse(text));
+    } catch {
+        return null;
+    }
+}
+
 @Component({
     standalone: true,
     selector: 'app-domain-dialog',
-    imports: [CommonModule, JsonEditorComponent, OverlayModule, AppSvgIconComponent],
+    imports: [CommonModule, JsonEditorComponent, DdlEditorComponent, OverlayModule, AppSvgIconComponent],
     encapsulation: ViewEncapsulation.None,
     template: `
         <div class="dialog-container">
@@ -64,42 +104,156 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 </button>
             </div>
 
+            <div class="dialog-tabs">
+                <button
+                    type="button"
+                    class="tab-button"
+                    [class.active]="activeTab() === 'schema'"
+                    (click)="setActiveTab('schema')"
+                >
+                    <span>Schema</span>
+                    <span class="ddl-chip">DDL</span>
+                    @if (ddlDotSeverity(); as severity) {
+                        <span
+                            class="tab-dot"
+                            [class.dot-error]="severity === 'error'"
+                            [class.dot-warning]="severity === 'warning'"
+                        ></span>
+                    }
+                </button>
+                <button
+                    type="button"
+                    class="tab-button"
+                    [class.active]="activeTab() === 'json'"
+                    (click)="setActiveTab('json')"
+                >
+                    <span>JSON</span>
+                    @if (jsonTabHasError()) {
+                        <span class="tab-dot dot-error"></span>
+                    }
+                </button>
+            </div>
+
             <div class="dialog-content">
-                <div class="helper-text">
-                    Here you can define your domain variables that will be available throughout your workflow execution.
-                </div>
+                @if (activeTab() === 'schema') {
+                    <div class="schema-tab">
+                        <div class="autocomplete-hint">
+                            <app-svg-icon
+                                icon="bulb"
+                                size="1rem"
+                            ></app-svg-icon>
+                            <span>
+                                Classes defined here describe your Domain — the <code>domain</code> block's fields
+                                become your <code>variables</code>. The sample pane on the right shows the
+                                <code>variables</code> object this schema produces — edit it directly and new keys
+                                are added back into the schema. Removing <code>context</code> from the domain block
+                                will invalidate any saved persistent-variable paths.
+                            </span>
+                        </div>
 
-                <div class="autocomplete-hint">
-                    <app-svg-icon
-                        icon="bulb"
-                        size="1rem"
-                    ></app-svg-icon>
-                    <span>
-                        Place your cursor inside <code>user</code> or <code>organization</code> arrays and press
-                        <kbd>Ctrl+Space</kbd> to pick variables from <code>context</code>.
-                    </span>
-                </div>
+                        <div class="schema-split">
+                            <div class="schema-pane schema-pane-editor">
+                                <app-ddl-editor
+                                    [value]="ddlSourceText()"
+                                    (valueChange)="onDdlSourceChange($event)"
+                                    (diagnosticsChange)="onDdlDiagnosticsChange($event)"
+                                    (schemaChange)="onDdlSchemaChange($event)"
+                                ></app-ddl-editor>
+                            </div>
+                            <div class="schema-pane schema-pane-preview">
+                                <div class="preview-header">
+                                    <span class="preview-title">Sample variables (editable)</span>
+                                    <button
+                                        type="button"
+                                        class="apply-button"
+                                        [disabled]="applyDisabled()"
+                                        [title]="applyDisabledReason()"
+                                        (click)="applySample()"
+                                    >
+                                        Replace variables with sample
+                                    </button>
+                                </div>
+                                <app-json-editor
+                                    [jsonData]="paneJsonText()"
+                                    [showHeader]="false"
+                                    [fullHeight]="true"
+                                    (jsonChange)="onPaneJsonChange($event)"
+                                    (validationChange)="onPaneValidChange($event)"
+                                ></app-json-editor>
+                                <div class="preview-status">{{ ddlStatusMessage() }}</div>
+                                @if (syncReportSummaryLine(); as summary) {
+                                    <div class="sync-report">
+                                        <button
+                                            type="button"
+                                            class="sync-report-toggle"
+                                            (click)="syncReportExpanded.set(!syncReportExpanded())"
+                                        >
+                                            <app-svg-icon
+                                                [icon]="syncReportExpanded() ? 'chevron-up' : 'chevron-down'"
+                                                size="0.9rem"
+                                            ></app-svg-icon>
+                                            <span>{{ summary }}</span>
+                                        </button>
+                                        @if (syncReportExpanded()) {
+                                            <ul class="sync-report-list">
+                                                @for (
+                                                    entry of syncReportEntries();
+                                                    track entry.kind + entry.path + entry.message
+                                                ) {
+                                                    <li
+                                                        class="sync-report-item"
+                                                        [class.is-error]="
+                                                            entry.kind === 'type-mismatch' || entry.kind === 'discarded'
+                                                        "
+                                                    >
+                                                        <span class="sync-report-path">{{ entry.path || '(root)' }}</span>
+                                                        <span class="sync-report-message">{{ entry.message }}</span>
+                                                    </li>
+                                                }
+                                            </ul>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                } @else {
+                    <div class="helper-text">
+                        Here you can define your domain variables that will be available throughout your workflow execution.
+                    </div>
 
-                @if (pathErrorMessages().length > 0) {
-                    <ul class="path-validation-errors">
-                        @for (message of pathErrorMessages(); track message) {
-                            <li class="path-error">
-                                <app-svg-icon icon="alert-circle"></app-svg-icon>
-                                <span>{{ message }}</span>
-                            </li>
-                        }
-                    </ul>
+                    <div class="autocomplete-hint">
+                        <app-svg-icon
+                            icon="bulb"
+                            size="1rem"
+                        ></app-svg-icon>
+                        <span>
+                            Place your cursor inside <code>user</code> or <code>organization</code> arrays and press
+                            <kbd>Ctrl+Space</kbd> to pick variables from <code>context</code>.
+                        </span>
+                    </div>
+
+                    @if (pathErrorMessages().length > 0) {
+                        <ul class="path-validation-errors">
+                            @for (message of pathErrorMessages(); track message) {
+                                <li class="path-error">
+                                    <app-svg-icon icon="alert-circle"></app-svg-icon>
+                                    <span>{{ message }}</span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    <div class="json-editor-section">
+                        <app-json-editor
+                            class="json-editor"
+                            [jsonData]="initialStateJson"
+                            (jsonChange)="onInitialStateChange($event)"
+                            (validationChange)="onJsonValidChange($event)"
+                            (editorReady)="onEditorReady($event)"
+                            [fullHeight]="true"
+                        ></app-json-editor>
+                    </div>
                 }
-                <div class="json-editor-section">
-                    <app-json-editor
-                        class="json-editor"
-                        [jsonData]="initialStateJson"
-                        (jsonChange)="onInitialStateChange($event)"
-                        (validationChange)="onJsonValidChange($event)"
-                        (editorReady)="onEditorReady($event)"
-                        [fullHeight]="true"
-                    ></app-json-editor>
-                </div>
             </div>
         </div>
     `,
@@ -110,8 +264,11 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 flex-direction: column;
                 height: 100%;
                 min-height: 0;
-                background: var(--color-surface-card, #232323);
-                border-radius: 8px;
+                background: var(--color-modals-background);
+                border-radius: 12px;
+                box-shadow:
+                    0 12px 28px rgba(0, 0, 0, 0.4),
+                    0 4px 8px rgba(0, 0, 0, 0.2);
                 overflow: hidden;
             }
 
@@ -153,12 +310,224 @@ export const DEFAULT_INITIAL_STATE: Record<string, unknown> = {
                 }
             }
 
+            .dialog-tabs {
+                display: flex;
+                gap: 0.25rem;
+                padding: 0 1.5rem;
+                border-bottom: 1px solid var(--color-divider-subtle, #444);
+                flex-shrink: 0;
+            }
+
+            .tab-button {
+                display: flex;
+                align-items: center;
+                gap: 0.4rem;
+                background: none;
+                border: none;
+                border-bottom: 2px solid transparent;
+                color: var(--color-text-secondary, #aaa);
+                font-size: 0.875rem;
+                padding: 0.65rem 0.25rem;
+                margin-bottom: -1px;
+                cursor: pointer;
+                transition: color 0.2s ease, border-color 0.2s ease;
+
+                &:hover {
+                    color: var(--color-text-primary, #fff);
+                }
+
+                &.active {
+                    color: var(--accent-color, #685fff);
+                    border-bottom-color: var(--accent-color, #685fff);
+                }
+            }
+
+            .ddl-chip {
+                font-size: 0.65rem;
+                font-weight: 600;
+                letter-spacing: 0.03em;
+                padding: 0.1em 0.4em;
+                border-radius: 3px;
+                background: rgba(101, 98, 245, 0.18);
+                color: #a5a5ff;
+            }
+
+            .tab-dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: #f59e0b;
+
+                &.dot-error {
+                    background: #ef4444;
+                }
+
+                &.dot-warning {
+                    background: #f59e0b;
+                }
+            }
+
             .dialog-content {
                 flex: 1;
                 padding: 1.5rem;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
+            }
+
+            .schema-tab {
+                display: flex;
+                flex-direction: column;
+                flex: 1;
+                min-height: 0;
+            }
+
+            .schema-split {
+                flex: 1;
+                min-height: 0;
+                display: grid;
+                grid-template-columns: 1.15fr 1fr;
+                gap: 1rem;
+
+                @media (max-width: 860px) {
+                    grid-template-columns: 1fr;
+                }
+            }
+
+            .schema-pane {
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+                min-width: 0;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                overflow: hidden;
+            }
+
+            .schema-pane-editor {
+                app-ddl-editor {
+                    flex: 1;
+                    min-height: 0;
+                    display: block;
+                }
+            }
+
+            .schema-pane-preview {
+                background: var(--gray-850);
+                padding: 0.85rem 1rem;
+
+                app-json-editor {
+                    flex: 1;
+                    min-height: 0;
+                    display: block;
+                    border-radius: 6px;
+                    overflow: hidden;
+                }
+            }
+
+            .preview-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 0.75rem;
+                margin-bottom: 0.6rem;
+            }
+
+            .preview-title {
+                font-size: 0.8rem;
+                font-weight: 500;
+                color: var(--color-text-secondary, #aaa);
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
+            }
+
+            .apply-button {
+                background: var(--accent-color, #685fff);
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                padding: 0.4rem 0.75rem;
+                font-size: 0.78rem;
+                cursor: pointer;
+                white-space: nowrap;
+                transition: opacity 0.2s ease;
+
+                &:hover:not(:disabled) {
+                    opacity: 0.9;
+                }
+
+                &:disabled {
+                    background: var(--color-surface-hover, #333);
+                    color: var(--color-text-secondary, #aaa);
+                    cursor: not-allowed;
+                }
+            }
+
+            .preview-status {
+                margin-top: 0.6rem;
+                font-size: 0.75rem;
+                color: var(--color-text-secondary, #aaa);
+                line-height: 1.4;
+            }
+
+            .sync-report {
+                margin-top: 0.5rem;
+            }
+
+            .sync-report-toggle {
+                display: flex;
+                align-items: center;
+                gap: 0.35rem;
+                background: none;
+                border: none;
+                padding: 0;
+                color: var(--color-text-secondary, #aaa);
+                font-size: 0.75rem;
+                cursor: pointer;
+                text-align: left;
+
+                &:hover {
+                    color: var(--color-text-primary, #fff);
+                }
+            }
+
+            .sync-report-list {
+                margin: 0.4rem 0 0;
+                padding: 0.5rem 0.65rem;
+                list-style: none;
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 6px;
+                max-height: 160px;
+                overflow-y: auto;
+            }
+
+            .sync-report-item {
+                display: flex;
+                flex-direction: column;
+                gap: 0.1rem;
+                padding: 0.3rem 0;
+                font-size: 0.72rem;
+                line-height: 1.35;
+                color: var(--color-text-secondary, #aaa);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+
+                &:last-child {
+                    border-bottom: none;
+                }
+
+                &.is-error {
+                    color: var(--color-error);
+                }
+            }
+
+            .sync-report-path {
+                font-family: 'JetBrains Mono', monospace;
+                color: #a5a5ff;
+            }
+
+            .sync-report-message {
+                color: inherit;
             }
 
             .helper-text {
@@ -263,6 +632,131 @@ export class DomainDialogComponent implements OnDestroy {
     public hasPathErrors = computed(() => hasValidationErrors(this.validationResult()));
     public pathErrorMessages = computed(() => formatValidationMessages(this.validationResult()));
 
+    // --- Schema (DDL) tab state ---
+    public readonly activeTab = signal<DomainDialogTab>('json');
+    public readonly ddlSourceText = signal<string>('');
+    public readonly ddlDiagnostics = signal<Diagnostic[]>([]);
+    public readonly ddlGenerateResult = signal<GenerateResult | null>(null);
+
+    /** The editable "sample variables" pane — source of truth for the JSON→DDL merge direction. */
+    public readonly paneJsonText = signal<string>('{}');
+    /** Mirrors the pane json-editor's own JSON.parse validity check (drives `applyDisabled`/status). */
+    public readonly paneJsonValid = signal<boolean>(true);
+    /** Most recent additive-merge report (skipped keys, type mismatches, removed keys). `null` when nothing to show. */
+    public readonly syncReport = signal<SyncReport | null>(null);
+    public readonly syncReportExpanded = signal(false);
+
+    /** Set only when the user clicks "Replace variables with sample" — drives the status line. Canonical (parsed+stringified) pane value. */
+    public readonly lastAppliedSampleJson = signal<string | null>(null);
+
+    public readonly ddlHasErrorDiagnostics = computed(() => this.ddlDiagnostics().some((d) => d.severity === 'error'));
+    public readonly ddlHasWarningDiagnostics = computed(() =>
+        this.ddlDiagnostics().some((d) => d.severity === 'warning')
+    );
+    public readonly ddlDotSeverity = computed<'error' | 'warning' | null>(() => {
+        if (this.ddlHasErrorDiagnostics()) return 'error';
+        if (this.ddlHasWarningDiagnostics()) return 'warning';
+        return null;
+    });
+
+    /** The pane's parsed value, or `undefined` while it holds invalid JSON. */
+    private readonly paneParsedValue = computed<JsonValue | undefined>(() => {
+        try {
+            return JSON.parse(this.paneJsonText()) as JsonValue;
+        } catch {
+            return undefined;
+        }
+    });
+
+    public readonly paneRootIsObject = computed<boolean>(() => {
+        const value = this.paneParsedValue();
+        return value !== undefined && isPlainJsonObject(value);
+    });
+
+    /** Canonical (parsed+stringified) form of the pane's current text, or `null` while it is invalid. */
+    private readonly canonicalPaneJson = computed<string | null>(() => {
+        const value = this.paneParsedValue();
+        return value === undefined ? null : JSON.stringify(value);
+    });
+
+    public readonly applyDisabled = computed(
+        () => this.ddlHasErrorDiagnostics() || !this.paneJsonValid() || !this.paneRootIsObject()
+    );
+
+    public readonly applyDisabledReason = computed<string>(() => {
+        if (this.ddlHasErrorDiagnostics()) return 'Fix schema errors to apply';
+        if (!this.paneJsonValid()) return 'Fix JSON errors in the sample pane to apply';
+        if (!this.paneRootIsObject()) return 'JSON root must be an object to apply';
+        return '';
+    });
+
+    public readonly ddlSyncStatus = computed<DdlSyncStatus>(() => {
+        const applied = this.lastAppliedSampleJson();
+        if (applied === null) return 'never';
+        const current = this.canonicalPaneJson();
+        return current !== null && current === applied ? 'in-sync' : 'stale';
+    });
+
+    // First applicable message wins: schema errors, invalid pane JSON, non-object root, then sync status.
+    public readonly ddlStatusMessage = computed(() => {
+        if (this.ddlHasErrorDiagnostics()) return 'Sync paused — schema has errors.';
+        if (!this.paneJsonValid()) return 'Sync paused — the sample pane has invalid JSON.';
+        if (!this.paneRootIsObject()) return 'JSON root must be an object.';
+
+        switch (this.ddlSyncStatus()) {
+            case 'in-sync':
+                return '✓ In sync with the JSON tab';
+            case 'stale':
+                return 'Schema changed since last apply — JSON tab still holds the previous variables';
+            default:
+                return 'Sample pane updates live — persistent_variables are never touched';
+        }
+    });
+
+    public readonly syncReportEntries = computed<SyncReportEntry[]>(() => this.syncReport()?.entries ?? []);
+
+    public readonly syncReportSummaryLine = computed<string | null>(() => {
+        const entries = this.syncReportEntries();
+        if (entries.length === 0) return null;
+
+        const counts = new Map<SyncEntryKind, number>();
+        for (const entry of entries) {
+            counts.set(entry.kind, (counts.get(entry.kind) ?? 0) + 1);
+        }
+
+        const skippedInvalid = counts.get('skipped-invalid-key') ?? 0;
+        const skippedEmpty = counts.get('skipped-empty-object') ?? 0;
+        const mismatches = counts.get('type-mismatch') ?? 0;
+        const removed = counts.get('removed-key') ?? 0;
+        const discarded = counts.get('discarded') ?? 0;
+
+        const parts: string[] = [];
+        if (skippedInvalid > 0) parts.push(`${skippedInvalid} invalid key${skippedInvalid > 1 ? 's' : ''} skipped`);
+        if (skippedEmpty > 0) parts.push(`${skippedEmpty} empty object${skippedEmpty > 1 ? 's' : ''} skipped`);
+        if (mismatches > 0) parts.push(`${mismatches} type mismatch${mismatches > 1 ? 'es' : ''}`);
+        if (removed > 0) parts.push(`${removed} key${removed > 1 ? 's' : ''} missing from JSON`);
+        if (discarded > 0) parts.push('sync issue — see details');
+
+        return parts.length > 0 ? parts.join(' · ') : null;
+    });
+
+    /**
+     * Baseline for the close-time auto-apply diff check and the "in sync" status: the
+     * canonical (parsed+stringified) pane value that is already reflected in `variables`
+     * (seeded on first entry into the Schema tab, refreshed on every apply). Not shown
+     * directly in the UI — `lastAppliedSampleJson` drives the status line.
+     */
+    private baselineSampleJson: string | null = null;
+
+    // --- Direction-lock state machine bookkeeping ---
+    /** Number of upcoming `schemaChange` events that are echoes of our own merge pushes, not user edits. */
+    private expectedDdlEchoes = 0;
+    /** True once the first (seeding) `schemaChange` after entering the Schema tab has been handled. */
+    private schemaTabSeeded = false;
+    /** Timestamp of the pane's last user-typed `jsonChange`, or `null` if untouched since the tab was entered. */
+    private lastPaneEditAt: number | null = null;
+    private mergeTimerId: ReturnType<typeof setTimeout> | null = null;
+
     private monacoEditor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null;
     private overlayService = inject(Overlay);
     private viewContainerRef = inject(ViewContainerRef);
@@ -275,24 +769,12 @@ export class DomainDialogComponent implements OnDestroy {
     private cursorDisposable: import('monaco-editor').IDisposable | null = null;
     private destroyRef = inject(DestroyRef);
 
-    private getEditorContext(): {
-        editor: import('monaco-editor').editor.IStandaloneCodeEditor;
-        model: import('monaco-editor').editor.ITextModel;
-        position: import('monaco-editor').Position;
-    } | null {
-        const editor = this.monacoEditor;
-        if (!editor) return null;
-        const model = editor.getModel();
-        const position = editor.getPosition();
-        if (!model || !position) return null;
-        return { editor, model, position };
-    }
-
     constructor(
-        private dialogRef: DialogRef<Record<string, unknown> | null>,
+        private dialogRef: DialogRef<DomainDialogResult | null>,
         @Inject(DIALOG_DATA) public data: DomainDialogData
     ) {
         this.initializeJsonEditor();
+        this.initializeDdlTab();
 
         this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.close());
 
@@ -315,6 +797,125 @@ export class DomainDialogComponent implements OnDestroy {
         this.closeOverlay();
         this.keyDownDisposable?.dispose();
         this.cursorDisposable?.dispose();
+        this.clearMergeTimer();
+    }
+
+    // --- JSON Editor setup ---
+
+    public onInitialStateChange(json: string): void {
+        this.initialStateJson = json;
+        this.validatePathsInPersistentVariables(json);
+    }
+
+    public onJsonValidChange(isValid: boolean): void {
+        this.isJsonValid = isValid;
+    }
+
+    public close(): void {
+        this.flushPendingMerge();
+        this.autoApplyDdlIfNeeded();
+
+        if (!this.isJsonValid || this.hasPathErrors()) return;
+
+        const ddlSource = this.ddlSourceText();
+        this.dialogRef.close({
+            initialState: this.buildResult(),
+            ddlSource: ddlSource.trim().length > 0 ? ddlSource : null,
+        });
+    }
+
+    /** True if the JSON tab currently has an error state — drives its tab-label dot. */
+    public jsonTabHasError(): boolean {
+        return !this.isJsonValid || this.hasPathErrors();
+    }
+
+    // --- Tab switching ---
+
+    /**
+     * Switching tabs destroys/recreates both Schema-tab editors (`@if`), so any in-flight
+     * pane-merge state from the previous activation is no longer meaningful. Entering the
+     * Schema tab additionally resets the seeding/echo bookkeeping so the next `schemaChange`
+     * is treated as a fresh seed from the JSON tab's current `variables` — which always wins
+     * on (re)entry.
+     */
+    public setActiveTab(tab: DomainDialogTab): void {
+        this.clearMergeTimer();
+        if (tab === 'schema') {
+            this.resetSchemaSyncState();
+            this.syncReport.set(null);
+        }
+        this.activeTab.set(tab);
+    }
+
+    // --- Schema (DDL) tab handlers ---
+
+    public onDdlSourceChange(source: string): void {
+        this.ddlSourceText.set(source);
+    }
+
+    public onDdlDiagnosticsChange(diagnostics: Diagnostic[]): void {
+        this.ddlDiagnostics.set(diagnostics);
+    }
+
+    /**
+     * Direction-lock state machine entry point for DDL→pane sync. Exactly one of three
+     * branches runs per compile:
+     *  1. Echo of our own merge push (`expectedDdlEchoes > 0`) — decrement and stop; the
+     *     pane already holds the value that produced this compile.
+     *  2. First compile after entering the Schema tab (`!schemaTabSeeded`) — the JSON tab's
+     *     `variables` wins: seed the pane and baseline from it, then run one immediate
+     *     catch-up merge so any keys the JSON tab has that the schema doesn't yet know about
+     *     are added right away.
+     *  3. Otherwise the user typed DDL directly — reshape the pane onto the new sample while
+     *     preserving values, unless a pane edit is in flight (recent keystroke or a merge
+     *     debounce still pending), in which case that pending merge will reconcile instead.
+     */
+    public onDdlSchemaChange(result: GenerateResult): void {
+        this.ddlGenerateResult.set(result);
+
+        if (this.expectedDdlEchoes > 0) {
+            this.expectedDdlEchoes--;
+            return;
+        }
+
+        if (!this.schemaTabSeeded) {
+            this.schemaTabSeeded = true;
+            this.seedPaneFromJsonTab();
+            this.attemptMergePaneIntoDdl(result);
+            return;
+        }
+
+        if (this.isPaneEditPendingOrRecent()) return;
+
+        this.reconcilePaneFromDdlSample(result);
+    }
+
+    // --- Pane (editable sample) handlers — JSON→DDL merge direction ---
+
+    public onPaneJsonChange(json: string): void {
+        this.paneJsonText.set(json);
+        this.lastPaneEditAt = Date.now();
+        this.scheduleMerge();
+    }
+
+    public onPaneValidChange(valid: boolean): void {
+        this.paneJsonValid.set(valid);
+    }
+
+    // --- Apply ---
+
+    public applySample(): void {
+        if (this.applyDisabled()) return;
+        if (this.commitPaneToVariables()) {
+            this.lastAppliedSampleJson.set(this.canonicalPaneJson());
+        }
+    }
+
+    // --- Monaco editor & autocomplete setup ---
+
+    public onEditorReady(editor: import('monaco-editor').editor.IStandaloneCodeEditor): void {
+        this.monacoEditor = editor;
+        this.setupAutocomplete();
     }
 
     // --- JSON Editor setup ---
@@ -341,17 +942,15 @@ export class DomainDialogComponent implements OnDestroy {
         this.validatePathsInPersistentVariables(this.initialStateJson);
     }
 
+    private initializeDdlTab(): void {
+        const ddlSource = typeof this.data?.ddlSource === 'string' ? this.data.ddlSource : '';
+        this.ddlSourceText.set(ddlSource);
+        this.resetSchemaSyncState();
+        this.activeTab.set(ddlSource.trim().length > 0 ? 'schema' : 'json');
+    }
+
     private validatePathsInPersistentVariables(json: string): void {
         this.validationResult.set(validatePersistentVariables(json));
-    }
-
-    public onInitialStateChange(json: string): void {
-        this.initialStateJson = json;
-        this.validatePathsInPersistentVariables(json);
-    }
-
-    public onJsonValidChange(isValid: boolean): void {
-        this.isJsonValid = isValid;
     }
 
     private buildResult(): Record<string, unknown> {
@@ -375,16 +974,163 @@ export class DomainDialogComponent implements OnDestroy {
         }
     }
 
-    public close(): void {
-        if (!this.isJsonValid || this.hasPathErrors()) return;
-        this.dialogRef.close(this.buildResult());
+    // --- Tab switching ---
+
+    private resetSchemaSyncState(): void {
+        this.schemaTabSeeded = false;
+        this.expectedDdlEchoes = 0;
+        this.lastPaneEditAt = null;
+    }
+
+    // --- Schema (DDL) tab handlers ---
+
+    /** Seeds the pane (and the close-time baseline) from the JSON tab's current `variables` — JSON tab wins on entry. */
+    private seedPaneFromJsonTab(): void {
+        const doc = this.parseJsonLenient(this.initialStateJson);
+        const variables = doc?.['variables'];
+        const seeded: JsonObject = isPlainJsonObject(variables) ? variables : {};
+        const seededText = JSON.stringify(seeded, null, 2);
+
+        this.paneJsonText.set(seededText);
+        this.baselineSampleJson = canonicalizeJson(seededText);
+    }
+
+    private isPaneEditPendingOrRecent(): boolean {
+        if (this.mergeTimerId !== null) return true;
+        if (this.lastPaneEditAt === null) return false;
+        return Date.now() - this.lastPaneEditAt < RECENT_PANE_EDIT_THRESHOLD_MS;
+    }
+
+    /** Reshapes the pane onto the DDL-generated sample's shape while preserving the user's current values. */
+    private reconcilePaneFromDdlSample(result: GenerateResult): void {
+        const userValue = this.paneParsedValue();
+        if (userValue === undefined) return; // pane currently holds invalid JSON — leave it for the user to fix
+
+        let sampleValue: JsonValue;
+        try {
+            sampleValue = JSON.parse(result.json) as JsonValue;
+        } catch {
+            return; // defensive — emitJson always produces valid JSON
+        }
+
+        const conformed = conformValuesToSample(sampleValue, userValue);
+        this.paneJsonText.set(JSON.stringify(conformed, null, 2));
+    }
+
+    // --- Pane (editable sample) handlers — JSON→DDL merge direction ---
+
+    private scheduleMerge(): void {
+        this.clearMergeTimer();
+        this.mergeTimerId = setTimeout(() => {
+            this.mergeTimerId = null;
+            this.attemptMergePaneIntoDdl(this.ddlGenerateResult());
+        }, PANE_MERGE_DEBOUNCE_MS);
+    }
+
+    private clearMergeTimer(): void {
+        if (this.mergeTimerId !== null) {
+            clearTimeout(this.mergeTimerId);
+            this.mergeTimerId = null;
+        }
+    }
+
+    /** Runs any pending debounced merge immediately and synchronously — used by `close()` so nothing is lost on exit. */
+    private flushPendingMerge(): void {
+        if (this.mergeTimerId === null) return;
+        this.clearMergeTimer();
+        this.attemptMergePaneIntoDdl(this.ddlGenerateResult());
+    }
+
+    /**
+     * Additively merges the pane's current JSON into the DDL source, guarded in order by:
+     * an empty/whitespace pane (skip, clear the report — nothing to merge), invalid pane
+     * JSON (skip silently — mid-typing), a non-object pane root, and a broken schema (both
+     * surfaced via `ddlStatusMessage`, so the report itself is cleared rather than duplicated).
+     * A successful, changed merge bumps `expectedDdlEchoes` before pushing the updated source,
+     * so the compile it triggers is recognized as an echo rather than a user DDL edit.
+     */
+    private attemptMergePaneIntoDdl(generateResult: GenerateResult | null): void {
+        const paneText = this.paneJsonText();
+        if (paneText.trim().length === 0) {
+            this.syncReport.set(null);
+            return;
+        }
+
+        const parsedPane = this.paneParsedValue();
+        if (parsedPane === undefined) return; // invalid JSON mid-typing — no churn
+
+        if (!isPlainJsonObject(parsedPane)) {
+            this.syncReport.set(null); // ddlStatusMessage already surfaces "JSON root must be an object"
+            return;
+        }
+
+        if (!generateResult || generateResult.schema.hasErrors) {
+            this.syncReport.set(null); // ddlStatusMessage already surfaces "sync paused — schema has errors"
+            return;
+        }
+
+        const mergeResult = mergeJsonIntoDdl(this.ddlSourceText(), generateResult.schema, parsedPane);
+        this.syncReport.set(mergeResult.report);
+
+        if (mergeResult.changed) {
+            this.expectedDdlEchoes++;
+            this.ddlSourceText.set(mergeResult.updatedSource);
+        }
+    }
+
+    // --- Apply ---
+
+    /**
+     * Parses the pane's current JSON and replaces `variables` wholesale in the working JSON
+     * document, leaving `persistent_variables` and any other top-level keys untouched.
+     * No-ops (returns `false`) if the pane is not currently a valid JSON object — callers
+     * gate on `applyDisabled()`/`paneRootIsObject()` first, this is a defensive safety net.
+     */
+    private commitPaneToVariables(): boolean {
+        const paneVariables = this.paneParsedValue();
+        if (paneVariables === undefined || !isPlainJsonObject(paneVariables)) return false;
+
+        const currentDoc = this.parseJsonLenient(this.initialStateJson) ?? {};
+        const updatedDoc: Record<string, unknown> = { ...currentDoc, variables: paneVariables };
+        const updatedJson = JSON.stringify(updatedDoc, null, 2);
+
+        this.initialStateJson = updatedJson;
+        this.isJsonValid = true;
+        this.validatePathsInPersistentVariables(updatedJson);
+        this.baselineSampleJson = this.canonicalPaneJson();
+        return true;
+    }
+
+    /**
+     * Auto-applies the pane's current value once on close if the schema tab was engaged
+     * (non-empty DDL source), the pane is currently in an "apply-able" state (same gate as
+     * the button), and it has drifted from what is already reflected in `variables`. A
+     * broken schema or invalid/non-object pane never blocks saving and never corrupts
+     * `variables` — they are left exactly as-is.
+     */
+    private autoApplyDdlIfNeeded(): void {
+        if (this.ddlSourceText().trim().length === 0) return;
+        if (this.applyDisabled()) return;
+
+        const canonical = this.canonicalPaneJson();
+        if (canonical === null || canonical === this.baselineSampleJson) return;
+
+        this.commitPaneToVariables();
     }
 
     // --- Monaco editor & autocomplete setup ---
 
-    public onEditorReady(editor: import('monaco-editor').editor.IStandaloneCodeEditor): void {
-        this.monacoEditor = editor;
-        this.setupAutocomplete();
+    private getEditorContext(): {
+        editor: import('monaco-editor').editor.IStandaloneCodeEditor;
+        model: import('monaco-editor').editor.ITextModel;
+        position: import('monaco-editor').Position;
+    } | null {
+        const editor = this.monacoEditor;
+        if (!editor) return null;
+        const model = editor.getModel();
+        const position = editor.getPosition();
+        if (!model || !position) return null;
+        return { editor, model, position };
     }
 
     private setupAutocomplete(): void {

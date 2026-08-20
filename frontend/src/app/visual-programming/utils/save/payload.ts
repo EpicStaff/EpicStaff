@@ -322,7 +322,7 @@ export function buildBulkSavePayload(
         start_node_list: nodeItems(nodeDiff.startNodes, (n) => ({
             graph: graphId,
             variables: n.data.initialState ?? {},
-            metadata: toNodeMetadata(n),
+            metadata: { ...toNodeMetadata(n), ...(typeof n.data.ddlSource === 'string' && n.data.ddlSource ? { ddl_source: n.data.ddlSource } : {}) },
         })),
         crew_node_list: nodeItems(nodeDiff.crewNodes, (n) => ({
             node_name: n.node_name,

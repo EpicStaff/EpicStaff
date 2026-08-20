@@ -36,6 +36,7 @@ export interface BaseNodeModel {
 }
 export interface StartNodeData {
     initialState: Record<string, unknown>;
+    ddlSource?: string;
 }
 
 export interface StartNodeModel extends BaseNodeModel {
