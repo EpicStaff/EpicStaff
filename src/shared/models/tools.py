@@ -123,18 +123,6 @@ class BaseToolData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class RunToolParamsModel(BaseModel):
-    tool_config: ToolConfigData | None = None
-    run_args: list[str]
-    run_kwargs: dict[str, Any]
-
-
-class ToolInitConfigurationModel(BaseModel):
-    tool_init_configuration: dict[str, Any] | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class CodeResultData(BaseModel):
     execution_id: str
     result_data: str | None = None
