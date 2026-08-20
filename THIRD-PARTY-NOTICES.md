@@ -1,7 +1,7 @@
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Thu, 20 Aug 2026 08:15:33 GMT -->
-<!-- commit: 7cdbf161a3a2c4db6ba8e2f563d52e4ad4595513 -->
-<!-- package-lock.json sha256: e2f2abc3c1793568 -->
+<!-- generated: Thu, 20 Aug 2026 09:47:41 GMT -->
+<!-- commit: fc2c598e0fddf03026711adb87590622746a32d6 -->
+<!-- package-lock.json sha256: 3a5f9b041c064446 -->
 
 # Third-Party Notices
 
@@ -17,7 +17,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 | License | Packages |
 |---|---|
-| MIT | 50 |
+| MIT | 49 |
 | OFL-1.1 | 2 |
 | Apache-2.0 | 2 |
 | ISC | 2 |
@@ -26,7 +26,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **61** |
+| **Total** | **60** |
 
 ---
 
@@ -74,7 +74,6 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 | `marked` | 18.0.10 | MIT |
 | `monaco-editor` | 0.55.1 | MIT |
 | `ngx-image-cropper` | 9.1.6 | MIT |
-| `ngx-json-viewer` | 3.2.1 | MIT |
 | `ngx-markdown` | 22.0.0 | MIT |
 | `ngx-monaco-editor-v2` | 22.0.4 | MIT |
 | `node-int64` | 0.4.0 | MIT |
@@ -2962,40 +2961,6 @@ SOFTWARE.
 
 </details>
 
-### ngx-json-viewer@3.2.1
-
-- **License:** MIT
-- **Publisher:** Vivo Xu <vivo@fancyber.com>
-- **Repository:** https://github.com/hivivo/ngx-json-viewer
-
-<details><summary>License text</summary>
-
-```
-MIT License
-
-Copyright (c) 2022 Vivo Xu
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-</details>
-
 ### ngx-markdown@22.0.0
 
 - **License:** MIT
@@ -3867,6 +3832,44 @@ THE SOFTWARE.
 ```
 
 </details>
+
+---
+
+## Vendored code
+
+Third-party code copied into this repository rather than installed as a dependency. `license-checker` cannot see it, so these entries are maintained by hand in the generator.
+
+### ngx-json-viewer
+
+`frontend/src/app/shared/components/json-viewer/` is derived from [ngx-json-viewer](https://github.com/hivivo/ngx-json-viewer) 3.2.1. The library was unmaintained since November 2022, declared no peer dependency ranges and was built for Angular 14, so it gave no compatibility signal on framework upgrades; it was vendored and rewritten for standalone components and block control flow. The segment model, type detection and CSS class contract come from the original and are reproduced below under its licence.
+
+```
+MIT License
+
+Copyright (c) 2022 Vivo Xu
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### JSON-js cycle.js
+
+The cycle-removal helper in the same component follows [Douglas Crockford's cycle.js](https://github.com/douglascrockford/JSON-js/blob/master/cycle.js), which its author released into the public domain. No licence notice is required for it; it is recorded here for completeness.
 
 ---
 

@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { JsonViewerComponent } from '@shared/components';
 import { MarkdownModule } from 'ngx-markdown';
 
 import { GetProjectRequest } from '../../../../../../features/projects/models/project.model';
@@ -16,7 +16,7 @@ import {
 
 @Component({
     selector: 'app-finish-message',
-    imports: [CommonModule, NgxJsonViewerModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [CommonModule, JsonViewerComponent, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="finish-container">
@@ -81,10 +81,10 @@ import {
                             >
                                 <div class="variables-content">
                                     <app-copy-button [text]="variablesJson" />
-                                    <ngx-json-viewer
+                                    <app-json-viewer
                                         [json]="getVariables()"
                                         [expanded]="false"
-                                    ></ngx-json-viewer>
+                                    ></app-json-viewer>
                                 </div>
                             </div>
                         </div>
@@ -110,10 +110,10 @@ import {
                         >
                             <div class="output-content">
                                 <app-copy-button [text]="outputJson" />
-                                <ngx-json-viewer
+                                <app-json-viewer
                                     [json]="getOutput()"
                                     [expanded]="false"
-                                ></ngx-json-viewer>
+                                ></app-json-viewer>
                             </div>
                         </div>
                     </div>
@@ -130,10 +130,10 @@ import {
                             </div>
                             <div class="output-content">
                                 <app-copy-button [text]="schemaOutputJson" />
-                                <ngx-json-viewer
+                                <app-json-viewer
                                     [json]="schemaOutput"
                                     [expanded]="true"
-                                ></ngx-json-viewer>
+                                ></app-json-viewer>
                             </div>
                         </div>
                     }

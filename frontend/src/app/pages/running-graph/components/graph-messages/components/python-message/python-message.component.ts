@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { JsonViewerComponent } from '@shared/components';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -10,7 +10,7 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
 
 @Component({
     selector: 'app-python-message',
-    imports: [CommonModule, NgxJsonViewerModule, FormatExecutionDataPipe, AppSvgIconComponent, CopyButtonComponent],
+    imports: [CommonModule, JsonViewerComponent, FormatExecutionDataPipe, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="python-flow-container">
@@ -86,10 +86,10 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                                 <div class="input-wrapper">
                                     <div class="result-content">
                                         @if (getParsedInput() && isValidJson(getInput())) {
-                                            <ngx-json-viewer
+                                            <app-json-viewer
                                                 [json]="getParsedInput()"
                                                 [expanded]="false"
-                                            ></ngx-json-viewer>
+                                            ></app-json-viewer>
                                         }
                                         @if (!isValidJson(getInput())) {
                                             <pre>{{ getInput() }}</pre>
@@ -184,10 +184,10 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                             <div class="raw-data-wrapper">
                                 <div class="raw-data-content">
                                     <app-copy-button [text]="copyText" />
-                                    <ngx-json-viewer
+                                    <app-json-viewer
                                         [json]="getExecutionData() | formatExecutionData"
                                         [expanded]="false"
-                                    ></ngx-json-viewer>
+                                    ></app-json-viewer>
                                 </div>
                             </div>
                         </div>
@@ -323,8 +323,8 @@ import { GraphMessage, MessageType, PythonMessageData } from '../../../../models
                 }
             }
 
-            .raw-data-content ::ng-deep ngx-json-viewer,
-            .raw-data-content ::ng-deep .ngx-json-viewer {
+            .raw-data-content ::ng-deep app-json-viewer,
+            .raw-data-content ::ng-deep .json-viewer {
                 display: inline-block;
                 min-width: 100%;
                 white-space: pre-wrap;

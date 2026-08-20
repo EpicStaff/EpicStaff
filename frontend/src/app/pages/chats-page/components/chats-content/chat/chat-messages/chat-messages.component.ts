@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, signal } from '@angular/core';
 import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { JsonViewerComponent } from '@shared/components';
 import { MarkdownModule } from 'ngx-markdown';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -19,7 +19,7 @@ export interface GroupedMessage {
 
 @Component({
     selector: 'app-chat-messages',
-    imports: [CommonModule, MarkdownModule, NgxJsonViewerModule, HasToolOutputPipe, AppSvgIconComponent],
+    imports: [CommonModule, MarkdownModule, JsonViewerComponent, HasToolOutputPipe, AppSvgIconComponent],
     templateUrl: './chat-messages.component.html',
     styleUrls: ['./chat-messages.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

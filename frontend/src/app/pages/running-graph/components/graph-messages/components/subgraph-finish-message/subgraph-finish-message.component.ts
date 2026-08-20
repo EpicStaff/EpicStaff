@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, ViewEncapsulation } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { JsonViewerComponent } from '@shared/components';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -13,7 +13,7 @@ import {
 
 @Component({
     selector: 'app-subgraph-finish-message',
-    imports: [NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
     animations: [expandCollapseAnimation],
     template: `
@@ -64,10 +64,10 @@ import {
                             >
                                 <div class="output-content">
                                     <app-copy-button [text]="outputJson" />
-                                    <ngx-json-viewer
+                                    <app-json-viewer
                                         [json]="getOutput()"
                                         [expanded]="false"
-                                    ></ngx-json-viewer>
+                                    ></app-json-viewer>
                                 </div>
                             </div>
                         </div>
@@ -92,10 +92,10 @@ import {
                             >
                                 <div class="variables-content">
                                     <app-copy-button [text]="variablesJson" />
-                                    <ngx-json-viewer
+                                    <app-json-viewer
                                         [json]="getVariables()"
                                         [expanded]="false"
-                                    ></ngx-json-viewer>
+                                    ></app-json-viewer>
                                 </div>
                             </div>
                         </div>

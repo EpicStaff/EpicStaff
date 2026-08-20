@@ -134,11 +134,23 @@ impossible to attribute. Both are queued as follow-ups.
 - `withXhr()` in `app.config.ts`. Angular 22 switched the default `HttpClient` backend to
   fetch; the migration added `withXhr()` to preserve behaviour. It should not be removed
   casually — four interceptors and cookie handling depend on the backend.
-- `ngx-json-viewer@3.2.1`: last published November 2022, declares no peer dependencies,
-  compiled partial-ivy with `minVersion 12.0.0`, used by 9 components. It links and renders
-  on 22, but a library with no peer range gives no compatibility signal and is the most
-  likely thing to break on the next major.
-- `@angular/animations` → native CSS, `zone.js` 0.15.1 → 0.16.2.
+- `@angular/animations` → native CSS. Nine files, but 18 `state()` and 16 `transition()`
+  calls: these are state machines, while `animate.enter`/`animate.leave` cover only entry and
+  exit, so each animation has to be rewritten as classes plus CSS and checked by eye.
+- `@foblex/flow` 18.4.0 → 19.1.6 and `ag-grid` 33.3.2 → 36.1.0, both awaiting a team decision.
+
+## Closed since
+
+Items listed as deferred above that have since been done, on the same story: the control flow
+migration; the `$safeNavigationMigration()` shim, together with the two extended diagnostics it
+had needed suppressed; `provideMarkdown()` and `provideMonacoEditor()` in place of the
+deprecated module providers; `zone.js` 0.16.2; 13 debug `console.log` calls, now held out by an
+eslint rule; and `ngx-json-viewer`, replaced by a vendored component under
+`shared/components/json-viewer/`, so the unmaintained dependency is gone rather than merely
+flagged. Its MIT attribution is recorded in the Vendored code section of
+THIRD-PARTY-NOTICES.md.
+
+---
 
 ## Method
 

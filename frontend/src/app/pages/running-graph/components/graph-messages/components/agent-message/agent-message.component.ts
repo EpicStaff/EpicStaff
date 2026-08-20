@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { JsonViewerComponent } from '@shared/components';
 
 import { GetAgentRequest } from '../../../../../../features/staff/models/agent.model';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
@@ -9,7 +9,7 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
 
 @Component({
     selector: 'app-agent-message',
-    imports: [NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="agent-flow-container">
@@ -90,10 +90,10 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
                                     @if (hasToolInput()) {
                                         <div class="tool-input-container">
                                             @if (isValidJson(getToolInput())) {
-                                                <ngx-json-viewer
+                                                <app-json-viewer
                                                     [json]="getParsedJson('tool')"
                                                     [expanded]="false"
-                                                ></ngx-json-viewer>
+                                                ></app-json-viewer>
                                             }
                                             @if (!isValidJson(getToolInput())) {
                                                 <div class="code-content">
@@ -126,10 +126,10 @@ import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/
                             >
                                 <div class="result-content">
                                     @if (isValidJson(getResult())) {
-                                        <ngx-json-viewer
+                                        <app-json-viewer
                                             [json]="getParsedJson('result')"
                                             [expanded]="true"
-                                        ></ngx-json-viewer>
+                                        ></app-json-viewer>
                                     }
                                     @if (!isValidJson(getResult())) {
                                         <div class="formatted-content">

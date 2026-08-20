@@ -43,10 +43,10 @@
                                     </div>
                                     @if (isArgumentsExpanded(item.id)) {
                                         <div class="tool-arguments-content">
-                                            <ngx-json-viewer
+                                            <app-json-viewer
                                                 [json]="getParsedJson(item.formatted.tool.arguments)"
                                                 [expanded]="false"
-                                            ></ngx-json-viewer>
+                                            ></app-json-viewer>
                                         </div>
                                     }
                                 </div>

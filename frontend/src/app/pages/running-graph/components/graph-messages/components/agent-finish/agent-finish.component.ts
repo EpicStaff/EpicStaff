@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { JsonViewerComponent } from '@shared/components';
 import { MarkdownModule } from 'ngx-markdown';
 
 import { GetAgentRequest } from '../../../../../../features/staff/models/agent.model';
@@ -10,7 +10,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
 
 @Component({
     selector: 'app-agent-finish-message',
-    imports: [MarkdownModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [MarkdownModule, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="agent-flow-container">
@@ -76,10 +76,10 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
                 <div class="result-content">
                     <app-copy-button [text]="cleanOutput(agentFinishMessageData.output)" />
                     @if (isValidJson(agentFinishMessageData.output)) {
-                        <ngx-json-viewer
+                        <app-json-viewer
                             [json]="getParsedJson(agentFinishMessageData.output)"
                             [expanded]="true"
-                        ></ngx-json-viewer>
+                        ></app-json-viewer>
                     }
                     @if (!isValidJson(agentFinishMessageData.output)) {
                         <markdown

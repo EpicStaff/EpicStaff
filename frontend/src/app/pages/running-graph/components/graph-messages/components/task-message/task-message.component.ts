@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { JsonViewerComponent } from '@shared/components';
 import { MarkdownModule } from 'ngx-markdown';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
@@ -10,7 +10,7 @@ import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/g
 
 @Component({
     selector: 'app-task-message',
-    imports: [CommonModule, MarkdownModule, NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [CommonModule, MarkdownModule, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     animations: [expandCollapseAnimation],
     template: `
         <div class="agent-flow-container">
@@ -112,10 +112,10 @@ import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/g
                                     <app-copy-button [text]="getRawData()" />
                                     <!-- JSON Viewer when raw data is valid JSON -->
                                     @if (isValidJson(getRawData())) {
-                                        <ngx-json-viewer
+                                        <app-json-viewer
                                             [json]="parsedRawData"
                                             [expanded]="false"
-                                        ></ngx-json-viewer>
+                                        ></app-json-viewer>
                                     }
                                     <!-- Markdown Output when raw data is not valid JSON -->
                                     @if (!isValidJson(getRawData())) {

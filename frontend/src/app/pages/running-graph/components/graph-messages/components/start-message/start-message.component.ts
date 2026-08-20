@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, ViewEncapsulation } from '@angular/core';
-import { NgxJsonViewerModule } from 'ngx-json-viewer';
+import { JsonViewerComponent } from '@shared/components';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -8,7 +8,7 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
 
 @Component({
     selector: 'app-start-message',
-    imports: [NgxJsonViewerModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     encapsulation: ViewEncapsulation.Emulated,
     animations: [expandCollapseAnimation],
     template: `
@@ -61,10 +61,10 @@ import { GraphMessage, MessageType } from '../../../../models/graph-session-mess
                             >
                                 <div class="input-content">
                                     <app-copy-button [text]="startInputJson" />
-                                    <ngx-json-viewer
+                                    <app-json-viewer
                                         [json]="getStartInput()"
                                         [expanded]="false"
-                                    ></ngx-json-viewer>
+                                    ></app-json-viewer>
                                 </div>
                             </div>
                         </div>
