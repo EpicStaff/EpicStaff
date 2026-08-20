@@ -6,7 +6,6 @@ from tables.serializers.model_serializers import (
     ClassificationDecisionTableNodeSerializer,
     CodeAgentNodeSerializer,
     ConditionalEdgeSerializer,
-    CrewNodeSerializer,
     DecisionTableNodeSerializer,
     EdgeSerializer,
     EndNodeSerializer,
@@ -44,16 +43,6 @@ class CodeAgentNodeBulkSerializer(BulkSaveEntityMixin, CodeAgentNodeSerializer):
     DEPRECATED: CodeAgentNodeBulkSerializer is deprecated. Use
     AgentNodeBulkSerializer or TaskNodeBulkSerializer instead. Exists only for
     backward compatibility with existing CodeAgentNode rows.
-    """
-
-    pass
-
-
-class CrewNodeBulkSerializer(BulkSaveEntityMixin, CrewNodeSerializer):
-    """
-    DEPRECATED: CrewNodeBulkSerializer is deprecated. Use
-    AgentNodeBulkSerializer or TaskNodeBulkSerializer instead. Exists only for
-    backward compatibility with existing CrewNode rows.
     """
 
     pass

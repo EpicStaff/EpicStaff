@@ -35,16 +35,6 @@ class UploadSourceCollectionSerializerValidationError(CustomAPIExeption):
     default_detail = "ValidationError occured in UploadSourceCollectionSerializer"
 
 
-class CrewMemoryValidationError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "ValidationError occured in CrewMemoryValidator -> ConverterService during asigning memory_llm or embedder"
-
-
-class TaskValidationError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "ValidationError occured in TaskValidator -> ConverterService during validate crews' tasks"
-
-
 class TaskSerializerError(CustomAPIExeption):
     status_code = 400
     default_detail = "SerializerError occured during Task serialization"

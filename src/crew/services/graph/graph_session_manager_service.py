@@ -75,7 +75,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         python_code_executor_service: RunPythonCodeService,
         session_schema_channel: str,
         session_timeout_channel: str,
-        crewai_output_channel: str,
         stop_session_channel: str,
         knowledge_search_service: KnowledgeSearchService,
         agent_task_service: AgentTaskService | None = None,
@@ -88,7 +87,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             redis_service (RedisService): The service responsible for Redis operations.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
             session_schema_channel (str): The Redis channel for listening to session schema messages.
-            crewai_output_channel (str): The Redis channel for publishing CrewAI output messages.
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice.
         """
@@ -97,7 +95,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         self.python_code_executor_service = python_code_executor_service
         self.session_schema_channel = session_schema_channel
         self.session_timeout_channel = session_timeout_channel
-        self.crewai_output_channel = crewai_output_channel
         self.stop_session_channel = stop_session_channel
         self.knowledge_search_service = knowledge_search_service
         self.agent_task_service = agent_task_service
@@ -124,7 +121,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 redis_service=self.redis_service,
                 crew_parser_service=self.crew_parser_service,
                 python_code_executor_service=self.python_code_executor_service,
-                crewai_output_channel=self.crewai_output_channel,
                 knowledge_search_service=self.knowledge_search_service,
                 stop_event=stop_event,
                 agent_task_service=self.agent_task_service,

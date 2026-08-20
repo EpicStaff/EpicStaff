@@ -88,7 +88,7 @@ def test_a_rag_whose_embedder_has_no_secret_reports_none(org, collection):
 def test_the_secret_id_lookup_is_a_single_query(
     org, collection, django_assert_num_queries
 ):
-    """One query per agent in the crew loop: select_related joins the embedder hop."""
+    """One query per agent: select_related joins the embedder hop."""
     secret = secret_service.create(text="sk-emb-q", org=org, name="emb-queries")
     embedder = _embedder(org=org, secret=secret, custom_name="conv-emb-queries")
     agent = _agent_with_naive_rag(org=org, collection=collection, embedder=embedder)
@@ -97,18 +97,3 @@ def test_the_secret_id_lookup_is_a_single_query(
         secret_id = agent.get_rag_embedder_secret_id()
 
     assert secret_id == secret.pk
-
-
-@pytest.mark.django_db
-def test_the_agent_payload_carries_the_secret_id(org, collection):
-    """The carrier, not the plaintext: converter_service never decrypts."""
-    secret = secret_service.create(text="sk-emb-payload", org=org, name="emb-payload")
-    embedder = _embedder(org=org, secret=secret, custom_name="conv-emb-payload")
-    agent = _agent_with_naive_rag(org=org, collection=collection, embedder=embedder)
-
-    from tables.services.converter_service import ConverterService
-
-    agent_data = ConverterService().convert_agent_to_pydantic(agent=agent, crew_id=None)
-
-    assert agent_data.rag_embedder_api_key_secret_id == secret.pk
-    assert agent_data.rag_embedder_api_key is None

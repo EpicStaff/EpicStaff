@@ -1,7 +1,6 @@
 import pytest
 
 from tables.models import (
-    Agent,
     Graph,
     LLMConfig,
     McpTool,
@@ -10,6 +9,7 @@ from tables.models import (
     WebhookTrigger,
     WebhookTriggerNode,
 )
+from agents.models import AgentDefinition
 from tables.models.label_models import Label
 from tables.models.rbac_models import Organization
 from tables.import_export.enums import EntityType
@@ -34,26 +34,33 @@ def _import(export_data, org_id):
 
 @pytest.mark.django_db
 class TestStrictCrossOrg:
-    def test_agent_not_reused_across_orgs(self, rich_seeded_db, export_service, org_b):
-        agent = rich_seeded_db["agents"][0]  # lives in default_org
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+    def test_agent_definition_not_reused_across_orgs(
+        self, exportable_agent_definition, export_service, org_b
+    ):
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         id_mapper, _ = _import(export_data, org_b.id)
 
-        # The agent and its LLMConfig must be CREATED in org_b, not reused from default_org
-        assert id_mapper.get_reused_ids(EntityType.AGENT) == []
-        new_agent = Agent.objects.get(id=id_mapper.get_created_ids(EntityType.AGENT)[0])
-        assert new_agent.org_id == org_b.id
+        # The definition and its LLMConfig must be CREATED in org_b, not reused
+        # from default_org.
+        assert id_mapper.get_reused_ids(EntityType.AGENT_DEFINITION) == []
+        new_definition = AgentDefinition.objects.get(
+            id=id_mapper.get_created_ids(EntityType.AGENT_DEFINITION)[0]
+        )
+        assert new_definition.organization_id == org_b.id
 
         new_cfg_ids = id_mapper.get_created_ids(EntityType.LLM_CONFIG)
         assert new_cfg_ids, "LLM config should be created in org_b, not reused"
         assert LLMConfig.objects.get(id=new_cfg_ids[0]).org_id == org_b.id
 
     def test_config_reused_within_same_org(
-        self, rich_seeded_db, export_service, default_org
+        self, exportable_agent_definition, export_service, default_org
     ):
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         id_mapper, _ = _import(export_data, default_org.id)
 
@@ -122,10 +129,11 @@ class TestMcpAndLabelCrossOrg:
 @pytest.mark.django_db
 class TestHybridCrossOrg:
     def test_builtin_model_reused_custom_tool_created(
-        self, rich_seeded_db, export_service, org_b
+        self, exportable_agent_definition, export_service, org_b
     ):
-        agent = rich_seeded_db["agents"][0]
-        export_data = export_service.export_entities(EntityType.AGENT, [agent.id])
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION, [exportable_agent_definition.id]
+        )
 
         id_mapper, _ = _import(export_data, org_b.id)
 

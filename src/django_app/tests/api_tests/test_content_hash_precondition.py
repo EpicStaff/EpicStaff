@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from tables.exceptions import ContentHashConflictError
-from tables.models import CrewNode, Graph, StartNode
+from tables.models import AgentNode, Graph, StartNode
 from tables.models.graph_models import ConditionalEdge, WebhookTriggerNode
 from tables.models.python_models import PythonCode
 from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
@@ -14,8 +14,8 @@ from tests.fixtures import *
 
 
 @pytest.fixture
-def crew_node(graph, crew):
-    return CrewNode.objects.create(node_name="test_crew_node", crew=crew, graph=graph)
+def agent_node(graph):
+    return AgentNode.objects.create(node_name="test_agent_node", graph=graph)
 
 
 @pytest.fixture
@@ -24,24 +24,24 @@ def start_node(graph):
 
 
 # ---------------------------------------------------------------------------
-# View-level: standard viewset (CrewNode)
+# View-level: standard viewset (AgentNode)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 class TestContentHashPreconditionViewSet:
-    def test_patch_with_correct_hash_succeeds(self, auth_client, crew_node):
-        url = reverse("crewnode-detail", args=[crew_node.id])
+    def test_patch_with_correct_hash_succeeds(self, auth_client, agent_node):
+        url = reverse("agentnode-detail", args=[agent_node.id])
         response = auth_client.patch(
             url,
-            {"node_name": "updated_name", "content_hash": crew_node.content_hash},
+            {"node_name": "updated_name", "content_hash": agent_node.content_hash},
             format="json",
         )
 
         assert response.status_code == status.HTTP_200_OK, response.content
 
-    def test_patch_with_stale_hash_returns_409(self, auth_client, crew_node):
-        url = reverse("crewnode-detail", args=[crew_node.id])
+    def test_patch_with_stale_hash_returns_409(self, auth_client, agent_node):
+        url = reverse("agentnode-detail", args=[agent_node.id])
         response = auth_client.patch(
             url,
             {"node_name": "updated_name", "content_hash": "stale_or_wrong_hash"},
@@ -51,9 +51,9 @@ class TestContentHashPreconditionViewSet:
         assert response.status_code == status.HTTP_409_CONFLICT, response.content
         assert response.data["code"] == "content_hash_conflict"
 
-    def test_patch_without_hash_succeeds(self, auth_client, crew_node):
+    def test_patch_without_hash_succeeds(self, auth_client, agent_node):
         """Omitting content_hash skips validation — backward compatible."""
-        url = reverse("crewnode-detail", args=[crew_node.id])
+        url = reverse("agentnode-detail", args=[agent_node.id])
         response = auth_client.patch(
             url,
             {"node_name": "updated_name"},
@@ -62,15 +62,14 @@ class TestContentHashPreconditionViewSet:
 
         assert response.status_code == status.HTTP_200_OK, response.content
 
-    def test_put_with_correct_hash_succeeds(self, auth_client, crew_node):
-        url = reverse("crewnode-detail", args=[crew_node.id])
+    def test_put_with_correct_hash_succeeds(self, auth_client, agent_node):
+        url = reverse("agentnode-detail", args=[agent_node.id])
         response = auth_client.put(
             url,
             {
                 "node_name": "replaced_name",
-                "graph": crew_node.graph_id,
-                "crew_id": crew_node.crew_id,
-                "content_hash": crew_node.content_hash,
+                "graph": agent_node.graph_id,
+                "content_hash": agent_node.content_hash,
                 "metadata": {},
             },
             format="json",
@@ -78,14 +77,13 @@ class TestContentHashPreconditionViewSet:
 
         assert response.status_code == status.HTTP_200_OK, response.content
 
-    def test_put_with_stale_hash_returns_409(self, auth_client, crew_node):
-        url = reverse("crewnode-detail", args=[crew_node.id])
+    def test_put_with_stale_hash_returns_409(self, auth_client, agent_node):
+        url = reverse("agentnode-detail", args=[agent_node.id])
         response = auth_client.put(
             url,
             {
                 "node_name": "replaced_name",
-                "graph": crew_node.graph_id,
-                "crew_id": crew_node.crew_id,
+                "graph": agent_node.graph_id,
                 "content_hash": "outdated_hash",
                 "metadata": {},
             },
@@ -94,10 +92,10 @@ class TestContentHashPreconditionViewSet:
 
         assert response.status_code == status.HTTP_409_CONFLICT, response.content
 
-    def test_second_concurrent_update_is_rejected(self, auth_client, crew_node):
+    def test_second_concurrent_update_is_rejected(self, auth_client, agent_node):
         """Simulate two users: first save wins, second is rejected with stale hash."""
-        original_hash = crew_node.content_hash
-        url = reverse("crewnode-detail", args=[crew_node.id])
+        original_hash = agent_node.content_hash
+        url = reverse("agentnode-detail", args=[agent_node.id])
 
         # User A saves successfully
         response_a = auth_client.patch(
@@ -151,41 +149,41 @@ class TestContentHashStartNode:
 
 @pytest.mark.django_db
 class TestContentHashModelLevel:
-    def test_save_with_correct_expected_hash_succeeds(self, crew_node):
-        crew_node._expected_hash = crew_node.content_hash
-        crew_node.node_name = "direct_update"
-        crew_node.save()  # should not raise
+    def test_save_with_correct_expected_hash_succeeds(self, agent_node):
+        agent_node._expected_hash = agent_node.content_hash
+        agent_node.node_name = "direct_update"
+        agent_node.save()  # should not raise
 
-        crew_node.refresh_from_db()
-        assert crew_node.node_name == "direct_update"
+        agent_node.refresh_from_db()
+        assert agent_node.node_name == "direct_update"
 
-    def test_save_with_wrong_expected_hash_raises(self, crew_node):
-        crew_node._expected_hash = "wrong_hash"
-        crew_node.node_name = "should_not_save"
+    def test_save_with_wrong_expected_hash_raises(self, agent_node):
+        agent_node._expected_hash = "wrong_hash"
+        agent_node.node_name = "should_not_save"
 
         with pytest.raises(ContentHashConflictError):
-            crew_node.save()
+            agent_node.save()
 
-    def test_save_without_expected_hash_skips_validation(self, crew_node):
+    def test_save_without_expected_hash_skips_validation(self, agent_node):
         """No _expected_hash set — validation is bypassed (default behaviour)."""
-        crew_node.node_name = "silent_update"
-        crew_node.save()
+        agent_node.node_name = "silent_update"
+        agent_node.save()
 
-        crew_node.refresh_from_db()
-        assert crew_node.node_name == "silent_update"
+        agent_node.refresh_from_db()
+        assert agent_node.node_name == "silent_update"
 
-    def test_hash_is_updated_after_save(self, crew_node):
-        old_hash = crew_node.content_hash
-        crew_node._expected_hash = old_hash
-        crew_node.node_name = "changed_name"
-        crew_node.save()
+    def test_hash_is_updated_after_save(self, agent_node):
+        old_hash = agent_node.content_hash
+        agent_node._expected_hash = old_hash
+        agent_node.node_name = "changed_name"
+        agent_node.save()
 
-        crew_node.refresh_from_db()
-        assert crew_node.content_hash != old_hash
+        agent_node.refresh_from_db()
+        assert agent_node.content_hash != old_hash
 
-    def test_new_object_skips_hash_validation(self, graph, crew):
+    def test_new_object_skips_hash_validation(self, graph):
         """Creating a new record should never trigger the hash check."""
-        node = CrewNode(node_name="brand_new", crew=crew, graph=graph)
+        node = AgentNode(node_name="brand_new", graph=graph)
         node._expected_hash = "irrelevant_for_new_object"
         node.save()  # should not raise
 

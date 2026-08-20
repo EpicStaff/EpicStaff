@@ -15,7 +15,6 @@ from tables.models.graph_models import (
     ClassificationDecisionTablePrompt,
     ConditionGroup,
     Condition,
-    CrewNode,
     DecisionTableNode,
     EndNode,
     FileExtractorNode,
@@ -73,14 +72,6 @@ def copy_audio_transcription_node(
 ) -> AudioTranscriptionNode:
     return AudioTranscriptionNode.objects.create(
         graph=graph,
-        **get_base_node_fields(node),
-    )
-
-
-def copy_crew_node(graph: Graph, node: CrewNode) -> CrewNode:
-    return CrewNode.objects.create(
-        graph=graph,
-        crew=node.crew,
         **get_base_node_fields(node),
     )
 
@@ -315,7 +306,6 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
         "audio_transcription_node_list",
         copy_audio_transcription_node,
     ),
-    NodeType.CREW_NODE: ("crew_node_list", copy_crew_node),
     NodeType.SUBGRAPH_NODE: ("subgraph_node_list", copy_subgraph_node),
     NodeType.PYTHON_NODE: ("python_node_list", copy_python_node),
     NodeType.WEBHOOK_TRIGGER_NODE: (

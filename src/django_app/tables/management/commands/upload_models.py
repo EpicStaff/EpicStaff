@@ -13,8 +13,6 @@ from tables.models import (
 )
 from tables.models.crew_models import (
     Agent,
-    DefaultAgentConfig,
-    DefaultCrewConfig,
     DefaultToolConfig,
 )
 from tables.models.embedding_models import DefaultEmbeddingConfig
@@ -38,8 +36,6 @@ class Command(BaseCommand):
         upload_default_llm_config()
         upload_default_embedding_config()
         upload_default_realtime_agent_config()
-        upload_default_agent_config()
-        upload_default_crew_config()
         upload_default_tool_config()
         upload_legacy_tools()
         upload_realtime_agents()
@@ -241,19 +237,9 @@ def upload_default_embedding_config():
     DefaultEmbeddingConfig.objects.create(id=1)
 
 
-def upload_default_agent_config():
-    DefaultAgentConfig.objects.all().delete()
-    DefaultAgentConfig.objects.create(id=1)
-
-
 def upload_default_realtime_agent_config():
     DefaultRealtimeAgentConfig.objects.all().delete()
     DefaultRealtimeAgentConfig.objects.create(id=1)
-
-
-def upload_default_crew_config():
-    DefaultCrewConfig.objects.all().delete()
-    DefaultCrewConfig.objects.create(id=1)
 
 
 def upload_default_tool_config():

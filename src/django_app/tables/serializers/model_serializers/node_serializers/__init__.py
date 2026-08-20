@@ -14,7 +14,6 @@ from .basic_node_serializers import (
     AgentNodeTaskSerializer,
     AudioTranscriptionNodeSerializer,
     CodeAgentNodeSerializer,
-    CrewNodeSerializer,
     EdgeSerializer,
     FileExtractorNodeSerializer,
     PythonNodeSerializer,

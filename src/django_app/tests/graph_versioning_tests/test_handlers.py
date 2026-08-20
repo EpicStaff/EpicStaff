@@ -1,5 +1,4 @@
 from tables.graph_versioning.handlers import (
-    CrewNodeHandler,
     SubgraphNodeHandler,
     CodeAgentNodeHandler,
     WebhookTriggerNodeHandler,
@@ -8,58 +7,6 @@ from tables.graph_versioning.handlers import (
     HANDLER_REGISTRY,
 )
 from tables.import_export.enums import NodeType
-
-
-# ---------------------------------------------------------------------------
-# CrewNodeHandler — 3 existing tests (kept as-is, inline dicts)
-# ---------------------------------------------------------------------------
-
-
-def test_crew_handler_finds_missing_id(crew_node_dict, full_missing_sets):
-    handler = CrewNodeHandler()
-
-    missing_id = handler.find_missing_id(crew_node_dict, full_missing_sets)
-
-    assert missing_id == crew_node_dict["crew"]
-
-
-def test_crew_handler_returns_none_when_crew_exists(crew_node_dict, empty_missing_sets):
-    handler = CrewNodeHandler()
-
-    missing_id = handler.find_missing_id(crew_node_dict, empty_missing_sets)
-
-    assert missing_id is None
-
-
-def test_crew_handler_skips_node(crew_node_dict):
-    handler = CrewNodeHandler()
-
-    should_skip, warning = handler.handle(
-        crew_node_dict, missing_id=crew_node_dict["crew"]
-    )
-
-    assert should_skip is True
-    assert warning["type"] == "node_skipped"
-
-
-def test_crew_handler_warning_contains_dependency_label(crew_node_dict):
-    # Arrange
-    handler = CrewNodeHandler()
-
-    # Act
-    _, warning = handler.handle(crew_node_dict, missing_id=crew_node_dict["crew"])
-
-    # Assert
-    assert "Project" in warning["reason"]
-
-
-def test_crew_handler_warning_has_no_node_id_field(crew_node_dict):
-    # SkipNodeHandler warnings must NOT include node_id
-    handler = CrewNodeHandler()
-
-    _, warning = handler.handle(crew_node_dict, missing_id=crew_node_dict["crew"])
-
-    assert "node_id" not in warning
 
 
 # ---------------------------------------------------------------------------
@@ -359,9 +306,8 @@ def test_telegram_trigger_handler_warning_fields(telegram_trigger_node_dict):
 # ---------------------------------------------------------------------------
 
 
-def test_handler_registry_contains_all_seven_node_types():
+def test_handler_registry_contains_every_handled_node_type():
     expected_types = {
-        NodeType.CREW_NODE,
         NodeType.SUBGRAPH_NODE,
         NodeType.CODE_AGENT_NODE,
         NodeType.WEBHOOK_TRIGGER_NODE,
@@ -373,8 +319,10 @@ def test_handler_registry_contains_all_seven_node_types():
     assert set(HANDLER_REGISTRY.keys()) == expected_types
 
 
-def test_handler_registry_crew_node_maps_to_crew_handler():
-    assert isinstance(HANDLER_REGISTRY[NodeType.CREW_NODE], CrewNodeHandler)
+def test_handler_registry_has_no_crew_node_entry():
+    # CrewNode execution is gone; the enum member survives only so old export
+    # files still parse, and it must not resolve to a handler.
+    assert NodeType.CREW_NODE not in HANDLER_REGISTRY
 
 
 def test_handler_registry_subgraph_node_maps_to_subgraph_handler():

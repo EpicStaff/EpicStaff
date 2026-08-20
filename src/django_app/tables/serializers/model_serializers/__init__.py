@@ -2,7 +2,7 @@ from .llm_serializers import *
 from .tag_serializers import *
 from .embedding_serializers import *
 from .provider_serializers import *
-from .crew_serializers import *
+from .tool_config_serializers import *
 from .python_serializers import *
 from .mcp_serializers import *
 from .realtime_serializers import *

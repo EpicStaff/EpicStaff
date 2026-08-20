@@ -6,7 +6,6 @@ from tables.models import (
     StartNode,
     PythonNode,
     DecisionTableNode,
-    CrewNode,
     FileExtractorNode,
     WebhookTriggerNode,
     TelegramTriggerNode,
@@ -204,12 +203,6 @@ class FileExtractorNodeImportSerializer(BaseNodeImportSerializer):
 class AudioTranscriptionNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = AudioTranscriptionNode
-        exclude = ["created_at", "updated_at"]
-
-
-class CrewNodeImportSerializer(BaseNodeImportSerializer):
-    class Meta(BaseNodeImportSerializer.Meta):
-        model = CrewNode
         exclude = ["created_at", "updated_at"]
 
 

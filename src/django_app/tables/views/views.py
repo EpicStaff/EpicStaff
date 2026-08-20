@@ -11,9 +11,6 @@ from tables.models.graph_models import (
 )
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.utils.telegram_fields import load_telegram_trigger_fields
-from tables.models import Tool
-from tables.models import Crew
-from tables.models import Agent
 from tables.services.realtime_service import RealtimeService
 from agents.models import AgentDefinition
 from tables.swagger_schemas.python_node_test_mode_schema import (
@@ -68,7 +65,6 @@ from tables.serializers.model_serializers import (
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.serializers.serializers import (
-    AnswerToLLMSerializer,
     BulkExportSerializer,
     InitRealtimeSerializer,
     NotifyEmailSerializer,
@@ -124,7 +120,6 @@ from tables.swagger_schemas.knowledge_schemas.naive_rag_schemas import (
 )
 from tables.swagger_schemas.realtime_schemas import INIT_REALTIME_POST
 from tables.swagger_schemas.sessions_schema import (
-    ANSWER_TO_LLM,
     GET_UPDATES_GET,
     RUN_SESSION_POST,
     SESSION_BULK_DELETE_POST,
@@ -575,69 +570,6 @@ class StopSession(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class AnswerToLLM(APIView):
-    @extend_schema(**ANSWER_TO_LLM)
-    def post(self, request, *args, **kwargs):
-        serializer = AnswerToLLMSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        session_id = serializer.validated_data["session_id"]
-        name = serializer.validated_data["name"]
-        crew_id = serializer.validated_data["crew_id"]
-        execution_order = serializer.validated_data["execution_order"]
-        answer = serializer.validated_data["answer"]
-        try:
-            session = Session.objects.get(id=session_id)
-        except Session.DoesNotExist:
-            return Response("Session not found", status=status.HTTP_404_NOT_FOUND)
-
-        # Org isolation: only a member of the session's (graph) org may answer it
-        # — same gate as stop/get-updates (FLOWS READ; superadmin bypass).
-        assert_session_org_access(request.user, session, Permission.READ)
-
-        logger.info(
-            f"{session.status} == {Session.SessionStatus.WAIT_FOR_USER} : {session.status == Session.SessionStatus.WAIT_FOR_USER}"
-        )
-
-        if session.status != Session.SessionStatus.WAIT_FOR_USER:
-            return Response(
-                "Session status is not wait_for_user",
-                status=status.HTTP_418_IM_A_TEAPOT,
-            )
-
-        created_at_dt = datetime.now(timezone.utc)
-        created_at_iso = created_at_dt.isoformat(timespec="milliseconds").replace(
-            "+00:00", "Z"
-        )
-
-        session_manager_service.register_message(
-            data={
-                "session_id": session_id,
-                "name": name,
-                "execution_order": execution_order,
-                "timestamp": created_at_iso,
-                "message_data": {
-                    "text": answer,
-                    "crew_id": crew_id,
-                    "message_type": "user",
-                },
-                "uuid": str(uuid.uuid4()),
-            },
-            created_at_dt=created_at_dt,
-        )
-
-        redis_service.send_user_input(
-            session_id=session_id,
-            node_name=name,
-            crew_id=crew_id,
-            execution_order=execution_order,
-            message=answer,
-        )
-
-        return Response(status=status.HTTP_202_ACCEPTED)
-
-
 class NotifyEmailView(APIView):
     """EST-3285 4.8: sends a notification email via notification_tool
     (channel='email'). Reuses NotificationEmailSender (Django's send_mail /
@@ -750,7 +682,6 @@ class InitRealtimeAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        agent_id = serializer.validated_data.get("agent_id")
         agent_definition_id = serializer.validated_data.get("agent_definition_id")
         config = serializer.validated_data.get("config", {})
 
@@ -767,11 +698,6 @@ class InitRealtimeAPIView(APIView):
             resource_type=ResourceType.AGENTS,
             action=Permission.READ,
         )
-        if agent_id is not None:
-            if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
-                raise ValidationError(
-                    {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
-                )
 
         if agent_definition_id is not None:
             if not AgentDefinition.objects.filter(

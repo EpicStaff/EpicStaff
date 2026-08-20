@@ -1,12 +1,13 @@
 import pytest
 
+from agents.models import AgentDefinition
 from tables.graph_versioning.handlers import _MissingSets
 from tables.import_export.enums import NodeType
 from tables.models import Organization
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 
 # Dependency IDs used consistently across all handler tests
-_CREW_ID = 42
+_AGENT_DEFINITION_ID = 42
 _LLM_CONFIG_ID = 3
 _SUBGRAPH_ID = 5
 _WEBHOOK_TRIGGER_ID = 7
@@ -19,12 +20,23 @@ def default_org(db):
 
 
 @pytest.fixture
-def crew_node_dict():
+def agent_definition(default_org):
+    """Dependency target for the AgentNode/TaskNode versioning tests."""
+    return AgentDefinition.objects.create(
+        organization=default_org,
+        name="versioned-agent",
+        description="agent used by the versioning tests",
+        instructions="be brief",
+    )
+
+
+@pytest.fixture
+def agent_node_dict():
     return {
-        "id": 10,
-        "node_type": NodeType.CREW_NODE,
-        "node_name": "Crew Node",
-        "crew": _CREW_ID,
+        "id": 20,
+        "node_type": NodeType.AGENT_NODE,
+        "node_name": "Agent Node",
+        "agent_definition": _AGENT_DEFINITION_ID,
     }
 
 
@@ -71,7 +83,6 @@ def telegram_trigger_node_dict():
 @pytest.fixture
 def empty_missing_sets():
     return _MissingSets(
-        crews=set(),
         subgraphs=set(),
         llm_configs=set(),
         webhooks=set(),
@@ -85,11 +96,10 @@ def empty_missing_sets():
 @pytest.fixture
 def full_missing_sets():
     return _MissingSets(
-        crews={_CREW_ID},
         subgraphs={_SUBGRAPH_ID},
         llm_configs={_LLM_CONFIG_ID},
         webhooks={_WEBHOOK_TRIGGER_ID},
-        agent_definitions=set(),
+        agent_definitions={_AGENT_DEFINITION_ID},
         surfaces=set(),
         python_code_tools=set(),
         mcp_tools=set(),

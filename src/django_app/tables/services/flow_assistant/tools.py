@@ -27,7 +27,6 @@ from tables.models.graph_models import (
     ClassificationConditionGroup,
     CodeAgentNode,
     ConditionGroup,
-    CrewNode,
     DecisionTableNode,
     Edge,
     EndNode,
@@ -49,7 +48,6 @@ _SECRET_PATTERN = re.compile(r"api_key|secret|token", re.IGNORECASE)
 # pass "node_name" to .only() for those models or Django will raise
 # FieldDoesNotExist.
 _NODE_TABLES: list[tuple[str, type, bool]] = [
-    ("crew", CrewNode, True),
     ("python", PythonNode, True),
     ("file_extractor", FileExtractorNode, True),
     ("audio_transcription", AudioTranscriptionNode, True),
@@ -198,7 +196,6 @@ def get_flow_overview(graph_id: int) -> dict:
     from tables.models.graph_models import Graph
 
     graph = Graph.objects.prefetch_related(
-        "crew_node_list",
         "python_node_list",
         "file_extractor_node_list",
         "audio_transcription_node_list",
@@ -217,7 +214,6 @@ def get_flow_overview(graph_id: int) -> dict:
     ).get(pk=graph_id)
 
     node_count_by_type = {
-        "crew": graph.crew_node_list.count(),
         "python": graph.python_node_list.count(),
         "file_extractor": graph.file_extractor_node_list.count(),
         "audio_transcription": graph.audio_transcription_node_list.count(),
@@ -312,11 +308,6 @@ def get_node(graph_id: int, node_id: str) -> dict:
     if node_type == "code_agent":
         llm_config_id = getattr(node, "llm_config_id", None)
         result["llm_config_summary"] = _resolve_llm_config_summary(llm_config_id)
-
-    # Phase D: attach crew summary for CrewNode.
-    if node_type == "crew":
-        crew_id = getattr(node, "crew_id", None)
-        result["crew_summary"] = _resolve_crew_summary(crew_id)
 
     # Phase F (Fix 16): attach python_code summary for nodes that wrap user-authored Python.
     if node_type in ("python", "webhook_trigger"):
@@ -835,7 +826,6 @@ def list_node_types(graph_id: int) -> list[str]:
     from tables.models.graph_models import Graph
 
     graph = Graph.objects.prefetch_related(
-        "crew_node_list",
         "python_node_list",
         "file_extractor_node_list",
         "audio_transcription_node_list",
@@ -851,7 +841,6 @@ def list_node_types(graph_id: int) -> list[str]:
 
     present = []
     checks = [
-        ("crew", graph.crew_node_list),
         ("python", graph.python_node_list),
         ("file_extractor", graph.file_extractor_node_list),
         ("audio_transcription", graph.audio_transcription_node_list),
@@ -951,48 +940,6 @@ def _resolve_knowledge_metadata(knowledge_collection_id: int | None) -> list[dic
             "document_count": collection.documents.count(),
         }
     ]
-
-
-def _resolve_crew_summary(crew_id: int | None) -> dict | None:
-    """Return a structural summary of a Crew for a CrewNode.
-
-    Includes agent roles/goals and task names/descriptions at overview level.
-    Explicitly excludes agent backstories and task instructions (prompt text)
-    to avoid leaking proprietary persona content.
-
-    Returns None when crew_id is None or the Crew row does not exist.
-    """
-    if crew_id is None:
-        return None
-
-    from tables.models.crew_models import Crew, Task
-
-    try:
-        crew = Crew.objects.prefetch_related("agents").get(pk=crew_id)
-    except Crew.DoesNotExist:
-        return None
-
-    agents = [{"role": agent.role, "goal": agent.goal} for agent in crew.agents.all()]
-
-    tasks_qs = Task.objects.filter(crew=crew).order_by("order", "pk")
-    tasks = [
-        {
-            "name": task.name,
-            "description": task.instructions[:200] if task.instructions else None,
-        }
-        for task in tasks_qs
-    ]
-
-    return {
-        "id": crew.pk,
-        "name": crew.name,
-        "description": crew.description,
-        "process": crew.process,
-        "agent_count": len(agents),
-        "task_count": len(tasks),
-        "agents": agents,
-        "tasks": tasks,
-    }
 
 
 def _resolve_python_code_summary(python_code_id: int | None) -> dict | None:
@@ -1112,7 +1059,6 @@ TOOL_SPECS: list[ToolSpec] = [
             "includes `decision_rules` with the full branching logic. "
             "For llm and code_agent nodes, the response includes `llm_config_summary` "
             "with provider, model, and temperature. "
-            "For crew nodes, the response includes `crew_summary` with agents and tasks. "
             "For python and webhook_trigger nodes, the response includes "
             "`python_code_summary` with the actual code body, entrypoint, and library "
             "list — use it to answer questions about what the node does, which APIs it "

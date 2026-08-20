@@ -4,7 +4,6 @@ from __future__ import annotations
 # system prompt.  Each entry corresponds to a related manager on the Graph
 # model.  Order is preserved in the prompt output.
 NODE_RELATED_NAMES: tuple[tuple[str, str], ...] = (
-    ("crew", "crew_node_list"),
     ("python", "python_node_list"),
     ("file_extractor", "file_extractor_node_list"),
     ("audio_transcription", "audio_transcription_node_list"),

@@ -8,7 +8,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from tables.models.rbac_models import ApiKey, Organization, OrganizationUser, Role
 from tables.services.rbac.api_key.generator import ApiKeyGenerator
 
-# Import shared fixtures (graph, crew, session_data, etc.)
+# Import shared fixtures (graph, agent, session_data, etc.)
 from .fixtures import *  # noqa: F401,F403
 
 
@@ -115,7 +115,7 @@ def jwt_tokens(regular_user):
 @pytest.fixture
 def auth_client(api_client, jwt_tokens, default_org) -> APIClient:
     # regular_user is an Org Admin member of default_org; the shared resource
-    # fixtures (graph/agent/crew) are created in the same org, so sending the
+    # fixtures (graph/agent) are created in the same org, so sending the
     # active-org header makes org-scoped endpoints resolve and authorize.
     api_client.credentials(
         HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}",

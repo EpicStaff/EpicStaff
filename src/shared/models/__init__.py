@@ -14,7 +14,6 @@ from .agent_service import (
 from .agents import (
     AgentData,
     RealtimeAgentChatData,
-    TaskMessageData,
 )
 from .ai_providers import (
     LLMConfigData,
@@ -145,7 +144,6 @@ __all__ = [
     # agents
     "AgentData",
     "RealtimeAgentChatData",
-    "TaskMessageData",
     # ai_providers
     "LLMConfigData",
     "EmbedderConfigData",

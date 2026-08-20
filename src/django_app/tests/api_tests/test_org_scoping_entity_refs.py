@@ -7,16 +7,14 @@ from unittest.mock import patch
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Agent, Crew, Graph
+from tables.models import Agent, Graph
 from tables.models.graph_models import (
+    AgentNode,
     ConditionGroup,
-    CrewNode,
     DecisionTableNode,
-    Edge,
     StartNode,
 )
 from tables.models.label_models import Label
-from tables.models.llm_models import LLMConfig
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 
@@ -54,29 +52,7 @@ def _graph(org, name="g"):
     return Graph.objects.create(name=name, metadata={"nodes": [], "edges": []}, org=org)
 
 
-# ---- A1: crew planning_llm_config ----
-
-
-@pytest.mark.django_db
-def test_crew_planning_llm_config_cross_org_rejected(client_a, org_a, org_b):
-    other = LLMConfig.objects.create(custom_name="b-cfg", org=org_b)
-    resp = client_a.post(
-        "/api/crews/", {"name": "c1", "planning_llm_config": other.id}, format="json"
-    )
-    assert resp.status_code == 400
-    assert "planning_llm_config" in str(resp.data)
-
-
-@pytest.mark.django_db
-def test_crew_planning_llm_config_same_org_ok(client_a, org_a):
-    mine = LLMConfig.objects.create(custom_name="a-cfg", org=org_a)
-    resp = client_a.post(
-        "/api/crews/", {"name": "c1", "planning_llm_config": mine.id}, format="json"
-    )
-    assert resp.status_code == 201, resp.data
-
-
-# ---- A2: graph label_ids ----
+# ---- A: graph label_ids ----
 
 
 @pytest.mark.django_db
@@ -93,13 +69,12 @@ def test_graph_label_ids_cross_org_rejected(client_a, org_a, org_b):
 
 
 @pytest.mark.django_db
-def test_crew_node_graph_repoint_cross_org_rejected(client_a, org_a, org_b):
+def test_agent_node_graph_repoint_cross_org_rejected(client_a, org_a, org_b):
     graph_a = _graph(org_a, "a")
     graph_b = _graph(org_b, "b")
-    crew = Crew.objects.create(name="crew", org=org_a)
-    node = CrewNode.objects.create(crew=crew, graph=graph_a, node_name="n1")
+    node = AgentNode.objects.create(graph=graph_a, node_name="n1")
     resp = client_a.patch(
-        f"/api/crewnodes/{node.id}/", {"graph": graph_b.id}, format="json"
+        f"/api/agentnodes/{node.id}/", {"graph": graph_b.id}, format="json"
     )
     assert resp.status_code == 400
     assert "graph" in str(resp.data)

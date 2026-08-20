@@ -1,27 +1,22 @@
 """Cross-org reference rejection (security regression tests).
 
 A write in org A must never be able to attach / reference an org B object via
-tool_ids, knowledge_collection, rag, or config FKs. Each is rejected exactly
-like a non-existent pk (no existence leak).
+a node reference or a config FK. Each is rejected exactly like a non-existent
+pk (no existence leak).
 """
 
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Agent, Crew, SourceCollection
 from tables.models.embedding_models import EmbeddingModel
-from tables.models.graph_models import CrewNode, Graph, SubGraphNode
+from tables.models.graph_models import Graph, SubGraphNode
 from tables.models.llm_models import (
     LLMConfig,
     LLMModel,
-    RealtimeConfig,
     RealtimeModel,
-    RealtimeTranscriptionConfig,
     RealtimeTranscriptionModel,
 )
-from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
-from tables.models.knowledge_models import BaseRagType, NaiveRag
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 
@@ -65,10 +60,6 @@ def _python_tool(org, *, built_in=False, name="tool"):
     )
 
 
-def _mcp(org, name="mcp"):
-    return McpTool.objects.create(name=name, transport="t", tool_name="x", org=org)
-
-
 def _llm_config(org, name="cfg"):
     return LLMConfig.objects.create(custom_name=name, org=org)
 
@@ -93,183 +84,22 @@ def _realtime_transcription_model(org, *, is_custom, name="rtt"):
     )
 
 
-def _naive_rag(org):
-    coll = SourceCollection.objects.create(collection_name="c", org=org)
-    brt = BaseRagType.objects.create(
-        rag_type=BaseRagType.RagType.NAIVE, source_collection=coll
-    )
-    return coll, NaiveRag.objects.create(base_rag_type=brt)
-
-
-def _agent_payload(**extra):
-    return {"role": "r", "goal": "g", "backstory": "b", **extra}
-
-
 def _rejected(resp):
     return resp.status_code == 400 and "does not exist" in str(resp.data)
-
-
-# ---- Agent: tool_ids ----
-
-
-@pytest.mark.django_db
-def test_agent_rejects_cross_org_python_tool(client_admin_a, org_b):
-    b_tool = _python_tool(org_b, name="b-tool")
-    resp = client_admin_a.post(
-        "/api/agents/",
-        _agent_payload(tool_ids=[f"python-code-tool:{b_tool.id}"]),
-        format="json",
-    )
-    assert _rejected(resp), resp.data
-
-
-@pytest.mark.django_db
-def test_agent_rejects_cross_org_mcp_tool(client_admin_a, org_b):
-    b_mcp = _mcp(org_b, name="b-mcp")
-    resp = client_admin_a.post(
-        "/api/agents/",
-        _agent_payload(tool_ids=[f"mcp-tool:{b_mcp.id}"]),
-        format="json",
-    )
-    assert _rejected(resp), resp.data
-
-
-@pytest.mark.django_db
-def test_agent_allows_builtin_python_tool(client_admin_a):
-    builtin = _python_tool(None, built_in=True, name="builtin-tool")
-    resp = client_admin_a.post(
-        "/api/agents/",
-        _agent_payload(tool_ids=[f"python-code-tool:{builtin.id}"]),
-        format="json",
-    )
-    assert resp.status_code == 201, resp.data  # built-ins are global
-
-
-@pytest.mark.django_db
-def test_agent_allows_same_org_python_tool(client_admin_a, org_a):
-    a_tool = _python_tool(org_a, name="a-tool")
-    resp = client_admin_a.post(
-        "/api/agents/",
-        _agent_payload(tool_ids=[f"python-code-tool:{a_tool.id}"]),
-        format="json",
-    )
-    assert resp.status_code == 201, resp.data
-
-
-# ---- Agent: knowledge_collection + rag ----
-
-
-@pytest.mark.django_db
-def test_agent_rejects_cross_org_knowledge_collection(client_admin_a, org_b):
-    b_coll, b_rag = _naive_rag(org_b)
-    resp = client_admin_a.post(
-        "/api/agents/",
-        _agent_payload(
-            knowledge_collection=b_coll.collection_id,
-            rag={"rag_id": b_rag.naive_rag_id, "rag_type": "naive"},
-        ),
-        format="json",
-    )
-    assert _rejected(resp), resp.data
-
-
-@pytest.mark.django_db
-def test_agent_rejects_cross_org_rag(client_admin_a, org_a, org_b):
-    a_coll = SourceCollection.objects.create(collection_name="a", org=org_a)
-    _, b_rag = _naive_rag(org_b)
-    resp = client_admin_a.post(
-        "/api/agents/",
-        _agent_payload(
-            knowledge_collection=a_coll.collection_id,  # valid (own org)
-            rag={"rag_id": b_rag.naive_rag_id, "rag_type": "naive"},  # cross-org
-        ),
-        format="json",
-    )
-    assert _rejected(resp), resp.data
-
-
-# ---- Task: tool_ids ----
-
-
-@pytest.mark.django_db
-def test_task_rejects_cross_org_python_tool(client_admin_a, org_a, org_b):
-    crew = Crew.objects.create(name="c", org=org_a)
-    agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org_a)
-    b_tool = _python_tool(org_b, name="b-tool")
-    resp = client_admin_a.post(
-        "/api/tasks/",
-        {
-            "name": "t",
-            "instructions": "i",
-            "expected_output": "o",
-            "order": 1,
-            "crew": crew.id,
-            "agent": agent.id,
-            "tool_ids": [f"python-code-tool:{b_tool.id}"],
-        },
-        format="json",
-    )
-    assert _rejected(resp), resp.data
-
-
-# ---- Crew: config FK ----
-
-
-@pytest.mark.django_db
-def test_crew_rejects_cross_org_manager_llm_config(client_admin_a, org_a, org_b):
-    crew = Crew.objects.create(name="c", org=org_a)
-    b_cfg = _llm_config(org_b, name="b-cfg")
-    resp = client_admin_a.patch(
-        f"/api/crews/{crew.id}/",
-        {"manager_llm_config": b_cfg.id},
-        format="json",
-    )
-    assert _rejected(resp), resp.data
 
 
 # ---- Bulk-save (save_flow): cross-org node references ----
 #
 # Regression for the bulk-save request-context gap: GraphBulkSaveService now
 # threads the request into every node serializer's context, so org-scoped FK
-# fields (CrewNode.crew_id, SubGraphNode.subgraph) resolve the active org and
-# reject cross-org ids. The same-org (positive) cases prove the request is in
-# fact threaded — without it the deny-on-no-request fallback would 400 those too.
+# fields (SubGraphNode.subgraph, CodeAgentNode.llm_config) resolve the active
+# org and reject cross-org ids. The same-org (positive) cases prove the request
+# is in fact threaded — without it the deny-on-no-request fallback would 400
+# those too.
 
 
 def _save_url(graph_id: int) -> str:
     return f"/api/graphs/{graph_id}/save/"
-
-
-@pytest.mark.django_db
-def test_bulk_save_rejects_cross_org_crew(client_admin_a, org_a, org_b):
-    graph = Graph.objects.create(name="a-graph", org=org_a)
-    b_crew = Crew.objects.create(name="b-crew", org=org_b)
-    resp = client_admin_a.post(
-        _save_url(graph.id),
-        {
-            "save_version": graph.save_version,
-            "crew_node_list": [{"graph": graph.id, "crew_id": b_crew.id}],
-        },
-        format="json",
-    )
-    assert _rejected(resp), resp.data
-    assert not CrewNode.objects.filter(graph=graph).exists()
-
-
-@pytest.mark.django_db
-def test_bulk_save_allows_same_org_crew(client_admin_a, org_a):
-    graph = Graph.objects.create(name="a-graph", org=org_a)
-    a_crew = Crew.objects.create(name="a-crew", org=org_a)
-    resp = client_admin_a.post(
-        _save_url(graph.id),
-        {
-            "save_version": graph.save_version,
-            "crew_node_list": [{"graph": graph.id, "crew_id": a_crew.id}],
-        },
-        format="json",
-    )
-    assert resp.status_code == 200, resp.data
-    assert CrewNode.objects.filter(graph=graph, crew=a_crew).count() == 1
 
 
 @pytest.mark.django_db
@@ -337,56 +167,6 @@ def test_bulk_save_allows_same_org_code_agent_llm_config(client_admin_a, org_a):
         format="json",
     )
     assert resp.status_code == 200, resp.data
-
-
-# ---- #5 RealtimeAgent configs (strict, nested in AgentWrite) ----
-
-
-@pytest.mark.django_db
-def test_agent_rejects_cross_org_realtime_config(client_admin_a, org_b):
-    b_rt = RealtimeConfig.objects.create(
-        custom_name="b-rt",
-        realtime_model=_realtime_model(org_b, is_custom=True),
-        org=org_b,
-    )
-    resp = client_admin_a.post(
-        "/api/agents/",
-        _agent_payload(realtime_agent={"realtime_config": b_rt.id}),
-        format="json",
-    )
-    assert _rejected(resp), resp.data
-
-
-@pytest.mark.django_db
-def test_agent_rejects_cross_org_realtime_transcription_config(client_admin_a, org_b):
-    b_tc = RealtimeTranscriptionConfig.objects.create(
-        custom_name="b-tc",
-        realtime_transcription_model=_realtime_transcription_model(
-            org_b, is_custom=True
-        ),
-        org=org_b,
-    )
-    resp = client_admin_a.post(
-        "/api/agents/",
-        _agent_payload(realtime_agent={"realtime_transcription_config": b_tc.id}),
-        format="json",
-    )
-    assert _rejected(resp), resp.data
-
-
-@pytest.mark.django_db
-def test_agent_allows_same_org_realtime_config(client_admin_a, org_a):
-    a_rt = RealtimeConfig.objects.create(
-        custom_name="a-rt",
-        realtime_model=_realtime_model(org_a, is_custom=True),
-        org=org_a,
-    )
-    resp = client_admin_a.post(
-        "/api/agents/",
-        _agent_payload(realtime_agent={"realtime_config": a_rt.id}),
-        format="json",
-    )
-    assert resp.status_code == 201, resp.data
 
 
 # ---- #4 config -> model (hybrid): reject cross-org custom, allow shared built-ins ----

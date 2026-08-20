@@ -1,12 +1,10 @@
-from typing import Any, Iterable
+from typing import Any
 from tables.models import (
     Tool,
     ToolConfig,
     ToolConfigField,
-    Agent,
     LLMConfig,
     EmbeddingConfig,
-    Crew,
 )
 from django.core.exceptions import ValidationError
 from ast import literal_eval
@@ -202,50 +200,3 @@ class ToolConfigValidator:
             tool=tool, required=True
         ).values_list("name", flat=True)
         return set(required_field_names) - set(configuration.keys())
-
-
-def validate_session(schema: dict):
-    crew_name = schema["crew"]["name"]
-    tasks = schema["crew"]["tasks"]
-    agents = schema["crew"]["agents"]
-
-    if len(tasks) == 0:
-        raise ValueError(f"No tasks provided for {crew_name}")
-    if len(agents) == 0:
-        raise ValueError(f"No agents provided {crew_name}")
-
-    agent_roles = [agent["role"] for agent in agents]
-
-    for task in tasks:
-        if task["agent"]["role"] not in agent_roles:
-            task_name = task["name"]
-            agent_role = task["agent"]["role"]
-            raise ValueError(
-                f"Agent {agent_role} assigned for task {task_name} not found in crew {crew_name}"
-            )
-
-
-def validate_tool_configs(crew: Crew) -> list[ToolConfig]:
-    configured_tool_ids: Iterable[int] = Agent.objects.filter(crew=crew).values_list(
-        "configured_tools", flat=True
-    )
-
-    validator = ToolConfigValidator(
-        validate_missing_reqired_fields=True, validate_null_fields=True
-    )
-
-    configured_tool_set = ToolConfig.objects.filter(
-        agentconfiguredtools__agent__crew=crew
-    ).distinct()
-
-    evaled_tool_confgs = list()
-    for tool_config in configured_tool_set:
-        evaled_tool_confgs.append(
-            validator.validate(
-                name=tool_config.name,
-                tool=tool_config.tool,
-                configuration=tool_config.configuration,
-            )
-        )
-
-    return evaled_tool_confgs

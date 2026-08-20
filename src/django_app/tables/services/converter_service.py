@@ -1,6 +1,4 @@
-from django.db.models import Prefetch
-
-from tables.serializers.model_serializers.crew_serializers import (
+from tables.serializers.model_serializers.tool_config_serializers import (
     ToolConfigSerializer,
 )
 from src.shared.models import (
@@ -14,8 +12,6 @@ from src.shared.models import (
     ConditionData,
     ConditionGroupData,
     ConfiguredToolData,
-    CrewData,
-    CrewNodeData,
     DecisionTableNodeData,
     EdgeData,
     EmbedderConfigData,
@@ -36,7 +32,6 @@ from src.shared.models import (
     RealtimeAgentChatData,
     ScheduleTriggerNodeData,
     SubGraphNodeData,
-    TaskData,
     TelegramTriggerNodeData,
     TelegramTriggerNodeFieldData,
     ToolConfigData,
@@ -46,25 +41,10 @@ from src.shared.models import (
 
 from tables.models import (
     Agent,
-    Crew,
-    EmbeddingConfig,
-    LLMConfig,
     PythonCode,
     PythonCodeTool,
-    Task,
     ToolConfig,
 )
-from tables.models.crew_models import (
-    AgentConfiguredTools,
-    AgentMcpTools,
-    AgentPythonCodeToolConfigs,
-    AgentPythonCodeTools,
-    TaskConfiguredTools,
-    TaskMcpTools,
-    TaskPythonCodeToolConfigs,
-    TaskPythonCodeTools,
-)
-from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag
 from tables.models.graph_models import (
     AudioTranscriptionNode,
     Condition,
@@ -72,7 +52,6 @@ from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     ConditionalEdge,
     ConditionGroup,
-    CrewNode,
     DecisionTableNode,
     Edge,
     EndNode,
@@ -96,12 +75,7 @@ from tables.models.realtime_models import RealtimeAgentChat
 from tables.models.webhook_models import NgrokWebhookConfig
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared
-from tables.validators.crew_memory_validator import CrewMemoryValidator
-from tables.validators.task_validator import TaskValidator
-from tables.validators.tool_config_validator import (
-    ToolConfigValidator,
-    validate_tool_configs,
-)
+from tables.validators.tool_config_validator import ToolConfigValidator
 from utils.graph_utils import (
     SINGLE_LOOKUP_RESOLVER,
     NodeNameResolver,
@@ -117,8 +91,6 @@ from tables.models.embedding_models import EmbeddingConfig
 
 class ConverterService(metaclass=SingletonMeta):
     def __init__(self):
-        self.memory_validator = CrewMemoryValidator()
-        self.task_validator = TaskValidator()
         self.realtime_surface_service = RealtimeSurfaceService(converter_service=self)
 
     def build_rag_search_config(
@@ -192,214 +164,6 @@ class ConverterService(metaclass=SingletonMeta):
             Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
         )
 
-    def convert_crew_to_pydantic(
-        self, crew_id: int, graph_id: int | None = None, session_id: int | None = None
-    ) -> CrewData:
-        crew = (
-            Crew.objects.select_related(
-                "manager_llm_config__model__llm_provider",
-                "planning_llm_config__model__llm_provider",
-                "memory_llm_config__model__llm_provider",
-                "embedding_config__model__embedding_provider",
-            )
-            .get(pk=crew_id)
-            .fill_with_defaults()
-        )
-
-        manager_llm = self.convert_llm_config_to_pydantic(crew.manager_llm_config)
-        planning_llm = self.convert_llm_config_to_pydantic(crew.planning_llm_config)
-
-        embedder = None
-        memory_llm = None
-        if crew.memory:
-            memory_llm_config = crew.memory_llm_config
-            embedding_config = crew.embedding_config
-            # memory configs validation
-            self.memory_validator.validate_memory_configs(
-                memory_llm_config, embedding_config
-            )
-
-            embedder = self.convert_embedding_config_to_pydantic(embedding_config)
-            memory_llm = self.convert_llm_config_to_pydantic(memory_llm_config)
-        task_list = (
-            Task.objects.filter(crew_id=crew_id)
-            .select_related("agent")
-            .prefetch_related(
-                Prefetch(
-                    "task_configured_tool_list",
-                    queryset=TaskConfiguredTools.objects.select_related("tool__tool"),
-                ),
-                Prefetch(
-                    "task_python_code_tool_list",
-                    queryset=TaskPythonCodeTools.objects.select_related(
-                        "tool__python_code"
-                    ),
-                ),
-                Prefetch(
-                    "task_python_code_tool_config_list",
-                    queryset=TaskPythonCodeToolConfigs.objects.select_related(
-                        "tool__tool__python_code"
-                    ),
-                ),
-                Prefetch(
-                    "task_mcp_tool_list",
-                    queryset=TaskMcpTools.objects.select_related("tool"),
-                ),
-                "task_context_list",
-            )
-        )
-        self.task_validator.validate_assigned_agents(task_list)
-        task_data_list: list[TaskData] = []
-
-        crew_base_tools: list[BaseToolData] = []
-
-        for task in task_list:
-            base_tools = self._get_task_base_tools(
-                task=task, graph_id=graph_id, session_id=session_id
-            )
-            crew_base_tools.extend(base_tools)  # TODO: make it unique
-            assert not (
-                crew.process == "sequential" and task.agent is None
-            ), f"Task {task.name} has no agent, but it's required for sequential process."
-
-            task_data_list.append(
-                TaskData(
-                    id=task.pk,
-                    name=task.name,
-                    agent_id=task.agent.pk,
-                    instructions=task.instructions,
-                    knowledge_query=task.knowledge_query,
-                    expected_output=task.expected_output,
-                    order=task.order,
-                    human_input=task.human_input,
-                    async_execution=task.async_execution,
-                    config=task.config,
-                    output_model=task.output_model,
-                    tool_unique_name_list=[tool.unique_name for tool in base_tools],
-                    task_context_id_list=[
-                        tc.context_id for tc in task.task_context_list.all()
-                    ],
-                )
-            )
-
-        assert len(task_data_list) > 0, "No tasks found for crew"
-
-        # Fetch agents separately with prefetched tools (crew.fill_with_defaults()
-        # invalidates prefetch cache via agents.set(), so we query independently)
-        agents = list(
-            Agent.objects.filter(crew=crew)
-            .select_related(
-                "llm_config__model__llm_provider",
-                "fcm_llm_config__model__llm_provider",
-                "knowledge_collection",
-                "naive_search_config",
-            )
-            .prefetch_related(
-                Prefetch(
-                    "python_code_tools",
-                    queryset=AgentPythonCodeTools.objects.select_related(
-                        "pythoncodetool__python_code"
-                    ),
-                ),
-                Prefetch(
-                    "python_code_tool_configs",
-                    queryset=AgentPythonCodeToolConfigs.objects.select_related(
-                        "pythoncodetoolconfig__tool__python_code"
-                    ),
-                ),
-                Prefetch(
-                    "configured_tools",
-                    queryset=AgentConfiguredTools.objects.select_related(
-                        "toolconfig__tool"
-                    ),
-                ),
-                Prefetch(
-                    "mcp_tools",
-                    queryset=AgentMcpTools.objects.select_related("mcptool"),
-                ),
-                Prefetch(
-                    "agent_naive_rags",
-                    queryset=AgentNaiveRag.objects.select_related("naive_rag"),
-                ),
-            )
-        )
-
-        agents_data = []
-        for agent in agents:
-            agent = agent.fill_with_defaults(
-                crew_id=crew_id, crew_temperature=crew.default_temperature
-            )
-            agent_base_tools = self._get_agent_base_tools(
-                agent=agent, graph_id=graph_id, session_id=session_id
-            )
-            crew_base_tools.extend(agent_base_tools)
-
-            llm = self.convert_llm_config_to_pydantic(agent.llm_config)
-            function_calling_llm = self.convert_llm_config_to_pydantic(
-                agent.fcm_llm_config
-            )
-
-            knowledge_collection_id = None
-            if agent.knowledge_collection is not None:
-                knowledge_collection_id = agent.knowledge_collection.pk
-
-            rag_type_id = agent.get_rag_type_and_id()
-            rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
-            all_search_configs = SearchConfigService.get_search_configs(agent)
-            rag_search_config = self.build_rag_search_config(
-                rag_type_id, all_search_configs
-            )
-
-            agents_data.append(
-                AgentData(
-                    id=agent.pk,
-                    role=agent.role,
-                    goal=agent.goal,
-                    backstory=agent.backstory,
-                    tool_unique_name_list=[
-                        tool.unique_name for tool in agent_base_tools
-                    ],
-                    allow_delegation=agent.allow_delegation,
-                    memory=agent.memory,
-                    max_iter=agent.max_iter,
-                    max_rpm=agent.max_rpm,
-                    max_execution_time=agent.max_execution_time,
-                    max_retry_limit=agent.max_retry_limit,
-                    respect_context_window=agent.respect_context_window,
-                    cache=agent.cache,
-                    allow_code_execution=agent.allow_code_execution,
-                    llm=llm,
-                    function_calling_llm=function_calling_llm,
-                    knowledge_collection_id=knowledge_collection_id,
-                    rag_type_id=rag_type_id,
-                    rag_search_config=rag_search_config,
-                    rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
-                )
-            )
-
-        crew_data = CrewData(
-            id=crew.pk,
-            name=crew.name,
-            agents=agents_data,
-            process=crew.process,
-            memory=crew.memory,
-            tasks=task_data_list,
-            config=crew.config,
-            max_rpm=crew.max_rpm,
-            cache=crew.cache,
-            full_output=crew.full_output,
-            planning=crew.planning,
-            embedder=embedder,
-            memory_llm=memory_llm,
-            manager_llm=manager_llm,
-            planning_llm=planning_llm,
-            tools=list(
-                {tool.unique_name: tool for tool in crew_base_tools}.values()
-            ),  # TODO: Unique only
-        )
-
-        return crew_data
-
     def _get_agent_base_tools(
         self,
         agent: Agent,
@@ -419,25 +183,6 @@ class ConverterService(metaclass=SingletonMeta):
                 tool, graph_id=graph_id, session_id=session_id
             )
             for tool in all_tools
-        ]
-
-    def _get_task_base_tools(
-        self,
-        task: Task,
-        graph_id: int | None = None,
-        session_id: int | None = None,
-    ) -> list[BaseToolData]:
-        tools = (
-            [entry.tool for entry in task.task_configured_tool_list.all()]
-            + [entry.tool for entry in task.task_python_code_tool_list.all()]
-            + [entry.tool for entry in task.task_python_code_tool_config_list.all()]
-            + [entry.tool for entry in task.task_mcp_tool_list.all()]
-        )
-        return [
-            self.convert_tool_to_base_tool_pydantic(
-                tool, graph_id=graph_id, session_id=session_id
-            )
-            for tool in tools
         ]
 
     def convert_tool_to_base_tool_pydantic(
@@ -473,50 +218,6 @@ class ConverterService(metaclass=SingletonMeta):
             raise TypeError(f"Tool type of {type(tool)} is not supported")
 
         return BaseToolData(unique_name=unique_name, data=data)
-
-    def convert_agent_to_pydantic(self, agent: Agent, crew_id: int) -> AgentData:
-        agent = agent.fill_with_defaults(crew_id=crew_id)
-        agent_base_tool_list = self._get_agent_base_tools(
-            agent=agent
-        )  # TODO: optimize it, duplicated db requests may occur
-
-        llm = self.convert_llm_config_to_pydantic(agent.llm_config)
-        function_calling_llm = self.convert_llm_config_to_pydantic(agent.fcm_llm_config)
-
-        knowledge_collection_id = None
-        if agent.knowledge_collection is not None:
-            knowledge_collection_id = agent.knowledge_collection.pk
-
-        # Build RAG search config using factory method
-        rag_type_id = agent.get_rag_type_and_id()
-        rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
-        all_search_configs = SearchConfigService.get_search_configs(agent)
-        rag_search_config = self.build_rag_search_config(
-            rag_type_id, all_search_configs
-        )
-
-        return AgentData(
-            id=agent.pk,
-            role=agent.role,
-            goal=agent.goal,
-            backstory=agent.backstory,
-            tool_unique_name_list=[tool.unique_name for tool in agent_base_tool_list],
-            allow_delegation=agent.allow_delegation,
-            memory=agent.memory,
-            max_iter=agent.max_iter,
-            max_rpm=agent.max_rpm,
-            max_execution_time=agent.max_execution_time,
-            max_retry_limit=agent.max_retry_limit,
-            respect_context_window=agent.respect_context_window,
-            cache=agent.cache,
-            allow_code_execution=agent.allow_code_execution,
-            llm=llm,
-            function_calling_llm=function_calling_llm,
-            knowledge_collection_id=knowledge_collection_id,
-            rag_type_id=rag_type_id,
-            rag_search_config=rag_search_config,
-            rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
-        )
 
     def convert_rt_agent_chat_to_pydantic(
         self, rt_agent_chat: RealtimeAgentChat
@@ -1013,26 +714,6 @@ class ConverterService(metaclass=SingletonMeta):
             conditional_group_list=condition_group_list,
             default_next_node=resolver(decision_table_node.default_next_node_id),
             next_error_node=resolver(decision_table_node.next_error_node_id),
-        )
-
-    def convert_crew_node_to_pydantic(
-        self,
-        crew_node: CrewNode,
-        resolver: NodeNameResolver = SINGLE_LOOKUP_RESOLVER,
-        graph_id: int | None = None,
-        session_id: int | None = None,
-    ) -> CrewNodeData:
-        crew: Crew = crew_node.crew
-        validate_tool_configs(crew)
-        crew_data = self.convert_crew_to_pydantic(
-            crew_id=crew.pk, graph_id=graph_id, session_id=session_id
-        )
-        return CrewNodeData(
-            node_name=resolver(crew_node.id),
-            crew=crew_data,
-            input_map=crew_node.input_map,
-            output_variable_path=crew_node.output_variable_path,
-            stream_config=crew_node.stream_config or {},
         )
 
     def convert_end_node_to_pydantic(
