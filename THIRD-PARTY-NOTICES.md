@@ -1,7 +1,7 @@
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Thu, 20 Aug 2026 13:55:27 GMT -->
-<!-- commit: 6a33c28c211514e64056e81f622ee7b59e138dae -->
-<!-- package-lock.json sha256: 7ba6fd49dd745dde -->
+<!-- generated: Thu, 20 Aug 2026 15:32:46 GMT -->
+<!-- commit: 174e1af8a08e8ab379b5e66f3bc3c1877af1836c -->
+<!-- package-lock.json sha256: 93387fc992c98007 -->
 
 # Third-Party Notices
 
@@ -44,7 +44,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 | `@angular/router` | 22.1.2 | MIT |
 | `@astral-sh/ruff-wasm-web` | 0.15.2 | MIT |
 | `@foblex/2d` | 1.2.2 | MIT |
-| `@foblex/flow` | 18.4.0 | MIT |
+| `@foblex/flow` | 19.1.6 | MIT |
 | `@foblex/mediator` | 1.1.3 | MIT |
 | `@foblex/platform` | 1.0.4 | MIT |
 | `@foblex/utils` | 1.1.1 | MIT |
@@ -847,7 +847,7 @@ SOFTWARE.
 
 </details>
 
-### @foblex/flow@18.4.0
+### @foblex/flow@19.1.6
 
 - **License:** MIT
 - **Publisher:** Siarhei Huzarevich
