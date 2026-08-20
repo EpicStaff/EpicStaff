@@ -1,14 +1,13 @@
 [tool.poetry]
-name = "crewai-sheets-ui"
-version = "0.6.0"
-description = "Web CrewAI"
+name = "epicstaff-graph"
+version = "1.0.0"
+description = "This service is inteded to build and run EpicStaff Flows."
 authors = ["Epicstaff"]
 license = "MIT"
 readme = "README.md"
 package-mode = false
 packages = [
-    { include = "src" },
-    { include = "libraries/crewAI" }
+    { include = "src" }
 ]
 
 
@@ -33,10 +32,6 @@ psycopg2 = "2.9.10"
 litellm = "1.75.7"
 openai = {extras = ["voice-helpers"], version = "1.99.9"}
 fastmcp = "^2.12.2"
-
-[tool.poetry.group.crew.dependencies]
-mem0ai = { path = "libraries/mem0" }
-crewai = {path = "libraries/crewAI"}
 
 [tool.poetry.group.dotdict.dependencies]
 dotdict = { path = "../shared/dotdict" }

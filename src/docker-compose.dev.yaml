@@ -58,7 +58,6 @@ services:
       poetry run watchfiles
       --filter python
       --ignore-paths /app/src/crew/.venv
-      --ignore-paths /app/src/crew/libraries
       --ignore-paths /app/src/crew/__pycache__
       --ignore-paths /app/src/crew/.pytest_cache
       --ignore-paths /app/src/crew/.ruff_cache
