@@ -4,6 +4,7 @@ from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 from tables.serializers.default_config_serializers import (
     DefaultModelsSerializer,
 )
+from tables.serializers.quickstart_serializers import QuickstartSerializer
 
 
 DEFAULT_MODELS_GET = dict(
@@ -93,7 +94,12 @@ QUICKSTART_GET = dict(
 
 QUICKSTART_POST = dict(
     summary="Initiate quickstart",
-    description="Initiates the quickstart process for a specified provider, creating default configurations and resources as needed.",
+    description=(
+        "Initiates the quickstart process for a specified provider, creating default "
+        "configurations and resources as needed. Supply exactly one of `api_key` "
+        "(cold start) or `api_key_secret_id` (reuse an existing Secret)."
+    ),
+    request=QuickstartSerializer,
     responses={
         200: OpenApiResponse(
             response=OpenApiTypes.STR,

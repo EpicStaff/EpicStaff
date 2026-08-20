@@ -26,7 +26,7 @@ def _stub_publish(monkeypatch):
     sm = SessionManagerService()
     monkeypatch.setattr(sm, "create_session_data", lambda session: _FakeSessionData())
     monkeypatch.setattr(
-        sm.redis_service, "publish_session_data", lambda session_data: 2
+        sm.redis_service, "publish_session_data", lambda session_data, org_id: 2
     )
     return sm
 

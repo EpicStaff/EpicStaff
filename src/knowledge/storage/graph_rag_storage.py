@@ -258,11 +258,11 @@ class ORMGraphRagStorage(BaseORMStorage):
                 )
 
             return {
-                "api_key": getattr(embedder, "api_key", None),
                 "model_name": model.name,
                 "provider": model.embedding_provider.name,
                 "base_url": getattr(model, "base_url", None),
                 "deployment": getattr(model, "deployment", None),
+                "api_key_secret_configured": embedder.api_key_secret_id is not None,
             }
 
         except Exception as e:
@@ -307,7 +307,7 @@ class ORMGraphRagStorage(BaseORMStorage):
                 provider_name = provider.name if provider else None
 
             return {
-                "api_key": llm_config.api_key,
+                "api_key_secret_configured": llm_config.api_key_secret_id is not None,
                 "model_name": llm_model.name if llm_model else None,
                 "provider": provider_name,
                 "base_url": llm_model.base_url if llm_model else None,

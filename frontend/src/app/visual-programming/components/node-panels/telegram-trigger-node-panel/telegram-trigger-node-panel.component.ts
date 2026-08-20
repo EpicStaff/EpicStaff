@@ -7,12 +7,14 @@ import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    HintMessageComponent,
     JsonEditorComponent,
     SelectComponent,
     SelectItem,
+    ValidationErrorsComponent,
 } from '@shared/components';
 import { MATERIAL_FORMS } from '@shared/material-forms';
-import { NgrokConfigStorageService } from '@shared/services';
+import { NgrokConfigStorageService, SecretsStorageService } from '@shared/services';
 import { startWith } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
@@ -43,6 +45,8 @@ import { WebhookStatus } from './webhook-status.model';
         MATERIAL_FORMS,
         JsonEditorComponent,
         SelectComponent,
+        ValidationErrorsComponent,
+        HintMessageComponent,
         ColumnResizeDividerComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -56,6 +60,7 @@ export class TelegramTriggerNodePanelComponent
     private dialog = inject(Dialog);
     private toastService = inject(ToastService);
     private ngrokStorageService = inject(NgrokConfigStorageService);
+    private secretsStorageService = inject(SecretsStorageService);
 
     protected readonly leftColumnWidth = createColumnWidthState('telegram-trigger-node', 550);
 
@@ -90,6 +95,13 @@ export class TelegramTriggerNodePanelComponent
     ngrokConfigSelectItems = computed<SelectItem[]>(() => {
         return this.ngrokStorageService.configs().map((c) => ({ name: c.name, value: c.id }));
     });
+    secretItems = computed<SelectItem[]>(() =>
+        this.secretsStorageService.secrets().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.secretsStorageService.maskTail(secret.tail),
+        }))
+    );
 
     editorOptions: Record<string, unknown> = {
         lineNumbers: 'off',
@@ -112,6 +124,12 @@ export class TelegramTriggerNodePanelComponent
 
     ngOnInit() {
         this.getNgrokConfigs();
+        this.secretsStorageService
+            .getSecrets()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                error: () => this.toastService.error('Failed to load secrets.'),
+            });
     }
 
     ngOnChanges() {
@@ -150,7 +168,10 @@ export class TelegramTriggerNodePanelComponent
         this.setSelectedFields(this.node().data.fields);
         const form = this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
-            telegram_bot_api_key: [this.node().data.telegram_bot_api_key || '', Validators.required],
+            telegram_bot_api_key_secret_id: [
+                this.node().data.telegram_bot_api_key_secret_id ?? null,
+                Validators.required,
+            ],
             webhook_trigger_path: [
                 this.node().data.webhook_trigger?.path || null,
                 [Validators.required, Validators.pattern(WEBHOOK_NAME_PATTERN)],
@@ -186,22 +207,11 @@ export class TelegramTriggerNodePanelComponent
 
             data: {
                 ...this.node().data,
-                telegram_bot_api_key: this.form.value.telegram_bot_api_key,
+                telegram_bot_api_key_secret_id: this.form.value.telegram_bot_api_key_secret_id,
                 webhook_trigger,
                 fields: this.form.value.fields,
             },
         };
-    }
-
-    getTelegramKeyErrorMessage(): string {
-        const control = this.form?.get('telegram_bot_api_key');
-        if (!control || control.valid || !control.errors) {
-            return '';
-        }
-        if (control.errors['required']) {
-            return 'This field is required';
-        }
-        return '';
     }
 
     onEditing(): void {

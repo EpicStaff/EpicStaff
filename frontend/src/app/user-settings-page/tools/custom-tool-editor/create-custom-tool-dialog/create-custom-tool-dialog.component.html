@@ -107,6 +107,14 @@
                     }
                 </div>
 
+                <div class="form-section">
+                    <app-node-secrets-field
+                        [value]="selectedSecretIds()"
+                        tooltipText="Secrets this tool's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                        (valueChange)="onSecretsChange($event)"
+                    />
+                </div>
+
                 @if (activeEditor() !== ActiveEditor.Python) {
                     <div
                         class="editor-card"
@@ -167,6 +175,7 @@
                                 <app-code-editor
                                     [pythonCode]="form.controls.pythonCode.value"
                                     [showHeader]="false"
+                                    [secretNames]="secretNames()"
                                     [readOnly]="isBuiltIn()"
                                     (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onPythonErrorChange($event)"
@@ -381,6 +390,7 @@
                             <app-code-editor
                                 [pythonCode]="form.controls.pythonCode.value"
                                 [showHeader]="false"
+                                [secretNames]="secretNames()"
                                 [readOnly]="isBuiltIn()"
                                 (pythonCodeChange)="onPythonCodeChange($event)"
                                 (errorChange)="onPythonErrorChange($event)"

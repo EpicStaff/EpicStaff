@@ -137,6 +137,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Input() currentFlowId: number | null = null;
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
+    @Input() initialNodeExpand: boolean = true;
     @Input() isSaving: boolean = false;
     @Input() hasUnsavedChanges: boolean = false;
 
@@ -293,7 +294,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public ngOnInit(): void {
         this.applyIncomingFlowState(this.flowState);
         if (this.initialNodeId) {
-            this.openNodePanel(this.initialNodeId);
+            this.openNodePanel(this.initialNodeId, this.initialNodeExpand);
         }
     }
 
@@ -312,7 +313,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
         if (changes['initialNodeId'] && changes['initialNodeId'].currentValue) {
-            this.openNodePanel(changes['initialNodeId'].currentValue);
+            this.openNodePanel(changes['initialNodeId'].currentValue, this.initialNodeExpand);
         }
         if (changes['isSaving'] && changes['isSaving'].currentValue === true) {
             this.onCloseContextMenu();
@@ -1581,8 +1582,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
     }
 
-    public openNodePanel(nodeId: string): void {
+    public openNodePanel(nodeId: string, expand: boolean = true): void {
         this.sidePanelService.setSelectedNodeId(nodeId);
+        if (!expand) return;
         afterNextRender(() => this.nodePanelShell?.expandPanel(), { injector: this.injector });
     }
 

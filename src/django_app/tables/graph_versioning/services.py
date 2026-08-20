@@ -21,6 +21,9 @@ class GraphVersioningService:
         """
         snapshot = self._manager.create_snapshot(graph)
         snapshot["version"] = IMPORT_VERSION
+        snapshot["secret_declarations"] = self._manager.collect_secret_declarations(
+            graph=graph
+        )
         light_deps = self._manager.collect_dependencies(graph)
 
         return GraphVersion.objects.create(
@@ -57,6 +60,14 @@ class GraphVersioningService:
 
         # Copy labels from source graph
         new_graph.labels.set(source_graph.labels.all())
+
+        warnings.extend(
+            self._manager.restore_secret_declarations(
+                graph=new_graph,
+                declarations=snapshot.get("secret_declarations"),
+                node_mapper=node_mapper,
+            )
+        )
 
         self._manager.change_old_warnings_ids(warnings, node_mapper)
 
@@ -129,6 +140,14 @@ class GraphVersioningService:
 
         node_mapper = self._manager.apply_snapshot_to_graph(
             graph, filtered_snapshot, deps_validation["available"]
+        )
+
+        warnings.extend(
+            self._manager.restore_secret_declarations(
+                graph=graph,
+                declarations=snapshot.get("secret_declarations"),
+                node_mapper=node_mapper,
+            )
         )
 
         self._manager.change_old_warnings_ids(warnings, node_mapper)

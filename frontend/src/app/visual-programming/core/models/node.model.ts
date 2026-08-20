@@ -114,7 +114,7 @@ export interface WebhookTriggerNodeModel extends BaseNodeModel {
 export interface TelegramTriggerNodeModel extends BaseNodeModel {
     type: NodeType.TELEGRAM_TRIGGER;
     data: {
-        telegram_bot_api_key: string;
+        telegram_bot_api_key_secret_id: number | null;
         webhook_trigger: WebhookTriggerModel | null;
         fields: TelegramTriggerNodeField[];
     };

@@ -14,13 +14,14 @@ class BaseRAGStrategy(ABC):
     """
 
     @abstractmethod
-    def process_rag_indexing(self, rag_id: int, collection_id: int):
+    def process_rag_indexing(self, rag_id: int, credentials=None):
         """
         Perform indexing / embedding for a RAG implementation.
 
         Args:
             rag_id: ID of the specific RAG implementation (naive_rag_id, graph_rag_id, etc.)
-            collection_id: ID of the source collection (for getting documents)
+            credentials: RagCredentials resolved by Django; each strategy uses the
+                keys it needs, so the calling context never branches on rag_type
 
         Note: rag_id is RAG-specific (naive_rag_id for NaiveRag, graph_rag_id for GraphRag).
         """
