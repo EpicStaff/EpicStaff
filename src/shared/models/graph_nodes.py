@@ -4,20 +4,9 @@ from typing import Any, Literal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from .agent_service import CollectionSpec, S3FileSpec
-from .agents import CrewData
 from .ai_providers import LLMData
 from .surfaces import CombinedSurfaceData
 from .tools import BaseToolData, PythonCodeData
-
-
-class CrewNodeData(BaseModel):
-    node_name: str
-    crew: CrewData
-    input_map: dict[str, Any]
-    output_variable_path: str | None = None
-    stream_config: dict[str, Any] = {}
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class PythonNodeData(BaseModel):
