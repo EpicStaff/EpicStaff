@@ -5,7 +5,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC \
     DISPLAY=:99 \
     VNC_GEOMETRY=1600x900 \
-    VNC_PASS=secret \
     PYTHONUNBUFFERED=1 \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
@@ -37,9 +36,6 @@ RUN sed -i 's/# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && locale
 
 # ---- Workdir ----
 WORKDIR /app
-
-# ---- VNC password (root) ----
-RUN x11vnc -storepasswd "${VNC_PASS}" /root/.vncpass
 
 # ---- Python deps ----
 COPY requirements.txt /app/requirements.txt
