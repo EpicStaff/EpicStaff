@@ -22,6 +22,7 @@ from infrastructure.providers.factory import RealtimeAgentClientFactory
 from application.tool_manager_service import ToolManagerService
 
 MIN_CHUNK_SIZE = 2000
+DEFAULT_MAX_CALL_DURATION_SECONDS = 1800  # 30 min metering ceiling
 
 
 def _build_ulaw_wav(raw_ulaw: bytes, sample_rate: int = 8000) -> bytes:
@@ -71,6 +72,7 @@ class VoiceCallService:
         django_api_base_url: str,
         django_api_key: str = "",
         initial_message: Optional[dict] = None,
+        max_call_duration_seconds: int = DEFAULT_MAX_CALL_DURATION_SECONDS,
     ):
         self.twilio_ws = twilio_ws
         self.realtime_agent_chat_data = realtime_agent_chat_data
@@ -81,6 +83,7 @@ class VoiceCallService:
         self.django_api_base_url = django_api_base_url
         self.django_api_key = django_api_key
         self.initial_message = initial_message
+        self.max_call_duration_seconds = max_call_duration_seconds
 
         self.stream_sid: Optional[str] = None
         self.audio_accumulator = bytearray()
@@ -119,6 +122,16 @@ class VoiceCallService:
             if self.initial_message:
                 await self._handle_twilio_message(self.initial_message, rt_agent_client)
             async for raw in self.twilio_ws.iter_text():
+                # Defense-in-depth metering ceiling: a leaked/stolen stream
+                # token (or a runaway call) can't run up provider costs
+                # forever — cap wall-clock session duration server-side.
+                if time.monotonic() - self._start_time > self.max_call_duration_seconds:
+                    logger.warning(
+                        f"Voice call exceeded max duration "
+                        f"({self.max_call_duration_seconds}s) — ending session"
+                    )
+                    self._end_reason = "max_duration_exceeded"
+                    break
                 await self._handle_twilio_message(json.loads(raw), rt_agent_client)
         except WebSocketDisconnect as e:
             if e.code == 1000:
@@ -139,6 +152,15 @@ class VoiceCallService:
             except asyncio.CancelledError:
                 pass
             await rt_agent_client.close()
+
+            if self._end_reason == "max_duration_exceeded":
+                # We broke out of the loop ourselves (Twilio didn't hang up) —
+                # actively close so the call actually ends instead of hanging
+                # open with nobody reading Twilio's media frames.
+                try:
+                    await self.twilio_ws.close()
+                except Exception as e:
+                    logger.debug(f"Error closing Twilio WebSocket after max duration: {e}")
 
             duration = time.monotonic() - self._start_time
             asyncio.create_task(self._save_recordings(duration))

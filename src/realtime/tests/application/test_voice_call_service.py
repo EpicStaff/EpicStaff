@@ -1,4 +1,6 @@
+import asyncio
 import base64
+import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from fastapi import WebSocket
@@ -247,3 +249,71 @@ async def test_clear_twilio_buffer_skipped_without_stream_sid(service, twilio_ws
     service.stream_sid = None
     await service._clear_twilio_buffer()
     twilio_ws.send_json.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# execute() — max call duration ceiling (defense-in-depth metering cap for a
+# leaked/stolen stream_token, since VoiceCallService already tracks duration
+# via time.monotonic() for recordings).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_execute_ends_session_after_max_call_duration(monkeypatch):
+    import application.voice_call_service as voice_call_service_module
+
+    fake_time = {"now": 1000.0}
+    monkeypatch.setattr(
+        voice_call_service_module.time, "monotonic", lambda: fake_time["now"]
+    )
+
+    async def message_gen():
+        yield json.dumps({"event": "start", "start": {"streamSid": "MZ1"}})
+        # Simulate wall-clock time crossing the max_call_duration ceiling
+        # between Twilio frames.
+        fake_time["now"] += 100
+        yield json.dumps(
+            {
+                "event": "media",
+                "media": {"payload": base64.b64encode(b"\x00").decode()},
+            }
+        )
+        # A well-behaved test double should never be read past the break.
+        raise AssertionError("iter_text consumed past the max-duration break")
+
+    twilio_ws = AsyncMock()
+    twilio_ws.iter_text = lambda: message_gen()
+    twilio_ws.send_json = AsyncMock()
+    twilio_ws.close = AsyncMock()
+
+    rt_client = AsyncMock(spec=IRealtimeAgentClient)
+    rt_client.stream_sid = None
+
+    factory = MagicMock()
+    factory.create = MagicMock(return_value=rt_client)
+
+    tool_manager_service = MagicMock()
+    tool_manager_service.get_realtime_tool_models = AsyncMock(return_value=[])
+
+    service = VoiceCallService(
+        twilio_ws=twilio_ws,
+        realtime_agent_chat_data=_make_chat_data(),
+        instructions="You are a helpful assistant",
+        tool_manager_service=tool_manager_service,
+        connections={},
+        factory=factory,
+        django_api_base_url="http://django_app:8000/api",
+        django_api_key="test-key",
+        initial_message=None,
+        max_call_duration_seconds=10,
+    )
+    service._save_recordings = AsyncMock()
+
+    await service.execute()
+    # execute() fires _save_recordings via asyncio.create_task without
+    # awaiting it — yield control once so the scheduled task actually runs.
+    await asyncio.sleep(0)
+
+    assert service._end_reason == "max_duration_exceeded"
+    twilio_ws.close.assert_awaited_once()
+    service._save_recordings.assert_awaited_once()

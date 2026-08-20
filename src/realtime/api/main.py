@@ -1,6 +1,8 @@
 from typing import Dict
 import json
 import asyncio
+from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
+from xml.sax.saxutils import quoteattr
 import httpx
 from loguru import logger
 from fastapi import (
@@ -21,6 +23,7 @@ from infrastructure.messaging.python_code_executor_service import (
 )
 from infrastructure.messaging.redis_service import RedisService
 from infrastructure.persistence.connection_repository import ConnectionRepository
+from infrastructure.persistence.stream_token_repository import StreamTokenRepository
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
 )
@@ -76,6 +79,14 @@ app.add_middleware(
 connection_repository = ConnectionRepository(
     ttl_seconds=settings.CONNECTION_KEY_TTL_SECONDS
 )
+stream_token_repository = StreamTokenRepository(
+    ttl_seconds=settings.STREAM_TOKEN_TTL_SECONDS
+)
+
+# Sentinel bound_key for the legacy, channel-less `/voice/stream` route so its
+# stream tokens can never be replayed against a channel-token route (or vice
+# versa) even if the random token value were somehow guessed.
+_LEGACY_STREAM_BOUND_KEY = "__legacy_voice_stream__"
 
 # ---------------------------------------------------------------------------
 # Per-channel config cache  (keyed by channel token, TTL=60s)
@@ -288,6 +299,22 @@ async def root(
         await websocket.close(code=1011)
         return
 
+    # Fail fast, unconditionally (even for superadmin, whose bypass below
+    # never evaluates realtime_agent_chat_data.org_id at all): org_id is a
+    # required field, but if any construction path (current or future) ever
+    # produces a payload missing it — e.g. a stale cache, a partially-built
+    # object, or a new call site that forgot to set it — we want a clear
+    # rejection here, not a raw AttributeError deep inside provider client
+    # construction (factory.create) or an unscoped session later on.
+    if getattr(realtime_agent_chat_data, "org_id", None) is None:
+        logger.error(
+            f"WebSocket auth rejected: connection_key={connection_key} has no "
+            "org_id on its RealtimeAgentChatData payload — refusing to start "
+            "an unscoped realtime session."
+        )
+        await websocket.close(code=1011)
+        return
+
     if not user_info.get("is_superadmin") and realtime_agent_chat_data.org_id not in (
         user_info.get("org_ids") or []
     ):
@@ -350,8 +377,31 @@ async def _resolve_channel_agent(channel_token: str) -> tuple[int | None, dict]:
     return agent_id, channel
 
 
+def _append_stream_token(voice_stream_url: str, stream_token: str) -> str:
+    """Append `?stream_token=<token>` (preserving any existing query params)
+    to the Media Stream WS URL embedded in the TwiML `<Stream url="...">`.
+
+    NOTE: this is kept only as a harmless, best-effort fallback. Confirmed in
+    production (EST voice-call regression, 2026-08): Twilio does NOT forward
+    query parameters on the `<Stream>` `url` attribute to the actual Media
+    Stream WebSocket connection — the TwiML response embeds the query string
+    correctly, but it never arrives at the WS handler. The real, Twilio-
+    blessed channel for auxiliary data like `stream_token` is the nested
+    `<Parameter>` element (delivered in the `start` event's
+    `customParameters`), built in `_twilio_voice_webhook` below. Do not rely
+    on this query string alone for auth.
+    """
+    parsed = urlparse(voice_stream_url)
+    query = parse_qsl(parsed.query)
+    query.append(("stream_token", stream_token))
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
 async def _twilio_voice_webhook(
-    request: Request, auth_token: str | None, voice_stream_url: str
+    request: Request,
+    auth_token: str | None,
+    voice_stream_url: str,
+    stream_token: str,
 ) -> Response:
     """Shared logic for both old and new Twilio voice webhook handlers."""
     logger.info(
@@ -386,10 +436,23 @@ async def _twilio_voice_webhook(
         logger.error("[voice_webhook] no voice_stream_url configured")
         raise HTTPException(status_code=503, detail="No voice stream URL configured")
 
+    voice_stream_url = _append_stream_token(voice_stream_url, stream_token)
+
+    # Both attribute values are XML-escaped via `quoteattr` (handles `&`, `<`,
+    # `>`, and quote characters, returning an already-quoted attribute) —
+    # a raw f-string interpolation here would corrupt/truncate the URL Twilio
+    # parses out of the element if it ever contained an un-escaped `&` (e.g.
+    # multiple query params). The `<Parameter>` child is the actual mechanism
+    # Twilio delivers to the WS leg (see `_append_stream_token` docstring);
+    # the query string on `url` is kept only as a harmless fallback.
+    stream_url_attr = quoteattr(voice_stream_url)
+    stream_token_attr = quoteattr(stream_token)
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="{voice_stream_url}" />
+    <Stream url={stream_url_attr}>
+      <Parameter name="stream_token" value={stream_token_attr} />
+    </Stream>
   </Connect>
 </Response>"""
     logger.info(f"[voice_webhook] returning TwiML with stream url={voice_stream_url}")
@@ -401,17 +464,45 @@ async def _voice_stream_handler(
     agent_id: int | None,
     auth_token: str | None,
     agent_definition_id: int | None = None,
+    stream_token: str | None = None,
+    stream_bound_key: str | None = None,
 ) -> None:
     """Shared logic for voice stream WebSocket handlers.
 
     agent_id / agent_definition_id are resolved by the caller (either from the
     channel-token config or, for the deprecated /voice/stream route, from the
     global Voice Settings singleton) before this handler is invoked.
+
+    Twilio's Media Stream WS leg carries no verifiable Twilio header (no
+    `X-Twilio-Signature`), so authentication here is a short-lived, single-use
+    `stream_token` minted by the paired (signature-validated) TwiML webhook and
+    bound to the same route (`stream_bound_key` — the channel_token, or the
+    legacy sentinel).
+
+    Confirmed in production (2026-08 voice-call regression): Twilio does NOT
+    forward the `?stream_token=...` query string embedded in the TwiML
+    `<Stream url="...">` to this WebSocket connection — the query param never
+    arrives here (`websocket.query_params` is empty) even though the TwiML
+    response correctly contained it. The token now arrives (if at all) via
+    the nested `<Parameter name="stream_token" value="...">` element, which
+    Twilio delivers inside the first `start` event's `customParameters`. That
+    means the token is not knowable until *after* the WebSocket handshake, so
+    `.accept()` itself can no longer gate on it. Instead: accept the socket,
+    read the `start` event, and validate immediately — closing before any
+    Django `init-realtime` call, provider connection, or audio processing
+    happens if the token is missing/invalid. This is a strictly later gate
+    than the pre-accept ideal, but it still fully preserves the security
+    intent: an unauthenticated caller never reaches a live media bridge or
+    causes any side effect. The `stream_token` query param (if a caller
+    happens to send one — e.g. direct test tooling) is still honoured as a
+    fallback source.
     """
     await twilio_ws.accept()
-    logger.info("Twilio MediaStream WebSocket accepted")
+    logger.info("Twilio MediaStream WebSocket accepted (stream_token not yet validated)")
 
-    # Read the first Twilio message (connected / start) to get stream_sid
+    # Read the first Twilio message(s): `connected` (optional) then `start`,
+    # which carries `customParameters` — see docstring above for why this is
+    # now the primary source of `stream_token` instead of the query string.
     first_msg = None
     try:
         raw = await asyncio.wait_for(twilio_ws.receive_text(), timeout=5.0)
@@ -424,6 +515,27 @@ async def _voice_stream_handler(
     except Exception as e:
         logger.warning(f"Could not read Twilio start event: {e}")
         first_msg = None
+
+    custom_params = ((first_msg or {}).get("start") or {}).get("customParameters") or {}
+    param_token = custom_params.get("stream_token")
+    effective_stream_token = param_token or stream_token
+    token_source = (
+        "start.customParameters" if param_token else ("query_param" if stream_token else "none")
+    )
+
+    if not stream_token_repository.consume(effective_stream_token, bound_key=stream_bound_key):
+        # `token_present` distinguishes "no token arrived by either channel"
+        # from "we had a token but it didn't validate" (expired/reused/wrong
+        # bound_key, or the in-memory StreamTokenRepository singleton lost
+        # its state — e.g. a `--reload` process restart between the webhook
+        # mint and this consume).
+        logger.warning(
+            f"Voice stream WS rejected: missing/invalid/expired/reused stream_token "
+            f"(bound_key={stream_bound_key}, token_present={bool(effective_stream_token)}, "
+            f"token_source={token_source})"
+        )
+        await twilio_ws.close(code=1008)
+        return
 
     # Call Django init-realtime with the resolved agent_id / agent_definition_id
     audio_config = {
@@ -475,6 +587,19 @@ async def _voice_stream_handler(
         await twilio_ws.close()
         return
 
+    # Same fail-fast as the browser /realtime/ path: org_id is required, but
+    # refuse explicitly here rather than blow up later inside
+    # factory.create()/save_realtime_session_item_to_db with a raw
+    # AttributeError if it's ever missing.
+    if getattr(realtime_agent_chat_data, "org_id", None) is None:
+        logger.error(
+            f"Twilio voice stream rejected: connection_key={conn_key} has no "
+            "org_id on its RealtimeAgentChatData payload — refusing to start "
+            "an unscoped realtime session."
+        )
+        await twilio_ws.close()
+        return
+
     connection_repository.delete_connection(conn_key)
 
     instructions = generate_instruction(
@@ -492,6 +617,7 @@ async def _voice_stream_handler(
         django_api_base_url=settings.DJANGO_API_BASE_URL,
         django_api_key=settings.DJANGO_API_KEY,
         initial_message=first_msg,
+        max_call_duration_seconds=settings.MAX_CALL_DURATION_SECONDS,
     )
     await service.execute()
 
@@ -544,18 +670,27 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
         )
 
     logger.info(f"[voice/{channel_token}] voice_stream_url={voice_stream_url}")
-    return await _twilio_voice_webhook(request, auth_token, voice_stream_url)
+    stream_token = stream_token_repository.mint(bound_key=channel_token)
+    return await _twilio_voice_webhook(request, auth_token, voice_stream_url, stream_token)
 
 
 @app.websocket("/voice/{channel_token}/stream")
-async def voice_stream_channel(channel_token: str, twilio_ws: WebSocket):
+async def voice_stream_channel(
+    channel_token: str, twilio_ws: WebSocket, stream_token: str | None = None
+):
     """Twilio MediaStream WebSocket (channel-token routing)."""
     agent_id, channel = await _resolve_channel_agent(channel_token)
     if not agent_id:
         logger.error(f"No agent for channel token {channel_token}")
-        await twilio_ws.close()
+        await twilio_ws.close(code=1008)
         return
-    await _voice_stream_handler(twilio_ws, agent_id, auth_token=None)
+    await _voice_stream_handler(
+        twilio_ws,
+        agent_id,
+        auth_token=None,
+        stream_token=stream_token,
+        stream_bound_key=channel_token,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -569,22 +704,25 @@ async def twilio_voice_webhook(request: Request):
     vs = await get_voice_settings()
     auth_token = vs.get("twilio_auth_token")
     voice_stream_url = vs.get("voice_stream_url") or settings.VOICE_STREAM_URL
-    return await _twilio_voice_webhook(request, auth_token, voice_stream_url)
+    stream_token = stream_token_repository.mint(bound_key=_LEGACY_STREAM_BOUND_KEY)
+    return await _twilio_voice_webhook(request, auth_token, voice_stream_url, stream_token)
 
 
 @app.websocket("/voice/stream")
-async def voice_stream(twilio_ws: WebSocket):
+async def voice_stream(twilio_ws: WebSocket, stream_token: str | None = None):
     """DEPRECATED: use /voice/{channel_token}/stream instead."""
     vs = await get_voice_settings()
     agent_id = vs.get("voice_agent")
     agent_definition_id = vs.get("voice_agent_definition")
     if not agent_id and not agent_definition_id:
         logger.error("No voice agent configured in Voice Settings")
-        await twilio_ws.close()
+        await twilio_ws.close(code=1008)
         return
     await _voice_stream_handler(
         twilio_ws,
         agent_id,
         auth_token=None,
         agent_definition_id=agent_definition_id,
+        stream_token=stream_token,
+        stream_bound_key=_LEGACY_STREAM_BOUND_KEY,
     )

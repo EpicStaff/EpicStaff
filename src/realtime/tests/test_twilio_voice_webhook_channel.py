@@ -1,9 +1,13 @@
+import re
+import xml.etree.ElementTree as ET
 from types import SimpleNamespace
+from urllib.parse import urlparse, parse_qs
 
 import pytest
 
 
 CHANNEL_TOKEN = "chan-tok-1"
+
 
 
 def _fake_request() -> SimpleNamespace:
@@ -129,3 +133,105 @@ async def test_voice_webhook_503s_when_no_stream_url_available(monkeypatch):
         await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request())
 
     assert exc_info.value.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# stream_token auth: the TwiML <Stream> URL must embed a token that the
+# paired WebSocket route can validate before accepting the connection.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_voice_webhook_embeds_stream_token_bound_to_channel(monkeypatch):
+    from api.main import stream_token_repository, twilio_voice_webhook_channel
+
+    channel = _channel_with_nested_webhook_trigger(
+        live_url=None, ngrok_domain="fallback.example.ngrok.io"
+    )
+
+    async def fake_resolve(channel_token):
+        return channel["realtime_agent"], channel
+
+    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
+
+    response = await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request())
+    body = response.body.decode()
+
+    stream_url = urlparse(body.split('url="')[1].split('"')[0])
+    assert stream_url.path == f"/voice/{CHANNEL_TOKEN}/stream"
+    token = parse_qs(stream_url.query)["stream_token"][0]
+    assert token
+
+    # The minted token must be bound to this exact channel_token and be
+    # single-use — the WebSocket handler's `consume()` call, not a raw
+    # string comparison here, is what actually gates the media bridge.
+    assert stream_token_repository.consume(token, bound_key=CHANNEL_TOKEN) is True
+    assert stream_token_repository.consume(token, bound_key=CHANNEL_TOKEN) is False
+
+
+@pytest.mark.asyncio
+async def test_voice_webhook_embeds_stream_token_as_twiml_parameter(monkeypatch):
+    """Twilio does not reliably forward the `?stream_token=...` query string
+    on `<Stream url="...">` to the actual Media Stream WebSocket (confirmed
+    in production — see EST voice-call regression). The nested
+    `<Parameter name="stream_token" value="...">` element is the mechanism
+    Twilio actually relays, via `start.customParameters` on the WS leg — so
+    the TwiML must always include it."""
+    import re
+
+    from api.main import stream_token_repository, twilio_voice_webhook_channel
+
+    channel = _channel_with_nested_webhook_trigger(
+        live_url=None, ngrok_domain="fallback.example.ngrok.io"
+    )
+
+    async def fake_resolve(channel_token):
+        return channel["realtime_agent"], channel
+
+    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
+
+    response = await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request())
+    body = response.body.decode()
+
+    match = re.search(r'<Parameter name="stream_token" value="([^"]+)"', body)
+    assert match, f"expected a <Parameter name=\"stream_token\"> element, got: {body}"
+    param_token = match.group(1)
+    assert param_token
+
+    # Must be the exact same single-use token embedded in the URL query
+    # string fallback, not a second, independently-minted one.
+    stream_url = urlparse(body.split('url="')[1].split('"')[0])
+    query_token = parse_qs(stream_url.query)["stream_token"][0]
+    assert param_token == query_token
+
+    assert stream_token_repository.consume(param_token, bound_key=CHANNEL_TOKEN) is True
+
+
+@pytest.mark.asyncio
+async def test_voice_webhook_xml_escapes_url_and_token(monkeypatch):
+    """A raw `&` (or other XML-special character) in the stream URL or token
+    must never reach the TwiML body unescaped — an unescaped `&` inside an
+    XML attribute is invalid XML and can truncate/corrupt the value Twilio's
+    XML parser extracts from the element."""
+    from api.main import twilio_voice_webhook_channel
+
+    channel = _channel_with_nested_webhook_trigger(
+        live_url=None, ngrok_domain="fallback.example.ngrok.io"
+    )
+
+    async def fake_resolve(channel_token):
+        return channel["realtime_agent"], channel
+
+    monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
+
+    response = await twilio_voice_webhook_channel(CHANNEL_TOKEN, request=_fake_request())
+    body = response.body.decode()
+
+    # The URL now carries two query params (stream_token appended to none in
+    # this case, but exercised generally): verify no literal, unescaped `&`
+    # appears anywhere as a bare ampersand not part of `&amp;`.
+    for bare_amp in re.finditer(r"&(?!amp;)", body):
+        pytest.fail(f"found an unescaped '&' in TwiML body at pos {bare_amp.start()}: {body}")
+
+    # And the produced XML must actually be well-formed.
+    ET.fromstring(body)
