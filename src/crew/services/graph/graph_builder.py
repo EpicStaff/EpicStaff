@@ -322,7 +322,6 @@ class SessionGraphBuilder:
                 output_variable_path=crew_node_data.output_variable_path,
                 knowledge_search_service=self.knowledge_search_service,
                 stop_event=self.stop_event,
-                stream_config=crew_node_data.stream_config,
             )
             self.add_node(crew_node)
 
@@ -335,7 +334,6 @@ class SessionGraphBuilder:
                 input_map=python_node_data.input_map,
                 output_variable_path=python_node_data.output_variable_path,
                 stop_event=self.stop_event,
-                stream_config=python_node_data.stream_config,
             )
             self.add_node(python_node)
 

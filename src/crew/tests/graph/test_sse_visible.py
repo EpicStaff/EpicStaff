@@ -25,13 +25,12 @@ class _FakeFinishingNode(BaseNode):
 
     TYPE = "FAKE"
 
-    def __init__(self, stream_config: dict | None = None):
+    def __init__(self):
         super().__init__(
             session_id=1,
             node_name="fake_node",
             stop_event=StopEvent(),
         )
-        self.stream_config = stream_config
 
     async def execute(self, state, writer, execution_order, input_):
         return "output"
@@ -72,24 +71,6 @@ def test_start_message_data_serializes_sse_visible_true():
     assert start_message_data.sse_visible is True
 
 
-@pytest.mark.asyncio
-async def test_node_with_final_reply_false_suppresses_finish_message():
-    node = _FakeFinishingNode(stream_config={"final_reply": False})
-    writer = MagicMock()
-    state = make_state({})
-
-    await node.run(state=state, writer=writer)
-
-    finish_messages = [
-        call.args[0].message_data
-        for call in writer.call_args_list
-        if call.args[0].message_data.message_type == "finish"
-    ]
-
-    assert len(finish_messages) == 1
-    assert finish_messages[0].sse_visible is False
-
-
 def test_graph_end_message_dict_includes_sse_visible_true():
     source = inspect.getsource(GraphSessionManagerService.run_session)
     graph_end_block_match = re.search(
@@ -101,8 +82,8 @@ def test_graph_end_message_dict_includes_sse_visible_true():
 
 
 @pytest.mark.asyncio
-async def test_node_without_stream_config_keeps_finish_message_visible():
-    node = _FakeFinishingNode(stream_config=None)
+async def test_node_finish_message_visible_by_default():
+    node = _FakeFinishingNode()
     writer = MagicMock()
     state = make_state({})
 

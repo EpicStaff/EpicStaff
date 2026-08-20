@@ -125,7 +125,6 @@ class CrewNode(BaseNode):
         "Graph", on_delete=models.CASCADE, related_name="crew_node_list"
     )
     crew = models.ForeignKey("Crew", on_delete=models.CASCADE)
-    stream_config = models.JSONField(default=dict, blank=True)
 
 
 class PythonNode(BaseNode):
@@ -133,7 +132,6 @@ class PythonNode(BaseNode):
         "Graph", on_delete=models.CASCADE, related_name="python_node_list"
     )
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
-    stream_config = models.JSONField(default=dict, blank=True)
     test_input = models.JSONField(default=dict, blank=True)
     use_storage = models.BooleanField(default=False)
 
