@@ -60,7 +60,7 @@
                         <app-voice-selector
                             label="Voice"
                             [voices]="voices"
-                            [selectedVoice]="$safeNavigationMigration(settingsForm.get('voice')?.value)"
+                            [selectedVoice]="settingsForm.get('voice')?.value"
                             (voiceChange)="onVoiceChange($event)"
                         ></app-voice-selector>
                     }
@@ -77,9 +77,7 @@
                     <app-transcription-config-selector
                         label="Transcription Model"
                         [configs]="transcriptionConfigs"
-                        [selectedConfigId]="
-                            $safeNavigationMigration(settingsForm.get('realtime_transcription_config')?.value)
-                        "
+                        [selectedConfigId]="settingsForm.get('realtime_transcription_config')?.value ?? null"
                         [loading]="loadingConfigs"
                         (configChange)="onTranscriptionConfigChange($event)"
                         (createNew)="openCreateTranscriptionConfigDialog()"
@@ -135,7 +133,7 @@
                     <app-language-selector
                         label="Preferred Language"
                         [languages]="languages"
-                        [selectedLanguage]="$safeNavigationMigration(settingsForm.get('preferredLanguage')?.value)"
+                        [selectedLanguage]="settingsForm.get('preferredLanguage')?.value"
                         (languageChange)="onLanguageChange($event)"
                     ></app-language-selector>
                 </div>
@@ -163,7 +161,7 @@
                     <div class="section-header">
                         <h3>Threshold</h3>
                         <span class="slider-value">
-                            {{ $safeNavigationMigration(settingsForm.get('threshold')?.value) | number: '1.2-2' }}
+                            {{ settingsForm.get('threshold')?.value | number: '1.2-2' }}
                         </span>
                         <app-help-tooltip
                             text="Sets the similarity threshold for knowledge retrieval. Lower values return more results but may be less relevant. Higher values are more precise but may miss useful information."

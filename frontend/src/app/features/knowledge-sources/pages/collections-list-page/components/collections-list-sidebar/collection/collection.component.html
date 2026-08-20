@@ -10,7 +10,7 @@
     </div>
     <span
         class="collection__status"
-        [ngClass]="'collection__status--' + $safeNavigationMigration(collection()?.status)"
+        [ngClass]="'collection__status--' + collection()?.status"
     >
         <app-svg-icon
             [icon]="statusData.icon"

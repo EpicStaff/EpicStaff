@@ -147,9 +147,7 @@
                     @if (agent.fullLlmConfig) {
                         <div class="model-info-container">
                             <app-svg-icon
-                                [icon]="
-                                    getProviderIcon($safeNavigationMigration(agent.fullLlmConfig.providerDetails?.name))
-                                "
+                                [icon]="getProviderIcon(agent.fullLlmConfig.providerDetails?.name)"
                                 size="1.7rem"
                                 class="provider-icon"
                             />

@@ -60,8 +60,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
                                 [@expandCollapse]="isThoughtExpanded ? 'expanded' : 'collapsed'"
                             >
                                 <div class="thought-bubble">
-                                    <span class="thought-quote">"</span
-                                    >{{ cleanThought($safeNavigationMigration(agentFinishMessageData?.thought))
+                                    <span class="thought-quote">"</span>{{ cleanThought(agentFinishMessageData.thought)
                                     }}<span class="thought-quote">"</span>
                                 </div>
                             </div>
@@ -75,16 +74,16 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
         @if (agentFinishMessageData?.output) {
             <div class="result-message-container">
                 <div class="result-content">
-                    <app-copy-button [text]="cleanOutput($safeNavigationMigration(agentFinishMessageData?.output))" />
-                    @if (isValidJson($safeNavigationMigration(agentFinishMessageData?.output))) {
+                    <app-copy-button [text]="cleanOutput(agentFinishMessageData.output)" />
+                    @if (isValidJson(agentFinishMessageData.output)) {
                         <ngx-json-viewer
-                            [json]="getParsedJson($safeNavigationMigration(agentFinishMessageData?.output))"
+                            [json]="getParsedJson(agentFinishMessageData.output)"
                             [expanded]="true"
                         ></ngx-json-viewer>
                     }
-                    @if (!isValidJson($safeNavigationMigration(agentFinishMessageData?.output))) {
+                    @if (!isValidJson(agentFinishMessageData.output)) {
                         <markdown
-                            [data]="cleanOutput($safeNavigationMigration(agentFinishMessageData?.output))"
+                            [data]="cleanOutput(agentFinishMessageData.output)"
                             class="markdown-content"
                         >
                         </markdown>
