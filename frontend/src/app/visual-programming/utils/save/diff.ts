@@ -3,6 +3,7 @@ import { PromptConfig } from '../../core/models/classification-decision-table.mo
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import {
+    AgentNodeModel,
     AudioToTextNodeModel,
     ClassificationDecisionTableNodeModel,
     CodeAgentNodeModel,
@@ -17,6 +18,7 @@ import {
     ScheduleTriggerNodeModel,
     StartNodeModel,
     SubGraphNodeModel,
+    TaskNodeModel,
     TelegramTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
@@ -132,6 +134,50 @@ function toPythonComparable(node: PythonNodeModel): unknown {
         output_variable_path: node.output_variable_path || null,
         stream_config: node.stream_config ?? {},
         test_input: node.test_input ?? {},
+        metadata: toNodeMetadata(node),
+    };
+}
+
+function toTaskComparable(node: TaskNodeModel): unknown {
+    return {
+        node_name: node.node_name,
+        instructions: node.data.instructions,
+        output_schema: node.data.output_schema ?? {},
+        remember_output: node.data.remember_output ?? false,
+        agent_definition: node.data.agent_definition ?? null,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        surface_list: node.data.surface_list ?? [],
+        inline_surface: node.data.inline_surface ?? null,
+        metadata: toNodeMetadata(node),
+    };
+}
+
+function toAgentTaskComparableRef(ref: { id?: number; tempId?: string }): { id: number | null; tempId: string | null } {
+    return ref.id != null ? { id: ref.id, tempId: null } : { id: null, tempId: ref.tempId ?? null };
+}
+
+function toAgentComparable(node: AgentNodeModel): unknown {
+    return {
+        node_name: node.node_name,
+        agent_definition: node.data.agent_definition ?? null,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        surface_list: node.data.surface_list ?? [],
+        inline_surface: node.data.inline_surface ?? null,
+        // Array order is significant — index === task order. Do NOT sort this array.
+        tasks: (node.data.tasks ?? []).map((t) => ({
+            id: t.id ?? null,
+            ...(t.id == null ? { tempId: t.tempId } : {}),
+            name: t.name,
+            instructions: t.instructions,
+            output_schema: t.output_schema ?? {},
+            contextRefs: (t.contextRefs ?? []).map(toAgentTaskComparableRef).sort((a, b) => {
+                const aKey = a.id != null ? `id:${a.id}` : `tempId:${a.tempId}`;
+                const bKey = b.id != null ? `id:${b.id}` : `tempId:${b.tempId}`;
+                return aKey.localeCompare(bKey);
+            }),
+        })),
         metadata: toNodeMetadata(node),
     };
 }
@@ -342,6 +388,16 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<PythonNodeModel>(previous.nodes, NodeType.PYTHON),
             nodesByType<PythonNodeModel>(current.nodes, NodeType.PYTHON),
             toPythonComparable
+        ),
+        taskNodes: diffNodesByBackendId(
+            nodesByType<TaskNodeModel>(previous.nodes, NodeType.TASK),
+            nodesByType<TaskNodeModel>(current.nodes, NodeType.TASK),
+            toTaskComparable
+        ),
+        agentNodes: diffNodesByBackendId(
+            nodesByType<AgentNodeModel>(previous.nodes, NodeType.AGENT),
+            nodesByType<AgentNodeModel>(current.nodes, NodeType.AGENT),
+            toAgentComparable
         ),
         llmNodes: diffNodesByBackendId(
             nodesByType<LLMNodeModel>(previous.nodes, NodeType.LLM),

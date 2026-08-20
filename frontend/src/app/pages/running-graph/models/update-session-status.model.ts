@@ -1,3 +1,5 @@
+import { MessageType } from './graph-session-message.model';
+
 export interface SessionStatusMessageData {
     status: string;
     crew_id: number;
@@ -5,5 +7,5 @@ export interface SessionStatusMessageData {
         name: string;
         execution_order: number;
     };
-    message_type: 'update_session_status';
+    message_type: MessageType.UPDATE_SESSION_STATUS;
 }

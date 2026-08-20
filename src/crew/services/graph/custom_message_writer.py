@@ -78,7 +78,7 @@ class CustomSessionMessageWriter:
         written using the provided stream writer.
         """
 
-        sse_visible = kwargs.pop("sse_visible", None)
+        sse_visible = kwargs.pop("sse_visible", True)
         finish_message_data = FinishMessageData(
             output=output,
             state=cls._convert_state(state=state),

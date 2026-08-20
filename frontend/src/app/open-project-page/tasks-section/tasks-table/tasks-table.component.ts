@@ -138,7 +138,7 @@ export class TasksTableComponent implements OnChanges {
     private currentCellElement: HTMLElement | null = null;
     private globalClickUnlistener: (() => void) | null = null;
     private globalKeydownUnlistener: (() => void) | null = null;
-   
+
     private childDialogOpen = false;
 
     private isDragOutsideRows = false;
@@ -1650,7 +1650,6 @@ export class TasksTableComponent implements OnChanges {
     }
 
     private onDocumentClick(event: MouseEvent): void {
-      
         if (this.childDialogOpen) {
             return;
         }

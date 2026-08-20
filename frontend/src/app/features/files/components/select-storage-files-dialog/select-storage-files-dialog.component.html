@@ -124,10 +124,6 @@
                             >{{ node.name }}</span
                         >
 
-                        @if (node.isLoading) {
-                            <span class="files-dialog__node-spinner">...</span>
-                        }
-
                         @if (node.type === 'file' && node.size != null) {
                             <span class="files-dialog__item-size">({{ formatSize(node.size) }})</span>
                         }

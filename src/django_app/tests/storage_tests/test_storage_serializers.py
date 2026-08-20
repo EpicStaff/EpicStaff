@@ -1,6 +1,7 @@
 from tables.serializers.storage_serializers import (
     _normalize_path,
     StorageBulkDeleteSerializer,
+    StorageFilesByIdsQuerySerializer,
     StorageRenameSerializer,
     StorageUploadSerializer,
 )
@@ -57,3 +58,25 @@ class TestStorageBulkDeleteSerializer:
     def test_rejects_empty_paths_list(self):
         ser = StorageBulkDeleteSerializer(data={"paths": []})
         assert not ser.is_valid()
+
+
+class TestStorageFilesByIdsQuerySerializer:
+    def test_accepts_valid_csv(self):
+        ser = StorageFilesByIdsQuerySerializer(data={"ids": "1,2,3"})
+        assert ser.is_valid(), ser.errors
+        assert ser.validated_data["ids"] == [1, 2, 3]
+
+    def test_tolerates_spaces_around_ids(self):
+        ser = StorageFilesByIdsQuerySerializer(data={"ids": " 1, 2 , 3 "})
+        assert ser.is_valid(), ser.errors
+        assert ser.validated_data["ids"] == [1, 2, 3]
+
+    def test_rejects_non_numeric_token(self):
+        ser = StorageFilesByIdsQuerySerializer(data={"ids": "1,abc"})
+        assert not ser.is_valid()
+        assert "ids" in ser.errors
+
+    def test_rejects_empty_ids(self):
+        ser = StorageFilesByIdsQuerySerializer(data={"ids": ""})
+        assert not ser.is_valid()
+        assert "ids" in ser.errors

@@ -118,6 +118,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         try:
             collection = CollectionManagementService.create_collection(
                 collection_name=serializer.validated_data.get("collection_name"),
+                description=serializer.validated_data.get("description", ""),
                 user_id=serializer.validated_data.get("user_id"),
                 collection_origin=serializer.validated_data.get("collection_origin"),
                 org_id=self.get_active_org_id(),
@@ -145,7 +146,8 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         try:
             updated_collection = CollectionManagementService.update_collection(
                 collection_id=instance.collection_id,
-                collection_name=serializer.validated_data["collection_name"],
+                collection_name=serializer.validated_data.get("collection_name"),
+                description=serializer.validated_data.get("description"),
             )
 
             output_serializer = SourceCollectionDetailSerializer(updated_collection)
