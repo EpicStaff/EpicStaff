@@ -1,13 +1,13 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { DestroyRef, inject, Injectable, OnDestroy, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
 import { EMPTY, from, fromEvent, Observable, of, Subject } from 'rxjs';
 import { catchError, delay, map, switchMap, tap } from 'rxjs/operators';
 
 import { AuthService } from '../../../services/auth/auth.service';
 import { ConfigService } from '../../../services/config/config.service';
 import { ToastService } from '../../../services/notifications/toast.service';
+import type { ItemType } from '../libs/openai/client';
 // @ts-ignore
 import { RealtimeClient } from '../libs/openai/client';
 import { chatAgentRealtimeConfigId, InitRealtimePayload, toInitRealtimePayload } from '../models/chat-agent.model';
