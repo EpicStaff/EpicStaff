@@ -176,6 +176,7 @@ router.register(r"memory", MemoryViewSet)
 
 router.register(r"graph-light", GraphLightViewSet, basename="graphs-light")
 router.register(r"graph-versions", GraphVersionViewSet, basename="graph-versions")
+
 router.register(r"realtime-models", RealtimeModelViewSet)
 router.register(r"realtime-model-configs", RealtimeConfigModelViewSet)
 router.register(r"realtime-transcription-models", RealtimeTranscriptionModelViewSet)
@@ -192,6 +193,7 @@ router.register(r"gemini-realtime-configs", GeminiRealtimeConfigViewSet)
 router.register(r"realtime-channels", RealtimeChannelViewSet)
 router.register(r"twilio-channels", TwilioChannelViewSet)
 router.register(r"conversation-recordings", ConversationRecordingViewSet)
+
 router.register(r"decision-table-node", DecisionTableNodeModelViewSet)
 router.register(
     r"classification-decision-table-node", ClassificationDecisionTableNodeModelViewSet
