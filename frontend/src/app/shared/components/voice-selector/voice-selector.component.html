@@ -1,3 +1,12 @@
+@if (label()) {
+    <app-tooltip
+        [required]="required()"
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+        [icon]="icon()"
+    />
+}
+
 <div
     class="voice-selector"
     appClickOutside
@@ -6,7 +15,7 @@
     <!-- <label *ngIf="label">{{ label }}</label> -->
     <div
         class="selector"
-        [class.disabled]="disabled"
+        [class.disabled]="disabled()"
         (click)="toggleDropdown()"
     >
         <div class="selected-voice">{{ getSelectedVoiceName() }}</div>
@@ -37,13 +46,17 @@
         *ngIf="isOpen"
     >
         <div
-            *ngFor="let voice of voices"
+            *ngFor="let voice of voices()"
             class="dropdown-item"
-            [class.selected]="voice.id === selectedVoice"
+            [class.selected]="voice.id === selectedVoice()"
             (click)="selectVoice(voice.id)"
         >
             <span class="dropdown-item__name">{{ voice.name }}</span>
-            <span *ngIf="voice.description" class="dropdown-item__desc">{{ voice.description }}</span>
+            <span
+                *ngIf="voice.description"
+                class="dropdown-item__desc"
+                >{{ voice.description }}</span
+            >
         </div>
     </div>
 </div>

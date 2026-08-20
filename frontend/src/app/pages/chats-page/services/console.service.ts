@@ -5,16 +5,12 @@ import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
 import { EMPTY, from, fromEvent, Observable, of, Subject } from 'rxjs';
 import { catchError, delay, map, switchMap, tap } from 'rxjs/operators';
 
+import { AuthService } from '../../../services/auth/auth.service';
 import { ConfigService } from '../../../services/config/config.service';
 import { ToastService } from '../../../services/notifications/toast.service';
 // @ts-ignore
 import { RealtimeClient } from '../libs/openai/client';
-import {
-    chatAgentRealtimeConfigId,
-    chatAgentTranscriptionConfigId,
-    InitRealtimePayload,
-    toInitRealtimePayload,
-} from '../models/chat-agent.model';
+import { chatAgentRealtimeConfigId, InitRealtimePayload, toInitRealtimePayload } from '../models/chat-agent.model';
 import { ChatsService } from './chats.service';
 import { WavStreamPlayerService } from './wav-player.service';
 import { WavRecorderService } from './wav-recorder.service';
@@ -54,6 +50,7 @@ export class ConsoleService implements OnDestroy {
         private chatsService: ChatsService,
         private toastService: ToastService,
         private configService: ConfigService,
+        private authService: AuthService,
         private wavRecorderService: WavRecorderService,
         private wavStreamPlayerService: WavStreamPlayerService
     ) {
@@ -73,6 +70,7 @@ export class ConsoleService implements OnDestroy {
             url: this.configService.realtimeApiUrl,
             dangerouslyAllowAPIKeyInBrowser: false,
             connectionKey,
+            token: this.authService.getAccessToken() ?? undefined,
         });
         this.setupClient();
     }
@@ -115,14 +113,6 @@ export class ConsoleService implements OnDestroy {
             return of<ConnectionResult>({
                 success: false,
                 error: new Error('No Realtime LLM specified'),
-            });
-        }
-
-        if (selected.kind === 'definition' && !chatAgentTranscriptionConfigId(selected)) {
-            this.toastService.warning('The selected agent does not have a transcription config');
-            return of<ConnectionResult>({
-                success: false,
-                error: new Error('No transcription config'),
             });
         }
 

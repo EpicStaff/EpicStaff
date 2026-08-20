@@ -70,7 +70,10 @@ export class ChatsPageComponent implements OnInit, OnDestroy {
                     const defs: ChatAgent[] = definitions
                         .map((agent) => {
                             const realtime = realtimeByDef.get(agent.id);
-                            return realtime && realtime.realtime_config != null
+                            return realtime &&
+                                (realtime.openai_config != null ||
+                                    realtime.elevenlabs_config != null ||
+                                    realtime.gemini_config != null)
                                 ? ({ kind: 'definition', agent, realtime } as ChatAgent)
                                 : null;
                         })

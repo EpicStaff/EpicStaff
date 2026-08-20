@@ -40,26 +40,13 @@
         <div class="dialog-content">
             <div class="scrollable-content">
                 <!-- Provider Selection -->
-                <div class="form-section">
-                    <div class="section-header">
-                        <h3>Voice Provider</h3>
-                        <app-help-tooltip
-                            text="Select which AI provider handles this agent's real-time voice calls."
-                        ></app-help-tooltip>
-                    </div>
-                    <div class="provider-toggle">
-                        @for (p of providers; track p.id) {
-                            <button
-                                type="button"
-                                class="provider-btn"
-                                [class.provider-btn--active]="activeProvider() === p.id"
-                                (click)="onProviderSelect(p.id)"
-                            >
-                                {{ p.label }}
-                            </button>
-                        }
-                    </div>
-                </div>
+                <app-radio-button
+                    label="Voice Provider"
+                    tooltipText="Select which AI provider handles this agent's real-time voice calls."
+                    [options]="providers"
+                    [value]="activeProvider()"
+                    (valueChange)="onProviderSelect($event)"
+                />
 
                 <!-- Provider Config Select -->
                 @if (activeProvider() === 'openai') {
@@ -129,7 +116,6 @@
                         </div>
                     } @else {
                         <app-voice-selector
-                            label="Voice"
                             [voices]="availableVoices()"
                             [selectedVoice]="settingsForm.get('voice')?.value"
                             (voiceChange)="onVoiceChange($event)"

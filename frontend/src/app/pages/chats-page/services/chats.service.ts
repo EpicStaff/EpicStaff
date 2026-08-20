@@ -6,7 +6,6 @@ import {
     ChatAgentKind,
     chatAgentRealtimeConfigId,
     chatAgentTitle,
-    chatAgentTranscriptionConfigId,
     ChatAgentVM,
 } from '../models/chat-agent.model';
 
@@ -49,7 +48,6 @@ export class ChatsService {
             id: sel.agent.id,
             title: chatAgentTitle(sel),
             realtimeConfigId,
-            transcriptionConfigId: chatAgentTranscriptionConfigId(sel),
             modelName,
             customName,
         };

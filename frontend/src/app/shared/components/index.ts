@@ -67,6 +67,7 @@ export * from './timezone-selector/timezone-selector.component';
 export * from './tools-selector/tools-selector.component';
 export * from './tooltip/tooltip.component';
 export * from './unsaved-changes-dialog';
+export * from './voice-selector/voice-selector.component';
 export * from './webhook-trigger-dialog/webhook-trigger-dialog.component';
 export * from './webhook-trigger-field/webhook-trigger-field.component';
 export * from './webhook-trigger-select/webhook-trigger-select.component';

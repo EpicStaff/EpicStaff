@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { SelectComponent, SelectItem } from '@shared/components';
+import { RadioButtonComponent, SelectComponent, SelectItem } from '@shared/components';
 import { finalize } from 'rxjs';
 
 import { ElevenLabsRealtimeConfigStorageService } from '../../../../../../features/configure-models/services/llms/elevenlabs-realtime-config-storage.service';
@@ -15,9 +15,9 @@ import { AgentsService } from '../../../../../../features/staff/services/staff.s
 import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { HelpTooltipComponent } from '../../../../../../shared/components/help-tooltip/help-tooltip.component';
 import { SliderWithStepperComponent } from '../../../../../../shared/components/slider-with-stepper/slider-with-stepper.component';
+import { VoiceSelectorComponent } from '../../../../../../shared/components/voice-selector/voice-selector.component';
 import { RealtimeVoice, RealtimeVoicesService } from '../../../../../../shared/services/realtime-voices.service';
 import { buildToolIdsArray } from '../../../../../../shared/utils/tool-ids-builder.util';
-import { VoiceSelectorComponent } from './voice-selector/voice-selector.component';
 
 export type RealtimeProvider = 'openai' | 'elevenlabs' | 'gemini';
 type ProviderConfigValue = number | { id: number } | null | undefined;
@@ -34,6 +34,7 @@ type ProviderConfigValue = number | { id: number } | null | undefined;
         HelpTooltipComponent,
         SelectComponent,
         SliderWithStepperComponent,
+        RadioButtonComponent,
     ],
     templateUrl: './realtime-settings-dialog.component.html',
     styleUrls: ['./realtime-settings-dialog.component.scss'],
@@ -81,10 +82,10 @@ export class RealtimeSettingsDialogComponent implements OnInit {
 
     isElevenLabs = computed(() => this.activeProvider() === 'elevenlabs');
 
-    readonly providers: { id: RealtimeProvider; label: string }[] = [
-        { id: 'openai', label: 'OpenAI' },
-        { id: 'elevenlabs', label: 'ElevenLabs' },
-        { id: 'gemini', label: 'Gemini' },
+    readonly providers: SelectItem<RealtimeProvider>[] = [
+        { value: 'openai', name: 'OpenAI' },
+        { value: 'elevenlabs', name: 'ElevenLabs' },
+        { value: 'gemini', name: 'Gemini' },
     ];
 
     ngOnInit(): void {
@@ -140,8 +141,8 @@ export class RealtimeSettingsDialogComponent implements OnInit {
         return config?.id ?? null;
     }
 
-    onProviderSelect(provider: RealtimeProvider): void {
-        this.activeProvider.set(provider);
+    onProviderSelect(provider: unknown): void {
+        this.activeProvider.set(provider as RealtimeProvider);
         if (provider === 'elevenlabs') this.settingsForm.patchValue({ voice: '' });
     }
 
