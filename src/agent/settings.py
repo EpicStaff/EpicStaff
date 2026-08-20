@@ -30,7 +30,7 @@ def load_settings() -> Settings:
         agent_request_stream=os.environ.get("AGENT_REQUEST_STREAM", "agent.requests"),
         agent_result_stream=os.environ.get("AGENT_RESULT_STREAM", "agent.results"),
         agent_consumer_group=os.environ.get("AGENT_CONSUMER_GROUP", "agent-executors"),
-        log_level=os.environ.get("LOG_LEVEL", "INFO"),
+        log_level=os.environ.get("AGENT_LOG_LEVEL", "INFO"),
         agent_default_max_retries=int(os.environ.get("AGENT_DEFAULT_MAX_RETRIES", "5")),
         agent_default_max_iter=int(os.environ.get("AGENT_DEFAULT_MAX_ITER", "25")),
         agent_schema_max_retries=int(os.environ.get("AGENT_SCHEMA_MAX_RETRIES", "2")),

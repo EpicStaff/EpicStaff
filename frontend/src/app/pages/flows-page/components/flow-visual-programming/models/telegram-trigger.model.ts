@@ -47,7 +47,7 @@ export interface GetTelegramTriggerNodeRequest {
     id: number;
     node_name: string;
     graph: number;
-    telegram_bot_api_key: string;
+    telegram_bot_api_key_secret_id: number | null;
     fields: TelegramTriggerNodeField[];
     metadata: Record<string, unknown>;
     webhook_trigger: WebhookTriggerModel | null;

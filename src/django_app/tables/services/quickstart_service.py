@@ -11,10 +11,12 @@ from tables.models.embedding_models import EmbeddingModel, EmbeddingConfig
 from tables.models.provider import Provider
 from tables.models.default_models import DefaultModels
 from tables.models.realtime_models import OpenAIRealtimeConfig, GeminiRealtimeConfig
+from tables.models.secret_models import Secret
 from tables.models.tag_models import (
     LLMConfigTag,
     EmbeddingConfigTag,
 )
+from tables.services.secrets import secret_service
 
 
 class QuickstartService(metaclass=SingletonMeta):
@@ -41,7 +43,20 @@ class QuickstartService(metaclass=SingletonMeta):
 
     def __init__(self): ...
 
-    def quickstart(self, provider: str, api_key: str, org_id: int) -> dict:
+    def quickstart(
+        self,
+        *,
+        provider: str,
+        org_id: int,
+        api_key: str | None = None,
+        secret: Secret | None = None,
+    ) -> dict:
+        """Create a matched set of provider configs backed by a single Secret.
+
+        Exactly one of `api_key` (cold start — a Secret is created and named after
+        the bundle) or `secret` (reuse — nothing is created) is expected; the
+        serializer enforces that.
+        """
         try:
             if provider not in self.PROVIDER_CONFIGS:
                 supported = ", ".join(self.PROVIDER_CONFIGS.keys())
@@ -52,11 +67,24 @@ class QuickstartService(metaclass=SingletonMeta):
             config_name = self._generate_unique_quickstart_config_name(provider)
             provider_obj = Provider.objects.get(name=provider)
             with transaction.atomic():
+                # One Secret backs the whole bundle. Resolved before any config
+                # exists, so every config can set the FK on its INSERT.
+                bundle_secret = secret or secret_service.create(
+                    text=api_key,
+                    org_id=org_id,
+                    name=self._bundle_secret_name(bundle_name=config_name),
+                )
                 llm_config = self._create_llm_model_config(
-                    provider_obj, api_key, config_name, org_id=org_id
+                    provider=provider_obj,
+                    config_name=config_name,
+                    org_id=org_id,
+                    secret=bundle_secret,
                 )
                 embedding_config = self._create_embedder_config(
-                    provider_obj, api_key, config_name, org_id=org_id
+                    provider=provider_obj,
+                    config_name=config_name,
+                    org_id=org_id,
+                    secret=bundle_secret,
                 )
 
                 if provider == "openai":
@@ -170,23 +198,31 @@ class QuickstartService(metaclass=SingletonMeta):
             )
         return bool(checks) and all(checks)
 
+    def _bundle_secret_name(self, *, bundle_name: str) -> str:
+        """Name the bundle's Secret after the bundle it backs, not after one of the
+        config types that reference it — a single Secret serves them all."""
+        return f"{bundle_name.replace('_', '-')}-api-key"
+
     def _create_llm_model_config(
-        self, provider: Provider, api_key: str, config_name: str, org_id: int
+        self, *, provider: Provider, config_name: str, org_id: int, secret: Secret
     ) -> LLMConfig:
-        llm_model = self._get_or_create_llm_model(provider)
+        llm_model = self._get_or_create_llm_model(provider=provider)
         return LLMConfig.objects.create(
-            model=llm_model, custom_name=config_name, api_key=api_key, org_id=org_id
+            model=llm_model,
+            custom_name=config_name,
+            org_id=org_id,
+            api_key_secret=secret,
         )
 
     def _create_embedder_config(
-        self, provider: Provider, api_key: str, config_name: str, org_id: int
+        self, *, provider: Provider, config_name: str, org_id: int, secret: Secret
     ) -> EmbeddingConfig:
-        embedder_model = self._get_or_create_embedder_model(provider)
+        embedder_model = self._get_or_create_embedder_model(provider=provider)
         return EmbeddingConfig.objects.create(
             model=embedder_model,
             custom_name=config_name,
-            api_key=api_key,
             org_id=org_id,
+            api_key_secret=secret,
         )
 
     def _create_openai_realtime_config(

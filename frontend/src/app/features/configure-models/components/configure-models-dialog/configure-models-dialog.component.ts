@@ -11,6 +11,7 @@ import { ConfigureModelsTab } from '../../interfaces/configure-models-tab.interf
 import { DefaultLlmsSectionComponent } from '../default-llms-section/default-llms-section.component';
 import { LlmLibrarySectionComponent } from '../llm-library-section/llm-library-section.component';
 import { QuickstartSectionComponent } from '../quickstart-section/quickstart-section.component';
+import { SecretsSectionComponent } from '../secrets-section/secrets-section.component';
 import { VoiceSettingsSectionComponent } from '../voice-settings-section/voice-settings-section.component';
 import { WebhookTriggersSectionComponent } from '../webhook-triggers-section/webhook-triggers-section.component';
 
@@ -23,6 +24,7 @@ import { WebhookTriggersSectionComponent } from '../webhook-triggers-section/web
         LlmLibrarySectionComponent,
         WebhookTriggersSectionComponent,
         VoiceSettingsSectionComponent,
+        SecretsSectionComponent,
         AppSvgIconComponent,
         MatTooltipModule,
     ],
@@ -65,6 +67,12 @@ export class ConfigureModelsDialogComponent implements OnInit {
             label: 'Voice / Twilio',
             iconClass: 'ti ti-phone',
             isPermitted: this.permissionService.isSuperadmin,
+        },
+        {
+            id: ConfigureModelsTabId.SECRETS,
+            label: 'Secrets',
+            svgIcon: 'secrets',
+            isPermitted: this.permissionService.can(ResourceCode.Secrets, ActionCode.Read),
         },
     ];
 

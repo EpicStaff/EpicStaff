@@ -134,7 +134,9 @@ def test_quickstart_apply_denied_for_non_superadmin(db, django_user_model):
 def test_quickstart_apply_allowed_for_superadmin(db, django_user_model):
     org = Organization.objects.create(name="Org A")
     Provider.objects.create(name="openai")
-    QuickstartService().quickstart("openai", "sk-test", org_id=org.id)  # seed a config
+    QuickstartService().quickstart(
+        provider="openai", api_key="sk-test", org_id=org.id
+    )  # seed a config
     root = django_user_model.objects.create_user(
         email="root@example.com", password="StrongPass123!", is_superadmin=True
     )

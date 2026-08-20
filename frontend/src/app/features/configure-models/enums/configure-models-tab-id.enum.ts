@@ -4,4 +4,5 @@ export enum ConfigureModelsTabId {
     LLM_LIBRARY = 'llm_library',
     WEBHOOK_TRIGGERS = 'webhook_triggers',
     VOICE_SETTINGS = 'voice_settings',
+    SECRETS = 'secrets',
 }

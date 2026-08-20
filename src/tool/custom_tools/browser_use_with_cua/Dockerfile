@@ -1,11 +1,10 @@
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a
 
 # ---- ENV ----
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC \
     DISPLAY=:99 \
     VNC_GEOMETRY=1600x900 \
-    VNC_PASS=secret \
     PYTHONUNBUFFERED=1 \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
@@ -27,7 +26,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 # ---- Install uv (gives uvx) ----
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+COPY installer.sh /tmp/installer.sh
+RUN sh /tmp/installer.sh && rm /tmp/installer.sh
 ENV PATH="/root/.local/bin:${PATH}"
 RUN ln -s /root/.local/bin/uvx /usr/local/bin/uvx || true
 
@@ -36,9 +36,6 @@ RUN sed -i 's/# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && locale
 
 # ---- Workdir ----
 WORKDIR /app
-
-# ---- VNC password (root) ----
-RUN x11vnc -storepasswd "${VNC_PASS}" /root/.vncpass
 
 # ---- Python deps ----
 COPY requirements.txt /app/requirements.txt

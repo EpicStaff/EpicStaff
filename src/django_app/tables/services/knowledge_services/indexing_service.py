@@ -111,6 +111,8 @@ class IndexingService:
             "rag_type": "naive",
             "collection_id": collection.collection_id,
             "base_rag_type_id": base_rag_type.rag_type_id,
+            "embedder_api_key_secret_id": naive_rag.embedder.api_key_secret_id,
+            "llm_api_key_secret_id": None,
         }
 
     @staticmethod
@@ -147,9 +149,7 @@ class IndexingService:
             )
 
         # Validate GraphRag has documents linked
-        document_count = GraphRagDocument.objects.filter(
-            graph_rag=graph_rag
-        ).count()
+        document_count = GraphRagDocument.objects.filter(graph_rag=graph_rag).count()
 
         if document_count == 0:
             raise RagNotReadyForIndexingException(
@@ -192,6 +192,8 @@ class IndexingService:
             "rag_type": "graph",
             "collection_id": collection.collection_id,
             "base_rag_type_id": base_rag_type.rag_type_id,
+            "embedder_api_key_secret_id": graph_rag.embedder.api_key_secret_id,
+            "llm_api_key_secret_id": graph_rag.llm.api_key_secret_id,
         }
 
     @staticmethod

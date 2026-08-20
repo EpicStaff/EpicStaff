@@ -1,5 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
@@ -7,21 +7,26 @@ import {
     ColumnResizeDividerComponent,
     createColumnWidthState,
     CustomInputComponent,
+    HintMessageComponent,
     JsonEditorComponent,
-    WebhookTriggerSelectComponent,
+    SelectComponent,
+    SelectItem,
+    ValidationErrorsComponent, WebhookTriggerSelectComponent,
 } from '@shared/components';
+import { SecretsStorageService } from "@shared/services";
 import { tap } from 'rxjs/operators';
 
 import {
     DisplayedTelegramField,
     TelegramTriggerNodeField,
 } from '../../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
+import { ToastService } from "../../../../services/notifications";
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { WebhookTriggerModel } from '../../../core/models/webhook-trigger.model';
+import { WebhookTriggerModel } from "../../../core/models/webhook-trigger.model";
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
 import { WebhookStatus } from './webhook-status.model';
 
@@ -36,15 +41,21 @@ import { WebhookStatus } from './webhook-status.model';
         HelpTooltipComponent,
         AppSvgIconComponent,
         JsonEditorComponent,
+        SelectComponent,
+        ValidationErrorsComponent,
+        HintMessageComponent,
         WebhookTriggerSelectComponent,
         ColumnResizeDividerComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTriggerNodeModel> {
+export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTriggerNodeModel> implements OnInit
+{
     public override readonly isExpanded = input<boolean>(false);
 
     private dialog = inject(Dialog);
+    private secretsStorageService = inject(SecretsStorageService);
+    private toastService = inject(ToastService);
 
     protected readonly leftColumnWidth = createColumnWidthState('telegram-trigger-node', 550);
 
@@ -63,6 +74,14 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
 
         return JSON.stringify(checkedItemsObj, null, 2);
     });
+
+    secretItems = computed<SelectItem[]>(() =>
+        this.secretsStorageService.secrets().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.secretsStorageService.maskTail(secret.tail),
+        }))
+    );
 
     editorOptions: Record<string, unknown> = {
         lineNumbers: 'off',
@@ -83,8 +102,13 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
         super();
     }
 
-    onTriggerResolved(trigger: WebhookTriggerModel | null): void {
-        this.webhookRegistered.set(!!trigger?.live_url);
+    ngOnInit() {
+        this.secretsStorageService
+            .getSecrets()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                error: () => this.toastService.error('Failed to load secrets.'),
+            });
     }
 
     private setSelectedFields(nodeFields: TelegramTriggerNodeField[]): void {
@@ -106,7 +130,10 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
         this.setSelectedFields(this.node().data.fields);
         return this.fb.group({
             node_name: [this.node().node_name, this.createNodeNameValidators()],
-            telegram_bot_api_key: [this.node().data.telegram_bot_api_key || '', Validators.required],
+            telegram_bot_api_key_secret_id: [
+                this.node().data.telegram_bot_api_key_secret_id ?? null,
+                Validators.required,
+            ],
             webhook_trigger: [this.node().data.webhook_trigger ?? null],
             fields: [this.node().data.fields || []],
         });
@@ -119,22 +146,11 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
 
             data: {
                 ...this.node().data,
-                telegram_bot_api_key: this.form.value.telegram_bot_api_key,
+                telegram_bot_api_key_secret_id: this.form.value.telegram_bot_api_key_secret_id,
                 webhook_trigger: this.form.value.webhook_trigger ?? null,
                 fields: this.form.value.fields,
             },
         };
-    }
-
-    getTelegramKeyErrorMessage(): string {
-        const control = this.form?.get('telegram_bot_api_key');
-        if (!control || control.valid || !control.errors) {
-            return '';
-        }
-        if (control.errors['required']) {
-            return 'This field is required';
-        }
-        return '';
     }
 
     onEditing(): void {
@@ -158,6 +174,10 @@ export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTri
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe();
+    }
+
+    onTriggerResolved(trigger: WebhookTriggerModel | null): void {
+        this.webhookRegistered.set(!!trigger?.live_url);
     }
 
     private updateFieldsControl(items: TelegramTriggerNodeField[]) {

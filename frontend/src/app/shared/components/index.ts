@@ -30,6 +30,7 @@ export * from './form-select/form-select.component';
 export * from './forms';
 export * from './header';
 export * from './help-tooltip';
+export * from './hint-message/hint-message.component';
 export * from './json-editor/json-editor.component';
 export * from './json-editor/json-editor-form-field.component';
 export * from './key-value-list/key-value-list.component';

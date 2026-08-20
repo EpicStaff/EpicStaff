@@ -117,6 +117,7 @@ TAG_MAP = [
     ("api/organizations", "Organizations"),
     # Config / Defaults
     ("api/labels", "Labels"),
+    ("api/secrets", "Secrets"),
     ("api/storage", "Storage"),
     ("api/default-", "Defaults"),
     ("api/environment", "Environment"),
@@ -196,6 +197,7 @@ TAGS_ORDER = [
     "Admin: Organizations",
     "Admin: Users",
     "Labels",
+    "Secrets",
     "Storage",
     "Defaults",
     "Environment",

@@ -57,7 +57,6 @@ class DefaultLLMConfig(DefaultBaseModel):
     top_logprobs = models.IntegerField(null=True, blank=True)
     base_url = models.TextField(null=True, blank=True)
     api_version = models.TextField(null=True, blank=True)
-    api_key = models.TextField(null=True, blank=True)
     headers = models.JSONField(default=dict, blank=True)
     extra_headers = models.JSONField(default=dict, blank=True)
     timeout = models.FloatField(null=True, blank=True)
@@ -89,7 +88,13 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
     top_logprobs = models.IntegerField(null=True, blank=True)
     base_url = models.TextField(null=True, blank=True)
     api_version = models.TextField(null=True, blank=True)
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="llm_configs",
+    )
     headers = models.JSONField(default=dict, blank=True)
     extra_headers = models.JSONField(default=dict, blank=True)
     timeout = models.FloatField(default=120.0, null=True, blank=True)
@@ -145,7 +150,13 @@ class RealtimeConfig(OrgScopedModel, models.Model):
 
     custom_name = models.CharField(max_length=250)
     realtime_model = models.ForeignKey("RealtimeModel", on_delete=models.CASCADE)
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="realtime_configs",
+    )
     tags = models.ManyToManyField(
         RealtimeConfigTag, blank=True, related_name="realtime_configs"
     )
@@ -168,7 +179,13 @@ class RealtimeTranscriptionConfig(OrgScopedModel, models.Model):
     realtime_transcription_model = models.ForeignKey(
         "RealtimeTranscriptionModel", on_delete=models.CASCADE
     )
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="realtime_transcription_configs",
+    )
     tags = models.ManyToManyField(
         RealtimeTranscriptionConfigTag,
         blank=True,

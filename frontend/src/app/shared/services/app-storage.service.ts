@@ -19,6 +19,7 @@ import {
     LlmProvidersStorageService,
     RealtimeConfigStorageService,
     RealtimeModelsStorageService,
+    SecretsStorageService,
     TranscriptionConfigStorageService,
     TranscriptionModelsStorageService,
 } from './index';
@@ -48,6 +49,7 @@ export class AppStorageService {
         inject(LlmProvidersStorageService),
         inject(RealtimeConfigStorageService),
         inject(RealtimeModelsStorageService),
+        inject(SecretsStorageService),
         inject(TranscriptionConfigStorageService),
         inject(TranscriptionModelsStorageService),
     ];

@@ -173,7 +173,7 @@ prod-ngrok:
 # ==========================================
 
 gen-env:
-	@echo "--- Regenerating src/.dev.env, src/debug.env, src/.env.example from src/env.yaml ---"
+	@echo "--- Regenerating src/.dev.env, src/.debug.env, src/.env.example from src/env.yaml ---"
 	@python scripts/generate_env.py
 
 check-env:

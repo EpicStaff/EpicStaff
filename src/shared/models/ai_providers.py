@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Literal
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 
 class LLMConfigData(BaseModel):
@@ -17,6 +17,9 @@ class LLMConfigData(BaseModel):
     base_url: str | None = None
     api_version: str | None = None
     api_key: str | None = None
+    api_key_secret_id: int | None = Field(default=None, exclude=True)
+    """In-memory carrier for SecretResolver; excluded from every dump so no
+    Secret id reaches Session.graph_schema or the Redis payload."""
     deployment_id: str | None = None
     headers: dict[str, str] | None = None
     extra_headers: dict[str, str] | None = None
@@ -29,6 +32,7 @@ class EmbedderConfigData(BaseModel):
     deployment_name: str | None = None
     base_url: str | None = None
     api_key: str | None = None
+    api_key_secret_id: int | None = Field(default=None, exclude=True)
 
     model_config = ConfigDict(from_attributes=True)
 

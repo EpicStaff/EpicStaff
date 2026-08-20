@@ -7,7 +7,7 @@ IS_DEBUG = "--debug" in sys.argv
 config_dict: Dict[str, Any] = {"env_file_encoding": "utf-8", "extra": "ignore"}
 
 if IS_DEBUG:
-    env_file_path = "../debug.env"
+    env_file_path = "../.debug.env"
     print(f"--- DEBUG MODE: Loading settings from {env_file_path} ---")
     config_dict["env_file"] = env_file_path
 else:

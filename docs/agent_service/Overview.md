@@ -239,7 +239,7 @@ boot.
 | `AGENT_DROP_UNSUPPORTED_LLM_PARAMS` | `true` | strip params a provider rejects |
 | `SANDBOX_REQUEST_CHANNEL` / `SANDBOX_RESULT_CHANNEL` | `code_exec_tasks` / `code_results` | sandbox |
 | `KNOWLEDGE_SEARCH_GET_CHANNEL` / `KNOWLEDGE_SEARCH_RESPONSE_CHANNEL` | `knowledge:search:get` / `:response` | knowledge |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`, `LOG_LEVEL` | — | infra |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`, `AGENT_LOG_LEVEL` | — | infra |
 
 ## Adding a new runner
 

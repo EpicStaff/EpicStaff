@@ -97,6 +97,7 @@ from tables.models import (
     PythonCodeTool,
     PythonNode,
     RealtimeModel,
+    Secret,
     StartNode,
     SubGraphNode,
     Task,
@@ -220,10 +221,13 @@ from tables.services.rbac.permissions import (
     HasOrgPermission,
     IsSuperadmin,
     IsSystemApiKeyAuthenticated,
+    DenyApiKeyAuth,
 )
 from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
+from tables.services.secrets import secret_usage_service
+from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     validate_classification_condition_group_names,
 )
@@ -275,6 +279,7 @@ from tables.serializers.model_serializers import (
     RealtimeTranscriptionConfigSerializer,
     RealtimeTranscriptionModelSerializer,
     TwilioChannelSerializer,
+    SecretSerializer,
     StartNodeSerializer,
     SubGraphNodeSerializer,
     TaskNodeSerializer,
@@ -394,7 +399,7 @@ class LLMConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
                 "is_visible",
             ]
 
-    queryset = LLMConfig.objects.all()
+    queryset = LLMConfig.objects.select_related("api_key_secret").all()
     serializer_class = LLMConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = LLMConfigFilter
@@ -459,7 +464,7 @@ class EmbeddingConfigReadWriteViewSet(OrgScopedViewSetMixin, ModelViewSet):
                 "is_visible",
             ]
 
-    queryset = EmbeddingConfig.objects.all()
+    queryset = EmbeddingConfig.objects.select_related("api_key_secret").all()
     serializer_class = EmbeddingConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = EmbeddingConfigFilter
@@ -1672,7 +1677,7 @@ class RealtimeConfigModelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
                 "realtime_model",
             ]
 
-    queryset = RealtimeConfig.objects.all()
+    queryset = RealtimeConfig.objects.select_related("api_key_secret").all()
     serializer_class = RealtimeConfigSerializer
 
     filter_backends = [DjangoFilterBackend]
@@ -1711,7 +1716,9 @@ class RealtimeTranscriptionConfigModelViewSet(
                 "realtime_transcription_model",
             ]
 
-    queryset = RealtimeTranscriptionConfig.objects.all()
+    queryset = RealtimeTranscriptionConfig.objects.select_related(
+        "api_key_secret"
+    ).all()
     serializer_class = RealtimeTranscriptionConfigSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = RealtimeTranscriptionConfigFilter
@@ -2294,7 +2301,7 @@ class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewS
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
 
-    queryset = McpTool.objects.all()
+    queryset = McpTool.objects.select_related("auth_secret").all()
     serializer_class = McpToolSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["name", "tool_name"]
@@ -2498,6 +2505,30 @@ class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
 
         return Response(self.get_serializer(labels, many=True).data)
+
+
+class SecretViewSet(
+    OrgScopedViewSetMixin,
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Create / read / delete only — a Secret's name and value are immutable."""
+
+    permission_classes = [IsAuthenticated, DenyApiKeyAuth, HasOrgPermission]
+    rbac_resource_type = ResourceType.SECRETS
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "usage": Permission.READ}
+    queryset = Secret.objects.all()
+    serializer_class = SecretSerializer
+
+    @extend_schema(**SECRET_USAGE_GET)
+    @action(detail=True, methods=["get"], url_path="usage")
+    def usage(self, request, pk=None):
+        """Where this secret is referenced, for the deletion-safety dialog."""
+        secret = self.get_object()
+        return Response(secret_usage_service.summary(secret=secret))
 
 
 class VoiceSettingsView(generics.RetrieveUpdateAPIView):

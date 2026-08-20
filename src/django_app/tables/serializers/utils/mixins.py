@@ -5,6 +5,10 @@ from django.db import transaction
 from tables.models.base_models import BaseGlobalNode
 from tables.models.python_models import PythonCode
 from tables.models import Agent, PythonCodeTool, ToolConfig, McpTool
+from tables.services.copy_services.helpers import (
+    apply_python_code_fields,
+    create_python_code,
+)
 from tables.serializers.org_scoped_fields import (
     org_visible_queryset,
     resolve_active_org_id,
@@ -173,7 +177,7 @@ class TagHandlingMixin:
 class NestedPythonCodeMixin:
     def _create_with_python_code(self, model_class, validated_data):
         python_code_data = validated_data.pop("python_code")
-        python_code = PythonCode.objects.create(**python_code_data)
+        python_code = create_python_code(python_code_data=python_code_data)
         return model_class.objects.create(python_code=python_code, **validated_data)
 
     def _update_python_code(self, instance, validated_data):
@@ -183,9 +187,9 @@ class NestedPythonCodeMixin:
             expected_hash = python_code_data.pop("content_hash", None)
             if expected_hash is not None:
                 python_code._expected_hash = expected_hash
-            for attr, value in python_code_data.items():
-                setattr(python_code, attr, value)
-            python_code.save()
+            apply_python_code_fields(
+                python_code=python_code, python_code_data=python_code_data
+            )
 
     def create(self, validated_data):
         return self._create_with_python_code(self.Meta.model, validated_data)

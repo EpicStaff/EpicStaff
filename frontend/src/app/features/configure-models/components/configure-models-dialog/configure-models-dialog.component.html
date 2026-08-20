@@ -27,11 +27,19 @@
                     [class.configure-models-dialog__tab--active]="activeTabId() === tab.id"
                     (click)="selectTab(tab.id)"
                 >
-                    <i
-                        class="configure-models-dialog__tab-icon"
-                        [ngClass]="tab.iconClass"
-                        aria-hidden="true"
-                    ></i>
+                    @if (tab.svgIcon) {
+                        <app-svg-icon
+                            class="configure-models-dialog__tab-icon"
+                            [icon]="tab.svgIcon"
+                            size="14px"
+                        />
+                    } @else {
+                        <i
+                            class="configure-models-dialog__tab-icon"
+                            [ngClass]="tab.iconClass"
+                            aria-hidden="true"
+                        ></i>
+                    }
                     {{ tab.label }}
                 </button>
             }
@@ -62,6 +70,11 @@
             }
             @case (tabIds.VOICE_SETTINGS) {
                 <app-voice-settings-tab></app-voice-settings-tab>
+            }
+            @case (tabIds.SECRETS) {
+                <section class="configure-models-dialog__panel">
+                    <app-secrets-section></app-secrets-section>
+                </section>
             }
         }
     </main>
