@@ -7,7 +7,13 @@ services:
 
     ports:
       - "8082:8000"
+    env_file:
+      - path: .env
+        required: false
     environment:
       - PYTHONUNBUFFERED=1
       - FASTMCP_LOG_LEVEL=debug
-
+      # Outbound URL allow-list (see .env.example). Defaults to the public
+      # gitlab.com / github.com endpoints when unset.
+      - GIT_TOOLS_ALLOWED_URLS=${GIT_TOOLS_ALLOWED_URLS:-https://gitlab.com,https://github.com,https://api.github.com}
+      - GIT_TOOLS_ALLOW_PRIVATE_HOSTS=${GIT_TOOLS_ALLOW_PRIVATE_HOSTS:-false}

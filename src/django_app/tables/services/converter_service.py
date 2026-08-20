@@ -95,6 +95,7 @@ from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import RealtimeAgentChat
 from tables.models.webhook_models import NgrokWebhookConfig
 from tables.services.realtime_surface_service import RealtimeSurfaceService
+from tables.services.secrets import assert_tool_secrets_declared
 from tables.validators.crew_memory_validator import CrewMemoryValidator
 from tables.validators.task_validator import TaskValidator
 from tables.validators.tool_config_validator import (
@@ -343,6 +344,7 @@ class ConverterService(metaclass=SingletonMeta):
                 knowledge_collection_id = agent.knowledge_collection.pk
 
             rag_type_id = agent.get_rag_type_and_id()
+            rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
             all_search_configs = SearchConfigService.get_search_configs(agent)
             rag_search_config = self.build_rag_search_config(
                 rag_type_id, all_search_configs
@@ -371,6 +373,7 @@ class ConverterService(metaclass=SingletonMeta):
                     knowledge_collection_id=knowledge_collection_id,
                     rag_type_id=rag_type_id,
                     rag_search_config=rag_search_config,
+                    rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
                 )
             )
 
@@ -486,6 +489,7 @@ class ConverterService(metaclass=SingletonMeta):
 
         # Build RAG search config using factory method
         rag_type_id = agent.get_rag_type_and_id()
+        rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
         all_search_configs = SearchConfigService.get_search_configs(agent)
         rag_search_config = self.build_rag_search_config(
             rag_type_id, all_search_configs
@@ -511,6 +515,7 @@ class ConverterService(metaclass=SingletonMeta):
             knowledge_collection_id=knowledge_collection_id,
             rag_type_id=rag_type_id,
             rag_search_config=rag_search_config,
+            rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
         )
 
     def convert_rt_agent_chat_to_pydantic(
@@ -529,6 +534,7 @@ class ConverterService(metaclass=SingletonMeta):
 
         # Build RAG search config using factory method
         rag_type_id = agent.get_rag_type_and_id()
+        rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
         all_search_configs = SearchConfigService.get_search_configs(agent)
         rag_search_config = self.build_rag_search_config(
             rag_type_id, all_search_configs
@@ -541,15 +547,16 @@ class ConverterService(metaclass=SingletonMeta):
             knowledge_collection_id=knowledge_collection_id,
             rag_type_id=rag_type_id,
             rag_search_config=rag_search_config,
+            rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
             llm=self.convert_llm_config_to_pydantic(agent.llm_config),
             memory=agent.memory,
             tools=self._get_agent_base_tools(agent=agent),
             rt_model_name=rt_config.realtime_model.name,
-            rt_api_key=rt_config.api_key,
+            rt_api_key_secret_id=rt_config.api_key_secret_id,
             transcript_model_name=rt_transcription_config.realtime_transcription_model.name
             if rt_transcription_config
             else None,
-            transcript_api_key=rt_transcription_config.api_key
+            transcript_api_key_secret_id=rt_transcription_config.api_key_secret_id
             if rt_transcription_config
             else None,
             temperature=agent.default_temperature,
@@ -591,11 +598,11 @@ class ConverterService(metaclass=SingletonMeta):
             memory=False,
             tools=surface_resolution.tools,
             rt_model_name=rt_config.realtime_model.name,
-            rt_api_key=rt_config.api_key,
+            rt_api_key_secret_id=rt_config.api_key_secret_id,
             transcript_model_name=rt_transcription_config.realtime_transcription_model.name
             if rt_transcription_config
             else None,
-            transcript_api_key=rt_transcription_config.api_key
+            transcript_api_key_secret_id=rt_transcription_config.api_key_secret_id
             if rt_transcription_config
             else None,
             temperature=ad.default_temperature,
@@ -637,6 +644,13 @@ class ConverterService(metaclass=SingletonMeta):
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
+            # The declaration is the allow-list: everything selected is injected,
+            # whether the code reads it or not. That is what makes a computed name
+            # -- get_secret(f"KEY_{env}") -- work, since no static parse could see
+            # it. The parser is now only a validator (declaration_validator.py).
+            # Names only: resolution happens in redis_service, on the copy that
+            # goes to Redis -- never on the object that becomes graph_schema.
+            secret_names=list(python_code.secrets.values_list("name", flat=True)),
             org_id=org_id,
         )
 
@@ -680,9 +694,20 @@ class ConverterService(metaclass=SingletonMeta):
             session_id=session_id,
             org_id=org_id,
         )
+        # A PythonCodeTool is org-owned, not graph-owned, so the session-start graph
+        # walk cannot reach it. Gate it here, where the tool is already in hand and
+        # its name is available for the error.
+        assert_tool_secrets_declared(
+            tool_name=python_code_tool.name,
+            code=python_code_tool.python_code.code,
+            declared=set(python_code_data.secret_names),
+        )
         merged_kwargs = {**user_defaults, **(python_code_data.global_kwargs or {})}
         python_code_data = PythonCodeData(
-            **{**python_code_data.model_dump(), "global_kwargs": merged_kwargs}
+            **{**python_code_data.model_dump(), "global_kwargs": merged_kwargs},
+            # model_dump() omits secret_names (exclude=True), so a plain re-splat
+            # would silently drop the declaration for tools.
+            secret_names=python_code_data.secret_names,
         )
         return PythonCodeToolData(
             id=python_code_tool.pk,
@@ -735,6 +760,13 @@ class ConverterService(metaclass=SingletonMeta):
             session_id=session_id,
             org_id=org_id,
         )
+        # A configured tool reaches the session through this method only, so gating
+        # convert_python_code_tool_to_pydantic alone would leave it ungated.
+        assert_tool_secrets_declared(
+            tool_name=python_code_tool.name,
+            code=python_code.code,
+            declared=set(python_code_data.secret_names),
+        )
 
         return PythonCodeToolData(
             id=python_code_tool.pk,
@@ -783,7 +815,7 @@ class ConverterService(metaclass=SingletonMeta):
             transport=mcp_tool.transport,
             tool_name=mcp_tool.tool_name,
             timeout=mcp_tool.timeout,
-            auth=mcp_tool.auth,
+            auth_secret_id=mcp_tool.auth_secret_id,
             init_timeout=mcp_tool.init_timeout,
         )
 
@@ -806,7 +838,7 @@ class ConverterService(metaclass=SingletonMeta):
                 seed=config.seed,
                 base_url=config.model.base_url,
                 api_version=config.model.api_version,
-                api_key=config.api_key,
+                api_key_secret_id=config.api_key_secret_id,
                 deployment_id=config.model.deployment_id,
                 headers=config.headers,
                 extra_headers=config.extra_headers,
@@ -828,7 +860,7 @@ class ConverterService(metaclass=SingletonMeta):
             config=EmbedderConfigData(
                 model=embedding_config.model.name,
                 base_url=embedding_config.model.base_url,
-                api_key=embedding_config.api_key,
+                api_key_secret_id=embedding_config.api_key_secret_id,
             ),
         )
 

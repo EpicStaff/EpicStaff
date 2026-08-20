@@ -25,7 +25,7 @@ if len(sys.argv) > 1:
         DEBUG = True
 
 if DEBUG:
-    load_dotenv(dotenv_path=find_dotenv("debug.env"))
+    load_dotenv(dotenv_path=find_dotenv(".debug.env"))
 else:
     load_dotenv()
 

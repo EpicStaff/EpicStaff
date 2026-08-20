@@ -51,6 +51,7 @@ export interface CreatePythonCodeBody {
     entrypoint: string;
     libraries: string[];
     global_kwargs: Record<string, unknown>;
+    secret_ids?: number[];
 }
 
 /**

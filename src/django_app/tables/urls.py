@@ -52,6 +52,7 @@ from tables.views.model_view_sets import (
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
     LabelViewSet,
+    SecretViewSet,
     ScheduleTriggerNodeViewSet,
 )
 
@@ -197,6 +198,7 @@ router.register(r"ngrok-config", NgrokWebhookConfigViewSet)
 router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 
 router.register(r"labels", LabelViewSet)
+router.register(r"secrets", SecretViewSet)
 router.register(r"storage", StorageAPIView, basename="storage")
 
 admin_router = DefaultRouter()

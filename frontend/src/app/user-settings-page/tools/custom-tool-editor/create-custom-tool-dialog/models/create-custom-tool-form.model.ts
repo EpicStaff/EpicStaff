@@ -24,6 +24,7 @@ export interface PreservedToolFields {
  */
 export function toCreatePayload(
     form: CreateCustomToolFormValue,
+    secretIds: number[],
     preserved: PreservedToolFields = {}
 ): CreatePythonCodeToolPayload {
     const parsedVariables = JSON.parse(form.variablesJson) as unknown;
@@ -37,6 +38,7 @@ export function toCreatePayload(
             entrypoint: preserved.entrypoint?.trim() || DEFAULT_ENTRYPOINT,
             libraries: form.libraries,
             global_kwargs: {},
+            secret_ids: secretIds,
         },
         // The `useStorage` form control is the source of truth for new edits; it is seeded
         // from `selectedTool()?.use_storage ?? false`, so an existing tool's value is still
