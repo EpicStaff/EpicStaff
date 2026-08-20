@@ -114,13 +114,12 @@ it pins 3.4.8. The override forces `^3.4.14`.
 
 ## Deliberately unchanged
 
-`@foblex/flow` stays at 18.4.0 and, at the time of the upgrade, `ag-grid` stayed at 33.3.2.
-Both satisfy Angular 22 peer ranges unchanged (`>=17.3.0` and `>=17.0.0`) and neither carries
-an advisory, so there was no security reason to move them. The coupling is one-directional —
+At the time of the upgrade `@foblex/flow` stayed at 18.4.0 and `ag-grid` at 33.3.2. Both
+satisfied Angular 22 peer ranges unchanged (`>=17.3.0` and `>=17.0.0`) and neither carried an
+advisory, so there was no security reason to move them. The coupling is one-directional —
 ag-grid 36 requires Angular ≥ 20, but Angular 22 does not require ag-grid 36 — and putting
 three grid majors in the same commit as the framework upgrade would have made a regression
-impossible to attribute. ag-grid has since been taken separately, as described below;
-`@foblex/flow` is still queued.
+impossible to attribute. Both have since been taken as separate steps, described below.
 
 ## Deferred, none of it required by the upgrade
 
@@ -135,7 +134,6 @@ impossible to attribute. ag-grid has since been taken separately, as described b
 - `withXhr()` in `app.config.ts`. Angular 22 switched the default `HttpClient` backend to
   fetch; the migration added `withXhr()` to preserve behaviour. It should not be removed
   casually — four interceptors and cookie handling depend on the backend.
-- `@foblex/flow` 18.4.0 → 19.1.6, awaiting a team decision.
 
 ## Closed since
 
@@ -214,9 +212,27 @@ element's `scrollTop`.
 Two smaller results: the frozen-column separator moved off an `!important` override of internal
 class names onto the supported `pinnedColumnBorder` theme parameter, which existed in v33 too
 and so could always have been done properly; and v36 added a `colDef` check that warns when it
-has inferred `cellDataType: 'object'` and is falling back to the default object formatter, which
-the `mergedTools` column triggered — answered with `cellDataType: false`, since that column is
-rendered by our own `cellRenderer`.
+has inferred `cellDataType: 'object'` and is falling back to the default object formatter —
+answered with `cellDataType: false` on the four columns that hold objects or arrays and render
+through their own `cellRenderer`.
+
+`@foblex/flow` 18.4.0 → 19.1.6 closes the backlog, and needed no source changes at all. The
+major number does not mark a break here: comparing the two versions directly, all sixteen
+symbols we import are still exported, the three connection-builder interfaces and
+`ICurrentSelection` are byte-identical, all thirty internal CSS classes we style still exist,
+and the fesm bundle is the same size with the same export count. Reflow, accessibility, the
+layout engine and the `FF1xxx` dev diagnostics were already present in 18.4.0, so v19 brings no
+new machinery and no new console output. The library numbers majors as release trains rather
+than by compatibility — v18 shipped in January 2026, v19 in July — and it is actively
+maintained, with 19.1.6 published three weeks before the bump. Only `@foblex/flow` moved: the
+four sibling packages were already current, and v19 loosened their peer ranges from exact pins
+to carets. The bump also picked up seven releases we were behind inside our own major.
+
+A clean build proves much less here than it did for ag-grid, because this library is drag,
+connect and zoom geometry, which no compiler inspects. It was verified by hand in the flow
+editor, with attention to the three places our code sits on top of theirs: the custom
+`IFConnectionBuilder`, the backward-arc path builder with segment avoidance, and connection
+waypoints.
 
 ---
 
