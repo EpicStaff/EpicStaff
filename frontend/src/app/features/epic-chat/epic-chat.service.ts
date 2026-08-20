@@ -121,7 +121,7 @@ export class EpicChatService {
                 return;
             }
             default:
-                console.log('[EpicChat event]', data.type, data.payload || {});
+                console.warn('[EpicChat] Unhandled event type:', data.type);
         }
     }
 

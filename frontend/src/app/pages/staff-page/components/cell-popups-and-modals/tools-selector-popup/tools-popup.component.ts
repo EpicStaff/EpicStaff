@@ -90,7 +90,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     ) {}
 
     public ngOnInit(): void {
-        console.log('ToolsPopupComponent initialized.');
         this.loadToolsData();
     }
 
@@ -111,13 +110,11 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     }
 
     public ngOnDestroy(): void {
-        console.log('ToolsPopupComponent destroyed.');
         this._destroyed$.next();
         this._destroyed$.complete();
     }
 
     public loadToolsData(): void {
-        console.log('Loading tools data...');
         this.loading = true;
         forkJoin({
             pythonTools: this._pythonCodeToolService.getPythonCodeTools(),
@@ -126,9 +123,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
             .pipe(takeUntil(this._destroyed$))
             .subscribe({
                 next: ({ pythonTools, mcpTools }) => {
-                    console.log('Python tools data received:', pythonTools);
-                    console.log('MCP tools data received:', mcpTools);
-
                     this.pythonTools = this._sortPythonToolsBySelection(pythonTools);
                     this.mcpTools = this._sortMcpToolsBySelection(mcpTools);
 

@@ -25,7 +25,6 @@ export class WavStreamPlayerService {
             .connect()
             .then((success) => {
                 this.isPlayerConnected.set(true);
-                console.log('WavStreamPlayer connected successfully');
                 return success;
             })
             .catch((error) => {
@@ -105,7 +104,6 @@ export class WavStreamPlayerService {
                 return { trackId: null, offset: 0, currentTime: 0 };
             }
 
-            console.log('Stream interrupted at offset:', result.offset);
             return result;
         } catch (error) {
             console.error('Error interrupting stream:', error);

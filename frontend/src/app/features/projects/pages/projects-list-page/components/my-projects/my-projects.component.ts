@@ -170,9 +170,7 @@ export class MyProjectsComponent implements OnInit {
         this.confirmationDialogService.confirmDeleteWithTruncation(project.name, 50).subscribe((result) => {
             if (result === true) {
                 this.projectsStorageService.deleteProject(project.id).subscribe({
-                    next: () => {
-                        console.log(`Project ${project.id} - ${project.name} deleted successfully.`);
-                    },
+                    next: () => {},
                     error: (err) => {
                         console.error(`Error deleting project ${project.id} - ${project.name}`, err);
                     },

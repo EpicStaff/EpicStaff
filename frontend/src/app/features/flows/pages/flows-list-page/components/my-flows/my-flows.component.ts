@@ -211,7 +211,7 @@ export class MyFlowsComponent implements AfterViewChecked {
                 break;
 
             default:
-                console.log(`Action '${action}' not implemented for flow:`, flow.id);
+                console.warn(`Action '${action}' not implemented for flow:`, flow.id);
         }
     }
 
