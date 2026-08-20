@@ -21,7 +21,6 @@ from tables.views.model_view_sets import (
     PythonNodeViewSet,
     FileExtractorNodeViewSet,
     AudioTranscriptionNodeViewSet,
-    CodeAgentNodeViewSet,
     StartNodeModelViewSet,
     RealtimeConfigModelViewSet,
     RealtimeSessionItemViewSet,
@@ -157,8 +156,6 @@ router.register(r"audio-transcription-nodes", AudioTranscriptionNodeViewSet)
 router.register(r"startnodes", StartNodeModelViewSet)
 router.register(r"endnodes", EndNodeModelViewSet)
 router.register(r"subgraph-nodes", SubGraphNodeModelViewSet)
-# DEPRECATED: code-agent-nodes route is deprecated. Use agentnodes/tasknodes instead.
-router.register(r"code-agent-nodes", CodeAgentNodeViewSet)
 router.register(r"tasknodes", TaskNodeViewSet)
 router.register(r"agentnodes", AgentNodeViewSet)
 router.register(r"agentnodetasks", AgentNodeTaskViewSet)

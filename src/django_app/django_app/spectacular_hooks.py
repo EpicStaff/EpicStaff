@@ -19,7 +19,6 @@ TAG_MAP = [
     ("api/agent-definitions", "Agent Definitions"),
     ("api/surfaces", "Surfaces"),
     ("api/agent-tags", "Agent Tags"),
-    ("api/code-agent-nodes", "Code Agent Nodes"),
     ("api/agents", "Agents"),
     # Crews
     ("api/crew-tags", "Crew Tags"),

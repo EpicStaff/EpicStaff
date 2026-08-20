@@ -27,7 +27,6 @@ from tables.models.graph_models import (
     TaskNode,
     TelegramTriggerNode,
     TelegramTriggerNodeField,
-    CodeAgentNode,
     WebhookTriggerNode,
 )
 from tables.services.copy_services.helpers import copy_python_code, get_base_node_fields
@@ -133,27 +132,6 @@ def copy_telegram_trigger_node(
             variable_path=field.variable_path,
         )
     return new_node
-
-
-def copy_code_agent_node(graph: Graph, node: CodeAgentNode) -> CodeAgentNode:
-    return CodeAgentNode.objects.create(
-        graph=graph,
-        llm_config=node.llm_config,
-        agent_mode=node.agent_mode,
-        session_id=node.session_id,
-        system_prompt=node.system_prompt,
-        stream_handler_code=node.stream_handler_code,
-        libraries=node.libraries,
-        polling_interval_ms=node.polling_interval_ms,
-        silence_indicator_s=node.silence_indicator_s,
-        indicator_repeat_s=node.indicator_repeat_s,
-        chunk_timeout_s=node.chunk_timeout_s,
-        inactivity_timeout_s=node.inactivity_timeout_s,
-        max_wait_s=node.max_wait_s,
-        stream_config=node.stream_config,
-        output_schema=node.output_schema,
-        **get_base_node_fields(node),
-    )
 
 
 def copy_schedule_trigger_node(
@@ -337,10 +315,6 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
     NodeType.CLASSIFICATION_DECISION_TABLE_NODE: (
         "classification_decision_table_node_list",
         copy_classification_decision_table_node,
-    ),
-    NodeType.CODE_AGENT_NODE: (
-        "code_agent_node_list",
-        copy_code_agent_node,
     ),
     NodeType.TASK_NODE: ("task_node_list", copy_task_node),
     NodeType.AGENT_NODE: ("agent_node_list", copy_agent_node),
