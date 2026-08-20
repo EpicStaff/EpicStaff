@@ -21,18 +21,18 @@ from tables.models.llm_models import LLMConfig, LLMModel
 
 
 @pytest.fixture
-def source_collection():
+def source_collection(default_org):
     """Create a test source collection."""
     return SourceCollection.objects.create(
-        collection_name="Test Collection", user_id="test_user"
+        collection_name="Test Collection", user_id="test_user", org=default_org
     )
 
 
 @pytest.fixture
-def empty_collection():
+def empty_collection(default_org):
     """Create an empty source collection."""
     return SourceCollection.objects.create(
-        collection_name="Empty Collection", user_id="test_user"
+        collection_name="Empty Collection", user_id="test_user", org=default_org
     )
 
 
@@ -135,13 +135,14 @@ def test_embedding_model(embedding_provider):
 
 
 @pytest.fixture
-def test_embedding_config(test_embedding_model):
+def test_embedding_config(test_embedding_model, default_org):
     """Create a test embedding config."""
     config, _ = EmbeddingConfig.objects.get_or_create(
         custom_name="Test Embedder Config",
         defaults={
             "model": test_embedding_model,
             "task_type": "retrieval_document",
+            "org": default_org,
         },
     )
     return config
@@ -231,7 +232,7 @@ def llm_model(llm_provider):
 
 
 @pytest.fixture
-def llm_config(llm_model):
+def llm_config(llm_model, default_org):
     """Create LLM config for tests."""
     config, _ = LLMConfig.objects.get_or_create(
         custom_name="Test LLM Config",
@@ -239,6 +240,7 @@ def llm_config(llm_model):
             "model": llm_model,
             "temperature": 0.7,
             "is_visible": True,
+            "org": default_org,
         },
     )
     return config

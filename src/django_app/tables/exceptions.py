@@ -158,17 +158,6 @@ class InvalidFileTypeException(DocumentUploadException):
         )
 
 
-class InvalidFileNameException(DocumentUploadException):
-    """Raised when a file name contains a path instead of a plain name."""
-
-    def __init__(self, file_name):
-        self.file_name = file_name
-        super().__init__(
-            f"File name '{file_name}' must be a plain file name "
-            f"without directory separators or drive letters"
-        )
-
-
 class CollectionNotFoundException(DocumentUploadException):
     """Raised when source collection is not found."""
 
