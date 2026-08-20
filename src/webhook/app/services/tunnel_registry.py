@@ -119,11 +119,6 @@ class TunnelRegistry:
                 f"Current pool synced. Active tunnels: {list(self._tunnel_pool.keys())}"
             )
 
-    async def get_tunnel(self, unique_id: str) -> AbstractTunnelProvider | None:
-        async with self._lock:
-            data = self._tunnel_pool.get(unique_id)
-            return data[0] if data else None
-
     @staticmethod
     def _normalize_path(path: str | None) -> str:
         return (path or "").strip("/")
