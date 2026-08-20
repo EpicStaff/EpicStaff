@@ -142,6 +142,7 @@ venv.bak/
 .crew_venv
 *venv
 venvs/
+run_program/manager.env
 !src/debug.env
 
 # Spyder project settings
