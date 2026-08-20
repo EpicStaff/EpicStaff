@@ -139,10 +139,6 @@ export const VARIABLE_SECTIONS = [
     },
 ] as const satisfies readonly VariableSectionConfig[];
 
-export function arrayItemColumnDefs(base: readonly TableColumnDef[]): TableColumnDef[] {
-    return base.filter((col) => col.key !== 'required');
-}
-
 export const VALUE_EDITOR_COLUMN_DEFS = [
     INDEX_COLUMN,
     TYPE_COLUMN,

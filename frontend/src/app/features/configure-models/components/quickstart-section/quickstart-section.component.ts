@@ -186,7 +186,10 @@ export class QuickstartSectionComponent implements OnInit {
                 }),
                 finalize(() => {
                     this.defaultModelsStorageService.markDefaultModelsOutdated();
-                    this.llmConfigStorageService.getAllConfigs(true).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+                    this.llmConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
                     this.embeddingConfigStorageService
                         .getAllConfigs(true)
                         .pipe(takeUntilDestroyed(this.destroyRef))
