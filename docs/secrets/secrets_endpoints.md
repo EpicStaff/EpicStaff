@@ -168,13 +168,20 @@ in Swagger (`tables/swagger_schemas/secret_schemas.py`).
 
 Secrets are selected by **id**, never by sending a plaintext key. Two shapes:
 
-**Single FK** — configs and MCP tools take `api_key_secret` / `auth_secret`:
+**Single FK** — the write field is the model field name **plus `_id`**:
+
+| Endpoint | Write field |
+| --- | --- |
+| `/api/llm-configs/` | `api_key_secret_id` |
+| `/api/embedding-configs/` | `api_key_secret_id` |
+| `/api/realtime-model-configs/`, `/api/realtime-transcription-model-configs/` | `api_key_secret_id` |
+| `/api/mcp-tools/` | `auth_secret_id` |
+| telegram trigger nodes | `telegram_bot_api_key_secret_id` |
 
 ```json
 POST /api/llm-configs/
-{ "custom_name": "gpt-4o prod", "model": 4, "api_key_secret": 12 }
+{ "custom_name": "gpt-4o prod", "model": 4, "api_key_secret_id": 12 }
 ```
-
 **Declaration list** — anything owning a `PythonCode` takes `secret_ids`, the allow-list of
 secrets that code may read:
 
