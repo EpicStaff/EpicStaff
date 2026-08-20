@@ -11,14 +11,12 @@ from dotdict import DotDict
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
 from services.graph.exceptions import StopSession
-from services.crew.crew_parser_service import CrewParserService
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from services.graph.graph_builder import SessionGraphBuilder
 from services.run_python_code_service import RunPythonCodeService
 from services.knowledge_search_service import KnowledgeSearchService
 from utils.singleton_meta import SingletonMeta
 from models.graph_models import GraphMessage
-from settings import DEFAULT_TOKEN_BUDGET
 
 from src.shared.models import SessionData, StopSessionMessage
 from src.crew.services.graph.shared_variables import (
@@ -74,7 +72,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
     def __init__(
         self,
         redis_service: RedisService,
-        crew_parser_service: CrewParserService,
         python_code_executor_service: RunPythonCodeService,
         session_schema_channel: str,
         session_timeout_channel: str,
@@ -89,7 +86,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
         Args:
             redis_service (RedisService): The service responsible for Redis operations.
-            crew_parser_service (CrewParserService): The service responsible for parsing crew data.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
             session_schema_channel (str): The Redis channel for listening to session schema messages.
             crewai_output_channel (str): The Redis channel for publishing CrewAI output messages.
@@ -98,7 +94,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         """
 
         self.redis_service = redis_service
-        self.crew_parser_service = crew_parser_service
         self.python_code_executor_service = python_code_executor_service
         self.session_schema_channel = session_schema_channel
         self.session_timeout_channel = session_timeout_channel
@@ -123,20 +118,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             # Copy so popping the reserved budget key never mutates the
             # pydantic SessionData model itself.
             initial_state = dict(session_data.initial_state)
-
-            # EST-3285 4.2c: optional run-level token budget hard stop.
-            # Per-run override (if Django threaded one through the request)
-            # takes precedence over the global env/settings default. Both
-            # default to None ("no limit"), so this is fully inert unless
-            # explicitly configured -- byte-for-byte unchanged behavior for
-            # existing runs.
-            token_budget = initial_state.pop(TOKEN_BUDGET_STATE_KEY, None)
-            if token_budget is None:
-                token_budget = DEFAULT_TOKEN_BUDGET
-            # Local to this call -- NOT stored on `self` -- so concurrent
-            # sessions (GraphSessionManagerService is a process-wide
-            # singleton) never share or leak a running total.
-            token_usage_total = 0
 
             session_graph_builder = SessionGraphBuilder(
                 session_id=session_id,
@@ -233,26 +214,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
                     assert isinstance(data, dict), "custom chunk must be a dict"
                     data["uuid"] = str(uuid.uuid4())
-
-                    if token_budget is not None:
-                        token_usage_total += _extract_finish_token_total(
-                            data.get("message_data") or {}
-                        )
-                        if token_usage_total > token_budget:
-                            logger.warning(
-                                f"Session {session_id} exceeded token budget "
-                                f"({token_usage_total} > {token_budget}). "
-                                "Stopping session."
-                            )
-                            stop_event.reason = "token budget exceeded"
-                            # Reuse the existing manual-stop status/path
-                            # (StopEvent default_status="stop") -- same
-                            # mechanism as _handle_stop_session /
-                            # _handle_session_timeout, so the abort is
-                            # handled by the already-exercised StopSession
-                            # flow (nodes' _cleanup_on_stop, EndNode skip,
-                            # etc.) with no new status.
-                            stop_event.set()
 
                     self.redis_service.publish("graph:messages", data)
                 elif stream_mode == "values":

@@ -28,8 +28,7 @@ COPY ./crew/pyproject.toml ./crew/poetry.lock ./
 
 ENV POETRY_REQUESTS_TIMEOUT=1000
 # Install dependencies inside project .venv
-RUN poetry install --no-ansi --no-root --without dotdict,crew -v
-RUN poetry install --no-ansi --no-root --only crew -v
+RUN poetry install --no-ansi --no-root --without dotdict -v
 
 # Copy application source
 COPY ./crew /app/src/crew

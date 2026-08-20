@@ -9,7 +9,6 @@ from services.graph.nodes import (
     AudioTranscriptionNode,
     FileContentExtractorNode,
     PythonNode,
-    CrewNode,
     BaseNode,
     EndNode,
 )
@@ -30,7 +29,6 @@ from services.graph.subgraphs.subgraph_node import SubGraphNode
 from src.crew.services.graph.subgraphs.classification_decision_table_node import (
     ClassificationDecisionTableNodeSubgraph,
 )
-from services.crew.crew_parser_service import CrewParserService
 from services.redis_service import RedisService
 from src.shared.models import (
     DecisionTableNodeData,
@@ -53,9 +51,7 @@ class SessionGraphBuilder:
         self,
         session_id: int,
         redis_service: RedisService,
-        crew_parser_service: CrewParserService,
         python_code_executor_service: RunPythonCodeService,
-        crewai_output_channel: str,
         knowledge_search_service: KnowledgeSearchService,
         stop_event: StopEvent,
         agent_task_service: AgentTaskService | None = None,
@@ -66,18 +62,14 @@ class SessionGraphBuilder:
         Args:
             session_id (int): The unique identifier for the session.
             redis_service (RedisService): The service responsible for Redis operations.
-            crew_parser_service (CrewParserService): The service responsible for parsing crew data.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
-            crewai_output_channel (str): The output channel for CrewAI communications.
             agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
                 execution to the agent microservice. Required if the graph schema contains task nodes.
         """
 
         self.session_id = session_id
         self.redis_service = redis_service
-        self.crew_parser_service = crew_parser_service
         self.python_code_executor_service = python_code_executor_service
-        self.crewai_output_channel = crewai_output_channel
         self.knowledge_search_service = knowledge_search_service
         self.agent_task_service = agent_task_service
         self.remembered_outputs_store = RememberedOutputsStore(
@@ -310,22 +302,6 @@ class SessionGraphBuilder:
                 agent_task_service=self.agent_task_service,
             )
             self.add_node(agent_node)
-
-        for crew_node_data in schema.crew_node_list:
-            crew_node = CrewNode(
-                session_id=self.session_id,
-                node_name=crew_node_data.node_name,
-                crew_data=crew_node_data.crew,
-                redis_service=self.redis_service,
-                crewai_output_channel=self.crewai_output_channel,
-                crew_parser_service=self.crew_parser_service,
-                input_map=crew_node_data.input_map,
-                output_variable_path=crew_node_data.output_variable_path,
-                knowledge_search_service=self.knowledge_search_service,
-                stop_event=self.stop_event,
-                stream_config=crew_node_data.stream_config,
-            )
-            self.add_node(crew_node)
 
         for python_node_data in schema.python_node_list:
             python_node = PythonNode(

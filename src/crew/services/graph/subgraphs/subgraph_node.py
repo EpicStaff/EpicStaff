@@ -78,7 +78,6 @@ class SubGraphNode:
         return SessionGraphBuilder(
             session_id=self.session_id,
             redis_service=self.session_graph_builder.redis_service,
-            crew_parser_service=self.session_graph_builder.crew_parser_service,
             python_code_executor_service=self.session_graph_builder.python_code_executor_service,
             crewai_output_channel=self.session_graph_builder.crewai_output_channel,
             knowledge_search_service=self.session_graph_builder.knowledge_search_service,

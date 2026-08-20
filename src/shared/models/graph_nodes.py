@@ -274,7 +274,6 @@ class SubGraphNodeData(BaseModel):
 class GraphData(BaseModel):
     graph_id: int | None = None
     name: str
-    crew_node_list: list[CrewNodeData] = []
     webhook_trigger_node_data_list: list[WebhookTriggerNodeData] = []
     python_node_list: list[PythonNodeData] = []
     file_extractor_node_list: list[FileExtractorNodeData] = []
