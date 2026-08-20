@@ -127,7 +127,6 @@ class CrewCallbackFactory:
         knowledge_search_service: KnowledgeSearchService,
         crewai_output_channel: str,
         stream_writer: Optional[StreamWriter] = None,
-        stream_config: dict | None = None,
     ):
         self.redis_service = redis_service
         self.crewai_output_channel = crewai_output_channel
@@ -137,7 +136,6 @@ class CrewCallbackFactory:
         self.execution_order = execution_order
         self.stream_writer = stream_writer
         self.knowledge_search_service = knowledge_search_service
-        self.stream_config = stream_config or {}
         self._message_writer = CustomSessionMessageWriter()
 
     def get_step_callback(
@@ -322,11 +320,10 @@ class CrewCallbackFactory:
 
     def _emit_crewai_output(self, text: str, category: str) -> None:
         """Emit a crewai_output message for the EpicChat widget.
-        The widget recognizes this message_type for the Thinking expander.
-        sse_visible is controlled by stream_config."""
+        The widget recognizes this message_type for the Thinking expander."""
         if not text or self.stream_writer is None:
             return
-        visible = bool(self.stream_config.get(category, True))
+        visible = True
         self._message_writer.add_custom_message(
             session_id=self.session_id,
             node_name=self.node_name,
