@@ -150,8 +150,10 @@ def test_bulk_delete_subgraph_usage_visible_proceeds(django_user_model, org_a):
     # delete — it's informational, not preview-only.
     usage = resp.data["usage"][str(child.id)]
     assert usage["blocked"] is False
-    assert usage["visible_count"] == 1
-    assert usage["visible_sample"] == [{"id": parent.id, "name": parent.name}]
+    flows_usage = usage["by_resource_type"][0]
+    assert flows_usage["resource_type"] == "flows"
+    assert flows_usage["visible_count"] == 1
+    assert flows_usage["visible_sample"] == [{"id": parent.id, "name": parent.name}]
 
 
 @pytest.mark.django_db
@@ -177,8 +179,9 @@ def test_bulk_delete_subgraph_usage_hidden_blocked(django_user_model, org_a):
     # applies today's binary org-level visibility: nothing is disclosed.
     usage = resp.data["usage"][str(child.id)]
     assert usage["blocked"] is True
-    assert usage["visible_count"] == 0
-    assert usage["visible_sample"] == []
+    flows_usage = usage["by_resource_type"][0]
+    assert flows_usage["visible_count"] == 0
+    assert flows_usage["visible_sample"] == []
 
 
 @pytest.mark.django_db
@@ -212,8 +215,9 @@ def test_bulk_delete_dry_run_shows_visible_usage(django_user_model, org_a):
     assert Graph.objects.filter(id=child.id).exists()  # dry_run: nothing removed
     usage = resp.data["usage"][str(child.id)]
     assert usage["blocked"] is False
-    assert usage["visible_count"] == 1
-    assert usage["visible_sample"] == [{"id": parent.id, "name": parent.name}]
+    flows_usage = usage["by_resource_type"][0]
+    assert flows_usage["visible_count"] == 1
+    assert flows_usage["visible_sample"] == [{"id": parent.id, "name": parent.name}]
 
 
 @pytest.mark.django_db

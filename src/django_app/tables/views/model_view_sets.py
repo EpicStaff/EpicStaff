@@ -252,7 +252,7 @@ from tables.serializers.serializers import (
     GraphNodesPartialExportSerializer,
     ImportRequestSerializer,
 )
-from tables.services import graph_delete_service
+from tables.services import crew_delete_service, graph_delete_service
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.partial_export_service import (
     GraphPartialExportService,
@@ -596,6 +596,7 @@ class CrewReadWriteViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet)
         "copy": Permission.CREATE,
         "export": Permission.EXPORT,
         "import_entity": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
     }
     copy_service_class = CrewCopyService
     copy_serializer_class = CrewSerializer
@@ -622,6 +623,12 @@ class CrewReadWriteViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet)
             entity_type=EntityType.CREW, export_prefix="crew", filename_attr="name"
         )
 
+    def perform_destroy(self, instance):
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(self.request.user, org_id)
+        crew_delete_service.assert_crew_deletable(instance, org_id, effective)
+        instance.delete()
+
     @action(detail=True, methods=["get"])
     def export(self, request, pk: int):
         return self.import_export_service.export_entity(self.get_object())
@@ -637,6 +644,26 @@ class CrewReadWriteViewSet(OrgScopedViewSetMixin, CopyActionMixin, ModelViewSet)
             org_id=self.get_active_org_id(),
         )
         return Response(data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        serializer = BulkDeleteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        dry_run = serializer.validated_data["dry_run"]
+
+        org_id = self.get_active_org_id()
+        effective = PermissionResolver().resolve(request.user, org_id)
+        result = crew_delete_service.bulk_delete_crews(
+            ids, org_id, effective, dry_run=dry_run
+        )
+
+        status_code = (
+            status.HTTP_200_OK
+            if not result["not_found_ids"] and not result["skipped_ids"]
+            else status.HTTP_207_MULTI_STATUS
+        )
+        return Response(result, status=status_code)
 
 
 class TaskReadWriteViewSet(OrgScopedChildViewSetMixin, ModelViewSet):

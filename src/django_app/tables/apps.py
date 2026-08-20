@@ -13,6 +13,7 @@ class TablesConfig(AppConfig):
         import tables.signals.session_signals
         import tables.signals.crew_signals
         import tables.signals.graph_signals
+        import tables.signals.node_signals
         import tables.signals.telegram_signals
         import tables.signals.python_code_tool_config_signals
         import tables.signals.naive_rag_signals

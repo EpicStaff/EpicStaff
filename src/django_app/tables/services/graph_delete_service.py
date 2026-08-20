@@ -9,9 +9,13 @@ SAMPLE_LIMIT = 5
 
 
 def get_usage(graph_ids, org_id, effective):
-    """{graph_id: {resource_type, visible_count, visible_sample, truncated,
-    blocked}} for every id in graph_ids, describing how each is embedded as a
-    subgraph elsewhere (SubGraphNode.subgraph), scoped to the active org.
+    """{graph_id: {blocked, by_resource_type: [{resource_type, visible_count,
+    visible_sample, truncated}]}} for every id in graph_ids, describing how
+    each is embedded as a subgraph elsewhere (SubGraphNode.subgraph), scoped
+    to the active org. `by_resource_type` has exactly one entry today (only
+    one referencing source exists for Graph) -- the array shape matches
+    every other entity's `get_usage` (e.g. Crew, which genuinely has more
+    than one source) for one consistent contract across the API.
 
     "visible" is currently all-or-nothing per org (FLOWS:READ present -> see
     every parent Flow referencing this graph; absent -> see none) since
@@ -44,11 +48,15 @@ def get_usage(graph_ids, org_id, effective):
         visible_parents = parents if can_read_flows else []
         visible_count = len(visible_parents)
         usage[graph_id] = {
-            "resource_type": ResourceType.FLOWS,
-            "visible_count": visible_count,
-            "visible_sample": visible_parents[:SAMPLE_LIMIT],
-            "truncated": visible_count > SAMPLE_LIMIT,
             "blocked": total_count > visible_count,
+            "by_resource_type": [
+                {
+                    "resource_type": ResourceType.FLOWS,
+                    "visible_count": visible_count,
+                    "visible_sample": visible_parents[:SAMPLE_LIMIT],
+                    "truncated": visible_count > SAMPLE_LIMIT,
+                }
+            ],
         }
     return usage
 
