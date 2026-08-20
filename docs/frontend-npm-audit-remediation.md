@@ -114,12 +114,13 @@ it pins 3.4.8. The override forces `^3.4.14`.
 
 ## Deliberately unchanged
 
-`@foblex/flow` stays at 18.4.0 and `ag-grid-angular` / `ag-grid-community` at 33.3.2. Both
-satisfy Angular 22 peer ranges unchanged (`>=17.3.0` and `>=17.0.0`) and neither carries an
-advisory, so there is no security reason to move them. The coupling is one-directional —
+`@foblex/flow` stays at 18.4.0 and, at the time of the upgrade, `ag-grid` stayed at 33.3.2.
+Both satisfy Angular 22 peer ranges unchanged (`>=17.3.0` and `>=17.0.0`) and neither carries
+an advisory, so there was no security reason to move them. The coupling is one-directional —
 ag-grid 36 requires Angular ≥ 20, but Angular 22 does not require ag-grid 36 — and putting
-three grid majors in the same commit as the framework upgrade would make a regression
-impossible to attribute. Both are queued as follow-ups.
+three grid majors in the same commit as the framework upgrade would have made a regression
+impossible to attribute. ag-grid has since been taken separately, as described below;
+`@foblex/flow` is still queued.
 
 ## Deferred, none of it required by the upgrade
 
@@ -134,7 +135,7 @@ impossible to attribute. Both are queued as follow-ups.
 - `withXhr()` in `app.config.ts`. Angular 22 switched the default `HttpClient` backend to
   fetch; the migration added `withXhr()` to preserve behaviour. It should not be removed
   casually — four interceptors and cookie handling depend on the backend.
-- `@foblex/flow` 18.4.0 → 19.1.6 and `ag-grid` 33.3.2 → 36.1.0, both awaiting a team decision.
+- `@foblex/flow` 18.4.0 → 19.1.6, awaiting a team decision.
 
 ## Closed since
 
@@ -184,6 +185,38 @@ all, and passing one would have dropped the toast silently with no error, since 
 container filters by its own position. The type is now narrowed to the two positions that
 exist, which turns that silent loss into a compile error; the unused container and the dead
 positional CSS are gone with it.
+
+`ag-grid` 33.3.2 → 36.1.0 is also done, three majors in one step. Nothing in the API surface
+broke: 33 imported symbols across 19 components implementing ag-grid interfaces compiled with
+zero errors and zero warnings, because the painful v33 migration — module repackaging and the
+Theming API — was already in place. The theming parameters are provably still valid rather than
+assumed: `withParams` is typed `Partial<TParams>` and the call sites are object literals, so
+excess property checking would have failed the build on any renamed parameter.
+
+The cost was in the DOM instead, where no compiler could see it. v36 restructured the internal
+markup — 51 classes removed, 467 added, largely re-prefixed `ag-grid-` — and we styled 42 of
+them across 165 occurrences. A script comparing our references against both versions found four
+casualties, and separated them from two false alarms: `ag-grid-wrap` is our own class, and one
+pair sat inside a commented-out block. Of the four, three were CSS that would have silently
+stopped applying; half of those turned out never to have applied anyway, because
+`.ag-layout-auto-height` only exists when `domLayout: 'autoHeight'` is set and only one of the
+four grids sets it. The `min-height` hacks they contained worked around a v33 defect that v36
+fixed, confirmed by eye on the empty grids, so they were deleted rather than remapped.
+
+The fourth was the one that mattered: `.ag-body-viewport` was read through a runtime
+`querySelector`, and on `null` the code correctly took an early return that set the overlay list
+to empty. The result would have been the column-group collapse chevrons in the classification
+decision table quietly disappearing — no crash, no console output, a feature simply absent. The
+replacement is `.ag-grid-viewport`, chosen structurally (`ref: "eGridViewport"`, direct child of
+`ag-root`) and then confirmed by scrolling a grouped grid, since the code depends on that
+element's `scrollTop`.
+
+Two smaller results: the frozen-column separator moved off an `!important` override of internal
+class names onto the supported `pinnedColumnBorder` theme parameter, which existed in v33 too
+and so could always have been done properly; and v36 added a `colDef` check that warns when it
+has inferred `cellDataType: 'object'` and is falling back to the default object formatter, which
+the `mergedTools` column triggered — answered with `cellDataType: false`, since that column is
+rendered by our own `cellRenderer`.
 
 ---
 

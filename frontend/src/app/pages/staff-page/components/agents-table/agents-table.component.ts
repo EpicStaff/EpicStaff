@@ -461,6 +461,7 @@ export class AgentsTableComponent {
         {
             headerName: 'LLMs',
             field: 'mergedConfigs',
+            cellDataType: false,
             editable: false,
             flex: 1,
             minWidth: 220,
@@ -470,6 +471,7 @@ export class AgentsTableComponent {
         {
             headerName: 'Tools',
             field: 'mergedTools',
+            cellDataType: false,
             editable: false,
             flex: 1,
             minWidth: 200,

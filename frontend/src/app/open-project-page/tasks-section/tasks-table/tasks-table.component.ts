@@ -539,6 +539,7 @@ export class TasksTableComponent implements OnChanges {
         {
             headerName: 'Tools',
             field: 'mergedTools',
+            cellDataType: false,
             editable: false,
             flex: 1,
             minWidth: 200,
@@ -573,6 +574,7 @@ export class TasksTableComponent implements OnChanges {
         {
             headerName: 'Assigned Agent',
             field: 'agentData', // Reference the agentData field
+            cellDataType: false,
             editable: false,
             minWidth: 240,
             maxWidth: 260,

@@ -15,23 +15,6 @@ $transition-default: all 0.2s ease;
     box-shadow: 1px 1px 10px rgba(3, 3, 5, 0.35);
 }
 
-// ::ng-deep .ag-grid-staff {
-//   .ag-center-cols-container {
-//     min-height: 180px;
-//   }
-// }
-// ::ng-deep .ag-grid-staff {
-//   .ag-viewport {
-//     &.ag-center-cols-viewport {
-//       min-height: 100px;
-//     }
-//   }
-// }
-// ::ng-deep .ag-grid-staff {
-//   .ag-root-wrapper {
-//     overflow: visible;
-//   }
-// }
 ::ng-deep .ag-grid-staff {
     .ag-header {
         border-top-left-radius: 8px;

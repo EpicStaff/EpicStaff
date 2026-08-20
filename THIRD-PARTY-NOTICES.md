@@ -1,7 +1,7 @@
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Thu, 20 Aug 2026 10:44:17 GMT -->
-<!-- commit: c22b4e4c7dbcfa1e1646492ad7d10e9063a83cf5 -->
-<!-- package-lock.json sha256: 1743cc939d84ee43 -->
+<!-- generated: Thu, 20 Aug 2026 13:55:27 GMT -->
+<!-- commit: 6a33c28c211514e64056e81f622ee7b59e138dae -->
+<!-- package-lock.json sha256: 7ba6fd49dd745dde -->
 
 # Third-Party Notices
 
@@ -17,7 +17,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 | License | Packages |
 |---|---|
-| MIT | 48 |
+| MIT | 49 |
 | OFL-1.1 | 2 |
 | Apache-2.0 | 2 |
 | ISC | 2 |
@@ -26,7 +26,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **59** |
+| **Total** | **60** |
 
 ---
 
@@ -54,9 +54,10 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 | `@standard-schema/spec` | 1.1.0 | MIT |
 | `@types/trusted-types` | 2.0.7 | MIT |
 | `@xmldom/xmldom` | 0.9.11 | MIT |
-| `ag-charts-types` | 11.3.2 | MIT |
-| `ag-grid-angular` | 33.3.2 | MIT |
-| `ag-grid-community` | 33.3.2 | MIT |
+| `ag-charts-types` | 14.1.0 | MIT |
+| `ag-grid-angular` | 36.1.0 | MIT |
+| `ag-grid-community` | 36.1.0 | MIT |
+| `ag-stack` | 36.1.0 | MIT |
 | `core-util-is` | 1.0.3 | MIT |
 | `docx-preview` | 0.3.7 | Apache-2.0 |
 | `dompurify` | 3.4.14 | (MPL-2.0 OR Apache-2.0) |
@@ -1314,7 +1315,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 </details>
 
-### ag-charts-types@11.3.2
+### ag-charts-types@14.1.0
 
 - **License:** MIT
 - **Publisher:** AG Grid <info@ag-grid.com>
@@ -1325,7 +1326,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ```
 The MIT License
 
-Copyright (c) 2015-2025 AG GRID LTD
+Copyright (c) 2015-2026 AG GRID LTD
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1348,7 +1349,7 @@ SOFTWARE.
 
 </details>
 
-### ag-grid-angular@33.3.2
+### ag-grid-angular@36.1.0
 
 - **License:** MIT
 - **Repository:** https://github.com/ag-grid/ag-grid
@@ -1358,7 +1359,7 @@ SOFTWARE.
 ```
 The MIT License
 
-Copyright (c) 2015-2025 AG GRID LTD
+Copyright (c) 2015-2026 AG GRID LTD
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1381,7 +1382,7 @@ SOFTWARE.
 
 </details>
 
-### ag-grid-community@33.3.2
+### ag-grid-community@36.1.0
 
 - **License:** MIT
 - **Publisher:** Sean Landsman <sean@thelandsmans.com>
@@ -1392,7 +1393,41 @@ SOFTWARE.
 ```
 The MIT License
 
-Copyright (c) 2015-2025 AG GRID LTD
+Copyright (c) 2015-2026 AG GRID LTD
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+</details>
+
+### ag-stack@36.1.0
+
+- **License:** MIT
+- **Publisher:** Sean Landsman <sean@thelandsmans.com>
+- **Repository:** https://github.com/ag-grid/ag-grid
+
+<details><summary>License text</summary>
+
+```
+The MIT License
+
+Copyright (c) 2015-2026 AG GRID LTD
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
