@@ -119,7 +119,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             session_graph_builder = SessionGraphBuilder(
                 session_id=session_id,
                 redis_service=self.redis_service,
-                crew_parser_service=self.crew_parser_service,
                 python_code_executor_service=self.python_code_executor_service,
                 knowledge_search_service=self.knowledge_search_service,
                 stop_event=stop_event,
