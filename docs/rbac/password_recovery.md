@@ -112,7 +112,11 @@ python manage.py reset_password <email> [--generate | --password <pw>]
   history).
 * `--generate` → generates a strong random password via
   `secrets.token_urlsafe(16)` and prints it once to stdout.
-* Runs the same validators as the HTTP surface.
+* The new password is validated against the same
+  `AUTH_PASSWORD_VALIDATORS` as every other password-setting entry point
+  (min length, not-too-common, not-all-numeric, not-too-similar-to-email).
+* Does **not** verify the account's current password or any token — shell
+  access to run `manage.py` is the authorization for this command.
 * Goes through `PasswordRecoveryService.cli_reset`, so the same
   post-conditions apply: password written, reset tokens invalidated,
   refresh tokens blacklisted.
