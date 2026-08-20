@@ -29,7 +29,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # SECURITY WARNING: keep the secret key used in production secret!
-DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes", "on")
+DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes", "on")
 
 
 def _require_env(name: str) -> str:
@@ -54,6 +54,21 @@ ALLOWED_HOSTS = [
 
 # Logging
 
+_VALID_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"}
+
+
+def _resolve_log_level() -> str:
+    """Resolve the stdlib root log level from DJANGO_LOG_LEVEL, falling back to WARNING on an invalid/missing value."""
+    raw_level = os.getenv("DJANGO_LOG_LEVEL", "WARNING").strip().upper()
+    if raw_level not in _VALID_LOG_LEVELS:
+        logger.warning(
+            "Ignoring invalid DJANGO_LOG_LEVEL={!r}; falling back to WARNING.",
+            raw_level,
+        )
+        return "WARNING"
+    return raw_level
+
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -65,7 +80,7 @@ LOGGING = {
     },
     "root": {
         "handlers": ["loguru"],
-        "level": "DEBUG",
+        "level": _resolve_log_level(),
     },
     "loggers": {
         "litellm": {

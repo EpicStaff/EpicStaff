@@ -26,6 +26,7 @@ services:
     environment:
       <<: *common_env
       DEBUG: ${DEBUG:-False}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-WARNING}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — generate one with `openssl rand -base64 48`.}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       DB_USER: ${DB_USER:-postgres}
@@ -496,7 +497,7 @@ services:
       AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:-2}
       AGENT_DROP_UNSUPPORTED_LLM_PARAMS: ${AGENT_DROP_UNSUPPORTED_LLM_PARAMS:-true}
       AGENT_CONTEXT_WARNING_RATIO: ${AGENT_CONTEXT_WARNING_RATIO:-0.8}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:-INFO}
     depends_on:
       redis:
         condition: service_healthy
