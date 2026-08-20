@@ -23,11 +23,6 @@ from loguru import logger
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-if os.getenv("LOAD_DEBUG_ENV", "True").lower() in ("true", "1", "yes", "on"):
-    logger.info("LOAD_DEBUG_ENV=True")
-    load_dotenv(find_dotenv(BASE_DIR.parent / "debug.env"))
-
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
