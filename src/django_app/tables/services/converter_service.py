@@ -5,6 +5,7 @@ from tables.serializers.model_serializers.crew_serializers import (
 )
 from src.shared.models import (
     AgentData,
+    ArgsSchema,
     AudioTranscriptionNodeData,
     BaseToolData,
     ClassificationConditionGroupData,
@@ -40,6 +41,7 @@ from src.shared.models import (
     TelegramTriggerNodeFieldData,
     ToolConfigData,
     WebhookTriggerNodeData,
+    variables_to_args_schema,
 )
 
 from tables.models import (
@@ -92,6 +94,7 @@ from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import RealtimeAgentChat
 from tables.models.webhook_models import NgrokWebhookConfig
+from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.validators.crew_memory_validator import CrewMemoryValidator
 from tables.validators.task_validator import TaskValidator
 from tables.validators.tool_config_validator import (
@@ -115,6 +118,7 @@ class ConverterService(metaclass=SingletonMeta):
     def __init__(self):
         self.memory_validator = CrewMemoryValidator()
         self.task_validator = TaskValidator()
+        self.realtime_surface_service = RealtimeSurfaceService(converter_service=self)
 
     def build_rag_search_config(
         self, rag_type_id: str | None, all_search_configs: dict | None
@@ -253,9 +257,9 @@ class ConverterService(metaclass=SingletonMeta):
                 task=task, graph_id=graph_id, session_id=session_id
             )
             crew_base_tools.extend(base_tools)  # TODO: make it unique
-            assert not (crew.process == "sequential" and task.agent is None), (
-                f"Task {task.name} has no agent, but it's required for sequential process."
-            )
+            assert not (
+                crew.process == "sequential" and task.agent is None
+            ), f"Task {task.name} has no agent, but it's required for sequential process."
 
             task_data_list.append(
                 TaskData(
@@ -438,16 +442,23 @@ class ConverterService(metaclass=SingletonMeta):
         tool: PythonCodeTool | ToolConfig | McpTool | PythonCodeToolConfig,
         graph_id: int | None = None,
         session_id: int | None = None,
+        storage_allowed_paths_override: list[str] | None = None,
     ) -> BaseToolData:
         if isinstance(tool, PythonCodeTool):
             unique_name = f"python-code-tool:{tool.pk}"
             data = self.convert_python_code_tool_to_pydantic(
-                tool, graph_id=graph_id, session_id=session_id
+                tool,
+                graph_id=graph_id,
+                session_id=session_id,
+                storage_allowed_paths_override=storage_allowed_paths_override,
             )
         elif isinstance(tool, PythonCodeToolConfig):
             unique_name = f"python-code-tool-config:{tool.pk}"
             data = self.convert_python_code_tool_config_to_pydantic(
-                tool, graph_id=graph_id, session_id=session_id
+                tool,
+                graph_id=graph_id,
+                session_id=session_id,
+                storage_allowed_paths_override=storage_allowed_paths_override,
             )
         elif isinstance(tool, ToolConfig):
             unique_name = f"configured-tool:{tool.pk}"
@@ -557,6 +568,52 @@ class ConverterService(metaclass=SingletonMeta):
 
         return rt_agent_chat_data
 
+    def convert_rt_agent_definition_chat_to_pydantic(
+        self, rt_agent_chat: RealtimeAgentChat
+    ) -> RealtimeAgentChatData:
+        ad = rt_agent_chat.rt_agent_definition.agent_definition.fill_with_defaults()
+
+        rt_config: RealtimeConfig = rt_agent_chat.realtime_config
+        rt_transcription_config: RealtimeTranscriptionConfig = (
+            rt_agent_chat.realtime_transcription_config
+        )
+
+        surface_resolution = self.realtime_surface_service.resolve(ad)
+
+        rt_agent_chat_data = RealtimeAgentChatData(
+            role=ad.name,
+            goal=ad.description or "assist the user",
+            backstory=ad.instructions or "You are a helpful voice assistant",
+            knowledge_collection_id=surface_resolution.knowledge_collection_id,
+            rag_type_id=surface_resolution.rag_type_id,
+            rag_search_config=surface_resolution.rag_search_config,
+            llm=self.convert_llm_config_to_pydantic(ad.llm_config),
+            memory=False,
+            tools=surface_resolution.tools,
+            rt_model_name=rt_config.realtime_model.name,
+            rt_api_key=rt_config.api_key,
+            transcript_model_name=rt_transcription_config.realtime_transcription_model.name
+            if rt_transcription_config
+            else None,
+            transcript_api_key=rt_transcription_config.api_key
+            if rt_transcription_config
+            else None,
+            temperature=ad.default_temperature,
+            connection_key=rt_agent_chat.connection_key,
+            wake_word=rt_agent_chat.wake_word,
+            stop_prompt=rt_agent_chat.stop_prompt,
+            language=rt_agent_chat.language,
+            voice_recognition_prompt=rt_agent_chat.voice_recognition_prompt,
+            voice=rt_agent_chat.voice,
+            input_audio_format=rt_agent_chat.input_audio_format.value,
+            output_audio_format=rt_agent_chat.output_audio_format.value,
+            rt_provider=rt_config.realtime_model.provider.name
+            if rt_config.realtime_model.provider
+            else "openai",
+        )
+
+        return rt_agent_chat_data
+
     def convert_python_code_to_pydantic(
         self,
         python_code: PythonCode,
@@ -597,12 +654,17 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool: PythonCodeTool,
         graph_id: int | None = None,
         session_id: int | None = None,
+        storage_allowed_paths_override: list[str] | None = None,
     ) -> PythonCodeToolData:
         storage_allowed_paths = None
         storage_org_prefix = None
-        if python_code_tool.use_storage and graph_id is not None:
-            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+        if python_code_tool.use_storage:
+            if storage_allowed_paths_override is not None:
+                storage_allowed_paths = storage_allowed_paths_override
+            elif graph_id is not None:
+                storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if graph_id is not None:
+                storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
 
         org_id = None
         if graph_id is not None:
@@ -627,6 +689,7 @@ class ConverterService(metaclass=SingletonMeta):
             name=python_code_tool.name,
             description=python_code_tool.description,
             variables=variables,
+            args_schema=ArgsSchema(**variables_to_args_schema(variables)),
             python_code=python_code_data,
         )
 
@@ -635,20 +698,25 @@ class ConverterService(metaclass=SingletonMeta):
         python_code_tool_config: PythonCodeToolConfig,
         graph_id: int | None = None,
         session_id: int | None = None,
+        storage_allowed_paths_override: list[str] | None = None,
     ) -> PythonCodeToolData:
         python_code_tool: PythonCodeTool = python_code_tool_config.tool
         python_configuration = python_code_tool_config.configuration
 
-        assert isinstance(python_configuration, dict), (
-            "Error reading python tool configuration. How did you even pass validation?"
-        )
+        assert isinstance(
+            python_configuration, dict
+        ), "Error reading python tool configuration. How did you even pass validation?"
 
         storage_allowed_paths = None
         storage_org_prefix = None
-        if python_code_tool.use_storage and graph_id is not None:
-            storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-        
+        if python_code_tool.use_storage:
+            if storage_allowed_paths_override is not None:
+                storage_allowed_paths = storage_allowed_paths_override
+            elif graph_id is not None:
+                storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
+            if graph_id is not None:
+                storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
+
         org_id = None
         if graph_id is not None:
             org_id = self._resolve_authoritative_org_id_for_graph(graph_id)
@@ -673,6 +741,7 @@ class ConverterService(metaclass=SingletonMeta):
             name=python_code_tool.name,
             description=python_code_tool.description,
             variables=variables,
+            args_schema=ArgsSchema(**variables_to_args_schema(variables)),
             python_code=python_code_data,
         )
 
@@ -777,7 +846,7 @@ class ConverterService(metaclass=SingletonMeta):
             if session_id is not None:
                 storage_allowed_paths.append(f"sessions/{session_id}/")
             storage_org_prefix = self._resolve_org_prefix_for_graph(graph_id)
-        
+
         org_id = None
         if graph_id is not None:
             org_id = self._resolve_authoritative_org_id_for_graph(graph_id)

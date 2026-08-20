@@ -259,6 +259,10 @@
     &__file-icon {
         color: rgba(217, 217, 222, 0.6);
         flex-shrink: 0;
+
+        &--empty {
+            opacity: 0.16;
+        }
     }
 
     &__item-name {
@@ -266,6 +270,17 @@
         min-width: 0;
         font-size: 0.875rem;
         color: var(--color-text-primary);
+        white-space: nowrap;
+    }
+
+    &__empty-badge {
+        flex-shrink: 0;
+        margin-left: auto;
+        padding-left: 1rem;
+        font-size: 14px;
+        font-weight: 400;
+        color: var(--color-text-primary);
+        opacity: 0.16;
         white-space: nowrap;
     }
 
@@ -277,11 +292,5 @@
         font-weight: 400;
         color: rgba(217, 217, 222, 0.16);
         white-space: nowrap;
-    }
-
-    &__node-spinner {
-        font-size: 0.75rem;
-        color: rgba(217, 217, 222, 0.6);
-        flex-shrink: 0;
     }
 }

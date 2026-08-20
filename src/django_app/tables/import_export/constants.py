@@ -23,8 +23,10 @@ DEPENDENCY_ORDER = (
     EntityType.REALTIME_TRANSCRIPTION_CONFIG,
     EntityType.PYTHON_CODE_TOOL,
     EntityType.MCP_TOOL,
+    EntityType.SURFACE,
     EntityType.LABEL,
     EntityType.AGENT,
+    EntityType.AGENT_DEFINITION,
     EntityType.CREW,
     EntityType.WEBHOOK_TRIGGER,
     EntityType.GRAPH,
@@ -42,4 +44,6 @@ DEPENDENCY_ORDER = (
     EntityType.NOTE_NODE,
     EntityType.CODE_AGENT_NODE,
     EntityType.SCHEDULE_TRIGGER_NODE,
+    EntityType.AGENT_NODE,
+    EntityType.TASK_NODE,
 )

@@ -20,6 +20,7 @@ export * from './realtime-llms/real-time-model-config.service';
 export * from './realtime-llms/real-time-models.service';
 export * from './realtime-llms/realtime-config-storage.service';
 export * from './realtime-llms/realtime-models-storage.service';
+export * from './sidebar-width.service';
 export * from './transcription-llms/transcription-config.service';
 export * from './transcription-llms/transcription-config-storage.service';
 export * from './transcription-llms/transcription-models.service';

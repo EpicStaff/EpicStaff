@@ -1,0 +1,81 @@
+<div class="picker">
+    <div class="picker__header">
+        <h2 class="picker__title">Extract Text from Storage</h2>
+        <button
+            class="picker__close"
+            aria-label="Cancel"
+            (click)="onCancel()"
+        >
+            <app-svg-icon
+                icon="x-fill"
+                size="16px"
+            />
+        </button>
+    </div>
+
+    <div class="picker__toolbar">
+        <div class="picker__search">
+            <app-svg-icon
+                icon="search"
+                size="0.875rem"
+                class="picker__search-icon"
+            />
+            <input
+                class="picker__search-input"
+                type="text"
+                placeholder="Search folders, files..."
+                [ngModel]="searchQuery()"
+                (ngModelChange)="searchQuery.set($event)"
+            />
+        </div>
+    </div>
+
+    <div class="picker__body">
+        <div class="picker__file-list">
+            @if (isLoadingRoot()) {
+                <div class="picker__state">Loading files...</div>
+            } @else if (visibleNodes().length === 0) {
+                <div class="picker__state">No text files found</div>
+            } @else {
+                @for (node of visibleNodes(); track node.path) {
+                    <div
+                        class="picker__item"
+                        [style.padding-left.px]="20 + node.level * 20"
+                        (click)="onNodeClick(node)"
+                    >
+                        @if (node.type === 'folder' && (node.hasChildren || node.isExpanded)) {
+                            <button
+                                class="picker__chevron"
+                                [class.picker__chevron--open]="node.isExpanded"
+                                (click)="toggleExpand($event, node)"
+                            >
+                                <app-svg-icon
+                                    icon="expand"
+                                    size="0.5rem"
+                                />
+                            </button>
+                        } @else {
+                            <span class="picker__chevron-gap"></span>
+                        }
+
+                        <app-svg-icon
+                            class="picker__file-icon"
+                            [icon]="getFileIcon(node)"
+                            size="12px"
+                        />
+
+                        <span
+                            class="picker__item-name"
+                            [title]="node.name"
+                            >{{ node.name }}</span
+                        >
+
+                        @if (node.isLoading) {
+                            <span class="picker__node-spinner">...</span>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>

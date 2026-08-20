@@ -12,6 +12,7 @@ from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.views.mixins import OrgScopedResolverMixin
+from tables.services.rbac.authentication import JwtAuthentication, ApiKeyAuthentication
 from tables.services.rbac.permissions import HasOrgPermission
 from tables.serializers.storage_serializers import (
     GraphStorageFileSerializer,
@@ -19,6 +20,8 @@ from tables.serializers.storage_serializers import (
     StorageBulkDeleteSerializer,
     StorageCopySerializer,
     StorageDownloadZipSerializer,
+    StorageFilesByIdsQuerySerializer,
+    StorageFileSerializer,
     StorageGraphFilesQuerySerializer,
     StorageMkdirSerializer,
     StorageMoveSerializer,
@@ -37,6 +40,7 @@ from tables.swagger_schemas.storage_schema import (
     STORAGE_DELETE_SWAGGER,
     STORAGE_DOWNLOAD_SWAGGER,
     STORAGE_DOWNLOAD_ZIP_SWAGGER,
+    STORAGE_FILES_BY_IDS_SWAGGER,
     STORAGE_GRAPH_FILES_SWAGGER,
     STORAGE_INFO_SWAGGER,
     STORAGE_LIST_SWAGGER,
@@ -51,6 +55,7 @@ from tables.swagger_schemas.storage_schema import (
 
 
 class StorageAPIView(OrgScopedResolverMixin, ViewSet):
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FILES
     rbac_action_map = {
@@ -59,6 +64,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         "download": Permission.READ,
         "tree": Permission.READ,
         "graph_files": Permission.READ,
+        "files_by_ids": Permission.READ,
         "search": Permission.READ,
         "download_zip": Permission.EXPORT,
         "upload": Permission.CREATE,
@@ -144,7 +150,7 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         try:
             file_bytes = self.manager.download(org_id, path)
         except FileNotFoundError:
-            raise ValidationError({"path": f"File does not exist: {path}"})
+            raise NotFound({"path": f"File does not exist: {path}"})
 
         filename = path.rstrip("/").split("/")[-1] if path else "file"
         response = HttpResponse(file_bytes, content_type="application/octet-stream")
@@ -185,14 +191,14 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
         paths = serializer.validated_data["paths"]
 
         try:
-            zip_chunks = self.manager.download_zip(org_id, paths)
+            zip_filename, zip_chunks = self.manager.download_zip(org_id, paths)
             response = HttpResponse(
                 b"".join(zip_chunks), content_type="application/zip"
             )
         except FileNotFoundError as e:
             raise ValidationError({"paths": str(e)})
 
-        response["Content-Disposition"] = 'attachment; filename="download.zip"'
+        response["Content-Disposition"] = f'attachment; filename="{zip_filename}"'
         return response
 
     @extend_schema(**STORAGE_MKDIR_SWAGGER)
@@ -408,6 +414,17 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
             .order_by("added_at")
         )
         return Response(GraphStorageFileSerializer(qs, many=True).data)
+
+    @extend_schema(**STORAGE_FILES_BY_IDS_SWAGGER)
+    @action(detail=False, methods=["get"], url_path="files")
+    def files_by_ids(self, request):
+        org_id = self.get_active_org_id()
+        params = StorageFilesByIdsQuerySerializer(data=request.query_params)
+        params.is_valid(raise_exception=True)
+        qs = StorageFile.objects.filter(
+            org_id=org_id, id__in=params.validated_data["ids"]
+        )
+        return Response(StorageFileSerializer(qs, many=True).data)
 
     @extend_schema(**STORAGE_SEARCH_SWAGGER)
     @action(detail=False, methods=["get"], url_path="search")

@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
-import { FullLLMConfig } from '@shared/services';
+import { FullLLMConfig, FullRealtimeConfig } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 
 import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
@@ -82,10 +82,10 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LlmModelItemComponent {
-    @Input() config!: FullLLMConfig;
+    @Input() config!: FullLLMConfig | FullRealtimeConfig;
     @Input() isSelected: boolean = false;
 
-    @Output() selected = new EventEmitter<FullLLMConfig>();
+    @Output() selected = new EventEmitter<FullLLMConfig | FullRealtimeConfig>();
 
     onSelect(): void {
         this.selected.emit(this.config);

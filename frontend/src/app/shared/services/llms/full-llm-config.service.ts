@@ -49,6 +49,12 @@ export class FullLLMConfigService {
     });
 
     /**
+     * Backwards-compatible alias consumed by the agent-definitions feature (EST-2914).
+     * Points at the same reactive signal as `fullLLMConfigs`.
+     */
+    public readonly fullConfigs: Signal<FullLLMConfig[]> = this.fullLLMConfigs;
+
+    /**
      * Ensures configs, models and providers are loaded and returns the combined list.
      * After the load completes, the `fullLLMConfigs` signal will reflect the same data
      * and continue to track subsequent storage updates.

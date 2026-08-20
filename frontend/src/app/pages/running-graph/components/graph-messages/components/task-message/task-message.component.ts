@@ -6,7 +6,7 @@ import { MarkdownModule } from 'ngx-markdown';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
-import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-message.model';
+import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-task-message',
@@ -62,34 +62,37 @@ import { GraphMessage, TaskMessageData } from '../../../../models/graph-session-
                             class="collapsible-content"
                             [@expandCollapse]="isDetailsExpanded ? 'expanded' : 'collapsed'"
                         >
-                            <div class="details-content">
+                            <div
+                                class="details-content"
+                                *ngIf="taskMessageData as data"
+                            >
                                 <div
                                     class="description-section"
-                                    *ngIf="taskMessageData?.description"
+                                    *ngIf="data.description"
                                 >
                                     <div class="subsection-heading">Description:</div>
                                     <div class="description-content">
-                                        {{ taskMessageData?.description }}
+                                        {{ data.description }}
                                     </div>
                                 </div>
 
                                 <div
                                     class="expected-output-section"
-                                    *ngIf="taskMessageData?.expected_output"
+                                    *ngIf="data.expected_output"
                                 >
                                     <div class="subsection-heading">Expected Output:</div>
                                     <div class="expected-output-content">
-                                        {{ taskMessageData?.expected_output }}
+                                        {{ data.expected_output }}
                                     </div>
                                 </div>
 
                                 <div
                                     class="agent-section"
-                                    *ngIf="taskMessageData?.agent"
+                                    *ngIf="data.agent"
                                 >
                                     <div class="subsection-heading">Assigned To:</div>
                                     <div class="agentData-content">
-                                        {{ taskMessageData?.agent }}
+                                        {{ data.agent }}
                                     </div>
                                 </div>
                             </div>
@@ -398,7 +401,7 @@ export class TaskMessageComponent implements OnInit {
     }
 
     get taskMessageData(): TaskMessageData | null {
-        if (this.message.message_data && this.message.message_data.message_type === 'task') {
+        if (this.message.message_data && this.message.message_data.message_type === MessageType.TASK) {
             return this.message.message_data as TaskMessageData;
         }
         return null;
