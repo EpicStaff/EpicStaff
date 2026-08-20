@@ -758,6 +758,19 @@ class InitRealtimeAPIView(APIView):
         agent_id = serializer.validated_data.get("agent_id")
         agent_definition_id = serializer.validated_data.get("agent_definition_id")
         config = serializer.validated_data.get("config", {})
+        # Visibility only, no behavior change: `config` is the dict that gets
+        # setattr-merged onto `RealtimeAgentChatData` in RealtimeService
+        # (see realtime_service.py's _apply_config_overrides). connection_key
+        # doesn't exist yet at this point, so correlate by agent_id /
+        # agent_definition_id — logged so a future occurrence of a
+        # null-org_id (or any other unexpected-field) session can be traced
+        # back to exactly what config payload the caller sent.
+        logger.info(
+            "init-realtime: agent_id={} agent_definition_id={} config={}",
+            agent_id,
+            agent_definition_id,
+            config,
+        )
 
         if (
             isinstance(request.auth, ApiKey)
