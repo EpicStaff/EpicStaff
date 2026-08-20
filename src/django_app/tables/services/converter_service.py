@@ -517,7 +517,7 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def convert_rt_agent_chat_to_pydantic(
-        self, rt_agent_chat: RealtimeAgentChat
+        self, rt_agent_chat: RealtimeAgentChat, user_id: int | None = None
     ) -> RealtimeAgentChatData:
         agent: Agent = rt_agent_chat.rt_agent.agent.fill_with_defaults(crew_id=None)
 
@@ -571,6 +571,7 @@ class ConverterService(metaclass=SingletonMeta):
             goal=agent.goal,
             backstory=agent.backstory,
             org_id=agent.org_id,
+            user_id=user_id,
             knowledge_collection_id=knowledge_collection_id,
             rag_type_id=rag_type_id,
             rag_search_config=rag_search_config,
@@ -596,7 +597,7 @@ class ConverterService(metaclass=SingletonMeta):
         return rt_agent_chat_data
 
     def convert_rt_agent_definition_chat_to_pydantic(
-        self, rt_agent_chat: RealtimeAgentChat
+        self, rt_agent_chat: RealtimeAgentChat, user_id: int | None = None
     ) -> RealtimeAgentChatData:
         ad = rt_agent_chat.rt_agent_definition.agent_definition.fill_with_defaults()
 
@@ -641,6 +642,7 @@ class ConverterService(metaclass=SingletonMeta):
             goal=ad.description or "assist the user",
             backstory=ad.instructions or "You are a helpful voice assistant",
             org_id=ad.organization_id,
+            user_id=user_id,
             knowledge_collection_id=surface_resolution.knowledge_collection_id,
             rag_type_id=surface_resolution.rag_type_id,
             rag_search_config=surface_resolution.rag_search_config,

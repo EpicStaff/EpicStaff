@@ -1718,9 +1718,11 @@ class RealtimeTranscriptionConfigModelViewSet(
 
 
 class RealtimeSessionItemViewSet(viewsets.ReadOnlyModelViewSet):
-    # Realtime session items hold conversation payloads (incl. base64 audio)
-    # keyed by an opaque connection_key with no org FK, so they can leak another
-    # org's data. Restricted to superadmin (read-only).
+    # Realtime session items hold conversation payloads (incl. base64 audio).
+    # `org` is now populated at write time (realtime service resolves it from
+    # RealtimeAgentChatData.org_id), but this stays superadmin-only as
+    # defense-in-depth: raw audio/transcript payloads are sensitive and the
+    # write path is a separate microservice, not a viewset-enforced org scope.
     permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = RealtimeSessionItem.objects.all()
     serializer_class = RealtimeSessionItemSerializer

@@ -112,6 +112,34 @@ def test_openai_twilio_forces_g711_ulaw(MockOpenai, factory, rt_tools, on_server
 
 
 @patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
+def test_openai_passes_org_id(MockOpenai, factory, rt_tools, on_server_event):
+    config = _make_config(rt_provider="openai", org_id=7)
+    factory.create(
+        config=config,
+        rt_tools=rt_tools,
+        instructions="hi",
+        tool_manager_service=MagicMock(),
+        on_server_event=on_server_event,
+    )
+    _, kwargs = MockOpenai.call_args
+    assert kwargs.get("org_id") == 7
+
+
+@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
+def test_openai_passes_user_id(MockOpenai, factory, rt_tools, on_server_event):
+    config = _make_config(rt_provider="openai", user_id=101)
+    factory.create(
+        config=config,
+        rt_tools=rt_tools,
+        instructions="hi",
+        tool_manager_service=MagicMock(),
+        on_server_event=on_server_event,
+    )
+    _, kwargs = MockOpenai.call_args
+    assert kwargs.get("user_id") == 101
+
+
+@patch("infrastructure.providers.factory.OpenaiRealtimeAgentClient")
 def test_openai_non_twilio_uses_config_format(MockOpenai, factory, rt_tools, on_server_event):
     config = _make_config(input_audio_format="pcm16", output_audio_format="pcm16")
     factory.create(
@@ -125,6 +153,34 @@ def test_openai_non_twilio_uses_config_format(MockOpenai, factory, rt_tools, on_
     _, kwargs = MockOpenai.call_args
     assert kwargs.get("input_audio_format") == "pcm16"
     assert kwargs.get("output_audio_format") == "pcm16"
+
+
+@patch("infrastructure.providers.factory.ElevenLabsRealtimeAgentClient")
+def test_elevenlabs_passes_org_id(MockElevenLabs, factory, rt_tools, on_server_event):
+    config = _make_config(rt_provider="elevenlabs", org_id=9)
+    factory.create(
+        config=config,
+        rt_tools=rt_tools,
+        instructions="hi",
+        tool_manager_service=MagicMock(),
+        on_server_event=on_server_event,
+    )
+    _, kwargs = MockElevenLabs.call_args
+    assert kwargs.get("org_id") == 9
+
+
+@patch("infrastructure.providers.factory.ElevenLabsRealtimeAgentClient")
+def test_elevenlabs_passes_user_id(MockElevenLabs, factory, rt_tools, on_server_event):
+    config = _make_config(rt_provider="elevenlabs", user_id=102)
+    factory.create(
+        config=config,
+        rt_tools=rt_tools,
+        instructions="hi",
+        tool_manager_service=MagicMock(),
+        on_server_event=on_server_event,
+    )
+    _, kwargs = MockElevenLabs.call_args
+    assert kwargs.get("user_id") == 102
 
 
 @patch("infrastructure.providers.factory.ElevenLabsRealtimeAgentClient")
@@ -214,6 +270,34 @@ def test_gemini_non_twilio_is_twilio_false(mock_genai, factory, rt_tools, on_ser
         is_twilio=False,
     )
     assert result.is_twilio is False
+
+
+@patch(_GEMINI_GENAI)
+def test_gemini_passes_org_id(mock_genai, factory, rt_tools, on_server_event):
+    mock_genai.Client.return_value = MagicMock()
+    config = _make_config(rt_provider="gemini", org_id=13)
+    result = factory.create(
+        config=config,
+        rt_tools=rt_tools,
+        instructions="hi",
+        tool_manager_service=MagicMock(),
+        on_server_event=on_server_event,
+    )
+    assert result.org_id == 13
+
+
+@patch(_GEMINI_GENAI)
+def test_gemini_passes_user_id(mock_genai, factory, rt_tools, on_server_event):
+    mock_genai.Client.return_value = MagicMock()
+    config = _make_config(rt_provider="gemini", user_id=103)
+    result = factory.create(
+        config=config,
+        rt_tools=rt_tools,
+        instructions="hi",
+        tool_manager_service=MagicMock(),
+        on_server_event=on_server_event,
+    )
+    assert result.user_id == 103
 
 
 @patch(_GEMINI_GENAI)

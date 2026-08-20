@@ -802,6 +802,9 @@ class InitRealtimeAPIView(APIView):
                         }
                     )
                 org_id = agent.org_id
+            # Twilio's MediaStream bridge has no end-user session (see comment
+            # above) — created_by/user_id stays None for these sessions.
+            user_id = None
         else:
             # Org isolation: starting a realtime session is a read/use of an
             # agent, so require AGENTS.READ and reject an agent_id/agent_definition_id
@@ -815,6 +818,14 @@ class InitRealtimeAPIView(APIView):
                 org_id=org_id,
                 resource_type=ResourceType.AGENTS,
                 action=Permission.READ,
+            )
+            # Browser /chats flow: a real authenticated user (JWT session or
+            # USER-type ApiKey) is making this request — attribute the
+            # resulting RealtimeSessionItem rows to them via created_by.
+            user_id = (
+                request.user.id
+                if getattr(request.user, "is_authenticated", False)
+                else None
             )
 
         if agent_id is not None:
@@ -838,11 +849,13 @@ class InitRealtimeAPIView(APIView):
                 connection_key = realtime_service.init_realtime_agent_definition(
                     agent_definition_id=agent_definition_id,
                     config=config,
+                    user_id=user_id,
                 )
             else:
                 connection_key = realtime_service.init_realtime(
                     agent_id=agent_id,
                     config=config,
+                    user_id=user_id,
                 )
 
         except Exception as e:

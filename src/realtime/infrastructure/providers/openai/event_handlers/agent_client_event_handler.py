@@ -36,7 +36,10 @@ class ClientEventHandler:
         handler = self.event_map.get(event_type, self.unknown_event_handler)
         await handler(data)
         await save_realtime_session_item_to_db(
-            data=data, connection_key=self.client.connection_key
+            data=data,
+            connection_key=self.client.connection_key,
+            org_id=self.client.org_id,
+            user_id=self.client.user_id,
         )
 
     async def unknown_event_handler(self, data: Dict[str, Any]) -> None:

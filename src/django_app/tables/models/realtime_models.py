@@ -382,8 +382,9 @@ class ConversationRecording(models.Model):
 # ---------------------------------------------------------------------------
 
 
-class RealtimeSessionItem(models.Model):
-    class Meta:
+class RealtimeSessionItem(OrgScopedModel, models.Model):
+    class Meta(OrgScopedModel.Meta):
+        abstract = False
         db_table = "realtime_session_items"
 
     connection_key = models.TextField()

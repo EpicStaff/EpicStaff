@@ -49,11 +49,15 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
         agent_provisioner: ElevenLabsAgentProvisioner | None = None,
         llm_model: str = "",
         language: Optional[str] = None,
+        org_id: Optional[int] = None,
+        user_id: Optional[int] = None,
     ):
         super().__init__(
             api_key=api_key,
             connection_key=connection_key,
             on_server_event=on_server_event,
+            org_id=org_id,
+            user_id=user_id,
         )
 
         self.tool_manager_service = tool_manager_service

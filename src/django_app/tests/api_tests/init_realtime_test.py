@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from django.urls import reverse
 from rest_framework import status
@@ -5,6 +7,12 @@ from rest_framework import status
 from tables.models.rbac_models import Organization
 from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgent
 from tests.fixtures import *
+
+
+def _published_chat_data(redis_client_mock) -> dict:
+    """Decode the `RealtimeAgentChatData` JSON published on `publish()`."""
+    _channel, payload = redis_client_mock.publish.call_args.args
+    return json.loads(payload)
 
 
 def _make_realtime_agent(agent, org):
@@ -45,6 +53,26 @@ def test_init_realtime(
 
 
 @pytest.mark.django_db
+def test_init_realtime_populates_created_by_for_browser_jwt_session(
+    wikipedia_agent_with_configured_realtime,
+    auth_client,
+    regular_user,
+    redis_client_mock,
+):
+    """Follow-up to finding #33: the browser `/chats` flow has a real
+    authenticated user making the request, so `RealtimeAgentChatData.user_id`
+    (→ `RealtimeSessionItem.created_by`) must be populated from it."""
+    agent_id = wikipedia_agent_with_configured_realtime.pk
+
+    response = auth_client.post(
+        reverse("init-realtime"), data={"agent_id": agent_id}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.json()
+    assert _published_chat_data(redis_client_mock)["user_id"] == regular_user.id
+
+
+@pytest.mark.django_db
 class TestInitRealtimeApiKeyCaller:
     """EST-3631 (3rd STR): the Twilio MediaStream WebSocket bridge
     (`realtime`'s `_voice_stream_handler`) calls POST /api/init-realtime/
@@ -80,6 +108,30 @@ class TestInitRealtimeApiKeyCaller:
         assert response.status_code == status.HTTP_201_CREATED, response_data
         assert "connection_key" in response_data
         redis_client_mock.publish.assert_called()
+
+    def test_system_api_key_leaves_created_by_null(
+        self,
+        wikipedia_agent,
+        default_org,
+        api_client,
+        env_api_key,
+        redis_client_mock,
+    ):
+        """Twilio's MediaStream bridge (SYSTEM ApiKey caller) has no end-user
+        session to attribute the session to — `user_id` must stay `None`,
+        unlike the browser JWT flow."""
+        rt_agent = _make_realtime_agent(wikipedia_agent, default_org)
+        raw_key, _key = env_api_key
+        api_client.credentials(HTTP_X_API_KEY=raw_key)
+
+        response = api_client.post(
+            self._url(),
+            data={"agent_id": rt_agent.agent_id},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED, response.json()
+        assert _published_chat_data(redis_client_mock)["user_id"] is None
 
     def test_succeeds_for_agent_in_a_different_org(
         self,

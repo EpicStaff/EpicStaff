@@ -116,7 +116,10 @@ class ElevenLabsServerEventHandler:
 
         await handler(data)
         await save_realtime_session_item_to_db(
-            data=data, connection_key=self.client.connection_key
+            data=data,
+            connection_key=self.client.connection_key,
+            org_id=self.client.org_id,
+            user_id=self.client.user_id,
         )
 
     async def _handle_initiation_metadata(self, data: Dict[str, Any]) -> None:

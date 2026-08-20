@@ -43,11 +43,15 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
         voice: str = "Puck",
         instructions: str = "You are a helpful assistant",
         temperature: float = 1.0,
+        org_id: Optional[int] = None,
+        user_id: Optional[int] = None,
     ):
         super().__init__(
             api_key=api_key,
             connection_key=connection_key,
             on_server_event=on_server_event,
+            org_id=org_id,
+            user_id=user_id,
         )
 
         _VALID_GEMINI_VOICES = {

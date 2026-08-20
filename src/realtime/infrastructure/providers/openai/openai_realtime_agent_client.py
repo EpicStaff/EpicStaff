@@ -38,11 +38,15 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
         turn_detection_mode: TurnDetectionMode = TurnDetectionMode.SERVER_VAD,
         input_audio_format: str = "pcm16",
         output_audio_format: str = "pcm16",
+        org_id: Optional[int] = None,
+        user_id: Optional[int] = None,
     ):
         super().__init__(
             api_key=api_key,
             connection_key=connection_key,
             on_server_event=on_server_event,
+            org_id=org_id,
+            user_id=user_id,
         )
 
         self.tool_manager_service = tool_manager_service

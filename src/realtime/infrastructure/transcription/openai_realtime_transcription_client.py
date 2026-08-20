@@ -25,10 +25,14 @@ class OpenaiRealtimeTranscriptionClient(ITranscriptionClient):
         voice_recognition_prompt: str | None = None,
         buffer: ChatSummarizedBuffer = None,
         connection_model: str = "gpt-realtime-1.5",
+        org_id: int | None = None,
+        user_id: int | None = None,
     ):
         self.api_key = api_key
         self.connection_key = connection_key
         self.on_server_event = on_server_event
+        self.org_id = org_id
+        self.user_id = user_id
         self.model = model
         self.connection_model = connection_model
         self.ws = None

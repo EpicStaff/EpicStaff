@@ -121,6 +121,8 @@ class GeminiServerEventHandler:
             await save_realtime_session_item_to_db(
                 data={"type": "gemini_event", "raw": str(response)},
                 connection_key=self.client.connection_key,
+                org_id=self.client.org_id,
+                user_id=self.client.user_id,
             )
         except Exception as e:
             logger.exception(f"Gemini server event handler error: {e}")

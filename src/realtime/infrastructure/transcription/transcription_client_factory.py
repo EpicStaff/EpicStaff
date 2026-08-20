@@ -34,4 +34,6 @@ class TranscriptionClientFactory(ITranscriptionClientFactory):
             language=config.language,
             voice_recognition_prompt=config.voice_recognition_prompt,
             buffer=buffer,
+            org_id=config.org_id,
+            user_id=config.user_id,
         )

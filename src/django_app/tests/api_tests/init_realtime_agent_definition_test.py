@@ -160,6 +160,25 @@ def test_init_realtime_agent_definition_happy_path(
     assert payload["memory"] is False
 
 
+@pytest.mark.django_db
+def test_init_realtime_agent_definition_populates_created_by_for_browser_session(
+    rt_agent_definition, auth_client, regular_user, redis_client_mock
+):
+    """Same finding-#33 follow-up as the legacy agent_id path: a browser
+    `/chats` session on an AgentDefinition-backed voice agent still has a
+    real authenticated user, so `user_id` must be populated."""
+    url = reverse("init-realtime")
+
+    response = auth_client.post(
+        url,
+        data={"agent_definition_id": rt_agent_definition.pk},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.json()
+    assert _published_payload(redis_client_mock)["user_id"] == regular_user.id
+
+
 # ---------------------------------------------------------------------------
 # 2. Surface resolution through the API
 # ---------------------------------------------------------------------------

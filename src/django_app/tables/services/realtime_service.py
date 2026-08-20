@@ -101,12 +101,14 @@ class RealtimeService(metaclass=SingletonMeta):
 
         return RealtimeAgentChat.objects.create(**chat_kwargs)
 
-    def init_realtime(self, agent_id: int, config: dict) -> str:
+    def init_realtime(
+        self, agent_id: int, config: dict, user_id: int | None = None
+    ) -> str:
         rt_agent = self.get_rt_agent(agent_id=agent_id)
         rt_agent_chat = self.create_rt_agent_chat(rt_agent)
 
         rt_agent_chat_data = self.converter_service.convert_rt_agent_chat_to_pydantic(
-            rt_agent_chat=rt_agent_chat
+            rt_agent_chat=rt_agent_chat, user_id=user_id
         )
         # Override with provided config
         for key, value in config.items():
@@ -155,7 +157,7 @@ class RealtimeService(metaclass=SingletonMeta):
         return RealtimeAgentChat.objects.create(**chat_kwargs)
 
     def init_realtime_agent_definition(
-        self, agent_definition_id: int, config: dict
+        self, agent_definition_id: int, config: dict, user_id: int | None = None
     ) -> str:
         rt_agent_definition = self.get_rt_agent_definition(
             agent_definition_id=agent_definition_id
@@ -164,7 +166,7 @@ class RealtimeService(metaclass=SingletonMeta):
 
         rt_agent_chat_data = (
             self.converter_service.convert_rt_agent_definition_chat_to_pydantic(
-                rt_agent_chat=rt_agent_chat
+                rt_agent_chat=rt_agent_chat, user_id=user_id
             )
         )
         # Override with provided config
