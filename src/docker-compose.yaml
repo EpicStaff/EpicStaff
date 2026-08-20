@@ -27,6 +27,7 @@ services:
       <<: *common_env
       DEBUG: ${DEBUG:-False}
       DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-WARNING}
+      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-True}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — generate one with `openssl rand -base64 48`.}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       DB_USER: ${DB_USER:-postgres}
