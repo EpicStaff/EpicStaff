@@ -27,7 +27,7 @@ This document covers the EpicStaff storage system architecture, data models, sec
 
 ## 1. System Overview
 
-EpicStaff Storage is an org-scoped file management system supporting S3-compatible and local filesystem backends. It provides REST APIs for file CRUD, archive handling, graph-file linking, and an SDK for use within flow execution (Python/Code Agent nodes).
+EpicStaff Storage is an org-scoped file management system supporting S3-compatible and local filesystem backends. It provides REST APIs for file CRUD, archive handling, graph-file linking, and an SDK for use within flow execution (Python nodes).
 
 All file operations are namespaced per organization. Permissions are enforced at every layer — REST API, StorageManager, and the flow execution SDK.
 
@@ -52,7 +52,7 @@ AbstractStorageBackend
   └─ S3StorageBackend (boto3)
 
 Storage SDK (EpicStaffStorage)
-  └─ Used by Python/Code Agent nodes during flow execution
+  └─ Used by Python nodes during flow execution
   └─ Direct S3 access with path allowlist
 ```
 
@@ -62,7 +62,7 @@ Storage SDK (EpicStaffStorage)
 
 **StorageFileSync** keeps the `StorageFile` DB table consistent with actual storage mutations. It is called by `StorageManager` after every mutating operation.
 
-**EpicStaffStorage SDK** is used inside flow execution (Code Agent nodes). It operates with direct S3 access and is constrained by an allowlist of permitted paths (`STORAGE_ALLOWED_PATHS`).
+**EpicStaffStorage SDK** is used inside flow execution (Python nodes). It operates with direct S3 access and is constrained by an allowlist of permitted paths (`STORAGE_ALLOWED_PATHS`).
 
 ---
 

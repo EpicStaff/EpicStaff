@@ -3,7 +3,6 @@ import { Type } from '@angular/core';
 import { AgentNodePanelComponent } from '../../components/node-panels/agent-node-panel/agent-node-panel.component';
 import { AudioToTextNodePanelComponent } from '../../components/node-panels/audio-to-text-node-panel/audio-to-text-node-panel.component';
 import { ClassificationDecisionTableNodePanelComponent } from '../../components/node-panels/classification-decision-table-node-panel/classification-decision-table-node-panel.component';
-import { CodeAgentNodePanelComponent } from '../../components/node-panels/code-agent-node-panel/code-agent-node-panel.component';
 import { ConditionalEdgeNodePanelComponent } from '../../components/node-panels/conditional-edge-node-panel/conditional-edge-node-panel.component';
 import { DecisionTableNodePanelComponent } from '../../components/node-panels/decision-table-node-panel/decision-table-node-panel.component';
 import { EndNodePanelComponent } from '../../components/node-panels/end-node-panel/end-node-panel.component';
@@ -35,7 +34,6 @@ export const PANEL_COMPONENT_MAP: Record<string, Type<NodePanel<NodeModel>>> = {
     'classification-decision-table': asNodePanelComponent(ClassificationDecisionTableNodePanelComponent),
     [NodeType.AUDIO_TO_TEXT]: asNodePanelComponent(AudioToTextNodePanelComponent),
     [NodeType.SCHEDULE_TRIGGER]: asNodePanelComponent(ScheduleTriggerNodePanelComponent),
-    [NodeType.CODE_AGENT]: asNodePanelComponent(CodeAgentNodePanelComponent),
     [NodeType.TASK]: asNodePanelComponent(TaskNodePanelComponent),
     [NodeType.AGENT]: asNodePanelComponent(AgentNodePanelComponent),
 };
