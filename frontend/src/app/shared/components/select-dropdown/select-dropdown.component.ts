@@ -445,12 +445,12 @@ export class SelectDropdownComponent {
         this.collectDescendants(node, fileIds, folderIds);
 
         const files = new Set(this.draft());
-        for (const id of fileIds) (check ? files.add(id) : files.delete(id));
+        for (const id of fileIds) check ? files.add(id) : files.delete(id);
         this.draft.set([...files]);
 
         this.draftFolderIds.update((set) => {
             const next = new Set(set);
-            for (const id of folderIds) (check ? next.add(id) : next.delete(id));
+            for (const id of folderIds) check ? next.add(id) : next.delete(id);
             return next;
         });
     }
