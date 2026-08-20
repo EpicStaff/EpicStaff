@@ -53,9 +53,7 @@ for (const key of Object.keys(data).sort()) {
   const name = key.substring(0, atIdx);
   const version = key.substring(atIdx + 1);
 
-  // license override: @openai/realtime-api-beta is MIT per its own package.json
   let licenses = d.licenses || 'UNKNOWN';
-  if (name === '@openai/realtime-api-beta') licenses = 'MIT';
 
   let licenseText = null;
   if (d.licenseFile) {
@@ -223,7 +221,6 @@ lines.push('- Sorts entries alphabetically and groups them by SPDX identifier in
 lines.push('');
 lines.push('### Manual overrides applied');
 lines.push('');
-lines.push('- `@openai/realtime-api-beta` is installed directly from a GitHub tarball with `"private": true` in its `package.json`, which causes `license-checker` to report it as `UNLICENSED`. Its repository declares `"license": "MIT"` and ships a standard MIT LICENSE file (`Copyright (c) 2024 OpenAI`). The generator records it as MIT and includes the verbatim license text below.');
 lines.push('- The EpicStaff frontend project itself (`epicstaff-frontend`) is filtered out of the list — this notices file only covers third-party code.');
 lines.push('');
 
