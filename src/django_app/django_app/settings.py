@@ -16,17 +16,12 @@ from datetime import timedelta
 from pathlib import Path
 
 from corsheaders.defaults import default_headers
-from django.core.management.utils import get_random_secret_key
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import find_dotenv, load_dotenv
 from loguru import logger
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-if os.getenv("LOAD_DEBUG_ENV", "True").lower() in ("true", "1", "yes", "on"):
-    logger.info("LOAD_DEBUG_ENV=True")
-    load_dotenv(find_dotenv(BASE_DIR.parent / "debug.env"))
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -36,9 +31,21 @@ if os.getenv("LOAD_DEBUG_ENV", "True").lower() in ("true", "1", "yes", "on"):
 # SECURITY WARNING: keep the secret key used in production secret!
 DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes", "on")
 
-SECRET_KEY = os.getenv("SECRET_KEY") or (
-    "321567143216717121" if DEBUG else get_random_secret_key()
-)
+
+def _require_env(name: str) -> str:
+    """Return the environment variable's stripped value, refusing to start when it is missing or blank."""
+    value = (os.getenv(name) or "").strip()
+    if not value:
+        raise ImproperlyConfigured(
+            f"{name} is not set. EpicStaff ships no default signing key: generate a "
+            f"random value (e.g. `openssl rand -base64 48`) and pass it to the "
+            f"django_app container. Rotating SECRET_KEY makes every stored Secret "
+            f"undecryptable, so generate it once and keep it."
+        )
+    return value
+
+
+SECRET_KEY = _require_env("SECRET_KEY")
 
 ALLOWED_HOSTS = [
     "*",  # host.strip() for host in os.getenv("ALLOWED_HOSTS", "0.0.0.0, 127.0.0.1").split(",")
