@@ -1,3 +1,4 @@
+import ntpath
 from typing import List, Dict, Any
 from django.db import models
 from django.db import transaction
@@ -13,11 +14,29 @@ from tables.exceptions import (
     DocumentUploadException,
     FileSizeExceededException,
     InvalidFileTypeException,
+    InvalidFileNameException,
     CollectionNotFoundException,
     NoFilesProvidedException,
     DocumentNotFoundException,
     InvalidCollectionIdException,
 )
+
+
+def _is_bare_file_name(file_name: str | None) -> bool:
+    """
+    True when file_name is a plain file name carrying no path component.
+
+    The name is later joined to a directory when the document is written to disk
+    for GraphRAG indexing, so anything that could steer that join away from the
+    target folder is rejected here: directory separators (both flavours, since
+    the writer may run on either platform), a Windows drive prefix, and the
+    current/parent directory entries.
+    """
+    if not file_name or file_name in (".", ".."):
+        return False
+    if ntpath.splitdrive(file_name)[0]:
+        return False
+    return "/" not in file_name and "\\" not in file_name
 
 
 class DocumentManagementService:
@@ -43,11 +62,16 @@ class DocumentManagementService:
             dict: Validated file metadata
 
         Raises:
+            InvalidFileNameException: If file name carries a path
             FileSizeExceededException: If file size exceeds limit
             InvalidFileTypeException: If file type is not allowed
         """
         file_name = uploaded_file.name
         file_size = uploaded_file.size
+
+        # Validate file name
+        if not _is_bare_file_name(file_name):
+            raise InvalidFileNameException(file_name)
 
         # Validate file size
         if file_size > MAX_FILE_SIZE:
@@ -79,6 +103,7 @@ class DocumentManagementService:
             NoFilesProvidedException: If no files provided
             FileSizeExceededException: If any file exceeds size limit
             InvalidFileTypeException: If any file has invalid type
+            InvalidFileNameException: If any file name carries a path
         """
         if not uploaded_files:
             raise NoFilesProvidedException()
@@ -92,7 +117,11 @@ class DocumentManagementService:
                 validated_files.append(
                     {"index": idx, "uploaded_file": uploaded_file, **validated_data}
                 )
-            except (FileSizeExceededException, InvalidFileTypeException) as e:
+            except (
+                FileSizeExceededException,
+                InvalidFileTypeException,
+                InvalidFileNameException,
+            ) as e:
                 errors.append(
                     {"index": idx, "file_name": uploaded_file.name, "error": str(e)}
                 )
