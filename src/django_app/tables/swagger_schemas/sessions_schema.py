@@ -301,7 +301,6 @@ SESSION_LIST_GET = dict(
                                     "crew_node_list": [],
                                     "python_node_list": [],
                                     "subgraph_node_list": [],
-                                    "code_agent_node_list": [],
                                     "conditional_edge_list": [],
                                     "decision_table_node_list": [],
                                     "file_extractor_node_list": [],

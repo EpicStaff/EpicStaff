@@ -116,28 +116,6 @@ class ClassificationDecisionTableNodeData(BaseModel):
     next_error_node: str | None = None
 
 
-class CodeAgentNodeData(BaseModel):
-    node_name: str
-    llm_config_id: int | None = None
-    agent_mode: str = "build"
-    session_id: str = ""
-    system_prompt: str = ""
-    stream_handler_code: str = ""
-    libraries: list[str] = []
-    polling_interval_ms: int = 1000
-    silence_indicator_s: int = 3
-    indicator_repeat_s: int = 5
-    chunk_timeout_s: int = 30
-    inactivity_timeout_s: int = 120
-    max_wait_s: int = 300
-    input_map: dict[str, Any] = {}
-    output_variable_path: str | None = None
-    stream_config: dict[str, Any] = {}
-    output_schema: dict[str, Any] = {}
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class AgentDefinitionData(BaseModel):
     id: int
     name: str
@@ -280,7 +258,6 @@ class GraphData(BaseModel):
     file_extractor_node_list: list[FileExtractorNodeData] = []
     audio_transcription_node_list: list[AudioTranscriptionNodeData] = []
     subgraph_node_list: list[SubGraphNodeData] = []
-    code_agent_node_list: list[CodeAgentNodeData] = []
     task_node_list: list[TaskNodeData] = []
     agent_node_list: list[AgentNodeData] = []
     edge_list: list[EdgeData] = []

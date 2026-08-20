@@ -103,23 +103,6 @@ def test_filter_snapshot_drops_conditional_edge_from_skipped_node(
     assert "Conditional edge" in edge_dropped_warnings[0]["reason"]
 
 
-def test_filter_snapshot_nulls_fk_for_code_agent_node(manager, code_agent_node_dict):
-    # code_agent_node_dict has llm_config; llm_config is missing → FK nulled, not skipped
-    snapshot = {
-        "nodes": [code_agent_node_dict],
-        "edge_list": [],
-        "conditional_edge_list": [],
-    }
-    missing = {EntityType.LLM_CONFIG.value: [code_agent_node_dict["llm_config"]]}
-
-    filtered, warnings = manager.filter_snapshot(snapshot, missing)
-
-    assert len(filtered["nodes"]) == 1
-    assert filtered["nodes"][0]["llm_config"] is None
-    fk_nulled_warnings = [w for w in warnings if w["type"] == "fk_nulled"]
-    assert len(fk_nulled_warnings) == 1
-
-
 def test_filter_snapshot_no_warnings_when_all_deps_present(manager, crew_node_dict):
     snapshot = {"nodes": [crew_node_dict], "edge_list": [], "conditional_edge_list": []}
     missing = {}

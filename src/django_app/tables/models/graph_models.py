@@ -218,35 +218,6 @@ class SubGraphNode(BaseNode):
     )
 
 
-class CodeAgentNode(BaseNode):
-    """
-    DEPRECATED: CodeAgentNode is deprecated. Use AgentNode or TaskNode instead.
-    New flows must not create CodeAgentNodes; this model exists only for backward
-    compatibility with existing graphs.
-    """
-
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="code_agent_node_list"
-    )
-    llm_config = models.ForeignKey(
-        "LLMConfig", on_delete=models.SET_NULL, null=True, blank=True
-    )
-    agent_mode = models.CharField(max_length=10, default="build")
-    session_id = models.CharField(max_length=255, blank=True, default="")
-    system_prompt = models.TextField(blank=True, default="")
-    stream_handler_code = models.TextField(blank=True, default="")
-    libraries = models.JSONField(default=list, blank=True)
-    polling_interval_ms = models.IntegerField(default=1000)
-    silence_indicator_s = models.IntegerField(default=3)
-    indicator_repeat_s = models.IntegerField(default=5)
-    chunk_timeout_s = models.IntegerField(default=30)
-    inactivity_timeout_s = models.IntegerField(default=120)
-    max_wait_s = models.IntegerField(default=300)
-    stream_config = models.JSONField(default=dict, blank=True)
-    output_schema = models.JSONField(default=dict, blank=True)
-    use_storage = models.BooleanField(default=False)
-
-
 class Edge(BaseGraphEntity, models.Model):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="edge_list"
