@@ -8,7 +8,7 @@ from requests.exceptions import ConnectionError, Timeout
 from tables.exceptions import RegisterTelegramTriggerError
 from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import LOCAL_ONLY_PROVIDERS, WebhookTrigger
-from tables.services.secrets import secret_encryption
+from tables.services.secrets import secret_resolver
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
@@ -107,8 +107,13 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         try:
             return self._call_telegram_api(
                 method="POST",
-                api_key=secret_encryption.decrypt(
-                    encryptedtext=telegram_trigger_instance.telegram_bot_api_key_secret.value
+                api_key=secret_resolver.resolve(
+                    # webhook_trigger is confirmed non-None above (return-early
+                    # guard); it carries the same org as the node's graph and is
+                    # available here without requiring a saved/loaded graph.
+                    secret_id=telegram_trigger_instance.telegram_bot_api_key_secret_id,
+                    org_id=webhook_trigger.org_id,
+                    context="TelegramTriggerNode.telegram_bot_api_key",
                 ),
                 endpoint="setWebhook",
                 params={"url": telegram_webhook_url},

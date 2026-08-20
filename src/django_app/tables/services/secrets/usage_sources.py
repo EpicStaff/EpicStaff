@@ -11,6 +11,7 @@ from tables.models import (
     RealtimeTranscriptionConfig,
 )
 from tables.models.graph_models import ConditionalEdge, TelegramTriggerNode
+from tables.models.webhook_models import NgrokWebhookConfig, TwilioChannel
 from tables.serializers.org_scoped_fields import org_visible_queryset
 
 # Shared with the declaration validator so the two features cannot drift on which
@@ -25,9 +26,15 @@ from utils.graph_utils import resolve_node_names
 CATEGORY_FLOWS = "flows"
 CATEGORY_TOOLS = "tools"
 CATEGORY_LLM_CONFIGS = "llm_configs"
+CATEGORY_CHANNELS = "channels"
 
 #: Fixed emission order for `categories` in the detail payload.
-CATEGORY_ORDER = (CATEGORY_FLOWS, CATEGORY_TOOLS, CATEGORY_LLM_CONFIGS)
+CATEGORY_ORDER = (
+    CATEGORY_FLOWS,
+    CATEGORY_TOOLS,
+    CATEGORY_LLM_CONFIGS,
+    CATEGORY_CHANNELS,
+)
 
 #: Telegram is an FK site rather than a Python-code site, so it lives here rather
 #: than in python_code_sites.
@@ -39,8 +46,10 @@ RESOURCE_TYPE_REALTIME_CONFIG = "realtime_config"
 RESOURCE_TYPE_REALTIME_TRANSCRIPTION_CONFIG = "realtime_transcription_config"
 RESOURCE_TYPE_MCP_TOOL = "mcp_tool"
 RESOURCE_TYPE_PYTHON_CODE_TOOL = "python_code_tool"
+RESOURCE_TYPE_TWILIO_CHANNEL = "twilio_channel"
+RESOURCE_TYPE_NGROK_WEBHOOK_CONFIG = "ngrok_webhook_config"
 
-# The three column shapes the twelve sources fall into. Sources sharing a shape share
+# The three column shapes the sources fall into. Sources sharing a shape share
 # a column list, so the detail path unions each group as-is instead of padding every
 # branch out to one common shape with typed NULLs.
 SHAPE_NAMED = "named"
@@ -349,6 +358,22 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         org_path="graph__org_id",
         name_field="node_name",
         node_type=NODE_TYPE_TELEGRAM_TRIGGER,
+    ),
+    UsageSource(
+        model=TwilioChannel,
+        secret_path="auth_token_secret_id",
+        category=CATEGORY_CHANNELS,
+        org_path="channel__org_id",
+        name_field="channel__name",
+        resource_type=RESOURCE_TYPE_TWILIO_CHANNEL,
+    ),
+    UsageSource(
+        model=NgrokWebhookConfig,
+        secret_path="auth_token_secret_id",
+        category=CATEGORY_CHANNELS,
+        org_path="trigger__org_id",
+        name_field="name",
+        resource_type=RESOURCE_TYPE_NGROK_WEBHOOK_CONFIG,
     ),
     # --- declaration-declared: PythonCode.secrets IS the allow-list ---
     *(_from_python_code_site(site=site) for site in PYTHON_CODE_SITES),

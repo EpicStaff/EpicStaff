@@ -37,8 +37,15 @@ from tables.models.llm_models import (
     RealtimeTranscriptionModel,
 )
 from tables.models.rbac_models import Organization
+from tables.models.webhook_models import (
+    NgrokWebhookConfig,
+    RealtimeChannel,
+    TwilioChannel,
+    WebhookTrigger,
+)
 from tables.services.secrets import secret_service
 from tables.services.secrets.usage_sources import (
+    CATEGORY_CHANNELS,
     CATEGORY_FLOWS,
     CATEGORY_LLM_CONFIGS,
     CATEGORY_TOOLS,
@@ -241,6 +248,65 @@ class TestFlowForeignKeySource:
         assert (
             _hits(
                 source=_source(model=TelegramTriggerNode), org_id=org.id, secret_ids=ids
+            )
+            == []
+        )
+
+
+@pytest.mark.django_db
+class TestChannelForeignKeySources:
+    def test_twilio_channel_reports_its_parent_channel_name(self, org, secret, ids):
+        channel = RealtimeChannel.objects.create(name="Support line", org=org)
+        TwilioChannel.objects.create(
+            channel=channel, account_sid="ACusage", auth_token_secret=secret
+        )
+
+        hits = _hits(source=_source(model=TwilioChannel), org_id=org.id, secret_ids=ids)
+
+        assert [(hit.category, hit.resource_name) for hit in hits] == [
+            (CATEGORY_CHANNELS, "Support line")
+        ]
+
+    def test_a_twilio_channel_in_another_orgs_scope_is_not_reported(
+        self, org, secret, ids
+    ):
+        other = Organization.objects.create(name="Org SecretUsageSources Twilio Other")
+        channel = RealtimeChannel.objects.create(name="Foreign line", org=other)
+        TwilioChannel.objects.create(
+            channel=channel, account_sid="ACforeign", auth_token_secret=secret
+        )
+
+        assert (
+            _hits(source=_source(model=TwilioChannel), org_id=org.id, secret_ids=ids)
+            == []
+        )
+
+    def test_ngrok_webhook_config_reports_its_own_name(self, org, secret, ids):
+        trigger = WebhookTrigger.objects.create(path="usage-hook", org=org)
+        NgrokWebhookConfig.objects.create(
+            name="usage tunnel", trigger=trigger, auth_token_secret=secret
+        )
+
+        hits = _hits(
+            source=_source(model=NgrokWebhookConfig), org_id=org.id, secret_ids=ids
+        )
+
+        assert [(hit.category, hit.resource_name) for hit in hits] == [
+            (CATEGORY_CHANNELS, "usage tunnel")
+        ]
+
+    def test_an_ngrok_config_in_another_orgs_scope_is_not_reported(
+        self, org, secret, ids
+    ):
+        other = Organization.objects.create(name="Org SecretUsageSources Ngrok Other")
+        trigger = WebhookTrigger.objects.create(path="foreign-hook", org=other)
+        NgrokWebhookConfig.objects.create(
+            name="foreign tunnel", trigger=trigger, auth_token_secret=secret
+        )
+
+        assert (
+            _hits(
+                source=_source(model=NgrokWebhookConfig), org_id=org.id, secret_ids=ids
             )
             == []
         )
@@ -579,8 +645,9 @@ class TestDetailShapes:
         shapes = [source.detail_shape for source in USAGE_SOURCES]
 
         assert set(shapes) == {SHAPE_NAMED, SHAPE_NODE, SHAPE_EDGE}
-        # 4 configs + McpTool + PythonCodeTool / 5 named flow nodes / ConditionalEdge.
-        assert shapes.count(SHAPE_NAMED) == 6
+        # 4 configs + McpTool + PythonCodeTool + TwilioChannel + NgrokWebhookConfig /
+        # 5 named flow nodes / ConditionalEdge.
+        assert shapes.count(SHAPE_NAMED) == 8
         assert shapes.count(SHAPE_NODE) == 5
         assert shapes.count(SHAPE_EDGE) == 1
         assert set(HITS_ASSEMBLERS) == set(SHAPE_PROJECTIONS) == set(shapes)
@@ -647,12 +714,12 @@ class TestDetailShapes:
 
 @pytest.mark.django_db
 def test_registry_covers_every_declared_source():
-    """Twelve sources: six FK-declared written out, six derived from
+    """Fourteen sources: eight FK-declared written out, six derived from
     PYTHON_CODE_SITES. A source added to the module but forgotten in the registry is
     invisible to both endpoints, which is a silent under-report."""
     from tables.services.secrets.python_code_sites import PYTHON_CODE_SITES
 
-    assert len(USAGE_SOURCES) == 12
+    assert len(USAGE_SOURCES) == 14
     # The derived half tracks PYTHON_CODE_SITES automatically; assert the link rather
     # than the number, so adding a Python-carrying model cannot break this test while
     # leaving the dialog under-reporting.
