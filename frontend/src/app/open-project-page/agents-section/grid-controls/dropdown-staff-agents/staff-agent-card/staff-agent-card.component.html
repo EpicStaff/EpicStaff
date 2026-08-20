@@ -137,83 +137,87 @@
             </div>
 
             <div
-                class="details-content"
+                class="details-content grid-collapsible"
                 [class.expanded]="sectionStates.details"
             >
-                <!-- MODEL SECTION -->
-                <div class="details-subsection">
-                    <h5 class="subsection-title">MODEL</h5>
-                    @if (agent.fullLlmConfig) {
-                        <div class="model-info-container">
-                            <app-svg-icon
-                                [icon]="getProviderIcon(agent.fullLlmConfig.providerDetails?.name)"
-                                size="1.7rem"
-                                class="provider-icon"
-                            />
-                            <div class="model-info">
-                                <p class="model-name">
-                                    {{ agent.fullLlmConfig.modelDetails?.name }}
-                                </p>
-                                @if (agent.fullLlmConfig.custom_name) {
-                                    <p class="model-custom-name">
-                                        {{ agent.fullLlmConfig.custom_name }}
+                <div class="grid-collapsible__inner">
+                    <!-- MODEL SECTION -->
+                    <div class="details-subsection">
+                        <h5 class="subsection-title">MODEL</h5>
+                        @if (agent.fullLlmConfig) {
+                            <div class="model-info-container">
+                                <app-svg-icon
+                                    [icon]="getProviderIcon(agent.fullLlmConfig.providerDetails?.name)"
+                                    size="1.7rem"
+                                    class="provider-icon"
+                                />
+                                <div class="model-info">
+                                    <p class="model-name">
+                                        {{ agent.fullLlmConfig.modelDetails?.name }}
                                     </p>
-                                }
+                                    @if (agent.fullLlmConfig.custom_name) {
+                                        <p class="model-custom-name">
+                                            {{ agent.fullLlmConfig.custom_name }}
+                                        </p>
+                                    }
+                                </div>
                             </div>
-                        </div>
-                    } @else {
-                        <p class="section-subtitle"><em>No LLM provided</em></p>
-                    }
-                </div>
-
-                <!-- TOOLS SECTION -->
-                <div class="details-subsection">
-                    <h5 class="subsection-title">
-                        TOOLS
-                        @if (getTotalToolsCount() > 0) {
-                            <span class="tool-count">({{ getTotalToolsCount() }})</span>
+                        } @else {
+                            <p class="section-subtitle"><em>No LLM provided</em></p>
                         }
-                    </h5>
-                    @if (agent.mergedTools && agent.mergedTools.length > 0) {
-                        <div>
-                            <div class="tools-container">
-                                @for (tool of getDisplayedTools(); track tool) {
-                                    <div class="tool-item">
-                                        @if (tool.type === 'python-tool') {
-                                            <app-svg-icon
-                                                icon="python"
-                                                size="16px"
-                                                class="python-icon"
-                                            />
-                                        }
-                                        @if (tool.type !== 'python-tool') {
-                                            <app-svg-icon
-                                                icon="tools"
-                                                size="16px"
-                                            />
-                                        }
-                                        <span class="tool-name">{{ getToolDisplayName(tool) }}</span>
-                                    </div>
-                                }
-                                @if (shouldShowToolsToggle()) {
-                                    <button
-                                        class="toggle-button tools-toggle"
-                                        (click)="toggleToolsExpanded()"
-                                    >
-                                        {{
-                                            toolsExpanded
-                                                ? 'Show Less'
-                                                : 'Show More (' + (getTotalToolsCount() - getVisibleToolsCount()) + ')'
-                                        }}
-                                    </button>
-                                }
+                    </div>
+
+                    <!-- TOOLS SECTION -->
+                    <div class="details-subsection">
+                        <h5 class="subsection-title">
+                            TOOLS
+                            @if (getTotalToolsCount() > 0) {
+                                <span class="tool-count">({{ getTotalToolsCount() }})</span>
+                            }
+                        </h5>
+                        @if (agent.mergedTools && agent.mergedTools.length > 0) {
+                            <div>
+                                <div class="tools-container">
+                                    @for (tool of getDisplayedTools(); track tool) {
+                                        <div class="tool-item">
+                                            @if (tool.type === 'python-tool') {
+                                                <app-svg-icon
+                                                    icon="python"
+                                                    size="16px"
+                                                    class="python-icon"
+                                                />
+                                            }
+                                            @if (tool.type !== 'python-tool') {
+                                                <app-svg-icon
+                                                    icon="tools"
+                                                    size="16px"
+                                                />
+                                            }
+                                            <span class="tool-name">{{ getToolDisplayName(tool) }}</span>
+                                        </div>
+                                    }
+                                    @if (shouldShowToolsToggle()) {
+                                        <button
+                                            class="toggle-button tools-toggle"
+                                            (click)="toggleToolsExpanded()"
+                                        >
+                                            {{
+                                                toolsExpanded
+                                                    ? 'Show Less'
+                                                    : 'Show More (' +
+                                                      (getTotalToolsCount() - getVisibleToolsCount()) +
+                                                      ')'
+                                            }}
+                                        </button>
+                                    }
+                                </div>
                             </div>
-                        </div>
-                    } @else {
-                        <p class="section-subtitle">
-                            <em>No tools assigned</em>
-                        </p>
-                    }
+                        } @else {
+                            <p class="section-subtitle">
+                                <em>No tools assigned</em>
+                            </p>
+                        }
+                    </div>
                 </div>
             </div>
         </div>

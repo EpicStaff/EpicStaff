@@ -135,12 +135,6 @@ impossible to attribute. Both are queued as follow-ups.
   fetch; the migration added `withXhr()` to preserve behaviour. It should not be removed
   casually — four interceptors and cookie handling depend on the backend.
 - `@foblex/flow` 18.4.0 → 19.1.6 and `ag-grid` 33.3.2 → 36.1.0, both awaiting a team decision.
-- Two pre-existing defects surfaced while removing `@angular/animations`, both left alone
-  because fixing them changes appearance and neither is a dependency concern: the toast
-  container animates every `bottom-*` position along X with `translateX(100%)`, so a
-  `bottom-left` toast enters and leaves to the right; and `.details-content` in
-  `staff-agent-card` caps at `max-height: 800px` with `overflow: hidden`, silently clipping
-  taller content.
 
 ## Closed since
 
@@ -170,6 +164,26 @@ content used to spill, and drops the 64 kB animations chunk that `provideAnimati
 been fetching lazily. Material and CDK read `ANIMATION_MODULE_TYPE` with `{ optional: true }`
 and compare it against `'NoopAnimations'`, so removing the provider leaves their own animations
 enabled.
+
+Three defects the animations work surfaced are also closed. `.details-content` in
+`staff-agent-card` capped at `max-height: 800px` with `overflow: hidden`, silently clipping
+agents with many tools; it now uses `grid-collapsible` like the rest. Its own
+`transition: margin-top` would have overridden the grid transition shorthand — the same
+specificity trap as `.entity-items`, since component styles carry an encapsulation attribute
+and outrank a global class — so the offset moved to `padding-top` on the wrapper, where it is
+part of the animated height. `expand-panel` was exported from the shared barrel and referenced
+nowhere; deleted.
+
+The third turned out to be worth more than the defect. A `bottom-left` toast entered and left
+to the right, inherited from the old trigger where every `bottom-*` position shared one X
+keyframe. Fixing the direction led to checking whether it was reachable: `ToastPosition`
+offered six positions, but only three containers were mounted, and of those `top-center`
+received nothing, because across 247 toast calls in 57 files only two values are ever passed —
+`bottom-right` (also the default) and `top-right`. So four of six positions could not render at
+all, and passing one would have dropped the toast silently with no error, since every mounted
+container filters by its own position. The type is now narrowed to the two positions that
+exist, which turns that silent loss into a compile error; the unused container and the dead
+positional CSS are gone with it.
 
 ---
 

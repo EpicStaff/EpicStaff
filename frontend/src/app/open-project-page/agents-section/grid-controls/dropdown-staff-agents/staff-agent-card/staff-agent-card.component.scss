@@ -227,18 +227,11 @@
             }
 
             .details-content {
-                overflow: hidden;
-                max-height: 0;
-                opacity: 0;
-                transition:
-                    max-height 0.3s ease,
-                    opacity 0.3s ease,
-                    margin-top 0.3s ease;
+                --collapse-duration: 300ms;
+                --collapse-easing: ease;
 
-                &.expanded {
-                    max-height: 800px;
-                    opacity: 1;
-                    margin-top: 8px; /* Reduced from 12px to 8px */
+                > .grid-collapsible__inner {
+                    padding-top: 8px;
                 }
             }
 

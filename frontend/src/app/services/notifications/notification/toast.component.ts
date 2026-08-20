@@ -69,35 +69,9 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                     flex-direction: column;
                 }
 
-                &.top-left {
-                    top: 20px;
-                    left: 20px;
-                    flex-direction: column;
-                }
-
-                &.top-center {
-                    top: 20px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    flex-direction: column;
-                }
-
                 &.bottom-right {
                     bottom: 20px;
                     right: 20px;
-                    flex-direction: column-reverse;
-                }
-
-                &.bottom-left {
-                    bottom: 20px;
-                    left: 20px;
-                    flex-direction: column-reverse;
-                }
-
-                &.bottom-center {
-                    bottom: 20px;
-                    left: 50%;
-                    transform: translateX(-50%);
                     flex-direction: column-reverse;
                 }
             }
@@ -189,7 +163,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                 }
             }
 
-            @keyframes toast-enter-y {
+            @keyframes toast-enter-top {
                 from {
                     opacity: 0;
                     transform: translateY(-100%);
@@ -200,7 +174,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                 }
             }
 
-            @keyframes toast-leave-y {
+            @keyframes toast-leave-top {
                 from {
                     opacity: 1;
                     transform: translateY(0);
@@ -211,7 +185,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                 }
             }
 
-            @keyframes toast-enter-x {
+            @keyframes toast-enter-right {
                 from {
                     opacity: 0;
                     transform: translateX(100%);
@@ -222,7 +196,7 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                 }
             }
 
-            @keyframes toast-leave-x {
+            @keyframes toast-leave-right {
                 from {
                     opacity: 1;
                     transform: translateX(0);
@@ -233,27 +207,23 @@ import { ToastMessage, ToastPosition, ToastService } from '../toast.service';
                 }
             }
 
-            .toast-container.top-center,
-            .toast-container.top-right,
-            .toast-container.top-left {
+            .toast-container.top-right {
                 .toast-item.toast-enter {
-                    animation: toast-enter-y 300ms ease-out;
+                    animation: toast-enter-top 300ms ease-out;
                 }
 
                 .toast-item.toast-leave {
-                    animation: toast-leave-y 200ms ease-in;
+                    animation: toast-leave-top 200ms ease-in;
                 }
             }
 
-            .toast-container.bottom-right,
-            .toast-container.bottom-center,
-            .toast-container.bottom-left {
+            .toast-container.bottom-right {
                 .toast-item.toast-enter {
-                    animation: toast-enter-x 300ms ease-out;
+                    animation: toast-enter-right 300ms ease-out;
                 }
 
                 .toast-item.toast-leave {
-                    animation: toast-leave-x 200ms ease-in;
+                    animation: toast-leave-right 200ms ease-in;
                 }
             }
 

@@ -11,7 +11,6 @@ import { ToastComponent } from './services/notifications/notification/toast.comp
     template: `
         <router-outlet></router-outlet>
         <app-toast position="bottom-right"></app-toast>
-        <app-toast position="top-center"></app-toast>
         <app-toast position="top-right"></app-toast>
     `,
     changeDetection: ChangeDetectionStrategy.OnPush,
