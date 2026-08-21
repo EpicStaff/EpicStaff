@@ -220,6 +220,54 @@ class InstallLibrariesHandler(AbstractHandler):
         return "Libraries installed."
 
 
+class BuildEnvironmentHandler(AbstractHandler):
+    async def handle(self, context: Dict[str, Any]) -> Any:
+        env = {
+            "LANG": "C.UTF-8",
+            "PYTHONUTF8": "1",
+            "PYTHONUNBUFFERED": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PATH": self._get_path(context["python_executable"]),
+            "HOME": self._get_home(context),
+        }
+
+        if context.get("use_storage"):
+            for name in (
+                "STORAGE_ENDPOINT",
+                "STORAGE_ACCESS_KEY",
+                "STORAGE_SECRET_KEY",
+                "STORAGE_BUCKET_NAME",
+            ):
+                value = os.environ.get(name)
+                if value is not None:
+                    env[name] = value
+
+        if (storage_allowed_paths := context.get("storage_allowed_paths")) is not None:
+            env["STORAGE_ALLOWED_PATHS"] = json.dumps(storage_allowed_paths)
+        if (storage_org_prefix := context.get("storage_org_prefix")) is not None:
+            env["STORAGE_ORG_PREFIX"] = storage_org_prefix
+        if (secrets := context.get("secrets")) is not None:
+            env["EPICSTAFF_SECRETS"] = json.dumps(secrets)
+
+        context["env"] = env
+
+        if self._next_handler:
+            return await super().handle(context)
+        return "Environment built."
+
+    @staticmethod
+    def _get_path(python_executable) -> str:
+        venv_bin = Path(python_executable).parent
+        return os.pathsep.join([str(venv_bin), "/usr/local/bin", "/usr/bin", "/bin"])
+
+    @staticmethod
+    def _get_home(context: Dict[str, Any]) -> str:
+        exec_dir = Path(context["temp_code_path"]).parent
+        home = exec_dir / "home"
+        home.mkdir(parents=True, exist_ok=True)
+        return str(home)
+
+
 class ExecuteCodeHandler(AbstractHandler):
     def wrap_code(
         self,
@@ -298,17 +346,7 @@ except Exception:
             f.write(wrapped_code)
 
         # Execute the code asynchronously
-        logger.info(f"Executing code using {python_executable}...")
-        storage_allowed_paths = context.get("storage_allowed_paths")
-        storage_org_prefix = context.get("storage_org_prefix")
-
-        env = None
-        if storage_allowed_paths is not None or storage_org_prefix is not None:
-            env = os.environ.copy()
-            if storage_allowed_paths is not None:
-                env["STORAGE_ALLOWED_PATHS"] = json.dumps(storage_allowed_paths)
-            if storage_org_prefix is not None:
-                env["STORAGE_ORG_PREFIX"] = storage_org_prefix
+        env = context["env"]
 
         process = await asyncio.create_subprocess_shell(
             f"{python_executable} {temp_code_path}",
@@ -337,7 +375,7 @@ except Exception:
                 logger.exception("Exception reading result file")
 
         if self._next_handler:
-            return super().handle(context)
+            return await super().handle(context)
 
         return CodeResultData(
             execution_id=context["execution_id"],
@@ -360,13 +398,18 @@ class DynamicVenvExecutorChain:
         # Build the chain of responsibility
         create_venv_handler = CreateVenvHandler()
         install_libraries_handler = InstallLibrariesHandler()
+        build_environment_handler = BuildEnvironmentHandler()
         execute_code_handler = ExecuteCodeHandler()
 
         self.chain: Handler = DummyHandler()
 
-        self.chain.set_next(create_venv_handler).set_next(
-            install_libraries_handler
-        ).set_next(execute_code_handler)
+        (
+            self.chain
+            .set_next(create_venv_handler)
+            .set_next(install_libraries_handler)
+            .set_next(build_environment_handler)
+            .set_next(execute_code_handler)
+        )  # fmt: off
 
     async def run(
         self,
