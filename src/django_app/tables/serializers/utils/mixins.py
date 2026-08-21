@@ -227,12 +227,12 @@ class ToolsConnectionMixin:
         Return mapping for tool synchronization.
 
         Key:
-            Tool model class (e.g. ToolConfig)
+            Tool model class (e.g. PythonCodeTool)
 
         Value:
             tuple:
-                - through model class (e.g. TaskConfiguredTools)
-                - tool prefix used in tool_ids (e.g. "configured-tool")
+                - through model class (e.g. TaskPythonCodeTools)
+                - tool prefix used in tool_ids (e.g. "python-code-tool")
                 - FK field name in through model (e.g. "tool_id")
         """
         raise NotImplementedError

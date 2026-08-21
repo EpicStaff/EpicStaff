@@ -228,7 +228,7 @@ def patch_refresh_instructions(notices: str) -> str:
         "Whenever any backend service's `pyproject.toml` `main` dependency group changes "
         "(additions, version bumps, removals in any of `src/django_app`, `src/crew`, "
         "`src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, `src/webhook`, "
-        "`src/tool`, `src/voice_app`), regenerate the backend section of this file.\n"
+        "`src/voice_app`), regenerate the backend section of this file.\n"
         "\n"
         "From the repository root, in PowerShell:\n"
         "\n"
