@@ -79,8 +79,8 @@ class SubGraphNode:
             session_id=self.session_id,
             redis_service=self.session_graph_builder.redis_service,
             python_code_executor_service=self.session_graph_builder.python_code_executor_service,
-            crewai_output_channel=self.session_graph_builder.crewai_output_channel,
             knowledge_search_service=self.session_graph_builder.knowledge_search_service,
+            agent_task_service=self.session_graph_builder.agent_task_service,
             stop_event=self.stop_event,
         )
 

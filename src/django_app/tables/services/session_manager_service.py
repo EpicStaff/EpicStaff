@@ -148,9 +148,6 @@ class SessionManagerService(metaclass=SingletonMeta):
 
         variables = self._get_actual_variables(variables)
 
-        # Remove 'shared' initialization dict - it's for Redis proxy, not storage
-        variables_for_db = {k: v for k, v in variables.items() if k != "shared"}
-
         graph = Graph.objects.get(pk=graph_id)
         status_data = {"token_budget": token_budget} if token_budget is not None else {}
         # Trigger nodes name the entrypoint; manual/parent-flow triggers have no
@@ -164,7 +161,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             session = Session.objects.create(
                 graph_id=graph_id,
                 status=Session.SessionStatus.PENDING,
-                variables=variables_for_db,
+                variables=variables,
                 time_to_live=graph.time_to_live,
                 graph_user=graph_user,
                 entrypoint=entrypoint,

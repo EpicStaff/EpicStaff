@@ -20,11 +20,6 @@ from models.graph_models import GraphMessage
 from settings import DEFAULT_TOKEN_BUDGET
 
 from src.shared.models import SessionData, StopSessionMessage
-from src.crew.services.graph.shared_variables import (
-    SharedVariables,
-    SharedVariableScope,
-    cleanup_session,
-)
 
 # Reserved key smuggled through SessionData.initial_state (a pre-existing
 # free-form dict[str, Any] field) to carry an optional per-run token-budget
@@ -143,20 +138,12 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             graph = session_graph_builder.compile_from_schema(session_data=session_data)
 
-            shared_vars = SharedVariables(
-                session_id=session_id,
-                redis_service=self.redis_service,
-            )
-
             state = {
                 "state_history": [],
                 "variables": DotDict(initial_state),
                 "system_variables": {"nodes": {}},
                 "execution_counts": {},
             }
-
-            # Add shared variables to state
-            state["variables"]["shared"] = shared_vars
 
             await self.redis_service.aupdate_session_status(
                 session_id=session_id,
@@ -172,41 +159,8 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 if stream_mode == "values":
                     final_state = chunk
                 elif stream_mode == "custom":
-                    # Clean SharedVariable objects from chunk before serialization
-                    import dataclasses
-
-                    def deep_clean(obj):
-                        if isinstance(obj, (SharedVariables, SharedVariableScope)):
-                            return None
-                        elif isinstance(obj, dict):
-                            cleaned = {}
-                            for k, v in obj.items():
-                                if k == "shared" and isinstance(
-                                    v, (SharedVariables, SharedVariableScope)
-                                ):
-                                    continue
-                                cleaned_v = deep_clean(v)
-                                if cleaned_v is not None or not isinstance(
-                                    v, (SharedVariables, SharedVariableScope)
-                                ):
-                                    cleaned[k] = cleaned_v
-                            return cleaned
-                        elif isinstance(obj, (list, tuple)):
-                            return [deep_clean(item) for item in obj]
-                        elif dataclasses.is_dataclass(obj) and not isinstance(
-                            obj, type
-                        ):
-                            cleaned_fields = {}
-                            for field in dataclasses.fields(obj):
-                                value = getattr(obj, field.name)
-                                cleaned_fields[field.name] = deep_clean(value)
-                            return dataclasses.replace(obj, **cleaned_fields)
-                        else:
-                            return obj
-
                     try:
-                        cleaned_chunk = deep_clean(chunk)
-                        data = asdict(cleaned_chunk)
+                        data = asdict(chunk)
                     except Exception as e:
                         logger.error(
                             f"Error during chunk cleaning/serialization: {e}",
@@ -257,20 +211,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             end_node_result = session_graph_builder.end_node_result
 
-            def _clean_result(obj):
-                if isinstance(obj, (SharedVariables, SharedVariableScope)):
-                    return None
-                elif isinstance(obj, dict):
-                    return {
-                        k: _clean_result(v)
-                        for k, v in obj.items()
-                        if not isinstance(v, (SharedVariables, SharedVariableScope))
-                    }
-                elif isinstance(obj, (list, tuple)):
-                    return [_clean_result(i) for i in obj]
-                return obj
-
-            end_node_result = _clean_result(end_node_result)
             graph_end_data = GraphMessage(
                 session_id=session_id,
                 name="",
@@ -293,8 +233,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 variables=final_state["variables"].model_dump(),
             )
 
-            # Cleanup shared variables
-            await cleanup_session(session_id, self.redis_service, status="completed")
             await session_graph_builder.remembered_outputs_store.clear(session_id)
 
         except asyncio.CancelledError:
