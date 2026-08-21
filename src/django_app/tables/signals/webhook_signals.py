@@ -1,4 +1,5 @@
 from loguru import logger
+from django.db import transaction
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
@@ -26,13 +27,15 @@ def _re_register_webhooks(model_name: str, id_: int) -> None:
 @receiver(post_save, sender=NgrokWebhookConfig)
 @receiver(post_save, sender=LocalhostWebhookConfig)
 def webhook_config_post_save_handler(sender, instance, **_):
-    _re_register_webhooks(sender.__name__, instance.pk)
+    model_name, pk = sender.__name__, instance.pk
+    transaction.on_commit(lambda: _re_register_webhooks(model_name, pk))
 
 
 @receiver(post_delete, sender=NgrokWebhookConfig)
 @receiver(post_delete, sender=LocalhostWebhookConfig)
 def webhook_config_post_delete_handler(sender, instance, **_):
-    _re_register_webhooks(sender.__name__, instance.pk)
+    model_name, pk = sender.__name__, instance.pk
+    transaction.on_commit(lambda: _re_register_webhooks(model_name, pk))
 
 
 @receiver(post_save, sender=WebhookNodeAuth)
@@ -53,7 +56,8 @@ def webhook_node_auth_post_save_handler(sender, instance: WebhookNodeAuth, **_):
     this handler is what actually gets the freshly created/rotated Telegram
     credential into the running `webhook` service's registry.
     """
-    _re_register_webhooks(sender.__name__, instance.pk)
+    model_name, pk = sender.__name__, instance.pk
+    transaction.on_commit(lambda: _re_register_webhooks(model_name, pk))
 
 
 @receiver(post_delete, sender=WebhookNodeAuth)
@@ -69,11 +73,14 @@ def webhook_node_auth_post_delete_handler(sender, instance: WebhookNodeAuth, **_
     delete) -- it must still re-push so a removed credential doesn't stay
     live in the `webhook` service's registry after the DB row is gone.
     """
-    _re_register_webhooks(sender.__name__, instance.pk)
+    model_name, pk = sender.__name__, instance.pk
+    transaction.on_commit(lambda: _re_register_webhooks(model_name, pk))
 
 
 @receiver(post_save, sender=WebhookTriggerNode)
-def webhook_trigger_node_post_save_handler(sender, instance: WebhookTriggerNode, **_):
+def webhook_trigger_node_post_save_handler(
+    sender, instance: WebhookTriggerNode, created: bool = False, **_
+):
     """A `WebhookTriggerNode` can be attached to (re-pointed at) an existing
     `WebhookTrigger` -- or have its `webhook_trigger` FK cleared -- after that
     trigger's tunnel config was already registered once. Nothing else
@@ -84,8 +91,32 @@ def webhook_trigger_node_post_save_handler(sender, instance: WebhookTriggerNode,
     equivalent for `TelegramTriggerNode`). `register_webhooks()` rebuilds the
     full config from scratch on every call, so firing this unconditionally on
     every save is harmless, not just on FK changes.
+
+    On creation, this is also the single place that guarantees a
+    `WebhookNodeAuth` row exists -- mirroring how `telegram_trigger_post_save_
+    handler` unconditionally calls `register_telegram_trigger` (which itself
+    `get_or_create`s the Telegram node's auth row) regardless of which code
+    path created the `TelegramTriggerNode`. Every creation path for
+    `WebhookTriggerNode` goes through the ORM's `.create()`/`.save()`, so
+    firing here -- rather than only from `WebhookTriggerNodeSerializer.create()`
+    -- also covers graph version restore (`graph_versioning/manager.py`),
+    import/copy (`import_export/strategies/nodes/webhook_trigger_node.py`),
+    in-DB copy (`copy_services/node_copy_handlers.py`), and Django admin.
+    Gated on `created` (not fired on every save like the tunnel re-push
+    above) because `ensure_webhook_auth(enabled=True)` would otherwise
+    silently re-enable a credential an operator had explicitly disabled, on
+    the next unrelated save of the node (e.g. a rename).
     """
-    _re_register_webhooks(sender.__name__, instance.pk)
+    if created:
+        try:
+            WebhookTriggerService().ensure_webhook_auth(instance, enabled=True)
+        except Exception:
+            logger.exception(
+                f"Error ensuring webhook_node_auth for WebhookTriggerNode ID: {instance.pk}"
+            )
+
+    model_name, pk = sender.__name__, instance.pk
+    transaction.on_commit(lambda: _re_register_webhooks(model_name, pk))
 
 
 @receiver(post_delete, sender=WebhookTriggerNode)
@@ -94,4 +125,5 @@ def webhook_trigger_node_post_delete_handler(sender, instance: WebhookTriggerNod
     `WebhookTriggerNode` must also re-push so its credentials don't stay live
     in the `webhook` service's registry after the DB row is gone.
     """
-    _re_register_webhooks(sender.__name__, instance.pk)
+    model_name, pk = sender.__name__, instance.pk
+    transaction.on_commit(lambda: _re_register_webhooks(model_name, pk))

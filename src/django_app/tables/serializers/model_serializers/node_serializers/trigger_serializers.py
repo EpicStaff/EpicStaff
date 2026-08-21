@@ -135,18 +135,17 @@ class WebhookTriggerNodeSerializer(
         )
 
     def create(self, validated_data):
-        from tables.services.webhook_trigger_service import WebhookTriggerService
-
         auth_input = validated_data.pop("webhook_node_auth", None)
         node = super().create(validated_data)
 
-        # Create always ensures a row exists (unlike update, where disabling
-        # a not-yet-existing row is legitimately a no-op) -- omitting
-        # webhook_node_auth entirely defaults to enabled (default-safe,
-        # preserves existing behavior); an explicit {"enabled": false}
-        # creates the row already disabled.
-        enabled = True if auth_input is None else auth_input["enabled"]
-        WebhookTriggerService().ensure_webhook_auth(node, enabled=enabled)
+        # WebhookTriggerNode's post_save signal (webhook_signals.py) already
+        # guarantees a WebhookNodeAuth row exists here, enabled by default --
+        # covering every creation path (this serializer, version restore,
+        # import/copy, admin), not just this one. Only apply an explicit
+        # client override on top of that default; omitting webhook_node_auth
+        # entirely is a no-op, leaving the signal's enabled=True default in
+        # place (default-safe, preserves existing behavior).
+        self._sync_webhook_node_auth(node, auth_input)
 
         node.refresh_from_db()
         return node

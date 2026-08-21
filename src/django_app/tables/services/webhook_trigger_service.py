@@ -1,6 +1,7 @@
 import time
 import secrets
 
+from django.db.models import Q
 from loguru import logger
 
 from django_app.settings import (
@@ -77,12 +78,21 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         payload: dict,
         config_id: str | None = None,
         node_id: int | None = None,
+        unauthenticated_only: bool = False,
     ) -> None:
         """`node_id`, when set, restricts dispatch to that single node --
         used by `RedisPubSub.webhook_events_handler` when the inbound
         request matched a credential scoped to one specific node (see
         `WebhookEventData.auth_principal`). `None` preserves the
         unrestricted fan-out to every `WebhookTriggerNode` on this path.
+
+        `unauthenticated_only`, when True, restricts dispatch to nodes that
+        have NO enabled `WebhookNodeAuth` of their own -- used for the
+        `UNAUTHENTICATED_FALLBACK_PRINCIPAL` sentinel on a mixed-attach path
+        (e.g. a Telegram node with mandatory auth sharing a path with a
+        generic webhook node that has auth disabled). Mutually exclusive
+        with `node_id` in practice: the sentinel never carries a specific
+        node id.
         """
         filters = self.get_trigger_filters(path, config_id)
         if filters is None:
@@ -91,6 +101,11 @@ class WebhookTriggerService(metaclass=SingletonMeta):
             filters["id"] = node_id
 
         webhook_trigger_node_list = WebhookTriggerNode.objects.filter(**filters)
+        if unauthenticated_only:
+            webhook_trigger_node_list = webhook_trigger_node_list.filter(
+                Q(webhook_node_auth__isnull=True)
+                | Q(webhook_node_auth__enabled=False)
+            )
 
         for webhook_trigger_node in webhook_trigger_node_list:
             # Persistent-variable merging is owned by run_session.

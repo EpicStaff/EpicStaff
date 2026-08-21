@@ -64,13 +64,23 @@ class WebhookNodeAuthData(BaseModel):
     # (Django's own `_meta.label_lower` + pk). The `webhook` service echoes
     # this back as `WebhookEventData.auth_principal` once this credential
     # matches, so Django's `webhook_events_handler` can restrict dispatch to
-    # only the node that owns the matched credential 
+    # only the node that owns the matched credential.
     principal: Optional[str] = None
 
 
 class BaseTunnelConfigData(BaseModel):
     name: str
     auths: list[WebhookNodeAuthData] = []
+    # True when at least one node attached to this trigger/path has NO
+    # enabled auth configured (e.g. a generic webhook node with auth
+    # disabled, sharing a path with a Telegram node that has mandatory
+    # auth). When True, `webhook_routes.handle_webhook` must let an
+    # unauthenticated request through (scoped only to the auth-free
+    # node(s) via `UNAUTHENTICATED_FALLBACK_PRINCIPAL`) instead of
+    # rejecting with 401, even though `auths` is non-empty. Defaults to
+    # `False` for backward compatibility with any wire payload minted
+    # before this field existed.
+    has_unauthenticated_node: bool = False
 
     @classmethod
     def _tunnel_prefix(cls):

@@ -1103,20 +1103,32 @@ class ConverterService(metaclass=SingletonMeta):
 
     def _get_node_auths_for_trigger(
         self, trigger: WebhookTrigger
-    ) -> list[WebhookNodeAuthData]:
-        """Collect and convert enabled WebhookNodeAuths from nodes attached to
-        this trigger.
+    ) -> tuple[list[WebhookNodeAuthData], bool]:
+        """Collect enabled WebhookNodeAuths from nodes attached to this
+        trigger, and report whether at least one attached node has NO
+        enabled auth configured.
+
+        The second element (`has_unauthenticated_node`) drives
+        `BaseTunnelConfigData.has_unauthenticated_node`: when a path mixes an
+        authenticated node (e.g. Telegram, mandatory auth) with an auth-free
+        node, `webhook_routes.handle_webhook` must let an unauthenticated
+        request through -- scoped only to the auth-free node(s) via
+        `UNAUTHENTICATED_FALLBACK_PRINCIPAL` -- instead of 401ing the whole
+        path just because `auths` is non-empty.
         """
         nodes = [
             *trigger.telegram_trigger_nodes.all(),
             *trigger.webhook_trigger_nodes.all(),
         ]
-        auth_data_list = [
-            auth_data
-            for node in nodes
-            if (auth_data := self._convert_node_auth(node)) is not None
-        ]
-        return auth_data_list
+        auth_data_list: list[WebhookNodeAuthData] = []
+        has_unauthenticated_node = False
+        for node in nodes:
+            auth_data = self._convert_node_auth(node)
+            if auth_data is None:
+                has_unauthenticated_node = True
+            else:
+                auth_data_list.append(auth_data)
+        return auth_data_list, has_unauthenticated_node
 
     @staticmethod
     def _convert_node_auth(
@@ -1293,7 +1305,9 @@ class ConverterService(metaclass=SingletonMeta):
             )
             or ""
         )
-        auths = self._get_node_auths_for_trigger(ngrok_webhook_config.trigger)
+        auths, has_unauthenticated_node = self._get_node_auths_for_trigger(
+            ngrok_webhook_config.trigger
+        )
 
         return NgrokConfigData(
             name=ngrok_webhook_config.trigger.path,
@@ -1301,15 +1315,19 @@ class ConverterService(metaclass=SingletonMeta):
             domain=ngrok_webhook_config.domain,
             region=ngrok_webhook_config.region,
             auths=auths,
+            has_unauthenticated_node=has_unauthenticated_node,
         )
 
     def convert_localhost_webhook_config_to_pydantic(
         self, localhost_webhook_config: LocalhostWebhookConfig
     ) -> LocalhostConfigData:
-        auths = self._get_node_auths_for_trigger(localhost_webhook_config.trigger)
+        auths, has_unauthenticated_node = self._get_node_auths_for_trigger(
+            localhost_webhook_config.trigger
+        )
 
         return LocalhostConfigData(
             name=localhost_webhook_config.trigger.path,
             domain=localhost_webhook_config.domain,
             auths=auths,
+            has_unauthenticated_node=has_unauthenticated_node,
         )

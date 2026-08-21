@@ -162,13 +162,23 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         payload: dict,
         config_id: str | None = None,
         node_id: int | None = None,
+        unauthenticated_only: bool = False,
     ) -> None:
         """`node_id`, when set, restricts dispatch to that single node --
         used by `RedisPubSub.webhook_events_handler` when the inbound
         request matched a credential scoped to one specific node (see
         `WebhookEventData.auth_principal`). `None` preserves the
         unrestricted fan-out to every `TelegramTriggerNode` on this path.
+
+        `unauthenticated_only` is always a no-op here: Telegram auth is
+        mandatory and unconditional, so an unauthenticated
+        (`UNAUTHENTICATED_FALLBACK_PRINCIPAL`) event must never drive a
+        Telegram node, even if it shares a path with an auth-free generic
+        webhook node.
         """
+        if unauthenticated_only:
+            return
+
         filters = self.webhook_trigger_service.get_trigger_filters(
             path=path, config_id=config_id
         )

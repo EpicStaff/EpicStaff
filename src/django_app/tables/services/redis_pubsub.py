@@ -37,6 +37,7 @@ from src.shared.models import (
     CodeResultData,
     GraphSessionMessageData,
     StorageMutationEvent,
+    UNAUTHENTICATED_FALLBACK_PRINCIPAL,
     WebhookEventData,
 )
 
@@ -192,9 +193,23 @@ class RedisPubSub:
     ) -> tuple[str | None, int | None] | None:
         """Split `"<model-label-lower>:<pk>"` (e.g. `"tables.webhooktriggernode:17"`)
         into `(label, pk)`.
+
+        Three non-error shapes:
+          - `None` -> `(None, None)`: no auth configured anywhere on this
+            path, today's unrestricted fan-out.
+          - `UNAUTHENTICATED_FALLBACK_PRINCIPAL` -> `(sentinel, None)`: must
+            be recognized here, before the `rsplit(":", 1)` below, since it
+            contains no `:` and would otherwise be misclassified as
+            malformed and dropped (fail-closed).
+          - `"<label>:<pk>"` -> `(label, pk)`: restrict dispatch to that one
+            node.
+        Anything else is unparseable -> `None` (caller fails closed).
         """
         if auth_principal is None:
             return (None, None)
+
+        if auth_principal == UNAUTHENTICATED_FALLBACK_PRINCIPAL:
+            return (UNAUTHENTICATED_FALLBACK_PRINCIPAL, None)
 
         try:
             label, pk_str = auth_principal.rsplit(":", 1)
@@ -220,6 +235,36 @@ class RedisPubSub:
             )
             return
         principal_label, principal_pk = parsed
+
+        if principal_label == UNAUTHENTICATED_FALLBACK_PRINCIPAL:
+            # Mixed-attach path: no credential matched, but at least one
+            # attached node has no enabled auth of its own. Restrict the
+            # generic webhook dispatch to only auth-free nodes; Telegram
+            # auth is mandatory and unconditional, so it always no-ops here
+            # (never treat this sentinel as unrestricted fan-out).
+            try:
+                WebhookTriggerService().handle_webhook_trigger(
+                    path=path,
+                    payload=data.payload,
+                    config_id=data.config_id,
+                    unauthenticated_only=True,
+                )
+            except Exception:
+                logger.exception(
+                    f"Error in generic webhook_trigger handling for path={path}"
+                )
+            try:
+                TelegramTriggerService().handle_telegram_trigger(
+                    path=path,
+                    payload=data.payload,
+                    config_id=data.config_id,
+                    unauthenticated_only=True,
+                )
+            except Exception:
+                logger.exception(
+                    f"Error in telegram_trigger handling for path={path}"
+                )
+            return
 
         if principal_label is None or principal_label == WebhookTriggerNode._meta.label_lower:
             try:

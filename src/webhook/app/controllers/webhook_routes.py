@@ -7,6 +7,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
 from passlib.hash import django_pbkdf2_sha256
+from starlette.concurrency import run_in_threadpool
 
 from app.services.redis_service import RedisService, get_redis_service
 from app.services.tunnel_registry import (
@@ -14,6 +15,7 @@ from app.services.tunnel_registry import (
     UnregisteredWebhookPathError,
     get_tunnel_registry,
 )
+from src.shared.models import UNAUTHENTICATED_FALLBACK_PRINCIPAL
 
 router = APIRouter()
 
@@ -98,15 +100,19 @@ async def handle_webhook(
             try:
                 if auth.scheme == "static_header":
                     token = request.headers.get(auth.header_name)
-                    if (
-                        token
-                        and auth.secret_hash
-                        and django_pbkdf2_sha256.verify(token, auth.secret_hash)
-                    ):
-                        request_authenticated = True
-                        matched_principal = auth.principal
-                        matched_index = idx
-                        break
+                    if token and auth.secret_hash:
+                        # PBKDF2 verify is CPU-bound (~0.3-1s at Django's
+                        # default iteration count) -- run it off the event
+                        # loop so one slow verify can't stall every other
+                        # in-flight request on this uvicorn worker.
+                        is_valid = await run_in_threadpool(
+                            django_pbkdf2_sha256.verify, token, auth.secret_hash
+                        )
+                        if is_valid:
+                            request_authenticated = True
+                            matched_principal = auth.principal
+                            matched_index = idx
+                            break
 
                 elif auth.scheme == "hmac_sha256":
                     signature = request.headers.get(auth.header_name)
@@ -160,14 +166,34 @@ async def handle_webhook(
                 continue
 
         if not request_authenticated:
-            raise HTTPException(status_code=401, detail="Webhook authentication failed")
+            if config.has_unauthenticated_node:
+                # At least one node attached to this path has no enabled
+                # auth of its own (it just shares a path with an
+                # authenticated node, e.g. Telegram). Forward the request
+                # scoped to the reserved sentinel instead of 401ing the
+                # whole path -- Django restricts dispatch to only the
+                # auth-free node(s) for this principal (never Telegram).
+                matched_principal = UNAUTHENTICATED_FALLBACK_PRINCIPAL
+                logger.info(
+                    f"Webhook PATH: {custom_path} | CONFIG ID: {config_id} | "
+                    "AUTH: no credential matched, but path has an "
+                    "unauthenticated-eligible node -- forwarding as "
+                    f"'{UNAUTHENTICATED_FALLBACK_PRINCIPAL}'."
+                )
+            else:
+                raise HTTPException(
+                    status_code=401, detail="Webhook authentication failed"
+                )
 
-    if matched_principal is not None:
+    if matched_index is not None:
         logger.info(
             f"Webhook PATH: {custom_path} | CONFIG ID: {config_id} | "
             f"AUTH: matched credential {matched_index}/{total_auths} "
             f"(principal={matched_principal})"
         )
+    elif matched_principal is not None:
+        # Already logged above (unauthenticated-fallback forwarding).
+        pass
     else:
         logger.info(
             f"Webhook PATH: {custom_path} | CONFIG ID: {config_id} | "

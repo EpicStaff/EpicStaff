@@ -161,12 +161,6 @@ class WebhookNodeAuth(models.Model):
             return False
         return check_password(raw_token, self.secret_hash)
 
-    @property
-    def principal(self) -> str:
-        if self.telegram_trigger_node_id is not None:
-            return f"telegram_trigger_node:{self.telegram_trigger_node_id}"
-        return f"webhook_trigger_node:{self.webhook_trigger_node_id}"
-
     def __str__(self):
         node_id = self.telegram_trigger_node_id or self.webhook_trigger_node_id
         return f"WebhookNodeAuth({self.scheme}) for node {node_id}"
