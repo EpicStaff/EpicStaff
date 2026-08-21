@@ -66,8 +66,6 @@ services:
     environment:
       WATCHFILES_FORCE_POLLING: "true"
     volumes:
-      - ./crew/callbacks:/app/src/crew/callbacks:cached
-      - ./crew/config:/app/src/crew/config:cached
       - ./crew/models:/app/src/crew/models:cached
       - ./crew/services:/app/src/crew/services:cached
       - ./crew/utils:/app/src/crew/utils:cached

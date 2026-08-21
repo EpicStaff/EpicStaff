@@ -219,13 +219,6 @@ services:
     environment:
       <<: *common_env
       CODE_CONTAINER_URL: http://code:${CODE_MANAGER_PORT:-4080}
-      HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED:-False}
-      ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY:-False}
-      EC_TELEMETRY: ${EC_TELEMETRY:-False}
-      MEM0_TELEMETRY: ${MEM0_TELEMETRY:-False}
-      MONITORING_MODE: ${MONITORING_MODE}
-      DB_CREW_USER: ${DB_CREW_USER}
-      DB_CREW_PASSWORD: ${DB_CREW_PASSWORD}
       MAX_CONCURRENT_SESSIONS: ${MAX_CONCURRENT_SESSIONS}
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT}
@@ -244,8 +237,6 @@ services:
         condition: service_healthy
       sandbox:
         condition: service_started
-      crewdb:
-        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

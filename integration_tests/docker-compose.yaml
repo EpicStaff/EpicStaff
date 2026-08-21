@@ -168,16 +168,9 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - HAYSTACK_TELEMETRY_ENABLED=False
-      - ANONYMIZED_TELEMETRY=False
-      - EC_TELEMETRY=False
-      - MEM0_TELEMETRY=False
-      - MONITORING_MODE=local
       - DB_NAME=crew
       - DB_HOST_NAME=crewdb
       - DB_PORT=5432
-      - DB_CREW_USER=crew_user_integ
-      - DB_CREW_PASSWORD=crew_password_integ
       - SESSION_STATUS_CHANNEL=sessions:session_status
       - CODE_RESULT_CHANNEL=code_results
     networks:
@@ -186,8 +179,6 @@ services:
     tty: true
     stdin_open: true
     depends_on:
-      crewdb:
-        condition: service_healthy
       redis:
         condition: service_started
 
