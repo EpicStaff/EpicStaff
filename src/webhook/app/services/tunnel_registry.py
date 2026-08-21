@@ -7,15 +7,30 @@ from app.providers.provider_factory import get_provider
 from src.shared.models import BaseTunnelConfigData, WebhookConfigData
 
 
+class AmbiguousWebhookPathError(Exception):
+    """Raised when a requested path matches more than one registered tunnel
+    config in the pool.
+    """
+
+    def __init__(self, path: str, matched_ids: list[str]):
+        self.path = path
+        self.matched_ids = matched_ids
+        super().__init__(
+            f"Path '{path}' matches multiple registered tunnel configs "
+            f"{matched_ids} -- refusing to guess which one owns this request."
+        )
+
+
+def _connection_fingerprint(config: BaseTunnelConfigData) -> dict:
+    """Fields that identify the tunnel's OWN connection parameters (name,
+    auth token, domain, region, ...) -- as opposed to inbound-request auth
+    credentials (`auths`/`has_unauthenticated_node`).
+    """
+    return config.model_dump(exclude={"auths", "has_unauthenticated_node"})
+
+
 class UnregisteredWebhookPathError(Exception):
     """Raised when no tunnel config is registered for the requested path.
-
-    Routing is purely path-based (see `TunnelRegistry.resolve_by_path`) --
-    the `path` is a cryptographically unguessable name, not a Host header, so
-    it alone is the secure routing key. `domain` is kept as a constructor
-    field for backward compatibility with older callers/log formatting, but
-    is no longer a meaningful routing input; it is always passed as the
-    literal `"N/A (Path Routing)"` placeholder.
     """
 
     def __init__(self, domain: str, path: str, registered_ids: list[str]):
@@ -98,16 +113,22 @@ class TunnelRegistry:
 
         for unique_id, expected_config in expected_configs.items():
             needs_restart = False
+            needs_auth_update = False
 
             async with self._lock:
                 if unique_id not in self._tunnel_pool:
                     needs_restart = True
                 else:
-                    _, active_config = self._tunnel_pool[unique_id]
+                    tunnel, active_config = self._tunnel_pool[unique_id]
 
-                    if active_config != expected_config:
+                    if _connection_fingerprint(active_config) != _connection_fingerprint(
+                        expected_config
+                    ):
                         logger.info(f"Config for {unique_id} changed. Restarting...")
                         needs_restart = True
+                    elif active_config != expected_config:
+                        self._tunnel_pool[unique_id] = (tunnel, expected_config)
+                        needs_auth_update = True
 
             if needs_restart:
                 try:
@@ -115,6 +136,10 @@ class TunnelRegistry:
                     logger.info(f"Successfully synced {unique_id}")
                 except Exception as e:
                     logger.error(f"Error registering {unique_id}: {e}")
+            elif needs_auth_update:
+                logger.info(
+                    f"Auth config for {unique_id} updated without tunnel restart."
+                )
 
         async with self._lock:
             logger.debug(
@@ -130,13 +155,35 @@ class TunnelRegistry:
 
         This eliminates reliance on spoofable Host headers. The `path` is cryptographically
         unguessable (UUID/secret) and acts as the secure routing key.
+
+        `config.name` (the matching field) carries no org information --
+        only `unique_id` does -- so two configs from different orgs (or
+        different providers) can legitimately share the same `name`. When
+        more than one pool entry matches, there is nothing in the request to
+        disambiguate with, so this fails closed via
+        `AmbiguousWebhookPathError` instead of returning an arbitrary match.
         """
         requested_path = self._normalize_path(path)
 
         async with self._lock:
-            for unique_id, (tunnel, config) in self._tunnel_pool.items():
-                if self._normalize_path(config.name) == requested_path:
-                    return unique_id, config
+            matches = [
+                (unique_id, config)
+                for unique_id, (tunnel, config) in self._tunnel_pool.items()
+                if self._normalize_path(config.name) == requested_path
+            ]
+
+        if len(matches) == 1:
+            return matches[0]
+
+        if len(matches) > 1:
+            matched_ids = [unique_id for unique_id, _ in matches]
+            logger.error(
+                f"Ambiguous webhook path '{requested_path}' matches multiple "
+                f"registered configs: {matched_ids}"
+            )
+            raise AmbiguousWebhookPathError(
+                path=requested_path, matched_ids=matched_ids
+            )
 
         raise UnregisteredWebhookPathError(
             domain="N/A (Path Routing)",

@@ -1311,6 +1311,7 @@ class ConverterService(metaclass=SingletonMeta):
 
         return NgrokConfigData(
             name=ngrok_webhook_config.trigger.path,
+            org_id=ngrok_webhook_config.trigger.org_id,
             auth_token=auth_token,
             domain=ngrok_webhook_config.domain,
             region=ngrok_webhook_config.region,
@@ -1327,6 +1328,7 @@ class ConverterService(metaclass=SingletonMeta):
 
         return LocalhostConfigData(
             name=localhost_webhook_config.trigger.path,
+            org_id=localhost_webhook_config.trigger.org_id,
             domain=localhost_webhook_config.domain,
             auths=auths,
             has_unauthenticated_node=has_unauthenticated_node,

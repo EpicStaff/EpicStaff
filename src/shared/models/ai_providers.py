@@ -70,25 +70,28 @@ class WebhookNodeAuthData(BaseModel):
 
 class BaseTunnelConfigData(BaseModel):
     name: str
+    org_id: int | None = None
     auths: list[WebhookNodeAuthData] = []
-    # True when at least one node attached to this trigger/path has NO
-    # enabled auth configured (e.g. a generic webhook node with auth
-    # disabled, sharing a path with a Telegram node that has mandatory
-    # auth). When True, `webhook_routes.handle_webhook` must let an
-    # unauthenticated request through (scoped only to the auth-free
-    # node(s) via `UNAUTHENTICATED_FALLBACK_PRINCIPAL`) instead of
-    # rejecting with 401, even though `auths` is non-empty. Defaults to
-    # `False` for backward compatibility with any wire payload minted
-    # before this field existed.
     has_unauthenticated_node: bool = False
 
     @classmethod
-    def _tunnel_prefix(cls):
+    def _tunnel_prefix(cls) -> str:
         return "base"
 
     @property
-    def unique_id(self):
-        return f"{self.__class__._tunnel_prefix()}:{self.name}"
+    def unique_id(self) -> str:
+        """`"<provider>:<org_id>:<path-name>"`.
+
+        The `org_id` segment is load-bearing, not cosmetic: it is the only
+        thing that keeps two different orgs' tunnel configs from colliding
+        on the same registry/Redis key when they happen to choose an
+        identical `path` (see `org_id` docstring above). `org_id=None`
+        renders as the literal string `"none"` -- kept distinguishable from
+        a real id rather than silently collapsing to the pre-org-aware
+        2-part format.
+        """
+        org_segment = "none" if self.org_id is None else str(self.org_id)
+        return f"{self.__class__._tunnel_prefix()}:{org_segment}:{self.name}"
 
 
 class NgrokConfigData(BaseTunnelConfigData):

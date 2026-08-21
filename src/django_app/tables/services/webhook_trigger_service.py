@@ -46,29 +46,69 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         request's path (`TunnelRegistry.resolve_by_path`) -- the Host header
         is no longer used for routing anywhere in this flow, since it is
         spoofable. `config_id` has the shape
-        `"<provider>:<registered_path>"`; the segment after the provider is
-        NOT an arbitrary config-name label — it is the `path` of the
-        `WebhookTrigger` that was registered for that specific tunnel at
-        connect time.
-        Returns `None` when `config_id` identifies a specific tunnel whose
-        registered path does NOT match the requested `path`.
+        `"<provider>:<org_id>:<registered_path>"` (== `BaseTunnelConfigData.
+        unique_id`, src/shared/models/ai_providers.py); the segment after the
+        provider is the numeric id of the org that owns the `WebhookTrigger`
+        the tunnel was registered for, and the final segment is that
+        trigger's `path` — NOT an arbitrary config-name label.
+
+        Returns `None` (no dispatch) when:
+          - `config_id` identifies a specific tunnel whose registered path
+            does NOT match the requested `path`, or
+          - `config_id` carries a colon (i.e. it claims to identify a
+            specific resolved tunnel, as opposed to being entirely absent)
+            but its provider segment is unrecognized, missing the org
+            segment (stale/malformed 2-part shape), or has an org segment
+            that isn't a parseable int. This fails CLOSED rather than
+            falling back to an org-unscoped filter: an org-collision on
+            `path` must never resolve into an unrestricted, cross-org
+            fan-out -- including for a provider this code doesn't yet know
+            about, which is exactly the kind of value that must never be
+            trusted to skip org scoping.
+
+        The one case that intentionally stays org-unscoped is `config_id`
+        being falsy or containing no colon at all -- the documented legacy
+        backward-compat shape meaning "no tunnel has been resolved for this
+        request" (see `handle_webhook_trigger`/`handle_telegram_trigger`
+        docstrings: `None` preserves today's unrestricted fan-out).
         """
         filters = {"webhook_trigger__path": path}
 
         if not config_id or ":" not in config_id:
             return filters
 
-        provider, registered_path = config_id.split(":", 1)
+        parts = config_id.split(":", 2)
+        provider = parts[0]
         if provider not in (ProviderType.NGROK, ProviderType.LOCALHOST):
-            logger.warning(
-                f"Unknown tunnel provider '{provider}' for config '{config_id}'"
+            logger.error(
+                f"Unknown tunnel provider '{provider}' for config '{config_id}' "
+                "-- rejecting for org-scoping safety rather than falling back "
+                "to an unscoped path-only match."
             )
-            return filters
+            return None
 
+        if len(parts) != 3:
+            logger.error(
+                f"config_id '{config_id}' is missing the org segment "
+                "(expected '<provider>:<org_id>:<path>') -- rejecting for "
+                "org-scoping safety."
+            )
+            return None
+
+        _, org_id_str, registered_path = parts
         if registered_path != path:
             return None
 
+        try:
+            org_id = int(org_id_str)
+        except ValueError:
+            logger.error(
+                f"Unparseable org segment in config_id '{config_id}' -- rejecting."
+            )
+            return None
+
         filters["webhook_trigger__provider_type"] = provider
+        filters["webhook_trigger__org_id"] = org_id
 
         return filters
 
@@ -83,16 +123,7 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         """`node_id`, when set, restricts dispatch to that single node --
         used by `RedisPubSub.webhook_events_handler` when the inbound
         request matched a credential scoped to one specific node (see
-        `WebhookEventData.auth_principal`). `None` preserves the
-        unrestricted fan-out to every `WebhookTriggerNode` on this path.
-
-        `unauthenticated_only`, when True, restricts dispatch to nodes that
-        have NO enabled `WebhookNodeAuth` of their own -- used for the
-        `UNAUTHENTICATED_FALLBACK_PRINCIPAL` sentinel on a mixed-attach path
-        (e.g. a Telegram node with mandatory auth sharing a path with a
-        generic webhook node that has auth disabled). Mutually exclusive
-        with `node_id` in practice: the sentinel never carries a specific
-        node id.
+        `WebhookEventData.auth_principal`). 
         """
         filters = self.get_trigger_filters(path, config_id)
         if filters is None:

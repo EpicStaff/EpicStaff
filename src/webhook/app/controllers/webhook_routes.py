@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.services.redis_service import RedisService, get_redis_service
 from app.services.tunnel_registry import (
+    AmbiguousWebhookPathError,
     TunnelRegistry,
     UnregisteredWebhookPathError,
     get_tunnel_registry,
@@ -71,6 +72,15 @@ async def handle_webhook(
         logger.warning(str(e))
         raise HTTPException(
             status_code=404, detail=f"No webhook registered for path '{custom_path}'"
+        )
+    except AmbiguousWebhookPathError as e:
+        logger.error(str(e))
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Path '{custom_path}' is registered by more than one tunnel "
+                "config; refusing to route ambiguously."
+            ),
         )
 
     # Which single node's credential matched this request, e.g.

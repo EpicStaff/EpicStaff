@@ -287,30 +287,34 @@ class TestTelegramTriggerServiceLocalhostGuard:
         mock_call = mocker.patch.object(
             TelegramTriggerService, "_call_telegram_api", return_value={"ok": True}
         )
-        # EST-3862: register_telegram_trigger now unconditionally pushes the
-        # WebhookNodeAuth credential via register_webhooks() before calling
-        # Telegram -- a real Redis publish in a unit test has 0 subscribers,
-        # so this must be stubbed to report delivery.
+        # A real Redis publish in a unit test has 0 subscribers, so the
+        # signal's own tunnel resync must be stubbed to report delivery.
         mocker.patch.object(WebhookTriggerService, "register_webhooks", return_value=True)
 
-        # EST-3862: creating/attaching a WebhookNodeAuth row requires a
-        # persisted node (a real FK target) -- .objects.create() (not a bare
-        # unsaved instance) also fires the real post_save registration once,
-        # using the same mocks above; reset the call count before the
-        # explicit call below so `assert_called_once()` still reflects it.
+        # .objects.create() fires the real post_save registration, which is
+        # the ONE real registration exercised by this test.
         node = TelegramTriggerNode.objects.create(
             node_name="NgrokNode",
             graph=Graph.objects.create(name="tg-ngrok-ok-graph", org=default_org),
             telegram_bot_api_key_secret=secret,
             webhook_trigger=trigger,
         )
-        mock_call.reset_mock()
 
-        result = TelegramTriggerService().register_telegram_trigger(node)
-
-        assert result == {"ok": True}
         mock_call.assert_called_once()
         _, kwargs = mock_call.call_args
         assert kwargs["params"]["url"] == (
             "https://abcd1234.ngrok-free.app/webhooks/tg-ngrok-ok/"
         )
+
+        # C4/EST-3862: a resync of the SAME node/trigger (e.g. another
+        # unrelated resave) must not rotate the secret or re-hit Telegram's
+        # setWebhook endpoint -- it's already validly registered.
+        mock_call.reset_mock()
+        result = TelegramTriggerService().register_telegram_trigger(node)
+        assert result is None
+        mock_call.assert_not_called()
+
+        # The explicit "(re)register" action (force=True) still works.
+        result = TelegramTriggerService().register_telegram_trigger(node, force=True)
+        assert result == {"ok": True}
+        mock_call.assert_called_once()

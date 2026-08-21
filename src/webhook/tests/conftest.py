@@ -47,9 +47,11 @@ def register_tunnel_path(tunnel_registry):
         path: str,
         auths: list | None = None,
         has_unauthenticated_node: bool = False,
+        org_id: int | None = 1,
     ) -> BaseTunnelConfigData:
         config = BaseTunnelConfigData(
             name=path,
+            org_id=org_id,
             auths=auths or [],
             has_unauthenticated_node=has_unauthenticated_node,
         )

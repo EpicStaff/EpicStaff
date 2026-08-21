@@ -103,9 +103,10 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
         )
 
         assert pydantic_config.name == trigger.path
+        assert pydantic_config.org_id == trigger.org_id
         assert (
             pydantic_config.unique_id
-            == f"ngrok:{trigger.path}"
+            == f"ngrok:{trigger.org_id}:{trigger.path}"
             == ngrok_config.get_redis_key()
         )
 
@@ -131,9 +132,10 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
         )
 
         assert pydantic_config.name == trigger.path
+        assert pydantic_config.org_id == trigger.org_id
         assert (
             pydantic_config.unique_id
-            == f"localhost:{trigger.path}"
+            == f"localhost:{trigger.org_id}:{trigger.path}"
             == localhost_config.get_redis_key()
         )
 
@@ -159,9 +161,10 @@ class TestTunnelRegistrationNameIsAlwaysBarePath:
         )
 
         assert pydantic_config.name == "plain-path"
+        assert pydantic_config.org_id == trigger.org_id
         assert (
             pydantic_config.unique_id
-            == "ngrok:plain-path"
+            == f"ngrok:{trigger.org_id}:plain-path"
             == ngrok_config.get_redis_key()
         )
 

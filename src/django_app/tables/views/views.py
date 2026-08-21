@@ -1115,6 +1115,7 @@ class RegisterTelegramTriggerApiView(APIView):
 
             telegram_trigger_service.register_telegram_trigger(
                 telegram_trigger_instance=telegram_trigger_node,
+                force=True,
             )
 
             return Response(status=status.HTTP_200_OK)

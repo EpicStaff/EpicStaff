@@ -4,7 +4,7 @@ from typing import Protocol
 from django.db import models
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.validators import RegexValidator
-from django.contrib.auth.hashers import make_password, check_password
+from django.contrib.auth.hashers import check_password
 
 from tables.models.base_models import DefaultBaseModel
 from tables.models.rbac_models.org_scoped import OrgScopedModel
@@ -61,7 +61,7 @@ class NgrokWebhookConfig(models.Model):
         return None
 
     def get_redis_key(self) -> str:
-        return f"ngrok:{self.trigger.path}"
+        return f"ngrok:{self.trigger.org_id}:{self.trigger.path}"
 
 
 class LocalhostWebhookConfig(models.Model):
@@ -82,7 +82,9 @@ class LocalhostWebhookConfig(models.Model):
         return None
 
     def get_redis_key(self) -> str:
-        return f"localhost:{self.trigger.path}"
+        """Must stay byte-for-byte in sync with `BaseTunnelConfigData.unique_id`
+        -- see `NgrokWebhookConfig.get_redis_key` docstring."""
+        return f"localhost:{self.trigger.org_id}:{self.trigger.path}"
 
     def __str__(self):
         return self.name
@@ -117,6 +119,17 @@ class WebhookNodeAuth(models.Model):
         null=True,
         help_text="Plaintext or symmetrically encrypted secret required to compute HMAC signatures.",
     )
+    registered_webhook_trigger_id = models.PositiveBigIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "The WebhookTrigger id this credential's outbound setWebhook call "
+            "(Telegram only) last targeted. Lets a resync detect a genuine "
+            "path/tunnel change vs. an unrelated node resave, so ordinary "
+            "resaves don't re-hit Telegram's setWebhook endpoint and rotate "
+            "the secret needlessly."
+        ),
+    )
 
     telegram_trigger_node = models.OneToOneField(
         "TelegramTriggerNode",
@@ -149,11 +162,6 @@ class WebhookNodeAuth(models.Model):
                 name="webhook_node_auth_exactly_one_node",
             ),
         ]
-
-    def set_static_token(self, raw_token: str):
-        """Hashes the raw token and saves it."""
-        self.secret_hash = make_password(raw_token)
-        self.save(update_fields=["secret_hash"])
 
     def verify_static_token(self, raw_token: str) -> bool:
         """Verifies an incoming token against the stored hash."""

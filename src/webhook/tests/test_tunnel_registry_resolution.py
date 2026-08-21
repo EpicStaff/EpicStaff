@@ -1,16 +1,33 @@
-"""Tests for `TunnelRegistry.resolve_unique_id`.
+"""Tests for `TunnelRegistry.resolve_by_path`.
 
-Regression coverage for the bug where every localhost webhook past the first
-resolved to the config that registered first: `LocalhostTunnel` builds the same
-`http://{host}:{port}` public URL for every localhost config that has no explicit
-domain, so a domain-only lookup returned an arbitrary first match. The requested
-path is the tie-breaker — a config's registered path is its `name`, which is also
-the segment embedded in `unique_id` ("<provider>:<registered_path>").
+Rewritten for the path-primary routing model (EST-3826) plus the org-aware
+`unique_id` fix (EST-3862/EST-3826 follow-up, C3): `BaseTunnelConfigData.name`
+is the raw `WebhookTrigger.path`, which the DB only guarantees unique
+per-org (`unique_together(org, path, provider_type)`), not globally. Two
+different orgs -- or two different providers -- can legitimately register the
+identical path string. The inbound request carries nothing but that path, so
+when more than one pool entry matches, there is no legitimate way to pick a
+winner: `resolve_by_path` must fail closed via `AmbiguousWebhookPathError`
+rather than silently returning an arbitrary match (which could route one
+org's webhook event into another org's graph).
+
+Covers:
+  - Basic single-match resolution (unchanged behavior).
+  - Two different orgs registering the identical path do NOT silently
+    collide in the pool (distinct `unique_id`s -- both stay registered).
+  - A request for that colliding path raises `AmbiguousWebhookPathError`
+    (never resolves to either org's config).
+  - Normal, non-colliding single-org paths still resolve exactly as before.
+  - Path normalization (surrounding slashes) is unchanged.
 """
 
 import pytest
 
-from app.services.tunnel_registry import TunnelRegistry, UnregisteredWebhookPathError
+from app.services.tunnel_registry import (
+    AmbiguousWebhookPathError,
+    TunnelRegistry,
+    UnregisteredWebhookPathError,
+)
 from src.shared.models import LocalhostConfigData, NgrokConfigData
 
 
@@ -30,165 +47,138 @@ def _registry(*entries):
 LOCALHOST_URL = "http://localhost:8000"
 
 
-async def test_localhost_configs_resolve_to_their_own_config_id():
-    first = LocalhostConfigData(name="first-hook")
-    second = LocalhostConfigData(name="second-hook")
-    third = LocalhostConfigData(name="third-hook")
-    registry = _registry(
-        (first, LOCALHOST_URL), (second, LOCALHOST_URL), (third, LOCALHOST_URL)
-    )
+async def test_single_registered_path_resolves():
+    config = LocalhostConfigData(name="only-hook", org_id=1)
+    registry = _registry((config, LOCALHOST_URL))
 
-    for config in (first, second, third):
-        resolved = await registry.resolve_unique_id("localhost:8000", config.name)
-        assert resolved == config.unique_id
+    unique_id, resolved_config = await registry.resolve_by_path("only-hook")
+
+    assert unique_id == config.unique_id
+    assert resolved_config == config
 
 
-async def test_single_localhost_config_resolves_by_domain_alone():
-    only = LocalhostConfigData(name="only-hook")
-    registry = _registry((only, LOCALHOST_URL))
-
-    # No path passed: a lone candidate is unambiguous.
-    assert await registry.resolve_unique_id("localhost:8000") == only.unique_id
-
-
-async def test_unknown_path_among_several_localhost_configs_raises():
-    first = LocalhostConfigData(name="first-hook")
-    second = LocalhostConfigData(name="second-hook")
-    registry = _registry((first, LOCALHOST_URL), (second, LOCALHOST_URL))
+async def test_unknown_path_raises_unregistered():
+    config = LocalhostConfigData(name="only-hook", org_id=1)
+    registry = _registry((config, LOCALHOST_URL))
 
     with pytest.raises(UnregisteredWebhookPathError) as excinfo:
-        await registry.resolve_unique_id("localhost:8000", "not-registered")
+        await registry.resolve_by_path("not-registered")
 
-    # Raising instead of returning is the point: no unrelated real config's id
-    # can leak out as the resolution result.
     assert excinfo.value.path == "not-registered"
-    assert set(excinfo.value.registered_ids) == {first.unique_id, second.unique_id}
-
-
-async def test_unknown_path_with_single_localhost_config_raises():
-    only = LocalhostConfigData(name="only-hook")
-    registry = _registry((only, LOCALHOST_URL))
-
-    # A lone candidate is unambiguous by domain, but that does not make every
-    # path on that domain valid.
-    with pytest.raises(UnregisteredWebhookPathError):
-        await registry.resolve_unique_id("localhost:8000", "not-registered")
-
-
-async def test_unknown_path_on_ngrok_domain_raises():
-    only = NgrokConfigData(name="only-hook", auth_token="t", domain="aaa.ngrok.io")
-    registry = _registry((only, "https://aaa.ngrok.io"))
-
-    with pytest.raises(UnregisteredWebhookPathError):
-        await registry.resolve_unique_id("aaa.ngrok.io", "not-registered")
-
-
-async def test_ngrok_resolves_by_unique_domain():
-    first = NgrokConfigData(name="first-hook", auth_token="t", domain="aaa.ngrok.io")
-    second = NgrokConfigData(name="second-hook", auth_token="t", domain="bbb.ngrok.io")
-    registry = _registry(
-        (first, "https://aaa.ngrok.io"), (second, "https://bbb.ngrok.io")
-    )
-
-    # Unique domains: each resolves on the domain alone when no path is given.
-    assert await registry.resolve_unique_id("bbb.ngrok.io") == second.unique_id
-    assert (
-        await registry.resolve_unique_id("aaa.ngrok.io", "first-hook")
-        == first.unique_id
-    )
-
-
-async def test_localhost_and_ngrok_coexist():
-    localhost = LocalhostConfigData(name="local-hook")
-    ngrok = NgrokConfigData(name="remote-hook", auth_token="t", domain="aaa.ngrok.io")
-    registry = _registry((localhost, LOCALHOST_URL), (ngrok, "https://aaa.ngrok.io"))
-
-    assert await registry.resolve_unique_id("aaa.ngrok.io") == ngrok.unique_id
-    assert (
-        await registry.resolve_unique_id("localhost:8000", "local-hook")
-        == localhost.unique_id
-    )
+    assert excinfo.value.registered_ids == [config.unique_id]
 
 
 @pytest.mark.parametrize("requested", ["my-hook", "/my-hook", "my-hook/"])
 async def test_path_matching_ignores_surrounding_slashes(requested):
-    target = LocalhostConfigData(name="my-hook")
-    other = LocalhostConfigData(name="other-hook")
+    target = LocalhostConfigData(name="my-hook", org_id=1)
+    other = LocalhostConfigData(name="other-hook", org_id=1)
     registry = _registry((other, LOCALHOST_URL), (target, LOCALHOST_URL))
 
-    assert (
-        await registry.resolve_unique_id("localhost:8000", requested)
-        == target.unique_id
+    unique_id, resolved_config = await registry.resolve_by_path(requested)
+
+    assert unique_id == target.unique_id
+    assert resolved_config == target
+
+
+async def test_ngrok_and_localhost_coexist_on_distinct_paths():
+    localhost = LocalhostConfigData(name="local-hook", org_id=1)
+    ngrok = NgrokConfigData(
+        name="remote-hook", org_id=1, auth_token="t", domain="aaa.ngrok.io"
+    )
+    registry = _registry((localhost, LOCALHOST_URL), (ngrok, "https://aaa.ngrok.io"))
+
+    unique_id, resolved = await registry.resolve_by_path("local-hook")
+    assert unique_id == localhost.unique_id
+    assert resolved == localhost
+
+    unique_id, resolved = await registry.resolve_by_path("remote-hook")
+    assert unique_id == ngrok.unique_id
+    assert resolved == ngrok
+
+
+async def test_two_different_orgs_sharing_one_path_do_not_collide_in_the_pool():
+    """C3 regression: org A and org B both register a `WebhookTrigger` with
+    path='shared-path'. Before the fix, both configs' `unique_id` was
+    `f"ngrok:shared-path"` -- identical -- so registering the second
+    silently overwrote the first in `_tunnel_pool`. With `org_id` folded
+    into `unique_id`, both must coexist as distinct pool entries."""
+    org_a_config = NgrokConfigData(
+        name="shared-path", org_id=1, auth_token="t", domain="org-a.ngrok.io"
+    )
+    org_b_config = NgrokConfigData(
+        name="shared-path", org_id=2, auth_token="t", domain="org-b.ngrok.io"
     )
 
+    assert org_a_config.unique_id != org_b_config.unique_id
 
-async def test_no_domain_still_resolves_a_registered_path():
-    """EST-3826 path-primary fix: an empty/unrecognized Host must never gate a
-    request whose path IS genuinely registered -- Host only disambiguates
-    among several configs sharing one path, it is never the primary key.
-    (Previously this returned None and the caller silently fell through to a
-    path-only lookup downstream; now resolution itself succeeds directly.)"""
-    only = LocalhostConfigData(name="only-hook")
-    registry = _registry((only, LOCALHOST_URL))
-
-    assert await registry.resolve_unique_id("", "only-hook") == only.unique_id
-
-
-async def test_unknown_domain_still_resolves_a_registered_path():
-    """Same fix, ngrok case: an attacker-controlled/mismatched Host must not
-    block a request for a path that IS registered somewhere."""
-    only = NgrokConfigData(name="only-hook", auth_token="t", domain="aaa.ngrok.io")
-    registry = _registry((only, "https://aaa.ngrok.io"))
-
-    assert await registry.resolve_unique_id("zzz.ngrok.io", "only-hook") == (
-        only.unique_id
+    registry = _registry(
+        (org_a_config, "https://org-a.ngrok.io"),
+        (org_b_config, "https://org-b.ngrok.io"),
     )
 
-
-async def test_domain_only_with_no_domain_still_returns_none():
-    """The domain-only branch (no `path` argument at all) is unchanged: with
-    nothing to key resolution on but an empty Host, there is genuinely nothing
-    to resolve."""
-    only = LocalhostConfigData(name="only-hook")
-    registry = _registry((only, LOCALHOST_URL))
-
-    assert await registry.resolve_unique_id("") is None
+    # Both entries genuinely coexist -- neither silently overwrote the other.
+    assert len(registry._tunnel_pool) == 2
+    assert org_a_config.unique_id in registry._tunnel_pool
+    assert org_b_config.unique_id in registry._tunnel_pool
 
 
-async def test_domain_only_with_unknown_domain_still_returns_none():
-    only = NgrokConfigData(name="only-hook", auth_token="t", domain="aaa.ngrok.io")
-    registry = _registry((only, "https://aaa.ngrok.io"))
+async def test_request_for_a_path_shared_by_two_orgs_is_rejected_ambiguous():
+    """A request for 'shared-path' can never legitimately resolve to EITHER
+    org's config from the path alone -- must fail closed, never guess."""
+    org_a_config = NgrokConfigData(
+        name="shared-path", org_id=1, auth_token="t", domain="org-a.ngrok.io"
+    )
+    org_b_config = NgrokConfigData(
+        name="shared-path", org_id=2, auth_token="t", domain="org-b.ngrok.io"
+    )
+    registry = _registry(
+        (org_a_config, "https://org-a.ngrok.io"),
+        (org_b_config, "https://org-b.ngrok.io"),
+    )
 
-    assert await registry.resolve_unique_id("zzz.ngrok.io") is None
+    with pytest.raises(AmbiguousWebhookPathError) as excinfo:
+        await registry.resolve_by_path("shared-path")
+
+    assert excinfo.value.path == "shared-path"
+    assert set(excinfo.value.matched_ids) == {
+        org_a_config.unique_id,
+        org_b_config.unique_id,
+    }
 
 
-async def test_path_registered_under_one_provider_resolves_regardless_of_other_hosts():
-    """Path-primary in a mixed pool: an ngrok config exists on a totally
-    different domain, but the localhost path requested still resolves --
-    the requested path is looked up across the whole pool, not filtered down
-    to whatever the Host header happens to match first."""
-    ngrok = NgrokConfigData(name="other-hook", auth_token="t", domain="aaa.ngrok.io")
-    local = LocalhostConfigData(name="local-hook")
+async def test_distinct_provider_types_sharing_one_path_string_are_also_ambiguous():
+    """Not just an org problem: an ngrok config and a localhost config that
+    happen to share the same `name` (path) are equally undisambiguatable
+    from the request alone, and must also fail closed rather than pick
+    whichever the dict iteration returns first."""
+    ngrok = NgrokConfigData(
+        name="shared-name", org_id=1, auth_token="t", domain="aaa.ngrok.io"
+    )
+    local = LocalhostConfigData(name="shared-name", org_id=1)
     registry = _registry((ngrok, "https://aaa.ngrok.io"), (local, LOCALHOST_URL))
 
-    assert (
-        await registry.resolve_unique_id("some-unrelated-host", "local-hook")
-        == local.unique_id
-    )
+    with pytest.raises(AmbiguousWebhookPathError) as excinfo:
+        await registry.resolve_by_path("shared-name")
+
+    assert set(excinfo.value.matched_ids) == {ngrok.unique_id, local.unique_id}
 
 
-async def test_two_configs_sharing_one_path_name_are_disambiguated_by_host():
-    """Different providers CAN register the same path name -- Host is the
-    tie-breaker only in this specific ambiguous case, never the primary key."""
-    ngrok = NgrokConfigData(name="shared-name", auth_token="t", domain="aaa.ngrok.io")
-    local = LocalhostConfigData(name="shared-name")
-    registry = _registry((ngrok, "https://aaa.ngrok.io"), (local, LOCALHOST_URL))
+async def test_single_org_path_resolution_is_unaffected_by_the_org_fix():
+    """No regression: the ordinary, non-colliding single-org case resolves
+    exactly as before -- the org fix only changes behavior when there is a
+    genuine collision."""
+    trigger_a = NgrokConfigData(
+        name="trigger-a", org_id=1, auth_token="t", domain="aaa.ngrok.io"
+    )
+    trigger_b = LocalhostConfigData(name="trigger-b", org_id=1)
+    registry = _registry(
+        (trigger_a, "https://aaa.ngrok.io"), (trigger_b, LOCALHOST_URL)
+    )
 
-    assert (
-        await registry.resolve_unique_id("aaa.ngrok.io", "shared-name")
-        == ngrok.unique_id
-    )
-    assert (
-        await registry.resolve_unique_id("localhost:8000", "shared-name")
-        == local.unique_id
-    )
+    unique_id, resolved = await registry.resolve_by_path("trigger-a")
+    assert unique_id == trigger_a.unique_id
+    assert resolved == trigger_a
+
+    unique_id, resolved = await registry.resolve_by_path("trigger-b")
+    assert unique_id == trigger_b.unique_id
+    assert resolved == trigger_b

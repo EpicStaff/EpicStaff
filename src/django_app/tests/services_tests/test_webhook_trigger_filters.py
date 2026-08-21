@@ -1,27 +1,40 @@
-"""EST-3622 regression suite.
+"""EST-3622 regression suite, extended for EST-3862/EST-3826 (C3) org scoping.
 
-Two related classes of the same underlying bug:
+Three related classes of the same underlying bug:
 
 1. `WebhookTriggerService.get_trigger_filters` must never let a resolved
-   tunnel config_id (e.g. "ngrok:<path>") clobber the real requested path
-   with something else. config_id may only disambiguate provider_type; the
-   real `path` argument always drives the lookup.
+   tunnel config_id (e.g. "ngrok:<org_id>:<path>") clobber the real requested
+   path with something else. config_id may only disambiguate provider_type
+   (and now org); the real `path` argument always drives the lookup.
 
-2. `config_id` has the shape `"<provider>:<registered_path>"` — the segment
-   after the provider is the `path` of the `WebhookTrigger` that was
-   registered for that specific domain/tunnel at connect time (see
-   `ConverterService.convert_ngrok_webhook_config_to_pydantic` /
-   `convert_localhost_webhook_config_to_pydantic`, which build
-   `name=config.trigger.path`, and `NgrokWebhookConfig.get_redis_key()` /
-   `LocalhostWebhookConfig.get_redis_key()`, which use the same
-   `trigger.path`). It is NOT an arbitrary `NgrokWebhookConfig.name` /
-   `LocalhostWebhookConfig.name` label, and confirming ownership never needs
-   a DB lookup by that label — it's a direct string comparison between the
-   registered path embedded in `config_id` and the path actually requested
-   in the URL. If they differ, the request arrived via a domain/tunnel that
-   was registered for a *different* path than the one in the URL, and no
-   flow may start — even if some other trigger elsewhere happens to have
-   that path.
+2. `config_id` has the shape `"<provider>:<org_id>:<registered_path>"` (==
+   `BaseTunnelConfigData.unique_id`, src/shared/models/ai_providers.py) — the
+   segment after the provider is the numeric id of the org that owns the
+   `WebhookTrigger` the tunnel was registered for, and the final segment is
+   that trigger's `path` (see `ConverterService.convert_ngrok_webhook_config_
+   to_pydantic` / `convert_localhost_webhook_config_to_pydantic`, which build
+   `name=config.trigger.path, org_id=config.trigger.org_id`, and
+   `NgrokWebhookConfig.get_redis_key()` / `LocalhostWebhookConfig.
+   get_redis_key()`, which mirror the same format). It is NOT an arbitrary
+   `NgrokWebhookConfig.name` / `LocalhostWebhookConfig.name` label, and
+   confirming ownership never needs a DB lookup by that label — it's a direct
+   string comparison between the registered path embedded in `config_id` and
+   the path actually requested in the URL. If they differ, the request
+   arrived via a domain/tunnel that was registered for a *different* path
+   than the one in the URL, and no flow may start — even if some other
+   trigger elsewhere happens to have that path.
+
+3. C3 (this suite's new coverage): `WebhookTrigger.path` is only unique
+   per-org (`unique_together(org, path, provider_type)`), not globally, so
+   two different orgs can legally register the identical path string.
+   Without an org filter, the legacy no-auth-configured fan-out
+   (`config_id=None`) or a `config_id` missing its org segment could dispatch
+   an inbound event across orgs into the wrong org's graph. `get_trigger_
+   filters` now (a) adds `webhook_trigger__org_id` to the filter dict
+   whenever `config_id` carries a parseable org segment, and (b) fails CLOSED
+   -- returns `None`, no dispatch -- when `config_id` has a recognized
+   provider prefix but a missing/unparseable org segment, rather than
+   silently falling back to an org-unscoped filter.
 """
 
 import pytest
@@ -30,6 +43,7 @@ from src.shared.models import UNAUTHENTICATED_FALLBACK_PRINCIPAL
 
 from tables.models.graph_models import Graph, TelegramTriggerNode, WebhookTriggerNode
 from tables.models.python_models import PythonCode
+from tables.models.rbac_models import Organization
 from tables.models.session_models import Session
 from tables.models.webhook_models import (
     LocalhostWebhookConfig,
@@ -92,19 +106,21 @@ def _make_telegram_trigger_node(*, graph: Graph, path: str, provider_type=None):
 
 def _registered_config_id(provider: str, trigger: WebhookTrigger) -> str:
     """Build a `config_id` the way it's actually produced in production:
-    `"<provider>:<registered_path>"`, where `registered_path` is the path of
-    the trigger the tunnel was registered for (see module docstring) — NOT a
-    config's `.name` label."""
-    return f"{provider}:{trigger.path}"
+    `"<provider>:<org_id>:<registered_path>"` (== `BaseTunnelConfigData.
+    unique_id`), where `org_id`/`registered_path` come from the trigger the
+    tunnel was registered for (see module docstring) — NOT a config's
+    `.name` label."""
+    return f"{provider}:{trigger.org_id}:{trigger.path}"
 
 
 @pytest.mark.django_db
 class TestGetTriggerFilters:
-    def test_config_id_with_matching_registered_path_adds_provider_type(
+    def test_config_id_with_matching_registered_path_adds_provider_type_and_org(
         self, default_org
     ):
         """The tunnel's registered path (embedded in config_id) matches the
-        requested path — provider_type is added, nothing is rejected."""
+        requested path — provider_type and org_id are added, nothing is
+        rejected."""
         service = WebhookTriggerService()
         trigger = WebhookTrigger.objects.create(
             path="valid_path", provider_type=ProviderType.NGROK, org=default_org
@@ -126,6 +142,7 @@ class TestGetTriggerFilters:
         assert filters == {
             "webhook_trigger__path": "valid_path",
             "webhook_trigger__provider_type": "ngrok",
+            "webhook_trigger__org_id": default_org.id,
         }
 
     def test_config_id_with_mismatched_registered_path_returns_none(
@@ -164,6 +181,7 @@ class TestGetTriggerFilters:
         assert filters == {
             "webhook_trigger__path": "n1",
             "webhook_trigger__provider_type": "localhost",
+            "webhook_trigger__org_id": default_org.id,
         }
 
     def test_config_id_with_mismatched_registered_path_returns_none_localhost(
@@ -194,14 +212,19 @@ class TestGetTriggerFilters:
 
         assert filters == {"webhook_trigger__path": "valid_path"}
 
-    def test_unknown_provider_prefix_is_ignored(self):
+    def test_unknown_provider_prefix_fails_closed(self):
+        """C3 hardening: a `config_id` that claims to identify a specific
+        resolved tunnel (it has a colon) but names a provider this code
+        doesn't recognize must never fall back to an org-unscoped match --
+        that is exactly the kind of value that must never be trusted to
+        skip org scoping."""
         service = WebhookTriggerService()
 
         filters = service.get_trigger_filters(
             path="valid_path", config_id="unknown-provider:some-name"
         )
 
-        assert filters == {"webhook_trigger__path": "valid_path"}
+        assert filters is None
 
     def test_missing_config_id_falls_back_to_path_only(self):
         service = WebhookTriggerService()
@@ -209,6 +232,27 @@ class TestGetTriggerFilters:
         filters = service.get_trigger_filters(path="valid_path", config_id=None)
 
         assert filters == {"webhook_trigger__path": "valid_path"}
+
+    def test_legacy_2part_config_id_with_known_provider_fails_closed(self):
+        """C3: a `config_id` with a recognized provider prefix but missing
+        the org segment (the pre-fix 2-part shape) must be rejected outright
+        -- never silently treated as an org-unscoped path-only match."""
+        service = WebhookTriggerService()
+
+        filters = service.get_trigger_filters(
+            path="valid_path", config_id="ngrok:valid_path"
+        )
+
+        assert filters is None
+
+    def test_config_id_with_unparseable_org_segment_fails_closed(self, default_org):
+        service = WebhookTriggerService()
+
+        filters = service.get_trigger_filters(
+            path="valid_path", config_id="ngrok:not-an-int:valid_path"
+        )
+
+        assert filters is None
 
 
 @pytest.mark.django_db
@@ -222,8 +266,8 @@ class TestHandleWebhookTriggerConfigIsolation:
         self, default_org, monkeypatch
     ):
         """The literal repro: the request arrived via the tunnel registered
-        for path 'p2' (config_id 'ngrok:p2'), but the URL path is 'p1'. Even
-        though a trigger with path 'p1' DOES exist, it wasn't reached
+        for path 'p2' (config_id 'ngrok:<org>:p2'), but the URL path is 'p1'.
+        Even though a trigger with path 'p1' DOES exist, it wasn't reached
         through its own tunnel — no flow may start."""
         graph_1 = Graph.objects.create(name="graph-1", org=default_org)
         graph_2 = Graph.objects.create(name="graph-2", org=default_org)
@@ -242,7 +286,7 @@ class TestHandleWebhookTriggerConfigIsolation:
         WebhookTriggerService().handle_webhook_trigger(
             path="p1",
             payload={"m": 1},
-            config_id="ngrok:p2",
+            config_id=f"ngrok:{default_org.id}:p2",
         )
 
         assert Session.objects.filter(graph=graph_1).count() == 0
@@ -266,7 +310,7 @@ class TestHandleWebhookTriggerConfigIsolation:
         WebhookTriggerService().handle_webhook_trigger(
             path="p1",
             payload={"m": 1},
-            config_id="ngrok:p1",
+            config_id=f"ngrok:{default_org.id}:p1",
         )
 
         assert Session.objects.filter(graph=graph_1).count() == 1
@@ -276,9 +320,9 @@ class TestHandleWebhookTriggerConfigIsolation:
         """Grounded in the real flow id=5 repro data: WebhookTrigger(path='n1',
         provider_type='localhost') behind LocalhostWebhookConfig(name='l1').
         The tunnel is registered under name='n1' (trigger.path, per the wire
-        contract) — not 'l1' — so config_id is 'localhost:n1'. This must
-        start the flow now that ownership no longer depends on the config's
-        `.name` label."""
+        contract) — not 'l1' — so config_id is 'localhost:<org>:n1'. This
+        must start the flow now that ownership no longer depends on the
+        config's `.name` label."""
         graph = Graph.objects.create(name="flow-5-repro", org=default_org)
         node = _make_webhook_trigger_node(
             graph=graph, path="n1", provider_type=ProviderType.LOCALHOST
@@ -292,7 +336,7 @@ class TestHandleWebhookTriggerConfigIsolation:
         WebhookTriggerService().handle_webhook_trigger(
             path="n1",
             payload={"m": 1},
-            config_id="localhost:n1",
+            config_id=f"localhost:{default_org.id}:n1",
         )
 
         assert Session.objects.filter(graph=graph).count() == 1
@@ -359,7 +403,7 @@ class TestHandleTelegramTriggerConfigIsolation:
         TelegramTriggerService().handle_telegram_trigger(
             path="tg-p1",
             payload={"m": 1},
-            config_id="ngrok:tg-p2",
+            config_id=f"ngrok:{default_org.id}:tg-p2",
         )
 
         assert Session.objects.filter(graph=graph_1).count() == 0
@@ -377,7 +421,7 @@ class TestHandleTelegramTriggerConfigIsolation:
         TelegramTriggerService().handle_telegram_trigger(
             path="tg-p1b",
             payload={"m": 1},
-            config_id="ngrok:tg-p1b",
+            config_id=f"ngrok:{default_org.id}:tg-p1b",
         )
 
         assert Session.objects.filter(graph=graph_1).count() == 1
@@ -425,7 +469,7 @@ class TestAuthPrincipalDispatchRestriction:
         TelegramTriggerService().handle_telegram_trigger(
             path="principal-shared-path",
             payload={"m": 1},
-            config_id="ngrok:principal-shared-path",
+            config_id=f"ngrok:{default_org.id}:principal-shared-path",
             node_id=telegram_node.pk,
         )
 
@@ -453,7 +497,7 @@ class TestAuthPrincipalDispatchRestriction:
         WebhookTriggerService().handle_webhook_trigger(
             path="principal-wh-shared",
             payload={"m": 1},
-            config_id="ngrok:principal-wh-shared",
+            config_id=f"ngrok:{default_org.id}:principal-wh-shared",
             node_id=node_a.pk,
         )
 
@@ -481,7 +525,7 @@ class TestAuthPrincipalDispatchRestriction:
         WebhookTriggerService().handle_webhook_trigger(
             path="principal-none-path",
             payload={"m": 1},
-            config_id="ngrok:principal-none-path",
+            config_id=f"ngrok:{default_org.id}:principal-none-path",
             node_id=None,
         )
 
@@ -546,7 +590,7 @@ class TestUnauthenticatedFallbackSentinelDispatch:
         WebhookTriggerService().handle_webhook_trigger(
             path="sentinel-shared-path",
             payload={"m": 1},
-            config_id="ngrok:sentinel-shared-path",
+            config_id=f"ngrok:{default_org.id}:sentinel-shared-path",
             unauthenticated_only=True,
         )
 
@@ -564,7 +608,7 @@ class TestUnauthenticatedFallbackSentinelDispatch:
         TelegramTriggerService().handle_telegram_trigger(
             path="sentinel-telegram-path",
             payload={"m": 1},
-            config_id="ngrok:sentinel-telegram-path",
+            config_id=f"ngrok:{default_org.id}:sentinel-telegram-path",
             unauthenticated_only=True,
         )
 
@@ -598,8 +642,90 @@ class TestUnauthenticatedFallbackSentinelDispatch:
         WebhookTriggerService().handle_webhook_trigger(
             path="sentinel-disabled-auth-path",
             payload={"m": 1},
-            config_id="ngrok:sentinel-disabled-auth-path",
+            config_id=f"ngrok:{default_org.id}:sentinel-disabled-auth-path",
             unauthenticated_only=True,
         )
 
         assert Session.objects.filter(graph=graph).count() == 1
+
+
+@pytest.mark.django_db
+class TestCrossOrgPathCollisionIsolation:
+    """C3 (EST-3862/EST-3826 architect follow-up): two different orgs each
+    legally register a `WebhookTrigger` with the IDENTICAL `path` string
+    (`unique_together` is `(org, path, provider_type)`, not globally unique
+    on `path`). An inbound event that resolved to one org's tunnel config
+    must dispatch ONLY into that org's graph, never the other org's, even
+    though both triggers share the same `path`."""
+
+    def test_org_scoped_config_id_never_dispatches_into_the_other_orgs_graph(
+        self, default_org, monkeypatch
+    ):
+        other_org = Organization.objects.create(name="est-3862-other-org")
+
+        graph_default = Graph.objects.create(
+            name="collision-default-org-graph", org=default_org
+        )
+        graph_other = Graph.objects.create(
+            name="collision-other-org-graph", org=other_org
+        )
+
+        _make_webhook_trigger_node(
+            graph=graph_default,
+            path="collision-shared-path",
+            provider_type=ProviderType.NGROK,
+        )
+        _make_webhook_trigger_node(
+            graph=graph_other,
+            path="collision-shared-path",
+            provider_type=ProviderType.NGROK,
+        )
+
+        _stub_publish(monkeypatch)
+
+        # config_id carries default_org's id -- dispatch must land only in
+        # default_org's graph, never other_org's, despite the identical path.
+        WebhookTriggerService().handle_webhook_trigger(
+            path="collision-shared-path",
+            payload={"m": 1},
+            config_id=f"ngrok:{default_org.id}:collision-shared-path",
+        )
+
+        assert Session.objects.filter(graph=graph_default).count() == 1
+        assert Session.objects.filter(graph=graph_other).count() == 0
+
+    def test_other_orgs_config_id_dispatches_only_into_its_own_graph(
+        self, default_org, monkeypatch
+    ):
+        """Symmetric case: flip which org's config_id is used -- confirms
+        this isn't accidentally order- or default-org-dependent."""
+        other_org = Organization.objects.create(name="est-3862-other-org-2")
+
+        graph_default = Graph.objects.create(
+            name="collision2-default-org-graph", org=default_org
+        )
+        graph_other = Graph.objects.create(
+            name="collision2-other-org-graph", org=other_org
+        )
+
+        _make_webhook_trigger_node(
+            graph=graph_default,
+            path="collision2-shared-path",
+            provider_type=ProviderType.NGROK,
+        )
+        _make_webhook_trigger_node(
+            graph=graph_other,
+            path="collision2-shared-path",
+            provider_type=ProviderType.NGROK,
+        )
+
+        _stub_publish(monkeypatch)
+
+        WebhookTriggerService().handle_webhook_trigger(
+            path="collision2-shared-path",
+            payload={"m": 1},
+            config_id=f"ngrok:{other_org.id}:collision2-shared-path",
+        )
+
+        assert Session.objects.filter(graph=graph_other).count() == 1
+        assert Session.objects.filter(graph=graph_default).count() == 0

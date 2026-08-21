@@ -3,6 +3,7 @@ import time
 import secrets
 
 import requests
+from django.contrib.auth.hashers import make_password
 from loguru import logger
 from requests.exceptions import ConnectionError, Timeout
 
@@ -65,7 +66,15 @@ class TelegramTriggerService(metaclass=SingletonMeta):
 
         return data
 
-    def register_telegram_trigger(self, telegram_trigger_instance: TelegramTriggerNode):
+    def register_telegram_trigger(
+        self, telegram_trigger_instance: TelegramTriggerNode, force: bool = False
+    ) -> dict | None:
+        """Register (or resync) this node's Telegram webhook.
+
+        `force=False` skips the outbound `setWebhook` call when
+        a valid registration already exists for the
+        SAME `webhook_trigger` (path/tunnel).
+        """
         if telegram_trigger_instance.telegram_bot_api_key_secret_id is None:
             logger.warning(
                 f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: no bot API key secret set."
@@ -109,25 +118,39 @@ class TelegramTriggerService(metaclass=SingletonMeta):
 
         telegram_webhook_url = f"{webhook_tunnel_url}/webhooks/{webhook_trigger.path}/"
 
-        raw_secret_token = secrets.token_urlsafe(32)
-        node_auth, created = WebhookNodeAuth.objects.get_or_create(
-            telegram_trigger_node=telegram_trigger_instance,
-            defaults={
-                "enabled": True,
-                "scheme": WebhookAuthScheme.STATIC_HEADER,
-                "header_name": TELEGRAM_WEBHOOK_HEADER,
-            },
+        node_auth: WebhookNodeAuth | None = getattr(
+            telegram_trigger_instance, "webhook_node_auth", None
         )
+        already_registered = (
+            not force
+            and node_auth is not None
+            and node_auth.enabled
+            and bool(node_auth.secret_hash)
+            and node_auth.registered_webhook_trigger_id == webhook_trigger.pk
+        )
+        if already_registered:
+            logger.info(
+                f"[TelegramTrigger] Skipping resync for node {telegram_trigger_instance.pk}: "
+                "already registered for this webhook_trigger, no rotation needed."
+            )
+            return None
 
-        if not created:
+        raw_secret_token = secrets.token_urlsafe(32)
+        created = node_auth is None
+        if created:
+            node_auth = WebhookNodeAuth.objects.create(
+                telegram_trigger_node=telegram_trigger_instance,
+                enabled=True,
+                scheme=WebhookAuthScheme.STATIC_HEADER,
+                header_name=TELEGRAM_WEBHOOK_HEADER,
+            )
+        else:
             node_auth.scheme = WebhookAuthScheme.STATIC_HEADER
             node_auth.header_name = TELEGRAM_WEBHOOK_HEADER
-            node_auth.save()
-
-        node_auth.set_static_token(raw_secret_token)
+            node_auth.save(update_fields=["scheme", "header_name"])
 
         try:
-            return self._call_telegram_api(
+            result = self._call_telegram_api(
                 method="POST",
                 api_key=secret_resolver.resolve(
                     # webhook_trigger is confirmed non-None above (return-early
@@ -144,9 +167,17 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                 },
             )
         except Exception as e:
+            if created:
+                node_auth.delete()
             raise RegisterTelegramTriggerError(
                 f"Failed to register Telegram webhook after retries: {str(e)}"
             )
+
+        node_auth.secret_hash = make_password(raw_secret_token)
+        node_auth.registered_webhook_trigger_id = webhook_trigger.pk
+        node_auth.save(update_fields=["secret_hash", "registered_webhook_trigger_id"])
+
+        return result
 
     def unregister_telegram_trigger(self, telegram_bot_api_key: str):
         try:
