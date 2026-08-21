@@ -58,6 +58,8 @@ export class AppTableComponent {
     selectionChange = output<TableRow[]>();
     filterChange = output<{ key: string; values: unknown[] }>();
     rowClick = output<TableRow>();
+    /** Emitted when a column's headerIcon is clicked, with the clicked element to anchor a popup to */
+    headerIconClick = output<{ key: string; target: HTMLElement }>();
 
     readonly cellTemplates = contentChildren(AppTableCellDirective);
 
@@ -180,6 +182,10 @@ export class AppTableComponent {
         }
 
         this.rowClick.emit(item);
+    }
+
+    onHeaderIconClick(key: string, event: MouseEvent): void {
+        this.headerIconClick.emit({ key, target: event.currentTarget as HTMLElement });
     }
 
     onFilterChange(key: string, values: unknown[]): void {

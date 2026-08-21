@@ -3,7 +3,10 @@ set -e
 
 : "${DISPLAY:=:99}"
 : "${VNC_GEOMETRY:=1600x900}"
-: "${VNC_PASS:=secret}"
+if [ -z "${VNC_PASS:-}" ]; then
+  echo "ERROR: VNC_PASS must be set" >&2
+  exit 1
+fi
 : "${MCP_HOST:=0.0.0.0}"
 : "${MCP_PORT:=8080}"
 
@@ -17,6 +20,8 @@ for i in {1..20}; do
 done
 
 startxfce4 >/dev/null 2>&1 &
+
+x11vnc -storepasswd "${VNC_PASS}" /home/appuser/.vncpass
 
 x11vnc -display "$DISPLAY" \
   -rfbport 5900 \

@@ -26,10 +26,6 @@ export interface ChatAgentVM {
 // Payload for POST /init-realtime/. The backend requires exactly one of the two ids.
 export type InitRealtimePayload = { agent_id: number } | { agent_definition_id: number };
 
-export function chatAgentId(a: ChatAgent): number {
-    return a.agent.id;
-}
-
 export function chatAgentTitle(a: ChatAgent): string {
     return a.kind === 'staff' ? a.agent.role : a.agent.name;
 }

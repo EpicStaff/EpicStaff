@@ -6,6 +6,7 @@ import { switchMap } from 'rxjs/operators';
 
 import { ProfileService } from '../../services/auth/profile.service';
 import { ToastService } from '../../services/notifications';
+import { SKIP_FORBIDDEN_RELOAD } from './skip-forbidden-reload.context';
 
 let refresh$: Observable<unknown> | null = null;
 
@@ -16,7 +17,7 @@ export const forbiddenInterceptor: HttpInterceptorFn = (req, next) => {
 
     return next(req).pipe(
         catchError((err: HttpErrorResponse) => {
-            if (err.status !== 403) {
+            if (err.status !== 403 || req.context.get(SKIP_FORBIDDEN_RELOAD)) {
                 return throwError(() => err);
             }
             toast.error(err.error.message);

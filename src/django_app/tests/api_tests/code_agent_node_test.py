@@ -2,22 +2,27 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
-from tables.models import Graph, LLMConfig, LLMModel, Provider
+from tables.models import Graph, LLMConfig, LLMModel, Provider, Secret
 from tables.models.graph_models import CodeAgentNode
+from tables.services.secrets import secret_encryption
 from tests.fixtures import *
 
 
 @pytest.fixture
-def llm_config_for_code_agent(db):
+def llm_config_for_code_agent(db, default_org):
     provider = Provider.objects.create(name="openai")
     model = LLMModel.objects.create(
         name="gpt-4o",
         llm_provider=provider,
     )
+    secret = Secret(org=default_org, name="code-agent-node-test-key")
+    secret_encryption.encrypt(text="sk-test-key").write_to(secret)
+    secret.save()
     return LLMConfig.objects.create(
         custom_name="test-code-agent-config",
         model=model,
-        api_key="sk-test-key",
+        api_key_secret=secret,
+        org=default_org,
     )
 
 

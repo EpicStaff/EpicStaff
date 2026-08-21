@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import {
     AgentNode,
@@ -17,7 +17,7 @@ export function mapAgentNodeToModel(an: AgentNode): AgentNodeModel {
             id: task.id,
             // Fresh client-side id for stable row tracking (drag-reorder, table trackBy).
             // Persistence still keys off `id`; `tempId` is never sent for existing tasks.
-            tempId: uuidv4(),
+            tempId: generateUuid(),
             name: task.name,
             instructions: task.instructions,
             output_schema: task.output_schema ?? {},
@@ -26,7 +26,7 @@ export function mapAgentNodeToModel(an: AgentNode): AgentNodeModel {
         }));
 
     return {
-        id: uuidv4(),
+        id: generateUuid(),
         backendId: an.id,
         type: NodeType.AGENT,
         node_name: an.node_name,

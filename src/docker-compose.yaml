@@ -26,7 +26,8 @@ services:
     environment:
       <<: *common_env
       DEBUG: ${DEBUG:-False}
-      SECRET_KEY: ${SECRET_KEY:-unsafe-dev-key}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-WARNING}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — generate one with `openssl rand -base64 48`.}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       DB_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -47,7 +48,8 @@ services:
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
       STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-epicstaff}
-      JWT_SECRET: ${JWT_SECRET:-}
+      STORAGE_LOCAL_ROOT: ${STORAGE_LOCAL_ROOT:-/app/storage}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required — generate one with `openssl rand -base64 48`.}
       JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-15}
       JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-7}
       PASSWORD_RESET_TOKEN_TTL: ${PASSWORD_RESET_TOKEN_TTL:-900}
@@ -270,6 +272,7 @@ services:
       <<: *common_env
       BASE_VENV_PATH: ${BASE_VENV_PATH}
       OUTPUT_PATH: ${OUTPUT_PATH}
+      MASK_SECRET: ${MASK_SECRET:-true}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
@@ -494,7 +497,7 @@ services:
       AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:-2}
       AGENT_DROP_UNSUPPORTED_LLM_PARAMS: ${AGENT_DROP_UNSUPPORTED_LLM_PARAMS:-true}
       AGENT_CONTEXT_WARNING_RATIO: ${AGENT_CONTEXT_WARNING_RATIO:-0.8}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:-INFO}
     depends_on:
       redis:
         condition: service_healthy

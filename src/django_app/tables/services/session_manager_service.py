@@ -46,6 +46,10 @@ from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
 from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.secrets import (
+    UndeclaredSecretError,
+    secret_declaration_validator,
+)
 from tables.services.surface_knowledge_warning_service import (
     SurfaceKnowledgeWarningService,
 )
@@ -207,7 +211,7 @@ class SessionManagerService(metaclass=SingletonMeta):
         token_budget: int | None = None,
     ) -> int:
         variables = self._get_actual_variables(variables)
-        logger.info(f"'run_session' got variables: {variables=}")
+        logger.info("'run_session' got variables: {}", variables)
 
         graph = Graph.objects.get(pk=graph_id)
         run_vars = self.persistent_variables_service.build_run_variables(
@@ -227,6 +231,13 @@ class SessionManagerService(metaclass=SingletonMeta):
             token_budget=token_budget,
         )
         try:
+            violations = secret_declaration_validator.violations(graph_id=graph_id)
+            if violations:
+                raise UndeclaredSecretError(
+                    "Session aborted: "
+                    + " ".join(violation.describe() for violation in violations)
+                )
+
             session_data: SessionData = self.create_session_data(
                 session=session, token_budget=token_budget
             )
@@ -235,6 +246,7 @@ class SessionManagerService(metaclass=SingletonMeta):
             session.graph_schema = session_data.graph.model_dump(mode="json")
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
+                org_id=graph.org_id,
             )
             required_listeners = 2
             if received_n != required_listeners:
@@ -244,7 +256,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                     "reason": f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required."
                 }
             logger.info(
-                f"Session data published in Redis for session ID: {session.pk}."
+                "Session data published in Redis for session ID: {}.", session.pk
             )
 
         except Exception as e:

@@ -33,18 +33,3 @@ export function inlineSurfaceToSurface(inline: InlineSurface): Surface {
         updated_at: inline.updated_at ?? '',
     };
 }
-
-/**
- * Strips the catalog-only fields (`id`, `name`, `organization`, `owner_agent`,
- * `description`) off a `Surface`, narrowing it back down to the node-local
- * `InlineSurface` shape stored on Task/Agent nodes.
- */
-export function surfaceToInlineSurface(surface: Surface): InlineSurface {
-    return {
-        instructions: surface.instructions,
-        python_tools: surface.python_tools,
-        mcp_tools: surface.mcp_tools,
-        storage_items: surface.storage_items,
-        knowledge: surface.knowledge,
-    };
-}

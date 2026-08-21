@@ -24,9 +24,9 @@ import {
     SelectDropdownTriggerDirective,
     SelectItem,
 } from '@shared/components';
+import { generateUuid } from '@shared/utils';
 import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
-import { v4 as uuidv4 } from 'uuid';
 
 import {
     AgentDefinition,
@@ -481,7 +481,7 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
 
     addTask(): void {
         const newTask: AgentNodeTaskUi = {
-            tempId: uuidv4(),
+            tempId: generateUuid(),
             name: '',
             instructions: '',
             output_schema: {},
