@@ -11,7 +11,7 @@ import {
 import { notNumericOnlyValidator } from '@shared/form-validators';
 import { map } from 'rxjs';
 
-import { NormalizedUser } from '../../../../strategies/users/user-fetch.strategy';
+import { AggregatedUser } from '../../../../models/aggregated-user.model';
 
 @Component({
     selector: 'app-step-user-details',
@@ -32,10 +32,9 @@ export class StepUserDetailsComponent {
 
     canToggleSuperadmin = input<boolean>(false);
     editMode = input<boolean>(false);
-    userData = input<NormalizedUser | null>(null);
+    userData = input<AggregatedUser | null>(null);
 
     form = this.fb.group({
-        // full_name: ['', [Validators.required]],
         email: ['', [Validators.required, Validators.email]],
         password: new FormControl('', {
             nonNullable: true,
@@ -59,7 +58,6 @@ export class StepUserDetailsComponent {
             const user = this.userData();
             if (this.editMode() && user) {
                 this.form.patchValue({
-                    // full_name: user.displayName,
                     email: user.email,
                     superadmin: user.isSuperadmin,
                 });
@@ -72,7 +70,6 @@ export class StepUserDetailsComponent {
 
     trimEmail(): void {
         const control = this.form.get('email');
-
         if (control?.value) {
             control.setValue(control.value.trim());
         }

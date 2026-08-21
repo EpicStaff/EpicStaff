@@ -16,18 +16,27 @@ import {
     TableRow,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { CreateOrganizationRequest, GetOrganizationResponse, GetRoleResponse, UserRole } from '@shared/models';
-import { catchError, EMPTY, finalize, forkJoin, Observable, of, switchMap } from 'rxjs';
+import {
+    ActionCode,
+    CreateOrganizationRequest,
+    FullMembership,
+    GetOrganizationResponse,
+    GetRoleResponse,
+    ResourceCode,
+    UserRole,
+} from '@shared/models';
+import { catchError, concat, EMPTY, finalize, map, Observable, of, switchMap, toArray } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
+import { AggregatedUser } from '../../models/aggregated-user.model';
 import { AdminUserService } from '../../services/admin/admin-user.service';
+import { MembershipsService } from '../../services/admin/memberships.service';
 import { OrganizationsStorageService } from '../../services/admin/organizations-storage.service';
 import { RolesService } from '../../services/admin/roles.service';
-import { UserService } from '../../services/users/user.service';
-import { NormalizedUser } from '../../strategies/users/user-fetch.strategy';
-import { createUserFetchStrategy } from '../../strategies/users/user-fetch-strategy.factory';
+import { adminUsersToAggregated, aggregateMembershipsByUser } from '../../utils/aggregate-users.util';
+import { rbacErrorMessage } from '../../utils/rbac-error-messages.util';
 import { UserAvatarComponent } from '../user-avatar/user-avatar.component';
 
 @Component({
@@ -53,15 +62,20 @@ export class CreateOrganizationDialogComponent implements OnInit {
     private toast = inject(ToastService);
     private dialogRef = inject(DialogRef);
     private organizationStorage = inject(OrganizationsStorageService);
-    private userService = inject(UserService);
     private adminUserService = inject(AdminUserService);
-    private currentUserService = inject(ProfileService);
+    private memberships = inject(MembershipsService);
+    private profileService = inject(ProfileService);
     private permissionsService = inject(PermissionsService);
     private rolesService = inject(RolesService);
     private dialogData = inject<GetOrganizationResponse>(DIALOG_DATA, { optional: true });
 
     readonly isEditMode = !!this.dialogData;
     private readonly organizationId = this.dialogData?.id ?? null;
+
+    /** Gate for the member-management table.
+     *  - Create-mode: superadmin only (creation itself is superadmin-gated).
+     *  - Edit-mode: any caller with `users:read` in this org.*/
+    readonly canManageMembers = this.computeCanManageMembers();
 
     orgNameControl = new FormControl(this.dialogData?.name ?? '', [
         Validators.required,
@@ -75,11 +89,11 @@ export class CreateOrganizationDialogComponent implements OnInit {
     isSubmitting = signal(false);
     selectedUsers = signal<TableRow[]>([]);
     selectedUserIds = computed(() => new Set(this.selectedUsers().map((r) => r['id'] as number)));
-    initialSelectedUserIds = signal<number[]>([]);
     selectionIds = signal<number[]>([]);
 
-    /** Roles available for assignment in this org: built-ins in create-mode;
-     *  built-ins + this org's custom roles in edit-mode. */
+    /** Snapshot of membership.id per userId already in this org (edit-mode only). Drives DELETE on unselect. */
+    private existingMembershipIdByUserId = new Map<number, number>();
+
     readonly roleItems = signal<SelectItem[]>([]);
 
     readonly columns: AppTableColumnDef[] = [
@@ -98,27 +112,29 @@ export class CreateOrganizationDialogComponent implements OnInit {
     });
 
     ngOnInit(): void {
-        this.loadUsers();
-        this.loadRoleItems();
-    }
+        if (this.isEditMode) {
+            const canRename = this.permissionsService.canIn(
+                this.organizationId!,
+                ResourceCode.Organizations,
+                ActionCode.Update
+            );
+            if (!canRename) {
+                this.toast.error('You do not have permission to rename this organization.');
+                this.dialogRef.close();
+                return;
+            }
+        } else if (!this.permissionsService.isSuperadmin) {
+            this.toast.error('Only superadmins can create organizations.');
+            this.dialogRef.close();
+            return;
+        }
 
-    private loadRoleItems(): void {
-        // Edit-mode: filter by the target org so we get its custom roles alongside built-ins.
-        // Create-mode: the org doesn't exist yet, so use only the (org-agnostic) built-ins from an unfiltered call.
-        const params = this.isEditMode && this.organizationId ? { orgIds: [this.organizationId] } : {};
-        this.rolesService
-            .loadRoles(params)
-            .pipe(
-                catchError(() => EMPTY),
-                takeUntilDestroyed(this.destroyRef)
-            )
-            .subscribe((res) => {
-                const items: SelectItem[] = [
-                    ...res.built_in_roles.map(roleToSelectItem),
-                    ...(this.isEditMode ? res.results.map(roleToSelectItem) : []),
-                ];
-                this.roleItems.set(items);
-            });
+        if (this.canManageMembers) {
+            this.loadUsers();
+            this.loadRoleItems();
+        } else {
+            this.isUsersLoading.set(false);
+        }
     }
 
     onSelection(items: TableRow[]): void {
@@ -146,49 +162,16 @@ export class CreateOrganizationDialogComponent implements OnInit {
 
         this.isSubmitting.set(true);
 
-        const request: CreateOrganizationRequest = {
-            name: this.orgNameControl.value!,
-        };
-
-        const orgAction$ = this.isEditMode
+        const request: CreateOrganizationRequest = { name: this.orgNameControl.value! };
+        const orgAction$: Observable<GetOrganizationResponse> = this.isEditMode
             ? this.organizationStorage.updateOrganization(this.organizationId!, request)
             : this.organizationStorage.createOrganization(request);
 
         orgAction$
             .pipe(
-                switchMap((org) => {
-                    const assignments = this.getSelectedAssignments();
-                    const removedUserIds = this.getRemovedUserIds();
-
-                    const ops: Observable<unknown>[] = [];
-
-                    if (assignments.length) {
-                        ops.push(
-                            this.userService.assignUsersToOrg(org.id, { assignments }).pipe(
-                                catchError((err: HttpErrorResponse) => {
-                                    this.toast.error(err.error?.message ?? 'Failed to assign users');
-                                    return of(null);
-                                })
-                            )
-                        );
-                    }
-
-                    for (const userId of removedUserIds) {
-                        ops.push(
-                            this.userService.removeUserFromOrg(org.id, userId).pipe(
-                                catchError((err: HttpErrorResponse) => {
-                                    this.toast.error(err.error?.message ?? 'Failed to remove user');
-                                    return of(null);
-                                })
-                            )
-                        );
-                    }
-
-                    if (!ops.length) return of(org);
-                    return forkJoin(ops);
-                }),
-                // Update current user memberships
-                switchMap(() => this.currentUserService.getCurrentUser()),
+                switchMap((org) => this.syncMemberships(org).pipe(switchMap(() => of(org)))),
+                // Refresh current user's memberships so the org switcher and permissions reflect the change.
+                switchMap(() => this.profileService.getCurrentUser()),
                 takeUntilDestroyed(this.destroyRef),
                 finalize(() => this.isSubmitting.set(false))
             )
@@ -199,66 +182,139 @@ export class CreateOrganizationDialogComponent implements OnInit {
                     );
                     this.dialogRef.close(true);
                 },
-                error: (err: HttpErrorResponse) => {
-                    this.toast.error(err.error?.message ?? 'Operation failed');
-                },
+                error: (err: HttpErrorResponse) => this.toast.error(rbacErrorMessage(err, 'Operation failed.')),
             });
     }
 
+    /** Applies (add/remove) memberships against `org` sequentially. Per-op errors are surfaced as toasts but
+     *  don't abort the batch — the org itself has already been persisted at this point. */
+    private syncMemberships(org: GetOrganizationResponse): Observable<unknown> {
+        if (!this.canManageMembers) return of(null);
+
+        const assignments = this.getSelectedAssignments();
+        const removedMembershipIds = this.getRemovedMembershipIds();
+
+        const ops: Observable<unknown>[] = [];
+
+        for (const a of assignments) {
+            ops.push(
+                this.memberships
+                    .create({ org_id: org.id, user_id: a.user_id, role_id: a.role_id })
+                    .pipe(catchError((err) => this.toastAndContinue(err, 'Failed to add member.')))
+            );
+        }
+
+        for (const membershipId of removedMembershipIds) {
+            ops.push(
+                this.memberships
+                    .remove(membershipId)
+                    .pipe(catchError((err) => this.toastAndContinue(err, 'Failed to remove member.')))
+            );
+        }
+
+        if (!ops.length) return of(null);
+        return concat(...ops).pipe(toArray());
+    }
+
+    private toastAndContinue(err: HttpErrorResponse, fallback: string): Observable<null> {
+        this.toast.error(rbacErrorMessage(err, fallback));
+        return of(null);
+    }
+
+    private loadRoleItems(): void {
+        // Edit-mode: filter by the target org so we get its custom roles alongside built-ins.
+        // Create-mode: the org doesn't exist yet — built-ins only.
+        const params = this.isEditMode && this.organizationId ? { orgIds: [this.organizationId] } : {};
+        this.rolesService
+            .loadRoles(params)
+            .pipe(
+                catchError(() => EMPTY),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((res) => {
+                const assignableBuiltIns = res.built_in_roles.filter((r) => r.id !== UserRole.SUPER_ADMIN);
+                const items: SelectItem[] = [
+                    ...assignableBuiltIns.map(roleToSelectItem),
+                    ...(this.isEditMode ? res.results.map(roleToSelectItem) : []),
+                ];
+                this.roleItems.set(items);
+            });
+    }
+
+    private computeCanManageMembers(): boolean {
+        if (this.permissionsService.isSuperadmin) return true;
+        if (!this.isEditMode || this.organizationId === null) return false;
+        return this.permissionsService.canIn(this.organizationId, ResourceCode.Users, ActionCode.Read);
+    }
+
+    /** Superadmin → `/api/admin/users/` (full account list).
+     *  Delegated admin → `/api/admin/memberships/` aggregated by user (users visible via any admin org). */
     private loadUsers(): void {
-        const strategy = createUserFetchStrategy(
-            this.currentUserService,
-            this.adminUserService,
-            this.userService,
-            this.permissionsService
-        );
+        const source$ = this.permissionsService.isSuperadmin ? this.loadFromAdminUsers() : this.loadFromMemberships();
 
-        strategy
-            .fetchUsers()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: (users) => {
-                    const currentUserId = this.currentUserService.currentUserSignal()?.id;
-                    const filtered = users.filter((u) => u.id !== currentUserId);
-                    this.usersTableData.set(filtered.map((u) => this.mapToRow(u)));
+        source$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+            next: (users) => {
+                const currentUserId = this.profileService.currentUserSignal()?.id;
+                const filtered = users.filter((u) => u.id !== currentUserId);
+                this.usersTableData.set(filtered.map((u) => this.mapToRow(u)));
 
-                    if (this.isEditMode) {
-                        const preselected = filtered
-                            .filter((u) => u.memberships.some((m) => m.organization.id === this.organizationId))
-                            .map((u) => u.id);
-                        this.initialSelectedUserIds.set(preselected);
-                        this.selectionIds.set(preselected);
+                if (this.isEditMode && this.organizationId !== null) {
+                    this.existingMembershipIdByUserId.clear();
+                    const preselected: number[] = [];
+                    for (const u of filtered) {
+                        const m = this.membershipInThisOrg(u);
+                        if (m) {
+                            this.existingMembershipIdByUserId.set(u.id, m.id);
+                            preselected.push(u.id);
+                        }
                     }
+                    this.selectionIds.set(preselected);
+                }
 
-                    this.isUsersLoading.set(false);
-                },
-                error: () => this.isUsersLoading.set(false),
-            });
+                this.isUsersLoading.set(false);
+            },
+            error: () => this.isUsersLoading.set(false),
+        });
     }
 
-    private mapToRow(user: NormalizedUser): TableRow {
-        const membership = this.isEditMode
-            ? user.memberships.find((m) => m.organization.id === this.organizationId)
-            : undefined;
+    private loadFromAdminUsers(): Observable<AggregatedUser[]> {
+        return this.adminUserService.getUsers().pipe(map((page) => adminUsersToAggregated(page.results)));
+    }
 
+    private loadFromMemberships(): Observable<AggregatedUser[]> {
+        return this.memberships.list({ page_size: 1000 }).pipe(map((page) => aggregateMembershipsByUser(page.results)));
+    }
+
+    /** The user's membership in the org being edited, or undefined. Null org id → not in edit-mode. */
+    private membershipInThisOrg(user: AggregatedUser): FullMembership | undefined {
+        if (this.organizationId === null) return;
+        return user.memberships.find((m) => m.organization.id === this.organizationId);
+    }
+
+    private mapToRow(user: AggregatedUser): TableRow {
         return {
             id: user.id,
             name: user.displayName,
             avatar: user.avatarUrl,
             email: user.email,
-            role: membership?.role.id ?? UserRole.MEMBER,
+            role: this.membershipInThisOrg(user)?.role.id ?? UserRole.MEMBER,
         };
     }
 
-    private getRemovedUserIds(): number[] {
+    /** Membership IDs to DELETE — users who were preselected but are no longer in `selectedUsers`. */
+    private getRemovedMembershipIds(): number[] {
         if (!this.isEditMode) return [];
         const currentIds = new Set(this.selectedUsers().map((r) => r['id'] as number));
-        return this.initialSelectedUserIds().filter((id) => !currentIds.has(id));
+        const removed: number[] = [];
+        for (const [userId, membershipId] of this.existingMembershipIdByUserId) {
+            if (!currentIds.has(userId)) removed.push(membershipId);
+        }
+        return removed;
     }
 
     private getSelectedAssignments(): { user_id: number; role_id: number }[] {
         return this.selectedUsers()
-            .filter((row) => row['role'] != null)
+            .filter((row) => row['role'] != null && !this.existingMembershipIdByUserId.has(row['id'] as number))
             .map((row) => ({
                 user_id: row['id'] as number,
                 role_id: row['role'] as number,

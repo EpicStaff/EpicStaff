@@ -41,6 +41,9 @@ export interface CatalogResourceType {
     group: string;
     description: string;
     applicable_actions: ActionCode[];
+    /** Global, superadmin-only actions that are never grantable via a role.
+     *  For `organizations`: `['create','delete']`; empty (`[]`) for everything else. */
+    platform_actions: ActionCode[];
 }
 
 export interface CatalogResponse {

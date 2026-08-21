@@ -60,7 +60,6 @@ export class PermissionsService implements StorageService {
 
     /** Multi-org gate: can the current user do `action` on `resource` in org `orgId`?
      *  Backed by `/me/orgs/` capabilities. Superadmin short-circuits to true. */
-    // TODO can be replaced with 'can'?
     canIn(orgId: number, resource: ResourceCode, action: ActionCode): boolean {
         if (this._isSuperadmin()) return true;
         const caps = this._orgCaps();
@@ -85,6 +84,13 @@ export class PermissionsService implements StorageService {
     hasRolesAccess(action: ActionCode = ActionCode.Read): boolean {
         if (this._isSuperadmin()) return true;
         return this.orgsWith(ResourceCode.Roles, action).length > 0;
+    }
+
+    isPlatformAction(resource: ResourceCode, action: ActionCode): boolean {
+        const catalog = this._catalog();
+        if (!catalog) return false;
+        const resType = catalog.resource_types.find((r) => r.code === resource);
+        return !!resType && (resType.platform_actions ?? []).includes(action);
     }
 
     get isSuperadmin(): boolean {

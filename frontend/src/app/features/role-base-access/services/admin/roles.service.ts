@@ -41,7 +41,6 @@ export class RolesService implements StorageService {
     private readonly _count = signal(0);
     readonly count = this._count.asReadonly();
 
-    /** GET /api/admin/roles/?org_ids=<csv>&page=&page_size= */
     loadRoles(params: LoadRolesParams = {}): Observable<RolesListResponse> {
         let httpParams = new HttpParams();
         if (params.orgIds?.length) {

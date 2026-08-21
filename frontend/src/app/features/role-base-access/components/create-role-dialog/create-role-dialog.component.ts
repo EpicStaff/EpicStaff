@@ -105,7 +105,6 @@ export class CreateRoleDialogComponent implements OnInit {
     });
 
     ngOnInit(): void {
-        // Ensure catalog is loaded (idempotent).
         this.permissionsService.loadCatalog().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
 
         if (!this.isEditMode) {
@@ -129,6 +128,7 @@ export class CreateRoleDialogComponent implements OnInit {
 
         const creatable = this.permissionsService.orgsWith(ResourceCode.Roles, ActionCode.Create);
         this.orgOptions.set(creatable.map((o) => ({ name: o.name, value: o.id })));
+        // Auto-selects the single available org when there's only one candidate and nothing was preselected.
         if (this.targetOrgId() === null && creatable.length === 1) {
             this.targetOrgId.set(creatable[0].id);
         }
@@ -250,7 +250,7 @@ export class CreateRoleDialogComponent implements OnInit {
     private handleError(err: HttpErrorResponse): void {
         const code: string | undefined = err.error?.code;
         if (code === 'role_name_conflict') {
-            this.form.controls.name.setErrors({ conflict: true });
+            this.toast.error('A role with this name already exists in the organization.');
             return;
         }
         if (code === 'permission_escalation_denied') {

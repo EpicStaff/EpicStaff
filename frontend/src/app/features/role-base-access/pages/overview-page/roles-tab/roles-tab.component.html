@@ -6,7 +6,7 @@
     />
     <span class="count-label"> {{ filteredRows().length }} of {{ rows().length }} roles </span>
     <div class="toolbar-actions">
-        @if (canCreateAnywhere()) {
+        @if (canCreateOrCopyAnywhere()) {
             <app-button
                 type="primary"
                 leftIcon="plus"

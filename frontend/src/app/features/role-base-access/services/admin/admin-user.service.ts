@@ -1,8 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { AdminCreateUserRequest, AdminCreateUserResponse, AdminGetUsersResponse } from '@shared/models';
+import { AdminCreateUserRequest, AdminCreateUserResponse } from '@shared/models';
 import { Observable } from 'rxjs';
 
+import { ApiGetRequest } from '../../../../core/models/api-request.model';
 import { ConfigService } from '../../../../services/config';
 
 @Injectable({
@@ -26,8 +27,8 @@ export class AdminUserService {
         });
     }
 
-    getUsers(): Observable<AdminGetUsersResponse> {
-        return this.http.get<AdminGetUsersResponse>(this.apiUrl);
+    getUsers(): Observable<ApiGetRequest<AdminCreateUserResponse>> {
+        return this.http.get<ApiGetRequest<AdminCreateUserResponse>>(this.apiUrl);
     }
 
     grantSuperadmin(userId: number): Observable<void> {
@@ -48,5 +49,17 @@ export class AdminUserService {
                 headers: this.httpHeaders,
             }
         );
+    }
+
+    deactivateUser(userId: number): Observable<void> {
+        return this.http.post<void>(`${this.apiUrl}${userId}/deactivate/`, {}, { headers: this.httpHeaders });
+    }
+
+    reactivateUser(userId: number): Observable<void> {
+        return this.http.post<void>(`${this.apiUrl}${userId}/reactivate/`, {}, { headers: this.httpHeaders });
+    }
+
+    resetPassword(userId: number): Observable<void> {
+        return this.http.post<void>(`${this.apiUrl}${userId}/reset-password/`, {}, { headers: this.httpHeaders });
     }
 }

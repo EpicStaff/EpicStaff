@@ -18,10 +18,3 @@ export interface AdminCreateUserResponse {
     created_at: string;
     updated_at: string;
 }
-
-export interface AdminGetUsersResponse {
-    count: number;
-    next: string;
-    previous: string;
-    results: AdminCreateUserResponse[];
-}

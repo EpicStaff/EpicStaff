@@ -33,7 +33,9 @@ interface NavItem {
     icon?: string;
     label: string;
     showTooltip: boolean;
-    isPermitted: boolean;
+    /** Function (not boolean) so signal reads inside happen at template-eval time.
+     *  Ensures the sidebar refreshes when active-org permissions reload after an org switch. */
+    isPermitted: () => boolean;
     action?: () => void;
     customClass?: string;
 }
@@ -158,7 +160,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'projects',
                 icon: 'project',
                 label: 'Projects',
-                isPermitted: this.permissionService.can(ResourceCode.Projects, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Projects, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -166,7 +168,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'staff',
                 icon: 'agent',
                 label: 'Staff',
-                isPermitted: this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -174,7 +176,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'tools',
                 icon: 'tools',
                 label: 'Tools',
-                isPermitted: this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Tools, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -182,7 +184,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'flows',
                 icon: 'flows',
                 label: 'Flows',
-                isPermitted: this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
+                isPermitted: () => this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
                 showTooltip: false,
             },
             {
@@ -190,7 +192,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 routeLink: 'files',
                 icon: 'sources',
                 label: 'Files',
-                isPermitted:
+                isPermitted: () =>
                     this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read) ||
                     this.permissionService.can(ResourceCode.Files, ActionCode.Read),
                 showTooltip: false,
@@ -199,7 +201,7 @@ export class LeftSidebarComponent implements AfterViewInit {
                 id: 'chats',
                 routeLink: 'chats',
                 icon: 'chats',
-                isPermitted: true,
+                isPermitted: () => true,
                 label: 'Chats',
                 showTooltip: false,
             },
@@ -210,7 +212,7 @@ export class LeftSidebarComponent implements AfterViewInit {
             id: 'settings',
             icon: 'settings',
             label: 'Settings',
-            isPermitted: this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
+            isPermitted: () => this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
             showTooltip: false,
             action: () => this.onSettingsClick(),
             customClass: 'settings-tooltip',

@@ -54,12 +54,10 @@ export class RolesTabComponent implements OnInit {
     /** All orgs whose custom roles the current user can list. Populated once on init. */
     readonly readableOrgs = signal<{ id: number; name: string }[]>([]);
 
-    readonly canCreateAnywhere = computed(() => {
+    readonly canCreateOrCopyAnywhere = computed(() => {
         if (this.permissionsService.isSuperadmin) return true;
         return this.permissionsService.orgsWith(ResourceCode.Roles, ActionCode.Create).length > 0;
     });
-
-    readonly canCopyAnywhere = this.canCreateAnywhere;
 
     readonly orgFilterItems = computed<SelectItem[]>(() =>
         this.readableOrgs().map((o) => ({ name: o.name, value: o.id }))
@@ -74,7 +72,7 @@ export class RolesTabComponent implements OnInit {
         {
             icon: 'copy',
             tooltip: 'Copy to another org',
-            hidden: (row) => !!row['isBuiltIn'] || !this.canCopyAnywhere(),
+            hidden: (row) => !!row['isBuiltIn'] || !this.canCreateOrCopyAnywhere(),
             onClick: (row) => this.onCopyRole(row),
         },
         {

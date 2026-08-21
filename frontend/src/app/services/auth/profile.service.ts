@@ -123,12 +123,6 @@ export class ProfileService {
         }).pipe(map(() => undefined));
     }
 
-    /** Refetch cross-org capabilities. Call after any role/membership write that could
-     *  have changed what the current user can do. */
-    refreshOrgPermissions(): Observable<void> {
-        return this.permissionsService.loadOrgPermissions().pipe(map(() => undefined));
-    }
-
     clearCurrentUser(): void {
         this.currentUser.set(null);
     }

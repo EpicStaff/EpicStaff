@@ -93,7 +93,9 @@ export class StepAssignToOrgComponent implements OnInit {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe((res) => {
-                this.builtInRoleItems.set(res.built_in_roles.map(roleToSelectItem));
+                // Superadmin is a platform-level grant, not an assignable membership role
+                const assignableBuiltIns = res.built_in_roles.filter((r) => r.id !== UserRole.SUPER_ADMIN);
+                this.builtInRoleItems.set(assignableBuiltIns.map(roleToSelectItem));
                 const grouped = new Map<number, SelectItem[]>();
                 for (const role of res.results) {
                     if (role.org_id === null) continue;
