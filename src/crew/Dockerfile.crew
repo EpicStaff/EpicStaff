@@ -50,8 +50,14 @@ RUN apt-get update && apt-get install -y libpq-dev \
 
 RUN pip install --upgrade pip poetry
 
-# Copy built app from builder
-COPY --from=builder /app /app
+# Create non-root user for runtime (mirrors agent/Dockerfile.agent).
+RUN groupadd --system --gid 1000 app \
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
+# Copy built app from builder, assigning ownership during the copy. A separate
+# `chown -R` would rewrite every file into a second layer — ~2 GB of duplication
+# for this image.
+COPY --from=builder --chown=app:app /app /app
 
 # Add virtualenv to PATH.
 # MEM0_TELEMETRY=False: hard default so mem0's posthog telemetry (upstream
@@ -66,9 +72,15 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/app/src/.venv \
     MEM0_TELEMETRY=False \
-    LITELLM_LOCAL_MODEL_COST_MAP=True
+    LITELLM_LOCAL_MODEL_COST_MAP=True \
+    HOME=/home/app
 
 WORKDIR /app/src/crew
+
+# This service mounts no volumes (the docker socket dependency was removed in
+# EST-3819), so it can drop to a non-root user outright rather than going
+# through docker/entrypoint-nonroot.sh.
+USER app
 
 # Run entrypoint (code is in /src)
 CMD ["poetry", "run", "python3", "/app/src/crew/main.py"]

@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile.fe
     ports:
-      - "4200:80"
+      - "4200:8080"
     networks:
       - frontend-network
     volumes:

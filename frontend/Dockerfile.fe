@@ -31,9 +31,19 @@ COPY 50x.html /usr/share/nginx/html/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
-EXPOSE 80
+# Run as the unprivileged `nginx` user (uid 101, already present in the base
+# image). entrypoint.sh generates config.json into the html dir at startup, and
+# nginx itself needs its cache dir and /run for the pid file, so all three must
+# belong to that user. Note the dev `development` stage above is deliberately
+# left as-is: it bind-mounts host sources and installs into a node_modules
+# volume, which non-root ownership would break.
+RUN chmod +x /entrypoint.sh \
+ && chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /run
+
+EXPOSE 8080
+
+USER nginx
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
