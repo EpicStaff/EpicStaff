@@ -154,27 +154,11 @@ export class LeftSidebarComponent implements AfterViewInit {
         this.accessToken = this.authService.getAccessToken() ?? '';
         this.topNavItems = [
             {
-                id: 'projects',
-                routeLink: 'projects',
-                icon: 'project',
-                label: 'Projects',
-                isPermitted: this.permissionService.can(ResourceCode.Projects, ActionCode.Read),
-                showTooltip: false,
-            },
-            {
-                id: 'staff',
-                routeLink: 'staff',
-                icon: 'agent',
-                label: 'Staff',
-                isPermitted: this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
-                showTooltip: false,
-            },
-            {
                 id: 'agents',
                 routeLink: 'agents',
                 icon: 'agents',
                 label: 'Agents',
-                isPermitted: true,
+                isPermitted: this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
                 showTooltip: false,
             },
             {

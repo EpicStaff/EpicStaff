@@ -30,11 +30,11 @@ export class ChatsContentComponent {
     }
 
     public get emptyCtaLink(): string {
-        return this.isAgentsTab ? '/agents' : '/staff';
+        return '/agents';
     }
 
     public get emptyCtaLabel(): string {
-        return this.isAgentsTab ? 'Go to Agents' : 'Go to Staff';
+        return 'Go to Agents';
     }
 
     ngOnDestroy() {}

@@ -78,56 +78,28 @@ export const routes: Routes = [
                         children: [],
                     },
                     {
-                        path: 'projects',
-                        loadComponent: () =>
-                            import('./features/projects/pages/projects-list-page/projects-list-page.component').then(
-                                (m) => m.ProjectsListPageComponent
-                            ),
-                        canActivate: [permissionGuard],
-                        data: { permission: [ResourceCode.Projects, ActionCode.Read] },
-                        children: [
-                            { path: '', redirectTo: 'my', pathMatch: 'full' },
-                            {
-                                path: 'my',
-                                loadComponent: () =>
-                                    import('./features/projects/pages/projects-list-page/components/my-projects/my-projects.component').then(
-                                        (m) => m.MyProjectsComponent
-                                    ),
-                            },
-                            {
-                                path: 'templates',
-                                loadComponent: () =>
-                                    import('./features/projects/pages/projects-list-page/components/templates/project-templates.component').then(
-                                        (m) => m.ProjectTemplatesComponent
-                                    ),
-                            },
-                        ],
-                    },
-                    {
-                        path: 'projects/:projectId',
-                        loadComponent: () =>
-                            import('./open-project-page/open-project-page.component').then(
-                                (m) => m.OpenProjectPageComponent
-                            ),
-                        canActivate: [permissionGuard],
-                        data: { permission: [ResourceCode.Projects, ActionCode.Read] },
-                        canDeactivate: [UnsavedChangesGuard],
-                    },
-                    {
-                        path: 'staff',
-                        loadComponent: () =>
-                            import('./pages/staff-page/staff-page.component').then((m) => m.StaffPageComponent),
-                        canDeactivate: [UnsavedChangesGuard],
-                        canActivate: [permissionGuard],
-                        data: { permission: [ResourceCode.Agents, ActionCode.Read] },
-                    },
-                    {
                         path: 'agents',
                         loadComponent: () =>
                             import('./features/agent-definitions/pages/agent-definitions-page/agent-definitions-page.component').then(
                                 (m) => m.AgentDefinitionsPageComponent
                             ),
                         canDeactivate: [UnsavedChangesGuard],
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Agents, ActionCode.Read] },
+                    },
+                    // Legacy CrewAI routes. `**` only acts as a wildcard when it is the
+                    // whole path, so it has to live in children — `path: 'projects/**'`
+                    // would match the literal URL /projects/** and nothing else. Nesting
+                    // it here also swallows any depth (/projects/12/edit) instead of
+                    // carrying the leftover segments over to /agents.
+                    {
+                        path: 'projects',
+                        children: [{ path: '**', redirectTo: '/agents' }],
+                    },
+                    {
+                        path: 'staff',
+                        redirectTo: '/agents',
+                        pathMatch: 'full',
                     },
                     {
                         path: 'tools',
