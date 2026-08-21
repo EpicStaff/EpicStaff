@@ -31,6 +31,22 @@ class Settings(BaseSettings):
     NGROK_TARGET_HOST: str = "epicstaff-nginx"
     NGROK_TARGET_PORT: int = 80
 
+    # --- CORS ---
+    FRONTEND_BASE_URL: str = "http://localhost:4200"
+    DOMAIN_NAME: str = "localhost"
+    CORS_ALLOWED_ORIGINS: str = ""
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        # Same fallback as django_app/realtime: trust FRONTEND_BASE_URL (dev-server
+        # topology) and http(s)://DOMAIN_NAME (docker-compose/nginx topology) by
+        # default; CORS_ALLOWED_ORIGINS overrides both when explicitly set.
+        domain_name = self.DOMAIN_NAME.strip().strip('"')
+        raw = self.CORS_ALLOWED_ORIGINS or ",".join(
+            [self.FRONTEND_BASE_URL, f"http://{domain_name}", f"https://{domain_name}"]
+        )
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
     model_config = SettingsConfigDict(**config_dict)
 
 
