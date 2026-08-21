@@ -38,6 +38,8 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 
+const MIN_INTERVAL_SECONDS = 60;
+
 const panelFadeSlide = trigger('panelFadeSlide', [
     transition(':enter', [
         style({ opacity: 0, transform: 'translateY(-4px)' }),
@@ -123,6 +125,9 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     startRowError = signal<string>('');
     endRowError = signal<string>('');
     timezoneError = signal<string>('');
+    intervalError = signal<string>('');
+
+    minRepeatEvery = computed(() => (this.repeatUnit() === 'seconds' ? MIN_INTERVAL_SECONDS : 1));
 
     showRepeatFields = computed(() => this.runMode() === 'repeat');
     showWeekdays = computed(() => this.runMode() === 'repeat' && this.repeatUnit() === 'weeks');
@@ -215,6 +220,10 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
             }
         }
 
+        const intervalErr = this.computeIntervalError();
+        this.intervalError.set(intervalErr);
+        if (intervalErr) return null;
+
         const hasConfiguredDateTime = !!(
             (this.form.get('start_date')!.value ?? '') &&
             (this.form.get('start_time')!.value ?? '')
@@ -246,6 +255,10 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
                 return null;
             }
         }
+
+        const intervalErr = this.computeIntervalError();
+        this.intervalError.set(intervalErr);
+        if (intervalErr) return null;
 
         const hasConfiguredDateTime = !!(
             (this.form.get('start_date')!.value ?? '') &&
@@ -282,6 +295,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         this.startRowError.set('');
         this.endRowError.set('');
         this.timezoneError.set('');
+        this.intervalError.set('');
         this.startDateTimeDirty.set(false);
         this.endDateTimeDirty.set(false);
         this.scheduleDirty.set(false);
@@ -332,7 +346,19 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
 
         fg.get('repeat_unit')!
             .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((v) => this.repeatUnit.set(v ?? 'hours'));
+            .subscribe((v) => {
+                this.repeatUnit.set(v ?? 'hours');
+                const everyCtrl = fg.get('repeat_every')!;
+                const min = this.minRepeatEvery();
+                if ((everyCtrl.value ?? 0) < min) {
+                    everyCtrl.setValue(min);
+                }
+                this.intervalError.set('');
+            });
+
+        fg.get('repeat_every')!
+            .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.intervalError.set(''));
 
         fg.get('start_date')!
             .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
@@ -454,6 +480,18 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         const min = parseInt(minStr, 10);
         if (isNaN(h) || isNaN(min)) return '';
         return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+    }
+
+    private computeIntervalError(): string {
+        if (!this.showRepeatFields()) return '';
+
+        const every = this.form.get('repeat_every')!.value;
+        const min = this.minRepeatEvery();
+        if (every != null && every >= min) return '';
+
+        return this.repeatUnit() === 'seconds'
+            ? `Interval must be at least ${MIN_INTERVAL_SECONDS} seconds.`
+            : `Interval must be at least ${min}.`;
     }
 
     private computeStartError(dateVal: string | null, timeVal: string | null): string {

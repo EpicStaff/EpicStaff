@@ -105,7 +105,7 @@
                                 <div class="repeat-row">
                                     <app-number-stepper
                                         formControlName="repeat_every"
-                                        [min]="1"
+                                        [min]="minRepeatEvery()"
                                         [max]="999999"
                                         [integer]="true"
                                     />
@@ -115,6 +115,9 @@
                                         placeholder="Unit"
                                     />
                                 </div>
+                                @if (intervalError()) {
+                                    <div class="row-error">{{ intervalError() }}</div>
+                                }
                             </div>
 
                             <!-- Repeat on -->
