@@ -316,7 +316,7 @@ export class TasksTableComponent implements OnChanges {
 
     private createEmptyFullTask(): TableFullTask {
         // Create a temporary ID for new tasks
-        const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
         return {
             id: tempId, // Use temp ID instead of null
@@ -626,7 +626,7 @@ export class TasksTableComponent implements OnChanges {
                 return params.data.id;
             }
 
-            const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
             params.data.id = tempId;
             return tempId;
         },
@@ -1277,7 +1277,7 @@ export class TasksTableComponent implements OnChanges {
 
     private pasteNewTaskAt(insertIndex: number): void {
         // Create a temporary ID for the new task
-        const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
         const newTaskData: FullTask = {
             ...JSON.parse(JSON.stringify(this.copiedRowData)),

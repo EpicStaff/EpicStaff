@@ -419,7 +419,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
 
     constructor() {
         // Generate unique ID for this dropdown instance
-        this.dropdownId = `llm-selector-${Math.random().toString(36).substr(2, 9)}`;
+        this.dropdownId = `llm-selector-${Math.random().toString(36).slice(2, 11)}`;
     }
 
     ngOnInit(): void {

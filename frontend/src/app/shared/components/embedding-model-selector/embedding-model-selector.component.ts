@@ -272,7 +272,7 @@ export class EmbeddingModelSelectorComponent implements OnInit, OnDestroy, OnCha
         private dropdownManager: DropdownManagerService
     ) {
         // Generate unique ID for this dropdown instance
-        this.dropdownId = `embedding-selector-${Math.random().toString(36).substr(2, 9)}`;
+        this.dropdownId = `embedding-selector-${Math.random().toString(36).slice(2, 11)}`;
     }
 
     ngOnInit(): void {

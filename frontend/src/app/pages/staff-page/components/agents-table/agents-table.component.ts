@@ -223,7 +223,7 @@ export class AgentsTableComponent {
     }
 
     private createEmptyFullAgent(): TableFullAgent {
-        const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
         return {
             id: tempId,
@@ -602,7 +602,7 @@ export class AgentsTableComponent {
             const id = params.data?.id;
             if (typeof id === 'string' && id.startsWith('temp_')) return id;
             if (id !== null && id !== undefined) return String(id);
-            return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            return `temp_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         },
         onCellClicked: (event: CellClickedEvent<TableFullAgent, unknown>) => this.onCellClicked(event),
         onCellKeyDown: (event: CellKeyDownEvent) => this.onCellKeyDown(event),
@@ -1157,7 +1157,7 @@ export class AgentsTableComponent {
         if (this.shouldBlockInteraction()) return;
         if (!this.copiedRowData) return;
 
-        const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
         // 1) local clone + new temp id
         const newAgentData: TableFullAgent = {
