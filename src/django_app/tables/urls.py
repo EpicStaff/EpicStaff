@@ -38,7 +38,6 @@ from tables.views.model_view_sets import (
     GraphSessionMessageReadOnlyViewSet,
     MemoryViewSet,
     RealtimeModelViewSet,
-    RealtimeAgentViewSet,
     RealtimeAgentDefinitionViewSet,
     RealtimeAgentChatViewSet,
     GraphOrganizationUserViewSet,
@@ -168,7 +167,6 @@ router.register(
     r"realtime-transcription-model-configs", RealtimeTranscriptionConfigModelViewSet
 )
 router.register(r"realtime-session-items", RealtimeSessionItemViewSet)
-router.register(r"realtime-agents", RealtimeAgentViewSet)
 router.register(r"realtime-agent-definitions", RealtimeAgentDefinitionViewSet)
 router.register(r"realtime-agent-chats", RealtimeAgentChatViewSet)
 router.register(r"decision-table-node", DecisionTableNodeModelViewSet)

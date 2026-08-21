@@ -6,11 +6,11 @@ from unittest.mock import patch
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Agent
+from agents.models import AgentDefinition
 from tables.models.python_models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.models.realtime_models import (
-    RealtimeAgent,
     RealtimeAgentChat,
+    RealtimeAgentDefinition,
     RealtimeSessionItem,
 )
 from tables.models.webhook_models import NgrokWebhookConfig
@@ -107,13 +107,17 @@ def test_voice_settings_allowed_for_superadmin(client_super):
     assert client_super.get("/api/voice-settings/").status_code == 200
 
 
-# ---- RealtimeAgentChat: scoped via rt_agent -> agent -> org ----
+# ---- RealtimeAgentChat: scoped via rt_agent_definition -> agent_definition -> org ----
 
 
 def _chat(org):
-    agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org)
-    rt = RealtimeAgent.objects.create(agent=agent)
-    return RealtimeAgentChat.objects.create(rt_agent=rt, connection_key="k")
+    agent_definition = AgentDefinition.objects.create(organization=org, name="a")
+    rt_definition = RealtimeAgentDefinition.objects.create(
+        agent_definition=agent_definition
+    )
+    return RealtimeAgentChat.objects.create(
+        rt_agent_definition=rt_definition, connection_key="k"
+    )
 
 
 @pytest.mark.django_db

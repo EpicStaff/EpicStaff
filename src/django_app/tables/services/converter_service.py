@@ -16,17 +16,14 @@ from src.shared.models import (
     EmbedderData,
     EndNodeData,
     FileExtractorNodeData,
-    GraphRagSearchConfig,
     LLMConfigData,
     LLMData,
     McpToolData,
-    NaiveRagSearchConfig,
     NgrokConfigData,
     PythonCodeData,
     PythonCodeToolData,
     PythonNodeData,
     PromptConfigData,
-    RagSearchConfig,
     RealtimeAgentChatData,
     ScheduleTriggerNodeData,
     SubGraphNodeData,
@@ -36,7 +33,7 @@ from src.shared.models import (
     variables_to_args_schema,
 )
 
-from tables.models import Agent, PythonCode, PythonCodeTool
+from tables.models import PythonCode, PythonCodeTool
 from tables.models.graph_models import (
     AudioTranscriptionNode,
     Condition,
@@ -72,7 +69,6 @@ from utils.graph_utils import (
     NodeNameResolver,
 )
 from utils.singleton_meta import SingletonMeta
-from tables.services.rag_assignment_service import SearchConfigService
 
 from tables.models.embedding_models import EmbeddingConfig
 
@@ -80,49 +76,6 @@ from tables.models.embedding_models import EmbeddingConfig
 class ConverterService(metaclass=SingletonMeta):
     def __init__(self):
         self.realtime_surface_service = RealtimeSurfaceService(converter_service=self)
-
-    def build_rag_search_config(
-        self, rag_type_id: str | None, all_search_configs: dict | None
-    ) -> RagSearchConfig | None:
-        """
-        Factory method to build appropriate RAG search config based on rag_type.
-
-        Handles nested graph format:
-            {"search_method": "basic", "basic": {...}, "local": {...}}
-        Extracts only the active method's params for the flat pydantic model.
-
-        Returns:
-            NaiveRagSearchConfig | GraphRagSearchConfig | None
-        """
-
-        if not rag_type_id or not all_search_configs:
-            return None
-
-        try:
-            rag_type, _ = rag_type_id.split(":", 1)
-        except ValueError:
-            return None
-
-        rag_specific_config = all_search_configs.get(rag_type)
-        if not rag_specific_config:
-            return None
-
-        rag_config_map = {
-            "naive": lambda config: NaiveRagSearchConfig(rag_type="naive", **config),
-            "graph": lambda config: GraphRagSearchConfig(rag_type="graph", **config),
-        }
-
-        if rag_type == "naive":
-            return NaiveRagSearchConfig(rag_type="naive", **rag_specific_config)
-
-        if rag_type == "graph":
-            search_method = rag_specific_config.get("search_method", "basic")
-            active_params = rag_specific_config.get(search_method) or {}
-            return GraphRagSearchConfig(
-                search_params={"search_method": search_method, **active_params},
-            )
-
-        return None
 
     def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
         return list(
@@ -151,34 +104,6 @@ class ConverterService(metaclass=SingletonMeta):
         return (
             Graph.objects.filter(pk=graph_id).values_list("org_id", flat=True).first()
         )
-
-    def _get_agent_base_tools(
-        self,
-        agent: Agent,
-        graph_id: int | None = None,
-        session_id: int | None = None,
-    ) -> list[BaseToolData]:
-        python_tools = [entry.pythoncodetool for entry in agent.python_code_tools.all()]
-        python_tool_configs = [
-            entry.pythoncodetoolconfig for entry in agent.python_code_tool_configs.all()
-        ]
-        configured_tools = [entry.toolconfig for entry in agent.configured_tools.all()]
-        if configured_tools:
-            logger.warning(
-                "Agent {} has {} configured tool(s) attached, but the "
-                "configured-tool mechanism was removed; skipping them.",
-                agent.pk,
-                len(configured_tools),
-            )
-        mcp_tools = [entry.mcptool for entry in agent.mcp_tools.all()]
-
-        all_tools = python_tools + python_tool_configs + mcp_tools
-        return [
-            self.convert_tool_to_base_tool_pydantic(
-                tool, graph_id=graph_id, session_id=session_id
-            )
-            for tool in all_tools
-        ]
 
     def convert_tool_to_base_tool_pydantic(
         self,
@@ -210,63 +135,6 @@ class ConverterService(metaclass=SingletonMeta):
             raise TypeError(f"Tool type of {type(tool)} is not supported")
 
         return BaseToolData(unique_name=unique_name, data=data)
-
-    def convert_rt_agent_chat_to_pydantic(
-        self, rt_agent_chat: RealtimeAgentChat
-    ) -> RealtimeAgentChatData:
-        agent: Agent = rt_agent_chat.rt_agent.agent.fill_with_defaults(crew_id=None)
-
-        rt_config: RealtimeConfig = rt_agent_chat.realtime_config
-        rt_transcription_config: RealtimeTranscriptionConfig = (
-            rt_agent_chat.realtime_transcription_config
-        )
-
-        knowledge_collection_id = None
-        if agent.knowledge_collection is not None:
-            knowledge_collection_id = agent.knowledge_collection.pk
-
-        # Build RAG search config using factory method
-        rag_type_id = agent.get_rag_type_and_id()
-        rag_embedder_api_key_secret_id = agent.get_rag_embedder_secret_id()
-        all_search_configs = SearchConfigService.get_search_configs(agent)
-        rag_search_config = self.build_rag_search_config(
-            rag_type_id, all_search_configs
-        )
-
-        rt_agent_chat_data = RealtimeAgentChatData(
-            role=agent.role,
-            goal=agent.goal,
-            backstory=agent.backstory,
-            knowledge_collection_id=knowledge_collection_id,
-            rag_type_id=rag_type_id,
-            rag_search_config=rag_search_config,
-            rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
-            llm=self.convert_llm_config_to_pydantic(agent.llm_config),
-            memory=agent.memory,
-            tools=self._get_agent_base_tools(agent=agent),
-            rt_model_name=rt_config.realtime_model.name,
-            rt_api_key_secret_id=rt_config.api_key_secret_id,
-            transcript_model_name=rt_transcription_config.realtime_transcription_model.name
-            if rt_transcription_config
-            else None,
-            transcript_api_key_secret_id=rt_transcription_config.api_key_secret_id
-            if rt_transcription_config
-            else None,
-            temperature=agent.default_temperature,
-            connection_key=rt_agent_chat.connection_key,
-            wake_word=rt_agent_chat.wake_word,
-            stop_prompt=rt_agent_chat.stop_prompt,
-            language=rt_agent_chat.language,
-            voice_recognition_prompt=rt_agent_chat.voice_recognition_prompt,
-            voice=rt_agent_chat.voice,
-            input_audio_format=rt_agent_chat.input_audio_format.value,
-            output_audio_format=rt_agent_chat.output_audio_format.value,
-            rt_provider=rt_config.realtime_model.provider.name
-            if rt_config.realtime_model.provider
-            else "openai",
-        )
-
-        return rt_agent_chat_data
 
     def convert_rt_agent_definition_chat_to_pydantic(
         self, rt_agent_chat: RealtimeAgentChat

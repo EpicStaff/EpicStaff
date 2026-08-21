@@ -13,12 +13,10 @@ from tables.models import (
     CrewNode,
     PythonCode,
     PythonCodeTool,
-    RealtimeAgent,
     AgentPythonCodeTools,
     AgentConfiguredTools,
     ToolConfig,
 )
-from tables.models.realtime_models import RealtimeAgent as RealtimeAgentModel
 from agents.models import (
     AgentDefinition,
     Surface,
@@ -66,13 +64,11 @@ def rich_seeded_db(
     wikipedia_tool,
     llm_config,
     embedding_config,
-    openai_realtime_model_config,
-    realtime_transcription_config,
     default_org,
 ):
     """
-    Tools, agents, LLM/embedding/realtime configs and a graph structure —
-    everything needed for import/export testing.
+    Tools, agents, LLM/embedding configs and a graph structure — everything
+    needed for import/export testing.
     """
     # --- Tools ---
     tool1 = ToolConfig.objects.create(name="tool1", tool=wikipedia_tool)
@@ -105,14 +101,6 @@ def rich_seeded_db(
     )
 
     agents = [agent1, agent2]
-
-    # Realtime agents (required by AgentStrategy.extract_dependencies_from_instance)
-    RealtimeAgent.objects.create(
-        agent=agent1,
-        realtime_config=openai_realtime_model_config,
-        realtime_transcription_config=realtime_transcription_config,
-    )
-    RealtimeAgent.objects.create(agent=agent2)
 
     # Tool assignments
     AgentConfiguredTools.objects.create(agent=agent1, toolconfig=tool1)
@@ -170,8 +158,6 @@ def rich_seeded_db(
         "tasks": [task1, task2],
         "llm_config": llm_config,
         "embedding_config": embedding_config,
-        "realtime_config": openai_realtime_model_config,
-        "realtime_transcription_config": realtime_transcription_config,
         "python_code_tool": custom_tool,
         "python_code": code,
         "tool_config": tool1,

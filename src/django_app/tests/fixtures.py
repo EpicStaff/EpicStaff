@@ -9,7 +9,6 @@ from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
 from tables.models.python_models import PythonCodeToolConfig
-from tables.models.realtime_models import RealtimeAgent
 from tables.models.llm_models import (
     RealtimeConfig,
     RealtimeModel,
@@ -38,7 +37,6 @@ from tables.models import (
     StartNode,
     PythonCodeTool,
     PythonCode,
-    RealtimeAgent,
     Organization,
     Secret,
 )
@@ -395,19 +393,6 @@ def realtime_transcription_config(realtime_transcription_model, default_org):
         ),
         org=default_org,
     )
-
-
-@pytest.fixture
-def wikipedia_agent_with_configured_realtime(
-    wikipedia_agent, openai_realtime_model_config, realtime_transcription_config
-):
-    RealtimeAgent.objects.create(
-        agent=wikipedia_agent,
-        realtime_config=openai_realtime_model_config,
-        realtime_transcription_config=realtime_transcription_config,
-    )
-
-    return wikipedia_agent
 
 
 @pytest.fixture

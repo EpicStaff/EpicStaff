@@ -147,7 +147,6 @@ from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import (
-    RealtimeAgent,
     RealtimeAgentChat,
     RealtimeAgentDefinition,
     RealtimeSessionItem,
@@ -223,7 +222,6 @@ from tables.serializers.model_serializers import (
     PythonNodeSerializer,
     RealtimeAgentChatSerializer,
     RealtimeAgentDefinitionSerializer,
-    RealtimeAgentSerializer,
     RealtimeSessionItemSerializer,
     SecretSerializer,
     StartNodeSerializer,
@@ -1313,14 +1311,6 @@ class RealtimeSessionItemViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = RealtimeSessionItemSerializer
 
 
-class RealtimeAgentViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.AGENTS
-    org_filter_path = "agent__org_id"
-    queryset = RealtimeAgent.objects.all()
-    serializer_class = RealtimeAgentSerializer
-
-
 class RealtimeAgentDefinitionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
@@ -1333,17 +1323,18 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     """
     ViewSet for reading and deleting RealtimeAgentChat instances.
 
-    Scoped through the chat's realtime agent to its agent's org. Chats whose
-    rt_agent is NULL (orphaned) are not visible — acceptable for chat history.
+    Scoped through the chat's realtime agent definition to its agent
+    definition's org. Chats whose rt_agent_definition is NULL (orphaned) are
+    not visible — acceptable for chat history.
     """
 
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
-    org_filter_path = "rt_agent__agent__org_id"
+    org_filter_path = "rt_agent_definition__agent_definition__organization_id"
     queryset = RealtimeAgentChat.objects.all()
     serializer_class = RealtimeAgentChatSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["rt_agent", "rt_agent_definition"]
+    filterset_fields = ["rt_agent_definition"]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()

@@ -2,12 +2,10 @@
 when editing some entity fields'). Each test drives an org_a client that tries
 to reference an org_b resource and expects a 400 rejection."""
 
-from unittest.mock import patch
-
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Agent, Graph
+from tables.models import Graph
 from tables.models.graph_models import (
     AgentNode,
     ConditionGroup,
@@ -212,31 +210,6 @@ def test_decision_table_condition_group_next_node_same_graph_ok(client_a, org_a)
     )
     assert resp.status_code == 201, resp.data
 
-
-# ---- C: init-realtime agent ----
-
-
-@pytest.mark.django_db
-def test_init_realtime_cross_org_agent_rejected(client_a, org_a, org_b):
-    other_agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org_b)
-    resp = client_a.post(
-        "/api/init-realtime/", {"agent_id": other_agent.id}, format="json"
-    )
-    assert resp.status_code == 400
-    assert "agent_id" in str(resp.data)
-
-
-@pytest.mark.django_db
-def test_init_realtime_same_org_agent_allowed(client_a, org_a):
-    agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org_a)
-    with patch(
-        "tables.views.views.realtime_service.init_realtime", return_value="conn-1"
-    ) as init:
-        resp = client_a.post(
-            "/api/init-realtime/", {"agent_id": agent.id}, format="json"
-        )
-    assert resp.status_code == 201, resp.data
-    assert resp.data["connection_key"] == "conn-1"
-    # The active org must reach the service: it is what binds decryption to the
-    # org the caller was authorized for.
-    assert init.call_args.kwargs["org_id"] == org_a.id
+    # Cross-org and same-org init-realtime coverage lives in
+    # tests/api_tests/init_realtime_agent_definition_test.py, which exercises
+    # the agent_definition_id path (the only path init-realtime accepts).

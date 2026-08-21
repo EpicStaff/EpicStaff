@@ -1,7 +1,12 @@
 """
-Serializer tests for VoiceSettingsSerializer's mutual-exclusivity validation
-between `voice_agent` (legacy RealtimeAgent) and `voice_agent_definition`
-(RealtimeAgentDefinition).
+Serializer tests for VoiceSettingsSerializer's handling of the legacy
+`voice_agent` (RealtimeAgent) field alongside the authoritative
+`voice_agent_definition` (RealtimeAgentDefinition) field.
+
+`voice_agent` is read-only: existing consumers can still read it, but no
+write may set, clear, or otherwise change it through this serializer.
+`voice_agent_definition` is the only writable FK, and setting it is always
+valid regardless of any legacy `voice_agent` value already on the instance.
 """
 
 import pytest
@@ -45,20 +50,7 @@ def rt_agent_definition(
 
 
 @pytest.mark.django_db
-def test_both_fks_set_returns_validation_error(rt_agent, rt_agent_definition):
-    serializer = VoiceSettingsSerializer(
-        data={
-            "voice_agent": rt_agent.pk,
-            "voice_agent_definition": rt_agent_definition.pk,
-        }
-    )
-
-    assert not serializer.is_valid()
-    assert "non_field_errors" in serializer.errors
-
-
-@pytest.mark.django_db
-def test_only_voice_agent_definition_set_is_valid(rt_agent_definition):
+def test_voice_agent_definition_alone_is_valid(rt_agent_definition):
     serializer = VoiceSettingsSerializer(
         data={"voice_agent_definition": rt_agent_definition.pk}
     )
@@ -67,16 +59,21 @@ def test_only_voice_agent_definition_set_is_valid(rt_agent_definition):
 
 
 @pytest.mark.django_db
-def test_only_voice_agent_set_is_valid(rt_agent):
+def test_voice_agent_in_write_payload_is_ignored(rt_agent):
     serializer = VoiceSettingsSerializer(data={"voice_agent": rt_agent.pk})
 
     assert serializer.is_valid(), serializer.errors
+    instance = serializer.save()
+
+    assert instance.voice_agent is None
 
 
 @pytest.mark.django_db
-def test_patch_setting_voice_agent_definition_when_voice_agent_already_set_returns_error(
+def test_setting_voice_agent_definition_when_legacy_voice_agent_already_set_is_valid(
     rt_agent, rt_agent_definition
 ):
+    # Legacy voice_agent set directly on the model, bypassing the serializer —
+    # simulates data left over from before voice_agent became read-only.
     instance = VoiceSettings.objects.create(pk=1, voice_agent=rt_agent)
 
     serializer = VoiceSettingsSerializer(
@@ -85,20 +82,33 @@ def test_patch_setting_voice_agent_definition_when_voice_agent_already_set_retur
         partial=True,
     )
 
-    assert not serializer.is_valid()
-    assert "non_field_errors" in serializer.errors
+    assert serializer.is_valid(), serializer.errors
+    saved = serializer.save()
+    assert saved.voice_agent_definition_id == rt_agent_definition.pk
+    # The read-only legacy field is left untouched by the write.
+    assert saved.voice_agent_id == rt_agent.pk
 
 
 @pytest.mark.django_db
-def test_patch_clearing_voice_agent_while_setting_voice_agent_definition_is_valid(
-    rt_agent, rt_agent_definition
-):
+def test_voice_agent_remains_readable_after_legacy_assignment(rt_agent):
+    instance = VoiceSettings.objects.create(pk=1, voice_agent=rt_agent)
+
+    serializer = VoiceSettingsSerializer(instance=instance)
+
+    assert serializer.data["voice_agent"] == rt_agent.pk
+
+
+@pytest.mark.django_db
+def test_write_cannot_clear_legacy_voice_agent(rt_agent):
     instance = VoiceSettings.objects.create(pk=1, voice_agent=rt_agent)
 
     serializer = VoiceSettingsSerializer(
         instance=instance,
-        data={"voice_agent": None, "voice_agent_definition": rt_agent_definition.pk},
+        data={"voice_agent": None},
         partial=True,
     )
 
     assert serializer.is_valid(), serializer.errors
+    saved = serializer.save()
+
+    assert saved.voice_agent_id == rt_agent.pk

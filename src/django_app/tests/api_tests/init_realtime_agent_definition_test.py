@@ -10,8 +10,8 @@ Covers:
 - Place filtering: place=CHAT-only surfaces are excluded; owned surfaces with
   no explicit AgentDefaultSurface row are included (implicit ALL).
 - Graph-rag tie-break: basic search config wins over local when both are set.
-- Validation: both ids / neither id -> 400; unknown agent_definition_id -> 400
-  (mirrors the legacy agent_id path, which also collapses to 400).
+- Validation: missing agent_definition_id -> 400; unknown agent_definition_id
+  -> 400.
 """
 
 import json
@@ -306,25 +306,7 @@ def test_init_realtime_agent_definition_graph_rag_basic_wins_over_local(
 
 
 @pytest.mark.django_db
-def test_init_realtime_both_ids_provided_returns_400(
-    auth_client, wikipedia_agent_with_configured_realtime, rt_agent_definition
-):
-    url = reverse("init-realtime")
-
-    response = auth_client.post(
-        url,
-        data={
-            "agent_id": wikipedia_agent_with_configured_realtime.pk,
-            "agent_definition_id": rt_agent_definition.pk,
-        },
-        format="json",
-    )
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-@pytest.mark.django_db
-def test_init_realtime_neither_id_provided_returns_400(auth_client):
+def test_init_realtime_missing_agent_definition_id_returns_400(auth_client):
     url = reverse("init-realtime")
 
     response = auth_client.post(url, data={}, format="json")
@@ -334,9 +316,8 @@ def test_init_realtime_neither_id_provided_returns_400(auth_client):
 
 @pytest.mark.django_db
 def test_init_realtime_unknown_agent_definition_id_returns_400(auth_client):
-    """The old agent_id path also collapses missing-agent Http404 into 400
-    (broad except in InitRealtimeAPIView.post) — the definition path mirrors
-    that behavior exactly."""
+    """Missing-agent Http404 collapses into 400 (broad except in
+    InitRealtimeAPIView.post)."""
     url = reverse("init-realtime")
 
     response = auth_client.post(

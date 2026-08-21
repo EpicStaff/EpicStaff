@@ -67,6 +67,9 @@ class WebhookTriggerSerializer(serializers.ModelSerializer):
 class VoiceSettingsSerializer(serializers.ModelSerializer):
     twilio_auth_token = SecretCharField()
     voice_stream_url = serializers.SerializerMethodField(read_only=True)
+    # Legacy CrewAI-era field: readable for existing consumers, but writes are
+    # refused — voice_agent_definition is the only writable, authoritative FK.
+    voice_agent = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = VoiceSettings
@@ -78,22 +81,6 @@ class VoiceSettingsSerializer(serializers.ModelSerializer):
             "ngrok_config",
             "voice_stream_url",
         ]
-
-    def validate(self, attrs):
-        voice_agent = attrs.get(
-            "voice_agent", self.instance.voice_agent if self.instance else None
-        )
-        voice_agent_definition = attrs.get(
-            "voice_agent_definition",
-            self.instance.voice_agent_definition if self.instance else None,
-        )
-
-        if voice_agent and voice_agent_definition:
-            raise serializers.ValidationError(
-                "Only one of 'voice_agent' or 'voice_agent_definition' may be set."
-            )
-
-        return attrs
 
     def get_voice_stream_url(self, obj):
         if not obj.ngrok_config:

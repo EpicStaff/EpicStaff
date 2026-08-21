@@ -2,7 +2,6 @@ import uuid
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
 from tables.models.realtime_models import (
-    RealtimeAgent,
     RealtimeAgentChat,
     RealtimeAgentDefinition,
 )
@@ -21,14 +20,6 @@ class RealtimeService(metaclass=SingletonMeta):
         self.redis_service = redis_service
         self.converter_service = converter_service
 
-    def get_rt_agent(self, agent_id: int) -> RealtimeAgent:
-        rt_agent = get_object_or_404(RealtimeAgent, pk=agent_id)
-        self.validate_rt_agent(rt_agent)
-        return rt_agent
-
-    def validate_rt_agent(self, rt_agent: RealtimeAgent):
-        self._validate_realtime_config_presence(rt_agent, "RealtimeAgent")
-
     def get_rt_agent_definition(
         self, agent_definition_id: int
     ) -> RealtimeAgentDefinition:
@@ -41,7 +32,7 @@ class RealtimeService(metaclass=SingletonMeta):
         return rt_agent_definition
 
     def _validate_realtime_config_presence(
-        self, rt_agent: RealtimeAgent | RealtimeAgentDefinition, label: str
+        self, rt_agent: RealtimeAgentDefinition, label: str
     ):
         missing_fields = []
 
@@ -67,38 +58,6 @@ class RealtimeService(metaclass=SingletonMeta):
 
     def generate_connection_key(self):
         return str(uuid.uuid4())
-
-    def create_rt_agent_chat(self, rt_agent: RealtimeAgent) -> RealtimeAgentChat:
-        connection_key = self.generate_connection_key()
-        return RealtimeAgentChat.objects.create(
-            rt_agent=rt_agent,
-            wake_word=rt_agent.wake_word,
-            stop_prompt=rt_agent.stop_prompt,
-            language=rt_agent.language,
-            voice_recognition_prompt=rt_agent.voice_recognition_prompt,
-            voice=rt_agent.voice,
-            realtime_config=rt_agent.realtime_config,
-            realtime_transcription_config=rt_agent.realtime_transcription_config,
-            connection_key=connection_key,
-        )
-
-    def init_realtime(self, *, agent_id: int, config: dict, org_id: int) -> str:
-        rt_agent = self.get_rt_agent(agent_id=agent_id)
-        rt_agent_chat = self.create_rt_agent_chat(rt_agent)
-
-        rt_agent_chat_data = self.converter_service.convert_rt_agent_chat_to_pydantic(
-            rt_agent_chat=rt_agent_chat
-        )
-        # Override with provided config
-        for key, value in config.items():
-            if hasattr(rt_agent_chat_data, key):
-                setattr(rt_agent_chat_data, key, value)
-
-        self.redis_service.publish_realtime_agent_chat(
-            rt_agent_chat_data=rt_agent_chat_data,
-            org_id=org_id,
-        )
-        return rt_agent_chat_data.connection_key
 
     def create_rt_agent_definition_chat(
         self, rt_agent_definition: RealtimeAgentDefinition

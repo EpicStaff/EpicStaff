@@ -9,7 +9,6 @@ from tables.models import (
     RealtimeTranscriptionModel,
     DefaultRealtimeAgentConfig,
 )
-from tables.models.crew_models import Agent
 from tables.models.embedding_models import DefaultEmbeddingConfig
 from tables.models.llm_models import DefaultLLMConfig
 from tables.management.commands.helpers import load_json_from_file
@@ -31,7 +30,6 @@ class Command(BaseCommand):
         upload_default_llm_config()
         upload_default_embedding_config()
         upload_default_realtime_agent_config()
-        upload_realtime_agents()
 
 
 LLM_MODELS_JSON = "llm_models.json"
@@ -201,23 +199,6 @@ def upload_embedding_models():
     EmbeddingModel.objects.filter(predefined=True, is_custom=False).exclude(
         pk__in=active_ids
     ).delete()
-
-
-def upload_realtime_agents():
-    from tables.models.realtime_models import RealtimeAgent
-
-    agent_list = Agent.objects.all()
-    for agent in agent_list:
-        RealtimeAgent.objects.get_or_create(
-            agent=agent,
-            defaults={
-                "wake_word": None,
-                "stop_prompt": None,
-                "language": None,
-            },
-        )
-
-    pass
 
 
 def upload_default_llm_config():
