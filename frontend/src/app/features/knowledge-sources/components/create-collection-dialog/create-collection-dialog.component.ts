@@ -59,7 +59,12 @@ export class CreateCollectionDialogComponent {
     selectedLLM = signal<number | null>(null);
     selectedDocuments = signal<DisplayedListDocument[]>([]);
 
-    private strategy = signal<RagCreationStrategy | null>(null);
+    // `RagStrategyFactory.create()` returns the same root-provided singleton on every
+    // call (there's one NaiveRagStrategy/GraphRagStrategy instance for the whole app),
+    // so re-setting it after replacing a rag is a no-op under default `Object.is`
+    // equality — dependents like `configurationInputs` would never see the new rag id.
+    // Force every `.set()` to be treated as a change instead.
+    private strategy = signal<RagCreationStrategy | null>(null, { equal: () => false });
 
     collection = computed(
         () => this.collectionsStorageService.fullCollections().find((c) => c.collection_id === this.data.collection_id)!

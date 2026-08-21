@@ -16,13 +16,34 @@ import { RagCreationStrategy } from '../interfaces/rag-creation-strategy.interfa
     providedIn: 'root',
 })
 export class NaiveRagStrategy implements RagCreationStrategy {
-    private naiveRag!: CreateNaiveRag;
+    // A signal (not a plain field) so that computed()s reading it — directly, or
+    // indirectly via `naiveRag` below — correctly become dirty when a rag is replaced,
+    // even on a run where they short-circuited on a different signal and never read
+    // this one. Mirrors GraphRagStrategy's already-correct `graphRagSignal`.
+    private naiveRagSignal = signal<CreateNaiveRag | null>(null);
+    private get naiveRag(): CreateNaiveRag {
+        return this.naiveRagSignal()!;
+    }
     private _canIndex: WritableSignal<boolean> = signal(false);
     readonly canIndex: Signal<boolean> = this._canIndex.asReadonly();
 
     readonly isIndexing: Signal<boolean> = computed(() => {
+        const ragId = this.naiveRagSignal()?.naive_rag_id;
+        const status = ragId != null ? this.collectionsStorage.getRagStatus(ragId, 'naive') : null;
+        if (status != null) return status === 'processing';
+
+        // Fallback for the brief window before the collection detail poll has
+        // resolved at least once (e.g. right after the rag is created).
         const processing = this.collectionsStorage.processingConfigIds();
-        return this.documentsStorageService.documents().some((d) => processing.has(d.naive_rag_document_id));
+        return this.documentsStorageService
+            .documents()
+            .some(
+                (d) =>
+                    processing.has(d.naive_rag_document_id) &&
+                    d.status !== 'completed' &&
+                    d.status !== 'failed' &&
+                    d.status !== 'outdated'
+            );
     });
 
     constructor(
@@ -36,7 +57,7 @@ export class NaiveRagStrategy implements RagCreationStrategy {
 
     create(collectionId: number, embedderId: number): Observable<boolean> {
         return this.naiveRagService.createRagForCollection(collectionId, embedderId).pipe(
-            tap((res) => (this.naiveRag = res.naive_rag)),
+            tap((res) => this.naiveRagSignal.set(res.naive_rag)),
             map(() => true)
         );
     }
@@ -63,6 +84,7 @@ export class NaiveRagStrategy implements RagCreationStrategy {
             tap(() => {
                 this.toastService.success('Indexing started');
                 this.collectionsStorage.markConfigsAsProcessing(configIds);
+                this.collectionsStorage.markRagAsProcessing(naiveRagId);
             }),
             map(() => true)
         );

@@ -123,7 +123,7 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
         this.pendingDeleteIdsSignal.set(new Set());
         this.fetchDocuments(graphRag.graph_rag_id);
 
-        this.pollingService.startGraphRagDocumentsPolling(graphRag.graph_rag_id);
+        this.pollingService.startGraphRagDocumentsPolling(graphRag.graph_rag_id, graphRag.collection_id);
         this.destroyRef.onDestroy(() => this.pollingService.stopGraphRagDocumentsPolling());
     }
 

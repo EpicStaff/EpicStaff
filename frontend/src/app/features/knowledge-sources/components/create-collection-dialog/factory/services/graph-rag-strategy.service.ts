@@ -25,11 +25,16 @@ export class GraphRagStrategy implements RagCreationStrategy {
     readonly isIndexing: Signal<boolean> = computed(() => {
         const rag = this.graphRagSignal();
         if (!rag) return false;
-        for (const c of this.collectionsStorage.fullCollections()) {
-            const found = c.rag_configurations.find((r) => r.rag_id === rag.graph_rag_id);
-            if (found) return found.status === 'processing';
-        }
-        return false;
+
+        const status = this.collectionsStorage.getRagStatus(rag.graph_rag_id, 'graph');
+        if (status != null) return status === 'processing';
+
+        // Fallback for the brief window before the collection detail poll has
+        // resolved at least once (e.g. right after the rag is created).
+        const processing = this.collectionsStorage.processingConfigIds();
+        return this.documentsStorage
+            .documents()
+            .some((d) => processing.has(d.graph_rag_document_id) && d.status !== 'indexed' && d.status !== 'failed');
     });
 
     constructor(

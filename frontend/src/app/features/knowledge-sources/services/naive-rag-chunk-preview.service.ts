@@ -225,7 +225,7 @@ export class NaiveRagChunkPreviewService {
                         }));
                         return;
                     }
-                    case 'canceled': {
+                    case 'cancelled': {
                         return;
                     }
                     case 'failed': {

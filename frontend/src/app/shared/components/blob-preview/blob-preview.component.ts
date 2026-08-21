@@ -153,14 +153,21 @@ export class BlobPreviewComponent {
                 break;
             }
             case 'docx':
-                blob.arrayBuffer().then((buf) => {
-                    if (!guard()) return;
-                    mammoth.convertToHtml({ arrayBuffer: buf }).then((result) => {
-                        if (!guard()) return;
+                blob.arrayBuffer()
+                    .then((buf) => {
+                        if (!guard()) return null;
+                        return mammoth.convertToHtml({ arrayBuffer: buf });
+                    })
+                    .then((result) => {
+                        if (!result || !guard()) return;
                         this.docxHtml.set(this.sanitizer.bypassSecurityTrustHtml(result.value));
                         this.isLoading.set(false);
+                    })
+                    .catch(() => {
+                        if (!guard()) return;
+                        this.previewError.set('Failed to render DOCX file');
+                        this.isLoading.set(false);
                     });
-                });
                 break;
             case 'sheet':
                 if (this.isCsv) {

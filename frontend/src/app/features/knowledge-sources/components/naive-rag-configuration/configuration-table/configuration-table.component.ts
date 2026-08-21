@@ -60,6 +60,17 @@ export class ConfigurationTableComponent {
     processingConfigIds = this.collectionsStorage.processingConfigIds;
     selectedRagDocId = model<number | null>(null);
 
+    // Backend never finalizes a document's own `status` when indexing is cancelled
+    // (it stays 'processing' forever) — fall back to the rag-level status, which the
+    // "Stop indexing" button already relies on, so the per-row spinner disappears in
+    // step with the button once the rag itself is no longer processing. Matches
+    // NaiveRagStrategy/GraphRagStrategy.isIndexing's not-found convention (`false`) —
+    // safe because startIndexing() optimistically marks the rag via
+    // markRagAsProcessing() in the same tick a document can first become 'processing'.
+    private ragIsProcessing = computed(
+        () => this.collectionsStorage.getRagStatus(this.ragId(), 'naive') === 'processing'
+    );
+
     docsCheckChange = output<number[]>();
     applyBulkUpdate = output<Partial<RunNaiveRagDocumentChunkingRequest>>();
     onTuneChunk = output<{ ragDocumentId: number; allDocumentIds: number[] }>();
@@ -96,6 +107,12 @@ export class ConfigurationTableComponent {
         effect(() => {
             this.docsCheckChange.emit(this.checkedDocumentIds());
         });
+    }
+
+    isRowProcessing(d: TableDocument): boolean {
+        if (!this.ragIsProcessing()) return false;
+        if (d.status === 'completed' || d.status === 'failed' || d.status === 'outdated') return false;
+        return this.processingConfigIds().has(d.naive_rag_document_id) || d.status === 'processing';
     }
 
     onDocFieldChange(

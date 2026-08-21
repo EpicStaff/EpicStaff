@@ -37,13 +37,7 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
     runButtonLabel = computed(() => {
         return this.ragConfiguration()?.indexMode() === 'total_reindex' ? 'Save & Re-index' : 'Save & Run Index';
     });
-    isIndexing = computed(() => {
-        for (const c of this.collectionsStorage.fullCollections()) {
-            const config = c.rag_configurations.find((r) => r.rag_id === this.data.ragId);
-            if (config) return config.status === 'processing';
-        }
-        return false;
-    });
+    isIndexing = computed(() => this.collectionsStorage.getRagStatus(this.data.ragId, 'graph') === 'processing');
 
     ngOnInit() {
         this.getGraphRag(this.data.ragId);

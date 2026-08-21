@@ -3,6 +3,7 @@ import { StorageService } from '@shared/services';
 import { catchError, delay, Observable, of, Subject, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
+import { RagStatus, RagType } from '../models/base-rag.model';
 import {
     CreateCollectionDtoResponse,
     DeleteCollectionResponse,
@@ -37,6 +38,21 @@ export class CollectionsStorageService implements StorageService {
 
     markConfigsAsProcessing(configIds: number[]): void {
         this.processingConfigIdsSignal.update((ids) => new Set([...ids, ...configIds]));
+    }
+
+    // Looks up a rag's status from the polled collection details, regardless of which
+    // collection it belongs to. Returns null when the rag hasn't been seen by a poll
+    // yet (e.g. right after creation, before markRagAsProcessing/the next tick land).
+    // `ragType` is required: naive_rag_id and graph_rag_id are independent auto-increment
+    // primary keys on separate backend tables, so the same numeric id can refer to a
+    // naive rag in one collection and a graph rag in another — matching on id alone
+    // could silently return the wrong rag's status.
+    getRagStatus(ragId: number, ragType: RagType): RagStatus | null {
+        for (const c of this.fullCollectionsSignal()) {
+            const found = c.rag_configurations.find((r) => r.rag_id === ragId && r.rag_type === ragType);
+            if (found) return found.status;
+        }
+        return null;
     }
 
     // Optimistically sets the given rag's status to 'processing' in the fullCollections cache.

@@ -9,6 +9,7 @@
         "test": "ng test",
         "build-mym": "ng build --base-href /epicstaff/",
         "prepare": "cd .. && npx husky frontend/.husky",
+        "postinstall": "patch-package",
         "lint": "eslint src",
         "lint:fix": "eslint src --fix",
         "format": "prettier --write \"src/**/*.{ts,html,scss,json}\""
@@ -79,6 +80,7 @@
         "karma-jasmine": "^5.1.0",
         "karma-jasmine-html-reporter": "^2.1.0",
         "lint-staged": "^16.3.3",
+        "patch-package": "^8.0.1",
         "prettier": "^3.8.1",
         "puppeteer": "^23.7.1",
         "typescript": "~5.5.2",

@@ -92,6 +92,7 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
                 next: () => {
                     this.toast.success('Indexing started');
                     this.collectionsStorage.markConfigsAsProcessing(configIds);
+                    this.collectionsStorage.markRagAsProcessing(this.data.ragId);
                 },
                 error: () => this.toast.error('Files re-indexing failed'),
             });
