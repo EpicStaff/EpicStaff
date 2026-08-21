@@ -17,6 +17,7 @@ import {
     toDisplayExpression,
 } from '../../../../utils/condition-expression.helper';
 import {
+    CDT_TREE_COPY,
     CDT_TREE_SUBTITLE_CODE_LINES,
     CDT_TREE_SUBTITLE_MAX_CHARS,
     CLICKABLE_BY_KIND,
@@ -32,17 +33,8 @@ import {
     CdtTreeEdgeKind,
     CdtTreeNodeRef,
     CdtTreePortSide,
+    CdtTreeTarget,
 } from './cdt-decision-tree.model';
-
-/** Where a row's routing target ended up resolving. */
-type CdtRowTarget =
-    | { readonly kind: 'node'; readonly label: string }
-    /** Has a route code, but no target is set anywhere — the table default applies. */
-    | { readonly kind: 'no-capture' }
-    /** No route code at all, so the target is never persisted (see `payload.ts`). */
-    | { readonly kind: 'unrouted' };
-
-const UNROUTED_WARNING = 'This rule has no route code, so its target is never saved.';
 
 export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
     const blocks: CdtTreeBlock[] = [];
@@ -136,7 +128,7 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
     // -- error lane ----------------------------------------------------------
 
     const error = block(blocks, {
-        ...targetContent(input.errorNextNode, input.nodes, 'Errors end the flow'),
+        ...targetContent(input.errorNextNode, input.nodes, CDT_TREE_COPY.errorsEndFlow),
         id: 'spine:error-continue',
         kind: 'error-continue',
     });
@@ -153,7 +145,7 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
         const decision = block(blocks, {
             id: `row-${index}:decision`,
             kind: 'row-decision',
-            title: row.group_name?.trim() || `Rule ${index + 1}`,
+            title: row.group_name?.trim() || CDT_TREE_COPY.ruleFallback(index + 1),
             subtitle: rowExpressionSubtitle(row),
             detail: rowExpressionDetail(row),
             chip: chipForSharedRoute(row, routeCodeCounts),
@@ -172,16 +164,16 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
                 block(blocks, {
                     id: `row-${index}:prompt`,
                     kind: 'row-prompt',
-                    title: prompt ? row.prompt_id : `Prompt "${row.prompt_id}"`,
+                    title: prompt ? row.prompt_id : CDT_TREE_COPY.promptLabel(row.prompt_id),
                     subtitle: prompt ? clamp(prompt.prompt_text) : null,
                     detail: prompt
                         ? {
-                              heading: `Prompt "${row.prompt_id}"`,
+                              heading: CDT_TREE_COPY.promptLabel(row.prompt_id),
                               language: 'text',
                               body: promptDetailBody(prompt.prompt_text, prompt.result_variable),
                           }
                         : null,
-                    warning: prompt ? null : 'Prompt not found in this table.',
+                    warning: prompt ? null : CDT_TREE_COPY.promptMissingWarning,
                 })
             );
         }
@@ -323,7 +315,7 @@ export function rowManipulation(row: ConditionGroup): string {
 
 function rowExpressionSubtitle(row: ConditionGroup): string {
     const combined = combinedExpression(row);
-    return combined ? clamp(toDisplayExpression(combined)) : 'always matches';
+    return combined ? clamp(toDisplayExpression(combined)) : CDT_TREE_COPY.alwaysMatches;
 }
 
 function rowExpressionDetail(row: ConditionGroup): CdtTreeDetail | null {
@@ -351,9 +343,9 @@ function resolveRowTarget(
     row: ConditionGroup,
     input: CdtDecisionTreeInput,
     canvasRowsByRoute: Map<string, ConditionGroup>
-): CdtRowTarget {
+): CdtTreeTarget {
     const code = row.route_code?.trim();
-    if (!code) return { kind: 'unrouted' };
+    if (!code) return { state: 'unrouted' };
 
     let targetId = canvasRowsByRoute.get(code)?.next_node ?? row.next_node ?? null;
 
@@ -365,7 +357,7 @@ function resolveRowTarget(
             )?.targetNodeId ?? null;
     }
 
-    return targetId ? { kind: 'node', label: resolveNodeLabel(targetId, input.nodes) } : { kind: 'no-capture' };
+    return targetId ? { state: 'node', label: resolveNodeLabel(targetId, input.nodes) } : { state: 'no-capture' };
 }
 
 /** Mirrors the port id built by `generatePortsForClassificationDecisionTableNode`. */
@@ -383,36 +375,38 @@ export function resolveNodeLabel(targetId: string, nodes: readonly CdtTreeNodeRe
     return found.node_name?.trim() || `node #${found.nodeNumber ?? found.backendId ?? targetId}`;
 }
 
-function routeContent(target: CdtRowTarget): Partial<CdtTreeBlock> {
-    switch (target.kind) {
+function routeContent(target: CdtTreeTarget): Partial<CdtTreeBlock> {
+    switch (target.state) {
         case 'node':
-            return { title: `Continue to ${target.label}` };
+            return { target, title: CDT_TREE_COPY.continueTo(target.label) };
         case 'no-capture':
-            return { title: 'No target — table default applies' };
+            return { target, title: CDT_TREE_COPY.noCapture };
         case 'unrouted':
-            return { title: 'Not routed', warning: UNROUTED_WARNING };
+            return { target, title: CDT_TREE_COPY.unrouted, warning: CDT_TREE_COPY.unroutedWarning };
+        case 'end':
+            return { target, title: CDT_TREE_COPY.endsFlow };
     }
 }
 
-function capturedContent(target: CdtRowTarget): Partial<CdtTreeBlock> {
-    switch (target.kind) {
-        case 'node':
-            return {
-                title: `Route captured → ${target.label}`,
-                subtitle: 'evaluation continues; the last capture wins',
-            };
-        case 'no-capture':
-        case 'unrouted':
-            return {
-                title: 'Continues without capturing a route',
-                subtitle: 'evaluation continues to the next rule',
-                warning: target.kind === 'unrouted' ? UNROUTED_WARNING : null,
-            };
+function capturedContent(target: CdtTreeTarget): Partial<CdtTreeBlock> {
+    if (target.state === 'node') {
+        return {
+            target,
+            title: CDT_TREE_COPY.routeCaptured(target.label),
+            subtitle: CDT_TREE_COPY.routeCapturedNote,
+        };
     }
+
+    return {
+        target,
+        title: CDT_TREE_COPY.continuesWithoutRoute,
+        subtitle: CDT_TREE_COPY.continuesNote,
+        warning: target.state === 'unrouted' ? CDT_TREE_COPY.unroutedWarning : null,
+    };
 }
 
 function fallThroughContent(input: CdtDecisionTreeInput): Partial<CdtTreeBlock> {
-    return targetContent(input.defaultNextNode, input.nodes, 'Ends the flow');
+    return targetContent(input.defaultNextNode, input.nodes, CDT_TREE_COPY.endsFlow);
 }
 
 function targetContent(
@@ -420,8 +414,10 @@ function targetContent(
     nodes: readonly CdtTreeNodeRef[],
     emptyTitle: string
 ): Partial<CdtTreeBlock> {
-    if (!targetId) return { title: emptyTitle };
-    return { title: `Continue to ${resolveNodeLabel(targetId, nodes)}` };
+    if (!targetId) return { target: { state: 'end' }, title: emptyTitle };
+
+    const label = resolveNodeLabel(targetId, nodes);
+    return { target: { state: 'node', label }, title: CDT_TREE_COPY.continueTo(label) };
 }
 
 // ---------------------------------------------------------------------------
@@ -456,7 +452,7 @@ function indexCanvasRowsByRoute(rows: readonly ConditionGroup[]): Map<string, Co
 function chipForSharedRoute(row: ConditionGroup, counts: Map<string, number>): string | null {
     const code = row.route_code?.trim();
     if (!code) return null;
-    return (counts.get(code) ?? 0) > 1 ? `route ${code}` : null;
+    return (counts.get(code) ?? 0) > 1 ? CDT_TREE_COPY.sharedRouteChip(code) : null;
 }
 
 function codePreview(code: string): string {
@@ -495,6 +491,7 @@ function block(sink: CdtTreeBlock[], partial: Partial<CdtTreeBlock> & { id: stri
         // A clickable kind with nothing to show would open an empty popover, so
         // both have to hold — but only the kind decides the affordance.
         clickable: CLICKABLE_BY_KIND[partial.kind] && detail !== null,
+        target: partial.target ?? null,
         warning: partial.warning ?? null,
         chip: partial.chip ?? null,
         searchText: [title, subtitle, detail?.body]

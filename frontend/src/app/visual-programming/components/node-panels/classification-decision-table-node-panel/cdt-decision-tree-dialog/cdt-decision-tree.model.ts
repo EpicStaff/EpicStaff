@@ -92,6 +92,22 @@ export interface CdtTreeDetail {
     readonly body: string;
 }
 
+/**
+ * Where a routing block's target resolved — the state, not the sentence.
+ *
+ * The builder emits this and renders the wording from `CDT_TREE_COPY`, so a
+ * rewording changes copy and nothing else, and a test can assert what the diagram
+ * means rather than how it is phrased.
+ */
+export type CdtTreeTarget =
+    | { readonly state: 'node'; readonly label: string }
+    /** Has a route code, but no target is set anywhere — the table default applies. */
+    | { readonly state: 'no-capture' }
+    /** No route code at all, so the target is never persisted (see `payload.ts`). */
+    | { readonly state: 'unrouted' }
+    /** Nothing attached to this output — the graph ends here. */
+    | { readonly state: 'end' };
+
 export interface CdtTreeBlock {
     /** Stable within one build, e.g. `row-2:decision` or `spine:pre-computation`. */
     readonly id: string;
@@ -107,6 +123,8 @@ export interface CdtTreeBlock {
     readonly detail: CdtTreeDetail | null;
     /** Whether clicking opens the popover — see `CLICKABLE_BY_KIND`. */
     readonly clickable: boolean;
+    /** Set on the blocks that name a routing target; null on every other block. */
+    readonly target: CdtTreeTarget | null;
     /** Non-null renders a warning badge carrying this text as its tooltip. */
     readonly warning: string | null;
     /** Small chip rendered next to the title, e.g. a shared route code. */

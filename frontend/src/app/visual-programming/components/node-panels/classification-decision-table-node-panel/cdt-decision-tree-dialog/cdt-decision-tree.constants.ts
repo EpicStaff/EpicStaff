@@ -107,6 +107,33 @@ export const CDT_TREE_SUBTITLE_CODE_LINES = 2;
 /** Max characters of a subtitle before it is clipped with an ellipsis. */
 export const CDT_TREE_SUBTITLE_MAX_CHARS = 120;
 
+/**
+ * Every phrase the builder chooses between, and every one it fills with data.
+ *
+ * Kept out of the builder so a rewording is a change here and nowhere else: the
+ * builder emits a `CdtTreeTarget` state and renders it through this, and the specs
+ * assert the state rather than the sentence. A block's own fixed name stays where
+ * the block is built — it is that block's identity, not a rendering of anything.
+ * The legend's labels already lived in this file for the same reason.
+ */
+export const CDT_TREE_COPY = {
+    continueTo: (label: string): string => `Continue to ${label}`,
+    routeCaptured: (label: string): string => `Route captured → ${label}`,
+    routeCapturedNote: 'evaluation continues; the last capture wins',
+    noCapture: 'No target — table default applies',
+    continuesWithoutRoute: 'Continues without capturing a route',
+    continuesNote: 'evaluation continues to the next rule',
+    unrouted: 'Not routed',
+    unroutedWarning: 'This rule has no route code, so its target is never saved.',
+    endsFlow: 'Ends the flow',
+    errorsEndFlow: 'Errors end the flow',
+    ruleFallback: (oneBased: number): string => `Rule ${oneBased}`,
+    promptLabel: (promptId: string): string => `Prompt "${promptId}"`,
+    promptMissingWarning: 'Prompt not found in this table.',
+    alwaysMatches: 'always matches',
+    sharedRouteChip: (routeCode: string): string => `route ${routeCode}`,
+} as const;
+
 export interface CdtTreeLegendItem {
     readonly shape: CdtTreeShape;
     readonly label: string;
