@@ -198,7 +198,7 @@ export class CdtDecisionTreeDialogComponent {
     // -- popover -------------------------------------------------------------
 
     protected openDetail(anchor: HTMLElement, block: CdtTreePositionedBlock): void {
-        if (!block.detail) return;
+        if (!block.clickable || !block.detail) return;
         this.detailCtrl.close();
         this.detail.set(block.detail);
         this.detailCtrl.open(anchor, this.detailTpl(), { panelClass: 'cdt-tree-detail', offsetY: 8 });

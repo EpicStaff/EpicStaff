@@ -98,8 +98,15 @@ export interface CdtTreeBlock {
     readonly kind: CdtTreeBlockKind;
     readonly title: string;
     readonly subtitle: string | null;
-    /** Non-null marks the block clickable. */
+    /**
+     * Full content, shown in the read-only popover and matched by the search.
+     *
+     * Deliberately not the clickability flag: a block can carry content worth
+     * finding without being one the design lets you open.
+     */
     readonly detail: CdtTreeDetail | null;
+    /** Whether clicking opens the popover — see `CLICKABLE_BY_KIND`. */
+    readonly clickable: boolean;
     /** Non-null renders a warning badge carrying this text as its tooltip. */
     readonly warning: string | null;
     /** Small chip rendered next to the title, e.g. a shared route code. */

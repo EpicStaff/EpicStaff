@@ -28,8 +28,8 @@
 
 <div
     class="cdt-tree-block__body"
-    [attr.role]="block().detail ? 'button' : null"
-    [attr.tabindex]="block().detail ? 0 : null"
+    [attr.role]="block().clickable ? 'button' : null"
+    [attr.tabindex]="block().clickable ? 0 : null"
     (click)="onActivate()"
     (keydown.enter)="onActivate()"
     (keydown.space)="onActivate()"
@@ -62,7 +62,7 @@
         <span class="cdt-tree-block__subtitle">{{ block().subtitle }}</span>
     }
 
-    @if (block().detail) {
+    @if (block().clickable) {
         <app-svg-icon
             class="cdt-tree-block__expand"
             icon="zoom-scan"

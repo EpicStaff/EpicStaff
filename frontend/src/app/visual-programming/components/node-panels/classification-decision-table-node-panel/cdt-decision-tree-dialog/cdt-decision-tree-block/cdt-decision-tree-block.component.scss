@@ -118,16 +118,17 @@
     transition: opacity 0.12s ease;
 }
 
-// Only blocks that carry code, an expression or a prompt can be opened.
-:host(.cdt-tree-block--interactive) .cdt-tree-block__body {
+// Set from `CLICKABLE_BY_KIND` — a block can hold content the search finds and
+// still not be one the design lets you open.
+:host(.cdt-tree-block--clickable) .cdt-tree-block__body {
     cursor: pointer;
 }
 
-:host(.cdt-tree-block--interactive) app-cdt-decision-tree-shape {
+:host(.cdt-tree-block--clickable) app-cdt-decision-tree-shape {
     filter: drop-shadow(0 2px 3px rgb(0 0 0 / 30%)) drop-shadow(0 6px 10px rgb(0 0 0 / 15%));
 }
 
-:host(.cdt-tree-block--interactive):hover .cdt-tree-block__expand {
+:host(.cdt-tree-block--clickable):hover .cdt-tree-block__expand {
     opacity: 1;
 }
 

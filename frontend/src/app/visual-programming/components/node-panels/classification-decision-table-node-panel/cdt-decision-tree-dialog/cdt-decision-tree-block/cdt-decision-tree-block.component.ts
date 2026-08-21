@@ -29,7 +29,7 @@ import { CdtDecisionTreeShapeComponent } from '../cdt-decision-tree-shape/cdt-de
     host: {
         '[class.cdt-tree-block--dimmed]': 'dimmed()',
         '[class.cdt-tree-block--match]': 'matched()',
-        '[class.cdt-tree-block--interactive]': '!!block().detail',
+        '[class.cdt-tree-block--clickable]': 'block().clickable',
         // The clamp count has to agree with the height the layout reserved for it,
         // so CSS reads it from the one constant both sides already share.
         '[style.--cdt-tree-subtitle-lines]': 'subtitleLines',
@@ -50,7 +50,7 @@ export class CdtDecisionTreeBlockComponent {
     public readonly detailRequested = output<HTMLElement>();
 
     protected onActivate(): void {
-        if (this.block().detail) {
+        if (this.block().clickable) {
             this.detailRequested.emit(this.hostElement.nativeElement);
         }
     }

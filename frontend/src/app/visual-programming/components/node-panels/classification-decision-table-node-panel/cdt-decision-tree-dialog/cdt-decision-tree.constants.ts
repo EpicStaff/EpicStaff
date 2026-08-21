@@ -19,6 +19,29 @@ export const SHAPE_BY_KIND: Readonly<Record<CdtTreeBlockKind, CdtTreeShape>> = {
 };
 
 /**
+ * Which kinds the design lets you open.
+ *
+ * A property of the kind, not of whether the block happens to carry content: the
+ * mockup marks a block openable by elevating it, and `Read variables` is drawn
+ * flat even though it holds the whole input map. Keeping the two apart is what
+ * lets that map stay findable through the search while the block stays inert.
+ */
+export const CLICKABLE_BY_KIND: Readonly<Record<CdtTreeBlockKind, boolean>> = {
+    'table-entered': false,
+    'table-left': false,
+    'pre-computation': true,
+    'post-computation': true,
+    'read-variables': false,
+    'row-prompt': true,
+    'row-decision': true,
+    'row-manipulation': true,
+    'row-captured': false,
+    'row-continue': false,
+    'default-continue': false,
+    'error-continue': false,
+};
+
+/**
  * Width, and the design's minimum height, per shape.
  *
  * The minimum is what a block carrying only a title occupies: 42px everywhere,

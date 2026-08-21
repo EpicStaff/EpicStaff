@@ -16,7 +16,11 @@ import {
     parseManipulation,
     toDisplayExpression,
 } from '../../../../utils/condition-expression.helper';
-import { CDT_TREE_SUBTITLE_CODE_LINES, CDT_TREE_SUBTITLE_MAX_CHARS } from './cdt-decision-tree.constants';
+import {
+    CDT_TREE_SUBTITLE_CODE_LINES,
+    CDT_TREE_SUBTITLE_MAX_CHARS,
+    CLICKABLE_BY_KIND,
+} from './cdt-decision-tree.constants';
 import {
     CdtDecisionTreeInput,
     CdtTree,
@@ -482,6 +486,9 @@ function block(sink: CdtTreeBlock[], partial: Partial<CdtTreeBlock> & { id: stri
         title,
         subtitle,
         detail,
+        // A clickable kind with nothing to show would open an empty popover, so
+        // both have to hold — but only the kind decides the affordance.
+        clickable: CLICKABLE_BY_KIND[partial.kind] && detail !== null,
         warning: partial.warning ?? null,
         chip: partial.chip ?? null,
         searchText: [title, subtitle, detail?.body]
