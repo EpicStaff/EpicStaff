@@ -13,8 +13,9 @@
  *   for everything except Escape.
  *
  * The dialog feeds this from `DialogRef.keydownEvents`, which CDK dispatches from
- * a bubble-phase listener on `document.body` — one node below `document`, so a
- * `stopPropagation()` there preempts every handler above. The subscriber has to
+ * a bubble-phase listener on `document.body`. The event reaches `body` before
+ * `document` or `window`, so a `stopPropagation()` there preempts every handler
+ * above — none of them listens in the capture phase. The subscriber has to
  * stay synchronous: a `debounceTime` or a `setTimeout` would defer it past the
  * dispatcher's stack frame, and by then `stopPropagation` and `preventDefault`
  * are both no-ops.

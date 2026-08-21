@@ -7,7 +7,6 @@ import {
     DestroyRef,
     ElementRef,
     inject,
-    OnDestroy,
     signal,
     TemplateRef,
     viewChild,
@@ -50,7 +49,7 @@ import { CdtDecisionTreeShapeComponent } from './cdt-decision-tree-shape/cdt-dec
     styleUrls: ['./cdt-decision-tree-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CdtDecisionTreeDialogComponent implements OnDestroy {
+export class CdtDecisionTreeDialogComponent {
     private readonly dialogRef = inject<DialogRef<void>>(DialogRef);
     private readonly data = inject<CdtDecisionTreeInput>(DIALOG_DATA);
     private readonly detailCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
@@ -102,6 +101,10 @@ export class CdtDecisionTreeDialogComponent implements OnDestroy {
     protected readonly hasQuery = computed(() => this.query().trim().length > 0);
 
     constructor() {
+        // The dialog is opened with `disableClose`, so CDK closes it for neither
+        // the backdrop nor Escape — both are ours to handle.
+        this.dialogRef.backdropClick.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.close());
+
         // CDK dispatches `keydownEvents` from a bubble-phase listener on
         // `document.body`, which is early enough to preempt the flow page's own
         // `document` and `window` shortcut handlers, and late enough that a block
@@ -109,10 +112,10 @@ export class CdtDecisionTreeDialogComponent implements OnDestroy {
         this.dialogRef.keydownEvents
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((event) => this.onKeydown(event));
-    }
 
-    public ngOnDestroy(): void {
-        this.detailCtrl.dispose();
+        // The popover lives in its own overlay, outside this component's view, so
+        // it has to be torn down explicitly.
+        this.destroyRef.onDestroy(() => this.detailCtrl.dispose());
     }
 
     // -- canvas --------------------------------------------------------------
