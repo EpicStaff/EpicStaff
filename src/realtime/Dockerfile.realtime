@@ -52,8 +52,14 @@ RUN apt-get update && apt-get install -y \
     portaudio19-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user for runtime (mirrors agent/Dockerfile.agent). Declared
+# before the COPY below so ownership can be assigned during the copy — a
+# separate `chown -R /app` would duplicate the whole tree into a second layer.
+RUN groupadd --system --gid 1000 app \
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
 # Copy built app from builder
-COPY --from=builder /app /app
+COPY --from=builder --chown=app:app /app /app
 
 # Add virtualenv to PATH.
 # TIKTOKEN_CACHE_DIR points at the pre-baked cache from the builder stage
@@ -64,11 +70,6 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
-
-# Create non-root user for runtime (mirrors agent/Dockerfile.agent).
-RUN groupadd --system --gid 1000 app \
- && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
- && chown -R app:app /app
 
 ENV HOME=/home/app
 

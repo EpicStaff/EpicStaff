@@ -297,6 +297,10 @@ services:
       - backend-network
     tty: true
     stdin_open: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,size=256m
+      - /home/app:rw,size=64m,uid=1000,gid=1000
     pids_limit: ${CREW_PIDS_LIMIT:-1024}
     depends_on:
       redis:
@@ -358,6 +362,17 @@ services:
     tmpfs:
       - /tmp:rw,size=${SANDBOX_TMP_SIZE:-1g}
       - /home/app:rw,size=64m
+      # Every execution venv pip-installs the local shared packages from source
+      # (dynamic_venv_executor_chain.py). The setuptools backend writes
+      # .egg-info/ and build/ *into the source tree*, which the read-only rootfs
+      # blocks — dotdict is unaffected because it uses the poetry-core backend.
+      # Durable fix is to ship these as pre-built wheels so no build step runs
+      # per execution; until then give each path a scratch overlay. Ownership is
+      # fixed up by docker/entrypoint-nonroot.sh (see NONROOT_CHOWN_PATHS).
+      - /app/src/shared/epicstaff_secrets/epicstaff_secrets.egg-info:rw,size=8m
+      - /app/src/shared/epicstaff_secrets/build:rw,size=8m
+      - /app/src/shared/epicstaff_storage/epicstaff_storage.egg-info:rw,size=8m
+      - /app/src/shared/epicstaff_storage/build:rw,size=8m
     # Room for concurrent venv builds, but bounded.
     pids_limit: ${SANDBOX_PIDS_LIMIT:-1024}
     mem_limit: ${SANDBOX_MEM_LIMIT:-2g}

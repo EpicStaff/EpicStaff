@@ -38,8 +38,14 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 RUN apt-get update && apt-get install -y ffmpeg git \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user for runtime (mirrors agent/Dockerfile.agent). Declared
+# before the COPY below so ownership can be assigned during the copy — a
+# separate `chown -R /app` would duplicate the whole tree into a second layer.
+RUN groupadd --system --gid 1000 app \
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
 # Copy built app from builder
-COPY --from=builder /app /app
+COPY --from=builder --chown=app:app /app /app
 
 # Add virtualenv to PATH
 ENV PATH="/app/src/.venv/bin:$PATH" \
@@ -47,21 +53,19 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Create non-root user for runtime (mirrors agent/Dockerfile.agent).
-RUN groupadd --system --gid 1000 app \
- && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
-
 COPY ./docker/entrypoint-nonroot.sh /usr/local/bin/entrypoint-nonroot.sh
 RUN chmod +x /usr/local/bin/entrypoint-nonroot.sh
 
 # Pre-create the runtime dirs so a *fresh* named volume inherits app ownership,
 # and hand the whole tree to the app user (pip/venv writes live under here).
 RUN mkdir -p /app/src/sandbox/venvs /app/src/sandbox/executions /app/src/sandbox/savefiles \
- && chown -R app:app /app
+ && chown app:app /app/src/sandbox/venvs /app/src/sandbox/executions /app/src/sandbox/savefiles
 
 # HOME must be writable: pip and venv write caches there.
 ENV HOME=/home/app \
-    NONROOT_CHOWN_PATHS="/home/app \${BASE_VENV_PATH:-/app/src/sandbox/venvs} \${OUTPUT_PATH:-/app/src/sandbox/executions}" \
+    NONROOT_CHOWN_PATHS="/home/app \${BASE_VENV_PATH:-/app/src/sandbox/venvs} \${OUTPUT_PATH:-/app/src/sandbox/executions} \
+        /app/src/shared/epicstaff_secrets/epicstaff_secrets.egg-info /app/src/shared/epicstaff_secrets/build \
+        /app/src/shared/epicstaff_storage/epicstaff_storage.egg-info /app/src/shared/epicstaff_storage/build" \
     NONROOT_ADAPT_PATHS="\${CONTAINER_SAVEFILES_PATH:-/app/src/sandbox/savefiles}"
 
 WORKDIR /app/src/sandbox

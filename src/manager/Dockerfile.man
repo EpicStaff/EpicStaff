@@ -29,18 +29,19 @@ COPY ./shared /app/src/shared
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
 
 # Copy the application from the builder
-COPY --from=builder /app /app
+# Create non-root user for runtime (mirrors agent/Dockerfile.agent). Declared
+# before the COPY below so ownership can be assigned during the copy — a
+# separate `chown -R /app` would duplicate the whole tree into a second layer.
+RUN groupadd --system --gid 1000 app \
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
+COPY --from=builder --chown=app:app /app /app
 
 # Add virtualenv to PATH
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
-
-# Create non-root user for runtime (mirrors agent/Dockerfile.agent).
-RUN groupadd --system --gid 1000 app \
- && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
- && chown -R app:app /app
 
 ENV HOME=/home/app
 
