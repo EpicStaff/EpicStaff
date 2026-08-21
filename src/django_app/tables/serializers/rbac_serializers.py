@@ -7,6 +7,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class FirstSetupStatusSerializer(serializers.Serializer):
     needs_setup = serializers.BooleanField()
+    setup_mode = serializers.CharField()
 
 
 class FirstSetupRequestSerializer(serializers.Serializer):
@@ -62,7 +63,6 @@ class ResetUserRequestSerializer(serializers.Serializer):
 
 class ResetUserResponseSerializer(serializers.Serializer):
     access = serializers.CharField()
-    api_key = serializers.CharField()
 
 
 # ---- Logout ----

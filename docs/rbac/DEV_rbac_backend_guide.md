@@ -141,6 +141,13 @@ Throttling: `LoginThrottle` (5/min, `ip|email` bucket) on login/swagger-token,
 `PasswordResetRequestThrottle` (5/hour) on reset request, and the password-change request
 endpoint reuses the login throttle.
 
+HTTP first-setup (`POST /api/auth/first-setup/`) is itself gated by
+`settings.FIRST_SETUP_MODE` (default `cli_only`): it returns `403
+first_setup_disabled` unless the mode is `open`. The other creation path,
+always available regardless of the mode, is `manage.py create_superadmin`.
+See [auth_endpoints.md](auth_endpoints.md) and
+[first_setup_operations.md](first_setup_operations.md).
+
 ---
 
 ## 4. Org context layer
@@ -243,6 +250,11 @@ transactions with `SELECT FOR UPDATE`:
 - last-active-organization guard (`organization_management_service.py`)
 - `RoleManagementService.assert_mutable` → `BuiltInRoleImmutableError` (403) for built-ins
 - `PasswordRecoveryService.admin_reset` re-checks `is_superadmin` inside the service.
+- bootstrap advisory lock (`acquire_bootstrap_lock`,
+  `services/rbac/utils/bootstrap_lock.py`) — `FirstSetupService.setup()` and
+  `ResetUserService.reset()` both take a PostgreSQL transaction-scoped
+  advisory lock before checking whether a user exists, so concurrent callers
+  cannot race past that check and create two bootstrap superadmins.
 
 Follow the same pattern: view-level gate for the verb, service-level guard for the
 invariant.
@@ -456,6 +468,9 @@ path — the default org is only for bootstrap and data migrations.
 | Auth backend (JWT + API key) | `services/rbac/authentication.py` |
 | Login/logout/first-setup/reset-user/introspect views | `views/auth_views.py` |
 | First-time setup | `services/rbac/first_setup_service.py`, `utils/superadmin_bootstrap.py` |
+| First-setup mode gate | `services/rbac/first_setup_mode.py` |
+| Bootstrap advisory lock (first-setup + reset-user) | `services/rbac/utils/bootstrap_lock.py` |
+| CLI superadmin creation | `management/commands/create_superadmin.py` |
 | Password recovery (request/confirm/admin/CLI) | `services/rbac/password_recovery_service.py` + `services/rbac/utils/*` |
 | Profile + avatar + 2-step password change | `services/rbac/user_profile_service.py`, `views/user_profile_views.py` |
 | Org CRUD (superadmin) | `services/rbac/organization_management_service.py`, `views/organization_admin_views.py` |
