@@ -1,0 +1,138 @@
+:host {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    color: var(--color-text-primary);
+    transition:
+        opacity 0.12s ease,
+        filter 0.12s ease;
+}
+
+.cdt-tree-block__connector {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+    opacity: 0;
+
+    &--top {
+        top: 0;
+        left: 50%;
+    }
+
+    &--right {
+        top: 50%;
+        right: 0;
+    }
+
+    &--bottom {
+        bottom: 0;
+        left: 50%;
+    }
+
+    &--left {
+        top: 50%;
+        left: 0;
+    }
+}
+
+.cdt-tree-block__body {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    width: 100%;
+    height: 100%;
+    padding: 0.5rem 1.5rem;
+    text-align: center;
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 2px;
+        border-radius: 6px;
+    }
+}
+
+.cdt-tree-block__heading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    max-width: 100%;
+}
+
+.cdt-tree-block__title {
+    overflow: hidden;
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdt-tree-block__chip {
+    flex-shrink: 0;
+    padding: 0.05rem 0.35rem;
+    font-size: 0.65rem;
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 999px;
+}
+
+.cdt-tree-block__warning {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--gray-900);
+    pointer-events: auto;
+    background: var(--color-error);
+    border-radius: 50%;
+}
+
+.cdt-tree-block__subtitle {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 0.75rem;
+    line-height: 1.3;
+    color: var(--color-text-secondary);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.cdt-tree-block__expand {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.5rem;
+    color: var(--color-text-secondary);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+// Only blocks that carry code, an expression or a prompt can be opened.
+:host(.cdt-tree-block--interactive) .cdt-tree-block__body {
+    cursor: pointer;
+}
+
+:host(.cdt-tree-block--interactive):hover .cdt-tree-block__expand {
+    opacity: 1;
+}
+
+:host(.cdt-tree-block--dimmed) {
+    opacity: 0.3;
+}
+
+:host(.cdt-tree-block--match) {
+    filter: drop-shadow(0 0 0 transparent);
+
+    .cdt-tree-block__title {
+        color: var(--accent-color);
+    }
+}

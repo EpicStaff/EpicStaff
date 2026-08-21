@@ -255,6 +255,39 @@
     display: none;
 }
 
+// Decision Tree button, rendered next to Export in the panel shell header.
+// Must stay at the top level of this stylesheet: the template that holds it is
+// declared here but projected into the shell's DOM, so a selector nested under
+// a panel-internal ancestor would never match.
+.cdt-tree-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 3px 10px;
+    font-size: 0.8em;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.75);
+    white-space: nowrap;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 6px;
+    transition:
+        background 0.18s,
+        border-color 0.18s,
+        color 0.18s;
+
+    &:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.32);
+    }
+}
+
+.cdt-tree-button__label {
+    line-height: 1;
+}
+
 // Grid section
 .grid-section {
     display: flex;

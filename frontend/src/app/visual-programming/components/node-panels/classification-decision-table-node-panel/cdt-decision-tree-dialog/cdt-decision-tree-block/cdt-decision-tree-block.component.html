@@ -1,0 +1,67 @@
+<app-cdt-decision-tree-shape
+    [shape]="block().shape"
+    [width]="block().size.width"
+    [height]="block().size.height"
+/>
+
+@for (port of block().outPorts; track port.id) {
+    <div
+        class="cdt-tree-block__connector"
+        [class]="'cdt-tree-block__connector--' + port.side"
+        fNodeOutput
+        fOutputDisabled
+        [fOutputId]="port.id"
+        [fOutputConnectableSide]="port.side"
+    ></div>
+}
+
+@for (port of block().inPorts; track port.id) {
+    <div
+        class="cdt-tree-block__connector"
+        [class]="'cdt-tree-block__connector--' + port.side"
+        fNodeInput
+        fInputDisabled
+        [fInputId]="port.id"
+        [fInputConnectableSide]="port.side"
+    ></div>
+}
+
+<div
+    class="cdt-tree-block__body"
+    [attr.role]="block().detail ? 'button' : null"
+    [attr.tabindex]="block().detail ? 0 : null"
+    (click)="onActivate()"
+    (keydown.enter)="onActivate()"
+    (keydown.space)="onActivate()"
+>
+    <div class="cdt-tree-block__heading">
+        <span class="cdt-tree-block__title">{{ block().title }}</span>
+
+        @if (block().chip) {
+            <span class="cdt-tree-block__chip">{{ block().chip }}</span>
+        }
+
+        @if (block().warning) {
+            <span
+                class="cdt-tree-block__warning"
+                [matTooltip]="block().warning!"
+                matTooltipPosition="above"
+                aria-label="Warning"
+                >!</span
+            >
+        }
+    </div>
+
+    @if (block().subtitle) {
+        <span class="cdt-tree-block__subtitle">{{ block().subtitle }}</span>
+    }
+
+    @if (block().detail) {
+        <app-svg-icon
+            class="cdt-tree-block__expand"
+            icon="zoom-scan"
+            size="0.85rem"
+            ariaLabel="Show full content"
+        />
+    }
+</div>

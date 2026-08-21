@@ -1,3 +1,4 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
@@ -15,6 +16,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
@@ -47,6 +49,8 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { CdtDecisionTreeInput } from './cdt-decision-tree-dialog/cdt-decision-tree.model';
+import { CdtDecisionTreeDialogComponent } from './cdt-decision-tree-dialog/cdt-decision-tree-dialog.component';
 import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
@@ -68,6 +72,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         ActionDropdownButtonComponent,
         SelectComponent,
         ColumnResizeDividerComponent,
+        MatTooltipModule,
     ],
     templateUrl: './classification-decision-table-node-panel.component.html',
     styleUrls: ['./classification-decision-table-node-panel.component.scss'],
@@ -114,6 +119,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private readonly importExportService = inject(ImportExportService);
     private readonly cdtExportImportService = inject(CdtExportImportService);
     private readonly toastService = inject(ToastService);
+    private readonly dialog = inject(Dialog);
 
     // Sub-FormGroups for InputMapComponent in pre/post tabs.
     public preInputForm!: FormGroup;
@@ -598,6 +604,49 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         });
         const csv = this.cdtExportImportService.exportToCsv(exportData);
         this.cdtExportImportService.downloadFile(csv, this.buildFileName('csv'), 'text/csv;charset=utf-8;');
+    }
+
+    // ── Decision tree ──
+
+    /**
+     * Opens the read-only flowchart of this table.
+     *
+     * Deliberately does not touch node state: no `createUpdatedNode`, no
+     * `notifyExternalChange`, no `triggerAutosave`. Opening a viewer must never
+     * mark the canvas dirty, so the dialog is handed a snapshot and nothing else.
+     */
+    public openDecisionTree(): void {
+        this.dialog.open(CdtDecisionTreeDialogComponent, {
+            data: this.buildDecisionTreeInput(),
+            width: '92vw',
+            height: '90vh',
+            maxWidth: '1680px',
+            // ESC and the backdrop are handled by the dialog itself so the popover,
+            // the search box and the dialog can close in the right order.
+            disableClose: true,
+            ariaLabel: 'Decision tree',
+        });
+    }
+
+    private buildDecisionTreeInput(): CdtDecisionTreeInput {
+        const canvasTable = (this.node().data as { table?: ClassificationDecisionTableData }).table;
+
+        return {
+            nodeId: this.node().id,
+            nodeName: this.form.value.node_name ?? this.node().node_name ?? '',
+            preCode: this.preCode,
+            postCode: this.postCode,
+            preInputMap: this.serializeInputMap('pre_input_map'),
+            prompts: { ...this.prompts() },
+            // The clone carries unsaved grid edits; the canvas node carries the
+            // `next_node` values FlowService writes. The builder needs both.
+            rows: this.conditionGroups(),
+            canvasRows: canvasTable?.condition_groups ?? [],
+            defaultNextNode: this.form.value.default_next_node || null,
+            errorNextNode: this.form.value.next_error_node || null,
+            connections: [...this.flowService.connections()],
+            nodes: [...this.flowService.nodes()],
+        };
     }
 
     private downloadBlob(blob: Blob, filename: string): void {

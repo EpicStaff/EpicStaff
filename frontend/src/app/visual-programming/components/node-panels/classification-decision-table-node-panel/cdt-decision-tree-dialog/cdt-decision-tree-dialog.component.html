@@ -1,0 +1,203 @@
+<div class="cdt-tree">
+    <header class="cdt-tree__header">
+        <h2 class="cdt-tree__title">Decision Tree</h2>
+        <span class="cdt-tree__node-name">{{ layout.title }}</span>
+        <span class="cdt-tree__badge">Read-only</span>
+        <button
+            class="cdt-tree__close"
+            type="button"
+            aria-label="Close"
+            (click)="close()"
+        >
+            <app-svg-icon icon="x" />
+        </button>
+    </header>
+
+    <div class="cdt-tree__toolbar">
+        <div class="cdt-tree__zoom">
+            <button
+                class="cdt-tree__zoom-btn"
+                type="button"
+                aria-label="Zoom out"
+                (click)="zoomOut()"
+            >
+                <app-svg-icon
+                    icon="zoom-out"
+                    size="1rem"
+                />
+            </button>
+            <button
+                class="cdt-tree__zoom-value"
+                type="button"
+                aria-label="Reset zoom"
+                (click)="resetZoom()"
+            >
+                {{ zoomPercent() }}%
+            </button>
+            <button
+                class="cdt-tree__zoom-btn"
+                type="button"
+                aria-label="Zoom in"
+                (click)="zoomIn()"
+            >
+                <app-svg-icon
+                    icon="zoom-in"
+                    size="1rem"
+                />
+            </button>
+        </div>
+
+        <button
+            class="cdt-tree__fit"
+            type="button"
+            (click)="fit()"
+        >
+            Fit
+        </button>
+
+        <div class="cdt-tree__search">
+            <app-svg-icon
+                icon="search"
+                size="0.95rem"
+            />
+            <input
+                #searchInput
+                class="cdt-tree__search-input"
+                type="text"
+                placeholder="Search blocks"
+                aria-label="Search blocks"
+                [value]="query()"
+                (input)="onQueryInput($event)"
+            />
+            @if (hasQuery()) {
+                <span class="cdt-tree__search-count">
+                    {{ matchIds().length ? activeMatch() + 1 : 0 }} / {{ matchIds().length }}
+                </span>
+                <button
+                    class="cdt-tree__search-step"
+                    type="button"
+                    aria-label="Previous match"
+                    [disabled]="!matchIds().length"
+                    (click)="stepMatch(-1)"
+                >
+                    ‹
+                </button>
+                <button
+                    class="cdt-tree__search-step"
+                    type="button"
+                    aria-label="Next match"
+                    [disabled]="!matchIds().length"
+                    (click)="stepMatch(1)"
+                >
+                    ›
+                </button>
+            }
+        </div>
+
+        @if (layout.hiddenRowCount > 0) {
+            <span class="cdt-tree__hidden-chip">
+                {{ layout.hiddenRowCount }} disabled {{ layout.hiddenRowCount === 1 ? 'rule' : 'rules' }} hidden
+            </span>
+        }
+    </div>
+
+    <div class="cdt-tree__canvas">
+        <f-flow
+            fDraggable
+            [fCanvasMoveTrigger]="canvasMoveTrigger"
+            (fLoaded)="onFlowLoaded()"
+        >
+            <f-background>
+                <f-circle-pattern />
+            </f-background>
+
+            <f-canvas
+                fZoom
+                (fCanvasChange)="onCanvasChange($event)"
+            >
+                @for (edge of visibleEdges(); track edge.id) {
+                    <f-connection
+                        fBehavior="fixed"
+                        fType="segment"
+                        fSelectionDisabled
+                        fReassignDisabled
+                        [fRadius]="12"
+                        [fOffset]="24"
+                        [fConnectionId]="edge.id"
+                        [fOutputId]="edge.id + '::out'"
+                        [fInputId]="edge.id + '::in'"
+                        [class]="'cdt-tree-edge cdt-tree-edge--' + edge.kind"
+                    >
+                        <svg
+                            viewBox="0 0 6 6"
+                            fMarker
+                            [type]="eMarkerType.END"
+                            [height]="6"
+                            [width]="6"
+                            [refX]="5"
+                            [refY]="3"
+                        >
+                            <path
+                                d="M0,0 L6,3 0,6Z"
+                                stroke="none"
+                            ></path>
+                        </svg>
+
+                        @if (edge.label) {
+                            <div
+                                fConnectionContent
+                                class="cdt-tree-edge__label"
+                                [position]="0.5"
+                            >
+                                {{ edge.label }}
+                            </div>
+                        }
+                    </f-connection>
+                }
+
+                @for (block of layout.blocks; track block.id) {
+                    <app-cdt-decision-tree-block
+                        fNode
+                        fNodeDraggingDisabled
+                        fNodeSelectionDisabled
+                        [fNodeId]="block.id"
+                        [fNodePosition]="block.position"
+                        [fNodeSize]="block.size"
+                        [block]="block"
+                        [dimmed]="isDimmed(block.id)"
+                        [matched]="isMatched(block.id)"
+                        (detailRequested)="openDetail($event, block)"
+                    />
+                }
+            </f-canvas>
+        </f-flow>
+    </div>
+
+    <footer class="cdt-tree__legend">
+        @for (item of legend; track item.shape) {
+            <span class="cdt-tree__legend-item">
+                <span class="cdt-tree__legend-glyph">
+                    <app-cdt-decision-tree-shape
+                        [shape]="item.shape"
+                        [width]="34"
+                        [height]="18"
+                    />
+                </span>
+                {{ item.label }}
+            </span>
+        }
+    </footer>
+</div>
+
+<ng-template #detailTpl>
+    @if (detail(); as content) {
+        <div class="cdt-tree-detail__panel">
+            <div class="cdt-tree-detail__heading">{{ content.heading }}</div>
+            <pre
+                class="cdt-tree-detail__body"
+                [class.cdt-tree-detail__body--code]="content.language === 'python'"
+                >{{ content.body }}</pre
+            >
+        </div>
+    }
+</ng-template>

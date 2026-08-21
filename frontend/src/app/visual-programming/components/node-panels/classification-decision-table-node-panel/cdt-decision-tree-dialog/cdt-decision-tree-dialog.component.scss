@@ -1,0 +1,312 @@
+:host {
+    // Modal chrome and canvas share one surface; blocks, toolbar controls and the
+    // popover sit one step above it. Kept as local tokens because the global
+    // palette has no pair at this contrast.
+    --cdt-tree-surface: #212325;
+    --cdt-tree-raised: #2b2d30;
+
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.cdt-tree {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    color: var(--color-text-primary);
+    background: var(--cdt-tree-surface);
+    border-radius: 10px;
+}
+
+// ---------------------------------------------------------------------------
+// Header
+// ---------------------------------------------------------------------------
+
+.cdt-tree__header {
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.9rem 1.25rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.cdt-tree__title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.cdt-tree__node-name {
+    overflow: hidden;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdt-tree__badge {
+    padding: 0.1rem 0.5rem;
+    font-size: 0.7rem;
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 999px;
+}
+
+.cdt-tree__close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    margin-left: auto;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+
+    &:hover {
+        color: var(--color-text-primary);
+        background: var(--gray-750);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Toolbar
+// ---------------------------------------------------------------------------
+
+.cdt-tree__toolbar {
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.6rem 1.25rem;
+}
+
+.cdt-tree__zoom {
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    background: var(--cdt-tree-raised);
+    border-radius: 6px;
+}
+
+.cdt-tree__zoom-btn,
+.cdt-tree__zoom-value,
+.cdt-tree__fit,
+.cdt-tree__search-step {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 2rem;
+    padding: 0 0.6rem;
+    font-size: 0.8rem;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    background: transparent;
+    border: none;
+
+    &:hover:not(:disabled) {
+        background: var(--gray-750);
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.4;
+    }
+}
+
+.cdt-tree__zoom-value {
+    min-width: 3.5rem;
+    background: var(--cdt-tree-surface);
+}
+
+.cdt-tree__fit {
+    background: var(--cdt-tree-raised);
+    border-radius: 6px;
+}
+
+.cdt-tree__search {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    height: 2rem;
+    padding: 0 0.6rem;
+    color: var(--color-text-secondary);
+    background: var(--cdt-tree-raised);
+    border-radius: 6px;
+}
+
+.cdt-tree__search-input {
+    width: 12rem;
+    font-size: 0.8rem;
+    color: var(--color-text-primary);
+    background: transparent;
+    border: none;
+    outline: none;
+}
+
+.cdt-tree__search-count {
+    font-size: 0.72rem;
+    white-space: nowrap;
+}
+
+.cdt-tree__hidden-chip {
+    margin-left: auto;
+    padding: 0.15rem 0.55rem;
+    font-size: 0.72rem;
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 999px;
+}
+
+// ---------------------------------------------------------------------------
+// Canvas
+// ---------------------------------------------------------------------------
+
+.cdt-tree__canvas {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    background: var(--cdt-tree-surface);
+}
+
+// ---------------------------------------------------------------------------
+// Legend
+// ---------------------------------------------------------------------------
+
+.cdt-tree__legend {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+    align-items: center;
+    padding: 0.7rem 1.25rem;
+    font-size: 0.72rem;
+    color: var(--color-text-secondary);
+    border-top: 1px solid var(--color-divider-subtle);
+}
+
+.cdt-tree__legend-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.cdt-tree__legend-glyph {
+    position: relative;
+    width: 34px;
+    height: 18px;
+}
+
+// ---------------------------------------------------------------------------
+// Read-only popover
+//
+// The panel is declared in this component's template, so it carries this
+// component's encapsulation attribute even though the CDK renders it in the
+// overlay container — no global rule needed. It also lives outside `<f-flow>`,
+// whose host sets `user-select: none`, so its text stays selectable.
+// ---------------------------------------------------------------------------
+
+.cdt-tree-detail__panel {
+    max-width: 640px;
+    max-height: 50vh;
+    overflow: auto;
+    padding: 0.75rem 0.9rem;
+    color: var(--color-text-primary);
+    background: var(--cdt-tree-raised);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.cdt-tree-detail__heading {
+    margin-bottom: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.cdt-tree-detail__body {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+
+    &--code {
+        font-family: 'Roboto Mono', 'Courier New', monospace;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Foblex
+//
+// The app never imports Foblex's own stylesheet — the main canvas hand-styles
+// every `.f-*` class under its own `::ng-deep`. Without the rules below the
+// connections render as filled blobs or as nothing at all, which looks exactly
+// like the connection worker having failed to resolve their endpoints.
+// ---------------------------------------------------------------------------
+
+:host ::ng-deep {
+    // `--color-divider-regular` is a 14%-alpha hairline meant for borders; used on
+    // a connection stroke it is effectively invisible against the canvas.
+    --cdt-tree-edge-color: #8a8f9c;
+
+    f-flow {
+        width: 100%;
+        height: 100%;
+    }
+
+    .f-background circle {
+        fill: var(--vp-line-alignment-color);
+    }
+
+    .f-connection {
+        .f-connection-path {
+            fill: none;
+            stroke: var(--cdt-tree-edge-color);
+            stroke-width: 2;
+        }
+
+        .f-connection-selection,
+        .f-connection-drag-handle {
+            fill: none;
+            stroke: transparent;
+            pointer-events: none;
+        }
+
+        .f-connection-waypoints {
+            visibility: hidden;
+        }
+
+        svg.f-marker path {
+            fill: var(--cdt-tree-edge-color);
+        }
+    }
+
+    .cdt-tree-edge--error .f-connection-path {
+        stroke-dasharray: 6 4;
+    }
+
+    .cdt-tree-edge--continue .f-connection-path {
+        stroke-dasharray: 4 3;
+    }
+
+    .cdt-tree-edge__label {
+        padding: 0.05rem 0.3rem;
+        font-size: 0.7rem;
+        color: var(--color-text-secondary);
+        background: var(--cdt-tree-surface);
+        border-radius: 3px;
+    }
+
+    // Nothing on the canvas is interactive except the block bodies themselves.
+    .f-node {
+        cursor: default;
+    }
+}
