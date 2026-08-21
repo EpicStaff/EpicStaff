@@ -10,8 +10,8 @@
  */
 
 import {
+    CDT_TREE_ASIDE_GAP,
     CDT_TREE_BLOCK_TITLE_BAND,
-    CDT_TREE_ERROR_LANE_GAP,
     CDT_TREE_H_GAP,
     CDT_TREE_SUBTITLE_CODE_LINES,
     CDT_TREE_SUBTITLE_LINE_HEIGHT,
@@ -60,9 +60,9 @@ export function layoutCdtDecisionTree(tree: CdtTree): CdtTreeLayout {
     const byId = new Map<string, CdtTreeBlock>(tree.blocks.map((block) => [block.id, block]));
     const positions = new Map<string, CdtTreePoint>();
 
-    // The builder guarantees every id in `spine`, `chains` and `errorBlockId` is
-    // also in `blocks`. Fail loudly with the offending id if that ever stops
-    // holding, rather than dying on `undefined.kind` three frames away.
+    // The builder guarantees every id named by a lane is also in `blocks`. Fail
+    // loudly with the offending id if that ever stops holding, rather than dying
+    // on `undefined.kind` three frames away.
     const blockById = (id: string): CdtTreeBlock => {
         const block = byId.get(id);
         if (!block) throw new Error(`cdt-decision-tree: layout references unknown block "${id}"`);
@@ -71,39 +71,56 @@ export function layoutCdtDecisionTree(tree: CdtTree): CdtTreeLayout {
 
     const sizeOf = (id: string): CdtTreeSize => blockSize(blockById(id));
 
+    // The passes run in dependency order rather than in lane order: a chain is
+    // centred on its anchor and an aside clears the whole spine, so the spine has
+    // to be placed first. Anything that needs a different order needs a new pass,
+    // not a reordered `lanes`.
+    const spineLane = tree.lanes.find((lane) => lane.kind === 'spine');
+    if (!spineLane) throw new Error('cdt-decision-tree: layout found no spine lane');
+
     // 1. The spine runs straight down, every block centred on x = 0.
     let cursorY = 0;
     const spineCentreY = new Map<string, number>();
 
-    for (const id of tree.spine) {
+    for (const id of spineLane.blockIds) {
         const size = sizeOf(id);
         positions.set(id, { x: -size.width / 2, y: cursorY });
         spineCentreY.set(id, cursorY + size.height / 2);
         cursorY += size.height + CDT_TREE_V_GAP;
     }
 
-    // 2. Each row's chain runs right from its diamond, vertically centred on it.
-    for (const chain of tree.chains) {
-        const decisionSize = sizeOf(chain.decisionId);
-        const decisionRight = decisionSize.width / 2;
-        const centreY = spineCentreY.get(chain.decisionId) ?? 0;
+    const spineHalfWidth = Math.max(...spineLane.blockIds.map((id) => sizeOf(id).width)) / 2;
 
-        let cursorX = decisionRight + CDT_TREE_H_GAP;
-        for (const id of chain.blockIds) {
+    // 2. Each chain runs right from its anchor, vertically centred on it.
+    for (const lane of tree.lanes) {
+        if (lane.kind !== 'chain') continue;
+
+        const centreY = spineCentreY.get(lane.anchorId) ?? 0;
+        let cursorX = sizeOf(lane.anchorId).width / 2 + CDT_TREE_H_GAP;
+
+        for (const id of lane.blockIds) {
             const size = sizeOf(id);
             positions.set(id, { x: cursorX, y: centreY - size.height / 2 });
             cursorX += size.width + CDT_TREE_H_GAP;
         }
     }
 
-    // 3. The error lane sits left of the spine, level with the fall-through block.
-    const errorSize = sizeOf(tree.errorBlockId);
-    const widestSpine = Math.max(...tree.spine.map((id) => sizeOf(id).width));
-    const errorAnchorY = spineCentreY.get(tree.fallThroughBlockId) ?? 0;
-    positions.set(tree.errorBlockId, {
-        x: -widestSpine / 2 - CDT_TREE_ERROR_LANE_GAP - errorSize.width,
-        y: errorAnchorY - errorSize.height / 2,
-    });
+    // 3. Asides clear the widest point of the spine and run away from it, level
+    //    with their anchor.
+    for (const lane of tree.lanes) {
+        if (lane.kind !== 'aside') continue;
+
+        const centreY = spineCentreY.get(lane.anchorId) ?? 0;
+        const leftwards = lane.side === 'left';
+        let edgeX = leftwards ? -spineHalfWidth - CDT_TREE_ASIDE_GAP : spineHalfWidth + CDT_TREE_ASIDE_GAP;
+
+        for (const id of lane.blockIds) {
+            const size = sizeOf(id);
+            const x = leftwards ? edgeX - size.width : edgeX;
+            positions.set(id, { x, y: centreY - size.height / 2 });
+            edgeX = leftwards ? x - CDT_TREE_H_GAP : x + size.width + CDT_TREE_H_GAP;
+        }
+    }
 
     // 4. One connector per edge endpoint, so no two edges can ever share one.
     const outPorts = new Map<string, CdtTreeConnector[]>();

@@ -125,27 +125,51 @@ export interface CdtTreeEdge {
     readonly label: string | null;
 }
 
-/** A row's `yes` branch: the blocks hanging horizontally off one decision diamond. */
-export interface CdtTreeChain {
-    readonly decisionId: string;
+/**
+ * The one vertical column, top to bottom.
+ *
+ * The builder knows this order naturally; deriving it in the layout would mean
+ * parsing ids.
+ */
+export interface CdtTreeSpineLane {
+    readonly kind: 'spine';
     readonly blockIds: readonly string[];
 }
+
+/** A row's `yes` branch: blocks running right from the diamond, centred on it. */
+export interface CdtTreeChainLane {
+    readonly kind: 'chain';
+    readonly anchorId: string;
+    readonly blockIds: readonly string[];
+}
+
+/** A branch that leaves the column sideways, level with its anchor. */
+export interface CdtTreeAsideLane {
+    readonly kind: 'aside';
+    readonly side: 'left' | 'right';
+    readonly anchorId: string;
+    readonly blockIds: readonly string[];
+}
+
+/**
+ * A lane is the unit the layout places.
+ *
+ * Naming one block id per arrangement on `CdtTree` did not scale: every new
+ * branch that left the column meant another field and another `if` in the layout.
+ * A new arrangement is now a new variant here, and the exhaustive switch makes
+ * the layout state what it does with it.
+ */
+export type CdtTreeLane = CdtTreeSpineLane | CdtTreeChainLane | CdtTreeAsideLane;
 
 export interface CdtTree {
     readonly title: string;
     readonly blocks: readonly CdtTreeBlock[];
     readonly edges: readonly CdtTreeEdge[];
     /**
-     * Block ids of the vertical spine, top to bottom. The builder knows this
-     * order naturally; deriving it in the layout would mean parsing ids.
+     * Where every block goes: exactly one `spine` lane, one `chain` per drawn row
+     * in evaluation order, and an `aside` per branch that leaves the column.
      */
-    readonly spine: readonly string[];
-    /** One entry per drawn row, in spine order. */
-    readonly chains: readonly CdtTreeChain[];
-    /** The error lane block, placed left of the spine and level with `fallThroughBlockId`. */
-    readonly errorBlockId: string;
-    /** The `no row matched` block — the layout's vertical anchor for the error lane. */
-    readonly fallThroughBlockId: string;
+    readonly lanes: readonly CdtTreeLane[];
     /** Rows excluded because `dock_visible === false`; surfaced in the toolbar. */
     readonly hiddenRowCount: number;
     /** Rows actually drawn. */

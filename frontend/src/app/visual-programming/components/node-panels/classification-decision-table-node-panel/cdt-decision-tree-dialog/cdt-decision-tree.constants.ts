@@ -89,8 +89,8 @@ export const CDT_TREE_V_GAP = 56;
 /** Horizontal gap between blocks of a row's action chain. */
 export const CDT_TREE_H_GAP = 72;
 
-/** Extra gap between the spine and the error lane on its left. */
-export const CDT_TREE_ERROR_LANE_GAP = 96;
+/** Gap between the widest point of the spine and an aside lane beside it. */
+export const CDT_TREE_ASIDE_GAP = 96;
 
 /** Padding passed to `fitToScreen` so blocks never touch the viewport edge. */
 export const CDT_TREE_FIT_PADDING = { x: 80, y: 60 } as const;

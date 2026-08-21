@@ -26,7 +26,7 @@ import {
     CdtTree,
     CdtTreeBlock,
     CdtTreeBlockKind,
-    CdtTreeChain,
+    CdtTreeChainLane,
     CdtTreeDetail,
     CdtTreeEdge,
     CdtTreeEdgeKind,
@@ -147,7 +147,7 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
 
     // -- one branch per enabled row -----------------------------------------
 
-    const chains: CdtTreeChain[] = [];
+    const chains: CdtTreeChainLane[] = [];
 
     enabledRows.forEach((row, index) => {
         const decision = block(blocks, {
@@ -235,7 +235,7 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
                 : edge(tail, 'right', exit, 'right', 'flow')
         );
 
-        chains.push({ decisionId: decision, blockIds: chain });
+        chains.push({ kind: 'chain', anchorId: decision, blockIds: chain });
     });
 
     // Enter the ladder at the first rule, or drop straight through when there is none.
@@ -249,16 +249,22 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
         title: input.nodeName,
         blocks,
         edges,
-        spine: [
-            ...spineHead,
-            ...chains.map((chainEntry) => chainEntry.decisionId),
-            fallThrough,
-            ...(post ? [post] : []),
-            left,
+        lanes: [
+            {
+                kind: 'spine',
+                blockIds: [
+                    ...spineHead,
+                    ...chains.map((chainEntry) => chainEntry.anchorId),
+                    fallThrough,
+                    ...(post ? [post] : []),
+                    left,
+                ],
+            },
+            ...chains,
+            // Any step can raise, so the error branch hangs off the column as a
+            // whole rather than off one rule.
+            { kind: 'aside', side: 'left', anchorId: fallThrough, blockIds: [error] },
         ],
-        chains,
-        errorBlockId: error,
-        fallThroughBlockId: fallThrough,
         hiddenRowCount,
         rowCount: enabledRows.length,
     };
