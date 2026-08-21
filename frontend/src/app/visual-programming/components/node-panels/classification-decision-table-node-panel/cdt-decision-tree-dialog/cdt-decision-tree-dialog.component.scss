@@ -1,9 +1,10 @@
 :host {
-    // Modal chrome and canvas share one surface; blocks, toolbar controls and the
-    // popover sit one step above it. Kept as local tokens because the global
-    // palette has no pair at this contrast.
-    --cdt-tree-surface: #212325;
-    --cdt-tree-raised: #2b2d30;
+    // Modal chrome and canvas share the page surface; blocks, toolbar controls and
+    // the popover sit one step above it, on the same token the real canvas nodes
+    // use (`flow-base-node.component.scss`). Aliased locally so each role is named
+    // once — both sides flip with the theme, which the text colours do too.
+    --cdt-tree-surface: var(--color-background-body);
+    --cdt-tree-raised: var(--color-nodes-background);
 
     display: block;
     width: 100%;
@@ -70,7 +71,7 @@
 
     &:hover {
         color: var(--color-text-primary);
-        background: var(--gray-750);
+        background: var(--color-secondary-btn-background-hover);
     }
 }
 
@@ -110,7 +111,7 @@
     border: none;
 
     &:hover:not(:disabled) {
-        background: var(--gray-750);
+        background: var(--color-secondary-btn-background-hover);
     }
 
     &:disabled {

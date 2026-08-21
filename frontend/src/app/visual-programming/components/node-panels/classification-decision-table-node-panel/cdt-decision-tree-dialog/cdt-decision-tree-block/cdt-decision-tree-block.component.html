@@ -35,6 +35,12 @@
     (keydown.space)="onActivate()"
 >
     <div class="cdt-tree-block__heading">
+        <app-svg-icon
+            [icon]="icon().name"
+            [width]="icon().width"
+            [height]="icon().height"
+        />
+
         <span class="cdt-tree-block__title">{{ block().title }}</span>
 
         @if (block().chip) {

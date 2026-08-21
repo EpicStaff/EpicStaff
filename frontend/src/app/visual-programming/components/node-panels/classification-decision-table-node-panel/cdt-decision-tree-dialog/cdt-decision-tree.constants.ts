@@ -19,19 +19,46 @@ export const SHAPE_BY_KIND: Readonly<Record<CdtTreeBlockKind, CdtTreeShape>> = {
 };
 
 /**
- * Fixed sizes per shape — the layout pass never measures the DOM.
+ * Width, and the design's minimum height, per shape.
  *
- * Measuring would need a render-at-origin pass plus a second change-detection
- * cycle, would flash on open, and would make the layout impure and untestable.
- * Subtitles clamp to two lines instead, with the full text in the popover.
+ * The minimum is what a block carrying only a title occupies: 42px everywhere,
+ * 134px for a decision diamond, whose text sits in the narrow middle band of the
+ * shape. A block that also carries a subtitle grows past it — see `blockSize` in
+ * the layout pass.
+ *
+ * Heights are derived, never measured: measuring would need a render-at-origin
+ * pass plus a second change-detection cycle, would flash on open, and would make
+ * the layout impure and untestable. Subtitles clamp to
+ * `CDT_TREE_SUBTITLE_CODE_LINES` lines instead, with the full text in the popover,
+ * and the height reserves exactly that many.
  */
-export const SIZE_BY_SHAPE: Readonly<Record<CdtTreeShape, CdtTreeSize>> = {
-    terminator: { width: 240, height: 56 },
-    'predefined-process': { width: 268, height: 76 },
-    data: { width: 268, height: 76 },
-    decision: { width: 320, height: 148 },
-    process: { width: 268, height: 76 },
+export const MIN_SIZE_BY_SHAPE: Readonly<Record<CdtTreeShape, CdtTreeSize>> = {
+    terminator: { width: 196, height: 42 },
+    'predefined-process': { width: 268, height: 42 },
+    data: { width: 268, height: 42 },
+    decision: { width: 320, height: 134 },
+    process: { width: 268, height: 42 },
 };
+
+export interface CdtTreeIcon {
+    /** Sprite id without the `icon-` prefix, as `app-svg-icon` expects it. */
+    readonly name: string;
+    readonly width: string;
+    readonly height: string;
+}
+
+export const ICON_BY_SHAPE: Readonly<Record<CdtTreeShape, CdtTreeIcon>> = {
+    terminator: { name: 'tree-terminator', width: '16px', height: '16px' },
+    'predefined-process': { name: 'tree-computation', width: '18px', height: '16px' },
+    data: { name: 'tree-vars', width: '16px', height: '16px' },
+    decision: { name: 'tree-condition', width: '16px', height: '15px' },
+    process: { name: 'tree-processing', width: '16px', height: '16px' },
+};
+
+export const CDT_TREE_BLOCK_TITLE_BAND = 42;
+
+/** One clamped subtitle line: 0.75rem at a 1.3 line-height, rounded up. */
+export const CDT_TREE_SUBTITLE_LINE_HEIGHT = 16;
 
 /** Vertical gap between consecutive blocks on the spine. */
 export const CDT_TREE_V_GAP = 56;
@@ -45,7 +72,13 @@ export const CDT_TREE_ERROR_LANE_GAP = 96;
 /** Padding passed to `fitToScreen` so blocks never touch the viewport edge. */
 export const CDT_TREE_FIT_PADDING = { x: 80, y: 60 } as const;
 
-/** Max lines of code shown as a block subtitle before the popover takes over. */
+/**
+ * Lines a block subtitle is allowed before the popover takes over.
+ *
+ * The single source for three consumers: the builder cuts a code preview to this
+ * many lines, the layout reserves height for this many, and the block's CSS
+ * clamps to it through `--cdt-tree-subtitle-lines`.
+ */
 export const CDT_TREE_SUBTITLE_CODE_LINES = 2;
 
 /** Max characters of a subtitle before it is clipped with an ellipsis. */

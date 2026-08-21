@@ -24,10 +24,10 @@ import { CdtTreeShape } from '../cdt-decision-tree.model';
             @if (isRounded()) {
                 <rect
                     class="cdt-shape__outline"
-                    x="1"
-                    y="1"
-                    [attr.width]="width() - 2"
-                    [attr.height]="height() - 2"
+                    x="0"
+                    y="0"
+                    [attr.width]="width()"
+                    [attr.height]="height()"
                     [attr.rx]="cornerRadius()"
                 />
             } @else {
@@ -41,16 +41,16 @@ import { CdtTreeShape } from '../cdt-decision-tree.model';
                 <line
                     class="cdt-shape__rule"
                     [attr.x1]="bandOffset()"
-                    y1="1"
+                    y1="0"
                     [attr.x2]="bandOffset()"
-                    [attr.y2]="height() - 1"
+                    [attr.y2]="height()"
                 />
                 <line
                     class="cdt-shape__rule"
                     [attr.x1]="width() - bandOffset()"
-                    y1="1"
+                    y1="0"
                     [attr.x2]="width() - bandOffset()"
-                    [attr.y2]="height() - 1"
+                    [attr.y2]="height()"
                 />
             }
         </svg>
@@ -72,9 +72,7 @@ import { CdtTreeShape } from '../cdt-decision-tree.model';
             }
 
             .cdt-shape__outline {
-                fill: var(--cdt-tree-raised, #2b2d30);
-                stroke: var(--color-divider-regular);
-                stroke-width: 1;
+                fill: var(--cdt-tree-raised, var(--color-nodes-background));
             }
 
             .cdt-shape__rule {
@@ -100,7 +98,7 @@ export class CdtDecisionTreeShapeComponent {
     );
 
     protected readonly cornerRadius = computed(() =>
-        this.shape() === 'terminator' ? (this.height() - 2) / 2 : Math.min(10, this.height() / 5)
+        this.shape() === 'terminator' ? this.height() / 2 : Math.min(10, this.height() / 5)
     );
 
     protected readonly bandOffset = computed(() => Math.min(14, this.width() / 8));
@@ -112,9 +110,9 @@ export class CdtDecisionTreeShapeComponent {
 
         switch (this.shape()) {
             case 'decision':
-                return `${w / 2},1 ${w - 1},${h / 2} ${w / 2},${h - 1} 1,${h / 2}`;
+                return `${w / 2},0 ${w},${h / 2} ${w / 2},${h} 0,${h / 2}`;
             case 'data':
-                return `${s},1 ${w - 1},1 ${w - s},${h - 1} 1,${h - 1}`;
+                return `${s},0 ${w},0 ${w - s},${h} 0,${h}`;
             default:
                 return '';
         }

@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, ElementRef, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, input, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { FFlowModule } from '@foblex/flow';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { CDT_TREE_SUBTITLE_CODE_LINES, CdtTreeIcon, ICON_BY_SHAPE } from '../cdt-decision-tree.constants';
 import { CdtTreePositionedBlock } from '../cdt-decision-tree.model';
 import { CdtDecisionTreeShapeComponent } from '../cdt-decision-tree-shape/cdt-decision-tree-shape.component';
 
@@ -29,6 +30,9 @@ import { CdtDecisionTreeShapeComponent } from '../cdt-decision-tree-shape/cdt-de
         '[class.cdt-tree-block--dimmed]': 'dimmed()',
         '[class.cdt-tree-block--match]': 'matched()',
         '[class.cdt-tree-block--interactive]': '!!block().detail',
+        // The clamp count has to agree with the height the layout reserved for it,
+        // so CSS reads it from the one constant both sides already share.
+        '[style.--cdt-tree-subtitle-lines]': 'subtitleLines',
     },
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -38,6 +42,9 @@ export class CdtDecisionTreeBlockComponent {
     public readonly block = input.required<CdtTreePositionedBlock>();
     public readonly dimmed = input<boolean>(false);
     public readonly matched = input<boolean>(false);
+
+    protected readonly icon = computed<CdtTreeIcon>(() => ICON_BY_SHAPE[this.block().shape]);
+    protected readonly subtitleLines = CDT_TREE_SUBTITLE_CODE_LINES;
 
     /** Emits the anchor element the read-only popover should attach to. */
     public readonly detailRequested = output<HTMLElement>();

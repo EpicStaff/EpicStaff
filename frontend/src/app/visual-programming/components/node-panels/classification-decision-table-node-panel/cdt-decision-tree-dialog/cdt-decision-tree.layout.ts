@@ -10,11 +10,14 @@
  */
 
 import {
+    CDT_TREE_BLOCK_TITLE_BAND,
     CDT_TREE_ERROR_LANE_GAP,
     CDT_TREE_H_GAP,
+    CDT_TREE_SUBTITLE_CODE_LINES,
+    CDT_TREE_SUBTITLE_LINE_HEIGHT,
     CDT_TREE_V_GAP,
+    MIN_SIZE_BY_SHAPE,
     SHAPE_BY_KIND,
-    SIZE_BY_SHAPE,
 } from './cdt-decision-tree.constants';
 import {
     CdtTree,
@@ -27,6 +30,22 @@ import {
     inputConnectorId,
     outputConnectorId,
 } from './cdt-decision-tree.model';
+
+/**
+ * A block's box: the shape's width, and its minimum height unless a subtitle
+ * needs more.
+ *
+ * The subtitle clamps to a fixed number of lines in CSS, so the room it needs is
+ * known without measuring anything — reserve exactly that, whether or not the
+ * text fills it. A decision diamond's minimum already exceeds any content, so it
+ * is always the minimum.
+ */
+function blockSize(block: CdtTreeBlock): CdtTreeSize {
+    const { width, height: min } = MIN_SIZE_BY_SHAPE[SHAPE_BY_KIND[block.kind]];
+    const subtitleBand = block.subtitle ? CDT_TREE_SUBTITLE_CODE_LINES * CDT_TREE_SUBTITLE_LINE_HEIGHT : 0;
+
+    return { width, height: Math.max(min, CDT_TREE_BLOCK_TITLE_BAND + subtitleBand) };
+}
 
 function push(target: Map<string, CdtTreeConnector[]>, blockId: string, connector: CdtTreeConnector): void {
     const existing = target.get(blockId);
@@ -50,7 +69,7 @@ export function layoutCdtDecisionTree(tree: CdtTree): CdtTreeLayout {
         return block;
     };
 
-    const sizeOf = (id: string): CdtTreeSize => SIZE_BY_SHAPE[SHAPE_BY_KIND[blockById(id).kind]];
+    const sizeOf = (id: string): CdtTreeSize => blockSize(blockById(id));
 
     // 1. The spine runs straight down, every block centred on x = 0.
     let cursorY = 0;
@@ -97,11 +116,10 @@ export function layoutCdtDecisionTree(tree: CdtTree): CdtTreeLayout {
     // 5. Normalise to the origin so tests can compare coordinates directly and
     //    `fitToScreen` has a clean bounding box to work with.
     const placed: CdtTreePositionedBlock[] = tree.blocks.map((block) => {
-        const shape = SHAPE_BY_KIND[block.kind];
         return {
             ...block,
-            shape,
-            size: SIZE_BY_SHAPE[shape],
+            shape: SHAPE_BY_KIND[block.kind],
+            size: blockSize(block),
             position: positions.get(block.id) ?? { x: 0, y: 0 },
             outPorts: outPorts.get(block.id) ?? [],
             inPorts: inPorts.get(block.id) ?? [],
