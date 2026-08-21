@@ -48,6 +48,22 @@ class Settings(BaseSettings):
     DJANGO_HOST: str = "django_app"
     DJANGO_PORT: int = 8000
 
+    # --- CORS ---
+    FRONTEND_BASE_URL: str = "http://localhost:4200"
+    DOMAIN_NAME: str = "localhost"
+    CORS_ALLOWED_ORIGINS: str = ""
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        # The docker-compose stack fronts the frontend with nginx on DOMAIN_NAME
+        # (src/docker-compose.yaml's epicstaff-nginx service), a different origin
+        # than FRONTEND_BASE_URL's dev-server default — trust both by default.
+        domain_name = self.DOMAIN_NAME.strip().strip('"')
+        raw = self.CORS_ALLOWED_ORIGINS or ",".join(
+            [self.FRONTEND_BASE_URL, f"http://{domain_name}", f"https://{domain_name}"]
+        )
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
     @property
     def INIT_API_URL(self) -> str:
         return f"http://{self.DJANGO_HOST}:{self.DJANGO_PORT}/api/init-realtime/"

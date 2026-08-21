@@ -170,7 +170,21 @@ REST_FRAMEWORK = {
     },
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:4200").rstrip("/")
+
+# The docker-compose stack fronts the frontend with nginx on DOMAIN_NAME
+# (src/docker-compose.yaml's epicstaff-nginx service), which is a different
+# origin than FRONTEND_BASE_URL's dev-server default — trust both by default.
+_domain_name = os.getenv("DOMAIN_NAME", "localhost").strip().strip('"')
+_default_cors_origins = ",".join(
+    [FRONTEND_BASE_URL, f"http://{_domain_name}", f"https://{_domain_name}"]
+)
+
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", _default_cors_origins).split(",")
+    if origin.strip()
+]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = (*default_headers, "x-organization-id")
 
@@ -347,7 +361,6 @@ if EMAIL_HOST:
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:4200").rstrip("/")
 FRONTEND_PASSWORD_RESET_PATH = os.getenv(
     "FRONTEND_PASSWORD_RESET_PATH", "/reset-password"
 )
