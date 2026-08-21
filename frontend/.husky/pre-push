@@ -1,0 +1,27 @@
+# Blocks a push when THIRD-PARTY-NOTICES.md no longer matches the frontend
+# lockfile. This is the same check CI runs on the pull request, moved one step
+# earlier so the answer arrives before pushing rather than after opening a PR.
+#
+# pre-push rather than pre-commit or commit-msg: those inspect a single commit's
+# staging area, which makes splitting the lockfile and the notices into separate
+# commits fail even when the branch ends up consistent. They also turned out to be
+# unreliable here - GUI clients bypassed them silently. A push almost always goes
+# through git itself, and the branch tip is exactly what CI will judge.
+#
+# No escape hatch is needed: intermediate commits may be inconsistent, only the
+# tip has to be right. Skip a run with `git push --no-verify` if genuinely needed.
+#
+# Costs nothing to run: it compares the lockfile's sha256 against the hash stamped
+# in the notices header. No network and no license-checker.
+repo_root=$(git rev-parse --show-toplevel)
+checker="$repo_root/scripts/check-notices-pushed.mjs"
+
+if command -v node >/dev/null 2>&1 && [ -f "$checker" ]; then
+  node "$checker"
+  status=$?
+  if [ $status -ne 0 ]; then
+    echo ""
+    echo "Push stopped: regenerate the notices, commit them, then push again."
+    exit $status
+  fi
+fi
