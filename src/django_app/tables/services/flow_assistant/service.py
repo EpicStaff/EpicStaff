@@ -22,7 +22,11 @@ from django.utils import timezone
 
 from utils.logger import logger
 
-from tables.exceptions import LLMConfigMissingError, LLMConfigInvalidError, ToolExecutionError
+from tables.exceptions import (
+    LLMConfigMissingError,
+    LLMConfigInvalidError,
+    ToolExecutionError,
+)
 from tables.models.flow_assistant_models import (
     FlowAssistant,
     FlowAssistantConversation,
@@ -38,6 +42,7 @@ from tables.services.llm_clients import (
     UnsupportedLLMProviderError,
     get_llm_client,
 )
+from tables.services.secrets import secret_resolver
 from . import partial_json as _partial_json
 from .tools import _NODE_TABLES, _TOOL_CALLABLES, TOOL_SPECS
 from .constants import _MAX_TOOL_ITERATIONS, _REASONING_EMPTY_HINT
@@ -208,7 +213,9 @@ class FlowAssistantService:
         last_message_at in a single atomic block. Returns the created row.
         """
         with transaction.atomic():
-            next_idx_result = conversation.message_rows.aggregate(m=Max("message_index"))
+            next_idx_result = conversation.message_rows.aggregate(
+                m=Max("message_index")
+            )
             next_idx = next_idx_result["m"]
             next_idx = 0 if next_idx is None else next_idx + 1
             row = FlowAssistantMessage.objects.create(
@@ -249,10 +256,18 @@ class FlowAssistantService:
                 f"FlowAssistant for graph {flow_assistant.graph_id} has no llm_config set."
             )
 
+        # sync_to_async: stream_reply is an async generator, so the ORM lookup cannot run inline.
+        api_key = await sync_to_async(secret_resolver.resolve)(
+            secret_id=flow_assistant.llm_config.api_key_secret_id,
+            org_id=flow_assistant.llm_config.org_id,
+            context="FlowAssistant.llm_config.api_key",
+        )
+
         try:
             client = get_llm_client(
                 flow_assistant.llm_config,
                 output_schema=FLOW_ASSISTANT_OUTPUT_SCHEMA,
+                api_key=api_key,
             )
         except UnsupportedLLMProviderError as exc:
             raise LLMConfigInvalidError(str(exc)) from exc

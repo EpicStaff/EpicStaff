@@ -6,7 +6,6 @@ from typing import AsyncIterator
 
 import litellm
 
-from tables.services.secrets import secret_resolver
 from utils.logger import logger
 
 from .base import (
@@ -42,9 +41,17 @@ class LiteLLMClient(BaseLLMClient):
     behavior because they also used LiteLLM internally.  Tracked separately.
     """
 
-    def __init__(self, llm_config, output_schema: dict | None = None) -> None:
+    def __init__(
+        self,
+        llm_config,
+        *,
+        api_key: str | None,
+        output_schema: dict | None = None,
+    ) -> None:
         super().__init__(output_schema=output_schema)
         self._llm_config = llm_config
+        # Resolved by the caller; this class must not touch the ORM (see get_llm_client).
+        self._api_key = api_key
         # Validate and cache the model string eagerly so callers receive
         # UnsupportedLLMProviderError at construction time (fail-fast), not
         # lazily during the first stream_completion call.
@@ -109,13 +116,8 @@ class LiteLLMClient(BaseLLMClient):
             "stream": True,
         }
 
-        api_key = secret_resolver.resolve(
-            secret_id=cfg.api_key_secret_id,
-            org_id=cfg.org_id,
-            context="LiteLLMClient.api_key",
-        )
-        if api_key:
-            kwargs["api_key"] = api_key
+        if self._api_key:
+            kwargs["api_key"] = self._api_key
         if model and model.base_url:
             kwargs["base_url"] = model.base_url
         if model and getattr(model, "api_version", None):
