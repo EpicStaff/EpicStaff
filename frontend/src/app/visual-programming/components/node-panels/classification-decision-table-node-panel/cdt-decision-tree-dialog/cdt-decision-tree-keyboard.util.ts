@@ -6,20 +6,22 @@
  *
  * - `FlowVisualProgrammingComponent.handleCtrlS` — a `document:keydown`
  *   `@HostListener` that calls `onHeaderSave()`, i.e. a real
- *   `POST /api/graphs/{id}/save/`
- * - `ShortcutListenerDirective` — a `window` keydown subscription, live twice
- *   (node panel shell + main canvas), where Escape saves the open panel and
- *   Delete removes the selected node
+ *   `POST /api/graphs/{id}/save/`. It does not exempt text fields.
+ * - `ShortcutListenerDirective` — a `window` keydown subscription, live three
+ *   times (main canvas, node panel shell, shortcuts button), where Escape saves
+ *   the open panel and Delete removes the selected node. It exempts text fields
+ *   for everything except Escape.
  *
- * The listener therefore has to run in the **capture** phase on `window`.
- * A bubble-phase listener on `document` is not enough: `handleCtrlS` sits on the
- * same node and was registered first, and `stopPropagation` does not stop other
- * listeners on the same node — only `stopImmediatePropagation` does, which would
- * not help for listeners registered earlier. Capture on `window` is the only
- * point that precedes all of them.
+ * The dialog feeds this from `DialogRef.keydownEvents`, which CDK dispatches from
+ * a bubble-phase listener on `document.body` — one node below `document`, so a
+ * `stopPropagation()` there preempts every handler above. The subscriber has to
+ * stay synchronous: a `debounceTime` or a `setTimeout` would defer it past the
+ * dispatcher's stack frame, and by then `stopPropagation` and `preventDefault`
+ * are both no-ops.
  *
- * Typing still has to work in the dialog's own search box, so events targeted at
- * it pass through — except the two the page would act on regardless of target.
+ * Only the page's own shortcut set is swallowed. Everything else — typing, Tab,
+ * and Enter or Space activating a block — has already reached its target by the
+ * time this runs, and is passed through untouched.
  *
  * Pure and Angular-free so the policy can be unit-tested without a dialog.
  */
@@ -40,8 +42,43 @@ export interface CdtTreeKeyResult {
 
 type CdtTreeKeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey'>;
 
+/** Keys the page acts on with no modifier held. */
+const PAGE_BARE_KEYS: ReadonlySet<string> = new Set(['Escape', 'Delete', 'Backspace']);
+
+/**
+ * Keys the page acts on with Ctrl or Cmd held. The Cyrillic entries are the same
+ * physical keys on a RU layout and are listed in the directive as well.
+ */
+const PAGE_MODIFIER_KEYS: ReadonlySet<string> = new Set(['c', 'с', 'v', 'м', 'z', 'я', 'y', 'н', 's', 'ы']);
+
 function isSaveCombo(event: CdtTreeKeyEvent): boolean {
     return (event.ctrlKey || event.metaKey) && event.code === 'KeyS';
+}
+
+/**
+ * Whether the page would act on this key.
+ *
+ * Deliberately a closed list rather than "everything except typing": swallowing
+ * by default also swallowed Enter and Space, which left the blocks impossible to
+ * activate from the keyboard.
+ */
+function isPageShortcut(event: CdtTreeKeyEvent): boolean {
+    if (PAGE_BARE_KEYS.has(event.key)) {
+        return true;
+    }
+
+    if (!(event.ctrlKey || event.metaKey)) {
+        return false;
+    }
+
+    // `KeyF` is `NodesSearchComponent`'s `document:keydown` handler, which opens
+    // the canvas node search and guards nothing at all.
+    return (
+        event.code === 'KeyS' ||
+        event.code === 'Slash' ||
+        event.code === 'KeyF' ||
+        PAGE_MODIFIER_KEYS.has(event.key.toLowerCase())
+    );
 }
 
 export function resolveTreeKeyAction(event: CdtTreeKeyEvent, state: CdtTreeKeyState): CdtTreeKeyResult {
@@ -49,15 +86,14 @@ export function resolveTreeKeyAction(event: CdtTreeKeyEvent, state: CdtTreeKeySt
     const save = isSaveCombo(event);
     const action = escape ? resolveEscapeAction(state) : 'none';
 
-    // Everything is swallowed, except ordinary typing in our own search box.
-    // Save and Escape are swallowed even there: the page's Ctrl+S handler does
-    // not exempt text fields, and Escape is ours to interpret.
-    const stopPropagation = !state.targetIsSearch || escape || save;
-
     return {
         action,
-        stopPropagation,
-        // Only for what we act on, so typing, selection and native copy still work.
+        // Shielding, not consuming: Delete, Backspace and Ctrl+Z are stopped so
+        // the canvas behind never sees them, but are not prevented, so nothing
+        // native is lost. Inside our own search box the page already exempts text
+        // fields, so only the two it acts on regardless of target are swallowed.
+        stopPropagation: isPageShortcut(event) && (!state.targetIsSearch || escape || save),
+        // Only for what we act on, so typing, native undo and copy still work.
         preventDefault: save || action !== 'none',
     };
 }

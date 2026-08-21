@@ -4,6 +4,7 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    DestroyRef,
     ElementRef,
     inject,
     OnDestroy,
@@ -12,6 +13,7 @@ import {
     viewChild,
     ViewContainerRef,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EFMarkerType, FCanvasChangeEvent, FCanvasComponent, FFlowModule, FZoomDirective } from '@foblex/flow';
 
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -52,6 +54,7 @@ export class CdtDecisionTreeDialogComponent implements OnDestroy {
     private readonly dialogRef = inject<DialogRef<void>>(DialogRef);
     private readonly data = inject<CdtDecisionTreeInput>(DIALOG_DATA);
     private readonly detailCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
+    private readonly destroyRef = inject(DestroyRef);
 
     private readonly fCanvas = viewChild(FCanvasComponent);
     private readonly fZoom = viewChild(FZoomDirective);
@@ -99,15 +102,16 @@ export class CdtDecisionTreeDialogComponent implements OnDestroy {
     protected readonly hasQuery = computed(() => this.query().trim().length > 0);
 
     constructor() {
-        // Capture on `window`, not an Angular host binding: host listeners are
-        // bubble-phase, and the flow page's own `document:keydown` Ctrl+S handler
-        // is registered earlier on the same node, so it would win. See
-        // `resolveTreeKeyAction` for the full reasoning.
-        window.addEventListener('keydown', this.onKeydown, { capture: true });
+        // CDK dispatches `keydownEvents` from a bubble-phase listener on
+        // `document.body`, which is early enough to preempt the flow page's own
+        // `document` and `window` shortcut handlers, and late enough that a block
+        // has already handled its own Enter or Space. See `resolveTreeKeyAction`.
+        this.dialogRef.keydownEvents
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((event) => this.onKeydown(event));
     }
 
     public ngOnDestroy(): void {
-        window.removeEventListener('keydown', this.onKeydown, { capture: true });
         this.detailCtrl.dispose();
     }
 
@@ -206,10 +210,10 @@ export class CdtDecisionTreeDialogComponent implements OnDestroy {
     // -- keyboard ------------------------------------------------------------
 
     /**
-     * Capture-phase on `window` — see the module comment on `resolveTreeKeyAction`
-     * for why nothing later in the propagation path is early enough.
+     * Has to stay synchronous — see the module comment on `resolveTreeKeyAction`
+     * for why an async operator here would silently void `stopPropagation`.
      */
-    private readonly onKeydown = (event: KeyboardEvent): void => {
+    private onKeydown(event: KeyboardEvent): void {
         const result = resolveTreeKeyAction(event, {
             popoverOpen: this.detailCtrl.isOpen(),
             searchHasText: this.hasQuery(),
@@ -232,7 +236,7 @@ export class CdtDecisionTreeDialogComponent implements OnDestroy {
             case 'none':
                 break;
         }
-    };
+    }
 
     protected close(): void {
         this.dialogRef.close();
