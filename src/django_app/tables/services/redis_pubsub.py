@@ -25,6 +25,7 @@ from tables.models import (
     SessionStorageFile,
     StorageFile,
 )
+from tables.models.graph_models import TelegramTriggerNode, WebhookTriggerNode
 from tables.models.session_models import SessionTrigger
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.persistent_variables_service import PersistentVariablesService
@@ -185,6 +186,23 @@ class RedisPubSub:
         except Exception as e:
             logger.error(f"Error handling storage_mutations message: {e}")
 
+    @staticmethod
+    def _parse_auth_principal(
+        auth_principal: str | None,
+    ) -> tuple[str | None, int | None] | None:
+        """Split `"<model-label-lower>:<pk>"` (e.g. `"tables.webhooktriggernode:17"`)
+        into `(label, pk)`.
+        """
+        if auth_principal is None:
+            return (None, None)
+
+        try:
+            label, pk_str = auth_principal.rsplit(":", 1)
+            return (label, int(pk_str))
+        except (ValueError, AttributeError):
+            logger.error(f"Unparseable auth_principal: {auth_principal!r}")
+            return None
+
     def webhook_events_handler(self, message: dict):
         try:
             logger.debug("Received webhook event: {}", message)
@@ -194,27 +212,40 @@ class RedisPubSub:
             return
 
         path = data.path.rstrip("/")
-        try:
-            WebhookTriggerService().handle_webhook_trigger(
-                path=path,
-                payload=data.payload,
-                config_id=data.config_id,
-            )
-        except Exception:
-            logger.exception(
-                f"Error in generic webhook_trigger handling for path={path}"
-            )
 
-        try:
-            TelegramTriggerService().handle_telegram_trigger(
-                path=path,
-                payload=data.payload,
-                config_id=data.config_id,
+        parsed = self._parse_auth_principal(data.auth_principal)
+        if parsed is None:
+            logger.error(
+                f"Dropping webhook event for path={path}: unparseable auth_principal"
             )
-        except Exception:
-            logger.exception(
-                f"Error in telegram_trigger handling for path={path}"
-            )
+            return
+        principal_label, principal_pk = parsed
+
+        if principal_label is None or principal_label == WebhookTriggerNode._meta.label_lower:
+            try:
+                WebhookTriggerService().handle_webhook_trigger(
+                    path=path,
+                    payload=data.payload,
+                    config_id=data.config_id,
+                    node_id=principal_pk if principal_label is not None else None,
+                )
+            except Exception:
+                logger.exception(
+                    f"Error in generic webhook_trigger handling for path={path}"
+                )
+
+        if principal_label is None or principal_label == TelegramTriggerNode._meta.label_lower:
+            try:
+                TelegramTriggerService().handle_telegram_trigger(
+                    path=path,
+                    payload=data.payload,
+                    config_id=data.config_id,
+                    node_id=principal_pk if principal_label is not None else None,
+                )
+            except Exception:
+                logger.exception(
+                    f"Error in telegram_trigger handling for path={path}"
+                )
 
     def request_webhook_update_handler(self, message: dict):
         try:

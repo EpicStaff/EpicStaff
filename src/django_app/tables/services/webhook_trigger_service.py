@@ -1,4 +1,5 @@
 import time
+import secrets
 
 from loguru import logger
 
@@ -13,6 +14,8 @@ from tables.models.webhook_models import (
     ProviderType,
     TunnelConfig,
     WebhookTrigger,
+    WebhookNodeAuth,
+    WebhookAuthScheme,
 )
 from src.shared.models import WebhookConfigData
 from tables.services.converter_service import ConverterService
@@ -33,13 +36,15 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         self.redis_service = redis_service
         self.session_manager_service = session_manager_service
 
-    def get_trigger_filters(self, path: str, config_id: str | None = None) -> dict | None:
+    def get_trigger_filters(
+        self, path: str, config_id: str | None = None
+    ) -> dict | None:
         """Build ORM filter kwargs for `WebhookTriggerNode`.
 
         `config_id` is resolved by the `webhook` service from the request's
-        actual Host/domain and has the shape `"<provider>:<registered_path>"`. 
-        The segment after the provider is NOT an arbitrary config-name 
-        label — it is the `path` of the `WebhookTrigger` that was registered 
+        actual Host/domain and has the shape `"<provider>:<registered_path>"`.
+        The segment after the provider is NOT an arbitrary config-name
+        label — it is the `path` of the `WebhookTrigger` that was registered
         for that specific domain/tunnel at connect time.
         Returns `None` when `config_id` identifies a specific tunnel/domain
         whose registered path does NOT match the requested `path`.
@@ -64,11 +69,23 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         return filters
 
     def handle_webhook_trigger(
-        self, path: str, payload: dict, config_id: str | None = None
+        self,
+        path: str,
+        payload: dict,
+        config_id: str | None = None,
+        node_id: int | None = None,
     ) -> None:
+        """`node_id`, when set, restricts dispatch to that single node --
+        used by `RedisPubSub.webhook_events_handler` when the inbound
+        request matched a credential scoped to one specific node (see
+        `WebhookEventData.auth_principal`). `None` preserves the
+        unrestricted fan-out to every `WebhookTriggerNode` on this path.
+        """
         filters = self.get_trigger_filters(path, config_id)
         if filters is None:
             return
+        if node_id is not None:
+            filters["id"] = node_id
 
         webhook_trigger_node_list = WebhookTriggerNode.objects.filter(**filters)
 
@@ -84,15 +101,23 @@ class WebhookTriggerService(metaclass=SingletonMeta):
         data = WebhookConfigData(
             ngrok_configs=[
                 self.converter_service.convert_ngrok_webhook_config_to_pydantic(config)
-                for config in NgrokWebhookConfig.objects.select_related("trigger").all()
+                for config in NgrokWebhookConfig.objects.select_related("trigger")
+                .prefetch_related(
+                    "trigger__telegram_trigger_nodes__webhook_node_auth",
+                    "trigger__webhook_trigger_nodes__webhook_node_auth",
+                )
+                .all()
             ],
             localhost_configs=[
                 self.converter_service.convert_localhost_webhook_config_to_pydantic(
                     config
                 )
-                for config in LocalhostWebhookConfig.objects.select_related(
-                    "trigger"
-                ).all()
+                for config in LocalhostWebhookConfig.objects.select_related("trigger")
+                .prefetch_related(
+                    "trigger__telegram_trigger_nodes__webhook_node_auth",
+                    "trigger__webhook_trigger_nodes__webhook_node_auth",
+                )
+                .all()
             ],
         )
 
@@ -177,3 +202,69 @@ class WebhookTriggerService(metaclass=SingletonMeta):
                 return url
             time.sleep(interval)
         return None
+
+    def ensure_webhook_auth(
+        self, webhook_trigger_node: WebhookTriggerNode, enabled: bool = True
+    ) -> WebhookNodeAuth:
+        """Idempotently ensures a `WebhookNodeAuth` row exists for this node.
+
+        - Row missing: created with the given `enabled` state and a fresh
+          `signing_secret`.
+        - Row exists: the `signing_secret` is preserved (only backfilled if
+          somehow empty); `enabled` is only ever flipped True->stays/False->True
+          here -- this method never disables an existing row (that's
+          `disable_webhook_auth`'s job) so re-enabling never rotates the
+          secret an external caller may already have configured.
+        """
+        raw_secret = secrets.token_hex(32)
+
+        node_auth, created = WebhookNodeAuth.objects.get_or_create(
+            webhook_trigger_node=webhook_trigger_node,
+            defaults={
+                "enabled": enabled,
+                "scheme": WebhookAuthScheme.HMAC_SHA256,
+                "header_name": "X-Webhook-Signature",
+                "timestamp_header_name": "X-Webhook-Timestamp",
+                "signing_secret": raw_secret,
+            },
+        )
+
+        update_fields = []
+        if not created and not node_auth.signing_secret:
+            node_auth.signing_secret = raw_secret
+            update_fields.append("signing_secret")
+        if not created and enabled and not node_auth.enabled:
+            node_auth.enabled = True
+            update_fields.append("enabled")
+        if update_fields:
+            node_auth.save(update_fields=update_fields)
+
+        return node_auth
+
+    def disable_webhook_auth(
+        self, webhook_trigger_node: WebhookTriggerNode
+    ) -> WebhookNodeAuth | None:
+        """Soft-disable: flips `enabled=False` on the existing row without
+        deleting it, so a later re-enable (`ensure_webhook_auth`) reuses the
+        same `signing_secret` instead of forcing external callers to
+        reconfigure their signature verification. Returns `None` when no row
+        exists yet -- nothing to disable.
+        """
+        node_auth = WebhookNodeAuth.objects.filter(
+            webhook_trigger_node=webhook_trigger_node
+        ).first()
+        if node_auth is None:
+            return None
+        if node_auth.enabled:
+            node_auth.enabled = False
+            node_auth.save(update_fields=["enabled"])
+        return node_auth
+
+    def sync_webhook_auth(
+        self, webhook_trigger_node: WebhookTriggerNode, enabled: bool
+    ) -> WebhookNodeAuth | None:
+        """Single entry point for the client-controlled `{"enabled": bool}`
+        toggle on `WebhookTriggerNodeSerializer.webhook_node_auth`."""
+        if enabled:
+            return self.ensure_webhook_auth(webhook_trigger_node, enabled=True)
+        return self.disable_webhook_auth(webhook_trigger_node)

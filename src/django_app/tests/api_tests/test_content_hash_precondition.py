@@ -350,6 +350,37 @@ class TestWebhookNodeNestedHashValidation:
         webhook_node.refresh_from_db()
         assert webhook_node.content_hash != hash_before
 
+    def test_adding_or_removing_webhook_node_auth_does_not_change_content_hash(
+        self, webhook_node, default_org
+    ):
+        """EST-3826: `WebhookNodeAuth` attaches via a reverse OneToOneField,
+        which `_meta.fields` never includes -- `generate_hash()` iterates only
+        `self._meta.fields`, so this row's mere existence must never perturb
+        `WebhookTriggerNode.content_hash` (unlike inline fields, which
+        would)."""
+        from tables.models.webhook_models import WebhookAuthScheme, WebhookNodeAuth
+
+        hash_before = webhook_node.content_hash
+
+        secret = secret_service.create(
+            text="content-hash-lock-secret",
+            org=default_org,
+            name="content-hash-lock-secret",
+        )
+        auth = WebhookNodeAuth.objects.create(
+            enabled=True,
+            scheme=WebhookAuthScheme.HMAC_SHA256,
+            header_name="X-Webhook-Signature",
+            secret=secret,
+            webhook_trigger_node=webhook_node,
+        )
+        webhook_node.refresh_from_db()
+        assert webhook_node.content_hash == hash_before
+
+        auth.delete()
+        webhook_node.refresh_from_db()
+        assert webhook_node.content_hash == hash_before
+
 
 # ---------------------------------------------------------------------------
 # ConditionalEdge: node hash propagates from python_code changes

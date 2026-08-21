@@ -27,6 +27,7 @@ from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
     ProviderType,
+    WebhookNodeAuth,
     WebhookTrigger,
 )
 from tables.services import redis_pubsub
@@ -474,3 +475,251 @@ class TestTelegramNodeAttachResyncsTunnelRegistration:
         node.delete()
 
         assert calls == ["register_webhooks"]
+
+
+@pytest.mark.django_db
+class TestSecretTokenUnconditionalRegistration:
+    """EST-3862: `register_telegram_trigger` calls `setWebhook` with
+    `secret_token=` unconditionally -- there is no "auth enabled" branch to
+    test around. A `WebhookNodeAuth` row is generated on first registration
+    and REUSED (never regenerated) on subsequent resyncs, and none of this
+    requires a `.save()` on `TelegramTriggerNode` itself."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_telegram_signal_side_effects_during_node_creation(self, monkeypatch):
+        """`_make_node()` calls `TelegramTriggerNode.objects.create()`, which
+        fires the real `telegram_trigger_post_save_handler` -- a live Redis
+        publish and a real (slow, 10s-timeout) outbound Telegram call via the
+        cached production singleton. Stub it during node setup only; each
+        test below exercises the real `register_telegram_trigger`
+        implementation directly afterward, through its own stubbed
+        `fresh_service` instance."""
+        monkeypatch.setattr(WebhookTriggerService, "register_webhooks", lambda self: True)
+        monkeypatch.setattr(
+            TelegramTriggerService,
+            "register_telegram_trigger",
+            lambda self, telegram_trigger_instance=None, **kwargs: None,
+        )
+
+    @pytest.fixture
+    def fresh_service(self, monkeypatch):
+        """A `TelegramTriggerService` built with stub dependencies, bypassing
+        the cached `SingletonMeta` instance so this test's stubs don't leak
+        into (or get clobbered by) other tests."""
+        from types import SimpleNamespace
+
+        from utils.singleton_meta import SingletonMeta
+
+        previous = SingletonMeta._instances.get(TelegramTriggerService)
+
+        def _build(*, tunnel_url="https://tunnel.test", register_webhooks_calls=None):
+            SingletonMeta._instances.pop(TelegramTriggerService, None)
+            calls = register_webhooks_calls if register_webhooks_calls is not None else []
+            service = TelegramTriggerService(
+                session_manager_service=SimpleNamespace(),
+                webhook_trigger_service=SimpleNamespace(
+                    wait_for_tunnel_url_for_trigger=lambda trigger: tunnel_url,
+                    register_webhooks=lambda: calls.append("register_webhooks")
+                    or True,
+                ),
+            )
+            return service, calls
+
+        yield _build
+
+        if previous is None:
+            SingletonMeta._instances.pop(TelegramTriggerService, None)
+        else:
+            SingletonMeta._instances[TelegramTriggerService] = previous
+
+    def _make_node(self, *, default_org, path, telegram_secret_text="bot-token-abc"):
+        graph = Graph.objects.create(name=f"g-{path}", org=default_org)
+        trigger = WebhookTrigger.objects.create(
+            path=path, provider_type=ProviderType.NGROK, org=default_org
+        )
+        NgrokWebhookConfig.objects.create(
+            name=f"cfg-{path}",
+            auth_token_secret=secret_service.create(
+                text="tok", org=default_org, name=f"{path}-ngrok-secret"
+            ),
+            trigger=trigger,
+        )
+        return TelegramTriggerNode.objects.create(
+            node_name=f"node-{path}",
+            graph=graph,
+            webhook_trigger=trigger,
+            telegram_bot_api_key_secret=secret_service.create(
+                text=telegram_secret_text, org=default_org, name=f"{path}-bot-secret"
+            ),
+        )
+
+    def test_setwebhook_receives_a_secret_token_on_first_registration(
+        self, default_org, fresh_service, monkeypatch
+    ):
+        node = self._make_node(default_org=default_org, path="unconditional-auth-1")
+        service, calls = fresh_service()
+
+        seen = {}
+        monkeypatch.setattr(
+            service,
+            "_call_telegram_api",
+            lambda method, api_key, endpoint, params=None: seen.update(
+                params=params
+            )
+            or {"ok": True},
+        )
+
+        service.register_telegram_trigger(telegram_trigger_instance=node)
+
+        assert "secret_token" in seen["params"]
+        assert seen["params"]["secret_token"]
+        # The credential push must happen before setWebhook is asked to use it.
+        assert calls == ["register_webhooks"]
+
+        node.refresh_from_db()
+        auth = node.webhook_node_auth
+        assert auth.enabled is True
+        assert auth.scheme == "static_header"
+        assert auth.header_name == "X-Telegram-Bot-Api-Secret-Token"
+
+    def test_secret_is_reused_not_regenerated_on_resync(
+        self, default_org, fresh_service, monkeypatch
+    ):
+        node = self._make_node(default_org=default_org, path="unconditional-auth-2")
+        service, _ = fresh_service()
+        monkeypatch.setattr(
+            service, "_call_telegram_api", lambda *a, **k: {"ok": True}
+        )
+
+        service.register_telegram_trigger(telegram_trigger_instance=node)
+        node.refresh_from_db()
+        first_auth_id = node.webhook_node_auth.pk
+        first_secret_id = node.webhook_node_auth.secret_id
+
+        # A second resync (e.g. a re-save triggering the post_save signal
+        # again) must reuse the exact same row and Secret, not regenerate.
+        service.register_telegram_trigger(telegram_trigger_instance=node)
+        node.refresh_from_db()
+
+        assert node.webhook_node_auth.pk == first_auth_id
+        assert node.webhook_node_auth.secret_id == first_secret_id
+        assert WebhookNodeAuth.objects.filter(
+            telegram_trigger_node=node
+        ).count() == 1
+
+    def test_registration_does_not_save_the_telegram_trigger_node_itself(
+        self, default_org, fresh_service, monkeypatch
+    ):
+        """No signal-recursion risk to guard against: persistence lands only
+        on WebhookNodeAuth/Secret, never a `.save()` on the node."""
+        node = self._make_node(default_org=default_org, path="unconditional-auth-3")
+        service, _ = fresh_service()
+        monkeypatch.setattr(
+            service, "_call_telegram_api", lambda *a, **k: {"ok": True}
+        )
+
+        save_calls = []
+        original_save = TelegramTriggerNode.save
+
+        def _tracking_save(self, *args, **kwargs):
+            save_calls.append(self.pk)
+            return original_save(self, *args, **kwargs)
+
+        monkeypatch.setattr(TelegramTriggerNode, "save", _tracking_save)
+
+        service.register_telegram_trigger(telegram_trigger_instance=node)
+
+        assert save_calls == []
+
+    def test_failed_setwebhook_rolls_back_a_newly_created_auth_row(
+        self, default_org, fresh_service
+    ):
+        """HIGH fix: if `setWebhook` itself fails, the just-created
+        `WebhookNodeAuth`/`Secret` must be deleted -- otherwise the local auth
+        row and pushed digest are already live, but Telegram never got the
+        secret, and every future request from this bot 401s forever."""
+        from tables.exceptions import RegisterTelegramTriggerError
+
+        node = self._make_node(default_org=default_org, path="rollback-setwebhook")
+        service, calls = fresh_service()
+
+        def _boom(method, api_key, endpoint, params=None):
+            raise RuntimeError("Telegram API unreachable")
+
+        service._call_telegram_api = _boom
+
+        with pytest.raises(RegisterTelegramTriggerError):
+            service.register_telegram_trigger(telegram_trigger_instance=node)
+
+        node.refresh_from_db()
+        assert not WebhookNodeAuth.objects.filter(telegram_trigger_node=node).exists()
+        # register_webhooks pushed the (now-deleted) credential before the
+        # setWebhook attempt, then again after the rollback so the webhook
+        # service's config matches reality.
+        assert calls == ["register_webhooks", "register_webhooks"]
+
+    def test_failed_setwebhook_does_not_roll_back_an_existing_auth_row(
+        self, default_org, fresh_service
+    ):
+        """A resync of an ALREADY-registered bot whose outbound call happens
+        to fail this one time must not delete a previously-working auth row
+        -- only a row created in the failing call itself may be rolled back."""
+        node = self._make_node(default_org=default_org, path="rollback-existing")
+        service, _ = fresh_service()
+        service._call_telegram_api = lambda *a, **k: {"ok": True}
+
+        # First call succeeds and creates the row.
+        service.register_telegram_trigger(telegram_trigger_instance=node)
+        node.refresh_from_db()
+        existing_auth_id = node.webhook_node_auth.pk
+
+        # Second call (a resync) fails outbound -- the pre-existing row must
+        # survive.
+        from tables.exceptions import RegisterTelegramTriggerError
+
+        def _boom(method, api_key, endpoint, params=None):
+            raise RuntimeError("Telegram API unreachable")
+
+        service._call_telegram_api = _boom
+
+        with pytest.raises(RegisterTelegramTriggerError):
+            service.register_telegram_trigger(telegram_trigger_instance=node)
+
+        node.refresh_from_db()
+        assert node.webhook_node_auth.pk == existing_auth_id
+
+    def test_undelivered_config_push_rolls_back_a_newly_created_auth_row(
+        self, default_org
+    ):
+        """The earlier failure point (0-subscriber credential push, before
+        `setWebhook` is even attempted) must roll back the same way -- the
+        row would otherwise be enforced on the next full resync without
+        Telegram ever having received the secret."""
+        from types import SimpleNamespace
+
+        from tables.exceptions import RegisterTelegramTriggerError
+        from utils.singleton_meta import SingletonMeta
+
+        node = self._make_node(default_org=default_org, path="rollback-undelivered")
+
+        previous = SingletonMeta._instances.get(TelegramTriggerService)
+        SingletonMeta._instances.pop(TelegramTriggerService, None)
+        try:
+            service = TelegramTriggerService(
+                session_manager_service=SimpleNamespace(),
+                webhook_trigger_service=SimpleNamespace(
+                    wait_for_tunnel_url_for_trigger=lambda trigger: "https://tunnel.test",
+                    register_webhooks=lambda: False,
+                ),
+            )
+
+            with pytest.raises(RegisterTelegramTriggerError):
+                service.register_telegram_trigger(telegram_trigger_instance=node)
+        finally:
+            if previous is None:
+                SingletonMeta._instances.pop(TelegramTriggerService, None)
+            else:
+                SingletonMeta._instances[TelegramTriggerService] = previous
+
+        node.refresh_from_db()
+        assert not WebhookNodeAuth.objects.filter(telegram_trigger_node=node).exists()

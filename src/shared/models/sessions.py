@@ -29,10 +29,18 @@ class StopSessionMessage(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+UNAUTHENTICATED_FALLBACK_PRINCIPAL = "__unauthenticated__"
+
+
 class WebhookEventData(BaseModel):
     path: str
     payload: dict
     config_id: str | None = None
+    # Which node this event is authorized for, e.g. "telegram_trigger_node:42" /
+    # "webhook_trigger_node:17" -- set by the `webhook` service once an inbound
+    # credential matched. `None` preserves today's unrestricted fan-out (no auth
+    # configured anywhere on this path).
+    auth_principal: str | None = None
 
 
 class ScheduleEventData(BaseModel):

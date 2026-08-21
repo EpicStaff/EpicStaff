@@ -1,9 +1,10 @@
 import uuid
 from typing import Protocol
 
+from django.db import models
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.validators import RegexValidator
-from django.db import models
+from django.contrib.auth.hashers import make_password, check_password
 
 from tables.models.base_models import DefaultBaseModel
 from tables.models.rbac_models.org_scoped import OrgScopedModel
@@ -85,6 +86,89 @@ class LocalhostWebhookConfig(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class WebhookAuthScheme(models.TextChoices):
+    STATIC_HEADER = "static_header"  # Telegram: literal header value compare
+    HMAC_SHA256 = "hmac_sha256"  # Generic: signed body + timestamp + replay check
+
+
+class WebhookNodeAuth(models.Model):
+    enabled = models.BooleanField(default=False)
+    scheme = models.CharField(max_length=32, choices=WebhookAuthScheme.choices)
+
+    header_name = models.CharField(max_length=128)
+    timestamp_header_name = models.CharField(
+        max_length=128, blank=True, default="X-Webhook-Timestamp"
+    )
+
+    tolerance_seconds = models.PositiveIntegerField(default=300)
+
+    secret_hash = models.CharField(
+        max_length=128,
+        blank=True,
+        null=True,
+        help_text="One-way hash of the token. Never exposed.",
+    )
+    signing_secret = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Plaintext or symmetrically encrypted secret required to compute HMAC signatures.",
+    )
+
+    telegram_trigger_node = models.OneToOneField(
+        "TelegramTriggerNode",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="webhook_node_auth",
+    )
+    webhook_trigger_node = models.OneToOneField(
+        "WebhookTriggerNode",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="webhook_node_auth",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        telegram_trigger_node__isnull=False,
+                        webhook_trigger_node__isnull=True,
+                    )
+                    | models.Q(
+                        telegram_trigger_node__isnull=True,
+                        webhook_trigger_node__isnull=False,
+                    )
+                ),
+                name="webhook_node_auth_exactly_one_node",
+            ),
+        ]
+
+    def set_static_token(self, raw_token: str):
+        """Hashes the raw token and saves it."""
+        self.secret_hash = make_password(raw_token)
+        self.save(update_fields=["secret_hash"])
+
+    def verify_static_token(self, raw_token: str) -> bool:
+        """Verifies an incoming token against the stored hash."""
+        if not self.secret_hash:
+            return False
+        return check_password(raw_token, self.secret_hash)
+
+    @property
+    def principal(self) -> str:
+        if self.telegram_trigger_node_id is not None:
+            return f"telegram_trigger_node:{self.telegram_trigger_node_id}"
+        return f"webhook_trigger_node:{self.webhook_trigger_node_id}"
+
+    def __str__(self):
+        node_id = self.telegram_trigger_node_id or self.webhook_trigger_node_id
+        return f"WebhookNodeAuth({self.scheme}) for node {node_id}"
 
 
 class WebhookTrigger(OrgScopedModel, models.Model):

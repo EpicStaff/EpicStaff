@@ -1,5 +1,6 @@
 import functools
 import time
+import secrets
 
 import requests
 from loguru import logger
@@ -12,7 +13,11 @@ from tables.services.secrets import secret_resolver
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tables.models.webhook_models import WebhookNodeAuth, WebhookAuthScheme
 from utils.singleton_meta import SingletonMeta
+
+
+TELEGRAM_WEBHOOK_HEADER = "X-Telegram-Bot-Api-Secret-Token"
 
 
 def _retry_on_connection_errors(func):
@@ -104,6 +109,23 @@ class TelegramTriggerService(metaclass=SingletonMeta):
 
         telegram_webhook_url = f"{webhook_tunnel_url}/webhooks/{webhook_trigger.path}/"
 
+        raw_secret_token = secrets.token_urlsafe(32)
+        node_auth, created = WebhookNodeAuth.objects.get_or_create(
+            telegram_trigger_node=telegram_trigger_instance,
+            defaults={
+                "enabled": True,
+                "scheme": WebhookAuthScheme.STATIC_HEADER,
+                "header_name": TELEGRAM_WEBHOOK_HEADER,
+            },
+        )
+
+        if not created:
+            node_auth.scheme = WebhookAuthScheme.STATIC_HEADER
+            node_auth.header_name = "X-Telegram-Bot-Api-Secret-Token"
+            node_auth.save()
+
+        node_auth.set_static_token(raw_secret_token)
+
         try:
             return self._call_telegram_api(
                 method="POST",
@@ -116,7 +138,10 @@ class TelegramTriggerService(metaclass=SingletonMeta):
                     context="TelegramTriggerNode.telegram_bot_api_key",
                 ),
                 endpoint="setWebhook",
-                params={"url": telegram_webhook_url},
+                params={
+                    "url": telegram_webhook_url,
+                    "secret_token": raw_secret_token,
+                },
             )
         except Exception as e:
             raise RegisterTelegramTriggerError(
@@ -132,13 +157,25 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             return {"ok": False, "description": "Unregistration failed"}
 
     def handle_telegram_trigger(
-        self, path: str, payload: dict, config_id: str | None = None
+        self,
+        path: str,
+        payload: dict,
+        config_id: str | None = None,
+        node_id: int | None = None,
     ) -> None:
+        """`node_id`, when set, restricts dispatch to that single node --
+        used by `RedisPubSub.webhook_events_handler` when the inbound
+        request matched a credential scoped to one specific node (see
+        `WebhookEventData.auth_principal`). `None` preserves the
+        unrestricted fan-out to every `TelegramTriggerNode` on this path.
+        """
         filters = self.webhook_trigger_service.get_trigger_filters(
             path=path, config_id=config_id
         )
         if filters is None:
             return
+        if node_id is not None:
+            filters["id"] = node_id
 
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(**filters)
 

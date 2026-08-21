@@ -26,6 +26,8 @@ Two related classes of the same underlying bug:
 
 import pytest
 
+from src.shared.models import UNAUTHENTICATED_FALLBACK_PRINCIPAL
+
 from tables.models.graph_models import Graph, TelegramTriggerNode, WebhookTriggerNode
 from tables.models.python_models import PythonCode
 from tables.models.session_models import Session
@@ -33,6 +35,8 @@ from tables.models.webhook_models import (
     LocalhostWebhookConfig,
     NgrokWebhookConfig,
     ProviderType,
+    WebhookAuthScheme,
+    WebhookNodeAuth,
     WebhookTrigger,
 )
 from tables.services.session_manager_service import SessionManagerService
@@ -377,3 +381,210 @@ class TestHandleTelegramTriggerConfigIsolation:
         )
 
         assert Session.objects.filter(graph=graph_1).count() == 1
+
+
+@pytest.mark.django_db
+class TestAuthPrincipalDispatchRestriction:
+    """EST-3862/EST-3826: a principal-bearing event restricts fan-out to only
+    the node it names; a `None`-principal event preserves today's
+    unrestricted fan-out to every attached node on the path."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_telegram_signal_side_effects(self, monkeypatch):
+        monkeypatch.setattr(WebhookTriggerService, "register_webhooks", lambda self: True)
+        monkeypatch.setattr(
+            TelegramTriggerService,
+            "register_telegram_trigger",
+            lambda self, telegram_trigger_instance=None, **kwargs: None,
+        )
+
+    def test_telegram_principal_restricts_to_its_own_node_only(
+        self, default_org, monkeypatch
+    ):
+        graph = Graph.objects.create(name="principal-tg-graph", org=default_org)
+        trigger = WebhookTrigger.objects.create(
+            path="principal-shared-path", provider_type=ProviderType.NGROK, org=default_org
+        )
+        telegram_node = TelegramTriggerNode.objects.create(
+            node_name="principal-tg-node", graph=graph, webhook_trigger=trigger
+        )
+        other_telegram_node = TelegramTriggerNode.objects.create(
+            node_name="principal-tg-node-other", graph=graph, webhook_trigger=trigger
+        )
+
+        _stub_publish(monkeypatch)
+
+        TelegramTriggerService().handle_telegram_trigger(
+            path="principal-shared-path",
+            payload={"m": 1},
+            config_id="ngrok:principal-shared-path",
+            auth_principal=f"telegram_trigger_node:{telegram_node.pk}",
+        )
+
+        assert Session.objects.filter(graph=graph).count() == 1
+
+    def test_webhook_principal_restricts_to_its_own_node_only(
+        self, default_org, monkeypatch
+    ):
+        graph = Graph.objects.create(name="principal-wh-graph", org=default_org)
+        node_a = _make_webhook_trigger_node(
+            graph=graph, path="principal-wh-shared", provider_type=ProviderType.NGROK
+        )
+        python_code = PythonCode.objects.create(
+            code="def handler(event, context): return event", entrypoint="handler"
+        )
+        node_b = WebhookTriggerNode.objects.create(
+            node_name="principal-wh-node-b",
+            graph=graph,
+            webhook_trigger=node_a.webhook_trigger,
+            python_code=python_code,
+        )
+
+        _stub_publish(monkeypatch)
+
+        WebhookTriggerService().handle_webhook_trigger(
+            path="principal-wh-shared",
+            payload={"m": 1},
+            config_id="ngrok:principal-wh-shared",
+            auth_principal=f"webhook_trigger_node:{node_a.pk}",
+        )
+
+        assert Session.objects.filter(graph=graph).count() == 1
+
+    def test_telegram_principal_does_not_drive_a_webhook_node(
+        self, default_org, monkeypatch
+    ):
+        """A Telegram principal must never authorize a generic webhook node,
+        even if both are attached to the same trigger/path."""
+        graph = Graph.objects.create(name="principal-cross-graph", org=default_org)
+        node_a = _make_webhook_trigger_node(
+            graph=graph, path="principal-cross-path", provider_type=ProviderType.NGROK
+        )
+        telegram_node = TelegramTriggerNode.objects.create(
+            node_name="principal-cross-tg-node",
+            graph=graph,
+            webhook_trigger=node_a.webhook_trigger,
+        )
+
+        _stub_publish(monkeypatch)
+
+        WebhookTriggerService().handle_webhook_trigger(
+            path="principal-cross-path",
+            payload={"m": 1},
+            config_id="ngrok:principal-cross-path",
+            auth_principal=f"telegram_trigger_node:{telegram_node.pk}",
+        )
+
+        assert Session.objects.filter(graph=graph).count() == 0
+
+    def test_none_principal_preserves_unrestricted_fan_out(
+        self, default_org, monkeypatch
+    ):
+        graph = Graph.objects.create(name="principal-none-graph", org=default_org)
+        node_a = _make_webhook_trigger_node(
+            graph=graph, path="principal-none-path", provider_type=ProviderType.NGROK
+        )
+        python_code = PythonCode.objects.create(
+            code="def handler(event, context): return event", entrypoint="handler"
+        )
+        WebhookTriggerNode.objects.create(
+            node_name="principal-none-node-b",
+            graph=graph,
+            webhook_trigger=node_a.webhook_trigger,
+            python_code=python_code,
+        )
+
+        _stub_publish(monkeypatch)
+
+        WebhookTriggerService().handle_webhook_trigger(
+            path="principal-none-path",
+            payload={"m": 1},
+            config_id="ngrok:principal-none-path",
+            auth_principal=None,
+        )
+
+        assert Session.objects.filter(graph=graph).count() == 2
+
+
+@pytest.mark.django_db
+class TestUnauthenticatedFallbackSentinelDispatch:
+    """Post-implementation dual-attach fix (EST-1869): a mixed-attach path --
+    one node with mandatory/enabled auth, one node with none -- must not
+    401-brick the auth-free node. `handle_webhook_trigger` restricts the
+    `UNAUTHENTICATED_FALLBACK_PRINCIPAL` sentinel to nodes with no enabled
+    `WebhookNodeAuth`; `handle_telegram_trigger` always no-ops on it, since
+    Telegram auth is mandatory and unconditional."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_telegram_signal_side_effects(self, monkeypatch):
+        monkeypatch.setattr(WebhookTriggerService, "register_webhooks", lambda self: True)
+        monkeypatch.setattr(
+            TelegramTriggerService,
+            "register_telegram_trigger",
+            lambda self, telegram_trigger_instance=None, **kwargs: None,
+        )
+
+    def test_sentinel_restricts_webhook_dispatch_to_the_auth_free_node_only(
+        self, default_org, monkeypatch
+    ):
+        # Separate graphs per node so which node actually dispatched is
+        # unambiguous from which graph got a session.
+        auth_free_graph = Graph.objects.create(
+            name="sentinel-webhook-auth-free-graph", org=default_org
+        )
+        auth_required_graph = Graph.objects.create(
+            name="sentinel-webhook-auth-required-graph", org=default_org
+        )
+        auth_free_node = _make_webhook_trigger_node(
+            graph=auth_free_graph,
+            path="sentinel-shared-path",
+            provider_type=ProviderType.NGROK,
+        )
+        python_code = PythonCode.objects.create(
+            code="def handler(event, context): return event", entrypoint="handler"
+        )
+        auth_required_node = WebhookTriggerNode.objects.create(
+            node_name="sentinel-auth-required-node",
+            graph=auth_required_graph,
+            webhook_trigger=auth_free_node.webhook_trigger,
+            python_code=python_code,
+        )
+        secret = secret_service.create(
+            text="hmac-key", org=default_org, name="sentinel-webhook-node-auth-secret"
+        )
+        WebhookNodeAuth.objects.create(
+            enabled=True,
+            scheme=WebhookAuthScheme.HMAC_SHA256,
+            header_name="X-Webhook-Signature",
+            secret=secret,
+            webhook_trigger_node=auth_required_node,
+        )
+
+        _stub_publish(monkeypatch)
+
+        WebhookTriggerService().handle_webhook_trigger(
+            path="sentinel-shared-path",
+            payload={"m": 1},
+            config_id="ngrok:sentinel-shared-path",
+            auth_principal=UNAUTHENTICATED_FALLBACK_PRINCIPAL,
+        )
+
+        assert Session.objects.filter(graph=auth_free_graph).count() == 1
+        assert Session.objects.filter(graph=auth_required_graph).count() == 0
+
+    def test_sentinel_never_drives_a_telegram_node(self, default_org, monkeypatch):
+        graph = Graph.objects.create(name="sentinel-telegram-graph", org=default_org)
+        telegram_node = _make_telegram_trigger_node(
+            graph=graph, path="sentinel-telegram-path", provider_type=ProviderType.NGROK
+        )
+
+        _stub_publish(monkeypatch)
+
+        TelegramTriggerService().handle_telegram_trigger(
+            path="sentinel-telegram-path",
+            payload={"m": 1},
+            config_id="ngrok:sentinel-telegram-path",
+            auth_principal=UNAUTHENTICATED_FALLBACK_PRINCIPAL,
+        )
+
+        assert Session.objects.filter(graph=graph).count() == 0

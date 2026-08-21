@@ -42,6 +42,7 @@ from src.shared.models import (
     TelegramTriggerNodeData,
     TelegramTriggerNodeFieldData,
     ToolConfigData,
+    WebhookNodeAuthData,
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
@@ -96,7 +97,11 @@ from tables.models.realtime_models import (
     ElevenLabsRealtimeConfig,
     GeminiRealtimeConfig,
 )
-from tables.models.webhook_models import LocalhostWebhookConfig, NgrokWebhookConfig
+from tables.models.webhook_models import (
+    LocalhostWebhookConfig,
+    NgrokWebhookConfig,
+    WebhookTrigger,
+)
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from tables.validators.crew_memory_validator import CrewMemoryValidator
@@ -1096,6 +1101,56 @@ class ConverterService(metaclass=SingletonMeta):
             output_map=end_node.output_map,
         )
 
+    def _get_node_auths_for_trigger(
+        self, trigger: WebhookTrigger
+    ) -> list[WebhookNodeAuthData]:
+        """Collect and convert enabled WebhookNodeAuths from nodes attached to
+        this trigger.
+        """
+        auth_data_list = []
+
+        for telegram_node in trigger.telegram_trigger_nodes.all():
+            if (
+                hasattr(telegram_node, "webhook_node_auth")
+                and telegram_node.webhook_node_auth
+                and telegram_node.webhook_node_auth.enabled
+            ):
+                auth = telegram_node.webhook_node_auth
+                auth_data_list.append(
+                    WebhookNodeAuthData(
+                        enabled=auth.enabled,
+                        scheme=auth.scheme,
+                        header_name=auth.header_name,
+                        timestamp_header_name=auth.timestamp_header_name,
+                        tolerance_seconds=auth.tolerance_seconds,
+                        secret_hash=auth.secret_hash,
+                        signing_secret=auth.signing_secret,
+                        principal=f"{telegram_node._meta.label_lower}:{telegram_node.pk}",
+                    )
+                )
+
+        for webhook_node in trigger.webhook_trigger_nodes.all():
+            if (
+                hasattr(webhook_node, "webhook_node_auth")
+                and webhook_node.webhook_node_auth
+                and webhook_node.webhook_node_auth.enabled
+            ):
+                auth = webhook_node.webhook_node_auth
+                auth_data_list.append(
+                    WebhookNodeAuthData(
+                        enabled=auth.enabled,
+                        scheme=auth.scheme,
+                        header_name=auth.header_name,
+                        timestamp_header_name=auth.timestamp_header_name,
+                        tolerance_seconds=auth.tolerance_seconds,
+                        secret_hash=auth.secret_hash,
+                        signing_secret=auth.signing_secret,
+                        principal=f"{webhook_node._meta.label_lower}:{webhook_node.pk}",
+                    )
+                )
+
+        return auth_data_list
+
     def convert_webhook_trigger_node_to_pydantic(
         self,
         webhook_trigger_node: WebhookTriggerNode,
@@ -1234,9 +1289,6 @@ class ConverterService(metaclass=SingletonMeta):
     def convert_ngrok_webhook_config_to_pydantic(
         self, ngrok_webhook_config: NgrokWebhookConfig
     ) -> NgrokConfigData:
-        # `name` must match `NgrokWebhookConfig.get_redis_key()` and the
-        # `webhook` service's tunnel-registry resolution — both webhook and
-        # telegram-linked triggers register under the bare trigger path.
         auth_token = (
             secret_resolver.resolve(
                 secret_id=ngrok_webhook_config.auth_token_secret_id,
@@ -1245,17 +1297,23 @@ class ConverterService(metaclass=SingletonMeta):
             )
             or ""
         )
+        auths = self._get_node_auths_for_trigger(ngrok_webhook_config.trigger)
+
         return NgrokConfigData(
             name=ngrok_webhook_config.trigger.path,
             auth_token=auth_token,
             domain=ngrok_webhook_config.domain,
             region=ngrok_webhook_config.region,
+            auths=auths,
         )
 
     def convert_localhost_webhook_config_to_pydantic(
         self, localhost_webhook_config: LocalhostWebhookConfig
     ) -> LocalhostConfigData:
+        auths = self._get_node_auths_for_trigger(localhost_webhook_config.trigger)
+
         return LocalhostConfigData(
             name=localhost_webhook_config.trigger.path,
             domain=localhost_webhook_config.domain,
+            auths=auths,
         )

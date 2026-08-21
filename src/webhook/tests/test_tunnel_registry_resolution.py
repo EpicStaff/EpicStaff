@@ -122,15 +122,73 @@ async def test_path_matching_ignores_surrounding_slashes(requested):
     )
 
 
-async def test_no_domain_returns_none():
+async def test_no_domain_still_resolves_a_registered_path():
+    """EST-3826 path-primary fix: an empty/unrecognized Host must never gate a
+    request whose path IS genuinely registered -- Host only disambiguates
+    among several configs sharing one path, it is never the primary key.
+    (Previously this returned None and the caller silently fell through to a
+    path-only lookup downstream; now resolution itself succeeds directly.)"""
     only = LocalhostConfigData(name="only-hook")
     registry = _registry((only, LOCALHOST_URL))
 
-    assert await registry.resolve_unique_id("", "only-hook") is None
+    assert await registry.resolve_unique_id("", "only-hook") == only.unique_id
 
 
-async def test_unknown_domain_returns_none():
+async def test_unknown_domain_still_resolves_a_registered_path():
+    """Same fix, ngrok case: an attacker-controlled/mismatched Host must not
+    block a request for a path that IS registered somewhere."""
     only = NgrokConfigData(name="only-hook", auth_token="t", domain="aaa.ngrok.io")
     registry = _registry((only, "https://aaa.ngrok.io"))
 
-    assert await registry.resolve_unique_id("zzz.ngrok.io", "only-hook") is None
+    assert await registry.resolve_unique_id("zzz.ngrok.io", "only-hook") == (
+        only.unique_id
+    )
+
+
+async def test_domain_only_with_no_domain_still_returns_none():
+    """The domain-only branch (no `path` argument at all) is unchanged: with
+    nothing to key resolution on but an empty Host, there is genuinely nothing
+    to resolve."""
+    only = LocalhostConfigData(name="only-hook")
+    registry = _registry((only, LOCALHOST_URL))
+
+    assert await registry.resolve_unique_id("") is None
+
+
+async def test_domain_only_with_unknown_domain_still_returns_none():
+    only = NgrokConfigData(name="only-hook", auth_token="t", domain="aaa.ngrok.io")
+    registry = _registry((only, "https://aaa.ngrok.io"))
+
+    assert await registry.resolve_unique_id("zzz.ngrok.io") is None
+
+
+async def test_path_registered_under_one_provider_resolves_regardless_of_other_hosts():
+    """Path-primary in a mixed pool: an ngrok config exists on a totally
+    different domain, but the localhost path requested still resolves --
+    the requested path is looked up across the whole pool, not filtered down
+    to whatever the Host header happens to match first."""
+    ngrok = NgrokConfigData(name="other-hook", auth_token="t", domain="aaa.ngrok.io")
+    local = LocalhostConfigData(name="local-hook")
+    registry = _registry((ngrok, "https://aaa.ngrok.io"), (local, LOCALHOST_URL))
+
+    assert (
+        await registry.resolve_unique_id("some-unrelated-host", "local-hook")
+        == local.unique_id
+    )
+
+
+async def test_two_configs_sharing_one_path_name_are_disambiguated_by_host():
+    """Different providers CAN register the same path name -- Host is the
+    tie-breaker only in this specific ambiguous case, never the primary key."""
+    ngrok = NgrokConfigData(name="shared-name", auth_token="t", domain="aaa.ngrok.io")
+    local = LocalhostConfigData(name="shared-name")
+    registry = _registry((ngrok, "https://aaa.ngrok.io"), (local, LOCALHOST_URL))
+
+    assert (
+        await registry.resolve_unique_id("aaa.ngrok.io", "shared-name")
+        == ngrok.unique_id
+    )
+    assert (
+        await registry.resolve_unique_id("localhost:8000", "shared-name")
+        == local.unique_id
+    )

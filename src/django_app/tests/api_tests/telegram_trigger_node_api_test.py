@@ -2,9 +2,10 @@ import pytest
 from django.urls import reverse
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.models import Secret
-from tables.models.graph_models import TelegramTriggerNode
+from tables.models.graph_models import Graph, TelegramTriggerNode
 from tables.models.webhook_models import WebhookTrigger
 from tables.services.secrets import secret_encryption, secret_service
+from tables.services.webhook_trigger_service import WebhookTriggerService
 
 
 @pytest.mark.django_db
@@ -277,11 +278,6 @@ class TestTelegramTriggerServiceLocalhostGuard:
         secret = secret_service.create(
             text="123456:fake", org=default_org, name="tg-ngrok-ok-key"
         )
-        node = TelegramTriggerNode(
-            node_name="NgrokNode",
-            telegram_bot_api_key_secret=secret,
-            webhook_trigger=trigger,
-        )
 
         mocker.patch(
             "tables.services.webhook_trigger_service.WebhookTriggerService"
@@ -291,6 +287,24 @@ class TestTelegramTriggerServiceLocalhostGuard:
         mock_call = mocker.patch.object(
             TelegramTriggerService, "_call_telegram_api", return_value={"ok": True}
         )
+        # EST-3862: register_telegram_trigger now unconditionally pushes the
+        # WebhookNodeAuth credential via register_webhooks() before calling
+        # Telegram -- a real Redis publish in a unit test has 0 subscribers,
+        # so this must be stubbed to report delivery.
+        mocker.patch.object(WebhookTriggerService, "register_webhooks", return_value=True)
+
+        # EST-3862: creating/attaching a WebhookNodeAuth row requires a
+        # persisted node (a real FK target) -- .objects.create() (not a bare
+        # unsaved instance) also fires the real post_save registration once,
+        # using the same mocks above; reset the call count before the
+        # explicit call below so `assert_called_once()` still reflects it.
+        node = TelegramTriggerNode.objects.create(
+            node_name="NgrokNode",
+            graph=Graph.objects.create(name="tg-ngrok-ok-graph", org=default_org),
+            telegram_bot_api_key_secret=secret,
+            webhook_trigger=trigger,
+        )
+        mock_call.reset_mock()
 
         result = TelegramTriggerService().register_telegram_trigger(node)
 

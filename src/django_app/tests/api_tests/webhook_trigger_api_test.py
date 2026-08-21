@@ -1346,3 +1346,119 @@ class TestCrossTypeTriggerNodeConflictValidation:
             "Telegram Self Owned Renamed"
         )
 
+
+@pytest.mark.django_db
+class TestWebhookNodeAuthAPI:
+    """EST-3826: the generic webhook-trigger node's `webhook_node_auth` is
+    writable (scheme forced to hmac_sha256), the plaintext secret is never
+    present in any response body, and clearing it (explicit `null`) deletes
+    the row."""
+
+    def _create_webhook_node(self, auth_client, graph, secret_id=None):
+        payload = {
+            "node_name": "Auth Round Trip Node",
+            "graph": graph.id,
+            "python_code": {
+                "libraries": [],
+                "code": "def handler(event, context):\n    return event",
+                "entrypoint": "handler",
+                "global_kwargs": {},
+            },
+            "metadata": {},
+            "webhook_node_auth": {
+                "enabled": True,
+                "header_name": "X-My-Signature",
+                "timestamp_header_name": "X-My-Timestamp",
+                "tolerance_seconds": 120,
+                "secret_id": secret_id,
+            },
+        }
+        return auth_client.post(
+            reverse("webhooktriggernode-list"), payload, format="json"
+        )
+
+    def test_create_with_auth_round_trips_and_never_leaks_secret(
+        self, auth_client, graph: Graph, default_org
+    ):
+        secret = _make_secret(default_org, "the-signing-key-value")
+
+        response = self._create_webhook_node(auth_client, graph, secret.id)
+
+        assert response.status_code == 201, response.json()
+        node_id = response.json()["id"]
+        auth = response.json()["webhook_node_auth"]
+        assert auth["enabled"] is True
+        assert auth["header_name"] == "X-My-Signature"
+        assert auth["timestamp_header_name"] == "X-My-Timestamp"
+        assert auth["tolerance_seconds"] == 120
+        assert auth["secret_id"] == secret.id
+        assert "the-signing-key-value" not in response.content.decode()
+
+        from tables.models.webhook_models import WebhookAuthScheme, WebhookNodeAuth
+
+        node = WebhookTriggerNode.objects.get(id=node_id)
+        db_auth = WebhookNodeAuth.objects.get(webhook_trigger_node=node)
+        assert db_auth.scheme == WebhookAuthScheme.HMAC_SHA256
+
+        detail = auth_client.get(reverse("webhooktriggernode-detail", args=[node_id]))
+        assert detail.status_code == 200
+        assert "the-signing-key-value" not in detail.content.decode()
+        assert detail.json()["webhook_node_auth"]["secret_id"] == secret.id
+
+    def test_no_auth_configured_reports_null(self, auth_client, graph: Graph):
+        # Omitting `webhook_node_auth` entirely -- the pure-absence case.
+        payload = {
+            "node_name": "No Auth At All",
+            "graph": graph.id,
+            "python_code": {
+                "libraries": [],
+                "code": "def handler(event, context):\n    return event",
+                "entrypoint": "handler",
+                "global_kwargs": {},
+            },
+            "metadata": {},
+        }
+        response = auth_client.post(
+            reverse("webhooktriggernode-list"), payload, format="json"
+        )
+        assert response.status_code == 201, response.json()
+        assert response.json()["webhook_node_auth"] is None
+
+    def test_update_then_clear_round_trip(self, auth_client, graph: Graph, default_org):
+        secret = _make_secret(default_org, "round-trip-secret")
+        create = self._create_webhook_node(auth_client, graph, secret.id)
+        assert create.status_code == 201, create.json()
+        node_id = create.json()["id"]
+
+        update = auth_client.patch(
+            reverse("webhooktriggernode-detail", args=[node_id]),
+            {
+                "webhook_node_auth": {
+                    "enabled": False,
+                    "header_name": "X-Updated-Signature",
+                    "tolerance_seconds": 600,
+                    "secret_id": secret.id,
+                }
+            },
+            format="json",
+        )
+        assert update.status_code == 200, update.json()
+        assert update.json()["webhook_node_auth"]["enabled"] is False
+        assert update.json()["webhook_node_auth"]["header_name"] == (
+            "X-Updated-Signature"
+        )
+
+        clear = auth_client.patch(
+            reverse("webhooktriggernode-detail", args=[node_id]),
+            {"webhook_node_auth": None},
+            format="json",
+        )
+        assert clear.status_code == 200, clear.json()
+        assert clear.json()["webhook_node_auth"] is None
+
+        from tables.models.webhook_models import WebhookNodeAuth
+
+        assert not WebhookNodeAuth.objects.filter(
+            webhook_trigger_node_id=node_id
+        ).exists()
+
