@@ -6,7 +6,7 @@ from drf_spectacular.views import (
     SpectacularRedocView,
 )
 
-if settings.ENABLE_API_DOCS:
+if settings.DEBUG:
     urlpatterns = [
         path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
         path(

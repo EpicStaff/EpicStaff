@@ -18,34 +18,34 @@ DOC_PATHS = ("/api/schema/", "/swagger/", "/redoc/")
 
 
 def _rebuild_urlconf() -> None:
-    """Re-import the URL modules so yasg's import-time ENABLE_API_DOCS check runs again."""
+    """Re-import the URL modules so yasg's import-time DEBUG check runs again."""
     importlib.reload(django_app.yasg)
     importlib.reload(django_app.urls)
     clear_url_caches()
 
 
 @contextmanager
-def api_docs(enabled: bool):
-    """Rebuild the URLconf with ENABLE_API_DOCS set to the given value, restoring it on exit."""
-    with override_settings(ENABLE_API_DOCS=enabled):
+def debug(enabled: bool):
+    """Rebuild the URLconf with DEBUG set to the given value, restoring it on exit."""
+    with override_settings(DEBUG=enabled):
         _rebuild_urlconf()
         yield
     _rebuild_urlconf()
 
 
 @pytest.mark.parametrize("path", DOC_PATHS)
-def test_doc_route_is_served_when_enabled(path):
-    with api_docs(enabled=True):
+def test_doc_route_is_served_in_debug(path):
+    with debug(enabled=True):
         assert Client().get(path).status_code == 200
 
 
 @pytest.mark.parametrize("path", DOC_PATHS)
-def test_doc_route_is_absent_when_disabled(path):
-    with api_docs(enabled=False):
+def test_doc_route_is_absent_outside_debug(path):
+    with debug(enabled=False):
         assert Client().get(path).status_code == 404
 
 
-def test_disabling_docs_leaves_the_api_reachable():
-    with api_docs(enabled=False):
+def test_disabling_debug_leaves_the_api_reachable():
+    with debug(enabled=False):
         assert Client().get("/api/schema/").status_code == 404
         assert Client().get("/api/auth/login/").status_code != 404

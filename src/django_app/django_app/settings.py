@@ -434,13 +434,6 @@ SCHEDULE_CHANNEL = os.environ.get("SCHEDULE_CHANNEL", "schedule_channel")
 WEBHOOK_HOST_NAME = os.getenv("WEBHOOK_HOST_NAME", "localhost")
 WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", 8009))
 
-ENABLE_API_DOCS = os.getenv("ENABLE_API_DOCS", "True").lower() in (
-    "true",
-    "1",
-    "yes",
-    "on",
-)
-
 SPECTACULAR_SETTINGS = {
     "TITLE": "EpicStaff API",
     "VERSION": "v1",
