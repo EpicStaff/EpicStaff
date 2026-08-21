@@ -20,6 +20,8 @@ from django.core.exceptions import ImproperlyConfigured
 from dotenv import find_dotenv, load_dotenv
 from loguru import logger
 
+from tables.services.rbac.first_setup_mode import FirstSetupMode
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -369,9 +371,14 @@ FRONTEND_PASSWORD_RESET_PATH = os.getenv(
 
 SSE_TICKET_TTL_SECONDS = 30
 
-DEFAULT_ORGANIZATION_NAME = os.getenv("DEFAULT_ORGANIZATION_NAME", "Organization")
+DEFAULT_ORGANIZATION_NAME = os.getenv("DEFAULT_ORGANIZATION_NAME") or "Organization"
 
-# Story 6 — User profile
+# Which superadmin-creation path is live. See FirstSetupMode. Defaults to
+# cli_only so an internet-exposed deployment fails closed.
+FIRST_SETUP_MODE = FirstSetupMode.validate(
+    (os.getenv("FIRST_SETUP_MODE") or FirstSetupMode.CLI_ONLY).strip().lower()
+)
+
 PASSWORD_CHANGE_TICKET_TTL_SECONDS = int(
     os.getenv("PASSWORD_CHANGE_TICKET_TTL_SECONDS", "300")
 )
