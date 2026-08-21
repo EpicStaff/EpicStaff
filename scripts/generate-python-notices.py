@@ -49,6 +49,7 @@ OUTPUT_FILE = SCRIPTS_DIR / "python-notices-partial.md"
 SERVICES = [
     "src/django_app",
     "src/crew",
+    "src/agent",
     "src/manager",
     "src/knowledge",
     "src/realtime",
@@ -495,8 +496,8 @@ def build_markdown(
     lines.append("")
     lines.append(
         "This section lists third-party Python packages bundled into EpicStaff backend microservices "
-        "(`src/django_app`, `src/crew`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, "
-        "`src/webhook`, `src/voice_app`). Dev / test dependencies are excluded. "
+        "(`src/django_app`, `src/crew`, `src/agent`, `src/manager`, `src/knowledge`, `src/realtime`, "
+        "`src/sandbox`, `src/webhook`, `src/voice_app`). Dev / test dependencies are excluded. "
         "Packages present in multiple services are deduplicated by `name + version`."
     )
     lines.append("")
@@ -631,7 +632,7 @@ def main() -> int:
 
     packages = collect_packages()
     md = build_markdown(packages, provenance)
-    OUTPUT_FILE.write_text(md, encoding="utf-8")
+    OUTPUT_FILE.write_text(md, encoding="utf-8", newline="\n")
     log(f"discovered {len(packages)} unique backend packages")
     log(f"wrote {OUTPUT_FILE}")
     return 0
