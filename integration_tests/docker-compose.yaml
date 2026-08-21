@@ -98,9 +98,6 @@ services:
       - DB_PORT=5432
       - DB_MANAGER_USER=manager_user_integ
       - DB_MANAGER_PASSWORD=manager_password_integ
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /usr/bin/docker:/usr/bin/docker
     networks:
       - backend-network
     tty: true
@@ -188,9 +185,6 @@ services:
       - DB_CREW_PASSWORD=crew_password_integ
       - SESSION_STATUS_CHANNEL=sessions:session_status
       - CODE_RESULT_CHANNEL=code_results
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /usr/bin/docker:/usr/bin/docker
     networks:
       - backend-network
       - mcp-network
@@ -276,6 +270,9 @@ services:
       - DJANGO_ADMIN_EMAIL=${DJANGO_ADMIN_EMAIL:-admin@example.com}
       - DJANGO_ADMIN_PASSWORD=${DJANGO_ADMIN_PASSWORD:-AdminPass123!}
     volumes:
+      # SECURITY-EXCEPTION(FOR TESTING PURPOSES ONLY): the pytest suite inspects
+      # container status and logs to assert the stack is up before running assertions.
+      # Scope: test_runner service in integration_tests/ only.
       - /var/run/docker.sock:/var/run/docker.sock
       # - /usr/bin/docker:/usr/bin/docker
     networks:
