@@ -47,7 +47,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 @Component({
     selector: 'app-input-map',
-    standalone: true,
     imports: [
         ReactiveFormsModule,
         CommonModule,
@@ -113,17 +112,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
                                         (keydown.enter)="onEnterKey($event)"
+                                        (focus)="onValueFocus(i, $event)"
+                                        (input)="onValueInput(i, $event)"
                                     />
                                 </div>
-                                <button
-                                    type="button"
-                                    class="var-picker-btn"
-                                    matTooltip="Variable picker"
-                                    matTooltipPosition="above"
-                                    (click)="openPicker(i, $event)"
-                                >
-                                    <i class="ti ti-braces"></i>
-                                </button>
                                 <app-svg-icon
                                     icon="trash"
                                     size="1rem"
@@ -429,27 +421,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 margin-top: 8px;
             }
 
-            .var-picker-btn {
-                flex-shrink: 0;
-                width: 24px;
-                height: 24px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 0;
-                border-radius: 4px;
-                border: none;
-                background: transparent;
-                cursor: pointer;
-                color: rgba(255, 255, 255, 0.35);
-                font-size: 1rem;
-                transition: all 0.2s ease;
-
-                &:hover {
-                    color: var(--active-color, #685fff);
-                    background-color: rgba(104, 95, 255, 0.12);
-                }
-            }
         `,
     ],
 })
@@ -488,7 +459,9 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     private overlayRef: OverlayRef | null = null;
     private autocompleteInstance: VarPickerFlatComponent | null = null;
     private activeRowIndex: number | null = null;
+    private activeAnchorEl: HTMLElement | null = null;
     private pickerSubs: { unsubscribe(): void }[] = [];
+    private readonly variablesPrefix = 'variables.';
 
     private readonly pickerItems = computed<PickerItem[]>(() => {
         const state = this.flowService.startNodeInitialState();
@@ -579,6 +552,10 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     onEnterKey(event: Event) {
         const keyboardEvent = event as KeyboardEvent;
         keyboardEvent.preventDefault();
+
+        if (this.overlayRef) {
+            this.closePicker();
+        }
 
         this.addPair();
     }
@@ -934,45 +911,76 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         }
     }
 
-    openPicker(rowIndex: number, event: MouseEvent): void {
-        event.stopPropagation();
+    onValueFocus(rowIndex: number, event: FocusEvent): void {
+        const inputEl = event.target as HTMLInputElement;
+        if ((inputEl.value ?? '').startsWith(this.variablesPrefix)) {
+            this.openPickerForInput(rowIndex, inputEl);
+        }
+    }
+
+    onValueInput(rowIndex: number, event: Event): void {
+        const inputEl = event.target as HTMLInputElement;
+        const value = inputEl.value ?? '';
+
+        if (value.startsWith(this.variablesPrefix)) {
+            if (!(this.overlayRef && this.activeRowIndex === rowIndex)) {
+                this.openPickerForInput(rowIndex, inputEl);
+            }
+            this.autocompleteInstance?.setFilter(value.slice(this.variablesPrefix.length));
+        } else if (this.overlayRef && this.activeRowIndex === rowIndex) {
+            this.closePicker();
+        }
+    }
+
+    private openPickerForInput(rowIndex: number, anchorEl: HTMLInputElement): void {
+        if (this.overlayRef && this.activeRowIndex === rowIndex) {
+            return;
+        }
         this.closePicker();
 
         this.activeRowIndex = rowIndex;
-
-        const triggerEl = event.currentTarget as HTMLElement;
-        const rect = triggerEl.getBoundingClientRect();
-        const origin =
-            rect.width || rect.height
-                ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
-                : { x: event.clientX, y: event.clientY, width: 0, height: 0 };
+        this.activeAnchorEl = anchorEl;
 
         const positionStrategy = this.overlay
             .position()
-            .flexibleConnectedTo(origin)
+            .flexibleConnectedTo(anchorEl)
             .withPositions([
-                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 8 },
-                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -8 },
-                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
             ])
             .withViewportMargin(8);
 
         this.overlayRef = this.overlay.create({
             positionStrategy,
             scrollStrategy: this.overlay.scrollStrategies.reposition(),
-            hasBackdrop: true,
-            backdropClass: 'cdk-overlay-transparent-backdrop',
+            hasBackdrop: false,
         });
 
         const portal = new ComponentPortal(VarPickerFlatComponent, this.viewContainerRef);
         const componentRef = this.overlayRef.attach(portal);
         this.autocompleteInstance = componentRef.instance;
-
+        this.autocompleteInstance.autofocusSearch = false;
         this.autocompleteInstance.setItems(this.pickerItems());
+
+        const currentValue = anchorEl.value ?? '';
+        if (currentValue.startsWith(this.variablesPrefix)) {
+            this.autocompleteInstance.setFilter(currentValue.slice(this.variablesPrefix.length));
+        }
 
         this.pickerSubs = [
             this.autocompleteInstance.pathSelected.subscribe((path: string) => this.insertPath(path)),
-            this.overlayRef.backdropClick().subscribe(() => this.closePicker()),
+            this.overlayRef.outsidePointerEvents().subscribe((pointerEvent: MouseEvent) => {
+                const target = pointerEvent.target as Node | null;
+                if (
+                    this.activeAnchorEl &&
+                    target &&
+                    (target === this.activeAnchorEl || this.activeAnchorEl.contains(target))
+                ) {
+                    return;
+                }
+                this.closePicker();
+            }),
             this.overlayRef
                 .keydownEvents()
                 .pipe(filter((e) => e.key === 'Escape'))
@@ -996,6 +1004,7 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         this.overlayRef = null;
         this.autocompleteInstance = null;
         this.activeRowIndex = null;
+        this.activeAnchorEl = null;
     }
 
     ngOnDestroy(): void {

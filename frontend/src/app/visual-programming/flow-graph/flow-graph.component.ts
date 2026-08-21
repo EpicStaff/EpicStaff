@@ -150,6 +150,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     @Input() currentFlowId: number | null = null;
     @Input() flowName: string = '';
     @Input() initialNodeId: string | null = null;
+    @Input() initialNodeExpand: boolean = true;
     @Input() hasUnsavedChanges: boolean = false;
     @Input() canEdit: boolean = true;
     /** @deprecated set only by the deprecated manual REST save path; no bindings remain. */
@@ -361,7 +362,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     public ngOnInit(): void {
         this.applyIncomingFlowState(this.flowState);
         if (this.initialNodeId) {
-            this.openNodePanel(this.initialNodeId);
+            this.openNodePanel(this.initialNodeId, this.initialNodeExpand);
         }
 
         this.wsService.cursorMoved$.pipe(takeUntil(this.destroy$)).subscribe((msg) => {
@@ -467,7 +468,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
         if (changes['initialNodeId'] && changes['initialNodeId'].currentValue) {
-            this.openNodePanel(changes['initialNodeId'].currentValue);
+            this.openNodePanel(changes['initialNodeId'].currentValue, this.initialNodeExpand);
         }
     }
 
@@ -592,6 +593,22 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
         if (isDuplicate) {
             console.warn('Duplicate connection detected, ignoring:', `${pair.sourcePortId}+${pair.targetPortId}`);
+            return;
+        }
+
+        const allPorts = this.flowService.nodes().flatMap((n) => n.ports ?? []);
+        const sourcePort = allPorts.find((p) => p.id === pair.sourcePortId);
+        const targetPort = allPorts.find((p) => p.id === pair.targetPortId);
+        const sourceOccupied =
+            !!sourcePort &&
+            !sourcePort.multiple &&
+            currentConnections.some((conn) => conn.sourcePortId === pair.sourcePortId);
+        const targetOccupied =
+            !!targetPort &&
+            !targetPort.multiple &&
+            currentConnections.some((conn) => conn.targetPortId === pair.targetPortId);
+        if (sourceOccupied || targetOccupied) {
+            this.toastService.warning('This port already has a connection', 4000, 'bottom-right');
             return;
         }
 
@@ -984,7 +1001,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     /** @deprecated Manual save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     public emitSave(): void {
         if (this.nodePanelShell?.hasPanelInstance()) {
-            const updatedNode = this.nodePanelShell.captureCurrentNodeState();
+            // Use the validation-aware capture. Most panels (e.g. the task node panel) always
+            // get a node back here — even when their form is invalid — so their own invalid
+            // state can be reported by a flow-wide validation + blocking toast further down
+            // the save pipeline instead of a hard client-side abort. A panel with its own hard
+            // client-side validation that must never reach the backend (e.g. the
+            // schedule-trigger panel's date/timezone checks) can override
+            // `captureForValidation()` to return `null` on failure — which aborts the entire
+            // save right here (no request sent), matching this panel's pre-existing behavior.
+            const updatedNode = this.nodePanelShell.captureCurrentNodeStateForSave();
             if (updatedNode === null) {
                 return;
             }
@@ -1746,12 +1771,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
 
         const body: PartialExportRequest = {
-            start_node_list: [],
             crew_node_list: [],
+            agent_node_list: [],
+            task_node_list: [],
             python_node_list: [],
             audio_transcription_node_list: [],
             file_extractor_node_list: [],
-            end_node_list: [],
             subgraph_node_list: [],
             webhook_trigger_node_list: [],
             telegram_trigger_node_list: [],
@@ -1769,7 +1794,11 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             const id = node.backendId;
             switch (node.type) {
                 case NodeType.AGENT:
+                    body.agent_node_list.push(id);
+                    break;
                 case NodeType.TASK:
+                    body.task_node_list.push(id);
+                    break;
                 case NodeType.TOOL:
                 case NodeType.PROJECT:
                 case NodeType.LLM:
@@ -1911,8 +1940,9 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
     }
 
-    public openNodePanel(nodeId: string): void {
+    public openNodePanel(nodeId: string, expand: boolean = true): void {
         this.sidePanelService.setSelectedNodeId(nodeId);
+        if (!expand) return;
         afterNextRender(() => this.nodePanelShell?.expandPanel(), { injector: this.injector });
     }
 

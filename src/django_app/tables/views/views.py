@@ -1,7 +1,6 @@
 import json
 from datetime import datetime, timezone
 from collections import defaultdict
-from drf_yasg.utils import swagger_auto_schema
 import uuid
 import base64
 from asgiref.sync import async_to_sync
@@ -18,6 +17,7 @@ from tables.models import Tool
 from tables.models import Crew
 from tables.models import Agent
 from tables.services.realtime_service import RealtimeService
+from agents.models import AgentDefinition
 from tables.swagger_schemas.python_node_test_mode_schema import (
     LAST_TEST_INPUT_SWAGGER as _LAST_TEST_INPUT_SWAGGER,
 )
@@ -51,17 +51,13 @@ from tables.services.redis_service import RedisService
 from tables.services.run_python_code_service import RunPythonCodeService
 from tables.services.quickstart_service import QuickstartService
 from tables.services.knowledge_services.indexing_service import IndexingService
+from tables.services.trigger_spec import TriggerSpec
 
 from django_filters.rest_framework import DjangoFilterBackend
-
-from tables.enums import SessionWarningType
 
 from tables.models import (
     Session,
     # DocumentMetadata,
-    GraphOrganization,
-    GraphOrganizationUser,
-    OrganizationUser,
     Graph,
     PythonCode,
     SessionWarningMessage,
@@ -77,12 +73,15 @@ from tables.serializers.serializers import (
     AnswerToLLMSerializer,
     BulkExportSerializer,
     InitRealtimeSerializer,
+    NotifyEmailSerializer,
     ProcessRagIndexingSerializer,
     RunSessionSerializer,
     RegisterTelegramTriggerSerializer,
     RunPythonCodeSerializer,
     SessionExportAllSerializer,
 )
+from tables.services.notification_email_sender import NotificationEmailSender
+from tables.throttles import NotifyEmailThrottle
 
 from tables.serializers.quickstart_serializers import (
     QuickstartSerializer,
@@ -157,6 +156,7 @@ session_manager_service = SessionManagerService()
 run_python_code_service = RunPythonCodeService()
 realtime_service = RealtimeService()
 quickstart_service = QuickstartService()
+notification_email_sender = NotificationEmailSender()
 
 
 @extend_schema_view(
@@ -229,7 +229,7 @@ class SessionViewSet(
         return SessionSerializer
 
     def get_queryset(self):
-        qs = Session.objects.select_related("graph").filter(
+        qs = Session.objects.select_related("graph", "trigger").filter(
             graph__org_id=self.get_active_org_id()
         )
         detailed = self.request.query_params.get("detailed", "true").lower()
@@ -458,8 +458,6 @@ class RunSession(APIView):
         files_dict = {}
         graph_id = serializer.validated_data.get("graph_id")
         graph_uuid = serializer.validated_data.get("graph_uuid")
-        graph_organization_user = None
-        warning_messages = []
 
         if graph_id:
             graph = Graph.objects.filter(id=graph_id).first()
@@ -474,53 +472,30 @@ class RunSession(APIView):
 
         graph_id = graph.id
 
-        # Resolve the running user's membership in the flow's organization.
-        # Superadmin may run any flow without a membership row.
-        is_superadmin = getattr(request.user, "is_superadmin", False)
-        membership = None
-        if not is_superadmin:
-            membership = OrganizationUser.objects.filter(
-                user=request.user, org_id=graph.org_id, org__is_active=True
-            ).first()
-            if membership is None:
-                return Response(
-                    {"message": "You cannot run a flow outside your organization."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-        # TODO: refactor in scope of persistant variables story
-        graph_organization = GraphOrganization.objects.filter(graph=graph).first()
-
-        if (
-            graph_organization
-            and graph_organization.user_variables
-            and membership is None
-        ):
-            warning_messages.append(SessionWarningType.USER_VARS_WITH_NO_USER.value)
-
-        if membership is not None and graph_organization is not None:
-            graph_organization_user, _ = GraphOrganizationUser.objects.get_or_create(
-                organization_user=membership,
-                graph=graph,
-                defaults={"persistent_variables": graph_organization.user_variables},
-            )
+        # Running the flow requires READ on flows within its org (superadmin bypasses).
+        assert_org_permission(
+            user=request.user,
+            org_id=graph.org_id,
+            resource_type=ResourceType.FLOWS,
+            action=Permission.READ,
+        )
 
         variables = serializer.validated_data.get("variables", {})
         for key, file in request.FILES.items():
             files_dict[key] = self._get_file_data(file, file.content_type)
 
-        if files_dict is not None:
+        if files_dict:
             variables["files"] = files_dict
             logger.info(f"Added {len(files_dict)} files to variables.")
-        if graph_organization:
-            variables.update(graph_organization.persistent_variables)
-            logger.info(
-                f"Organization variables are used for this flow. Variables: {graph_organization.persistent_variables}"
-            )
-        if graph_organization_user:
-            variables.update(graph_organization_user.persistent_variables)
-            logger.info(
-                f"Organization user variables are used for this flow. Variables: {graph_organization_user.persistent_variables}"
-            )
+
+        parent_session_id = serializer.validated_data.get("parent_session_id")
+        # A sub-flow launched by the subflow_tool is triggered by its parent
+        # session, not by a human hitting this endpoint.
+        trigger = (
+            TriggerSpec.parent_flow(parent_session_id)
+            if parent_session_id is not None
+            else TriggerSpec.manual()
+        )
 
         # Flush the live collab snapshot (if any) to the DB before assembling the
         # session, so Run always executes the latest edits instead of waiting for
@@ -551,7 +526,12 @@ class RunSession(APIView):
         try:
             # Publish session to: crew, maanger
             session_id = session_manager_service.run_session(
-                graph_id=graph_id, variables=variables, user=request.user
+                graph_id=graph_id,
+                variables=variables,
+                user=request.user,
+                trigger=trigger,
+                parent_session_id=parent_session_id,
+                token_budget=serializer.validated_data.get("token_budget"),
             )
             logger.info(f"Session {session_id} successfully started.")
         except Exception as e:
@@ -559,16 +539,11 @@ class RunSession(APIView):
                 f"Error occurred while starting session for graph_id {graph_id}"
             )
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
-        else:
-            if warning_messages:
-                SessionWarningMessage.objects.create(
-                    session_id=session_id, messages=warning_messages
-                )
 
-            return Response(
-                data={"session_id": session_id},
-                status=status.HTTP_201_CREATED,
-            )
+        return Response(
+            data={"session_id": session_id},
+            status=status.HTTP_201_CREATED,
+        )
 
     def _get_file_data(self, file, content_type):
         file_bytes = file.read()
@@ -691,6 +666,44 @@ class AnswerToLLM(APIView):
         return Response(status=status.HTTP_202_ACCEPTED)
 
 
+class NotifyEmailView(APIView):
+    """EST-3285 4.8: sends a notification email via notification_tool
+    (channel='email'). Reuses NotificationEmailSender (Django's send_mail /
+    EMAIL_BACKEND -- the same transport PasswordResetEmailSender uses), NOT a
+    parallel SMTP client. Requires auth (same DEFAULT_PERMISSION_CLASSES /
+    DEFAULT_AUTHENTICATION_CLASSES as every other endpoint), but auth alone
+    does not prevent abuse: this is driven by notification_tool (LLM output),
+    so a prompt-injected agent or a leaked API key could otherwise send
+    unlimited mail to arbitrary external addresses from our domain.
+    NotifyEmailThrottle caps that per authenticated user."""
+
+    throttle_classes = [NotifyEmailThrottle]
+
+    @extend_schema(
+        summary="Send a notification email",
+        request=NotifyEmailSerializer,
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = NotifyEmailSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        to_email = serializer.validated_data["to"]
+        subject = serializer.validated_data["subject"]
+        message = serializer.validated_data["message"]
+
+        sent, error = notification_email_sender.send(
+            to=to_email, subject=subject, message=message
+        )
+        if not sent:
+            return Response(
+                {"message": f"Failed to send notification email: {error}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response({"sent": True}, status=status.HTTP_200_OK)
+
+
 class RunPythonCodeAPIView(APIView):
     _org_context = OrgContextService()
 
@@ -712,7 +725,7 @@ class RunPythonCodeAPIView(APIView):
             user=request.user,
             org_id=org_id,
             resource_type=ResourceType.FLOWS,
-            action=Permission.UPDATE,
+            action=Permission.READ,
         )
         if not PythonCode.objects.filter(
             self._python_code_visible_q(org_id), pk=python_code.pk
@@ -725,7 +738,12 @@ class RunPythonCodeAPIView(APIView):
                 }
             )
 
-        execution_id = run_python_code_service.run_code(python_code.id, variables)
+        execution_id = run_python_code_service.run_code(
+            python_code_id=python_code.id,
+            varaibles=variables,
+            organization_id=org_id,
+            user=request.user,
+        )
         return Response({"execution_id": execution_id}, status=status.HTTP_200_OK)
 
     @staticmethod
@@ -756,17 +774,18 @@ class InitRealtimeAPIView(APIView):
         if not serializer.is_valid():
             logger.warning(f"Invalid data received in request: {serializer.errors}")
             return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST,
                 data={"error": str(serializer.errors)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        agent_id = serializer.validated_data["agent_id"]
+        agent_id = serializer.validated_data.get("agent_id")
+        agent_definition_id = serializer.validated_data.get("agent_definition_id")
         config = serializer.validated_data.get("config", {})
 
         # Org isolation: starting a realtime session is a read/use of an agent,
-        # so require AGENTS.READ and reject an agent_id outside the active org
-        # (rejected like a missing id — existence never leaks).
+        # so require AGENTS.READ and reject an agent_id/agent_definition_id
+        # outside the active org (rejected like a missing id — existence
+        # never leaks).
         org_id = self._org_context.resolve(
             request=request, view_kwargs=getattr(self, "kwargs", {})
         )
@@ -776,20 +795,40 @@ class InitRealtimeAPIView(APIView):
             resource_type=ResourceType.AGENTS,
             action=Permission.READ,
         )
-        if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
-            raise ValidationError(
-                {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
-            )
+        if agent_id is not None:
+            if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
+                raise ValidationError(
+                    {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
+                )
+
+        if agent_definition_id is not None:
+            if not AgentDefinition.objects.filter(
+                pk=agent_definition_id, organization_id=org_id
+            ).exists():
+                raise ValidationError(
+                    {
+                        "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
+                    }
+                )
 
         try:
-            connection_key = realtime_service.init_realtime(
-                agent_id=agent_id,
-                config=config,
-            )
+            if agent_definition_id is not None:
+                connection_key = realtime_service.init_realtime_agent_definition(
+                    agent_definition_id=agent_definition_id,
+                    config=config,
+                    org_id=org_id,
+                )
+            else:
+                connection_key = realtime_service.init_realtime(
+                    agent_id=agent_id,
+                    config=config,
+                    org_id=org_id,
+                )
 
         except Exception as e:
             logger.exception(
-                f"Error occurred while creating realtime agent for agent_id {agent_id}"
+                f"Error occurred while creating realtime agent for agent_id {agent_id} "
+                f"or agent_definition_id {agent_definition_id}"
             )
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
         else:
@@ -838,49 +877,59 @@ class QuickstartView(APIView):
 
     @extend_schema(**QUICKSTART_POST)
     def post(self, request):
-        serializer = QuickstartSerializer(data=request.data)
-        if serializer.is_valid():
-            provider = serializer.validated_data["provider"]
-            api_key = serializer.validated_data["api_key"]
-            org_id = self._org_context.resolve(
-                request=request, view_kwargs=getattr(self, "kwargs", {})
-            )
-            assert_org_permission(
-                user=request.user,
-                org_id=org_id,
-                resource_type=self.rbac_resource_type,
-                action=self.rbac_required_action,
+        # The request must be in context: OrgScopedPrimaryKeyRelatedField reads the
+        # active org from it and denies every pk without it (fail-safe).
+        serializer = QuickstartSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+
+        provider = serializer.validated_data["provider"]
+        api_key = serializer.validated_data.get("api_key")
+        secret = serializer.validated_data.get("api_key_secret_id")
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=self.rbac_resource_type,
+            action=self.rbac_required_action,
+        )
+
+        result = quickstart_service.quickstart(
+            provider=provider,
+            api_key=api_key,
+            secret=secret,
+            org_id=org_id,
+        )
+
+        if not result.get("success", False):
+            return Response(
+                data={"detail": "Error quickstart", "error": result.get("error")},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-            result = quickstart_service.quickstart(provider, api_key, org_id=org_id)
-
-            if result.get("success", False):
-                config_name = result["config_name"]
-                configs = QuickstartConfigSerializer(
-                    {
-                        "config_name": config_name,
-                        "llm_config": result["llm_config"],
-                        "embedding_config": result["embedding_config"],
-                        "realtime_config": result["realtime_config"],
-                        "realtime_transcription_config": result[
-                            "realtime_transcription_config"
-                        ],
-                    }
-                ).data
-                return Response(
-                    data={
-                        "detail": "Quickstart initiated successfully!",
-                        "config_name": config_name,
-                        "configs": configs,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            else:
-                return Response(
-                    data={"detail": "Error quickstart", "error": result.get("error")},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        config_name = result["config_name"]
+        configs = QuickstartConfigSerializer(
+            {
+                "config_name": config_name,
+                "llm_config": result["llm_config"],
+                "embedding_config": result["embedding_config"],
+                "realtime_config": result["realtime_config"],
+                "realtime_transcription_config": result[
+                    "realtime_transcription_config"
+                ],
+            }
+        ).data
+        return Response(
+            data={
+                "detail": "Quickstart initiated successfully!",
+                "config_name": config_name,
+                "configs": configs,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class QuickstartApplyView(APIView):
@@ -954,6 +1003,9 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
                 rag_id=indexing_data["rag_id"],
                 rag_type=indexing_data["rag_type"],
                 collection_id=indexing_data["collection_id"],
+                org_id=self.get_active_org_id(),
+                embedder_api_key_secret_id=indexing_data["embedder_api_key_secret_id"],
+                llm_api_key_secret_id=indexing_data["llm_api_key_secret_id"],
             )
 
             return Response(
@@ -1032,13 +1084,26 @@ class RegisterWebhooksApiView(APIView):
         return Response(status=status.HTTP_200_OK)
 
 
-class PythonNodeLastTestInputView(APIView):
-    @swagger_auto_schema(**_LAST_TEST_INPUT_SWAGGER)
+class PythonNodeLastTestInputView(OrgScopedServiceViewSetMixin, APIView):
+    """
+    GET last tests input for python node from last
+    successfull session with that node
+    """
+
+    _PYTHONNODE_ORG_PATH = "graph__org_id"
+
+    @extend_schema(**_LAST_TEST_INPUT_SWAGGER)
     def get(self, request, pk):
-        try:
-            python_node = PythonNode.objects.get(pk=pk)
-        except PythonNode.DoesNotExist:
-            raise NotFound(detail="PythonNode not found.")
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.FLOWS,
+            Permission.READ,
+        )
+
+        python_node = self.get_in_active_org_or_404(
+            PythonNode, pk, org_path=self._PYTHONNODE_ORG_PATH
+        )
 
         python_node_name = f"{python_node.node_name} #{python_node.pk}"
         found_input = (

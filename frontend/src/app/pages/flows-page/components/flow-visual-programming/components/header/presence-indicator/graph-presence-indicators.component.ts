@@ -11,9 +11,8 @@ import { ConfigService } from '../../../../../../../services/config/config.servi
     imports: [MatTooltipModule],
     templateUrl: './graph-presence-indicators.component.html',
     styleUrl: './graph-presence-indicators.component.scss',
-    changeDetection: ChangeDetectionStrategy.OnPush
+    changeDetection: ChangeDetectionStrategy.OnPush,
 })
-
 export class GraphPresenceIndicatorsComponent {
     private readonly profileService = inject(ProfileService);
     private readonly configService = inject(ConfigService);
@@ -49,9 +48,7 @@ export class GraphPresenceIndicatorsComponent {
     protected getInitials(editor: EditorInfo): string {
         if (!editor.display_name) return `U${editor.user_id}`;
         const words = editor.display_name.trim().split(/\s+/);
-        return words.length >= 2
-            ? (words[0][0] + words[1][0]).toUpperCase()
-            : words[0][0].toUpperCase();
+        return words.length >= 2 ? (words[0][0] + words[1][0]).toUpperCase() : words[0][0].toUpperCase();
     }
 
     protected getTooltip(editor: EditorInfo): string {

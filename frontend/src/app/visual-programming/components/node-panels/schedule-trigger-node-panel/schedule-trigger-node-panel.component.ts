@@ -258,6 +258,21 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         return super.onSaveSilently();
     }
 
+    /**
+     * The global "Save Flow" action (`FlowGraphComponent.emitSave()`) captures the open panel
+     * via `captureForValidation()`. The base implementation always returns a node (so panels
+     * like the task node panel can report their own invalid state via a flow-wide toast
+     * instead of a hard client-side abort) — but this panel's schedule/timezone checks aren't
+     * reactive-form controls, so they need to run and surface their own inline errors, and a
+     * save with bad schedule data must never reach the backend. Delegating to
+     * `onSaveSilently()` (which does exactly that: sets `submitted`/`startRowError`/
+     * `endRowError`/`timezoneError` and returns `null` on failure) restores the exact
+     * pre-existing behavior for this panel.
+     */
+    public override captureForValidation(): ScheduleTriggerNodeModel | null {
+        return this.onSaveSilently();
+    }
+
     initializeForm(): FormGroup {
         this.refreshedNextRun.set(undefined);
         this.refreshedIsActive.set(undefined);

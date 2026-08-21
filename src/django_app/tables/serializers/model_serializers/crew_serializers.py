@@ -11,13 +11,11 @@ from tables.exceptions import (
 )
 from tables.models.crew_models import (
     Agent,
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
     Crew,
     Task,
-    TaskConfiguredTools,
     TaskContext,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
@@ -157,6 +155,12 @@ class ToolConfigSerializer(serializers.ModelSerializer):
 
 
 class AgentReadSerializer(serializers.ModelSerializer):
+    """
+    DEPRECATED: AgentReadSerializer is deprecated. Use agents.AgentDefinition
+    serializers + AgentNode instead. Exists only for backward compatibility
+    with existing Agent rows.
+    """
+
     tools = serializers.SerializerMethodField()
     realtime_agent = RealtimeAgentSerializer(read_only=True)
     rag = serializers.SerializerMethodField()
@@ -215,27 +219,6 @@ class AgentReadSerializer(serializers.ModelSerializer):
             ).select_related("tool__python_code"):
                 tools.append(BaseToolSerializer(tool).data)
 
-        if hasattr(agent, "prefetched_configured_tools"):
-            for link in agent.prefetched_configured_tools:
-                tools.append(BaseToolSerializer(link.toolconfig).data)
-        else:
-            for tool in (
-                ToolConfig.objects.filter(
-                    id__in=AgentConfiguredTools.objects.filter(
-                        agent_id=agent.id
-                    ).values_list("toolconfig_id", flat=True)
-                )
-                .select_related("tool")
-                .prefetch_related(
-                    Prefetch(
-                        "tool__tool_fields",
-                        queryset=ToolConfigField.objects.all(),
-                        to_attr="prefetched_config_fields",
-                    )
-                )
-            ):
-                tools.append(BaseToolSerializer(tool).data)
-
         if hasattr(agent, "prefetched_mcp_tools"):
             for link in agent.prefetched_mcp_tools:
                 tools.append(BaseToolSerializer(link.mcptool).data)
@@ -261,6 +244,12 @@ class AgentReadSerializer(serializers.ModelSerializer):
 
 
 class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
+    """
+    DEPRECATED: AgentWriteSerializer is deprecated. Use agents.AgentDefinition
+    serializers + AgentNode instead. Exists only for backward compatibility
+    with existing Agent rows.
+    """
+
     tool_ids = serializers.ListField(
         child=serializers.CharField(),
         required=False,
@@ -331,7 +320,6 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
     def _get_tools_models_map(self) -> dict[type[Model], tuple[type[Model], str, str]]:
         return {
-            ToolConfig: (AgentConfiguredTools, "configured-tool", "toolconfig_id"),
             PythonCodeTool: (
                 AgentPythonCodeTools,
                 "python-code-tool",
@@ -445,6 +433,9 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
 class TaskContextListField(serializers.Field):
     """
+    DEPRECATED: TaskContextListField is deprecated. Use AgentNodeTask.context_tasks
+    instead. Exists only for backward compatibility with existing Task rows.
+
     Custom field to handle task context list as integers.
     """
 
@@ -532,6 +523,12 @@ class TaskContextListField(serializers.Field):
 
 
 class TaskReadSerializer(serializers.ModelSerializer):
+    """
+    DEPRECATED: TaskReadSerializer is deprecated. Use TaskNode/AgentNodeTask
+    serializers instead. Exists only for backward compatibility with existing
+    Task rows.
+    """
+
     task_context_list = TaskContextListField(read_only=True)
     tools = serializers.SerializerMethodField()
 
@@ -541,7 +538,6 @@ class TaskReadSerializer(serializers.ModelSerializer):
 
     def get_tools(self, task: Task) -> list[dict]:
         all_task_tools = chain(
-            task.task_configured_tool_list.all(),
             task.task_python_code_tool_list.all(),
             task.task_python_code_tool_config_list.all(),
             task.task_mcp_tool_list.all(),
@@ -550,6 +546,12 @@ class TaskReadSerializer(serializers.ModelSerializer):
 
 
 class TaskWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
+    """
+    DEPRECATED: TaskWriteSerializer is deprecated. Use TaskNode/AgentNodeTask
+    serializers instead. Exists only for backward compatibility with existing
+    Task rows.
+    """
+
     task_context_list = TaskContextListField(required=False)
     tool_ids = serializers.ListField(
         child=serializers.CharField(),
@@ -647,7 +649,6 @@ class TaskWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
     def _get_tools_models_map(self) -> dict[type[Model], tuple[type[Model], str, str]]:
         return {
-            ToolConfig: (TaskConfiguredTools, "configured-tool", "tool_id"),
             PythonCodeTool: (TaskPythonCodeTools, "python-code-tool", "tool_id"),
             PythonCodeToolConfig: (
                 TaskPythonCodeToolConfigs,
@@ -671,6 +672,12 @@ class TaskWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
 
 class CrewSerializer(serializers.ModelSerializer):
+    """
+    DEPRECATED: CrewSerializer is deprecated. Use the new Agent/Task graph node
+    serializers (AgentNode, TaskNode) instead. Exists only for backward
+    compatibility with existing Crew rows.
+    """
+
     tasks = serializers.PrimaryKeyRelatedField(
         many=True, read_only=True, source="task_set"
     )

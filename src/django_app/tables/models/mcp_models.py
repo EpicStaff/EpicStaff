@@ -19,10 +19,12 @@ class McpTool(OrgScopedModel, models.Model):
     timeout = models.FloatField(
         default=30, help_text="Request timeout in seconds. Recommended to set."
     )
-    auth = models.TextField(
-        blank=True,
+    auth_secret = models.ForeignKey(
+        "Secret",
         null=True,
-        help_text="Authorization token or OAuth string, if the server requires it.",
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="mcp_tools",
     )
     init_timeout = models.FloatField(
         default=10,

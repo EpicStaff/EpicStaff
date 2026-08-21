@@ -13,8 +13,6 @@ from tables.models import (
 
 
 class BaseConfigImportSerializer(serializers.ModelSerializer):
-    api_key = serializers.CharField(write_only=True, required=False)
-
     model_class = None
     provider_field = None
     config_model = None
@@ -23,7 +21,7 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
     class Meta:
         abstract = True
         model = None
-        fields = "__all__"
+        exclude = ["created_by", "api_key_secret"]
 
     def get_fields(self):
         fields = super().get_fields()

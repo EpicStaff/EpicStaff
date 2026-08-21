@@ -302,3 +302,40 @@ class OrganizationContextAmbiguous(CustomAPIExeption):
         "Multiple organization memberships; please specify X-Organization-Id header."
     )
     default_code = "organization_context_ambiguous"
+
+
+class ApiKeyNotFoundError(CustomAPIExeption):
+    """Raised when an API key id does not exist in the caller's scope
+    (own keys for self-service, active-org members' keys for management).
+    404 in both cases — no cross-user/cross-org enumeration."""
+
+    status_code = 404
+    default_detail = "API key not found."
+    default_code = "api_key_not_found"
+
+
+class ApiKeyLimitExceededError(CustomAPIExeption):
+    """Raised by ApiKeyService.create_key when the caller already has the
+    maximum number of active (non-revoked, non-expired) keys."""
+
+    status_code = 400
+    default_detail = (
+        "Maximum number of active API keys reached (5). "
+        "Revoke or delete an existing key first."
+    )
+    default_code = "api_key_limit_exceeded"
+
+
+class FirstSetupDisabledError(CustomAPIExeption):
+    """Raised by FirstSetupView when settings.FIRST_SETUP_MODE is not
+    `open`. The HTTP endpoint is anonymous, so on an internet-exposed
+    deployment it would otherwise be claimable by whoever reaches it
+    first; the superadmin comes from `manage.py create_superadmin`
+    instead."""
+
+    status_code = 403
+    default_detail = (
+        "HTTP first-setup is disabled on this deployment. Create the first "
+        "superadmin with `python manage.py create_superadmin`."
+    )
+    default_code = "first_setup_disabled"

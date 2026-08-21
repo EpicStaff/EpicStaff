@@ -37,180 +37,70 @@
         }
     }
 
-    .content {
-        flex: 1;
-        min-height: 0;
-        overflow: hidden;
+    .user-section {
         display: flex;
-        flex-direction: column;
-        gap: 20px;
-        padding: 20px 60px 16px 40px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 20px 60px 12px 40px;
 
-        .user-section {
+        .user-identity {
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            gap: 24px;
+            min-width: 0;
 
-            .user-identity {
-                display: flex;
-                align-items: center;
-                gap: 24px;
-
-                .user-avatar-lg {
-                    width: 80px;
-                    height: 80px;
-                    font-size: 28px;
-                    font-weight: 500;
-                    border-radius: 50%;
-                }
-
-                .user-info {
-                    display: flex;
-                    flex-direction: column;
-
-                    .user-name {
-                        font-size: 24px;
-                        font-weight: 500;
-                        color: var(--text);
-                    }
-
-                    .user-email {
-                        font-size: 14px;
-                        color: var(--text-secondary-60);
-                    }
-                }
-            }
-
-            .user-actions {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-        }
-
-        .info-cards {
-            display: flex;
-            gap: 30px;
-        }
-
-        .orgs-section {
-            display: flex;
-            flex-direction: column;
-            flex: 1;
-            min-height: 0;
-            gap: 12px;
-
-            .section-header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-
-                .sort {
-                    width: 200px;
-                }
-            }
-
-            .org-list-scroll {
-                flex: 1;
-                min-height: 0;
-                overflow-y: auto;
-            }
-        }
-    }
-}
-
-.title {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 0;
-    font-weight: 700;
-    color: var(--text);
-
-    .count,
-    .icon {
-        color: var(--purple-primary);
-    }
-
-    &.section-title {
-        font-size: 18px;
-    }
-
-    &.card-title {
-        font-size: 14px;
-    }
-}
-
-.card {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    gap: 16px;
-    padding: 30px;
-    border: 1px solid var(--color-divider-subtle);
-    border-radius: 10px;
-
-    &.roles-card {
-        flex: none;
-    }
-
-    .row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 12px;
-
-        .label {
-            color: var(--text-secondary-60);
-        }
-
-        .value {
-            color: var(--text);
-
-            &.role {
-                color: var(--purple-primary);
+            .user-avatar-lg {
+                width: 80px;
+                height: 80px;
+                font-size: 28px;
                 font-weight: 500;
+                border-radius: 50%;
+                flex-shrink: 0;
+            }
+
+            .user-info {
+                display: flex;
+                flex-direction: column;
+                min-width: 0;
+
+                .user-name {
+                    font-size: 24px;
+                    font-weight: 500;
+                    color: var(--text);
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .user-email {
+                    font-size: 14px;
+                    color: var(--text-secondary-60);
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
             }
         }
-    }
 
-    .role-tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-
-        .role-tag {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            color: var(--text);
-            background: var(--transparent-white-8);
-        }
-    }
-}
-
-.org-row {
-    .left {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-
-        .org-name {
-            flex: 1;
-            font-size: 14px;
-            color: var(--text);
+        .user-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
         }
     }
 
-    .right {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 8px;
+    .profile-tabs {
+        margin: 4px 60px 0 40px;
+    }
 
-        .org-role {
-            font-size: 14px;
-            color: var(--purple-primary);
-        }
+    .tab-content {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        padding: 16px 60px 16px 40px;
     }
 }

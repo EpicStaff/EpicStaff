@@ -2,7 +2,6 @@ from tables.import_export.utils import ensure_unique_identifier
 from tables.models.crew_models import (
     Crew,
     Task,
-    TaskConfiguredTools,
     TaskContext,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
@@ -68,8 +67,11 @@ class CrewCopyService(BaseCopyService):
             )
             task_id_map[old_task.id] = new_task
 
-            for row in old_task.task_configured_tool_list.all():
-                TaskConfiguredTools.objects.create(task=new_task, tool=row.tool)
+            # ToolConfig-backed "configured tools" are deprecated (the per-tool
+            # container service they depended on is gone) and are intentionally
+            # not re-linked on copy. No prefetch is loaded for
+            # task_configured_tool_list on this code path, so we don't warn
+            # here -- doing so would add an N+1 query per task just to log.
             for row in old_task.task_python_code_tool_list.all():
                 TaskPythonCodeTools.objects.create(task=new_task, tool=row.tool)
             for row in old_task.task_python_code_tool_config_list.all():

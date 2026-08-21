@@ -12,7 +12,7 @@ class EmbeddingModel(OrgScopedModel, models.Model):
         "Provider", on_delete=models.SET_NULL, null=True, default=None
     )
     deployment = models.TextField(null=True, blank=True)
-    base_url = models.URLField(null=True, blank=True, default=None)
+    base_url = models.TextField(null=True, blank=True, default=None)
     is_visible = models.BooleanField(default=True)
     is_custom = models.BooleanField(default=False)
     tags = models.ManyToManyField(
@@ -32,7 +32,13 @@ class EmbeddingConfig(OrgScopedModel, models.Model):
     task_type = models.CharField(
         max_length=255, choices=EmbedderTask.choices, default=EmbedderTask.RETRIEVAL_DOC
     )
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="embedding_configs",
+    )
     is_visible = models.BooleanField(default=True)
     tags = models.ManyToManyField(
         EmbeddingConfigTag, blank=True, related_name="embedding_configs"
@@ -63,4 +69,3 @@ class DefaultEmbeddingConfig(DefaultBaseModel):
     task_type = models.CharField(
         max_length=255, choices=EmbedderTask.choices, default=EmbedderTask.RETRIEVAL_DOC
     )
-    api_key = models.TextField(null=True, blank=True)

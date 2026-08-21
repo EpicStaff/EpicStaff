@@ -9,6 +9,7 @@ from tables.serializers.model_serializers.node_serializers.flow_control_serializ
     ClassificationDecisionTableNodeSerializer,
 )
 from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
+    AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
     CodeAgentNodeSerializer,
     CrewNodeSerializer,
@@ -16,6 +17,7 @@ from tables.serializers.model_serializers.node_serializers.basic_node_serializer
     FileExtractorNodeSerializer,
     PythonNodeSerializer,
     SubGraphNodeSerializer,
+    TaskNodeSerializer,
 )
 from tables.serializers.model_serializers.node_serializers.trigger_serializers import (
     TelegramTriggerNodeSerializer,
@@ -26,10 +28,8 @@ from tables.serializers.model_serializers.tag_serializers import GraphTagSeriali
 from tables.models.graph_models import (
     Graph,
     GraphNote,
-    GraphOrganization,
     GraphOrganizationUser,
     GraphSessionMessage,
-    StartNode,
 )
 from tables.models.label_models import Label
 from tables.serializers.base_serializer import BaseGraphEntityMixin
@@ -116,58 +116,8 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
         return data
 
 
-class GraphOrganizationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = GraphOrganization
-        fields = [
-            "id",
-            "graph",
-            "organization",
-            "persistent_variables",
-            "user_variables",
-        ]
-
-    def validate(self, attrs):
-        graph = attrs.get("graph") or getattr(self.instance, "graph", None)
-        if not graph:
-            raise serializers.ValidationError("Graph is required to validate variables")
-
-        organization_variables = attrs.get("persistent_variables", {})
-        user_variables = attrs.get("user_variables", {})
-
-        qs = GraphOrganization.objects.filter(graph=graph)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-
-        if qs.exists():
-            raise serializers.ValidationError("This flow already has an organization")
-
-        start_node: StartNode = graph.start_node_list.first()
-        for key in user_variables:
-            if key not in start_node.variables:
-                raise serializers.ValidationError(
-                    {
-                        "user_variables": f"Provided user_variables have to be in flow domain. Variable `{key}` is not in domain."
-                    }
-                )
-        for key in organization_variables:
-            if key not in start_node.variables:
-                raise serializers.ValidationError(
-                    {
-                        "persistent_variables": f"Provided persistent_variables have to be in flow domain. Variable `{key}` is not in domain."
-                    }
-                )
-            if key in user_variables:
-                raise serializers.ValidationError(
-                    {
-                        "user_variables": f"User variables and Organization variables cannot have same values. Issue with key `{key}`"
-                    }
-                )
-
-        return super().validate(attrs)
-
-
 class GraphOrganizationUserSerializer(serializers.ModelSerializer):
+    # TODO refactor to use user_variable for persistent variables
     class Meta:
         model = GraphOrganizationUser
         fields = ["id", "graph", "organization_user", "persistent_variables"]
@@ -224,6 +174,8 @@ class GraphSerializer(serializers.ModelSerializer):
     )
     subgraph_node_list = SubGraphNodeSerializer(many=True, read_only=True)
     code_agent_node_list = CodeAgentNodeSerializer(many=True, read_only=True)
+    task_node_list = TaskNodeSerializer(many=True, read_only=True)
+    agent_node_list = AgentNodeSerializer(many=True, read_only=True)
     end_node_list = EndNodeSerializer(many=True, read_only=True, source="end_node")
     telegram_trigger_node_list = TelegramTriggerNodeSerializer(
         many=True, read_only=True
@@ -264,10 +216,12 @@ class GraphSerializer(serializers.ModelSerializer):
             "classification_decision_table_node_list",
             "subgraph_node_list",
             "code_agent_node_list",
+            "task_node_list",
+            "agent_node_list",
             "start_node_list",
             "end_node_list",
             "time_to_live",
-            "persistent_variables",
+            "enable_persistent_variables",
             "epicchat_enabled",
             "telegram_trigger_node_list",
             "schedule_trigger_node_list",
@@ -275,6 +229,8 @@ class GraphSerializer(serializers.ModelSerializer):
             "graph_note_list",
             "save_version",
         ]
+        # Derived on Domain save — never set directly by the client.
+        read_only_fields = ["enable_persistent_variables"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -52,22 +52,4 @@ export interface LongTermMemoryPayload extends MemoryPayload {
 // User memory payload
 export interface UserMemoryPayload extends MemoryPayload {
     type: 'user';
-    // User memories don't have agent_id (it's undefined)
-}
-
-// Type guard functions to help with type narrowing
-export function isEntityMemory(memory: Memory): memory is Memory & { payload: EntityMemoryPayload } {
-    return memory.payload.type === 'entity';
-}
-
-export function isShortTermMemory(memory: Memory): memory is Memory & { payload: ShortTermMemoryPayload } {
-    return memory.payload.type === 'short_term';
-}
-
-export function isLongTermMemory(memory: Memory): memory is Memory & { payload: LongTermMemoryPayload } {
-    return memory.payload.type === 'long_term';
-}
-
-export function isUserMemory(memory: Memory): memory is Memory & { payload: UserMemoryPayload } {
-    return memory.payload.type === 'user';
 }

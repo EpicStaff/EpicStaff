@@ -189,9 +189,9 @@ import { RealtimeUtils } from "./utils.js";
 export class RealtimeClient extends RealtimeEventHandler {
   /**
    * Create a new RealtimeClient instance
-   * @param {{url?: string, apiKey?: string, dangerouslyAllowAPIKeyInBrowser?: boolean, debug?: boolean}} [settings]
+   * @param {{url?: string, apiKey?: string, dangerouslyAllowAPIKeyInBrowser?: boolean, debug?: boolean, connectionKey?: string}} [settings]
    */
-  constructor({ url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug } = {}) {
+  constructor({ url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug, connectionKey } = {}) {
     super();
 
     this.defaultSessionConfig = {
@@ -224,6 +224,7 @@ export class RealtimeClient extends RealtimeEventHandler {
       apiKey,
       dangerouslyAllowAPIKeyInBrowser,
       debug,
+      connectionKey,
     });
 
     this.conversation = new RealtimeConversation();

@@ -1,0 +1,25 @@
+{
+  "title": "ReadFileToolArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "Path to the file to read, relative to the sandbox root."
+    },
+    "offset": {
+      "type": "integer",
+      "description": "1-based line number to start reading from (text files only). Default 1.",
+      "default": 1
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Maximum number of lines to read (text files only). Default 2000, capped at 2000.",
+      "default": 2000
+    },
+    "pages": {
+      "type": "string",
+      "description": "PDF only: page range to read, e.g. \"1-5\", \"3\", \"10-20\". Max 20 pages per call. Required if the PDF has more than 10 pages."
+    }
+  },
+  "required": ["file_path"]
+}

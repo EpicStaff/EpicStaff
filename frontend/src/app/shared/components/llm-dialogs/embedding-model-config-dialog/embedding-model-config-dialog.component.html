@@ -30,14 +30,22 @@
             <app-validation-errors [control]="form.get('model')!" />
         </div>
         <div>
-            <app-custom-input
-                formControlName="api_key"
+            <app-select
+                formControlName="api_key_secret_id"
                 label="API Key"
-                placeholder="Enter provider's API key"
-                tooltipText="Your secret API key from the provider's dashboard. It will be stored securely."
-                type="secret"
+                variant="boxed"
+                placeholder="Select a secret"
+                tooltipText="The stored secret holding this provider's API key"
+                [items]="secretItems()"
+                [showSearch]="true"
+                searchPlaceholder="Search a secret..."
             />
-            <app-validation-errors [control]="form.get('api_key')!" />
+            @if (!form.get('api_key_secret_id')?.value) {
+                <app-hint-message>
+                    Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                </app-hint-message>
+            }
+            <app-validation-errors [control]="form.get('api_key_secret_id')!" />
         </div>
         <div>
             <app-custom-input

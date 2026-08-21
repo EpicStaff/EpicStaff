@@ -34,14 +34,34 @@ export enum MessageType {
     CLASSIFICATION_PROMPT = 'classification_prompt',
     CONDITION_GROUP_MANIPULATION = 'condition_group_manipulation',
     CODE_AGENT_STREAM = 'code_agent_stream',
+    FINDINGS = 'findings',
+    TASK_NODE_STREAM = 'task_node_stream',
+    AGENT_NODE_STREAM = 'agent_node_stream',
 }
 
-// Message data interfaces - these match the camelCase structure used in your code
+export type FinishStopReason = 'completed' | 'schema_satisfied' | 'max_iter_reached';
+
+export interface FinishOutputTokenUsage {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+}
+
+export interface FinishOutput {
+    message?: string;
+    stop_reason?: FinishStopReason;
+    iterations?: number;
+    tool_invocations?: number;
+    token_usage?: FinishOutputTokenUsage;
+    [key: string]: unknown;
+}
+
 export interface FinishMessageData {
-    output: Record<string, unknown>;
+    output: FinishOutput;
     state: Record<string, Record<string, unknown>>;
     message_type: MessageType.FINISH;
-    additional_data?: Record<string, unknown>;
+    additional_data?: Record<string, unknown> | null;
+    sse_visible?: boolean;
 }
 
 export interface StartMessageData {
@@ -197,7 +217,7 @@ export interface ClassificationPromptMessageData {
 
 export interface ConditionGroupManipulationMessageData {
     group_name: string;
-    state: Record<string, unknown>;
+    state: Record<string, Record<string, unknown>>;
     changed_variables: Record<string, unknown>;
     message_type: MessageType.CONDITION_GROUP_MANIPULATION;
 }
@@ -215,6 +235,87 @@ export interface CodeAgentStreamMessageData {
     is_final: boolean;
     step_id?: number;
     message_type: MessageType.CODE_AGENT_STREAM;
+}
+
+export type FindingSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical';
+
+export interface Finding {
+    title: string;
+    severity: FindingSeverity;
+    category: string | null;
+    file: string | null;
+    line: number | null;
+    detail: string | null;
+}
+
+export interface FindingsMessageData {
+    title: string | null;
+    summary: string | null;
+    findings: Finding[];
+    total_submitted: number;
+    total_returned: number;
+    truncated: boolean;
+    message: string;
+    message_type: MessageType.FINDINGS;
+}
+
+// TaskNode / AgentNode stream events (task_start / tool_call / tool_result / task_finish) —
+// same envelope shape, only message_type differs. AgentNode events MAY additionally carry
+// `data.task` to indicate which sub-task the activity belongs to (absent for single-task
+// agents). task_start/task_finish events carry `data.task`, and task_finish additionally
+// carries the task's output text in `data.message`.
+export interface NodeStreamTaskRef {
+    name: string;
+    order: number;
+}
+
+export interface NodeStreamToolCallData {
+    id: string;
+    name: string;
+    arguments: string;
+    truncated?: boolean;
+    token_usage?: Record<string, number>;
+    task?: NodeStreamTaskRef;
+}
+
+export interface NodeStreamToolResultData {
+    tool_call_id: string;
+    name: string;
+    content: string;
+    is_error?: boolean;
+    truncated?: boolean;
+    token_usage?: Record<string, number>;
+    task?: NodeStreamTaskRef;
+}
+
+export interface NodeStreamTaskStartData {
+    task: NodeStreamTaskRef;
+}
+
+export interface NodeStreamTaskFinishData {
+    task: NodeStreamTaskRef;
+    message: string;
+    iterations?: number;
+    stop_reason?: string;
+    token_usage?: Record<string, number>;
+    tool_invocations?: number;
+    truncated?: boolean;
+}
+
+interface NodeStreamMessageDataBase {
+    event: 'task_start' | 'tool_call' | 'tool_result' | 'task_finish';
+    step_id: number;
+    is_final: boolean;
+    sse_visible?: boolean;
+    data: NodeStreamToolCallData | NodeStreamToolResultData | NodeStreamTaskStartData | NodeStreamTaskFinishData;
+}
+
+export interface TaskNodeStreamMessageData extends NodeStreamMessageDataBase {
+    message_type: MessageType.TASK_NODE_STREAM;
+}
+
+export interface AgentNodeStreamMessageData extends NodeStreamMessageDataBase {
+    message_type: MessageType.AGENT_NODE_STREAM;
 }
 
 // Type union for all message data types
@@ -236,4 +337,7 @@ export type MessageData =
     | ConditionGroupMessageData
     | ClassificationPromptMessageData
     | ConditionGroupManipulationMessageData
-    | CodeAgentStreamMessageData;
+    | CodeAgentStreamMessageData
+    | FindingsMessageData
+    | TaskNodeStreamMessageData
+    | AgentNodeStreamMessageData;

@@ -1,11 +1,19 @@
-export function getRelativeTime(date: unknown): string {
-    if (!(date instanceof Date)) return '';
-    const diffMs = Date.now() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 60) return `${diffMins} m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours} h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 30) return `${diffDays} d ago`;
-    return `${Math.floor(diffDays / 30)} m ago`;
+export function getRelativeTime(value: Date | string | null | undefined): string {
+    if (value === null || value === undefined) return '—';
+    const date = value instanceof Date ? value : new Date(value);
+    const time = date.getTime();
+    if (Number.isNaN(time)) return '—';
+
+    const diffMs = Date.now() - time;
+    if (diffMs < 60_000) return 'just now';
+    const min = Math.floor(diffMs / 60_000);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const days = Math.floor(hr / 24);
+    if (days < 30) return days === 1 ? '1 day ago' : `${days} days ago`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return months === 1 ? '1 month ago' : `${months} months ago`;
+    const years = Math.floor(months / 12);
+    return years === 1 ? '1 year ago' : `${years} years ago`;
 }

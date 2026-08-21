@@ -5,6 +5,8 @@ import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { expandCollapseAnimation } from '@shared/animations';
 import {
+    ColumnResizeDividerComponent,
+    createColumnWidthState,
     CustomInputComponent,
     JsonEditorComponent,
     LlmModelSelectorComponent,
@@ -47,6 +49,7 @@ import { DEFAULT_OUTPUT_SCHEMA } from './default-output-schema';
         MatTooltipModule,
         SelectComponent,
         LlmModelSelectorComponent,
+        ColumnResizeDividerComponent,
     ],
     animations: [expandCollapseAnimation],
     templateUrl: './code-agent-node-panel.component.html',
@@ -58,6 +61,7 @@ export class CodeAgentNodePanelComponent extends BaseSidePanel<CodeAgentNodeMode
     public readonly isCodeEditorFullWidth = signal<boolean>(true);
     public readonly activeEditorTab = signal<'hooks' | 'schema'>('hooks');
     public readonly useStorage = signal<boolean>(false);
+    protected readonly leftColumnWidth = createColumnWidthState('code-agent-node', 400);
 
     streamHandlerCode: string = '';
     outputSchemaText: string = '';

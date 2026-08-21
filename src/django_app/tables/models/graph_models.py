@@ -59,7 +59,7 @@ class Graph(OrgScopedModel, TimestampMixin):
     time_to_live = models.IntegerField(
         default=3600, help_text="Session lifitime duration in seconds."
     )
-    persistent_variables = models.BooleanField(
+    enable_persistent_variables = models.BooleanField(
         default=False, help_text="If 'True' -> use variables from last session."
     )
     epicchat_enabled = models.BooleanField(
@@ -115,6 +115,12 @@ class BaseNode(BaseGraphEntity, BaseGlobalNode):
 
 
 class CrewNode(BaseNode):
+    """
+    DEPRECATED: CrewNode is deprecated. Use AgentNode or TaskNode instead.
+    New flows must not create CrewNodes; this model exists only for backward
+    compatibility with existing graphs.
+    """
+
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="crew_node_list"
     )
@@ -213,6 +219,12 @@ class SubGraphNode(BaseNode):
 
 
 class CodeAgentNode(BaseNode):
+    """
+    DEPRECATED: CodeAgentNode is deprecated. Use AgentNode or TaskNode instead.
+    New flows must not create CodeAgentNodes; this model exists only for backward
+    compatibility with existing graphs.
+    """
+
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="code_agent_node_list"
     )
@@ -461,7 +473,7 @@ class Condition(ContentHashMixin, models.Model):
 # GraphOrganizationUser below now hold per-flow persistent variables scoped to
 # those RBAC entities.
 #
-# - GraphOrganization(graph, organization)          -> org-level persistent vars
+# - GraphOrganization(graph)                         -> org-level persistent vars
 #   .user_variables                                 -> seed template for new
 #                                                      GraphOrganizationUser rows
 # - GraphOrganizationUser(graph, organization_user) -> per-membership persistent
@@ -480,11 +492,9 @@ class BasePersistentEntity(models.Model):
 
 
 class GraphOrganization(BasePersistentEntity):
-    organization = models.ForeignKey(
-        "Organization",
-        on_delete=models.CASCADE,
-        related_name="graph_persistent_states",
-    )
+    # Org is derived from graph.org (a flow has exactly one owning org), so this
+    # row is a 1:1 extension of Graph holding org-level persistent variables.
+    # TODO refactor to use user_variable for persistent variables
     user_variables = models.JSONField(
         default=dict,
         help_text="Seed template of variables copied into each user's GraphOrganizationUser row",
@@ -493,8 +503,8 @@ class GraphOrganization(BasePersistentEntity):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["graph", "organization"],
-                name="unique_organization_per_flow",
+                fields=["graph"],
+                name="unique_persistent_state_per_flow",
             )
         ]
 
@@ -502,6 +512,7 @@ class GraphOrganization(BasePersistentEntity):
 class GraphOrganizationUser(BasePersistentEntity):
     # FK points at RBAC OrganizationUser (User x Org membership), so per-user
     # persistent state is scoped per-org as well
+    # TODO refactor to use user_variable for persistent variables
     organization_user = models.ForeignKey(
         "OrganizationUser",
         on_delete=models.CASCADE,
@@ -559,8 +570,12 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode):
 
 class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode):
     node_name = models.CharField(max_length=255, blank=False)
-    telegram_bot_api_key = models.CharField(
-        max_length=255, blank=True, null=True, default=None
+    telegram_bot_api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="telegram_trigger_nodes",
     )
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="telegram_trigger_node_list"
@@ -848,17 +863,54 @@ class GraphVersion(SoftDeleteMixin, models.Model):
 
 
 class StorageFile(models.Model):
+    ITEM_TYPE_CHOICES = [("file", "file"), ("folder", "folder")]
+
     org = models.ForeignKey(
-        "Organization", on_delete=models.CASCADE, related_name="storage_files"
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="storage_files",
+        help_text="Organization that owns this storage entry.",
     )
     path = models.CharField(
-        max_length=1000, help_text="Org-relative path, never starts with '/'"
+        max_length=1000,
+        help_text="Org-relative path, never starts with '/'. Folders end with '/'.",
     )
     name = models.CharField(
-        max_length=255, help_text="Last path segment, denormalized for search"
+        max_length=255, help_text="Last path segment, denormalized for search."
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    item_type = models.CharField(
+        max_length=6,
+        choices=ITEM_TYPE_CHOICES,
+        default="file",
+        help_text="Whether this row represents a file or a folder.",
+    )
+    size = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="File size in bytes. NULL for folders or when size is unknown.",
+    )
+    s3_modified = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="LastModified timestamp from the storage backend. NULL when unknown.",
+    )
+    is_system = models.BooleanField(
+        default=False,
+        help_text="True for files written by the platform itself (e.g. session outputs). Not filtered yet.",
+    )
+    parent_path = models.CharField(
+        max_length=1000,
+        default="",
+        help_text="Immediate parent directory path ending in '/', or '' for root entries. Enables single-level listing.",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Timestamp when this DB row was first created.",
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="Timestamp of the last update to this row.",
+    )
 
     class Meta:
         constraints = [
@@ -866,7 +918,10 @@ class StorageFile(models.Model):
                 fields=["org", "path"], name="unique_storage_file_per_org"
             )
         ]
-        indexes = [models.Index(fields=["org", "path"])]
+        indexes = [
+            models.Index(fields=["org", "path"]),
+            models.Index(fields=["org", "parent_path"]),
+        ]
 
 
 class GraphStorageFile(models.Model):
@@ -902,3 +957,135 @@ class SessionStorageFile(models.Model):
                 name="unique_session_storage_file",
             )
         ]
+
+
+class TaskNode(BaseNode):
+    graph = models.ForeignKey(
+        "Graph",
+        on_delete=models.CASCADE,
+        related_name="task_node_list",
+        help_text="Graph this task node belongs to.",
+    )
+    agent_definition = models.ForeignKey(
+        "agents.AgentDefinition",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="task_nodes",
+        help_text="AgentDefinition that executes this task. Null allowed — runtime surfaces a missing-agent error.",
+    )
+    instructions = models.TextField(
+        blank=True,
+        default="",
+        help_text="Prompt text passed to the agent for this task. Empty means no task-level instructions.",
+    )
+    output_schema = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="JSON schema the task output must conform to. Empty dict means no schema enforcement.",
+    )
+    remember_output = models.BooleanField(
+        default=False,
+        help_text="If True, this task's output is remembered for the current run and injected as context into subsequently executed task nodes in the same session.",
+    )
+    surface_list = models.ManyToManyField(
+        "agents.Surface",
+        blank=True,
+        related_name="task_nodes",
+        help_text="Surfaces attached to this task node.",
+    )
+
+
+class AgentNode(BaseNode):
+    """Node representing an agent that executes an ordered list of sub-tasks (AgentNodeTask) with shared surfaces."""
+
+    graph = models.ForeignKey(
+        "Graph",
+        on_delete=models.CASCADE,
+        related_name="agent_node_list",
+        help_text="Graph this agent node belongs to.",
+    )
+    agent_definition = models.ForeignKey(
+        "agents.AgentDefinition",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="agent_nodes",
+        help_text="AgentDefinition that executes this node's tasks. Null allowed — runtime surfaces a missing-agent error.",
+    )
+    surface_list = models.ManyToManyField(
+        "agents.Surface",
+        blank=True,
+        related_name="agent_nodes",
+        help_text="Surfaces attached to this agent node.",
+    )
+
+
+class AgentNodeTask(TimestampMixin):
+    """Child sub-task of an AgentNode; not a graph node — executes sequentially within the parent node."""
+
+    agent_node = models.ForeignKey(
+        AgentNode,
+        on_delete=models.CASCADE,
+        related_name="tasks",
+        help_text="Parent AgentNode this task belongs to.",
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="Name of this sub-task, unique within the parent agent node.",
+    )
+    order = models.PositiveIntegerField(
+        help_text="Zero-based position within the parent agent node. Tasks execute in ascending order.",
+    )
+    instructions = models.TextField(
+        blank=True,
+        default="",
+        help_text="Prompt text passed to the agent for this sub-task. Empty means no task-level instructions.",
+    )
+    output_schema = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Optional JSON schema the task output must conform to. Empty dict = no enforcement.",
+    )
+    context_tasks = models.ManyToManyField(
+        "self",
+        symmetrical=False,
+        blank=True,
+        related_name="dependent_tasks",
+        help_text="Earlier sibling tasks whose outputs are injected as context for this task.",
+    )
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["agent_node", "order"],
+                name="uniq_agentnodetask_node_order",
+                deferrable=models.Deferrable.DEFERRED,
+            ),
+            models.UniqueConstraint(
+                fields=["agent_node", "name"],
+                name="uniq_agentnodetask_node_name",
+                deferrable=models.Deferrable.DEFERRED,
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if self.pk:
+            invalid = self.context_tasks.exclude(agent_node=self.agent_node)
+
+            if invalid.exists():
+                raise ValidationError(
+                    "context_tasks must belong to the same agent_node."
+                )
+
+            forward = self.context_tasks.filter(order__gte=self.order)
+
+            if forward.exists():
+                raise ValidationError(
+                    "context_tasks must reference tasks with a strictly lower order."
+                )

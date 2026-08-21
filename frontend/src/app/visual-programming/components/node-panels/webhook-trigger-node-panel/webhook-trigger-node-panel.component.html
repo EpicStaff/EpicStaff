@@ -10,7 +10,11 @@
                 [class.collapsed]="!isExpanded()"
                 [class.code-editor-fullwidth]="isCodeEditorFullWidth()"
             >
-                <div class="form-fields">
+                <div
+                    #formColumn
+                    class="form-fields"
+                    [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
+                >
                     <app-lockable-field
                         fieldId="node_name"
                         [nodeId]="node().id"
@@ -83,6 +87,13 @@
                         </div>
                     </app-lockable-field>
 
+                    <app-node-secrets-field
+                        [activeColor]="activeColor"
+                        [value]="selectedSecretIds()"
+                        tooltipText="Secrets this webhook's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                        (valueChange)="onSecretsChange($event)"
+                    />
+
                     <app-lockable-field
                         fieldId="libraries"
                         [nodeId]="node().id"
@@ -97,7 +108,19 @@
                     </app-lockable-field>
                 </div>
                 @if (isExpanded()) {
-                    <div class="code-editor-wrapper">
+                    @if (!isCodeEditorFullWidth()) {
+                        <app-column-resize-divider
+                            ariaLabel="Resize form and code editor columns"
+                            [column]="formColumn"
+                            [opposite]="editorColumn"
+                            [(width)]="leftColumnWidth.width"
+                            [defaultWidth]="leftColumnWidth.defaultWidth"
+                        />
+                    }
+                    <div
+                        #editorColumn
+                        class="code-editor-wrapper"
+                    >
                         <button
                             type="button"
                             class="toggle-icon-button"
@@ -130,6 +153,7 @@
                             <div class="code-editor-section">
                                 <app-code-editor
                                     [pythonCode]="pythonCode"
+                                    [secretNames]="secretNames()"
                                     (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onCodeErrorChange($event)"
                                 ></app-code-editor>
@@ -144,6 +168,7 @@
                         <div class="code-editor-section">
                             <app-code-editor
                                 [pythonCode]="pythonCode"
+                                [secretNames]="secretNames()"
                                 (pythonCodeChange)="onPythonCodeChange($event)"
                                 (errorChange)="onCodeErrorChange($event)"
                             ></app-code-editor>

@@ -1,0 +1,49 @@
+:host {
+    display: block;
+    min-height: 0;
+}
+
+:host-context(.explorer__section-body--fill) {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.section-state {
+    padding: 4px 12px 4px 32px;
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+app-storage-tree {
+    display: block;
+
+    ::ng-deep .storage-tree {
+        height: auto;
+    }
+
+    ::ng-deep .storage-tree__list {
+        padding: 0 0 4px;
+    }
+}
+
+:host-context(.explorer__section-body--fill) app-storage-tree {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+
+    ::ng-deep .storage-tree {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        height: 100%;
+    }
+
+    ::ng-deep .storage-tree__list {
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+}

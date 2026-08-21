@@ -1,6 +1,5 @@
 from tables.models.crew_models import (
     Agent,
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeTools,
     AgentPythonCodeToolConfigs,
@@ -14,9 +13,10 @@ class AgentCopyService(BaseCopyService):
     """Copy service for Agent entities.
 
     Duplicates all scalar configuration fields. Tool relationships
-    (configured tools, python code tools, MCP tools) are re-linked
-    to the same tool objects -- tools are not cloned. If a RealtimeAgent
-    is attached, it is fully duplicated.
+    (python code tools, python code tool configs, MCP tools) are re-linked
+    to the same tool objects -- tools are not cloned. Deprecated
+    ToolConfig-backed "configured tools" rows are not re-linked (see
+    ``copy``). If a RealtimeAgent is attached, it is fully duplicated.
 
     Unlike other copy services, the ``name`` parameter maps to the
     agent's ``role`` field and no unique-name resolution is performed.
@@ -45,10 +45,9 @@ class AgentCopyService(BaseCopyService):
             org_id=org_id if org_id is not None else agent.org_id,
         )
 
-        for row in agent.configured_tools.all():
-            AgentConfiguredTools.objects.create(
-                agent=new_agent, toolconfig=row.toolconfig
-            )
+        # ToolConfig-backed "configured tools" are deprecated (the per-tool
+        # container service they depended on is gone) and are intentionally
+        # not re-linked on copy.
 
         for row in agent.python_code_tools.all():
             AgentPythonCodeTools.objects.create(

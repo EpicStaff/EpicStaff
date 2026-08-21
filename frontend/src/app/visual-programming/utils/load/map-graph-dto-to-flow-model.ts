@@ -5,6 +5,7 @@ import { NodeModel } from '../../core/models/node.model';
 import { mapClassificationDecisionTableToConnections } from './connections/classification-decision-table-connections.mapper';
 import { mapDecisionTableToConnections } from './connections/decision-table-connections.mapper';
 import { mapEdgesToConnections } from './connections/plain-edge.mapper';
+import { mapAgentNodeToModel } from './nodes/agent-node.mapper';
 import { mapAudioToTextNodeToModel } from './nodes/audio-to-text-node.mapper';
 import { mapClassificationDecisionTableNodeToModel } from './nodes/classification-decision-table-node.mapper';
 import { mapCodeAgentNodeToModel } from './nodes/code-agent-node.mapper';
@@ -18,6 +19,7 @@ import { mapPythonNodeToModel } from './nodes/python-node.mapper';
 import { mapScheduleTriggerNodeToModel } from './nodes/schedule-trigger-node.mapper';
 import { mapStartNodeToModel } from './nodes/start-node.mapper';
 import { mapSubGraphNodeToModel } from './nodes/subgraph-node.mapper';
+import { mapTaskNodeToModel } from './nodes/task-node.mapper';
 import { mapTelegramTriggerNodeToModel } from './nodes/telegram-trigger-node.mapper';
 import { mapWebhookTriggerNodeToModel } from './nodes/webhook-trigger-node.mapper';
 import { resolveClassificationDecisionTableNodeRefs } from './ref-resolvers/classification-decision-table-refs';
@@ -64,6 +66,8 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     const startNodes = mapList(graph.start_node_list, mapStartNodeToModel);
     const crewNodes = mapList(graph.crew_node_list, mapCrewNodeToModel);
     const pythonNodes = mapList(graph.python_node_list, mapPythonNodeToModel);
+    const taskNodes = mapList(graph.task_node_list, mapTaskNodeToModel);
+    const agentNodes = mapList(graph.agent_node_list, mapAgentNodeToModel);
     const llmNodes = mapList(graph.llm_node_list, mapLLMNodeToModel);
     const fileExtractorNodes = mapList(graph.file_extractor_node_list, mapFileExtractorNodeToModel);
     const audioToTextNodes = mapList(graph.audio_transcription_node_list, mapAudioToTextNodeToModel);
@@ -85,6 +89,8 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         ...startNodes,
         ...crewNodes,
         ...pythonNodes,
+        ...taskNodes,
+        ...agentNodes,
         ...llmNodes,
         ...fileExtractorNodes,
         ...audioToTextNodes,

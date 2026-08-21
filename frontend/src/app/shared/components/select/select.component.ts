@@ -18,7 +18,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
-import { isEqual } from 'lodash-es';
+import { deepEqual } from '@shared/utils';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -26,10 +26,15 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
 export interface SelectItem<T = unknown> {
     name: string;
     tip?: string;
+    subtitle?: string;
     value: T;
     group?: string;
     icon?: string;
+    /** app-svg-icon id for an optional trailing action button rendered at the end of the item row (e.g. edit-pencil). */
+    trailingActionIcon?: string;
 }
+
+export type SelectVariant = 'default' | 'boxed';
 
 @Component({
     selector: 'app-select',
@@ -56,20 +61,32 @@ export class SelectComponent implements ControlValueAccessor {
     placeholder = input<string>('Select option');
     invalid = input<boolean>(false);
     disabled = input<boolean>(false);
+    hideTrigger = input<boolean>(false);
+    panelClass = input<string | string[]>('');
+    variant = input<SelectVariant>('default');
+    showSearch = input<boolean>(false);
+    searchPlaceholder = input<string>('Search...');
+
+    changed = output<unknown>();
+    selectedValue = model<unknown | null>(null);
 
     open = signal(false);
+    protected readonly search = signal('');
+
+    protected readonly filteredItems = computed<SelectItem[]>(() => {
+        const term = this.search().toLowerCase().trim();
+        if (!term) return this.items();
+        return this.items().filter((i) => i.name.toLowerCase().includes(term));
+    });
     private controlDisabled = signal(false);
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
 
-    selectedValue = model<unknown | null>(null);
     selectedItem = computed(() => {
         const value = this.selectedValue();
         if (value === undefined || value === null) return null;
 
-        return this.items().find((i) => isEqual(i.value, value)) ?? null;
+        return this.items().find((i) => deepEqual(i.value, value)) ?? null;
     });
-
-    changed = output<unknown>();
 
     private onChange: (value: unknown) => void = () => {};
     private onTouched: () => void = () => {};
@@ -90,40 +107,43 @@ export class SelectComponent implements ControlValueAccessor {
     }
 
     openDropdown() {
-        if (!this.overlayRef) {
-            const positionStrategy = this.overlayPositionBuilder
-                .flexibleConnectedTo(this.triggerBtn)
-                .withPositions([
-                    {
-                        originX: 'start',
-                        originY: 'bottom',
-                        overlayX: 'start',
-                        overlayY: 'top',
-                        offsetY: 4,
-                    },
-                    {
-                        originX: 'start',
-                        originY: 'top',
-                        overlayX: 'start',
-                        overlayY: 'bottom',
-                        offsetY: -4,
-                    },
-                ])
-                .withPush(false);
+        this.openAt(this.triggerBtn.nativeElement);
+    }
 
-            this.overlayRef = this.overlay.create({
-                positionStrategy,
-                scrollStrategy: this.overlay.scrollStrategies.reposition(),
-                hasBackdrop: true,
-                backdropClass: 'transparent-backdrop',
-                width: this.triggerBtn.nativeElement.offsetWidth,
-            });
+    /** Opens the dropdown anchored to `originElement`. Useful with `hideTrigger` + a projected trigger. */
+    openAt(originElement: HTMLElement, minWidth = 160) {
+        if (this.isDisabled()) return;
+        this.search.set('');
 
-            this.overlayRef
-                .backdropClick()
-                .pipe(takeUntilDestroyed(this.destroyRef))
-                .subscribe(() => this.close());
+        const positionStrategy = this.overlayPositionBuilder
+            .flexibleConnectedTo(originElement)
+            .withPositions([
+                { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+                { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+            ])
+            .withPush(false);
+
+        if (this.overlayRef) {
+            this.overlayRef.detach();
+            this.overlayRef.dispose();
+            this.overlayRef = undefined!;
         }
+
+        this.overlayRef = this.overlay.create({
+            positionStrategy,
+            scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            hasBackdrop: true,
+            backdropClass: 'transparent-backdrop',
+            panelClass: this.panelClass() || undefined,
+            minWidth: Math.max(originElement.offsetWidth || 0, minWidth),
+        });
+
+        this.overlayRef
+            .backdropClick()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.close());
 
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);
@@ -136,6 +156,7 @@ export class SelectComponent implements ControlValueAccessor {
         }
         this.onTouched();
         this.open.set(false);
+        this.search.set('');
     }
 
     select(item: SelectItem) {

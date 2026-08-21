@@ -1,16 +1,16 @@
+from loguru import logger
+
 from domain.models.realtime_tool import RealtimeTool
 from domain.ports.i_chat_mode_controller import IChatModeController
 from domain.ports.i_redis_messaging_service import IRedisMessagingService
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
 from src.shared.models import (
-    ConfiguredToolData,
     PythonCodeToolData,
     RealtimeAgentChatData,
 )
 from tool_executors.stop_agent_tool_executor import StopAgentToolExecutor
 from utils.singleton_meta import SingletonMeta
 from tool_executors import (
-    ConfiguredToolExecutor,
     PythonCodeToolExecutor,
     KnowledgeSearchToolExecutor,
     BaseToolExecutor,
@@ -24,13 +24,9 @@ class ToolManagerService(metaclass=SingletonMeta):
         python_code_executor_service: IPythonCodeExecutorService,
         knowledge_search_get_channel: str,
         knowledge_search_response_channel: str,
-        manager_host: str,
-        manager_port: int,
     ):
         self.knowledge_search_get_channel = knowledge_search_get_channel
         self.knowledge_search_response_channel = knowledge_search_response_channel
-        self.manager_host = manager_host
-        self.manager_port = manager_port
         self.redis_service = redis_service
         self.python_code_executor_service = python_code_executor_service
         self.connection_tool_executors: dict[str, list[BaseToolExecutor]] = {}
@@ -69,6 +65,7 @@ class ToolManagerService(metaclass=SingletonMeta):
                 redis_service=self.redis_service,
                 knowledge_search_get_channel=self.knowledge_search_get_channel,
                 knowledge_search_response_channel=self.knowledge_search_response_channel,
+                rag_embedder_api_key=realtime_agent_chat_data.rag_embedder_api_key,
             )
             self.connection_tool_executors[connection_key].append(
                 knowledge_tool_executor
@@ -76,22 +73,18 @@ class ToolManagerService(metaclass=SingletonMeta):
 
         for base_tool_data in realtime_agent_chat_data.tools:
             tool_data = base_tool_data.data
-            if isinstance(tool_data, ConfiguredToolData):
-                tool_executor = ConfiguredToolExecutor(
-                    configured_tool_data=tool_data,
-                    host=self.manager_host,
-                    port=self.manager_port,
-                )
-
-            elif isinstance(tool_data, PythonCodeToolData):
+            if isinstance(tool_data, PythonCodeToolData):
                 tool_executor = PythonCodeToolExecutor(
                     python_code_tool_data=tool_data,
                     python_code_executor_service=self.python_code_executor_service,
                 )
             else:
-                raise ValueError(
-                    f"Unknown tool data type: {type(tool_data)} for tool {base_tool_data.unique_name}"
+                logger.warning(
+                    "Unsupported tool data type {} for tool {} — realtime service has no executor, skipping.",
+                    type(tool_data),
+                    base_tool_data.unique_name,
                 )
+                continue
             self.connection_tool_executors[connection_key].append(tool_executor)
 
     async def get_realtime_tool_models(self, connection_key: str) -> list[RealtimeTool]:

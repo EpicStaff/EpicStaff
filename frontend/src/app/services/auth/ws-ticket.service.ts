@@ -39,10 +39,9 @@ export class WsTicketService {
         );
     }
 
-     private requestTicket(accessToken: string): Observable<string> {
+    private requestTicket(accessToken: string): Observable<string> {
         return this.http
             .post<WsTicketResponse>(this.ticketUrl, {}, { headers: { Authorization: `Bearer ${accessToken}` } })
             .pipe(switchMap(({ ticket }) => [ticket]));
     }
-
 }

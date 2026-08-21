@@ -309,6 +309,9 @@ class ClassificationDecisionTableNodeSaveable:
             "id",
             "classification_decision_table_node",
             "next_node_temp_id",
+            # Prompt reference forms — resolved to the `prompt` FK below (by
+            # prompt_key, or numeric pk fallback); never written as columns.
+            "prompt",
             "prompt_key",
         }
     )
@@ -336,7 +339,11 @@ class ClassificationDecisionTableNodeSaveable:
             # After s.update() the prompts are upserted, so their IDs are stable
             # across saves. We still need to map the frontend's integer prompt PK
             # to the current DB instance in case this is a newly-created node.
-            prompt_by_id = {p.id: p for p in node.prompt_configs.all()}
+            node_prompts = list(node.prompt_configs.all())
+            prompt_by_id = {p.id: p for p in node_prompts}
+            # prompt_key is the preferred bridge: it links a group to a prompt
+            # created in this same payload (which has no stable pk yet on create).
+            prompt_by_key = {p.prompt_key: p for p in node_prompts}
 
             incoming_route_codes = {
                 gd["route_code"]
@@ -376,9 +383,13 @@ class ClassificationDecisionTableNodeSaveable:
             for idx, group_data in enumerate(self._condition_groups_data):
                 gd = {k: v for k, v in group_data.items() if k not in excluded}
 
-                # Resolve prompt FK: frontend sends integer PK.
-                old_prompt_id = gd.pop("prompt", None)
-                if old_prompt_id is not None:
+                # Resolve the prompt FK node-locally: prefer prompt_key (works for
+                # a prompt created in this same payload), fall back to numeric pk.
+                key = group_data.get("prompt_key")
+                old_prompt_id = group_data.get("prompt")
+                if key:
+                    gd["prompt"] = prompt_by_key.get(key)
+                elif old_prompt_id is not None:
                     gd["prompt"] = prompt_by_id.get(old_prompt_id)
 
                 rc = gd.get("route_code")

@@ -11,9 +11,9 @@ from src.shared.models import ScheduleTriggerNodePayload
 from src.shared.schedule.trigger_builder import build_trigger
 from tables.models.graph_models import ScheduleTriggerNode
 from tables.services.schedule_condition_strategies import get_end_condition_strategy
+from tables.services.trigger_spec import TriggerSpec
 from tables.validators.schedule_trigger_validator import ScheduleTriggerValidator
 from utils.singleton_meta import SingletonMeta
-from utils.graph_utils import generate_node_name
 
 if TYPE_CHECKING:
     from tables.services.session_manager_service import SessionManagerService
@@ -157,7 +157,7 @@ class ScheduleTriggerService(metaclass=SingletonMeta):
         self.session_manager_service.run_session(
             graph_id=node.graph_id,
             variables={},
-            entrypoint=generate_node_name(node.id, node.node_name),
+            trigger=TriggerSpec.schedule(node),
         )
         logger.info(
             f"[ScheduleTriggerService] Session started for node {node.id} "

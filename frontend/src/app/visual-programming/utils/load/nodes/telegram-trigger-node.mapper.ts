@@ -14,7 +14,7 @@ export function mapTelegramTriggerNodeToModel(tn: GetTelegramTriggerNodeRequest)
         node_name: tn.node_name,
         nodeNumber: ui.nodeNumber,
         data: {
-            telegram_bot_api_key: tn.telegram_bot_api_key,
+            telegram_bot_api_key_secret_id: tn.telegram_bot_api_key_secret_id,
             webhook_trigger: tn.webhook_trigger,
             fields: tn.fields,
         },

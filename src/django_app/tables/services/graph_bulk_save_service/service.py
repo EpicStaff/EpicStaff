@@ -3,9 +3,11 @@ from functools import lru_cache
 from django.apps import apps
 from django.db import connection, transaction
 
+from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.models.base_models import BaseGlobalNode
 from tables.models import Graph
 from tables.models.graph_models import ConditionalEdge, Edge
+from tables.models.rbac_models import Organization
 
 from tables.serializers.graph_bulk_save_serializers import (
     ConditionalEdgeBulkSerializer,
@@ -54,6 +56,20 @@ class GraphBulkSaveService:
     _org_id = None
 
     @staticmethod
+    def _resolve_organization() -> Organization | None:
+        """Resolve the default organization for serializer validation context.
+
+        Serializers treat a missing "organization" key in context as
+        permissive (skip org-scoped validation) — see TaskNodeSerializer.validate.
+        Falling back to None here preserves that behavior instead of raising
+        when the default organization has not been provisioned.
+        """
+        try:
+            return Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
+        except Organization.DoesNotExist:
+            return None
+
+    @staticmethod
     @lru_cache(maxsize=1)
     def _get_global_node_models() -> tuple[type, ...]:
         """Return all concrete BaseGlobalNode subclasses. Cached for process lifetime."""
@@ -78,6 +94,11 @@ class GraphBulkSaveService:
         all_errors: dict = {}
         node_saveables: list[_NodeSaveable] = []
         edge_saveables: list = []
+        self._serializer_context = {
+            "organization": self._resolve_organization(),
+            "request": self._request,
+            "org_id": self._org_id,
+        }
 
         payload_temp_ids: set[str] = self._collect_payload_temp_ids(validated_input)
 
@@ -252,11 +273,12 @@ class GraphBulkSaveService:
         if routing_errors:
             return BuildSaveableResult(error={"index": index, "errors": routing_errors})
 
-        context = {"request": self._request, "org_id": self._org_id}
         s = (
-            config.serializer_class(instance, data=data, context=context)
+            config.serializer_class(
+                instance, data=data, context=self._serializer_context
+            )
             if instance is not None
-            else config.serializer_class(data=data, context=context)
+            else config.serializer_class(data=data, context=self._serializer_context)
         )
         if not s.is_valid():
             return BuildSaveableResult(error={"index": index, "errors": s.errors})
@@ -289,7 +311,6 @@ class GraphBulkSaveService:
     ) -> EdgeListValidationResult:
         """Validate all Edge items."""
         result = EdgeListValidationResult()
-        context = {"request": self._request, "org_id": self._org_id}
 
         db_map = {obj.id: obj for obj in model_class.objects.filter(graph=graph)}
         existing_endpoint_pairs = set(
@@ -347,7 +368,7 @@ class GraphBulkSaveService:
                     payload_endpoint_pairs_seen.add(endpoint_pair)
 
                 item_data.pop("id", None)
-                s = serializer_class(data=item_data, context=context)
+                s = serializer_class(data=item_data, context=self._serializer_context)
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
@@ -372,7 +393,9 @@ class GraphBulkSaveService:
                     continue
 
                 item_data.pop("id", None)
-                s = serializer_class(db_instance, data=item_data, context=context)
+                s = serializer_class(
+                    db_instance, data=item_data, context=self._serializer_context
+                )
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
@@ -396,7 +419,6 @@ class GraphBulkSaveService:
     ) -> EdgeListValidationResult:
         """Validate all ConditionalEdge items."""
         result = EdgeListValidationResult()
-        context = {"request": self._request, "org_id": self._org_id}
 
         db_map = {obj.id: obj for obj in ConditionalEdge.objects.filter(graph=graph)}
         existing_source_ids = set(
@@ -442,7 +464,9 @@ class GraphBulkSaveService:
                     payload_source_ids_seen.add(source_id)
 
                 item_data.pop("id", None)
-                s = ConditionalEdgeBulkSerializer(data=item_data, context=context)
+                s = ConditionalEdgeBulkSerializer(
+                    data=item_data, context=self._serializer_context
+                )
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
@@ -464,7 +488,7 @@ class GraphBulkSaveService:
 
                 item_data.pop("id", None)
                 s = ConditionalEdgeBulkSerializer(
-                    db_instance, data=item_data, context=context
+                    db_instance, data=item_data, context=self._serializer_context
                 )
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})

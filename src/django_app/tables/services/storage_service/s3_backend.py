@@ -1,6 +1,4 @@
 import io
-import zipfile
-from typing import Iterator
 
 import boto3
 from botocore.exceptions import ClientError
@@ -13,6 +11,7 @@ from tables.services.storage_service.dataclasses import (
     TreeNode,
     UploadResult,
 )
+from utils.logger import logger
 
 
 class S3StorageBackend(AbstractStorageBackend):
@@ -63,6 +62,22 @@ class S3StorageBackend(AbstractStorageBackend):
                 keys.append(self._strip_prefix(obj["Key"]))
         return keys
 
+    def list_all_objects(self, prefix: str) -> list[tuple[str, int, str]]:
+        full_prefix = self._full_path(prefix)
+        if not full_prefix.endswith("/"):
+            full_prefix += "/"
+        paginator = self.client.get_paginator("list_objects_v2")
+        objects = []
+        for page in paginator.paginate(Bucket=self.bucket_name, Prefix=full_prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if key.endswith("/"):
+                    continue
+                if key.split("/")[-1] == ".keep":
+                    continue
+                objects.append((key, obj["Size"], obj["LastModified"].isoformat()))
+        return objects
+
     def list_(self, prefix: str) -> list[FileListItem]:
         full_prefix = self._full_path(prefix)
         if full_prefix and not full_prefix.endswith("/"):
@@ -94,6 +109,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 )
                 results.append(
                     FileListItem(
+                        id=None,
                         name=folder_name,
                         type="folder",
                         size=0,
@@ -108,6 +124,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 file_name = obj["Key"].split("/")[-1]
                 results.append(
                     FileListItem(
+                        id=None,
                         name=file_name,
                         type="file",
                         size=obj["Size"],
@@ -122,6 +139,7 @@ class S3StorageBackend(AbstractStorageBackend):
         full_path = self._full_path(path)
         self.client.upload_fileobj(file_object, self.bucket_name, full_path)
         head = self.client.head_object(Bucket=self.bucket_name, Key=full_path)
+        logger.info("Uploaded S3 object {}", full_path)
         return UploadResult(path=path, size=head["ContentLength"])
 
     def download(self, path: str) -> bytes:
@@ -141,6 +159,7 @@ class S3StorageBackend(AbstractStorageBackend):
         try:
             self.client.head_object(Bucket=self.bucket_name, Key=full_path)
             self.client.delete_object(Bucket=self.bucket_name, Key=full_path)
+            logger.info("Deleted S3 object {}", full_path)
             return
         except ClientError as error:
             if error.response["Error"]["Code"] != "404":
@@ -156,6 +175,9 @@ class S3StorageBackend(AbstractStorageBackend):
                     Bucket=self.bucket_name,
                     Delete={"Objects": objects},
                 )
+                logger.info(
+                    "Deleted {} S3 objects under prefix {}", len(objects), prefix
+                )
 
     def mkdir(self, path: str) -> None:
         full_path = self._full_path(path)
@@ -163,15 +185,18 @@ class S3StorageBackend(AbstractStorageBackend):
             full_path += "/"
         try:
             self.client.put_object(Bucket=self.bucket_name, Key=full_path, Body=b"")
+            logger.info("Created S3 folder {}", full_path)
         except ClientError as error:
             code = error.response["Error"]["Code"]
             if code in ("400", "XMinioInvalidObjectName"):
                 raise ValueError(f"Invalid storage path: {path!r}")
             raise
 
-    def move(self, source_path: str, destination_path: str) -> None:
-        self.copy(source_path, destination_path)
+    def move(self, source_path: str, destination_path: str) -> str:
+        actual_base, _ = self._copy_into(source_path, destination_path)
         self.delete(source_path)
+        logger.info("Moved S3 path {} to {}", source_path, destination_path)
+        return actual_base
 
     def rename(self, source_path: str, destination_path: str) -> None:
         full_source = self._full_path(source_path)
@@ -179,6 +204,11 @@ class S3StorageBackend(AbstractStorageBackend):
 
         if full_source.rstrip("/") == full_destination.rstrip("/"):
             raise ValueError("Source and destination are the same path.")
+
+        if self._key_exists(full_destination, is_folder=False) or self._key_exists(
+            full_destination, is_folder=True
+        ):
+            raise FileExistsError(f"Destination already exists: {destination_path}")
 
         # Single file
         if self.exists(source_path):
@@ -188,6 +218,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 Key=full_destination,
             )
             self.client.delete_object(Bucket=self.bucket_name, Key=full_source)
+            logger.info("Renamed S3 object {} to {}", full_source, full_destination)
             return
 
         # Folder: map source_prefix/* -> destination_prefix/* (no extra nesting)
@@ -219,6 +250,7 @@ class S3StorageBackend(AbstractStorageBackend):
         self.client.delete_objects(
             Bucket=self.bucket_name, Delete={"Objects": keys_to_delete}
         )
+        logger.info("Renamed S3 prefix {} to {}", source_prefix, dest_prefix)
 
     def _key_exists(self, key: str, is_folder: bool) -> bool:
         if is_folder:
@@ -249,7 +281,17 @@ class S3StorageBackend(AbstractStorageBackend):
             if not self._key_exists(candidate, is_folder):
                 return candidate
 
-    def copy(self, source_path: str, destination_path: str) -> list[str]:
+    def _copy_into(
+        self, source_path: str, destination_path: str
+    ) -> tuple[str, list[str]]:
+        """
+        Copy source into the destination folder, deduping the destination name
+        against existing keys.
+
+        Returns (actual_destination_base, created_keys): for a file, both the
+        exact target key; for a folder, the deduped folder base (ending in
+        "/") and every file key created underneath it.
+        """
         full_source = self._full_path(source_path)
         full_destination = self._full_path(destination_path)
 
@@ -265,7 +307,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 Bucket=self.bucket_name,
                 Key=target_key,
             )
-            return [target_key]
+            return target_key, [target_key]
 
         # Folder
         source_prefix = full_source if full_source.endswith("/") else full_source + "/"
@@ -289,7 +331,10 @@ class S3StorageBackend(AbstractStorageBackend):
         if not created_keys:
             raise FileNotFoundError(f"Source path does not exist: {source_path}")
 
-        return created_keys
+        return dest_base + "/", created_keys
+
+    def copy(self, source_path: str, destination_path: str) -> list[str]:
+        return self._copy_into(source_path, destination_path)[1]
 
     def info(self, path: str) -> FileInfo | FolderInfo:
         clean_path = path.rstrip("/")
@@ -300,6 +345,7 @@ class S3StorageBackend(AbstractStorageBackend):
         try:
             head = self.client.head_object(Bucket=self.bucket_name, Key=full_path)
             return FileInfo(
+                id=None,
                 name=name,
                 path=clean_path,
                 size=head["ContentLength"],
@@ -319,6 +365,7 @@ class S3StorageBackend(AbstractStorageBackend):
         try:
             head = self.client.head_object(Bucket=self.bucket_name, Key=full_path + "/")
             return FolderInfo(
+                id=None,
                 name=name,
                 path=clean_path + "/",
                 modified=head["LastModified"].isoformat(),
@@ -340,6 +387,7 @@ class S3StorageBackend(AbstractStorageBackend):
         if response.get("Contents"):
             obj = response["Contents"][0]
             return FolderInfo(
+                id=None,
                 name=name,
                 path=clean_path + "/",
                 modified=obj["LastModified"].isoformat(),
@@ -355,21 +403,6 @@ class S3StorageBackend(AbstractStorageBackend):
             if error.response["Error"]["Code"] == "404":
                 return False
             raise
-
-    def download_zip(self, paths: list[str]) -> Iterator[bytes]:
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            for path in paths:
-                if path.endswith("/"):
-                    for key in self.list_all_keys(path):
-                        file_bytes = self.download(key)
-                        archive.writestr(key.lstrip("/"), file_bytes)
-                else:
-                    file_bytes = self.download(path)
-                    archive_name = path.lstrip("/")
-                    archive.writestr(archive_name, file_bytes)
-        buffer.seek(0)
-        yield buffer.read()
 
     def list_tree(
         self, prefix: str, max_depth: int | None = None, max_entries: int = 50_000
@@ -489,6 +522,7 @@ class S3StorageBackend(AbstractStorageBackend):
                 else [build(child) for child in node_dict["children_map"].values()]
             )
             return TreeNode(
+                id=None,
                 name=node_dict["name"],
                 path=node_dict["path"],
                 type=node_dict["type"],

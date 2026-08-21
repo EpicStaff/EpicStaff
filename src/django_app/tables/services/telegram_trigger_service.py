@@ -1,20 +1,36 @@
+import functools
+import time
+
 import requests
 from loguru import logger
 from requests.exceptions import ConnectionError, Timeout
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
 from tables.exceptions import RegisterTelegramTriggerError
-from tables.models.graph_models import TelegramTriggerNode, GraphOrganization
+from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import WebhookTrigger
+from tables.services.secrets import secret_encryption
 from tables.services.session_manager_service import SessionManagerService
+from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
-from utils.graph_utils import generate_node_name
 from utils.singleton_meta import SingletonMeta
+
+
+def _retry_on_connection_errors(func):
+    """Retry up to 3 attempts on ConnectionError/Timeout, exponential backoff (2s, 2s), then reraise."""
+    max_attempts = 3
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return func(*args, **kwargs)
+            except (ConnectionError, Timeout):
+                if attempt == max_attempts:
+                    raise
+                wait_seconds = min(max(1 * (2 ** (attempt - 1)), 2), 10)
+                time.sleep(wait_seconds)
+
+    return wrapper
 
 
 class TelegramTriggerService(metaclass=SingletonMeta):
@@ -28,12 +44,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             session_manager_service or SessionManagerService()
         )
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((ConnectionError, Timeout)),
-        reraise=True,
-    )
+    @_retry_on_connection_errors
     def _call_telegram_api(
         self, method: str, api_key: str, endpoint: str, params: dict = None
     ):
@@ -50,6 +61,11 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         return data
 
     def register_telegram_trigger(self, telegram_trigger_instance: TelegramTriggerNode):
+        if telegram_trigger_instance.telegram_bot_api_key_secret_id is None:
+            logger.warning(
+                f"[TelegramTrigger] Skipping registration for node {telegram_trigger_instance.pk}: no bot API key secret set."
+            )
+            return
         # TODO: update this to extend to other tunnels
         webhook_trigger: WebhookTrigger = telegram_trigger_instance.webhook_trigger
         # TODO: consider to raise error explicitly
@@ -86,7 +102,9 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         try:
             return self._call_telegram_api(
                 method="POST",
-                api_key=telegram_trigger_instance.telegram_bot_api_key,
+                api_key=secret_encryption.decrypt(
+                    encryptedtext=telegram_trigger_instance.telegram_bot_api_key_secret.value
+                ),
                 endpoint="setWebhook",
                 params={"url": telegram_webhook_url},
             )
@@ -113,18 +131,11 @@ class TelegramTriggerService(metaclass=SingletonMeta):
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(**filters)
 
         for telegram_trigger_node in telegram_trigger_node_list:
-            graph_organization = GraphOrganization.objects.filter(
-                graph=telegram_trigger_node.graph
-            ).first()
-            variables: dict = {"telegram_payload": payload}
-            if graph_organization:
-                variables.update(graph_organization.persistent_variables)
+            # Persistent-variable merging is owned by run_session.
             self.session_manager_service.run_session(
                 graph_id=telegram_trigger_node.graph.pk,
                 variables={"telegram_payload": payload},
-                entrypoint=generate_node_name(
-                    telegram_trigger_node.id, telegram_trigger_node.node_name
-                ),
+                trigger=TriggerSpec.telegram(telegram_trigger_node, payload),
             )
 
     def get_trigger_info(self, telegram_bot_api_key: str):

@@ -114,6 +114,15 @@
         }
     }
 
+    &__deprecated {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--color-ks-status-processing);
+    }
+
     &__usage {
         font-size: 12px;
         color: rgba(217, 217, 222, 0.5);

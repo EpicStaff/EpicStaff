@@ -14,7 +14,6 @@
         [class.date-picker__trigger--disabled]="isDisabled()"
         [class.date-picker__trigger--error]="errorMessage() || inputError()"
         [style.--active-color]="activeColor()"
-        (click)="openDropdown()"
     >
         <i class="ti ti-calendar date-picker__icon"></i>
         <input
@@ -24,7 +23,6 @@
             [disabled]="isDisabled()"
             [ngModel]="inputValue()"
             (ngModelChange)="onDateInput($event)"
-            (focus)="openDropdown()"
             (click)="$event.stopPropagation()"
             (keydown.enter)="onEnterKey()"
         />
@@ -61,49 +59,47 @@
         <div class="date-picker__calendar">
             <!-- Header -->
             <div class="date-picker__header">
+                <button
+                    type="button"
+                    class="date-picker__nav-btn"
+                    (click)="prevMonth()"
+                >
+                    <svg
+                        width="22"
+                        height="22"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                    >
+                        <path
+                            d="M15 18l-6-6 6-6"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        />
+                    </svg>
+                </button>
                 <span class="date-picker__month-year">{{ viewMonthYear() }}</span>
-                <div class="date-picker__nav">
-                    <button
-                        type="button"
-                        class="date-picker__nav-btn"
-                        (click)="prevMonth()"
+                <button
+                    type="button"
+                    class="date-picker__nav-btn"
+                    (click)="nextMonth()"
+                >
+                    <svg
+                        width="22"
+                        height="22"
+                        viewBox="0 0 24 24"
+                        fill="none"
                     >
-                        <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                        >
-                            <path
-                                d="M15 18l-6-6 6-6"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            />
-                        </svg>
-                    </button>
-                    <button
-                        type="button"
-                        class="date-picker__nav-btn"
-                        (click)="nextMonth()"
-                    >
-                        <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                        >
-                            <path
-                                d="M9 18l6-6-6-6"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            />
-                        </svg>
-                    </button>
-                </div>
+                        <path
+                            d="M9 18l6-6-6-6"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        />
+                    </svg>
+                </button>
             </div>
 
             <!-- Weekday labels -->

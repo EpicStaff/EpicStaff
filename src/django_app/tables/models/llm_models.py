@@ -19,11 +19,11 @@ class LLMModel(OrgScopedModel, models.Model):
     predefined = models.BooleanField(default=False)
     description = models.TextField(null=True, blank=True)
     llm_provider = models.ForeignKey(Provider, on_delete=models.SET_NULL, null=True)
-    base_url = models.URLField(null=True, blank=True)
     deployment_id = models.TextField(
         null=True, blank=True, help_text="Azure Deployment Name or Watsonx ID"
     )
     api_version = models.TextField(null=True, blank=True)
+    base_url = models.TextField(null=True, blank=True)
     is_visible = models.BooleanField(default=True)
     is_custom = models.BooleanField(default=False)
     tags = models.ManyToManyField(LLMModelTag, blank=True, related_name="llm_models")
@@ -52,9 +52,11 @@ class DefaultLLMConfig(DefaultBaseModel):
     presence_penalty = models.FloatField(null=True, blank=True)
     frequency_penalty = models.FloatField(null=True, blank=True)
     logit_bias = models.JSONField(null=True, blank=True)
-    response_format = models.JSONField(null=True, blank=True)
     seed = models.IntegerField(null=True, blank=True)
-    api_key = models.TextField(null=True, blank=True)
+    logprobs = models.BooleanField(null=True, blank=True)
+    top_logprobs = models.IntegerField(null=True, blank=True)
+    base_url = models.TextField(null=True, blank=True)
+    api_version = models.TextField(null=True, blank=True)
     headers = models.JSONField(default=dict, blank=True)
     extra_headers = models.JSONField(default=dict, blank=True)
     timeout = models.FloatField(null=True, blank=True)
@@ -81,9 +83,18 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
     presence_penalty = models.FloatField(default=0.0, null=True, blank=True)
     frequency_penalty = models.FloatField(default=0.0, null=True, blank=True)
     logit_bias = models.JSONField(null=True, blank=True)
-    response_format = models.JSONField(null=True, blank=True)
     seed = models.IntegerField(null=True, blank=True)
-    api_key = models.TextField(null=True, blank=True)
+    logprobs = models.BooleanField(null=True, blank=True)
+    top_logprobs = models.IntegerField(null=True, blank=True)
+    base_url = models.TextField(null=True, blank=True)
+    api_version = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="llm_configs",
+    )
     headers = models.JSONField(default=dict, blank=True)
     extra_headers = models.JSONField(default=dict, blank=True)
     timeout = models.FloatField(default=120.0, null=True, blank=True)
@@ -127,7 +138,13 @@ class RealtimeModel(OrgScopedModel, models.Model):
 class RealtimeConfig(OrgScopedModel, models.Model):
     custom_name = models.CharField(max_length=250)
     realtime_model = models.ForeignKey("RealtimeModel", on_delete=models.CASCADE)
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="realtime_configs",
+    )
     tags = models.ManyToManyField(
         RealtimeConfigTag, blank=True, related_name="realtime_configs"
     )
@@ -146,7 +163,13 @@ class RealtimeTranscriptionConfig(OrgScopedModel, models.Model):
     realtime_transcription_model = models.ForeignKey(
         "RealtimeTranscriptionModel", on_delete=models.CASCADE
     )
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="realtime_transcription_configs",
+    )
     tags = models.ManyToManyField(
         RealtimeTranscriptionConfigTag,
         blank=True,

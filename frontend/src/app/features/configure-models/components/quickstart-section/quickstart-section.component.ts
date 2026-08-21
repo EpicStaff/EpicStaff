@@ -186,10 +186,22 @@ export class QuickstartSectionComponent implements OnInit {
                 }),
                 finalize(() => {
                     this.defaultModelsStorageService.markDefaultModelsOutdated();
-                    this.llmConfigStorageService.markConfigsOutdated();
-                    this.embeddingConfigStorageService.markConfigsOutdated();
-                    this.realtimeConfigStorageService.markConfigsOutdated();
-                    this.transcriptionConfigStorageService.markConfigsOutdated();
+                    this.llmConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.embeddingConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.realtimeConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
+                    this.transcriptionConfigStorageService
+                        .getAllConfigs(true)
+                        .pipe(takeUntilDestroyed(this.destroyRef))
+                        .subscribe();
                     this.isSaving.set(false);
                 }),
                 takeUntilDestroyed(this.destroyRef)

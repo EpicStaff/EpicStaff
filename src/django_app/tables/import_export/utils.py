@@ -1,7 +1,9 @@
 import re
-from typing import List
+from typing import List, Optional
 
-from tables.models import PythonCode
+from django.conf import settings
+
+from tables.models import Organization, PythonCode
 
 
 def ensure_unique_identifier(base_name: str, existing_names: List[str]) -> str:
@@ -51,6 +53,32 @@ def create_filters(data: dict) -> tuple[dict, dict]:
             filters[field] = value
 
     return filters, null_filters
+
+
+def resolve_import_organization(org_id: Optional[int]) -> Optional[Organization]:
+    """
+    Resolves the organization an imported entity should be stamped with.
+
+    Prefers the active `org_id` passed into the import. Falls back to the
+    default organization when no `org_id` is given (or it does not match an
+    existing organization), anchoring on `is_default=True` first since that
+    flag survives a rename, then on `name__iexact` against
+    `settings.DEFAULT_ORGANIZATION_NAME` for orgs never flagged as default.
+    Mirrors `SuperadminBootstrapService._get_or_create_default_org`. Never
+    raises `Organization.DoesNotExist`.
+    """
+    if org_id is not None:
+        organization = Organization.objects.filter(id=org_id).first()
+        if organization is not None:
+            return organization
+
+    organization = Organization.objects.filter(is_default=True).first()
+    if organization is not None:
+        return organization
+
+    return Organization.objects.filter(
+        name__iexact=settings.DEFAULT_ORGANIZATION_NAME
+    ).first()
 
 
 def python_code_equal(code_instance: PythonCode, code_data: dict):

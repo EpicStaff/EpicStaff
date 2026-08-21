@@ -1,7 +1,8 @@
+import hashlib
 import os
+from collections import OrderedDict
 from typing import Optional
 from loguru import logger
-import cachetools
 
 from services.cancellation_token import CancellationToken
 
@@ -12,6 +13,7 @@ from src.shared.models import (
     BaseKnowledgeSearchMessageResponse,
 )
 from rag.base_rag_strategy import BaseRAGStrategy
+from services.credential_mapper import RagCredentials, apply_credential
 from services.chunk_document_service import ChunkDocumentService
 from settings import UnitOfWork
 from embedder.openai import OpenAIEmbedder
@@ -19,9 +21,43 @@ from embedder.gemini import GoogleGenAIEmbedder
 from embedder.cohere import CohereEmbedder
 from embedder.mistral import MistralEmbedder
 from embedder.together_ai import TogetherAIEmbedder
+from embedder.custom_embedder import CustomEmbedder
 
 
-_embedder_cache = cachetools.LRUCache(maxsize=50)
+class _LRUCache(OrderedDict):
+    """
+    Minimal LRU cache mirroring the subset of cachetools.LRUCache behavior
+    used in this module: bounded size with least-recently-used eviction.
+
+    Note: `__contains__` does NOT refresh recency, but `__getitem__` does
+    (matching cachetools.LRUCache semantics). No TTL, no locking.
+    """
+
+    def __init__(self, maxsize: int):
+        super().__init__()
+        self.maxsize = maxsize
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        self.move_to_end(key)
+        return value
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        super().__setitem__(key, value)
+        if len(self) > self.maxsize:
+            oldest_key = next(iter(self))
+            del self[oldest_key]
+
+
+_embedder_cache = _LRUCache(maxsize=50)
+
+
+def _embedder_cache_key(*, naive_rag_id: int, api_key: str | None) -> tuple:
+    """Cache identity for a memoised embedder, including its credential."""
+    digest = hashlib.sha256(api_key.encode()).hexdigest() if api_key else None
+    return (naive_rag_id, digest)
 
 
 class NaiveRAGStrategy(BaseRAGStrategy):
@@ -34,29 +70,29 @@ class NaiveRAGStrategy(BaseRAGStrategy):
 
     RAG_TYPE = "naive"
 
-    def _get_cached_embedder(self, naive_rag_id: int):
-        """
-        Retrieve embedder from cache or initialize it if not cached.
+    def _get_cached_embedder(self, *, naive_rag_id: int, embedder_api_key: str | None):
+        """Return the memoised embedder for this RAG and credential."""
+        cache_key = _embedder_cache_key(
+            naive_rag_id=naive_rag_id, api_key=embedder_api_key
+        )
+        if cache_key in _embedder_cache:
+            return _embedder_cache[cache_key]
 
-        Args:
-            naive_rag_id: ID of the NaiveRag
-
-        Returns:
-            Embedder instance
-        """
-        if naive_rag_id in _embedder_cache:
-            return _embedder_cache[naive_rag_id]
-
-        logger.info(f"Initializing embedder for NaiveRAG with id: {naive_rag_id}")
+        logger.info("Initializing embedder for NaiveRAG with id: {}", naive_rag_id)
         uow = UnitOfWork()
         with uow.start() as uow_ctx:
             # Use base storage method with rag_type
             embedder_config = uow_ctx.naive_rag_storage.get_embedder_configuration(
                 rag_id=naive_rag_id, rag_type="naive"
             )
+        embedder_config = apply_credential(
+            config=embedder_config,
+            api_key=embedder_api_key,
+            context=f"naive_rag_id={naive_rag_id} embedder",
+        )
         embedder = self._set_embedder_config(embedder_config)
 
-        _embedder_cache[naive_rag_id] = embedder
+        _embedder_cache[cache_key] = embedder
         return embedder
 
     def search(
@@ -66,6 +102,7 @@ class NaiveRAGStrategy(BaseRAGStrategy):
         query: str,
         collection_id: int,
         rag_search_config: NaiveRagSearchConfig,
+        credentials: RagCredentials | None = None,
     ):
         """
         Search for similar chunks in a NaiveRag.
@@ -85,7 +122,10 @@ class NaiveRAGStrategy(BaseRAGStrategy):
         similarity_threshold = rag_search_config.similarity_threshold
         token_usage = {}
 
-        embedder = self._get_cached_embedder(naive_rag_id=naive_rag_id)
+        embedder = self._get_cached_embedder(
+            naive_rag_id=naive_rag_id,
+            embedder_api_key=(credentials or RagCredentials()).embedder_api_key,
+        )
 
         # Embed the query
         embedded_data = embedder.embed(query)
@@ -138,12 +178,15 @@ class NaiveRAGStrategy(BaseRAGStrategy):
 
         return knowledge_query_results.model_dump()
 
-    def process_rag_indexing(self, rag_id: int):
+    def process_rag_indexing(
+        self, rag_id: int, credentials: RagCredentials | None = None
+    ):
         """
         Process RAG indexing (chunking + embedding) for a NaiveRag.
 
         Args:
             rag_id: ID of the NaiveRag (naive_rag_id)
+            credentials: Plaintext credentials resolved by Django
 
         Flow:
         1. Get all document configs for this NaiveRag with status NEW/WARNING/CHUNKED
@@ -155,7 +198,10 @@ class NaiveRAGStrategy(BaseRAGStrategy):
         """
         naive_rag_id = rag_id
 
-        embedder = self._get_cached_embedder(naive_rag_id=naive_rag_id)
+        embedder = self._get_cached_embedder(
+            naive_rag_id=naive_rag_id,
+            embedder_api_key=(credentials or RagCredentials()).embedder_api_key,
+        )
         uow = UnitOfWork()
 
         try:
@@ -341,8 +387,14 @@ class NaiveRAGStrategy(BaseRAGStrategy):
                 "together_ai": TogetherAIEmbedder,
             }
             embedder_class = provider_to_class.get(provider)
+
             if embedder_class is None:
-                raise ValueError(f"Embedder provider '{provider}' is not supported.")
+                logger.info(f"Using CustomEmbedder for provider '{provider}'")
+                return CustomEmbedder(
+                    api_key=embedder_config["api_key"],
+                    model_name=embedder_config["model_name"],
+                    base_url=embedder_config.get("base_url"),
+                )
 
             logger.info(f"Embedder class: {embedder_class.__name__}")
 

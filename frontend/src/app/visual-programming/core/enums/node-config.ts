@@ -2,13 +2,13 @@ import { NodeType } from './node-type';
 
 export const NODE_ICONS: Record<NodeType, string> = {
     [NodeType.AGENT]: 'ti ti-robot',
-    [NodeType.TASK]: 'ti ti-list-check',
+    [NodeType.TASK]: 'ti ti-circle-check',
     [NodeType.TOOL]: 'ti ti-tools',
     [NodeType.LLM]: 'ti ti-brain',
     [NodeType.PROJECT]: 'ti ti-folder',
     [NodeType.PYTHON]: 'ti ti-brand-python',
     [NodeType.EDGE]: 'ti ti-route-alt-left',
-    [NodeType.START]: 'ti ti-player-play-filled',
+    [NodeType.START]: 'ti ti-filled ti-player-play',
     [NodeType.TABLE]: 'ti ti-table',
     [NodeType.CLASSIFICATION_TABLE]: 'ti ti-table-options',
     [NodeType.NOTE]: 'ti ti-note',
@@ -23,8 +23,8 @@ export const NODE_ICONS: Record<NodeType, string> = {
 };
 
 export const NODE_COLORS: Record<NodeType, string> = {
-    [NodeType.AGENT]: '#8e5cd9',
-    [NodeType.TASK]: '#30a46c',
+    [NodeType.AGENT]: '#685fff',
+    [NodeType.TASK]: '#2aba6b',
     [NodeType.TOOL]: '#9f6a00',
     [NodeType.LLM]: '#e0575b',
     [NodeType.PROJECT]: '#5672cd',

@@ -1,5 +1,5 @@
 import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -10,7 +10,7 @@ import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ConfirmationDialogService } from '../../../../shared/components/cofirm-dialog';
 import { Spinner2Component } from '../../../../shared/components/spinner-type2/spinner.component';
-import { GraphFileRecord } from '../../models/storage.models';
+import { GraphFileRecord, StorageTreeNode } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
 import { getFileExtension } from '../../utils/storage-file.utils';
 import {
@@ -33,11 +33,8 @@ interface TreeNode {
     type: 'file' | 'folder';
     level: number;
     isExpanded: boolean;
-    isLoading: boolean;
     hasChildren: boolean;
     children: TreeNode[];
-    isLoaded: boolean;
-    is_empty?: boolean;
     size?: number;
 }
 
@@ -48,7 +45,7 @@ interface TreeNode {
     styleUrls: ['./select-storage-files-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class SelectStorageFilesDialogComponent {
+export class SelectStorageFilesDialogComponent implements OnInit {
     private readonly dialogRef = inject<DialogRef<SelectStorageFilesDialogResult | undefined>>(DialogRef);
     private readonly data: SelectStorageFilesDialogData = inject(DIALOG_DATA);
     private readonly storageApiService = inject(StorageApiService);
@@ -106,32 +103,30 @@ export class SelectStorageFilesDialogComponent {
     });
 
     readonly hasChanges = computed(() => {
-        const selectedFiles = this.selectedFilePaths();
-        const attachedFiles = this.attachedFilePaths();
-        if (selectedFiles.size !== attachedFiles.size) return true;
-        for (const p of selectedFiles) if (!attachedFiles.has(p)) return true;
-
         const selectedFolders = this.selectedFolderPaths();
         const attachedFolders = this.attachedFolderPaths();
         if (selectedFolders.size !== attachedFolders.size) return true;
         for (const p of selectedFolders) if (!attachedFolders.has(p)) return true;
 
+        const selectedFiles = this.filesNotCoveredByFolders(this.selectedFilePaths(), selectedFolders);
+        const attachedFiles = this.filesNotCoveredByFolders(this.attachedFilePaths(), attachedFolders);
+        if (selectedFiles.size !== attachedFiles.size) return true;
+        for (const p of selectedFiles) if (!attachedFiles.has(p)) return true;
+
         return false;
     });
 
     readonly selectedSizeLabel = computed(() => {
-        const selected = this.selectedFilePaths();
+        const selectedFiles = this.selectedFilePaths();
+        const selectedFolders = this.selectedFolderPaths();
         const all = this.allNodes();
 
-        const sizeByPath = new Map<string, number>();
-        for (const n of all) {
-            if (n.type === 'file' && n.size != null) sizeByPath.set(n.path, n.size);
-        }
-
         let totalBytes = 0;
-        for (const p of selected) {
-            const size = sizeByPath.get(p);
-            if (size != null) totalBytes += size;
+        for (const n of all) {
+            if (n.type !== 'file' || n.size == null) continue;
+            if (selectedFiles.has(n.path) || this.isCoveredByFolders(n.path, selectedFolders)) {
+                totalBytes += n.size;
+            }
         }
         return this.formatSize(totalBytes);
     });
@@ -155,65 +150,72 @@ export class SelectStorageFilesDialogComponent {
         this.allNodes.set([]);
         this.isLoadingRoot.set(true);
         this.loadAttachedFiles(() => {
-            this.selectedFilePaths.set(new Set(this.attachedFilePaths()));
-            this.selectedFolderPaths.set(new Set(this.attachedFolderPaths()));
-            this.loadLevel('', null, () => this.expandToAttachedPaths());
+            const folders = new Set(this.attachedFolderPaths());
+            this.selectedFolderPaths.set(folders);
+            this.selectedFilePaths.set(this.filesNotCoveredByFolders(this.attachedFilePaths(), folders));
+            this.loadTree(() => this.expandToAttachedPaths());
         });
     }
 
     toggleExpand(event: Event, node: TreeNode): void {
         event.stopPropagation();
-        if (node.isExpanded) {
-            node.isExpanded = false;
-        } else {
-            node.isExpanded = true;
-            if (!node.isLoaded && node.hasChildren) {
-                node.isLoading = true;
-                this.loadLevel(node.path, node);
-            }
-        }
+        node.isExpanded = !node.isExpanded;
         this.rootNodes.update((n) => [...n]);
         this.rebuildAllNodes();
     }
 
     toggleCheck(node: TreeNode): void {
         if (node.type === 'file') {
-            const wasChecked = this.selectedFilePaths().has(node.path);
-            this.selectedFilePaths.update((set) => {
-                const next = new Set(set);
-                if (wasChecked) next.delete(node.path);
-                else next.add(node.path);
-                return next;
-            });
-            if (wasChecked) this.clearAncestorFolders(node.path);
-            return;
-        }
-
-        this.ensureLoaded(node, () => {
-            const checked = this.isChecked(node);
-            const descendants = this.collectFilePaths(node);
-
-            this.selectedFolderPaths.update((set) => {
-                const next = new Set(set);
-                if (checked) next.delete(node.path);
-                else next.add(node.path);
-                return next;
-            });
-
-            if (descendants.length > 0) {
+            const wasChecked = this.isChecked(node);
+            if (wasChecked) {
+                this.explodeCoveringFolders(node.path);
                 this.selectedFilePaths.update((set) => {
                     const next = new Set(set);
-                    if (checked) {
-                        for (const p of descendants) next.delete(p);
-                    } else {
-                        for (const p of descendants) next.add(p);
-                    }
+                    next.delete(node.path);
+                    return next;
+                });
+            } else {
+                this.selectedFilePaths.update((set) => {
+                    const next = new Set(set);
+                    next.add(node.path);
                     return next;
                 });
             }
+            return;
+        }
 
-            if (checked) this.clearAncestorFolders(node.path);
+        const checked = this.isChecked(node);
+        if (checked) {
+            if (
+                !this.selectedFolderPaths().has(node.path) &&
+                this.isCoveredByFolders(node.path, this.selectedFolderPaths())
+            ) {
+                this.explodeCoveringFolders(node.path, node.path);
+                return;
+            }
+
+            this.selectedFolderPaths.update((set) => {
+                const next = new Set(set);
+                next.delete(node.path);
+                for (const f of set) {
+                    if (f.startsWith(`${node.path}/`)) next.delete(f);
+                }
+                return next;
+            });
+            this.removeDescendantFileSelections(node);
+            this.clearAncestorFolders(node.path);
+            return;
+        }
+
+        this.selectedFolderPaths.update((set) => {
+            const next = new Set(set);
+            next.add(node.path);
+            for (const f of set) {
+                if (f.startsWith(`${node.path}/`)) next.delete(f);
+            }
+            return next;
         });
+        this.removeDescendantFileSelections(node);
     }
 
     private clearAncestorFolders(path: string): void {
@@ -233,22 +235,99 @@ export class SelectStorageFilesDialogComponent {
         });
     }
 
+    private isCoveredByFolders(path: string, folders: Set<string>): boolean {
+        for (const folder of folders) {
+            if (path === folder || path.startsWith(`${folder}/`)) return true;
+        }
+        return false;
+    }
+
+    private filesNotCoveredByFolders(files: Set<string>, folders: Set<string>): Set<string> {
+        if (folders.size === 0) return new Set(files);
+        const next = new Set<string>();
+        for (const p of files) {
+            if (!this.isCoveredByFolders(p, folders)) next.add(p);
+        }
+        return next;
+    }
+
+    private isFileEffectivelySelected(path: string): boolean {
+        return this.selectedFilePaths().has(path) || this.isCoveredByFolders(path, this.selectedFolderPaths());
+    }
+
+    private removeDescendantFileSelections(node: TreeNode): void {
+        const descendants = this.collectFilePaths(node);
+        if (descendants.length === 0) return;
+        this.selectedFilePaths.update((set) => {
+            let changed = false;
+            const next = new Set(set);
+            for (const p of descendants) {
+                if (next.delete(p)) changed = true;
+            }
+            return changed ? next : set;
+        });
+    }
+
+    /** Convert covering folder selections into explicit file selections, excluding `path` (and optional folder subtree). */
+    private explodeCoveringFolders(path: string, excludeFolderPath?: string): void {
+        const folders = this.selectedFolderPaths();
+        const covering = [...folders].filter((f) => path === f || path.startsWith(`${f}/`));
+        if (covering.length === 0) return;
+
+        const keepFiles = new Set<string>();
+        for (const folderPath of covering) {
+            const folderNode = this.findNodeByPath(this.rootNodes(), folderPath);
+            if (!folderNode) continue;
+            for (const fp of this.collectFilePaths(folderNode)) {
+                if (fp === path) continue;
+                if (excludeFolderPath && (fp === excludeFolderPath || fp.startsWith(`${excludeFolderPath}/`))) {
+                    continue;
+                }
+                keepFiles.add(fp);
+            }
+        }
+
+        this.selectedFolderPaths.update((set) => {
+            const next = new Set(set);
+            for (const f of covering) next.delete(f);
+            if (excludeFolderPath) {
+                next.delete(excludeFolderPath);
+                for (const f of set) {
+                    if (f.startsWith(`${excludeFolderPath}/`)) next.delete(f);
+                }
+            }
+            return next;
+        });
+
+        this.selectedFilePaths.update((set) => {
+            const next = new Set(set);
+            for (const fp of keepFiles) next.add(fp);
+            next.delete(path);
+            if (excludeFolderPath) {
+                for (const fp of [...next]) {
+                    if (fp === excludeFolderPath || fp.startsWith(`${excludeFolderPath}/`)) next.delete(fp);
+                }
+            }
+            return next;
+        });
+    }
+
     isChecked(node: TreeNode): boolean {
-        if (node.type === 'file') return this.selectedFilePaths().has(node.path);
+        if (node.type === 'file') return this.isFileEffectivelySelected(node.path);
         if (this.selectedFolderPaths().has(node.path)) return true;
+        if (this.isCoveredByFolders(node.path, this.selectedFolderPaths())) return true;
         const files = this.collectFilePaths(node);
         if (files.length === 0) return false;
-        const selected = this.selectedFilePaths();
-        return files.every((p) => selected.has(p));
+        return files.every((p) => this.isFileEffectivelySelected(p));
     }
 
     isIndeterminate(node: TreeNode): boolean {
         if (node.type !== 'folder') return false;
         if (this.selectedFolderPaths().has(node.path)) return false;
+        if (this.isCoveredByFolders(node.path, this.selectedFolderPaths())) return false;
         const files = this.collectFilePaths(node);
         if (files.length === 0) return false;
-        const selected = this.selectedFilePaths();
-        const matched = files.filter((p) => selected.has(p)).length;
+        const matched = files.filter((p) => this.isFileEffectivelySelected(p)).length;
         return matched > 0 && matched < files.length;
     }
 
@@ -259,19 +338,23 @@ export class SelectStorageFilesDialogComponent {
         }
 
         const { checks, unchecks } = this.computeDiff();
+        const selectedFolders = this.selectedFolderPaths();
+        const intentionalUnchecks = unchecks.filter(
+            (p) => p.endsWith('/') || !this.isCoveredByFolders(p, selectedFolders)
+        );
 
-        if (unchecks.length > 0) {
+        if (intentionalUnchecks.length > 0) {
             const flowName = this.escapeHtml(this.flowName);
             let title: string;
             let message: string;
 
-            if (unchecks.length === 1) {
-                const fileName = this.escapeHtml(this.getFileName(unchecks[0]));
+            if (intentionalUnchecks.length === 1) {
+                const fileName = this.escapeHtml(this.getFileName(intentionalUnchecks[0]));
                 title = 'Remove File?';
                 message = `Are you sure you want to remove <strong>${fileName}</strong> file from the <strong>${flowName}</strong> flow?`;
             } else {
                 title = 'Remove Files?';
-                message = `Are you sure you want to remove <strong>${unchecks.length} files</strong> from the <strong>${flowName}</strong> flow?`;
+                message = `Are you sure you want to remove <strong>${intentionalUnchecks.length} files</strong> from the <strong>${flowName}</strong> flow?`;
             }
 
             this.confirmationDialogService
@@ -295,17 +378,32 @@ export class SelectStorageFilesDialogComponent {
         const checks: string[] = [];
         const unchecks: string[] = [];
 
-        const selectedFiles = this.selectedFilePaths();
-        const attachedFiles = this.attachedFilePaths();
-        for (const p of selectedFiles) if (!attachedFiles.has(p)) checks.push(p);
-        for (const p of attachedFiles) if (!selectedFiles.has(p)) unchecks.push(p);
-
         const selectedFolders = this.selectedFolderPaths();
         const attachedFolders = this.attachedFolderPaths();
         for (const p of selectedFolders) if (!attachedFolders.has(p)) checks.push(`${p}/`);
         for (const p of attachedFolders) if (!selectedFolders.has(p)) unchecks.push(`${p}/`);
 
-        return { checks, unchecks };
+        const selectedFiles = this.filesNotCoveredByFolders(this.selectedFilePaths(), selectedFolders);
+        const attachedFiles = this.attachedFilePaths();
+
+        for (const p of selectedFiles) {
+            if (!attachedFiles.has(p)) checks.push(p);
+        }
+        for (const p of attachedFiles) {
+            if (this.isCoveredByFolders(p, selectedFolders)) {
+                unchecks.push(p);
+                continue;
+            }
+            if (!selectedFiles.has(p)) unchecks.push(p);
+        }
+
+        // BE remove_from_graph matches {p, p.rstrip('/'), p+'/'} — never remove a path
+        // that is also being added in the same save (forkJoin race).
+        const checkKeys = new Set(checks.map((p) => p.replace(/\/+$/, '')));
+        return {
+            checks,
+            unchecks: unchecks.filter((p) => !checkKeys.has(p.replace(/\/+$/, ''))),
+        };
     }
 
     private executeSave(checks: string[], unchecks: string[]): void {
@@ -357,7 +455,7 @@ export class SelectStorageFilesDialogComponent {
         this.rootNodes.set([]);
         this.allNodes.set([]);
         this.isLoadingRoot.set(true);
-        this.loadLevel('', null);
+        this.loadTree(() => this.expandToAttachedPaths());
     }
 
     getFileIcon(node: TreeNode): string {
@@ -387,92 +485,46 @@ export class SelectStorageFilesDialogComponent {
             });
     }
 
-    private loadLevel(path: string, parent: TreeNode | null, onDone?: () => void): void {
+    /** Load the entire storage tree in a single request and build the node tree. */
+    private loadTree(onDone?: () => void): void {
+        this.isLoadingRoot.set(true);
         this.storageApiService
-            .list(path)
+            .tree()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (items) => {
-                    const nodes: TreeNode[] = items.map((i) => ({
-                        name: i.name,
-                        path: i.path || (path ? `${path}/${i.name}` : i.name),
-                        type: i.type,
-                        level: parent ? parent.level + 1 : 0,
-                        isExpanded: false,
-                        isLoading: false,
-                        hasChildren: i.type === 'folder' && !i.is_empty,
-                        children: [],
-                        isLoaded: false,
-                        is_empty: i.is_empty,
-                        size: i.size,
-                    }));
-
-                    if (parent) {
-                        parent.children = nodes;
-                        parent.isLoaded = true;
-                        parent.isLoading = false;
-                        parent.hasChildren = nodes.length > 0;
-                    } else {
-                        this.rootNodes.set(nodes);
-                        this.isLoadingRoot.set(false);
-                    }
-
+                next: (res) => {
+                    const roots = (res.tree.children ?? []).map((n) => this.mapTreeNode(n, 0));
+                    this.rootNodes.set(roots);
+                    this.isLoadingRoot.set(false);
                     this.rebuildAllNodes();
-                    this.rootNodes.update((n) => [...n]);
+                    if (res.truncated) {
+                        this.toastService.error(
+                            'Storage tree is too large to display fully. Some files may not be shown.'
+                        );
+                    }
                     onDone?.();
                 },
                 error: () => {
-                    if (parent) {
-                        parent.isLoading = false;
-                        parent.isLoaded = true;
-                    } else {
-                        this.isLoadingRoot.set(false);
-                    }
-                    this.rootNodes.update((n) => [...n]);
+                    this.rootNodes.set([]);
+                    this.isLoadingRoot.set(false);
+                    this.rebuildAllNodes();
                     onDone?.();
                 },
             });
     }
 
-    /** Recursively load all descendants of a folder, then invoke callback. */
-    private ensureLoaded(node: TreeNode, onDone: () => void): void {
-        if (node.type !== 'folder' || !node.hasChildren) {
-            onDone();
-            return;
-        }
-
-        const loadChildren = (n: TreeNode, cb: () => void): void => {
-            if (n.type !== 'folder' || !n.hasChildren) {
-                cb();
-                return;
-            }
-            if (!n.isLoaded) {
-                n.isLoading = true;
-                this.loadLevel(n.path, n, () => {
-                    n.isLoading = false;
-                    loadAllChildren(n.children, cb);
-                });
-            } else {
-                loadAllChildren(n.children, cb);
-            }
+    private mapTreeNode(node: StorageTreeNode, level: number): TreeNode {
+        const children = (node.children ?? []).map((c) => this.mapTreeNode(c, level + 1));
+        return {
+            name: node.name,
+            path: node.path,
+            type: node.type,
+            level,
+            isExpanded: false,
+            hasChildren: node.type === 'folder' && children.length > 0,
+            children,
+            size: node.size,
         };
-
-        const loadAllChildren = (children: TreeNode[], cb: () => void): void => {
-            const folders = children.filter((c) => c.type === 'folder' && c.hasChildren);
-            if (folders.length === 0) {
-                cb();
-                return;
-            }
-            let remaining = folders.length;
-            for (const f of folders) {
-                loadChildren(f, () => {
-                    remaining--;
-                    if (remaining === 0) cb();
-                });
-            }
-        };
-
-        loadChildren(node, onDone);
     }
 
     private expandToAttachedPaths(): void {
@@ -484,24 +536,13 @@ export class SelectStorageFilesDialogComponent {
             }
         }
 
-        const tryExpand = (): void => {
-            for (const path of ancestorPaths) {
-                const node = this.findNodeByPath(this.rootNodes(), path);
-                if (!node || node.type !== 'folder') continue;
-                if (node.isExpanded && node.isLoaded) continue;
+        for (const path of ancestorPaths) {
+            const node = this.findNodeByPath(this.rootNodes(), path);
+            if (node && node.type === 'folder') node.isExpanded = true;
+        }
 
-                node.isExpanded = true;
-
-                if (!node.isLoaded && node.hasChildren) {
-                    node.isLoading = true;
-                    this.loadLevel(node.path, node, () => tryExpand());
-                }
-            }
-            this.rootNodes.update((n) => [...n]);
-            this.rebuildAllNodes();
-        };
-
-        tryExpand();
+        this.rootNodes.update((n) => [...n]);
+        this.rebuildAllNodes();
     }
 
     private findNodeByPath(nodes: TreeNode[], path: string): TreeNode | null {

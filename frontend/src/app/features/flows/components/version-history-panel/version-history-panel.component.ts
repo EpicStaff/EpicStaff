@@ -17,6 +17,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { IconButtonComponent } from '@shared/components';
+import { SecretDeclarationIndexService } from '@shared/services';
 import { EMPTY, filter, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
@@ -49,6 +50,7 @@ export class VersionHistoryPanelComponent implements OnInit {
     @ViewChildren('versionMenu') versionMenus!: QueryList<ElementRef>;
 
     private destroyRef = inject(DestroyRef);
+    private secretDeclarationIndexService = inject(SecretDeclarationIndexService);
 
     @HostListener('document:click', ['$event'])
     onDocumentClick(event: MouseEvent): void {
@@ -293,7 +295,7 @@ export class VersionHistoryPanelComponent implements OnInit {
     private handleRestoreResponse(response: GraphRestoreResponse): void {
         if (response.warnings.length > 0) {
             this.toastService.warning(
-                `Version restored with ${response.warnings.length} warning(s): some nodes or edges were removed`
+                `Version restored with ${response.warnings.length} warning(s): some dependencies have since been deleted`
             );
         } else {
             this.toastService.success('Version restored successfully');
@@ -329,6 +331,7 @@ export class VersionHistoryPanelComponent implements OnInit {
                     if (response.warnings.length) {
                         this.createGraphWarningsService.setPending(response.warnings);
                     }
+                    this.secretDeclarationIndexService.invalidate();
                     this.dialogRef.close();
                     this.router.navigate(['/flows', response.graph_id]);
                 },

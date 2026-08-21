@@ -1,3 +1,4 @@
+from tables.serializers.utils.secret_fields import SecretCharField
 from loguru import logger
 from rest_framework import serializers
 
@@ -9,6 +10,7 @@ from tables.models.webhook_models import (
 
 
 class NgrokWebhookConfigModelSerializer(serializers.ModelSerializer):
+    auth_token = SecretCharField()
     webhook_full_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -21,6 +23,13 @@ class NgrokWebhookConfigModelSerializer(serializers.ModelSerializer):
             "region",
             "webhook_full_url",
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance is None:
+            self.fields["auth_token"].required = True
+            self.fields["auth_token"].allow_null = False
+            self.fields["auth_token"].allow_blank = False
 
     def get_webhook_full_url(self, instance: NgrokWebhookConfig):
         from tables.services.webhook_trigger_service import WebhookTriggerService
@@ -56,6 +65,7 @@ class WebhookTriggerSerializer(serializers.ModelSerializer):
 
 
 class VoiceSettingsSerializer(serializers.ModelSerializer):
+    twilio_auth_token = SecretCharField()
     voice_stream_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -64,9 +74,26 @@ class VoiceSettingsSerializer(serializers.ModelSerializer):
             "twilio_account_sid",
             "twilio_auth_token",
             "voice_agent",
+            "voice_agent_definition",
             "ngrok_config",
             "voice_stream_url",
         ]
+
+    def validate(self, attrs):
+        voice_agent = attrs.get(
+            "voice_agent", self.instance.voice_agent if self.instance else None
+        )
+        voice_agent_definition = attrs.get(
+            "voice_agent_definition",
+            self.instance.voice_agent_definition if self.instance else None,
+        )
+
+        if voice_agent and voice_agent_definition:
+            raise serializers.ValidationError(
+                "Only one of 'voice_agent' or 'voice_agent_definition' may be set."
+            )
+
+        return attrs
 
     def get_voice_stream_url(self, obj):
         if not obj.ngrok_config:

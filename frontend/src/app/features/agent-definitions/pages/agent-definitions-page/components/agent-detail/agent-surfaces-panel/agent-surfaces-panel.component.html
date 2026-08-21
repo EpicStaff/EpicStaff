@@ -1,0 +1,208 @@
+﻿<div class="surfaces-panel">
+    <label class="surfaces-panel__search">
+        <app-svg-icon
+            icon="search"
+            size="16px"
+            class="surfaces-panel__search-icon"
+        />
+        <input
+            type="search"
+            class="surfaces-panel__search-input"
+            placeholder="Search surface..."
+            [ngModel]="searchQuery()"
+            (ngModelChange)="searchQuery.set($event)"
+        />
+    </label>
+
+    <div
+        class="surfaces-panel__categories"
+        [class.surfaces-panel__categories--dragging]="dragging()"
+        cdkDropListGroup
+    >
+        @for (category of categories; track categoryTrackBy($index, category)) {
+            @let categorySurfaces = surfacesByCategory().get(category.id) ?? [];
+            <section
+                class="surface-category"
+                [class.surface-category--drop-target]="sharedDropCategoryId() === category.id"
+                (dragover)="onSharedDragOver($event, category.id)"
+                (dragleave)="onSharedDragLeave($event, category.id)"
+                (drop)="onSharedDrop($event, category.id)"
+            >
+                <div class="surface-category__header">
+                    <div class="surface-category__title">
+                        <app-svg-icon
+                            [icon]="category.icon"
+                            size="16px"
+                            class="surface-category__icon"
+                        />
+                        <span class="surface-category__label">{{ category.label }}</span>
+                        @if (category.hint) {
+                            <app-help-tooltip
+                                class="surface-category__hint-icon"
+                                [text]="category.hint"
+                                position="right"
+                                size="14px"
+                            />
+                        }
+                    </div>
+
+                    <div class="surface-category__actions">
+                        @if (category.showViewSummary) {
+                            <button
+                                type="button"
+                                class="surface-category__btn"
+                                [appCollapseOnOverflow]="true"
+                                collapseOnOverflowTarget=".surface-category__btn-label"
+                                collapseOnOverflowClass="surface-category__btn--icon-only"
+                                (click)="onViewSummary(category.id)"
+                            >
+                                <app-svg-icon
+                                    icon="sum"
+                                    size="10px"
+                                />
+                                <span class="surface-category__btn-label">View Summary</span>
+                            </button>
+                        }
+                        <app-select-dropdown
+                            mode="list"
+                            selectionMode="single"
+                            searchPlaceholder="Search shared surface..."
+                            emptyText="No shared surfaces available"
+                            [minPanelWidth]="280"
+                            [items]="addableSharedFor(category.id)"
+                            [selected]="[]"
+                            (selectionChange)="onAddFromShared($event, category.id)"
+                        >
+                            <button
+                                type="button"
+                                appSelectDropdownTrigger
+                                class="surface-category__btn"
+                                [appCollapseOnOverflow]="true"
+                                collapseOnOverflowTarget=".surface-category__btn-label"
+                                collapseOnOverflowClass="surface-category__btn--icon-only"
+                            >
+                                <app-svg-icon
+                                    icon="add-from-shared"
+                                    size="10px"
+                                />
+                                <span class="surface-category__btn-label">Add From Shared</span>
+                            </button>
+                        </app-select-dropdown>
+
+                        <button
+                            type="button"
+                            class="surface-category__btn"
+                            [appCollapseOnOverflow]="true"
+                            collapseOnOverflowTarget=".surface-category__btn-label"
+                            collapseOnOverflowClass="surface-category__btn--icon-only"
+                            (click)="startCreateSurface(category.id)"
+                        >
+                            <app-svg-icon
+                                icon="create-surface"
+                                size="10px"
+                            />
+                            <span class="surface-category__btn-label">Create Surface</span>
+                        </button>
+                    </div>
+                </div>
+
+                @if (isDrafting(category.id)) {
+                    <div class="surface-item surface-item--expanded">
+                        <div class="surface-item__row">
+                            <span class="surface-item__drag">
+                                <app-svg-icon
+                                    icon="drag-handle"
+                                    size="5px"
+                                />
+                            </span>
+                            <span class="surface-item__chevron-area">
+                                <app-svg-icon
+                                    class="surface-item__chevron surface-item__chevron--open"
+                                    icon="chevron-down-filled"
+                                    size="8px"
+                                />
+                            </span>
+                            <div class="surface-item__main surface-item__main--draft">
+                                <input
+                                    type="text"
+                                    class="surface-item__name-input"
+                                    placeholder="e.g. CV Screener"
+                                    [ngModel]="draftName()"
+                                    (ngModelChange)="draftName.set($event)"
+                                    appEnterBlur
+                                    (blur)="saveDraft()"
+                                />
+                            </div>
+
+                            <div class="surface-item__actions">
+                                <button
+                                    type="button"
+                                    class="surface-item__action surface-item__action--accent"
+                                    aria-label="Cancel"
+                                    (click)="cancelDraft()"
+                                >
+                                    <app-svg-icon
+                                        icon="x"
+                                        size="14px"
+                                    />
+                                </button>
+                            </div>
+                        </div>
+
+                        <app-surface-card
+                            #draftSurfaceCard
+                            class="surface-item__card"
+                            [surface]="null"
+                            [isCreating]="true"
+                            [hideHeader]="true"
+                            [expanded]="true"
+                            (draftContentChanged)="onDraftContentChanged()"
+                        />
+                    </div>
+                }
+
+                <ul
+                    class="surface-category__list"
+                    [cdkDropListData]="category.id"
+                    (cdkDropListDropped)="onSurfaceDropped($event, category.id)"
+                    cdkDropList
+                >
+                    @if (categorySurfaces.length === 0 && !isDrafting(category.id)) {
+                        <p class="surface-category__empty">No surfaces detected. Create one up to get started.</p>
+                    }
+                    @for (surface of categorySurfaces; track surfaceTrackBy($index, surface)) {
+                        <li
+                            class="surface-item"
+                            [cdkDragData]="surface"
+                            cdkDrag
+                            (cdkDragStarted)="onDragStarted()"
+                            (cdkDragEnded)="dragging.set(false)"
+                        >
+                            <app-surface-card
+                                [surface]="surface"
+                                [draggable]="true"
+                                [isShared]="isShared(surface)"
+                                [readOnly]="isShared(surface)"
+                                [currentPlace]="category.id"
+                                [surfacePlaces]="placesForSurface(surface.id)"
+                                [placesBusy]="saving()"
+                                [saveError]="saveError()"
+                                [expanded]="isExpanded(surface)"
+                                (expandedChange)="onCardExpanded(surface, $event)"
+                                (renameSurface)="renameSurface.emit({ id: surface.id, name: $event })"
+                                (surfaceChange)="surfaceChange.emit({ id: surface.id, patch: $event })"
+                                (openSource)="openSource.emit(surface.id)"
+                                (detach)="detachSurface.emit(surface.id)"
+                                (makeShared)="makeSharedSurface.emit(surface.id)"
+                                (makeAgentSpecificCopy)="makeAgentSpecificCopy.emit(surface.id)"
+                                (placesChange)="setSurfacePlaces.emit({ surfaceId: surface.id, places: $event })"
+                                (duplicate)="duplicateSurface.emit(surface.id)"
+                                (deleteSurface)="deleteSurface.emit(surface.id)"
+                            />
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
+    </div>
+</div>

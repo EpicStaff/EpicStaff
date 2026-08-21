@@ -326,7 +326,7 @@ export function buildNodeBackendPayload(
                 ...idField,
                 node_name: tn.node_name,
                 graph: graphId,
-                telegram_bot_api_key: tn.data.telegram_bot_api_key,
+                telegram_bot_api_key_secret_id: tn.data.telegram_bot_api_key_secret_id,
                 webhook_trigger: tn.data.webhook_trigger,
                 fields: tn.data.fields,
                 metadata: meta,

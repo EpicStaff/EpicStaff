@@ -2,6 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from tables.views.model_view_sets import (
+    AgentNodeViewSet,
+    AgentNodeTaskViewSet,
     ClassificationDecisionTableNodeModelViewSet,
     ConditionalEdgeViewSet,
     CrewNodeViewSet,
@@ -25,6 +27,7 @@ from tables.views.model_view_sets import (
     RealtimeSessionItemViewSet,
     RealtimeTranscriptionConfigModelViewSet,
     RealtimeTranscriptionModelViewSet,
+    TaskNodeViewSet,
     TelegramTriggerNodeViewSet,
     LLMConfigReadWriteViewSet,
     ProviderReadWriteViewSet,
@@ -40,8 +43,8 @@ from tables.views.model_view_sets import (
     MemoryViewSet,
     RealtimeModelViewSet,
     RealtimeAgentViewSet,
+    RealtimeAgentDefinitionViewSet,
     RealtimeAgentChatViewSet,
-    GraphOrganizationViewSet,
     GraphOrganizationUserViewSet,
     VoiceSettingsView,
     TwilioPhoneNumbersView,
@@ -49,11 +52,13 @@ from tables.views.model_view_sets import (
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
     LabelViewSet,
+    SecretViewSet,
     ScheduleTriggerNodeViewSet,
 )
 
 from tables.views.views import (
     AnswerToLLM,
+    NotifyEmailView,
     InitRealtimeAPIView,
     RegisterTelegramTriggerApiView,
     ProcessRagIndexingView,
@@ -127,11 +132,14 @@ router.register(r"llm-models", LLMModelReadWriteViewSet)
 router.register(r"llm-configs", LLMConfigReadWriteViewSet)
 router.register(r"embedding-models", EmbeddingModelReadWriteViewSet)
 router.register(r"embedding-configs", EmbeddingConfigReadWriteViewSet)
+# DEPRECATED: agents/crews/tasks routes are deprecated. Use agentnodes/tasknodes instead.
 router.register(r"agents", AgentViewSet)
 router.register(r"crews", CrewReadWriteViewSet)
 router.register(r"tasks", TaskReadWriteViewSet)
 router.register(r"python-code-tool", PythonCodeToolViewSet)
-router.register(r"python-code-result", PythonCodeResultReadViewSet)
+router.register(
+    r"python-code-result", PythonCodeResultReadViewSet, basename="python-code-result"
+)
 router.register(
     r"source-collections", SourceCollectionViewSet, basename="sourcecollection"
 )
@@ -141,6 +149,7 @@ collection_documents_viewset = CollectionDocumentsViewSet.as_view({"get": "list"
 
 # Graphs
 router.register(r"graphs", GraphViewSet, basename="graphs")
+# DEPRECATED: crewnodes route is deprecated. Use agentnodes/tasknodes instead.
 router.register(r"crewnodes", CrewNodeViewSet)
 router.register(r"pythonnodes", PythonNodeViewSet)
 router.register(r"file-extractor-nodes", FileExtractorNodeViewSet)
@@ -148,7 +157,11 @@ router.register(r"audio-transcription-nodes", AudioTranscriptionNodeViewSet)
 router.register(r"startnodes", StartNodeModelViewSet)
 router.register(r"endnodes", EndNodeModelViewSet)
 router.register(r"subgraph-nodes", SubGraphNodeModelViewSet)
+# DEPRECATED: code-agent-nodes route is deprecated. Use agentnodes/tasknodes instead.
 router.register(r"code-agent-nodes", CodeAgentNodeViewSet)
+router.register(r"tasknodes", TaskNodeViewSet)
+router.register(r"agentnodes", AgentNodeViewSet)
+router.register(r"agentnodetasks", AgentNodeTaskViewSet)
 
 router.register(r"edges", EdgeViewSet)
 router.register(r"conditionaledges", ConditionalEdgeViewSet)
@@ -165,6 +178,7 @@ router.register(
 )
 router.register(r"realtime-session-items", RealtimeSessionItemViewSet)
 router.register(r"realtime-agents", RealtimeAgentViewSet)
+router.register(r"realtime-agent-definitions", RealtimeAgentDefinitionViewSet)
 router.register(r"realtime-agent-chats", RealtimeAgentChatViewSet)
 router.register(r"decision-table-node", DecisionTableNodeModelViewSet)
 router.register(
@@ -173,7 +187,6 @@ router.register(
 
 router.register(r"sessions", SessionViewSet, basename="session")
 router.register(r"mcp-tools", McpToolViewSet)
-router.register(r"graph-organizations", GraphOrganizationViewSet)
 router.register(r"graph-organization-users", GraphOrganizationUserViewSet)
 router.register(r"naive-rag-document-chunks", NaiveRagChunkViewSet)
 router.register(r"webhook-trigger-nodes", WebhookTriggerNodeViewSet)
@@ -185,6 +198,7 @@ router.register(r"ngrok-config", NgrokWebhookConfigViewSet)
 router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 
 router.register(r"labels", LabelViewSet)
+router.register(r"secrets", SecretViewSet)
 router.register(r"storage", StorageAPIView, basename="storage")
 
 admin_router = DefaultRouter()
@@ -232,6 +246,7 @@ urlpatterns = [
         name="get-updates",
     ),
     path("sessions/<int:session_id>/stop/", StopSession.as_view(), name="stop-session"),
+    path("notify/email/", NotifyEmailView.as_view(), name="notify-email"),
     path(
         "run-python-code/",
         RunPythonCodeAPIView.as_view(),

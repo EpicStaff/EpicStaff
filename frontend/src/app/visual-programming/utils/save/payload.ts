@@ -1,4 +1,8 @@
 import {
+    AgentNodeTaskUi,
+    AgentNodeTaskWrite,
+} from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
+import {
     CreateClassificationDecisionTableNodeRequest,
     CreatePromptConfigRequest,
 } from '../../../pages/flows-page/components/flow-visual-programming/models/classification-decision-table-node.model';
@@ -174,6 +178,10 @@ export function buildCdtNodePayload(
                 group_name: g.group_name,
                 order: typeof g.order === 'number' ? g.order : idx + 1,
                 expression: g.expression || null,
+                // Link the group to its prompt by prompt_key (g.prompt_id holds the
+                // key). The backend resolves it node-locally, so a prompt created in
+                // this same save connects in one payload. `prompt` (numeric id) is
+                // still sent for back-compat; the backend prefers prompt_key.
                 prompt: (tableData?.prompts?.[g.prompt_id ?? ''] as PromptConfig | undefined)?.backendId ?? null,
                 prompt_key: g.prompt_id || null,
                 manipulation: g.manipulation || null,
@@ -207,28 +215,33 @@ export function buildCdtNodePayload(
     const defaultRef = resolveNodeRef(defaultTargetUuid, allNodes, idMap);
     const errorRef = resolveNodeRef(errorTargetUuid, allNodes, idMap);
 
+    const preSecretIds = preComp.secret_ids || [];
+    const postSecretIds = postComp.secret_ids || [];
+
     return {
         graph: graphId,
         node_name: node.node_name,
         pre_python_code:
-            preCodeValue.trim() === '' && (preComp.libraries || []).length === 0
+            preCodeValue.trim() === '' && (preComp.libraries || []).length === 0 && !preSecretIds.length
                 ? null
                 : {
                       code: preCodeValue,
                       libraries: preComp.libraries || [],
                       entrypoint: 'main',
                       global_kwargs: {},
+                      secret_ids: preSecretIds,
                   },
         pre_input_map: preComp.input_map || tableData?.pre_input_map || {},
         pre_output_variable_path: preComp.output_variable_path || tableData?.pre_output_variable_path || null,
         post_python_code:
-            postCodeValue.trim() === '' && (postComp.libraries || []).length === 0
+            postCodeValue.trim() === '' && (postComp.libraries || []).length === 0 && !postSecretIds.length
                 ? null
                 : {
                       code: postCodeValue,
                       libraries: postComp.libraries || [],
                       entrypoint: 'main',
                       global_kwargs: {},
+                      secret_ids: postSecretIds,
                   },
         post_input_map: postComp.input_map || tableData?.post_input_map || {},
         post_output_variable_path: postComp.output_variable_path || tableData?.post_output_variable_path || null,
@@ -254,6 +267,41 @@ export function buildCdtNodePayload(
         condition_groups: conditionGroups,
         metadata: toNodeMetadata(node),
     } satisfies CreateClassificationDecisionTableNodeRequest & Record<string, unknown>;
+}
+
+function buildAgentTasksPayload(tasks: AgentNodeTaskUi[]): AgentNodeTaskWrite[] {
+    const idByTempId = new Map<string, number>();
+    for (const sibling of tasks ?? []) {
+        if (sibling.tempId && sibling.id != null) idByTempId.set(sibling.tempId, sibling.id);
+    }
+
+    return (tasks ?? []).map((t, index) => {
+        const contextTaskIds: number[] = [];
+        const contextTaskTempIds: string[] = [];
+
+        for (const r of t.contextRefs ?? []) {
+            if (r.id != null) {
+                contextTaskIds.push(r.id);
+            } else if (r.tempId != null) {
+                const resolvedId = idByTempId.get(r.tempId);
+                if (resolvedId != null) {
+                    contextTaskIds.push(resolvedId);
+                } else {
+                    contextTaskTempIds.push(r.tempId);
+                }
+            }
+        }
+
+        return {
+            ...(t.id != null ? { id: t.id } : { temp_id: t.tempId }),
+            name: t.name,
+            order: index,
+            instructions: t.instructions,
+            output_schema: t.output_schema ?? {},
+            context_task_ids: contextTaskIds,
+            context_task_temp_ids: contextTaskTempIds,
+        } satisfies AgentNodeTaskWrite;
+    });
 }
 
 export function buildBulkSavePayload(
@@ -301,6 +349,8 @@ export function buildBulkSavePayload(
         start_node_ids: nodeDiff.startNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         crew_node_ids: nodeDiff.crewNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         python_node_ids: nodeDiff.pythonNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
+        task_node_ids: nodeDiff.taskNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
+        agent_node_ids: nodeDiff.agentNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         llm_node_ids: nodeDiff.llmNodes.toDelete.map((n) => n.backendId!).filter((id) => id != null),
         file_extractor_node_ids: nodeDiff.fileExtractorNodes.toDelete
             .map((n) => n.backendId!)
@@ -354,6 +404,30 @@ export function buildBulkSavePayload(
                 metadata: toNodeMetadata(n),
             };
         }),
+        task_node_list: nodeItems(nodeDiff.taskNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            instructions: n.data.instructions,
+            output_schema: n.data.output_schema ?? {},
+            remember_output: n.data.remember_output ?? false,
+            agent_definition: n.data.agent_definition ?? null,
+            input_map: n.input_map || {},
+            output_variable_path: n.output_variable_path || null,
+            surface_list: n.data.surface_list ?? [],
+            inline_surface: n.data.inline_surface ?? null,
+            metadata: toNodeMetadata(n),
+        })),
+        agent_node_list: nodeItems(nodeDiff.agentNodes, (n) => ({
+            node_name: n.node_name,
+            graph: graphId,
+            agent_definition: n.data.agent_definition ?? null,
+            input_map: n.input_map || {},
+            output_variable_path: n.output_variable_path || null,
+            surface_list: n.data.surface_list ?? [],
+            inline_surface: n.data.inline_surface ?? null,
+            tasks: buildAgentTasksPayload(n.data.tasks ?? []),
+            metadata: toNodeMetadata(n),
+        })),
         llm_node_list: nodeItems(nodeDiff.llmNodes, (n) => ({
             node_name: n.node_name,
             graph: graphId,
@@ -402,7 +476,7 @@ export function buildBulkSavePayload(
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({
             node_name: n.node_name,
             graph: graphId,
-            telegram_bot_api_key: n.data.telegram_bot_api_key,
+            telegram_bot_api_key_secret_id: n.data.telegram_bot_api_key_secret_id,
             webhook_trigger: n.data.webhook_trigger,
             fields: n.data.fields,
             metadata: toNodeMetadata(n),

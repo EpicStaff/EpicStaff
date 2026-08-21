@@ -6,7 +6,7 @@ import { GetAgentRequest } from '../../../../../../features/staff/models/agent.m
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
-import { AgentMessageData, GraphMessage } from '../../../../models/graph-session-message.model';
+import { AgentMessageData, GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-agent-message',
@@ -387,7 +387,7 @@ export class AgentMessageComponent implements OnInit {
         // Fall back to the previous implementation
         if (!this.message.message_data) return 'Agent';
 
-        if (this.message.message_data.message_type === 'agent' && 'agent_id' in this.message.message_data) {
+        if (this.message.message_data.message_type === MessageType.AGENT && 'agent_id' in this.message.message_data) {
             return `Agent #${String(this.message.message_data.agent_id)}`;
         }
 
@@ -397,7 +397,7 @@ export class AgentMessageComponent implements OnInit {
     public getAgentId(): string {
         if (!this.message.message_data) return 'Unknown';
 
-        if (this.message.message_data.message_type === 'agent' && 'agent_id' in this.message.message_data) {
+        if (this.message.message_data.message_type === MessageType.AGENT && 'agent_id' in this.message.message_data) {
             return String(this.message.message_data.agent_id);
         }
 
@@ -407,7 +407,7 @@ export class AgentMessageComponent implements OnInit {
     public getProjectId(): string {
         if (!this.message.message_data) return 'Unknown';
 
-        if (this.message.message_data.message_type === 'agent' && 'crew_id' in this.message.message_data) {
+        if (this.message.message_data.message_type === MessageType.AGENT && 'crew_id' in this.message.message_data) {
             return String(this.message.message_data.crew_id);
         }
 
@@ -418,7 +418,7 @@ export class AgentMessageComponent implements OnInit {
         if (!this.message.message_data) return false;
 
         return (
-            this.message.message_data.message_type === 'agent' &&
+            this.message.message_data.message_type === MessageType.AGENT &&
             'thought' in this.message.message_data &&
             !!this.message.message_data.thought
         );
@@ -444,7 +444,7 @@ export class AgentMessageComponent implements OnInit {
         if (!this.message.message_data) return false;
 
         return (
-            this.message.message_data.message_type === 'agent' &&
+            this.message.message_data.message_type === MessageType.AGENT &&
             'tool' in this.message.message_data &&
             !!this.message.message_data.tool
         );
@@ -459,7 +459,7 @@ export class AgentMessageComponent implements OnInit {
         if (!this.message.message_data) return false;
 
         return (
-            this.message.message_data.message_type === 'agent' &&
+            this.message.message_data.message_type === MessageType.AGENT &&
             'tool_input' in this.message.message_data &&
             !!this.message.message_data.tool_input
         );

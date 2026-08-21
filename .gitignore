@@ -143,7 +143,6 @@ venv.bak/
 *venv
 venvs/
 run_program/manager.env
-!src/debug.env
 
 # Spyder project settings
 .spyderproject
@@ -200,6 +199,9 @@ make_scripts/backups
 
 # Savefiles
 **/savefiles
+
+# Local frontend environment overrides
+frontend/src/environments/environment.local.ts
 
 # Compiled output
 frontend/dist

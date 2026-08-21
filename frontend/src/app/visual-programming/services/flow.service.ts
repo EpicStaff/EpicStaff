@@ -1026,13 +1026,6 @@ export class FlowService {
             // Start with an empty set so we don't include the port itself
             const eligible = new Set<CustomPortId>();
 
-            const currentConnCount = connectionCount[current.port.id] || 0;
-            if (!current.port.multiple && currentConnCount > 0) {
-                // If already connected and single-use, no allowed connections.
-                map[current.port.id] = ['__none__'];
-                return;
-            }
-
             allPorts.forEach((other) => {
                 // Skip self
                 if (current.port.id === other.port.id) return;

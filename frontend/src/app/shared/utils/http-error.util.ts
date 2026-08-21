@@ -8,31 +8,47 @@ export function extractHttpErrorMessage(err: HttpErrorResponse): string {
     // Structured validation errors attached by validationErrorsInterceptor.
     if (Array.isArray(err.validationErrors) && err.validationErrors.length > 0) {
         const reasons = err.validationErrors.map((e) => e.reason).filter(Boolean);
-        if (reasons.length) return joinErrorMessages(reasons);
+        if (reasons.length) return joinErrorMessages(reasons.map(simplifyKnownMessage));
     }
 
     const body = err?.error;
     if (body) {
-        if (typeof body === 'string') return body;
+        if (typeof body === 'string') return simplifyKnownMessage(body);
 
         // Nested DRF validation errors (object), e.g.
         // { errors: { <node>_list: [ { index, errors: { prompt_configs: [ {}, { result_variable: ["..."] } ] } } ] } }
         if (body.errors != null) {
             const collected = collectValidationMessages(body.errors);
-            if (collected.length) return joinErrorMessages(collected);
+            if (collected.length) return joinErrorMessages(collected.map(simplifyKnownMessage));
         }
 
-        if (typeof body.message === 'string' && body.message) return body.message;
-        if (typeof body.detail === 'string' && body.detail) return body.detail;
-        if (typeof body.error === 'string' && body.error) return body.error;
+        if (typeof body.message === 'string' && body.message) return simplifyKnownMessage(body.message);
+        if (typeof body.detail === 'string' && body.detail) return simplifyKnownMessage(body.detail);
+        if (typeof body.error === 'string' && body.error) return simplifyKnownMessage(body.error);
 
         // Last resort: walk the whole body for field-level messages
         // (covers a bare { field: ["msg"] } DRF shape with no top-level wrapper).
         const collected = collectValidationMessages(body);
-        if (collected.length) return joinErrorMessages(collected);
+        if (collected.length) return joinErrorMessages(collected.map(simplifyKnownMessage));
     }
 
     return err?.message || 'Unknown error';
+}
+
+const UNDECLARED_SECRET_CALLS =
+    /Code calls ((?:get_secret\([^)]*\)(?:,\s*)?)+) but (?:that secret is|those secrets are) not selected for this node\./;
+const GET_SECRET_NAME = /get_secret\(\s*["']([^"']*)["']/g;
+
+function simplifyKnownMessage(raw: string): string {
+    const match = raw.match(UNDECLARED_SECRET_CALLS);
+    if (!match) return raw;
+
+    const names = [...match[1].matchAll(GET_SECRET_NAME)].map((m) => m[1]);
+    if (!names.length) return raw;
+
+    const isPlural = names.length > 1;
+    const quotedNames = names.map((name) => `"${name}"`).join(', ');
+    return `Secret${isPlural ? 's' : ''} ${quotedNames} ${isPlural ? 'are' : 'is'} not declared for this node.`;
 }
 
 /**

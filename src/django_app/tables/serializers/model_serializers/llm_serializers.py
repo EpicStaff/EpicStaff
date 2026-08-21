@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from tables.models.secret_models import Secret
+
 from tables.serializers.model_serializers.tag_serializers import (
     LLMConfigTagSerializer,
     LLMModelTagSerializer,
@@ -14,6 +16,7 @@ from tables.models.llm_models import (
 )
 from tables.models.tag_models import LLMConfigTag, LLMModelTag
 from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
     OrgVisiblePrimaryKeyRelatedField,
     OrgScopedUniqueValidator,
 )
@@ -30,6 +33,12 @@ class RealtimeModelSerializer(serializers.ModelSerializer):
 
 
 class RealtimeConfigSerializer(serializers.ModelSerializer):
+    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="api_key_secret",
+        required=False,
+        allow_null=True,
+    )
     provider_name = serializers.CharField(
         source="realtime_model.provider.name", read_only=True
     )
@@ -40,7 +49,7 @@ class RealtimeConfigSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RealtimeConfig
-        fields = "__all__"
+        exclude = ["api_key_secret"]
         read_only_fields = ["org", "created_by"]
 
 
@@ -52,6 +61,12 @@ class RealtimeTranscriptionModelSerializer(serializers.ModelSerializer):
 
 
 class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
+    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="api_key_secret",
+        required=False,
+        allow_null=True,
+    )
     # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.
     realtime_transcription_model = OrgVisiblePrimaryKeyRelatedField(
         queryset=RealtimeTranscriptionModel.objects.all()
@@ -59,11 +74,17 @@ class RealtimeTranscriptionConfigSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RealtimeTranscriptionConfig
-        fields = "__all__"
+        exclude = ["api_key_secret"]
         read_only_fields = ["org", "created_by"]
 
 
 class LLMConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
+    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="api_key_secret",
+        required=False,
+        allow_null=True,
+    )
     tags = LLMConfigTagSerializer(many=True, required=False)
     tag_model = LLMConfigTag
     # Org isolation (hybrid): built-in models OR the caller's active-org custom ones.
@@ -81,7 +102,7 @@ class LLMConfigSerializer(TagHandlingMixin, serializers.ModelSerializer):
 
     class Meta:
         model = LLMConfig
-        fields = "__all__"
+        exclude = ["api_key_secret"]
         read_only_fields = ["org", "created_by"]
 
 

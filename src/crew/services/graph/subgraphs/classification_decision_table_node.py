@@ -348,14 +348,14 @@ def main(**kwargs) -> dict:
         llm_config = llm.config
         litellm.drop_params = True
 
-        response_format = llm_config.response_format
+        response_format = None
         schema = output_schema
         if isinstance(schema, str) and schema.strip():
             try:
                 schema = json.loads(schema)
             except (ValueError, TypeError):
                 logger.warning(
-                    "Prompt output_schema is not valid JSON; falling back to LLM response_format."
+                    "Prompt output_schema is not valid JSON; sending request without a response_format."
                 )
                 schema = None
         if isinstance(schema, dict) and schema:

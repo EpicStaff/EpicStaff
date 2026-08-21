@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuid } from '@shared/utils';
 
 import { NODE_COLORS, NODE_ICONS } from '../../core/enums/node-config';
 import { NodeType } from '../../core/enums/node-type';
@@ -12,7 +12,7 @@ export function tempStartNodeId(graphId: number): string {
 
 export function createStartNode(graphId?: number): StartNodeModel {
     return {
-        id: graphId != null ? tempStartNodeId(graphId) : uuidv4(),
+        id: graphId != null ? tempStartNodeId(graphId) : generateUuid(),
         backendId: null,
         type: NodeType.START,
         node_name: '__start__',

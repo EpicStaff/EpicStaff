@@ -229,3 +229,60 @@ def test_dotlist_model_dump_mixed_types():
     l = DotList([1, {"x": 2}, [3, {"y": 4}]])
     dumped = l.model_dump()
     assert dumped == [1, {"x": 2}, [3, {"y": 4}]]
+
+
+def test_pydantic_serialize_none_dotdict_field_does_not_raise():
+    """Regression test: bare Optional DotDict field with value None must
+    serialize to None instead of crashing with AttributeError on
+    `None.deep_dump()` (EST-3285 smoke test bug)."""
+    from pydantic import BaseModel
+
+    class Model(BaseModel):
+        model_config = {"arbitrary_types_allowed": True}
+        args: DotDict = None
+
+    # Field left unset -> default (None) is used and, matching the real
+    # dynamically-built tool args_schema scenario, is NOT re-validated
+    # against dict_schema (validate_default defaults to False). This is
+    # exactly the shape that previously crashed on serialization.
+    m = Model()
+    dumped = m.model_dump()
+    assert dumped == {"args": None}
+
+
+def test_pydantic_serialize_none_dotlist_field_does_not_raise():
+    from pydantic import BaseModel
+
+    class Model(BaseModel):
+        model_config = {"arbitrary_types_allowed": True}
+        items: DotList = None
+
+    m = Model()
+    dumped = m.model_dump()
+    assert dumped == {"items": None}
+
+
+def test_pydantic_serialize_non_none_dotdict_field_unchanged():
+    """Ensure the None-guard does not alter existing deep_dump behavior
+    for a real (non-None) DotDict value."""
+    from pydantic import BaseModel
+
+    class Model(BaseModel):
+        model_config = {"arbitrary_types_allowed": True}
+        args: DotDict = None
+
+    m = Model(args=DotDict({"a": 1, "b": {"c": 2}}))
+    dumped = m.model_dump()
+    assert dumped == {"args": {"a": 1, "b": {"c": 2}}}
+
+
+def test_pydantic_serialize_non_none_dotlist_field_unchanged():
+    from pydantic import BaseModel
+
+    class Model(BaseModel):
+        model_config = {"arbitrary_types_allowed": True}
+        items: DotList = None
+
+    m = Model(items=DotList([1, {"x": 2}, [3, {"y": 4}]]))
+    dumped = m.model_dump()
+    assert dumped == {"items": [1, {"x": 2}, [3, {"y": 4}]]}

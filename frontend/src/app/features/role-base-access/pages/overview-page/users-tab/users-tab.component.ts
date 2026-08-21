@@ -3,10 +3,10 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
-    AppSvgIconComponent,
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
+    AppTableRowAction,
     ButtonComponent,
     LoadingSpinnerComponent,
     SearchComponent,
@@ -47,7 +47,6 @@ const STATUS_ITEMS: SelectItem[] = [
     imports: [
         AppTableComponent,
         AppTableCellDirective,
-        AppSvgIconComponent,
         ButtonComponent,
         SearchComponent,
         LoadingSpinnerComponent,
@@ -87,13 +86,26 @@ export class UsersTabComponent implements OnInit {
         });
     });
 
+    private readonly rowActions: AppTableRowAction[] = [
+        {
+            icon: 'edit',
+            tooltip: 'Edit user',
+            onClick: (row) => this.onEditUser(row['id'] as number),
+        },
+    ];
+
     columns = computed<AppTableColumnDef[]>(() => [
-        { key: 'user', label: 'USER', width: '2fr' },
-        { key: 'roles', label: 'ROLE', width: '1.5fr' },
-        { key: 'organization', label: 'ORGANIZATION', width: '1.5fr', filterItems: this.orgFilterItems() },
-        { key: 'lastActive', label: 'LAST ACTIVE', width: '1.5fr' },
-        { key: 'status', label: 'STATUS', width: '1.5fr', filterItems: STATUS_ITEMS },
-        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'center' },
+        { key: 'user', label: 'USER', width: 'minmax(200px, 2fr)' },
+        { key: 'roles', label: 'ROLE', width: 'minmax(150px, 1.5fr)' },
+        {
+            key: 'organization',
+            label: 'ORGANIZATION',
+            width: 'minmax(140px, 1.5fr)',
+            filterItems: this.orgFilterItems(),
+        },
+        { key: 'lastActive', label: 'LAST ACTIVE', width: 'minmax(140px, 1.5fr)' },
+        { key: 'status', label: 'STATUS', width: 'minmax(120px, 1.5fr)', filterItems: STATUS_ITEMS },
+        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'center', actions: this.rowActions },
     ]);
 
     ngOnInit(): void {

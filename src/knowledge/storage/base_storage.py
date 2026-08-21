@@ -77,9 +77,9 @@ class BaseORMStorage:
                 )
 
             return {
-                "api_key": getattr(embedder, "api_key", None),
                 "model_name": model.name,
                 "provider": model.embedding_provider.name,
+                "api_key_secret_configured": embedder.api_key_secret_id is not None,
             }
 
         except Exception as e:
