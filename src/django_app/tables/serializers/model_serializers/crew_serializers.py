@@ -17,7 +17,6 @@ from tables.models.crew_models import (
     AgentPythonCodeTools,
     Crew,
     Task,
-    TaskConfiguredTools,
     TaskContext,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
@@ -343,7 +342,6 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
     def _get_tools_models_map(self) -> dict[type[Model], tuple[type[Model], str, str]]:
         return {
-            ToolConfig: (AgentConfiguredTools, "configured-tool", "toolconfig_id"),
             PythonCodeTool: (
                 AgentPythonCodeTools,
                 "python-code-tool",
@@ -674,7 +672,6 @@ class TaskWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
     def _get_tools_models_map(self) -> dict[type[Model], tuple[type[Model], str, str]]:
         return {
-            ToolConfig: (TaskConfiguredTools, "configured-tool", "tool_id"),
             PythonCodeTool: (TaskPythonCodeTools, "python-code-tool", "tool_id"),
             PythonCodeToolConfig: (
                 TaskPythonCodeToolConfigs,
