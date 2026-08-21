@@ -4,6 +4,8 @@ import os
 import shutil
 from pathlib import Path
 from src.shared.models import CodeTaskData
+
+from services.storage_credential_manager import StorageCredentialManager
 from services.redis_service import RedisService
 from dynamic_venv_executor_chain import DynamicVenvExecutorChain
 from utils.logger import logger
@@ -19,9 +21,18 @@ storage_mutation_channel = os.environ.get(
 task_channel = os.environ.get("CODE_EXEC_TASK_CHANNEL", "code_exec_tasks")
 output_path = Path(os.environ.get("OUTPUT_PATH", "executions"))
 base_venv_path = Path(os.environ.get("BASE_VENV_PATH", "venvs"))
+storage_host = os.environ.get("STORAGE_ENDPOINT")
+storage_access_key = os.environ.get("STORAGE_ACCESS_KEY")
+storage_secret_key = os.environ.get("STORAGE_SECRET_KEY")
+storage_credential_manager = StorageCredentialManager(
+    host=storage_host,
+    access_key=storage_access_key,
+    secret_key=storage_secret_key,
+)
 executor_chain = DynamicVenvExecutorChain(
     output_path=output_path,
     base_venv_path=base_venv_path,
+    storage_credential_manager=storage_credential_manager,
 )
 os.chdir("savefiles")
 

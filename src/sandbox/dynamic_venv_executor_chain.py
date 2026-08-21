@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 from src.shared.models import CodeResultData
+
+from services.storage_credential_manager import StorageCredentialManager
 from utils.logger import logger
 
 
@@ -232,15 +234,10 @@ class BuildEnvironmentHandler(AbstractHandler):
         }
 
         if context.get("use_storage"):
-            for name in (
-                "STORAGE_ENDPOINT",
-                "STORAGE_ACCESS_KEY",
-                "STORAGE_SECRET_KEY",
-                "STORAGE_BUCKET_NAME",
-            ):
-                value = os.environ.get(name)
-                if value is not None:
-                    env[name] = value
+            env["STORAGE_ENDPOINT"] = os.environ["STORAGE_ENDPOINT"]
+            env["STORAGE_BUCKET_NAME"] = os.environ["STORAGE_BUCKET_NAME"]
+            env["STORAGE_ACCESS_KEY"] = context["temp_storage_access_key"]
+            env["STORAGE_SECRET_KEY"] = context["temp_storage_secret_key"]
 
         if (storage_allowed_paths := context.get("storage_allowed_paths")) is not None:
             env["STORAGE_ALLOWED_PATHS"] = json.dumps(storage_allowed_paths)
@@ -391,9 +388,11 @@ class DynamicVenvExecutorChain:
         self,
         output_path: str | Path,
         base_venv_path: str | Path,
+        storage_credential_manager: StorageCredentialManager,
     ):
         self.output_path = output_path
         self.base_venv_path = base_venv_path
+        self.storage_credential_manager = storage_credential_manager
 
         # Build the chain of responsibility
         create_venv_handler = CreateVenvHandler()
@@ -446,7 +445,42 @@ class DynamicVenvExecutorChain:
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,
         }
+        temp_access_key: str | None = None
+        if use_storage:
+            try:
+                policy = self.storage_credential_manager.build_policy(
+                    allowed_bucket=os.environ["STORAGE_BUCKET_NAME"],
+                    allowed_folders=self._scoped_folders(
+                        storage_org_prefix, storage_allowed_paths
+                    ),
+                )
+                temp_access_key, temp_secret_key = (
+                    await self.storage_credential_manager.create(policy)
+                )
+            except Exception as e:
+                logger.error("Failed to provision scoped storage credentials: {}", e)
+                return CodeResultData(
+                    execution_id=execution_id,
+                    stderr=f"Failed to provision scoped storage credentials: {e}",
+                    stdout="",
+                    returncode=1,
+                )
+            context["temp_storage_access_key"] = temp_access_key
+            context["temp_storage_secret_key"] = temp_secret_key
 
-        result = await self.chain.handle(context)
+        try:
+            result = await self.chain.handle(context)
+        finally:
+            if temp_access_key is not None:
+                await self.storage_credential_manager.revoke(temp_access_key)
+
         logger.info(result)
         return result
+
+    @staticmethod
+    def _scoped_folders(org_prefix: str | None, allowed_paths: list[str] | None) -> set[str]:
+        if not org_prefix:
+            raise ValueError("storage_org_prefix is required when use_storage is set")
+        if not allowed_paths:
+            return {f"{org_prefix}/"}  # whole org (folder)
+        return {f"{org_prefix}/{path.lstrip('/')}" for path in allowed_paths}
