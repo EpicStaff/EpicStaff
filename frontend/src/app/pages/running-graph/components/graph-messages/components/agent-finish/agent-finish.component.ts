@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
 import { JsonViewerComponent } from '@shared/components';
-import { MarkdownModule } from 'ngx-markdown';
+import { MarkdownComponent } from 'ngx-markdown';
 
 import { GetAgentRequest } from '../../../../../../features/staff/models/agent.model';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -9,7 +9,7 @@ import { AgentFinishMessageData, GraphMessage, MessageType } from '../../../../m
 
 @Component({
     selector: 'app-agent-finish-message',
-    imports: [MarkdownModule, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
+    imports: [MarkdownComponent, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="agent-flow-container">
             <!-- Agent Message Header with Toggle -->

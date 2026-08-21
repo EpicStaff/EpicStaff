@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
 import { JsonViewerComponent } from '@shared/components';
-import { MarkdownModule } from 'ngx-markdown';
+import { MarkdownComponent } from 'ngx-markdown';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
@@ -9,7 +9,7 @@ import { GraphMessage, MessageType, TaskMessageData } from '../../../../models/g
 
 @Component({
     selector: 'app-task-message',
-    imports: [CommonModule, MarkdownModule, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
+    imports: [CommonModule, MarkdownComponent, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="agent-flow-container">
             <!-- Task Message Header with Toggle -->

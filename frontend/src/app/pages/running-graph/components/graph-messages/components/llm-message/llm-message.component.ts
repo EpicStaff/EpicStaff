@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { MarkdownModule } from 'ngx-markdown';
+import { MarkdownComponent } from 'ngx-markdown';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
@@ -8,7 +8,7 @@ import { GraphMessage, LLMMessageData, MessageType } from '../../../../models/gr
 
 @Component({
     selector: 'app-llm-message',
-    imports: [CommonModule, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [CommonModule, MarkdownComponent, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="llm-flow-container">
             <!-- LLM Message Header with Toggle -->

@@ -18,7 +18,6 @@ import {
     ViewChildren,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { MarkdownModule } from 'ngx-markdown';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { exhaustMap, map, takeUntil } from 'rxjs/operators';
 
@@ -156,7 +155,6 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
 @Component({
     selector: 'app-graph-messages',
     imports: [
-        MarkdownModule,
         LoadingDotsComponent,
         StartMessageComponent,
         AgentMessageComponent,

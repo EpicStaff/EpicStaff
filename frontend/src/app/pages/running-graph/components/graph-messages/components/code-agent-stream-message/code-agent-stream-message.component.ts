@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
-import { MarkdownModule } from 'ngx-markdown';
+import { MarkdownComponent } from 'ngx-markdown';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
@@ -18,7 +18,7 @@ interface ThinkingStep {
 
 @Component({
     selector: 'app-code-agent-stream-message',
-    imports: [MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [MarkdownComponent, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div
             class="code-agent-container"

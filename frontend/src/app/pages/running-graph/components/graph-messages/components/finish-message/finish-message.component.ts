@@ -1,7 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';
 import { JsonViewerComponent } from '@shared/components';
-import { MarkdownModule } from 'ngx-markdown';
 
 import { GetProjectRequest } from '../../../../../../features/projects/models/project.model';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -15,7 +14,7 @@ import {
 
 @Component({
     selector: 'app-finish-message',
-    imports: [CommonModule, JsonViewerComponent, MarkdownModule, AppSvgIconComponent, CopyButtonComponent],
+    imports: [CommonModule, JsonViewerComponent, AppSvgIconComponent, CopyButtonComponent],
     template: `
         <div class="finish-container">
             <!-- Finish Message Header with Toggle -->

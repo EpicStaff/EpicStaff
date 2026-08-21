@@ -11,7 +11,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { MarkdownModule } from 'ngx-markdown';
+import { MarkdownComponent } from 'ngx-markdown';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { FlowAssistantService } from '../../flow-assistant.service';
@@ -37,7 +37,7 @@ type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
     selector: 'app-flow-assistant-panel',
     imports: [
         FormsModule,
-        MarkdownModule,
+        MarkdownComponent,
         OverlayModule,
         AppSvgIconComponent,
         FlowAssistantSettingsComponent,
