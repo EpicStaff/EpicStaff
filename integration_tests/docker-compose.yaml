@@ -86,7 +86,6 @@ services:
     env_file:
       - .env
     environment:
-      - PULL_TOOL=FALSE
       - MANAGER_PORT=8000
 
       - REDIS_HOST=redis
@@ -169,8 +168,6 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - MANAGER_HOST=manager_container
-      - MANAGER_PORT=8000
       - HAYSTACK_TELEMETRY_ENABLED=False
       - ANONYMIZED_TELEMETRY=False
       - EC_TELEMETRY=False

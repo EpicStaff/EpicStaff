@@ -137,7 +137,6 @@ services:
     container_name: manager_container
     environment:
       <<: *common_env
-      PULL_TOOL: ${PULL_TOOL}
       MANAGER_PORT: ${MANAGER_PORT:-8001}
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
@@ -220,8 +219,6 @@ services:
     container_name: crew
     environment:
       <<: *common_env
-      MANAGER_HOST: ${MANAGER_HOST}
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
       CODE_CONTAINER_URL: http://code:${CODE_MANAGER_PORT:-4080}
       HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED:-False}
       ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY:-False}

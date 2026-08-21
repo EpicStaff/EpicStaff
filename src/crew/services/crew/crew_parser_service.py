@@ -33,8 +33,6 @@ from services.crew.tool_factories import PythonCodeToolFactory
 class CrewParserService(metaclass=SingletonMeta):
     def __init__(
         self,
-        manager_host: str,
-        manager_port: int,
         redis_service: RedisService,
         python_code_executor_service: RunPythonCodeService,
         mcp_tool_factory: CrewaiMcpToolFactory,
