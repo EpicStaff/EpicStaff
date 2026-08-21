@@ -56,7 +56,6 @@ import { CdtExportImportService } from '../components/node-panels/classification
 import { NodePanelShellComponent } from '../components/node-panels/node-panel-shell/node-panel-shell.component';
 import { NodesSearchComponent } from '../components/nodes-search/nodes-search.component';
 import { NoteEditDialogComponent } from '../components/note-edit-dialog/note-edit-dialog.component';
-import { ProjectDialogComponent } from '../components/project-dialog/project-dialog.component';
 import { MouseTrackerDirective } from '../core/directives/mouse-tracker.directive';
 import { ShortcutListenerDirective } from '../core/directives/shortcut-listener.directive';
 import { WaypointTooltipDirective } from '../core/directives/waypoint-tooltip.directive';
@@ -81,7 +80,7 @@ import {
 } from '../core/helpers/segment-avoidance.helper';
 import { ConnectionModel } from '../core/models/connection.model';
 import { FlowModel } from '../core/models/flow.model';
-import { GraphNoteModel, NodeModel, ProjectNodeModel, StartNodeModel } from '../core/models/node.model';
+import { GraphNoteModel, NodeModel, StartNodeModel } from '../core/models/node.model';
 import { CreateNodeRequest } from '../core/models/node-creation.types';
 import { CustomPortId } from '../core/models/port.model';
 import { ClipboardService } from '../services/clipboard.service';
@@ -1171,19 +1170,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         });
     }
 
-    public onProjectExpandToggled(project: ProjectNodeModel): void {
-        const dialogRef = this.dialog.open(ProjectDialogComponent, {
-            width: '90vw',
-            height: '90vh',
-            data: {
-                projectId: project.data.id,
-                projectName: project.data.name,
-            },
-        });
-
-        dialogRef.closed.subscribe(() => {});
-    }
-
     public onFlowPointerDown(event: PointerEvent): void {
         this._dragStartClientX = event.clientX;
         this._dragStartClientY = event.clientY;
@@ -1417,7 +1403,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         );
 
         const body: PartialExportRequest = {
-            crew_node_list: [],
             agent_node_list: [],
             task_node_list: [],
             python_node_list: [],
@@ -1443,11 +1428,6 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
                     break;
                 case NodeType.TASK:
                     body.task_node_list.push(id);
-                    break;
-                case NodeType.TOOL:
-                case NodeType.PROJECT:
-                case NodeType.LLM:
-                    body.crew_node_list.push(id);
                     break;
                 case NodeType.PYTHON:
                     body.python_node_list.push(id);

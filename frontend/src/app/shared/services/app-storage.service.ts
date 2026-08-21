@@ -6,7 +6,6 @@ import { LabelsStorageService } from '../../features/flows/services/labels-stora
 import { CollectionsStorageService } from '../../features/knowledge-sources/services/collections-storage.service';
 import { DocumentsStorageService } from '../../features/knowledge-sources/services/documents-storage.service';
 import { NaiveRagDocumentsStorageService } from '../../features/knowledge-sources/services/naive-rag-documents-storage.service';
-import { ProjectsStorageService } from '../../features/projects/services/projects-storage.service';
 import { OrganizationsStorageService } from '../../features/role-base-access/services/admin/organizations-storage.service';
 import { RolesService } from '../../features/role-base-access/services/admin/roles.service';
 import { ActiveOrgService } from '../../services/auth/active-org.service';
@@ -42,7 +41,6 @@ export class AppStorageService {
         inject(CollectionsStorageService),
         inject(DocumentsStorageService),
         inject(NaiveRagDocumentsStorageService),
-        inject(ProjectsStorageService),
         inject(EmbeddingConfigStorageService),
         inject(EmbeddingModelsStorageService),
         inject(LlmConfigStorageService),

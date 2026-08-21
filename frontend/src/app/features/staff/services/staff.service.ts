@@ -42,12 +42,6 @@ export class AgentsService {
             .pipe(map((response) => response.results));
     }
 
-    // GET agents by project (crew) ID
-    getAgentsByProjectId(projectId: number): Observable<GetAgentRequest[]> {
-        const url = `${this.apiUrl}?crew_id=${projectId}`;
-        return this.http.get<ApiGetRequest<GetAgentRequest>>(url).pipe(map((response) => response.results));
-    }
-
     getAgentById(agentId: number): Observable<GetAgentRequest> {
         return this.http.get<GetAgentRequest>(`${this.apiUrl}${agentId}/`);
     }

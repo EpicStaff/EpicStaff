@@ -8,7 +8,6 @@ import {
     FileExtractorNodeModel,
     GraphNoteModel,
     LLMNodeModel,
-    ProjectNodeModel,
     PythonNodeModel,
     ScheduleTriggerNodeModel,
     StartNodeModel,
@@ -26,7 +25,6 @@ export interface NodeDiff<T> {
 
 export interface NodeDiffByType {
     startNodes: NodeDiff<StartNodeModel>;
-    crewNodes: NodeDiff<ProjectNodeModel>;
     pythonNodes: NodeDiff<PythonNodeModel>;
     taskNodes: NodeDiff<TaskNodeModel>;
     agentNodes: NodeDiff<AgentNodeModel>;

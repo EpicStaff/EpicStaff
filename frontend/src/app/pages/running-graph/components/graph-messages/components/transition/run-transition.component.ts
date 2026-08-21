@@ -1,22 +1,22 @@
 import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 
+/** Horizontal divider drawn between two consecutive runs in the same session. */
 @Component({
-    selector: 'app-project-transition',
+    selector: 'app-run-transition',
     standalone: true,
     imports: [CommonModule],
     template: `
-        <div class="project-transition">
+        <div class="run-transition">
             <div class="divider">
                 <div class="line"></div>
-                <!-- <div class="transition-text">Project Transition</div> -->
                 <div class="line"></div>
             </div>
         </div>
     `,
     styles: [
         `
-            .project-transition {
+            .run-transition {
                 padding: 2rem 0;
                 width: 100%;
                 margin-bottom: 0.8rem;
@@ -33,18 +33,7 @@ import { Component } from '@angular/core';
                 height: 1px;
                 background-color: var(--gray-700);
             }
-
-            .transition-text {
-                padding: 0 1rem;
-                color: var(--gray-500);
-                font-size: 0.85rem;
-                font-weight: 500;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-            }
         `,
     ],
 })
-export class ProjectTransitionComponent {
-    // You can add inputs if needed for customization
-}
+export class RunTransitionComponent {}

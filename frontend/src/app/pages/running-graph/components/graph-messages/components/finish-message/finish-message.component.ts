@@ -3,7 +3,6 @@ import { Component, Input, OnInit } from '@angular/core';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
 import { MarkdownModule } from 'ngx-markdown';
 
-import { GetProjectRequest } from '../../../../../../features/projects/models/project.model';
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CopyButtonComponent } from '../../../../../../shared/components/copy-button/copy-button.component';
@@ -40,11 +39,11 @@ import {
                 </div>
                 <h3>
                     <span
-                        class="project-name"
-                        *ngIf="project && project.name"
-                        >{{ project.name }}</span
+                        class="node-name"
+                        *ngIf="nodeName"
+                        >{{ nodeName }}</span
                     >
-                    <span *ngIf="!project || !project.name">Default Project</span>
+                    <span *ngIf="!nodeName">Flow</span>
                     finished
                 </h3>
                 <span
@@ -194,7 +193,7 @@ import {
                     text-overflow: ellipsis;
                     max-width: 100%;
 
-                    .project-name {
+                    .node-name {
                         color: #5672cd;
                         font-weight: 400;
                         margin-right: 5px;
@@ -279,7 +278,8 @@ import {
 })
 export class FinishMessageComponent implements OnInit {
     @Input() message!: GraphMessage;
-    @Input() project: GetProjectRequest | null = null;
+    /** Name of the graph node this finish message came from; null for a whole-flow finish. */
+    @Input() nodeName: string | null = null;
 
     isMessageExpanded = false;
     isOutputExpanded = true;

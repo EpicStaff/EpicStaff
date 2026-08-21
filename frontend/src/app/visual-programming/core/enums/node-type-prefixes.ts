@@ -2,7 +2,6 @@ import { NodeType } from './node-type';
 
 export const NODE_TYPE_PREFIXES: Record<NodeType, string> = {
     [NodeType.PYTHON]: 'Python-Node',
-    [NodeType.PROJECT]: 'Project-Node',
     [NodeType.TASK]: 'Task-Node',
     [NodeType.AGENT]: 'Agent-Node',
     [NodeType.TOOL]: 'Tool-Node',

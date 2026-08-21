@@ -20,8 +20,8 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { MarkdownModule } from 'ngx-markdown';
-import { forkJoin, Observable, of, Subject } from 'rxjs';
-import { exhaustMap, map, takeUntil } from 'rxjs/operators';
+import { Subject } from 'rxjs';
+import { exhaustMap, takeUntil } from 'rxjs/operators';
 
 import { GraphDto } from '../../../../features/flows/models/graph.model';
 import { FlowsApiService } from '../../../../features/flows/services/flows-api.service';
@@ -31,11 +31,6 @@ import {
     GraphSessionStatus,
     SessionUpdates,
 } from '../../../../features/flows/services/flows-sessions.service';
-import { GetProjectRequest } from '../../../../features/projects/models/project.model';
-import { GetAgentRequest } from '../../../../features/staff/models/agent.model';
-import { AgentsService } from '../../../../features/staff/services/staff.service';
-import { GetTaskRequest } from '../../../../features/tasks/models/task.model';
-import { TasksService } from '../../../../features/tasks/services/tasks.service';
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import {
@@ -46,13 +41,9 @@ import {
     StartSubflowMessageData,
     TaskNodeStreamMessageData,
 } from '../../models/graph-session-message.model';
-import { SessionStatusMessageData } from '../../models/update-session-status.model';
-import { AnswerToLLMService } from '../../services/answer-to-llm.service';
 import { RunSessionSSEService } from '../../services/graph-session-sse.service';
 import { RunGraphPageService } from '../../services/run-graph-page.service';
 import { WarningMessagesComponent } from '../warning-messages/warning-messages.component';
-import { AgentFinishMessageComponent } from './components/agent-finish/agent-finish.component';
-import { AgentMessageComponent } from './components/agent-message/agent-message.component';
 import { ClassificationDtMessageComponent } from './components/classification-dt-message/classification-dt-message.component';
 import { ErrorMessageComponent } from './components/error-message/error-message.component';
 import { ExtractedChunksMessageComponent } from './components/extracted-chunks/extracted-chunks-message.component';
@@ -65,10 +56,7 @@ import { PythonMessageComponent } from './components/python-message/python-messa
 import { StartMessageComponent } from './components/start-message/start-message.component';
 import { SubgraphFinishMessageComponent } from './components/subgraph-finish-message/subgraph-finish-message.component';
 import { SubgraphStartMessageComponent } from './components/subgraph-start-message/subgraph-start-message.component';
-import { TaskMessageComponent } from './components/task-message/task-message.component';
-import { ProjectTransitionComponent } from './components/transition/project-transition.component';
-import { WaitForUserInputComponent } from './components/user-input-component/user-input-component.component';
-import { UserMessageComponent } from './components/user-message/user-message.component';
+import { RunTransitionComponent } from './components/transition/run-transition.component';
 import { isMessageType } from './helper_functions/message-helper';
 
 interface MessageContext {
@@ -86,14 +74,10 @@ interface MessageContext {
 // counter, so we keep it out of visibleMessageEntries.
 const RENDERABLE_MESSAGE_TYPES: ReadonlySet<string> = new Set([
     MessageType.START,
-    MessageType.USER,
-    MessageType.AGENT,
-    MessageType.AGENT_FINISH,
     MessageType.PYTHON,
     MessageType.LLM,
     MessageType.EXTRACTED_CHUNKS,
     MessageType.ERROR,
-    MessageType.TASK,
     MessageType.FINISH,
     MessageType.TASK_NODE_STREAM,
     MessageType.AGENT_NODE_STREAM,
@@ -116,8 +100,7 @@ interface MessageViewEntry {
     key: string;
     message: GraphMessage;
     index: number;
-    agent: GetAgentRequest | null;
-    project: GetProjectRequest | null;
+    nodeName: string | null;
     subgraphName: string | null;
     hasNestedMessages: boolean;
     nestedMessagesCount: number;
@@ -158,16 +141,11 @@ const TERMINAL_STATUSES = new Set<GraphSessionStatus>([
         MarkdownModule,
         LoadingDotsComponent,
         StartMessageComponent,
-        AgentMessageComponent,
         FinishMessageComponent,
-        TaskMessageComponent,
         PythonMessageComponent,
         LlmMessageComponent,
-        AgentFinishMessageComponent,
         ErrorMessageComponent,
-        ProjectTransitionComponent,
-        WaitForUserInputComponent,
-        UserMessageComponent,
+        RunTransitionComponent,
         ExtractedChunksMessageComponent,
         FindingsMessageComponent,
         ClassificationDtMessageComponent,
@@ -192,8 +170,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     @Output() messagesChanged = new EventEmitter<GraphMessage[]>();
 
     // Data arrays and objects
-    public agents: GetAgentRequest[] = [];
-    public tasks: GetTaskRequest[] = [];
     public session: GraphSession | null = null;
 
     // Animation control for messages
@@ -201,12 +177,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     // Loading state
     private isLoading = true;
-
-    public showUserInputWithDelay: boolean = false;
-
-    // New property for storing update status data from messages
-    public updateSessionStatusData: SessionStatusMessageData | null = null;
-    public statusWaitForUser: boolean = false;
 
     // Warning messages
     public warningMessages: string[] | null = null;
@@ -218,8 +188,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     public sseEnabled = false;
 
     // Lookup maps for quick reference
-    private agentMap: Map<number, GetAgentRequest> = new Map();
-    private taskMap: Map<number, GetTaskRequest> = new Map();
 
     public messages: GraphMessage[] = [];
     public visibleMessageEntries: MessageViewEntry[] = [];
@@ -275,12 +243,9 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
 
     constructor(
         public sseService: RunSessionSSEService,
-        private agentsService: AgentsService,
-        private tasksService: TasksService,
         private toast: ToastService,
         private router: Router,
         private cdr: ChangeDetectorRef,
-        private answerToLLMService: AnswerToLLMService,
         private runGraphPageService: RunGraphPageService,
         private flowService: FlowsApiService,
         private graphSessionService: GraphSessionService
@@ -290,7 +255,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.mergeMessages(sseMessages);
             this.messagesChanged.emit(this.messages);
             this.rebuildMessageState(this.messages);
-            this.processMessages();
             this.checkIfFinish();
             this.cdr.markForCheck();
 
@@ -312,8 +276,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         effect(() => {
             const status = this.sseService.status();
             this.sessionStatusChanged.emit(status);
-            this.statusWaitForUser = status === GraphSessionStatus.WAITING_FOR_USER;
-            this.showUserInputWithDelay = this.statusWaitForUser;
             this.checkIfFinish();
             // Bugfix: when the run reaches a terminal status, reconcile the full message list
             // from the server so any messages the realtime SSE stream missed are backfilled (once).
@@ -501,10 +463,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             this.sseEnabled = false;
             this.session = null;
             this.animatedIndices = {};
-            this.updateSessionStatusData = null;
-            this.statusWaitForUser = false;
             this.isFinishing = false;
-            this.showUserInputWithDelay = false;
             this.warningMessages = null;
             this.autoScrollEnabled = true;
             this.lastScrollTop = 0;
@@ -589,28 +548,11 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 takeUntil(this.destroy$),
                 exhaustMap((graph) => {
                     this.graphCache.set(graph.id, graph);
-                    const agentsIDs = new Set(graph.crew_node_list.flatMap((node) => node.crew.agents));
-                    const tasksIDs = new Set(graph.crew_node_list.flatMap((node) => node.crew.tasks));
-
-                    return forkJoin({
-                        agents: this.fetchAndMapById(
-                            agentsIDs,
-                            this.agentsService.getAgentById.bind(this.agentsService),
-                            this.agentMap
-                        ),
-                        tasks: this.fetchAndMapById(
-                            tasksIDs,
-                            this.tasksService.getTaskById.bind(this.tasksService),
-                            this.taskMap
-                        ),
-                        graphsLight: this.flowService.getGraphsLight(),
-                    });
+                    return this.flowService.getGraphsLight();
                 })
             )
             .subscribe({
-                next: ({ agents, tasks, graphsLight }) => {
-                    this.agents = agents;
-                    this.tasks = tasks;
+                next: (graphsLight) => {
                     this.graphNameById = new Map(graphsLight.map((graph) => [graph.id, graph.name]));
                     if (this.graphId && this.graphCache.has(this.graphId)) {
                         const rootGraph = this.graphCache.get(this.graphId);
@@ -628,56 +570,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     this.cdr.markForCheck();
                 },
             });
-    }
-
-    private fetchAndMapById<T>(
-        ids: Set<number>,
-        fetchFn: (id: number) => Observable<T>,
-        mapToUpdate: Map<number, T>
-    ): Observable<T[]> {
-        if ([...ids].length === 0) return of([]);
-        return forkJoin(
-            [...ids].map((id) =>
-                fetchFn(id).pipe(
-                    map((result) => {
-                        mapToUpdate.set(id, result);
-                        return result;
-                    })
-                )
-            )
-        );
-    }
-
-    private processMessages(): void {
-        const messages = this.sseService.messages();
-        if (messages.length > 0) {
-            const lastMessage: GraphMessage = messages[messages.length - 1];
-
-            if (
-                lastMessage.message_data &&
-                lastMessage.message_data.message_type === MessageType.UPDATE_SESSION_STATUS
-            ) {
-                // Cast the message_data to SessionStatusMessageData interface
-                this.updateSessionStatusData = lastMessage.message_data as SessionStatusMessageData;
-
-                // Check if status is "wait_for_user" and update statusWaitForUser flag
-                if (this.updateSessionStatusData.status === 'wait_for_user') {
-                    this.statusWaitForUser = true;
-
-                    // For initial load, show input immediately
-                    if (this.isLoading) {
-                        this.showUserInputWithDelay = true;
-                    }
-                } else {
-                    this.statusWaitForUser = false;
-                    this.showUserInputWithDelay = false;
-                }
-            } else {
-                this.updateSessionStatusData = null;
-                this.statusWaitForUser = false;
-                this.showUserInputWithDelay = false;
-            }
-        }
     }
 
     public getSubgraphName(message: GraphMessage): string | null {
@@ -752,7 +644,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             const lastMessage: GraphMessage = messages[messages.length - 1];
             const lastTime = lastMessage.created_at;
             const sameTimeMessages = messages.filter((msg) => msg.created_at === lastTime);
-            const sessionStatus = this.sseService.status();
 
             // Check for graph_end message - marks the session as finished
             if (sameTimeMessages.some((msg) => msg.message_data.message_type === MessageType.GRAPH_END)) {
@@ -769,18 +660,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     this.updateSessionStatus();
                 }, this.DRAIN_DELAY_MS);
                 return;
-            }
-
-            if (
-                sameTimeMessages.some(
-                    (msg) =>
-                        msg.message_data.message_type === MessageType.UPDATE_SESSION_STATUS &&
-                        msg.message_data.status === GraphSessionStatus.WAITING_FOR_USER
-                ) &&
-                sessionStatus === GraphSessionStatus.WAITING_FOR_USER
-            ) {
-                this.sseService.stopStream();
-                this.updateSessionStatus();
             }
         }
     }
@@ -802,29 +681,9 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             });
     }
 
-    public getAgentFromMessage(message: GraphMessage): GetAgentRequest | null {
-        if (!message.message_data) return null;
-
-        if (
-            (message.message_data.message_type === MessageType.AGENT ||
-                message.message_data.message_type === MessageType.AGENT_FINISH) &&
-            'agent_id' in message.message_data
-        ) {
-            const agentId = message.message_data.agent_id;
-            return this.agentMap.get(agentId) || null;
-        }
-
-        return null;
-    }
-
-    public getProjectFromMessage(message: GraphMessage): GetProjectRequest | null {
-        if (!message) return null;
-
-        if (message.name) {
-            return { name: message.name } as GetProjectRequest;
-        }
-
-        return null;
+    /** The graph node a message came from. Rendered as the heading of a finish card. */
+    public getNodeNameFromMessage(message: GraphMessage): string | null {
+        return message?.name ?? null;
     }
 
     // Check if we should show transition between sessions
@@ -957,14 +816,10 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         const type = this.messages[ctx.index]?.message_data?.message_type;
         switch (type) {
             case MessageType.START:
-            case MessageType.USER:
-            case MessageType.AGENT:
-            case MessageType.AGENT_FINISH:
             case MessageType.PYTHON:
             case MessageType.LLM:
             case MessageType.EXTRACTED_CHUNKS:
             case MessageType.ERROR:
-            case MessageType.TASK:
             case MessageType.CONDITION_GROUP:
             case MessageType.CLASSIFICATION_PROMPT:
             case MessageType.CONDITION_GROUP_MANIPULATION:
@@ -1085,39 +940,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
         return message?.name || 'Subgraph';
     }
 
-    onUserMessageSubmitted(message: string) {
-        // Make sure we have valid sessionId and updateSessionStatusData
-        if (!this.sessionId) {
-            console.warn('No sessionId available; cannot send answer.');
-            return;
-        }
-        if (!this.updateSessionStatusData) {
-            console.warn('No updateSessionStatusData available; cannot send answer.');
-            return;
-        }
-
-        const requestData = {
-            session_id: +this.sessionId,
-            crew_id: this.updateSessionStatusData.crew_id,
-            execution_order: this.updateSessionStatusData.status_data.execution_order,
-            name: this.updateSessionStatusData.status_data.name,
-            answer: message,
-        };
-
-        this.answerToLLMService.sendAnswerToLLM(requestData).subscribe({
-            next: (response) => {
-                console.log('Answer to LLM sent successfully:', response);
-                this.sseService.resumeStream();
-                this.statusWaitForUser = false;
-                this.autoScrollEnabled = true;
-                this.cdr.markForCheck();
-            },
-            error: (error) => {
-                console.error('Error sending answer to LLM:', error);
-            },
-        });
-    }
-
     private mergeMessages(incoming: GraphMessage[]): void {
         // Dedup must be per raw message (getDedupKey), not per identity/context key
         // (getMessageKey) — many stream events (task_start/tool_call/tool_result/task_finish)
@@ -1235,7 +1057,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 next: (response) => {
                     this.mergeMessages(response.results);
                     this.rebuildMessageState(this.messages);
-                    this.processMessages();
                     this.messagesChanged.emit(this.messages);
                     this.cdr.markForCheck();
                     if (response.next !== null) {
@@ -1360,8 +1181,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
             key: this.getMessageKey(message),
             message,
             index,
-            agent: this.getAgentFromMessage(message),
-            project: this.getProjectFromMessage(message),
+            nodeName: this.getNodeNameFromMessage(message),
             subgraphName: this.getSubgraphName(message),
             hasNestedMessages,
             nestedMessagesCount,
