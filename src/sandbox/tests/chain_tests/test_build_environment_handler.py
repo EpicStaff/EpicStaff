@@ -93,43 +93,25 @@ async def test_home_created_on_disk(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_use_storage_copies_all_four_vars(tmp_path, monkeypatch):
+async def test_use_storage_injects_scoped_creds_not_root(tmp_path, monkeypatch):
     monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
-    monkeypatch.setenv("STORAGE_ACCESS_KEY", "access")
-    monkeypatch.setenv("STORAGE_SECRET_KEY", "secret")
-    monkeypatch.setenv("STORAGE_BUCKET_NAME", "mybucket")
+    monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
+    monkeypatch.setenv("STORAGE_ACCESS_KEY", "ROOT-must-not-leak")
+    monkeypatch.setenv("STORAGE_SECRET_KEY", "ROOT-must-not-leak")
 
     handler = BuildEnvironmentHandler()
     context = _make_context(tmp_path)
     context["use_storage"] = True
+    context["temp_storage_access_key"] = "scoped-ak"
+    context["temp_storage_secret_key"] = "scoped-sk"
 
     await handler.handle(context)
 
     env = context["env"]
     assert env["STORAGE_ENDPOINT"] == "http://minio:9000"
-    assert env["STORAGE_ACCESS_KEY"] == "access"
-    assert env["STORAGE_SECRET_KEY"] == "secret"
-    assert env["STORAGE_BUCKET_NAME"] == "mybucket"
-
-
-@pytest.mark.asyncio
-async def test_use_storage_omits_absent_vars(tmp_path, monkeypatch):
-    monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
-    monkeypatch.setenv("STORAGE_ACCESS_KEY", "access")
-    monkeypatch.setenv("STORAGE_SECRET_KEY", "secret")
-    monkeypatch.delenv("STORAGE_BUCKET_NAME", raising=False)
-
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    context["use_storage"] = True
-
-    await handler.handle(context)
-
-    env = context["env"]
-    assert "STORAGE_ENDPOINT" in env
-    assert "STORAGE_ACCESS_KEY" in env
-    assert "STORAGE_SECRET_KEY" in env
-    assert "STORAGE_BUCKET_NAME" not in env
+    assert env["STORAGE_BUCKET_NAME"] == "epicstaff"
+    assert env["STORAGE_ACCESS_KEY"] == "scoped-ak"
+    assert env["STORAGE_SECRET_KEY"] == "scoped-sk"
 
 
 @pytest.mark.asyncio
