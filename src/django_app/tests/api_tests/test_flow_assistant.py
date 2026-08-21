@@ -580,6 +580,87 @@ def test_title_not_overwritten_on_second_message(
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
+async def test_stream_reply_resolves_real_secret_for_real_litellm_client(
+    gpt4_model, user_a, org_a, default_role, db
+):
+    """Regression test for a SynchronousOnlyOperation bug in LiteLLMClient.
+
+    Every other streaming test in this module patches
+    `tables.services.flow_assistant.service.get_llm_client` with a MagicMock,
+    so the real `LiteLLMClient._build_kwargs` never runs. That hid a bug where
+    `_build_kwargs` resolved the LLMConfig's `api_key_secret` with a
+    synchronous `Secret.objects.filter(...).first()` call from inside this
+    async generator (`stream_reply`) — raising `SynchronousOnlyOperation`
+    under ASGI for the first turn of any conversation whose LLMConfig has a
+    real secret attached.
+
+    This test drives the real `get_llm_client` / `LiteLLMClient` path with a
+    genuine `Secret` row and asserts the resolved plaintext reaches
+    `litellm.acompletion`'s kwargs. Only the network call itself is stubbed.
+    Running under `@pytest.mark.asyncio` is required: a synchronous test has
+    no running event loop, so the async-unsafe ORM guard never trips and a
+    reintroduced bug here would pass silently.
+    """
+    from asgiref.sync import sync_to_async
+
+    from tables.services.secrets import secret_service
+
+    org_user = await sync_to_async(OrganizationUser.objects.create)(
+        user=user_a, org=org_a, role=default_role
+    )
+    # Explicit org=org_a (rather than the module's org-less `graph` fixture):
+    # `tables_graph.org_id` is NOT NULL at the DB level (migration
+    # 0186_core_org_not_null), and this test's own LLMConfig/Secret need a
+    # concrete org to be scoped to regardless.
+    graph_with_org = await sync_to_async(Graph.objects.create)(
+        name="Test Flow", description="A test flow.", org=org_a
+    )
+    secret = await sync_to_async(secret_service.create)(
+        text="sk-flow-assistant-real-secret", org=org_a, name="fa-litellm-key"
+    )
+    llm_config_with_secret = await sync_to_async(LLMConfig.objects.create)(
+        custom_name="test-gpt4o-with-secret",
+        model=gpt4_model,
+        org=org_a,
+        api_key_secret=secret,
+        temperature=0.5,
+    )
+    assistant = await sync_to_async(FlowAssistant.objects.create)(
+        graph=graph_with_org, llm_config=llm_config_with_secret
+    )
+    user_message = "what does this flow do?"
+    conversation = await sync_to_async(_make_conversation_with_messages)(
+        assistant,
+        org_user,
+        [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": user_message},
+        ],
+    )
+
+    captured_kwargs: dict = {}
+
+    async def fake_acompletion(**kwargs):
+        captured_kwargs.update(kwargs)
+
+        async def _empty_stream():
+            return
+            yield  # pragma: no cover - makes this an async generator
+
+        return _empty_stream()
+
+    service = FlowAssistantService()
+    events = []
+    with patch("litellm.acompletion", side_effect=fake_acompletion):
+        async for event in service.stream_reply(conversation, user_message):
+            events.append(event)
+
+    assert captured_kwargs.get("api_key") == "sk-flow-assistant-real-secret"
+    assert events[-1].type == "done"
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
 async def test_stream_yields_tokens_and_done(
     graph, llm_config, user_a, org_a, default_role, db
 ):

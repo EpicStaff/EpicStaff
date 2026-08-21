@@ -22,10 +22,6 @@ class Settings(BaseSettings):
     KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: str = "knowledge:search:response"
     REALTIME_AGENTS_SCHEMA_CHANNEL: str = "realtime_agents:schema"
 
-    # --- Manager Service ---
-    MANAGER_HOST: str
-    MANAGER_PORT: int
-
     # --- Django Auth ---
     DJANGO_AUTH_URL: str
     DJANGO_API_KEY: str

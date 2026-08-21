@@ -43,7 +43,6 @@ async def main():
         result_stream=agent_result_stream,
         default_timeout_s=agent_result_timeout_s,
     )
-
     session_manager_service = GraphSessionManagerService(
         redis_service=redis_service,
         session_schema_channel=session_schema_channel,
