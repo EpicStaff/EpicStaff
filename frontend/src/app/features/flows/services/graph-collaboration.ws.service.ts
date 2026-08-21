@@ -605,6 +605,11 @@ export class GraphCollaborationWsService {
     }
 
     private openSocket(ticket: string): void {
+        if (this.currentGraphId === null) return;
+        if (this.socket) {
+            this.socket.close();
+            this.socket = null;
+        }
         const wsBase = this.configService.apiUrl.replace(/\/api\/$/, '').replace(/^http/, 'ws');
         const url = `${wsBase}/ws/graphs/${this.currentGraphId}/edit/?ticket=${encodeURIComponent(ticket)}`;
         this.socket = new WebSocket(url);
@@ -972,6 +977,10 @@ export class GraphCollaborationWsService {
     }
 
     private handleConnectionLoss(): void {
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
         this.connectionStatus.set('reconnecting');
         this.socket = null;
 

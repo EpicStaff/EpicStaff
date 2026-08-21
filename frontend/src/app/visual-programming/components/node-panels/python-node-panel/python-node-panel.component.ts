@@ -672,11 +672,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             const testKeys = new Set(
                 testArray.controls.map((c) => (c.value.key as string)?.trim()).filter((k): k is string => !!k)
             );
-            for (const key of Object.keys(inputMapValue)) {
-                if (!testKeys.has(key)) {
-                    delete inputMapValue[key];
-                }
-            }
             for (const key of testKeys) {
                 if (!(key in inputMapValue)) {
                     inputMapValue[key] = 'variables.';

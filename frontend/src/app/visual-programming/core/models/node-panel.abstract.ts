@@ -60,18 +60,23 @@ export abstract class BaseSidePanel<T extends NodeModel> {
                 return;
             }
 
-            if (!this.shouldReinitializeForm(node)) {
-                return;
-            }
+            untracked(() => {
+                if (!this.shouldReinitializeForm(node)) {
+                    return;
+                }
 
-            this.reinitializeForm(node);
+                this.reinitializeForm(node);
+            });
         });
 
         effect(() => {
             const node = this.node();
-            if (!node || !this.form) return;
-            if (this.shouldReinitializeForm(node)) return;
-            this.mergeRemoteIntoForm();
+            if (!node) return;
+            untracked(() => {
+                if (!this.form) return;
+                if (this.shouldReinitializeForm(node)) return;
+                this.mergeRemoteIntoForm();
+            });
         });
 
         this.wsService.nodeUpdated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
@@ -96,6 +101,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         const remoteValue = source.getRawValue() as Record<string, unknown>;
         this.applyRemoteDiff(this.form, source, this.baseline ?? {});
         this.onRemoteFormMerged();
+        this.baseSidePanelService.notifyRemoteMerge();
         this.baseline = remoteValue;
         if (!wasDirty) {
             untracked(() => {
@@ -124,7 +130,7 @@ export abstract class BaseSidePanel<T extends NodeModel> {
 
             if (control instanceof FormArray && sourceControl instanceof FormArray) {
                 if (JSON.stringify(remoteVal) === JSON.stringify(baseVal)) continue;
-                this.syncFormArray(control, sourceControl);
+                this.syncFormArray(control, sourceControl, baseVal);
                 continue;
             }
 
@@ -137,22 +143,19 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         }
     }
 
-    // Syncs model-backed rows (overlapping rows keep their control to preserve focus/subscriptions;
-    // grown rows steal the source control; shrunk rows are dropped). Local in-progress rows — a
-    // blank key not yet representable in the persisted model — are left untouched on both sides so
-    // an unfinished input-list row isn't wiped by the next merge.
-    private syncFormArray(target: FormArray, source: FormArray): void {
-        const isBlankRow = (c: AbstractControl): boolean => {
-            const v = c.value as { key?: unknown } | null;
-            return !!v && typeof v === 'object' && 'key' in v && String(v.key ?? '').trim() === '';
+    private syncFormArray(target: FormArray, source: FormArray, baseValue: unknown): void {
+        const rowKey = (value: unknown): string => {
+            if (!value || typeof value !== 'object') return '';
+            const key = (value as { key?: unknown }).key;
+            return key == null ? '' : String(key).trim();
         };
-        const getKey = (c: AbstractControl): string => {
-            const v = c.value as { key?: unknown } | null;
-            return v && typeof v === 'object' ? String(v.key ?? '').trim() : '';
-        };
+        const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-        if (target.controls.length === 1 && isBlankRow(target.at(0)) && target.at(0).pristine) {
-            const realSourceRows = source.controls.filter((c) => !isBlankRow(c));
+        const baseRows: unknown[] = Array.isArray(baseValue) ? (baseValue as unknown[]) : [];
+        const targetRaw = target.controls.map((c) => c.getRawValue() as unknown);
+
+        if (target.length === 1 && rowKey(targetRaw[0]) === '' && target.at(0).pristine) {
+            const realSourceRows = source.controls.filter((c) => rowKey(c.getRawValue()) !== '');
             if (realSourceRows.length > 0) {
                 target.at(0).setValue(realSourceRows[0].getRawValue(), { emitEvent: false });
                 for (let i = 1; i < realSourceRows.length; i++) {
@@ -162,38 +165,47 @@ export abstract class BaseSidePanel<T extends NodeModel> {
             }
         }
 
-        const isInProgressRow = (c: AbstractControl): boolean => c.dirty || isBlankRow(c);
-        const dirtyTargetKeys = new Set(
-            target.controls
-                .filter((c) => c.dirty)
-                .map(getKey)
-                .filter((k) => k !== '')
-        );
-
-        const sourceControls: AbstractControl[] = source.controls.filter(
-            (c) => !isInProgressRow(c) && !dirtyTargetKeys.has(getKey(c))
-        );
-        const modelBacked: number[] = [];
-        target.controls.forEach((c, i) => {
-            if (!isInProgressRow(c)) modelBacked.push(i);
+        const baseByKey = new Map<string, unknown>();
+        for (const row of baseRows) {
+            const key = rowKey(row);
+            if (key !== '') baseByKey.set(key, row);
+        }
+        const remoteByKey = new Map<string, AbstractControl>();
+        source.controls.forEach((c) => {
+            const key = rowKey(c.getRawValue());
+            if (key !== '' && !remoteByKey.has(key)) remoteByKey.set(key, c);
         });
 
-        while (modelBacked.length > sourceControls.length) {
-            const idx = modelBacked.pop() as number;
-            target.removeAt(idx, { emitEvent: false });
-        }
+        for (let i = target.length - 1; i >= 0; i--) {
+            const localRaw = targetRaw[i];
+            const key = rowKey(localRaw);
+            if (key === '') continue;
 
-        for (let i = 0; i < sourceControls.length; i++) {
-            if (i < modelBacked.length) {
-                try {
-                    target.at(modelBacked[i]).setValue(sourceControls[i].getRawValue(), { emitEvent: false });
-                } catch {
-                    /* structural mismatch of a single row — keep local */
-                }
-            } else {
-                target.push(sourceControls[i], { emitEvent: false });
+            const localUntouched = baseByKey.has(key) && same(localRaw, baseByKey.get(key));
+            const remoteCtrl = remoteByKey.get(key);
+
+            if (!remoteCtrl) {
+                if (localUntouched) target.removeAt(i, { emitEvent: false });
+                continue;
+            }
+
+            const remoteRaw = remoteCtrl.getRawValue();
+            if (same(remoteRaw, localRaw)) continue;
+            if (!localUntouched) continue;
+            try {
+                target.at(i).setValue(remoteRaw, { emitEvent: false });
+            } catch {
+                /* structural mismatch of a single row — keep local */
             }
         }
+
+        const localKeys = new Set(target.controls.map((c) => rowKey(c.getRawValue())).filter((k) => k !== ''));
+        source.controls.forEach((c) => {
+            const key = rowKey(c.getRawValue());
+            if (key === '' || localKeys.has(key) || baseByKey.has(key)) return;
+            target.push(c, { emitEvent: false });
+            localKeys.add(key);
+        });
     }
 
     private reinitializeForm(node: T): void {

@@ -43,6 +43,13 @@ export class SidePanelService {
         return this.flowService.nodes().find((node) => node.id === selectedId) || null;
     });
 
+    private readonly remoteMergeTickSignal = signal<number>(0);
+    public readonly remoteMergeTick: Signal<number> = this.remoteMergeTickSignal.asReadonly();
+
+    public notifyRemoteMerge(): void {
+        this.remoteMergeTickSignal.update((v) => v + 1);
+    }
+
     public readonly autosaveTrigger: Signal<number> = this.autosaveTriggerSignal.asReadonly();
     public readonly fullSaveRequest: Signal<{ seq: number; before: FlowModel | null }> =
         this.fullSaveRequestSignal.asReadonly();

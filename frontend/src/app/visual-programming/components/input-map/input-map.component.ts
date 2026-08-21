@@ -2,9 +2,11 @@ import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
 import {
+    ChangeDetectorRef,
     Component,
     computed,
     DestroyRef,
+    effect,
     inject,
     Input,
     OnChanges,
@@ -13,6 +15,7 @@ import {
     Output,
     signal,
     SimpleChanges,
+    untracked,
     ViewContainerRef,
 } from '@angular/core';
 import { EventEmitter } from '@angular/core';
@@ -98,7 +101,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                         placeholder="Function Argument Name"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
-                                        (keydown.enter)="onEnterKey($event, i)"
+                                        (keydown.enter)="onEnterKey($event)"
                                     />
                                 </div>
                                 <div class="equals-sign">=</div>
@@ -109,7 +112,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                         placeholder="Domain Variable Name"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
-                                        (keydown.enter)="onEnterKey($event, i)"
+                                        (keydown.enter)="onEnterKey($event)"
                                     />
                                 </div>
                                 <button
@@ -461,6 +464,8 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     @Output() testModeChange = new EventEmitter<boolean>();
     @Output() runTest = new EventEmitter<Record<string, string>>();
 
+    private readonly cdr = inject(ChangeDetectorRef);
+
     fillLoading = signal(false);
     fillNoDataWarning = signal(false);
     hasSuccessfulSession = signal(false);
@@ -496,6 +501,13 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         private fb: FormBuilder,
         private sidePanelService: SidePanelService
     ) {
+        effect(() => {
+            this.sidePanelService.remoteMergeTick();
+            untracked(() => {
+                this.reconcileAfterRemoteMerge();
+                this.cdr.markForCheck();
+            });
+        });
         toObservable(this.runSessionSSEService.status)
             .pipe(
                 filter((status) => status === GraphSessionStatus.ENDED),
@@ -564,21 +576,11 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         }
     }
 
-    onEnterKey(event: Event, currentIndex: number) {
+    onEnterKey(event: Event) {
         const keyboardEvent = event as KeyboardEvent;
         keyboardEvent.preventDefault();
 
         this.addPair();
-
-        setTimeout(() => {
-            const newIndex = currentIndex + 1;
-            const newPairElement = document.querySelector(
-                `[formGroupName="${newIndex}"] input[formControlName="key"]`
-            ) as HTMLInputElement;
-            if (newPairElement) {
-                newPairElement.focus();
-            }
-        }, 0);
     }
 
     onTestModeToggle(value: boolean): void {
@@ -693,11 +695,23 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
 
     removeTestVariable(index: number): void {
         const removed = this.testPairs.at(index);
+        const removedKey = ((removed.value.key as string) ?? '').trim();
         this.testKeySubs.get(removed)?.unsubscribe();
         this.testKeySubs.delete(removed);
         this.lastKnownTestKeys.delete(removed);
         this.testPairs.removeAt(index);
         this.testPairs.markAsDirty();
+        if (removedKey) {
+            const inputIdx = this.findInputPairIndexByKey(removedKey);
+            if (inputIdx !== -1) {
+                const inputCtrl = this.pairs.at(inputIdx);
+                this.keySubs.get(inputCtrl)?.unsubscribe();
+                this.keySubs.delete(inputCtrl);
+                this.lastKnownKeys.delete(inputCtrl);
+                this.pairs.removeAt(inputIdx);
+                this.pairs.markAsDirty();
+            }
+        }
     }
 
     private syncTestKeysToNormalMode(): boolean {
@@ -771,6 +785,30 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         return changed;
+    }
+
+    private reconcileAfterRemoteMerge(): void {
+        if (!this.pairs || !this.testPairs) return;
+
+        const inputKeys = this.pairs.controls
+            .map((c) => ((c.value.key as string) ?? '').trim())
+            .filter((k) => k !== '');
+
+        for (let i = this.testPairs.length - 1; i >= 0; i--) {
+            const key = ((this.testPairs.at(i).value.key as string) ?? '').trim();
+            if (key !== '' && !inputKeys.includes(key)) {
+                this.testPairs.removeAt(i, { emitEvent: false });
+            }
+        }
+
+        for (const key of inputKeys) {
+            if (this.findTestPairIndexByKey(key) === -1) {
+                this.testPairs.push(this.fb.group({ key: [key], value: [''] }), { emitEvent: false });
+            }
+        }
+
+        this.attachKeyMirroringToAllPairs();
+        this.attachKeyMirroringToAllTestPairs();
     }
 
     private attachKeyMirroringToAllPairs(): void {
