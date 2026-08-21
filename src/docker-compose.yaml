@@ -350,7 +350,7 @@ services:
         condition: service_healthy
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     container_name: minio
     command: server /data --console-address ":${MINIO_CONSOLE_PORT:-9001}"
     environment:
@@ -369,7 +369,7 @@ services:
     restart: unless-stopped
 
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     container_name: minio-init
     networks:
       - backend-network
@@ -399,7 +399,7 @@ services:
       - frontend-network
 
   webhook:
-    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:-latest}
+    image: ghcr.io/epicstaff/webhook:${IMAGE_TAG:?IMAGE_TAG is required — set it to a pinned release tag, e.g. IMAGE_TAG=v1.1.2.}
     container_name: webhook
     build:
       context: .
@@ -459,7 +459,7 @@ services:
   #DEV container for test SMTP (remove later) 
   mailpit:
     container_name: mailpit
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.30.7@sha256:d5ecbb067db3705fa953d79e1b7f81ef84038df67aba6c52825d8c02a1ea748a
     ports:
       - "1025:1025"   # SMTP
       - "8025:8025"   # web UI: http://localhost:8025/
