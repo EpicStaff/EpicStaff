@@ -1,7 +1,7 @@
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Thu, 20 Aug 2026 15:32:46 GMT -->
-<!-- commit: 174e1af8a08e8ab379b5e66f3bc3c1877af1836c -->
-<!-- package-lock.json sha256: 93387fc992c98007 -->
+<!-- generated: Fri, 21 Aug 2026 07:16:11 GMT -->
+<!-- commit: 4f392b77f6750e9992d6ac8f7095f630e83a09c8 -->
+<!-- package-lock.json sha256: 152e5cb502c1c9ed -->
 
 # Third-Party Notices
 
@@ -17,7 +17,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 | License | Packages |
 |---|---|
-| MIT | 49 |
+| MIT | 47 |
 | OFL-1.1 | 2 |
 | Apache-2.0 | 2 |
 | ISC | 2 |
@@ -26,7 +26,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **60** |
+| **Total** | **58** |
 
 ---
 
@@ -50,7 +50,6 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 | `@foblex/utils` | 1.1.1 | MIT |
 | `@fontsource/inter` | 5.2.8 | OFL-1.1 |
 | `@fontsource/roboto` | 5.2.10 | OFL-1.1 |
-| `@openai/realtime-api-beta` | 0.0.0 | MIT |
 | `@standard-schema/spec` | 1.1.0 | MIT |
 | `@types/trusted-types` | 2.0.7 | MIT |
 | `@xmldom/xmldom` | 0.9.11 | MIT |
@@ -91,7 +90,6 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 | `unzipper-esm` | 0.13.3 | MIT |
 | `util-deprecate` | 1.0.2 | MIT |
 | `wavtools` | 0.1.5 | MIT |
-| `ws` | 8.21.3 | MIT |
 | `zod` | 4.4.3 | MIT |
 | `zone.js` | 0.16.2 | MIT |
 
@@ -1191,39 +1189,6 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
-```
-
-</details>
-
-### @openai/realtime-api-beta@0.0.0
-
-- **License:** MIT
-- **Publisher:** Keith Horwood <khorwood@openai.com>
-
-<details><summary>License text</summary>
-
-```
-MIT License
-
-Copyright (c) 2024 OpenAI
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 ```
 
 </details>
@@ -3732,39 +3697,6 @@ SOFTWARE.
 
 </details>
 
-### ws@8.21.3
-
-- **License:** MIT
-- **Publisher:** Einar Otto Stangvik <einaros@gmail.com>
-- **Repository:** https://github.com/websockets/ws
-
-<details><summary>License text</summary>
-
-```
-Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com>
-Copyright (c) 2013 Arnout Kazemier and contributors
-Copyright (c) 2016 Luigi Pinca and contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
-</details>
-
 ### zod@4.4.3
 
 - **License:** MIT
@@ -3896,5 +3828,4 @@ The generator script lives at `frontend/scripts/generate-third-party-notices.mjs
 
 ### Manual overrides applied
 
-- `@openai/realtime-api-beta` is installed directly from a GitHub tarball with `"private": true` in its `package.json`, which causes `license-checker` to report it as `UNLICENSED`. Its repository declares `"license": "MIT"` and ships a standard MIT LICENSE file (`Copyright (c) 2024 OpenAI`). The generator records it as MIT and includes the verbatim license text below.
 - The EpicStaff frontend project itself (`epicstaff-frontend`) is filtered out of the list — this notices file only covers third-party code.
