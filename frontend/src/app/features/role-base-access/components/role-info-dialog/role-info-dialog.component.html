@@ -2,12 +2,23 @@
     <!-- HEADER -->
     <div class="header">
         <span class="title">Role Information</span>
-        <app-svg-icon
-            (click)="onClose()"
-            class="close-btn"
-            icon="x"
-            size="20px"
-        />
+        <div class="actions">
+            @if (canDuplicate()) {
+                <app-button
+                    leftIcon="copy"
+                    type="outline-primary"
+                    (click)="onDuplicate()"
+                >
+                    Duplicate Role
+                </app-button>
+            }
+            <app-svg-icon
+                (click)="onClose()"
+                class="close-btn"
+                icon="x"
+                size="20px"
+            />
+        </div>
     </div>
 
     <!-- ROLE IDENTITY -->

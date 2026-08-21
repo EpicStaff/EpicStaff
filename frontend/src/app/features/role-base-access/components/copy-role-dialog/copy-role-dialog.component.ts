@@ -53,7 +53,7 @@ export class CopyRoleDialogComponent implements OnInit {
     readonly form = new FormGroup({
         name: new FormControl(this.source.name, {
             nonNullable: true,
-            validators: [Validators.required, Validators.minLength(3), Validators.maxLength(30)],
+            validators: [Validators.required, Validators.minLength(3), Validators.maxLength(50)],
         }),
     });
 

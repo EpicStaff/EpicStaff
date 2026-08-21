@@ -1,4 +1,4 @@
-import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { Dialog, DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -20,14 +20,26 @@ import { OrganizationsStorageService } from '../../services/admin/organizations-
 import { RolesService } from '../../services/admin/roles.service';
 import { PermissionsTableComponent } from '../permissions-table/permissions-table.component';
 
+/** Snapshot passed to the dialog when opening it in duplicate-mode. */
+export interface DuplicateRoleSource {
+    name: string;
+    description: string | null;
+    permissions: string[];
+    orgId: number | null;
+}
+
 export interface CreateRoleDialogData {
-    /** Present in edit-mode; absent in create-mode. */
+    /** Present in edit-mode; absent in create/duplicate-mode. */
     role?: GetRoleResponse;
     /** Pre-selected target org when opening in create-mode from a row-level action. */
     preselectedOrgId?: number;
+    /** Present in duplicate-mode; seeds name/description/permissions/org. */
+    duplicateSource?: DuplicateRoleSource;
 }
 
 export type CreateRoleDialogResult = { action: 'created' | 'updated'; role: GetRoleResponse } | undefined;
+
+type DialogMode = 'create' | 'edit' | 'duplicate';
 
 @Component({
     selector: 'app-create-role-dialog',
@@ -50,26 +62,49 @@ export class CreateRoleDialogComponent implements OnInit {
     private rolesService = inject(RolesService);
     private orgStorage = inject(OrganizationsStorageService);
     private toast = inject(ToastService);
+    private dialog = inject(Dialog);
     private destroyRef = inject(DestroyRef);
 
-    readonly isEditMode = !!this.dialogData?.role;
+    readonly mode: DialogMode = this.dialogData?.role
+        ? 'edit'
+        : this.dialogData?.duplicateSource
+          ? 'duplicate'
+          : 'create';
 
-    /** In edit-mode this is fixed to the role's org; in create-mode it's user-selectable. */
+    readonly isEditMode = this.mode === 'edit';
+    readonly isDuplicateMode = this.mode === 'duplicate';
+
+    /** In edit-mode fixed to the role's org; otherwise user-selectable (seeded from source in duplicate-mode). */
     readonly targetOrgId = signal<number | null>(
-        this.dialogData?.role?.org_id ?? this.dialogData?.preselectedOrgId ?? null
+        this.dialogData?.role?.org_id ??
+            this.dialogData?.duplicateSource?.orgId ??
+            this.dialogData?.preselectedOrgId ??
+            null
     );
 
     readonly form = new FormGroup({
-        name: new FormControl(this.dialogData?.role?.name ?? '', {
+        name: new FormControl(this.initialName(), {
             nonNullable: true,
             validators: [Validators.required, Validators.minLength(3), Validators.maxLength(50)],
         }),
-        description: new FormControl<string | null>(this.dialogData?.role?.description ?? ''),
+        description: new FormControl<string | null>(
+            this.dialogData?.role?.description ?? this.dialogData?.duplicateSource?.description ?? ''
+        ),
     });
 
-    readonly selectedPermissions = signal<Set<string>>(
-        this.dialogData?.role ? rolePermissionsToSet(this.dialogData.role.permissions) : new Set()
-    );
+    readonly selectedPermissions = signal<Set<string>>(this.initialSelectedPermissions());
+
+    private initialName(): string {
+        if (this.dialogData?.role) return this.dialogData.role.name;
+        if (this.dialogData?.duplicateSource) return `${this.dialogData.duplicateSource.name} (Copy)`;
+        return '';
+    }
+
+    private initialSelectedPermissions(): Set<string> {
+        if (this.dialogData?.role) return rolePermissionsToSet(this.dialogData.role.permissions);
+        if (this.dialogData?.duplicateSource) return new Set(this.dialogData.duplicateSource.permissions);
+        return new Set();
+    }
 
     readonly catalog = computed<CatalogResponse | null>(() => this.permissionsService.catalog());
 
@@ -78,11 +113,13 @@ export class CreateRoleDialogComponent implements OnInit {
 
     readonly isSubmitting = signal(false);
 
-    /** Ceiling set: keys the actor CANNOT grant in the currently-selected target org. */
+    /** Ceiling set: keys the actor CANNOT grant in the currently-selected target org.
+     *  In duplicate-mode the ceiling is removed — actor can preview & submit any subset;
+     *  the backend enforces escalation and we surface its error via the toast. */
     readonly disabledPermissions = computed<Set<string>>(() => {
         const catalog = this.catalog();
         const orgId = this.targetOrgId();
-        if (!catalog || orgId === null || this.permissionsService.isSuperadmin) {
+        if (!catalog || orgId === null || this.permissionsService.isSuperadmin || this.isDuplicateMode) {
             return new Set<string>();
         }
         const disabled = new Set<string>();
@@ -101,8 +138,23 @@ export class CreateRoleDialogComponent implements OnInit {
             const orgName = this.dialogData?.role?.org?.name;
             return orgName ? `Edit role in ${orgName}` : 'Edit role';
         }
+        if (this.isDuplicateMode) return 'Duplicate role';
         return 'Create role';
     });
+
+    readonly primaryButtonLabel = computed(() => {
+        if (this.isEditMode) return 'Save';
+        if (this.isDuplicateMode) return 'Duplicate';
+        return 'Create';
+    });
+
+    /** Whether a Duplicate button should be shown in the header (edit-mode only, and only if the actor
+     *  can create roles somewhere). */
+    canDuplicate(): boolean {
+        if (!this.isEditMode) return false;
+        if (this.permissionsService.isSuperadmin) return true;
+        return this.permissionsService.orgsWith(ResourceCode.Roles, ActionCode.Create).length > 0;
+    }
 
     ngOnInit(): void {
         this.permissionsService.loadCatalog().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
@@ -118,24 +170,34 @@ export class CreateRoleDialogComponent implements OnInit {
                 .getOrganizations()
                 .pipe(takeUntilDestroyed(this.destroyRef))
                 .subscribe((orgs) => {
-                    this.orgOptions.set(orgs.filter((o) => o.is_active).map((o) => ({ name: o.name, value: o.id })));
-                    if (this.targetOrgId() === null && this.orgOptions().length === 1) {
-                        this.targetOrgId.set(this.orgOptions()[0].value);
-                    }
+                    const opts = orgs.filter((o) => o.is_active).map((o) => ({ name: o.name, value: o.id }));
+                    this.orgOptions.set(opts);
+                    this.reconcileTargetOrg(opts);
                 });
             return;
         }
 
         const creatable = this.permissionsService.orgsWith(ResourceCode.Roles, ActionCode.Create);
-        this.orgOptions.set(creatable.map((o) => ({ name: o.name, value: o.id })));
-        // Auto-selects the single available org when there's only one candidate and nothing was preselected.
-        if (this.targetOrgId() === null && creatable.length === 1) {
-            this.targetOrgId.set(creatable[0].id);
+        const opts: SelectItem<number>[] = creatable.map((o) => ({ name: o.name, value: o.id }));
+        this.orgOptions.set(opts);
+        this.reconcileTargetOrg(opts);
+    }
+
+    /** Drops a preselected org that isn't in the creatable set (duplicate-mode source org may be forbidden);
+     *  auto-picks the single option when nothing is selected. */
+    private reconcileTargetOrg(opts: SelectItem<number>[]): void {
+        const current = this.targetOrgId();
+        if (current !== null && !opts.some((o) => o.value === current)) {
+            this.targetOrgId.set(null);
+        }
+        if (this.targetOrgId() === null && opts.length === 1) {
+            this.targetOrgId.set(opts[0].value);
         }
     }
 
     onTargetOrgChanged(value: unknown): void {
         this.targetOrgId.set(typeof value === 'number' ? value : null);
+        if (this.isDuplicateMode) return;
         // If the newly-selected org lowers the ceiling, prune ungrantable keys from selection.
         this.selectedPermissions.update((set) => {
             const disabled = this.disabledPermissions();
@@ -240,11 +302,34 @@ export class CreateRoleDialogComponent implements OnInit {
             )
             .subscribe({
                 next: (role) => {
-                    this.toast.success(this.isEditMode ? 'Role updated' : 'Role created');
+                    this.toast.success(this.successToast());
                     this.dialogRef.close({ action: this.isEditMode ? 'updated' : 'created', role });
                 },
                 error: (err: HttpErrorResponse) => this.handleError(err),
             });
+    }
+
+    private successToast(): string {
+        if (this.isEditMode) return 'Role updated';
+        if (this.isDuplicateMode) return 'Role duplicated';
+        return 'Role created';
+    }
+
+    /** Opens a new instance of this dialog in duplicate-mode, seeded with the currently-displayed state. */
+    onDuplicate(): void {
+        if (!this.canDuplicate()) return;
+        const source: DuplicateRoleSource = {
+            name: this.form.controls.name.value,
+            description: this.form.controls.description.value || null,
+            permissions: Array.from(this.selectedPermissions()),
+            orgId: this.targetOrgId(),
+        };
+        this.dialog.open<CreateRoleDialogResult, CreateRoleDialogData>(CreateRoleDialogComponent, {
+            width: 'calc(100vw - 2rem)',
+            height: 'calc(100vh - 2rem)',
+            disableClose: true,
+            data: { duplicateSource: source },
+        });
     }
 
     private handleError(err: HttpErrorResponse): void {

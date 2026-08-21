@@ -19,6 +19,12 @@
             font-size: 1.25rem;
         }
 
+        .actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
         .close-btn {
             cursor: pointer;
             padding: 4px;

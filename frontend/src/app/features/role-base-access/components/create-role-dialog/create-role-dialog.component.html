@@ -2,6 +2,15 @@
     <div class="header">
         <span class="title">{{ dialogTitle() }}</span>
         <div class="actions">
+            @if (canDuplicate()) {
+                <app-button
+                    leftIcon="copy"
+                    type="outline-primary"
+                    (click)="onDuplicate()"
+                >
+                    Duplicate Role
+                </app-button>
+            }
             <app-button
                 type="outline-primary"
                 (click)="onCancel()"
@@ -13,7 +22,7 @@
                 [disabled]="!canSubmit()"
                 (click)="onSubmit()"
             >
-                {{ isEditMode ? 'Save' : 'Create' }}
+                {{ primaryButtonLabel() }}
             </app-button>
         </div>
     </div>
