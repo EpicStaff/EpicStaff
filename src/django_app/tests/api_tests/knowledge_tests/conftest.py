@@ -19,18 +19,18 @@ from tables.models.provider import Provider
 
 
 @pytest.fixture
-def source_collection():
+def source_collection(default_org):
     """Create a test source collection."""
     return SourceCollection.objects.create(
-        collection_name="Test Collection", user_id="test_user"
+        collection_name="Test Collection", user_id="test_user", org=default_org
     )
 
 
 @pytest.fixture
-def empty_collection():
+def empty_collection(default_org):
     """Create an empty source collection."""
     return SourceCollection.objects.create(
-        collection_name="Empty Collection", user_id="test_user"
+        collection_name="Empty Collection", user_id="test_user", org=default_org
     )
 
 
@@ -133,13 +133,14 @@ def test_embedding_model(embedding_provider):
 
 
 @pytest.fixture
-def test_embedding_config(test_embedding_model):
+def test_embedding_config(test_embedding_model, default_org):
     """Create a test embedding config."""
     config, _ = EmbeddingConfig.objects.get_or_create(
         custom_name="Test Embedder Config",
         defaults={
             "model": test_embedding_model,
             "task_type": "retrieval_document",
+            "org": default_org,
         },
     )
     return config

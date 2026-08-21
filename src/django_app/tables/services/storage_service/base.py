@@ -1,3 +1,4 @@
+import posixpath
 import tarfile
 import zipfile
 from abc import ABC, abstractmethod
@@ -61,6 +62,26 @@ class AbstractStorageBackend(ABC):
         finally:
             archive_file.seek(pos)
 
+    def _sanitize_archive_member_name(self, name: str) -> str:
+        """Raise ValueError if an archive member name can escape the extraction folder."""
+        if not name:
+            raise ValueError("Archive member has an empty name")
+
+        if "\x00" in name:
+            raise ValueError(f"Archive member name contains a null byte: {name!r}")
+
+        normalized = posixpath.normpath(name.replace("\\", "/"))
+
+        if (
+            posixpath.isabs(normalized)
+            or normalized.startswith("/")
+            or normalized == ".."
+            or normalized.startswith("../")
+        ):
+            raise ValueError(f"Archive member name escapes the target folder: {name!r}")
+
+        return normalized
+
     def _iter_archive_entries(self, archive_file) -> Iterator[tuple[str, bytes]]:
         """Yield (relative_path, bytes) for every file inside a ZIP or TAR archive."""
         pos = archive_file.tell()
@@ -71,7 +92,8 @@ class AbstractStorageBackend(ABC):
             with zipfile.ZipFile(archive_file, "r") as zf:
                 for entry in zf.infolist():
                     if not entry.is_dir():
-                        yield entry.filename, zf.read(entry.filename)
+                        safe_name = self._sanitize_archive_member_name(entry.filename)
+                        yield safe_name, zf.read(entry.filename)
 
             return
 
@@ -87,10 +109,15 @@ class AbstractStorageBackend(ABC):
 
             with tarfile.open(fileobj=archive_file, mode="r:*") as tf:
                 for member in tf.getmembers():
+                    if member.issym() or member.islnk():
+                        raise ValueError(
+                            f"Archive member is a symlink or hardlink: {member.name!r}"
+                        )
                     if member.isfile():
+                        safe_name = self._sanitize_archive_member_name(member.name)
                         fobj = tf.extractfile(member)
                         if fobj:
-                            yield member.name, fobj.read()
+                            yield safe_name, fobj.read()
 
             return
 

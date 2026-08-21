@@ -63,6 +63,11 @@ logger.remove()
 logger.add(sink=sys.stdout, level="DEBUG")
 
 
+# SECURITY-EXCEPTION(FOR TESTING PURPOSES ONLY): this helper and the module-level
+# `client` below connect to the host Docker daemon so the integration test suite can
+# read container status and logs for test diagnostics (read-only usage). Consumers
+# `is_container_running`, `check_containers`, and `log_container` inherit this
+# exception and are intentionally NOT annotated individually.
 def _get_docker_host_from_context() -> str | None:
     """Fetch Docker host from the current context."""
     try:
