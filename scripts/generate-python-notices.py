@@ -83,27 +83,10 @@ DEV_GROUP_NAMES: frozenset[str] = frozenset(
 SPDX_OVERRIDES: dict[str, str] = {
     "pywin32": "LGPL-2.1",  # metadata says PSF; wheel ships GNU LGPL v2.1 text
     "chroma-hnswlib": "Apache-2.0",  # metadata UNKNOWN; wheel ships Apache-2.0 text
-    "crewai-tools": "MIT",  # metadata UNKNOWN; wheel ships MIT text
     "embedchain": "Apache-2.0",  # metadata Other/Proprietary; wheel ships Apache-2.0 text
 }
 
 VENDORED = [
-    {
-        "name": "crewAI",
-        "version": "vendored fork",
-        "license": "MIT",
-        "copyright": "Copyright (c) 2025 crewAI, Inc.",
-        "source": "https://github.com/crewAIInc/crewAI",
-        "note": "vendored, unmodified",
-    },
-    {
-        "name": "mem0",
-        "version": "vendored fork",
-        "license": "Apache-2.0",
-        "copyright": "Copyright (c) 2024 Mem0 AI",
-        "source": "https://github.com/mem0ai/mem0",
-        "note": "vendored, unmodified",
-    },
     {
         "name": "graphrag",
         "version": "vendored fork (modified)",

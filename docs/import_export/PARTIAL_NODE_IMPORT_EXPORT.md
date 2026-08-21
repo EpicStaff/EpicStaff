@@ -33,7 +33,7 @@ On import, nodes are appended to the target graph and all IDs are remapped. No n
 | `PartialImportService` | Imports a partial-export file into an existing graph |
 | `PartialExportResult` | Return value of `GraphPartialExportService.export()` — holds serialized data and any collected errors |
 | `NodeRef` | Lightweight struct carrying `entity_type` + `node_id` for a single node to export |
-| `LIST_KEY_TO_ENTITY_TYPE` | Maps request field names (e.g. `"crew_node_list"`) to `EntityType` values |
+| `LIST_KEY_TO_ENTITY_TYPE` | Maps request field names (e.g. `"task_node_list"`) to `EntityType` values |
 | `GraphStrategy.recreate_graph_children()` | Creates nodes and edges inside an existing graph with full ID remapping |
 
 ---
@@ -49,7 +49,7 @@ On import, nodes are appended to the target graph and all IDs are remapped. No n
 
 Errors are **collected, not raised**. Callers should check `result.has_errors` before using `result.data`. A non-empty `result.errors` does not necessarily mean the export is unusable — it may only mean some specific nodes or edges were missing.
 
-The output is a plain dict whose top-level keys are `EntityType` string values (e.g. `"CrewNode"`, `"LLMConfig"`) plus the special key `"edge_list"`.
+The output is a plain dict whose top-level keys are `EntityType` string values (e.g. `"TaskNode"`, `"LLMConfig"`) plus the special key `"edge_list"`.
 
 ### Partial Import
 
@@ -124,13 +124,13 @@ Exports selected nodes from graph `{id}`.
 
 ```json
 {
-  "crew_node_list": [5, 7],
+  "task_node_list": [5, 7],
   "python_node_list": [3],
   "edge_list": [12]
 }
 ```
 
-Supported list keys: `start_node_list`, `crew_node_list`, `python_node_list`, `audio_transcription_node_list`, `file_extractor_node_list`, `telegram_trigger_node_list`, `webhook_trigger_node_list`, `decision_table_node_list`, `classification_decision_table_node_list`, `subgraph_node_list`, `end_node_list`, `graph_note_list`, `code_agent_node_list`, `schedule_trigger_node_list`.
+Supported list keys: `python_node_list`, `audio_transcription_node_list`, `file_extractor_node_list`, `telegram_trigger_node_list`, `webhook_trigger_node_list`, `decision_table_node_list`, `classification_decision_table_node_list`, `subgraph_node_list`, `graph_note_list`, `code_agent_node_list`, `schedule_trigger_node_list`, `agent_node_list`, `task_node_list`.
 
 The view converts these keys to `NodeRef` objects using `LIST_KEY_TO_ENTITY_TYPE` defined in `services/partial_export_service.py`, then calls `GraphPartialExportService.export()`.
 

@@ -267,13 +267,19 @@ During execution, the widget displays streaming messages in a **"Thinking..." ex
 | `message_type` | Source | Displayed in Thinking |
 |---|---|---|
 | `code_agent_stream` | Code Agent node | ✅ |
-| `crewai_output` | Crew node (wrapper) | ✅ |
 | `python_stream` | Python node | ✅ |
+
+> The `crewai_output` type is gone — the Crew node was removed and no backend
+> service emits it any more. `AgentNode` / `TaskNode` emit `agent_node_stream` /
+> `task_node_stream` instead (see
+> [../agent_and_task_node/Session_Messages.md](../agent_and_task_node/Session_Messages.md));
+> extending the widget's recognized list to those two types is a separate
+> frontend change.
 
 Stream messages must have:
 ```json
 {
-  "message_type": "crewai_output",
+  "message_type": "code_agent_stream",
   "text": "Working on your request...",
   "is_final": false,
   "sse_visible": true

@@ -18,7 +18,7 @@ Minimal — just rows, columns auto-detected:
   {"ef_tables": [{"rows": [{"name": "Alice", "score": 95}, {"name": "Bob", "score": 72}]}]}
 
 With options:
-  {"ef_tables": [{"columns": [{"key": "name", "title": "Name"}, {"key": "type", "title": "Type"}], "rows": [{"name": "customer_intake", "type": "crew"}], "isEditable": false, "isSortable": true}]}
+  {"ef_tables": [{"columns": [{"key": "name", "title": "Name"}, {"key": "type", "title": "Type"}], "rows": [{"name": "customer_intake", "type": "code_agent"}], "isEditable": false, "isSortable": true}]}
 
 Column options: `key`, `title`, `type` ("text" | "number" | "boolean" | "date"), `visible`, `editable`.
 Table options: `id`, `isEditable` (default true), `isSortable` (default true), `defaultSortField`, `rowsSelectionType` ("edit" | "select" | "multiSelect").
@@ -71,7 +71,7 @@ Right (user POV — natural as a user message):
   "message": "This flow has **3 nodes**:",
   "ef_tables": [{
     "rows": [
-      {"id": 1, "type": "crew", "name": "customer_intake"},
+      {"id": 1, "type": "code_agent", "name": "customer_intake"},
       {"id": 2, "type": "llm", "name": "summarize"},
       {"id": 3, "type": "end", "name": "end"}
     ],

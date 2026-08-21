@@ -109,7 +109,7 @@ Business requirements translate to nodes, not the other way around. The question
 | Pick one of a small fixed set of targets by rule | `table` (CDT) if 3+ branches; `edge` if 2 |
 | Decide next step using LLM reasoning over free text | `code-agent` |
 | Compose a final narrative from structured data | `code-agent` |
-| Multi-step agent work with multiple roles and task handoff | `project` (crew node) |
+| Multi-step agent work with multiple roles and task handoff | chained `code-agent` nodes, one per role |
 | Assistant-style interaction with the user (EpicChat) | `code-agent` |
 | Parse a user-uploaded document | `file-extractor` |
 | Transcribe an audio message | `audio-to-text-node` |
@@ -119,7 +119,7 @@ Business requirements translate to nodes, not the other way around. The question
 Heuristics that matter:
 - **If the logic is a pure function of structured inputs, use `python`.** It is cheaper, faster, more reliable than any agent node.
 - **If the logic needs reasoning over fuzzy text, use `code-agent`.**
-- **Reach for `project` (crew) only when multiple roles collaborate.** A single-agent crew is almost always worse than a plain `code-agent` node.
+- **There is no crew/`project` node.** Multi-role agent work is modelled as a chain of `code-agent` nodes, each with its own system prompt and a `variables` contract between them. Do not emit a `project` node — the backend cannot build one.
 - **Use CDT when branching is a business rule expressed as predicates over variables.** Use conditional `edge` when branching is a short Python expression that returns a node name.
 - **Use `subgraph` when the sub-workflow is genuinely reusable and has its own lifecycle.** Copy-pasting nodes is worse than a subgraph, but a subgraph you only call once is pure indirection.
 

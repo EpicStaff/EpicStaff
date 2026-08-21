@@ -12,189 +12,6 @@
     ]
   },
   {
-    "image_name": "crewai_tools",
-    "tool_dict": {
-        "code_docs_search": {
-          "class_name": "CodeDocsSearchTool",
-          "package": "crewai_tools"
-        },
-        "csv_search": {
-          "class_name": "CSVSearchTool",
-          "package": "crewai_tools"
-        },
-        "dalle": {
-          "class_name": "DallETool",
-          "package": "crewai_tools"
-        },
-        "directory_read": {
-          "class_name": "DirectoryReadTool",
-          "package": "crewai_tools"
-        },
-        "directory_search": {
-          "class_name": "DirectorySearchTool",
-          "package": "crewai_tools"
-        },
-        "docx_search": {
-          "class_name": "DOCXSearchTool",
-          "package": "crewai_tools"
-        },
-        "exa_search": {
-          "class_name": "EXASearchTool",
-          "package": "crewai_tools"
-        },
-        
-        "file_read": {
-          "class_name": "FileReadTool",
-          "package": "crewai_tools"
-        },
-        "file_writer": {
-          "class_name": "FileWriterTool",
-          "package": "crewai_tools"
-        },
-        "serper_dev": {
-          "class_name": "SerperDevTool",
-          "package": "crewai_tools"
-        },
-        "json_search": {
-          "class_name": "JSONSearchTool",
-          "package": "crewai_tools"
-        },
-        "mdx_search": {
-          "class_name": "MDXSearchTool",
-          "package": "crewai_tools"
-        },
-        "my_sql_search": {
-          "class_name": "MySQLSearchTool",
-          "package": "crewai_tools"
-        },
-        
-        "nl2sql": {
-          "class_name": "NL2SQLTool",
-          "package": "crewai_tools"
-        },
-        "pdf_search": {
-          "class_name": "PDFSearchTool",
-          "package": "crewai_tools"
-        },
-        "pg_search": {
-          "class_name": "PGSearchTool",
-          "package": "crewai_tools"
-        },
-        "scrape_website": {
-          "class_name": "ScrapeWebsiteTool",
-          "package": "crewai_tools"
-        },
-        "selenium_scraping": {
-          "class_name": "SeleniumScrapingTool",
-          "package": "crewai_tools"
-        },
-        "txt_search": {
-          "class_name": "TXTSearchTool",
-          "package": "crewai_tools"
-        },
-        "vision": {
-          "class_name": "VisionTool",
-          "package": "crewai_tools"
-        },
-        "website_search": {
-          "class_name": "WebsiteSearchTool",
-          "package": "crewai_tools"
-        },
-        "xml_search": {
-          "class_name": "XMLSearchTool",
-          "package": "crewai_tools"
-        },
-        "youtube_channel_search": {
-          "class_name": "YoutubeChannelSearchTool",
-          "package": "crewai_tools"
-        }
-    },
-    "dependencies": [
-      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0"
-    ]
-  },
-  {
-    "image_name": "github_search",
-    "tool_dict": {
-      "github_search": {
-        "class_name": "GithubSearchTool",
-        "package": "crewai_tools"
-      }
-    },
-    "dependencies": [
-      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "gitpython==3.1.38", "PyGithub==1.59.1"
-    ]
-  },
-  {
-    "image_name": "youtube_video_search",
-    "tool_dict": {
-      "youtube_video_search": {
-        "class_name": "YoutubeVideoSearchTool",
-        "package": "crewai_tools"
-      }
-    },
-    "dependencies": [
-      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "youtube-transcript-api"
-    ]
-  },
-  {
-    "image_name": "firecrawl",
-    "tool_dict": {
-        "firecrawl_crawl_website": {
-          "class_name": "FirecrawlCrawlWebsiteTool",
-          "package": "crewai_tools"
-        },
-        "firecrawl_scrape_website": {
-          "class_name": "FirecrawlScrapeWebsiteTool",
-          "package": "crewai_tools"
-        },
-        "firecrawl_search": {
-          "class_name": "FirecrawlSearchTool",
-          "package": "crewai_tools"
-        }
-    },
-    "dependencies": [
-      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "firecrawl-py==1.8.0"
-    ]
-  },
-  {
-    "image_name": "spider_scraper",
-    "tool_dict": {
-        "spider_scraper": {
-          "class_name": "SpiderTool",
-          "package": "crewai_tools"
-        }
-    },
-    "dependencies": [
-      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "firecrawl-py==1.8.0"
-    ]
-  },
-  {
-    "image_name": "composio",
-    "tool_dict": {
-        "composio": {
-          "class_name": "ComposioTool",
-          "package": "crewai_tools"
-        }
-    },
-    "dependencies": [
-      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "composio-core"
-    ]
-  },
-  {
-    "image_name": "browserbase_load",
-    "tool_dict": {
-      "browserbase_load": {
-        "class_name": "BrowserbaseLoadTool",
-        "package": "crewai_tools"
-      }
-    },
-    "dependencies": [
-      "crewai[tools]==0.86.0", "scrapegraph-py==1.47.0", "browserbase"
-    ]
-  },
-
-  {
     "image_name": "wolfram_alpha",
     "tool_dict": {
       "wolfram_alpha": {
@@ -218,7 +35,7 @@
     "image_name": "wikipedia_tool",
     "tool_dict": {
         "wikipedia": {
-          "class_name": "WikipediaQueryRun",        
+          "class_name": "WikipediaQueryRun",
           "kwargs": {
             "api_wrapper": {
               "callable_name": "WikipediaAPIWrapper"
@@ -267,7 +84,6 @@
         }
     },
     "dependencies": [
-      "crewai==0.86.0"
     ]
   }
 ]

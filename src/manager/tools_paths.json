@@ -4,7 +4,6 @@
     "WikipediaAPIWrapper": "langchain_community.utilities.wikipedia",
     "WolframAlphaQueryRun": "langchain_community.tools.wolfram_alpha.tool",
     "WolframAlphaAPIWrapper": "langchain_community.utilities.wolfram_alpha",
-    "ScrapeWebsiteTool": "crewai_tools",
     "AppendFileTool": "custom_tools",
     "FileCountLinesTool": "custom_tools",
     "CreateFileTool": "custom_tools",
