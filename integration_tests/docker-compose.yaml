@@ -123,9 +123,6 @@ services:
 
       - DB_REALTIME_USER=realtime_user_integ
       - DB_REALTIME_PASSWORD=realtime_password_integ
-
-      - DB_CREW_USER=crew_user_integ
-      - DB_CREW_PASSWORD=crew_password_integ
     volumes:
       - crew_pgdata:/var/lib/postgresql/data/pgdata
     networks:
