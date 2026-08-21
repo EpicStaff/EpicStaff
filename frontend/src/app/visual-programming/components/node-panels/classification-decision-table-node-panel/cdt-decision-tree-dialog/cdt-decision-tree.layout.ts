@@ -25,6 +25,7 @@ import {
     CdtTreeConnector,
     CdtTreeLayout,
     CdtTreePoint,
+    CdtTreePortSide,
     CdtTreePositionedBlock,
     CdtTreeSize,
     inputConnectorId,
@@ -45,6 +46,24 @@ function blockSize(block: CdtTreeBlock): CdtTreeSize {
     const subtitleBand = block.subtitle ? CDT_TREE_SUBTITLE_CODE_LINES * CDT_TREE_SUBTITLE_LINE_HEIGHT : 0;
 
     return { width, height: Math.max(min, CDT_TREE_BLOCK_TITLE_BAND + subtitleBand) };
+}
+
+/** One end of one edge, before it knows where along its side it sits. */
+interface Endpoint {
+    readonly blockId: string;
+    readonly side: CdtTreePortSide;
+    readonly id: string;
+    readonly out: boolean;
+}
+
+function collect(target: Map<string, Endpoint[]>, endpoint: Endpoint): void {
+    const key = `${endpoint.blockId}|${endpoint.side}`;
+    const existing = target.get(key);
+    if (existing) {
+        existing.push(endpoint);
+    } else {
+        target.set(key, [endpoint]);
+    }
 }
 
 function push(target: Map<string, CdtTreeConnector[]>, blockId: string, connector: CdtTreeConnector): void {
@@ -122,12 +141,28 @@ export function layoutCdtDecisionTree(tree: CdtTree): CdtTreeLayout {
         }
     }
 
-    // 4. One connector per edge endpoint, so no two edges can ever share one.
+    // 4. One connector per edge endpoint, so no two edges can ever share one, and
+    //    fanned along its side so several arriving at one block do not stack on a
+    //    single pixel. Incoming and outgoing share one fan per side, since they
+    //    share the pixels. `(i + 1) / (k + 1)` leaves a lone connector at the
+    //    centre, which is where every side used to put all of them.
     const outPorts = new Map<string, CdtTreeConnector[]>();
     const inPorts = new Map<string, CdtTreeConnector[]>();
+
+    const bySide = new Map<string, Endpoint[]>();
     for (const edge of tree.edges) {
-        push(outPorts, edge.from, { id: outputConnectorId(edge.id), side: edge.fromSide });
-        push(inPorts, edge.to, { id: inputConnectorId(edge.id), side: edge.toSide });
+        collect(bySide, { blockId: edge.from, side: edge.fromSide, id: outputConnectorId(edge.id), out: true });
+        collect(bySide, { blockId: edge.to, side: edge.toSide, id: inputConnectorId(edge.id), out: false });
+    }
+
+    for (const group of bySide.values()) {
+        group.forEach((endpoint, index) => {
+            push(endpoint.out ? outPorts : inPorts, endpoint.blockId, {
+                id: endpoint.id,
+                side: endpoint.side,
+                offset: (index + 1) / (group.length + 1),
+            });
+        });
     }
 
     // 5. Normalise to the origin so tests can compare coordinates directly and

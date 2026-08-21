@@ -212,6 +212,15 @@ export interface CdtTreeSize {
 export interface CdtTreeConnector {
     readonly id: string;
     readonly side: CdtTreePortSide;
+    /**
+     * Where along that side the connector sits, 0 to 1.
+     *
+     * Per-edge connectors stop two edges from sharing one, but not from arriving
+     * at the same pixel: every connector used to sit at the side's midpoint, so a
+     * convergence of N edges drew N paths into one point. Foblex measures the
+     * connector element, so spreading them here spreads the arrows.
+     */
+    readonly offset: number;
 }
 
 export interface CdtTreePositionedBlock extends CdtTreeBlock {

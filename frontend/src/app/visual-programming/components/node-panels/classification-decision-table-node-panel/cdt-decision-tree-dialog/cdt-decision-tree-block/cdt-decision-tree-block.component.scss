@@ -16,23 +16,25 @@
     pointer-events: none;
     opacity: 0;
 
+    // Position along the side comes from the layout, which fans the connectors
+    // incident on one side so converging edges do not land on the same pixel.
     &--top {
         top: 0;
-        left: 50%;
+        left: calc(var(--cdt-tree-connector-offset) * 100%);
     }
 
     &--right {
-        top: 50%;
+        top: calc(var(--cdt-tree-connector-offset) * 100%);
         right: 0;
     }
 
     &--bottom {
         bottom: 0;
-        left: 50%;
+        left: calc(var(--cdt-tree-connector-offset) * 100%);
     }
 
     &--left {
-        top: 50%;
+        top: calc(var(--cdt-tree-connector-offset) * 100%);
         left: 0;
     }
 }

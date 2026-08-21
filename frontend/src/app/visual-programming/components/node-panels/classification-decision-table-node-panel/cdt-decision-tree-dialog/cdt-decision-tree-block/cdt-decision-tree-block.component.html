@@ -8,6 +8,7 @@
     <div
         class="cdt-tree-block__connector"
         [class]="'cdt-tree-block__connector--' + port.side"
+        [style.--cdt-tree-connector-offset]="port.offset"
         fNodeOutput
         fOutputDisabled
         [fOutputId]="port.id"
@@ -19,6 +20,7 @@
     <div
         class="cdt-tree-block__connector"
         [class]="'cdt-tree-block__connector--' + port.side"
+        [style.--cdt-tree-connector-offset]="port.offset"
         fNodeInput
         fInputDisabled
         [fInputId]="port.id"
