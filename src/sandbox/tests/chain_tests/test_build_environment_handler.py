@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 from pathlib import Path
@@ -6,108 +5,210 @@ from typing import Any
 
 import pytest
 
-from dynamic_venv_executor_chain import AbstractHandler, BuildEnvironmentHandler, ExecuteCodeHandler
+from dynamic_venv_executor_chain import AbstractHandler, ExecuteCodeHandler
+from utils.environment import build_base_env
+
+_SENSITIVE_KEYS = {
+    "STORAGE_ENDPOINT",
+    "STORAGE_BUCKET_NAME",
+    "STORAGE_ACCESS_KEY",
+    "STORAGE_SECRET_KEY",
+    "STORAGE_ALLOWED_PATHS",
+    "STORAGE_ORG_PREFIX",
+}
 
 
-def _make_context(tmp_path: Path) -> dict[str, Any]:
-    python_executable = tmp_path / "venv" / "bin" / "python"
-    temp_code_path = tmp_path / "exec" / "code.py"
-    return {
-        "python_executable": python_executable,
-        "temp_code_path": temp_code_path,
+def _make_execute_context(tmp_path: Path, **overrides) -> dict[str, Any]:
+    """Build a minimal valid context for ExecuteCodeHandler.
+
+    The handler writes to temp_code_path (parent must exist) and reads
+    result_file_path after the subprocess returns.  The caller is responsible
+    for pre-writing result_file_path with valid JSON before driving the handler.
+    """
+    exec_dir = tmp_path / "exec"
+    exec_dir.mkdir(parents=True, exist_ok=True)
+
+    ctx: dict[str, Any] = {
+        "python_executable": tmp_path / "venv" / "bin" / "python",
+        "temp_code_path": exec_dir / "code.py",
+        "result_file_path": exec_dir / "output.txt",
+        "home_path": str(exec_dir / "home"),
+        "code": "def main():\n    return 1",
+        "entrypoint": "main",
+        "func_kwargs": {},
+        "global_kwargs": {},
+        "execution_id": "test-exec-id",
+        "use_storage": False,
     }
+    ctx.update(overrides)
+    return ctx
 
 
-@pytest.mark.asyncio
-async def test_base_env_exact_key_set(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
+# ---------------------------------------------------------------------------
+# Shared fake-subprocess fixture used by all ExecuteCodeHandler tests
+# ---------------------------------------------------------------------------
 
-    await handler.handle(context)
 
-    assert set(context["env"].keys()) == {
+def _patch_subprocess(monkeypatch, recorded: dict, result_file_path: Path) -> None:
+    """Monkeypatch asyncio.create_subprocess_exec to record env and fake success.
+
+    The fake pre-writes result_file_path so the handler can read it after the
+    subprocess call without requiring a real interpreter.
+    """
+
+    class _FakeProcess:
+        returncode = 0
+
+        async def communicate(self):
+            return (b"", b"")
+
+    async def _fake_create(*args, **kwargs):
+        recorded.update(kwargs)
+        # Pre-write the result file so the handler can read it
+        result_file_path.write_text('"ok"')
+        return _FakeProcess()
+
+    import dynamic_venv_executor_chain
+
+    monkeypatch.setattr(
+        dynamic_venv_executor_chain.asyncio,
+        "create_subprocess_exec",
+        _fake_create,
+    )
+
+
+# ---------------------------------------------------------------------------
+# build_base_env — key set and literal values
+# ---------------------------------------------------------------------------
+
+
+def test_build_base_env_exact_key_set(tmp_path):
+    python_executable = tmp_path / "venv" / "bin" / "python"
+    env = build_base_env(python_executable)
+    assert set(env.keys()) == {
         "LANG",
         "PYTHONUTF8",
         "PYTHONUNBUFFERED",
         "PYTHONDONTWRITEBYTECODE",
         "PATH",
-        "HOME",
     }
+    assert "HOME" not in env
 
 
-@pytest.mark.asyncio
-async def test_base_env_literal_values(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-
-    await handler.handle(context)
-
-    env = context["env"]
+def test_build_base_env_literal_values(tmp_path):
+    python_executable = tmp_path / "venv" / "bin" / "python"
+    env = build_base_env(python_executable)
     assert env["LANG"] == "C.UTF-8"
     assert env["PYTHONUTF8"] == "1"
     assert env["PYTHONUNBUFFERED"] == "1"
     assert env["PYTHONDONTWRITEBYTECODE"] == "1"
 
 
-@pytest.mark.asyncio
-async def test_no_host_env_leak(tmp_path, monkeypatch):
-    monkeypatch.setenv("LEAK_SENTINEL", "should-not-appear")
-    monkeypatch.setenv("STORAGE_ACCESS_KEY", "leaked-key")
-
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    # use_storage is absent — storage vars must not be copied
-
-    await handler.handle(context)
-
-    env = context["env"]
-    assert "LEAK_SENTINEL" not in env
-    assert "STORAGE_ACCESS_KEY" not in env
+def test_build_base_env_path_contains_venv_bin(tmp_path):
+    python_executable = tmp_path / "venv" / "bin" / "python"
+    env = build_base_env(python_executable)
+    path_parts = env["PATH"].split(os.pathsep)
+    assert str(python_executable.parent) == path_parts[0]
+    assert "/usr/local/bin" in path_parts
+    assert "/usr/bin" in path_parts
+    assert "/bin" in path_parts
 
 
-@pytest.mark.asyncio
-async def test_path_value(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    python_executable = context["python_executable"]
-
-    await handler.handle(context)
-
-    expected_path = os.pathsep.join(
+def test_build_base_env_path_ordering(tmp_path):
+    python_executable = tmp_path / "venv" / "bin" / "python"
+    env = build_base_env(python_executable)
+    expected = os.pathsep.join(
         [str(python_executable.parent), "/usr/local/bin", "/usr/bin", "/bin"]
     )
-    assert context["env"]["PATH"] == expected_path
+    assert env["PATH"] == expected
+
+
+# ---------------------------------------------------------------------------
+# SECURITY REGRESSION — build_base_env must not contain any sensitive key
+# ---------------------------------------------------------------------------
+
+
+def test_build_base_env_contains_no_sensitive_keys(tmp_path, monkeypatch):
+    """Regression: pip runs with base env only — no secrets must leak."""
+    monkeypatch.setenv("STORAGE_ACCESS_KEY", "root-ak-must-not-leak")
+    monkeypatch.setenv("STORAGE_SECRET_KEY", "root-sk-must-not-leak")
+    monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
+    monkeypatch.setenv("STORAGE_BUCKET_NAME", "mybucket")
+    monkeypatch.setenv("REDIS_PASSWORD", "redis-secret")
+    monkeypatch.setenv("ARBITRARY_SECRET", "arbitrary")
+
+    python_executable = tmp_path / "venv" / "bin" / "python"
+    env = build_base_env(python_executable)
+
+    for key in _SENSITIVE_KEYS:
+        assert key not in env, f"Sensitive key leaked into base env: {key}"
+
+    assert "REDIS_PASSWORD" not in env
+    assert "ARBITRARY_SECRET" not in env
+
+
+# ---------------------------------------------------------------------------
+# ExecuteCodeHandler — base keys and HOME always present
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_home_created_on_disk(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    temp_code_path = context["temp_code_path"]
+async def test_execute_code_handler_base_keys_present(tmp_path, monkeypatch):
+    """Handler env must contain all base keys from build_base_env."""
+    recorded: dict = {}
+    context = _make_execute_context(tmp_path)
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-    await handler.handle(context)
+    await ExecuteCodeHandler().handle(context)
 
-    expected_home = str(temp_code_path.parent / "home")
-    assert context["env"]["HOME"] == expected_home
-    assert Path(expected_home).is_dir()
+    env = recorded["env"]
+    assert "LANG" in env
+    assert "PYTHONUTF8" in env
+    assert "PYTHONUNBUFFERED" in env
+    assert "PYTHONDONTWRITEBYTECODE" in env
+    assert "PATH" in env
 
 
 @pytest.mark.asyncio
-async def test_use_storage_injects_scoped_creds_not_root(tmp_path, monkeypatch):
+async def test_execute_code_handler_home_equals_home_path(tmp_path, monkeypatch):
+    """Handler sets env['HOME'] from context['home_path'], not 'home_dir'."""
+    recorded: dict = {}
+    context = _make_execute_context(tmp_path)
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
+
+    await ExecuteCodeHandler().handle(context)
+
+    assert recorded["env"]["HOME"] == context["home_path"]
+
+
+# ---------------------------------------------------------------------------
+# ExecuteCodeHandler — use_storage=True injects scoped creds, not root creds
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_execute_code_handler_use_storage_injects_scoped_creds_not_root(
+    tmp_path, monkeypatch
+):
+    """Regression: scoped keys from context must win over root env keys."""
     monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
     monkeypatch.setenv("STORAGE_BUCKET_NAME", "epicstaff")
+    # Root credentials — must NOT appear in the subprocess env
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "ROOT-must-not-leak")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "ROOT-must-not-leak")
 
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    context["use_storage"] = True
-    context["temp_storage_access_key"] = "scoped-ak"
-    context["temp_storage_secret_key"] = "scoped-sk"
+    recorded: dict = {}
+    context = _make_execute_context(
+        tmp_path,
+        use_storage=True,
+        temp_storage_access_key="scoped-ak",
+        temp_storage_secret_key="scoped-sk",
+    )
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-    await handler.handle(context)
+    await ExecuteCodeHandler().handle(context)
 
-    env = context["env"]
+    env = recorded["env"]
     assert env["STORAGE_ENDPOINT"] == "http://minio:9000"
     assert env["STORAGE_BUCKET_NAME"] == "epicstaff"
     assert env["STORAGE_ACCESS_KEY"] == "scoped-ak"
@@ -115,19 +216,21 @@ async def test_use_storage_injects_scoped_creds_not_root(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_use_storage_falsy_does_not_copy_storage_vars(tmp_path, monkeypatch):
+async def test_execute_code_handler_use_storage_false_omits_storage_vars(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("STORAGE_ENDPOINT", "http://minio:9000")
     monkeypatch.setenv("STORAGE_ACCESS_KEY", "access")
     monkeypatch.setenv("STORAGE_SECRET_KEY", "secret")
     monkeypatch.setenv("STORAGE_BUCKET_NAME", "mybucket")
 
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    context["use_storage"] = False
+    recorded: dict = {}
+    context = _make_execute_context(tmp_path, use_storage=False)
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-    await handler.handle(context)
+    await ExecuteCodeHandler().handle(context)
 
-    env = context["env"]
+    env = recorded["env"]
     assert "STORAGE_ENDPOINT" not in env
     assert "STORAGE_ACCESS_KEY" not in env
     assert "STORAGE_SECRET_KEY" not in env
@@ -135,159 +238,153 @@ async def test_use_storage_falsy_does_not_copy_storage_vars(tmp_path, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_storage_allowed_paths_present(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
+async def test_execute_code_handler_use_storage_absent_omits_storage_vars(
+    tmp_path, monkeypatch
+):
+    recorded: dict = {}
+    # use_storage not in context at all
+    context = _make_execute_context(tmp_path)
+    del context["use_storage"]
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
+
+    await ExecuteCodeHandler().handle(context)
+
+    env = recorded["env"]
+    assert "STORAGE_ENDPOINT" not in env
+    assert "STORAGE_ACCESS_KEY" not in env
+    assert "STORAGE_SECRET_KEY" not in env
+    assert "STORAGE_BUCKET_NAME" not in env
+
+
+# ---------------------------------------------------------------------------
+# ExecuteCodeHandler — storage_allowed_paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_execute_code_handler_storage_allowed_paths_present(tmp_path, monkeypatch):
     allowed = ["/data/org1", "/data/org2"]
-    context["storage_allowed_paths"] = allowed
+    recorded: dict = {}
+    context = _make_execute_context(tmp_path, storage_allowed_paths=allowed)
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-    await handler.handle(context)
+    await ExecuteCodeHandler().handle(context)
 
-    assert context["env"]["STORAGE_ALLOWED_PATHS"] == json.dumps(allowed)
-
-
-@pytest.mark.asyncio
-async def test_storage_allowed_paths_absent_when_none(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    context["storage_allowed_paths"] = None
-
-    await handler.handle(context)
-
-    assert "STORAGE_ALLOWED_PATHS" not in context["env"]
+    assert recorded["env"]["STORAGE_ALLOWED_PATHS"] == json.dumps(allowed)
 
 
 @pytest.mark.asyncio
-async def test_storage_allowed_paths_absent_when_key_missing(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    # key not set at all
+async def test_execute_code_handler_storage_allowed_paths_empty_list_serialised(
+    tmp_path, monkeypatch
+):
+    recorded: dict = {}
+    context = _make_execute_context(tmp_path, storage_allowed_paths=[])
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-    await handler.handle(context)
+    await ExecuteCodeHandler().handle(context)
 
-    assert "STORAGE_ALLOWED_PATHS" not in context["env"]
-
-
-@pytest.mark.asyncio
-async def test_storage_allowed_paths_empty_list_is_present(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    context["storage_allowed_paths"] = []
-
-    await handler.handle(context)
-
-    assert context["env"]["STORAGE_ALLOWED_PATHS"] == "[]"
+    assert recorded["env"]["STORAGE_ALLOWED_PATHS"] == "[]"
 
 
 @pytest.mark.asyncio
-async def test_storage_org_prefix_present(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    context["storage_org_prefix"] = "org/team1"
+async def test_execute_code_handler_storage_allowed_paths_none_omits_key(
+    tmp_path, monkeypatch
+):
+    recorded: dict = {}
+    context = _make_execute_context(tmp_path, storage_allowed_paths=None)
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-    await handler.handle(context)
+    await ExecuteCodeHandler().handle(context)
 
-    assert context["env"]["STORAGE_ORG_PREFIX"] == "org/team1"
-
-
-@pytest.mark.asyncio
-async def test_storage_org_prefix_absent_when_none(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    context["storage_org_prefix"] = None
-
-    await handler.handle(context)
-
-    assert "STORAGE_ORG_PREFIX" not in context["env"]
+    assert "STORAGE_ALLOWED_PATHS" not in recorded["env"]
 
 
 @pytest.mark.asyncio
-async def test_storage_org_prefix_absent_when_key_missing(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
+async def test_execute_code_handler_storage_allowed_paths_missing_omits_key(
+    tmp_path, monkeypatch
+):
+    recorded: dict = {}
+    context = _make_execute_context(tmp_path)
+    # storage_allowed_paths not set at all
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-    await handler.handle(context)
+    await ExecuteCodeHandler().handle(context)
 
-    assert "STORAGE_ORG_PREFIX" not in context["env"]
+    assert "STORAGE_ALLOWED_PATHS" not in recorded["env"]
 
 
-@pytest.mark.asyncio
-async def test_secrets_present(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    secrets = {"API_KEY": "abc123", "TOKEN": "xyz"}
-    context["secrets"] = secrets
-
-    await handler.handle(context)
-
-    assert context["env"]["EPICSTAFF_SECRETS"] == json.dumps(secrets)
+# ---------------------------------------------------------------------------
+# ExecuteCodeHandler — storage_org_prefix
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_secrets_absent_when_none(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-    context["secrets"] = None
+async def test_execute_code_handler_storage_org_prefix_present(tmp_path, monkeypatch):
+    recorded: dict = {}
+    context = _make_execute_context(tmp_path, storage_org_prefix="org/team1")
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-    await handler.handle(context)
+    await ExecuteCodeHandler().handle(context)
 
-    assert "EPICSTAFF_SECRETS" not in context["env"]
-
-
-@pytest.mark.asyncio
-async def test_secrets_absent_when_key_missing(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-
-    await handler.handle(context)
-
-    assert "EPICSTAFF_SECRETS" not in context["env"]
+    assert recorded["env"]["STORAGE_ORG_PREFIX"] == "org/team1"
 
 
 @pytest.mark.asyncio
-async def test_context_env_is_set(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
+async def test_execute_code_handler_storage_org_prefix_none_omits_key(
+    tmp_path, monkeypatch
+):
+    recorded: dict = {}
+    context = _make_execute_context(tmp_path, storage_org_prefix=None)
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-    await handler.handle(context)
+    await ExecuteCodeHandler().handle(context)
 
-    assert "env" in context
-    assert isinstance(context["env"], dict)
-
-
-@pytest.mark.asyncio
-async def test_terminal_handler_returns_environment_built(tmp_path):
-    handler = BuildEnvironmentHandler()
-    context = _make_context(tmp_path)
-
-    result = await handler.handle(context)
-
-    assert result == "Environment built."
+    assert "STORAGE_ORG_PREFIX" not in recorded["env"]
 
 
 @pytest.mark.asyncio
-async def test_delegation_to_next_handler(tmp_path):
-    class RecordingHandler(AbstractHandler):
-        received_context: dict | None = None
+async def test_execute_code_handler_storage_org_prefix_missing_omits_key(
+    tmp_path, monkeypatch
+):
+    recorded: dict = {}
+    context = _make_execute_context(tmp_path)
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
 
-        async def handle(self, context: dict) -> Any:
-            RecordingHandler.received_context = context
-            return "sentinel-from-next"
+    await ExecuteCodeHandler().handle(context)
 
-    handler = BuildEnvironmentHandler()
-    next_handler = RecordingHandler()
-    handler.set_next(next_handler)
-    context = _make_context(tmp_path)
+    assert "STORAGE_ORG_PREFIX" not in recorded["env"]
 
-    result = await handler.handle(context)
 
-    assert result == "sentinel-from-next"
-    assert RecordingHandler.received_context is context
+# ---------------------------------------------------------------------------
+# SECURITY REGRESSION — EPICSTAFF_SECRETS concept is gone
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_execute_code_handler_uses_curated_env(tmp_path, monkeypatch):
-    recorded_kwargs: dict = {}
+async def test_execute_code_handler_epicstaff_secrets_never_injected(
+    tmp_path, monkeypatch
+):
+    """Regression: even if a 'secrets' key exists in context, EPICSTAFF_SECRETS
+    must never appear in the subprocess env — the feature was removed."""
+    recorded: dict = {}
+    context = _make_execute_context(tmp_path)
+    context["secrets"] = {"API_KEY": "abc123", "TOKEN": "xyz"}
+    _patch_subprocess(monkeypatch, recorded, context["result_file_path"])
+
+    await ExecuteCodeHandler().handle(context)
+
+    assert "EPICSTAFF_SECRETS" not in recorded["env"]
+
+
+# ---------------------------------------------------------------------------
+# ExecuteCodeHandler — existing smoke-test (kept for non-regression)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_execute_code_handler_uses_execution_env(tmp_path, monkeypatch):
+    """ExecuteCodeHandler must build env inline — not read context['env']."""
+    recorded: dict = {}
 
     class FakeProcess:
         returncode = 0
@@ -295,18 +392,17 @@ async def test_execute_code_handler_uses_curated_env(tmp_path, monkeypatch):
         async def communicate(self):
             return (b"", b"")
 
-    async def fake_create_subprocess_shell(cmd, **kwargs):
-        recorded_kwargs.update(kwargs)
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        recorded.update(kwargs)
         return FakeProcess()
 
     import dynamic_venv_executor_chain
+
     monkeypatch.setattr(
         dynamic_venv_executor_chain.asyncio,
-        "create_subprocess_shell",
-        fake_create_subprocess_shell,
+        "create_subprocess_exec",
+        fake_create_subprocess_exec,
     )
-
-    curated_env = {"CURATED": "yes"}
 
     exec_dir = tmp_path / "exec"
     exec_dir.mkdir(parents=True, exist_ok=True)
@@ -315,19 +411,26 @@ async def test_execute_code_handler_uses_curated_env(tmp_path, monkeypatch):
     result_file_path.write_text('"ok"')
 
     context = {
-        "python_executable": "/fake/venv/bin/python",
+        "python_executable": tmp_path / "venv" / "bin" / "python",
         "temp_code_path": temp_code_path,
         "result_file_path": result_file_path,
+        "home_path": str(exec_dir / "home"),
         "code": "def main():\n    return 1",
         "entrypoint": "main",
         "func_kwargs": {},
         "global_kwargs": {},
         "execution_id": "x",
         "use_storage": False,
-        "env": curated_env,
     }
 
     handler = ExecuteCodeHandler()
     await handler.handle(context)
 
-    assert recorded_kwargs["env"] is curated_env
+    # env must be present and must be a dict (built inline in the handler)
+    assert "env" in recorded
+    assert isinstance(recorded["env"], dict)
+    # base keys always present
+    assert "LANG" in recorded["env"]
+    assert "PATH" in recorded["env"]
+    # no stale context["env"] key should have been used (context has no "env")
+    assert "env" not in context
