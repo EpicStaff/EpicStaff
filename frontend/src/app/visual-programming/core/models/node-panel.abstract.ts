@@ -22,7 +22,11 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     public form!: FormGroup;
 
     protected readonly dirtyCheckTick = signal(0);
-    private initialNodeSnapshot = '';
+    /** JSON snapshot of the node at its last-known-clean state. Subclasses may patch a specific
+     *  field in place (parse, mutate, re-stringify) instead of calling resetBaseline(), when only
+     *  that one field needs correcting without treating any other pending edit as already saved
+     *  — see e.g. the secret-declaration restoration effects. */
+    protected initialNodeSnapshot = '';
 
     public readonly isDirty = computed(() => {
         this.dirtyCheckTick();
@@ -58,10 +62,6 @@ export abstract class BaseSidePanel<T extends NodeModel> {
 
     public onSave(): T | null {
         if (this.form && this.form.invalid) {
-            const originalNode = this.node();
-            if (originalNode) {
-                return originalNode;
-            }
             return null;
         }
         const updatedNode = this.createUpdatedNode();
@@ -105,6 +105,12 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     }
 
     protected notifyExternalChange(): void {
+        this.dirtyCheckTick.update((v) => v + 1);
+    }
+
+    protected resetBaseline(): void {
+        if (!this.form) return;
+        this.initialNodeSnapshot = JSON.stringify(this.createUpdatedNode());
         this.dirtyCheckTick.update((v) => v + 1);
     }
 

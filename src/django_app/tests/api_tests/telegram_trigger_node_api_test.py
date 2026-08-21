@@ -1,8 +1,10 @@
 import pytest
 from django.urls import reverse
 from tables.services.telegram_trigger_service import TelegramTriggerService
+from tables.models import Secret
 from tables.models.graph_models import TelegramTriggerNode
 from tables.models.webhook_models import WebhookTrigger
+from tables.services.secrets import secret_encryption, secret_service
 
 
 @pytest.mark.django_db
@@ -10,10 +12,13 @@ class TestTelegramTriggerViewSet:
     def test_create_telegram_trigger_node(
         self, auth_client, graph, mock_telegram_service
     ):
+        secret = secret_service.create(
+            text="123456:ABC-DEF", org=graph.org, name="tg-create-key"
+        )
         url = reverse("telegramtriggernode-list")
         data = {
             "node_name": "StartNode",
-            "telegram_bot_api_key": "123456:ABC-DEF",
+            "telegram_bot_api_key_secret_id": secret.id,
             "graph": graph.id,
             "fields": [
                 {
@@ -42,17 +47,23 @@ class TestTelegramTriggerViewSet:
         )
 
         # 2. Create the initial node (triggers signal -> uses mock)
+        secret = Secret(org=graph.org, name="telegram-trigger-node-test-key")
+        secret_encryption.encrypt(text="12345:fake_key").write_to(secret)
+        secret.save()
         node = TelegramTriggerNode.objects.create(
             node_name="OldName",
-            telegram_bot_api_key="12345:fake_key",
+            telegram_bot_api_key_secret=secret,
             graph=graph,
         )
 
-        # 3. Update via API
+        # 3. Update via API — swap to a different secret
+        new_secret = secret_service.create(
+            text="54321:new_fake_key", org=graph.org, name="tg-update-key"
+        )
         url = reverse("telegramtriggernode-detail", args=[node.id])
         data = {
             "node_name": "NewName",
-            "telegram_bot_api_key": "54321:new_fake_key",
+            "telegram_bot_api_key_secret_id": new_secret.id,
             "graph": graph.id,
             "fields": [
                 {
@@ -69,7 +80,10 @@ class TestTelegramTriggerViewSet:
         assert response.status_code == 200
         node.refresh_from_db()
         assert node.node_name == "NewName"
-        assert node.telegram_bot_api_key == "54321:new_fake_key"
+        assert node.telegram_bot_api_key_secret_id == new_secret.id
+        # The secret previously attached is untouched — swapping does not rotate.
+        secret.refresh_from_db()
+        assert secret_encryption.decrypt(encryptedtext=secret.value) == "12345:fake_key"
 
         # Verify the mock was called (once for create, once for update)
         assert mock_register.call_count == 2
@@ -83,11 +97,14 @@ class TestTelegramTriggerViewSet:
         and links the node to an existing WebhookTrigger.
         """
         trigger = WebhookTrigger.objects.create(path="tgWebhook123")
+        secret = secret_service.create(
+            text="123456:ABC-DEF", org=graph.org, name="tg-webhook-key"
+        )
 
         url = reverse("telegramtriggernode-list")
         data = {
             "node_name": "TelegramWithWebhook",
-            "telegram_bot_api_key": "123456:ABC-DEF",
+            "telegram_bot_api_key_secret_id": secret.id,
             "graph": graph.id,
             "webhook_trigger": {"path": trigger.path, "ngrok_webhook_config": None},
             "fields": [

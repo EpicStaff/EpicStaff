@@ -3,15 +3,19 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, Inject, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MatTooltip } from '@angular/material/tooltip';
-import { SelectComponent, SelectItem } from '@shared/components';
+import { HintMessageComponent, SelectComponent, SelectItem } from '@shared/components';
 import {
     CreateTranscriptionConfigRequest,
     GetRealtimeTranscriptionModelRequest,
     GetTranscriptionConfigRequest,
     UpdateTranscriptionConfigRequest,
 } from '@shared/models';
-import { ApiGetResponse, RealtimeTranscriptionModelsService, TranscriptionConfigsService } from '@shared/services';
+import {
+    ApiGetResponse,
+    RealtimeTranscriptionModelsService,
+    SecretsStorageService,
+    TranscriptionConfigsService,
+} from '@shared/services';
 
 import { ToastService } from '../../../../../../../services/notifications/toast.service';
 
@@ -23,32 +27,18 @@ export interface AddTranscriptionConfigDialogData {
 @Component({
     selector: 'app-add-transcription-config-dialog',
     standalone: true,
-    imports: [CommonModule, ReactiveFormsModule, SelectComponent, MatTooltip],
+    imports: [CommonModule, ReactiveFormsModule, SelectComponent, HintMessageComponent],
     templateUrl: './add-transcription-config-dialog.component.html',
     styleUrls: ['./add-transcription-config-dialog.component.scss'],
 })
 export class AddTranscriptionConfigDialogComponent implements OnInit {
     transcriptionForm!: FormGroup;
-    showApiKey = false;
     models: GetRealtimeTranscriptionModelRequest[] = [];
-
-    private readonly supportsTextSecurity: boolean =
-        typeof CSS !== 'undefined' &&
-        typeof CSS.supports === 'function' &&
-        CSS.supports('-webkit-text-security', 'disc');
-
-    get apiKeyInputType(): string {
-        if (this.showApiKey) return 'text';
-        return this.supportsTextSecurity ? 'text' : 'password';
-    }
-
-    get apiKeyMasked(): boolean {
-        return !this.showApiKey && this.supportsTextSecurity;
-    }
 
     submitting = false;
     private lastAutoCustomName: string | null = null;
     private destroyRef = inject(DestroyRef);
+    private secretsStorageService = inject(SecretsStorageService);
 
     constructor(
         private fb: FormBuilder,
@@ -63,6 +53,12 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
         this.loadModels();
         this.initForm();
         this.setupModelSubscription();
+        this.secretsStorageService
+            .getSecrets()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                error: () => this.toastService.error('Failed to load secrets.'),
+            });
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
             if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
                 event.preventDefault();
@@ -79,12 +75,20 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
         return this.models.map((model) => ({ name: model.name, value: model.id }));
     }
 
+    public get secretItems(): SelectItem[] {
+        return this.secretsStorageService.secrets().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.secretsStorageService.maskTail(secret.tail),
+        }));
+    }
+
     private initForm(): void {
         const edit = this.data?.editConfig;
         this.transcriptionForm = this.fb.group({
             realtime_transcription_model: [edit?.realtime_transcription_model ?? null, Validators.required],
             custom_name: [edit?.custom_name ?? '', Validators.required],
-            api_key: [edit?.api_key ?? '', Validators.required],
+            api_key_secret_id: [edit?.api_key_secret_id ?? null, Validators.required],
         });
         if (edit) {
             this.lastAutoCustomName = null;
@@ -101,10 +105,6 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
     showError(controlName: string): boolean {
         const control = this.transcriptionForm.get(controlName);
         return control ? control.invalid && (control.touched || control.dirty) : false;
-    }
-
-    toggleApiKeyVisibility(): void {
-        this.showApiKey = !this.showApiKey;
     }
 
     loadModels(): void {
@@ -129,7 +129,7 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
             const update: UpdateTranscriptionConfigRequest = {
                 id: this.data.editConfig!.id,
                 realtime_transcription_model: formValue.realtime_transcription_model,
-                api_key: formValue.api_key,
+                api_key_secret_id: formValue.api_key_secret_id,
                 custom_name: formValue.custom_name,
             };
             this.transcriptionConfigsService.updateTranscriptionConfig(update).subscribe({
@@ -151,7 +151,7 @@ export class AddTranscriptionConfigDialogComponent implements OnInit {
 
         const config: CreateTranscriptionConfigRequest = {
             realtime_transcription_model: formValue.realtime_transcription_model,
-            api_key: formValue.api_key,
+            api_key_secret_id: formValue.api_key_secret_id,
             custom_name: formValue.custom_name,
         };
         this.transcriptionConfigsService.createTranscriptionConfig(config).subscribe({

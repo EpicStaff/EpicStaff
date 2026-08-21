@@ -231,7 +231,7 @@ then regenerate. Never hand-edit the generated files — `--check` will catch dr
 
 ### `make gen-env`
 
-Regenerate `src/.dev.env`, `src/debug.env`, and `src/.env.example` from `src/env.yaml`.
+Regenerate `src/.dev.env`, `src/.debug.env`, and `src/.env.example` from `src/env.yaml`.
 
 ```bash
 make gen-env

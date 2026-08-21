@@ -34,7 +34,6 @@ export interface CreateLlmModelDialogData {
         ToggleSwitchComponent,
         TooltipComponent,
         ValidationErrorsComponent,
-        TooltipComponent,
     ],
     templateUrl: './create-llm-model-modal.component.html',
     styleUrls: ['./create-llm-model-modal.component.scss'],

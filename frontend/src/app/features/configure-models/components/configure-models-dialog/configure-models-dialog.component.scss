@@ -115,4 +115,13 @@
         overflow: auto;
         padding: 20px 40px;
     }
+
+    // Lets a panel opt into filling the content area's height (e.g. Secrets, so its own table
+    // can scroll internally with a sticky header) instead of just growing with its content.
+    &__panel {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
+    }
 }

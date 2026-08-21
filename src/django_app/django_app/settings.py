@@ -16,17 +16,14 @@ from datetime import timedelta
 from pathlib import Path
 
 from corsheaders.defaults import default_headers
-from django.core.management.utils import get_random_secret_key
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import find_dotenv, load_dotenv
 from loguru import logger
 
+from tables.services.rbac.first_setup_mode import FirstSetupMode
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-if os.getenv("LOAD_DEBUG_ENV", "True").lower() in ("true", "1", "yes", "on"):
-    logger.info("LOAD_DEBUG_ENV=True")
-    load_dotenv(find_dotenv(BASE_DIR.parent / "debug.env"))
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -34,11 +31,23 @@ if os.getenv("LOAD_DEBUG_ENV", "True").lower() in ("true", "1", "yes", "on"):
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # SECURITY WARNING: keep the secret key used in production secret!
-DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes", "on")
+DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes", "on")
 
-SECRET_KEY = os.getenv("SECRET_KEY") or (
-    "321567143216717121" if DEBUG else get_random_secret_key()
-)
+
+def _require_env(name: str) -> str:
+    """Return the environment variable's stripped value, refusing to start when it is missing or blank."""
+    value = (os.getenv(name) or "").strip()
+    if not value:
+        raise ImproperlyConfigured(
+            f"{name} is not set. EpicStaff ships no default signing key: generate a "
+            f"random value (e.g. `openssl rand -base64 48`) and pass it to the "
+            f"django_app container. Rotating SECRET_KEY makes every stored Secret "
+            f"undecryptable, so generate it once and keep it."
+        )
+    return value
+
+
+SECRET_KEY = _require_env("SECRET_KEY")
 
 ALLOWED_HOSTS = [
     "*",  # host.strip() for host in os.getenv("ALLOWED_HOSTS", "0.0.0.0, 127.0.0.1").split(",")
@@ -46,6 +55,21 @@ ALLOWED_HOSTS = [
 
 
 # Logging
+
+_VALID_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"}
+
+
+def _resolve_log_level() -> str:
+    """Resolve the stdlib root log level from DJANGO_LOG_LEVEL, falling back to WARNING on an invalid/missing value."""
+    raw_level = os.getenv("DJANGO_LOG_LEVEL", "WARNING").strip().upper()
+    if raw_level not in _VALID_LOG_LEVELS:
+        logger.warning(
+            "Ignoring invalid DJANGO_LOG_LEVEL={!r}; falling back to WARNING.",
+            raw_level,
+        )
+        return "WARNING"
+    return raw_level
+
 
 LOGGING = {
     "version": 1,
@@ -58,7 +82,7 @@ LOGGING = {
     },
     "root": {
         "handlers": ["loguru"],
-        "level": "DEBUG",
+        "level": _resolve_log_level(),
     },
     "loggers": {
         "litellm": {
@@ -347,9 +371,14 @@ FRONTEND_PASSWORD_RESET_PATH = os.getenv(
 
 SSE_TICKET_TTL_SECONDS = 30
 
-DEFAULT_ORGANIZATION_NAME = os.getenv("DEFAULT_ORGANIZATION_NAME", "Organization")
+DEFAULT_ORGANIZATION_NAME = os.getenv("DEFAULT_ORGANIZATION_NAME") or "Organization"
 
-# Story 6 — User profile
+# Which superadmin-creation path is live. See FirstSetupMode. Defaults to
+# cli_only so an internet-exposed deployment fails closed.
+FIRST_SETUP_MODE = FirstSetupMode.validate(
+    (os.getenv("FIRST_SETUP_MODE") or FirstSetupMode.CLI_ONLY).strip().lower()
+)
+
 PASSWORD_CHANGE_TICKET_TTL_SECONDS = int(
     os.getenv("PASSWORD_CHANGE_TICKET_TTL_SECONDS", "300")
 )

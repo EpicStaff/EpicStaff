@@ -7,8 +7,8 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
+from secret_scrubber import masking_enabled, scrub
 from src.shared.models import CodeResultData
-
 from services.storage_credential_manager import StorageCredentialManager
 from utils.environment import build_base_env
 from utils.logger import logger
@@ -66,7 +66,8 @@ class CreateVenvHandler(AbstractHandler):
         context["libraries"] = set(context["libraries"])
         # Install libraries
         predefined_libraries = {
-            "/app/src/shared/dotdict"
+            "/app/src/shared/dotdict",
+            "/app/src/shared/epicstaff_secrets",
         }  # TODO: deal with hard coded path
         if context.get("use_storage"):
             predefined_libraries.add("/app/src/shared/epicstaff_storage")
@@ -250,6 +251,7 @@ import json
 
 try:
     from dotdict import DotDict, DotObject, DotList
+    from epicstaff_secrets import get_secret
     for k, v in {global_kwargs}.items():
         globals()[k] = v
 
@@ -308,6 +310,7 @@ except Exception:
             f.write(wrapped_code)
 
         # Execute the code asynchronously
+        logger.info("Executing code using {}...", python_executable)
         env = build_base_env(context["python_executable"])
         env["HOME"] = context["home_path"]
         if context.get("use_storage"):
@@ -319,6 +322,8 @@ except Exception:
             env["STORAGE_ALLOWED_PATHS"] = json.dumps(storage_allowed_paths)
         if (storage_org_prefix := context.get("storage_org_prefix")) is not None:
             env["STORAGE_ORG_PREFIX"] = storage_org_prefix
+        if (secrets := context.get("secrets")) is not None:
+            env["EPICSTAFF_SECRETS"] = json.dumps(secrets)
 
         process = await asyncio.create_subprocess_exec(
             str(python_executable),
@@ -331,8 +336,15 @@ except Exception:
         stderr = stderr.decode("utf-8", errors="replace")
         stdout = stdout.decode("utf-8", errors="replace")
         returncode = process.returncode
+
+        secrets = context.get("secrets") or {}
+        mask_secrets = masking_enabled()
+        if mask_secrets:
+            stderr = scrub(text=stderr, secrets=secrets)
+            stdout = scrub(text=stdout, secrets=secrets)
+
         if stderr:
-            logger.info(f"Error: {stderr}")
+            logger.info("Error: {}", stderr)
 
         result_file_path: Path | str = context["result_file_path"]
         if isinstance(result_file_path, Path):
@@ -343,7 +355,12 @@ except Exception:
         if returncode == 0:
             try:
                 with open(result_file_path, "r", encoding="utf-8") as file:
-                    result_data = file.read()
+                    raw_result = file.read()
+                result_data = (
+                    scrub(text=raw_result, secrets=secrets)
+                    if mask_secrets
+                    else raw_result
+                )
             except Exception:
                 logger.exception("Exception reading result file")
 
@@ -396,6 +413,7 @@ class DynamicVenvExecutorChain:
         use_storage: bool = False,
         storage_allowed_paths: list[str] | None = None,
         storage_org_prefix: str | None = None,
+        secrets: dict[str, str] | None = None,
     ) -> CodeResultData:
         """Run the complete workflow asynchronously."""
         if func_kwargs is None:
@@ -421,6 +439,7 @@ class DynamicVenvExecutorChain:
             "use_storage": use_storage,
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,
+            "secrets": secrets,
         }
         temp_access_key: str | None = None
         if use_storage:

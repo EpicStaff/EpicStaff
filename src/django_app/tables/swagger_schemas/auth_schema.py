@@ -60,11 +60,10 @@ API_KEY_VALIDATE_GET = dict(
 FIRST_SETUP_GET = dict(
     summary="Check if first-time setup is required",
     description=(
-        "Returns whether the application still needs its initial setup. "
-        "Responds with `needs_setup: true` if no User row exists in the "
-        "database, or `needs_setup: false` if at least one user is present. "
-        "No authentication is required. The frontend uses this to decide "
-        "whether to redirect to the setup wizard before showing the login page."
+        "Whether the browser setup flow should be offered. `needs_setup` is "
+        "true only when no user exists AND this deployment allows HTTP "
+        "first-setup; `setup_mode` reports which creation path is live. "
+        "No authentication required. See docs/rbac/first_setup_operations.md."
     ),
     responses={200: FirstSetupStatusSerializer},
 )
@@ -72,13 +71,10 @@ FIRST_SETUP_GET = dict(
 FIRST_SETUP_POST = dict(
     summary="Perform first-time setup",
     description=(
-        "Creates the first superadmin (is_superadmin=True), a default "
-        "Organization (name from `DEFAULT_ORGANIZATION_NAME` env var, "
-        "falling back to 'Default Organization'), and an OrganizationUser "
-        "membership with the built-in 'Org Admin' role. Returns the user, "
-        "the org, and JWT tokens so the frontend can drop the user straight "
-        "into the app. Refuses with 409 if any user already exists or if "
-        "the default organization row survived a prior user wipe."
+        "Creates the first superadmin, the default organization, and a "
+        "membership with the built-in Superadmin role, then returns JWT "
+        "tokens. Available only when this deployment allows HTTP "
+        "first-setup. See docs/rbac/first_setup_operations.md."
     ),
     request=FirstSetupRequestSerializer,
     responses={
@@ -132,6 +128,13 @@ FIRST_SETUP_POST = dict(
                     status_codes=["400"],
                 ),
             ],
+        ),
+        403: OpenApiResponse(
+            response=OpenApiTypes.STR,
+            description=(
+                "HTTP first-setup is disabled on this deployment "
+                "(code: first_setup_disabled)."
+            ),
         ),
         409: OpenApiResponse(
             response=OpenApiTypes.STR,
