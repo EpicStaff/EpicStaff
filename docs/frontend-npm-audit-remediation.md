@@ -131,9 +131,6 @@ impossible to attribute. Both have since been taken as separate steps, described
   distinguish `null` from `undefined`.
 - The two extended diagnostics the migration suppressed in `tsconfig.app.json` and
   `tsconfig.spec.json` (`nullishCoalescingNotNullable`, `optionalChainNotNullable`).
-- `withXhr()` in `app.config.ts`. Angular 22 switched the default `HttpClient` backend to
-  fetch; the migration added `withXhr()` to preserve behaviour. It should not be removed
-  casually — four interceptors and cookie handling depend on the backend.
 
 ## Closed since
 
@@ -233,6 +230,21 @@ connect and zoom geometry, which no compiler inspects. It was verified by hand i
 editor, with attention to the three places our code sits on top of theirs: the custom
 `IFConnectionBuilder`, the backward-arc path builder with segment avoidance, and connection
 waypoints.
+
+`withXhr()` is gone too, so `HttpClient` now runs on the fetch backend Angular 22 defaults to.
+This was deliberately held back from the upgrade rather than deferred indefinitely: the five
+`withCredentials: true` calls it affects are all on the auth path — login, logout, refresh,
+first-setup, password-change — and they are exercised cross-origin, which is exactly where
+fetch's `credentials: 'include'` and XHR's `withCredentials` diverge over preflight,
+`Access-Control-Allow-Credentials` and cookie `SameSite`. Inside the upgrade commit, a broken
+login would have had thirteen candidate causes.
+
+The one thing the fetch backend genuinely cannot do is report upload progress, and the codebase
+has no `reportProgress`, no `HttpEventType` and no `observe: 'events'` anywhere, so that risk
+was absent from the start. Interceptors sit above the backend and are unaffected;
+`authInterceptor` only reads `err.status`, which Angular normalises identically on both. Checked
+by hand afterwards: login, a forced 401 with token refresh and retry, logout, password change,
+file upload and blob download.
 
 ---
 
