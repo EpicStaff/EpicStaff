@@ -11,7 +11,6 @@ from tables.exceptions import (
 )
 from tables.models.crew_models import (
     Agent,
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
@@ -218,27 +217,6 @@ class AgentReadSerializer(serializers.ModelSerializer):
                     agent_id=agent.id
                 ).values_list("pythoncodetoolconfig_id", flat=True)
             ).select_related("tool__python_code"):
-                tools.append(BaseToolSerializer(tool).data)
-
-        if hasattr(agent, "prefetched_configured_tools"):
-            for link in agent.prefetched_configured_tools:
-                tools.append(BaseToolSerializer(link.toolconfig).data)
-        else:
-            for tool in (
-                ToolConfig.objects.filter(
-                    id__in=AgentConfiguredTools.objects.filter(
-                        agent_id=agent.id
-                    ).values_list("toolconfig_id", flat=True)
-                )
-                .select_related("tool")
-                .prefetch_related(
-                    Prefetch(
-                        "tool__tool_fields",
-                        queryset=ToolConfigField.objects.all(),
-                        to_attr="prefetched_config_fields",
-                    )
-                )
-            ):
                 tools.append(BaseToolSerializer(tool).data)
 
         if hasattr(agent, "prefetched_mcp_tools"):
@@ -560,7 +538,6 @@ class TaskReadSerializer(serializers.ModelSerializer):
 
     def get_tools(self, task: Task) -> list[dict]:
         all_task_tools = chain(
-            task.task_configured_tool_list.all(),
             task.task_python_code_tool_list.all(),
             task.task_python_code_tool_config_list.all(),
             task.task_mcp_tool_list.all(),

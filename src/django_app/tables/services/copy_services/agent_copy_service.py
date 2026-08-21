@@ -1,5 +1,3 @@
-from loguru import logger
-
 from tables.models.crew_models import (
     Agent,
     AgentMcpTools,
@@ -49,18 +47,7 @@ class AgentCopyService(BaseCopyService):
 
         # ToolConfig-backed "configured tools" are deprecated (the per-tool
         # container service they depended on is gone) and are intentionally
-        # not re-linked on copy. Only warn using the prefetch already loaded
-        # by AgentViewSet's queryset -- never issue an extra query just to log.
-        prefetched_configured_tools = getattr(
-            agent, "prefetched_configured_tools", None
-        )
-        if prefetched_configured_tools:
-            logger.warning(
-                "Agent {} has {} deprecated configured_tools rows that will "
-                "not be copied to the new agent",
-                agent.pk,
-                len(prefetched_configured_tools),
-            )
+        # not re-linked on copy.
 
         for row in agent.python_code_tools.all():
             AgentPythonCodeTools.objects.create(
