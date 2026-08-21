@@ -3,7 +3,7 @@ import types
 import pytest
 
 from crewai.agent import temporary_temperature
-from src.crew.utils.llm_wrapper import PatchedLLM
+from src.crew.utils.llm_wrapper import PatchedLLM, _strip_trailing_assistant
 
 
 def _fake_stream():
@@ -125,3 +125,97 @@ def test_claude_4x_knowledge_path_never_sends_temperature(capture_completion):
     with temporary_temperature(llm, temp=0.0):
         llm.call("Reply with a single word: ok")
     assert "temperature" not in capture_completion
+
+
+# --- _strip_trailing_assistant (claude 4.x prefill handling) ---
+
+
+def test_strip_raises_on_empty_messages():
+    with pytest.raises(ValueError):
+        _strip_trailing_assistant([])
+
+
+def test_strip_noop_when_last_not_assistant():
+    messages = [{"role": "user", "content": "hi"}]
+    result = _strip_trailing_assistant(messages)
+    assert result == messages
+
+
+def test_strip_string_content_empty():
+    result = _strip_trailing_assistant([{"role": "assistant", "content": ""}])
+    assert result[-1]["role"] == "user"
+    assert (
+        result[-1]["content"]
+        == "Continue from where you left off and provide your response."
+    )
+    assert "partial progress" not in result[-1]["content"]
+
+
+def test_strip_string_content_nonempty():
+    result = _strip_trailing_assistant([{"role": "assistant", "content": "partial"}])
+    assert result[-1]["role"] == "user"
+    assert "partial progress" in result[-1]["content"]
+    assert "partial" in result[-1]["content"]
+
+
+def test_strip_list_text_only():
+    content = [{"type": "text", "text": "A"}, {"type": "text", "text": "B"}]
+    result = _strip_trailing_assistant([{"role": "assistant", "content": content}])
+    assert "A\nB" in result[-1]["content"]
+
+
+def test_strip_list_non_text_only():
+    content = [{"type": "image"}, {"type": "tool_use", "id": "x"}]
+    result = _strip_trailing_assistant([{"role": "assistant", "content": content}])
+    assert result[-1]["content"].count("[non-text content]") == 1
+
+
+def test_strip_list_mixed():
+    content = [
+        {"type": "text", "text": "A"},
+        {"type": "tool_use"},
+        {"type": "text", "text": "B"},
+    ]
+    result = _strip_trailing_assistant([{"role": "assistant", "content": content}])
+    assert "A\n[non-text content]\nB" in result[-1]["content"]
+
+
+def test_strip_list_empty_content():
+    result = _strip_trailing_assistant([{"role": "assistant", "content": []}])
+    assert result[-1]["role"] == "user"
+    assert (
+        result[-1]["content"]
+        == "Continue from where you left off and provide your response."
+    )
+    assert "partial progress" not in result[-1]["content"]
+
+
+def test_strip_preserves_prior_messages():
+    messages = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "second"},
+        {"role": "assistant", "content": "third"},
+    ]
+    result = _strip_trailing_assistant(messages)
+    assert result[0] == {"role": "user", "content": "first"}
+    assert result[1] == {"role": "assistant", "content": "second"}
+    assert result[-1]["role"] == "user"
+
+
+def test_strip_list_text_block_with_none_value():
+    """Text block with text=None must not raise — treated as empty string."""
+    messages = [{"role": "assistant", "content": [{"type": "text", "text": None}]}]
+    result = _strip_trailing_assistant(messages)
+    assert result[-1]["role"] == "user"
+    assert "partial progress" not in result[-1]["content"]
+
+
+def test_patched_llm_strips_list_content_before_completion(capture_completion):
+    messages = [
+        {"role": "user", "content": "Do the task."},
+        {"role": "assistant", "content": [{"type": "text", "text": "partial"}]},
+    ]
+    llm = PatchedLLM(model="claude-opus-4-8", api_key="test-key")
+    llm.call(messages)
+    assert capture_completion["messages"][-1]["role"] == "user"
+    assert "partial" in capture_completion["messages"][-1]["content"]

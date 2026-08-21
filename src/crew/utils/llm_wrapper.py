@@ -53,11 +53,36 @@ def _model_drops_reasoning_params(model: str | None) -> bool:
 
 
 def _strip_trailing_assistant(messages: list) -> list:
-    """Convert trailing assistant message to a user turn so Claude 4.x doesn't reject it."""
-    if not messages or messages[-1].get("role") != "assistant":
+    """Convert trailing assistant message to a user turn so Claude 4.x doesn't reject it.
+
+    Handles string content (preserved as-is) and list content (each block is extracted
+    as its text value or the marker "[non-text content]" for non-text blocks; a list that
+    contains no text blocks at all collapses to a single "[non-text content]" marker).
+    """
+    if not messages:
+        raise ValueError("_strip_trailing_assistant received an empty messages list")
+    if messages[-1].get("role") != "assistant":
         return messages
     msgs = list(messages)
-    prefill = msgs[-1].get("content") or ""
+    raw_content = msgs[-1].get("content")
+    if isinstance(raw_content, list):
+        if not raw_content:
+            prefill = ""
+        else:
+            parts = []
+            has_text = False
+            for block in raw_content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(block.get("text") or "")
+                    has_text = True
+                else:
+                    parts.append("[non-text content]")
+            if not has_text:
+                prefill = "[non-text content]"
+            else:
+                prefill = "\n".join(parts)
+    else:
+        prefill = raw_content or ""
     msgs[-1] = {
         "role": "user",
         "content": (
