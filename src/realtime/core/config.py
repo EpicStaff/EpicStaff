@@ -24,8 +24,7 @@ class Settings(BaseSettings):
 
     CONNECTION_KEY_TTL_SECONDS: int = 300
 
-    # --- Twilio Media Stream WS auth (per-call single-use token; /voice/stream
-    #     previously accepted connections with zero auth) ---
+    # --- Twilio Media Stream WS auth (per-call single-use token) ---
     STREAM_TOKEN_TTL_SECONDS: int = 120
     MAX_CALL_DURATION_SECONDS: int = 1800
 

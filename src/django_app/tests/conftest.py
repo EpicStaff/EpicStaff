@@ -1,5 +1,8 @@
+from importlib import import_module
 from pathlib import Path
+
 import pytest
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from rest_framework.test import APIClient
@@ -12,42 +15,74 @@ from tables.services.rbac.api_key.generator import ApiKeyGenerator
 from .fixtures import *  # noqa: F401,F403
 
 
+def seed_builtin_roles_and_permissions() -> None:
+    """Re-run the data-migration seed functions that `flush` wipes (built-in
+    Roles/RolePermissions). In production these are seeded once by migration
+    0171 and never touched; `flush` doesn't discriminate, so we have to
+    re-apply. Shared by `flush_test_db_once` below and by any test that
+    truncates tables directly (`django_db(transaction=True)`) and needs to
+    restore them for later tests in the session.
+
+    Migration module names start with digits and cannot be imported via
+    `from ... import`; use importlib. Delegating to the migrations' own
+    seed functions keeps the role/permission definitions in one place.
+    Replay ALL seeds in migration order: 0171 seeds roles + initial
+    permission bitmasks, 0183 overrides them with the authoritative
+    bitmasks (e.g. Org Admin export on agents/projects), then 0210 adds
+    the `voice` resource_type bitmasks, and 0205 adds the surfaces grants.
+    Re-seeding only a subset would leave tests on stale permissions --
+    e.g. skipping 0210 would leave `voice` missing entirely, so every
+    non-superadmin request to a VOICE-gated endpoint would 403 in tests
+    even though the migration seeds it correctly in production.
+    """
+    roles_module = import_module("tables.migrations.0171_seed_builtin_roles")
+    roles_module.seed_builtin_roles(django_apps, None)
+    perms_module = import_module("tables.migrations.0183_seed_builtin_role_permissions")
+    perms_module.seed_role_permissions(django_apps, None)
+    voice_perms_module = import_module(
+        "tables.migrations.0210_seed_voice_role_permissions"
+    )
+    voice_perms_module.seed_voice_permissions(django_apps, None)
+    surface_perms_module = import_module(
+        "tables.migrations.0205_seed_surface_permissions"
+    )
+    surface_perms_module.seed(django_apps, None)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def flush_test_db_once(django_db_setup, django_db_blocker):
     """Flush the test DB once per session to remove stale data from previous
     runs, then re-run the data-migration seed functions that `flush` wipes
     (built-in Roles). In production these are seeded once by migration 0171
     and never touched; `flush` doesn't discriminate, so we have to re-apply."""
-    from importlib import import_module
-
-    from django.apps import apps as django_apps
-
     with django_db_blocker.unblock():
         call_command("flush", "--noinput")
-        # Migration module names start with digits and cannot be imported via
-        # `from ... import`; use importlib. Delegating to the migrations' own
-        # seed functions keeps the role/permission definitions in one place.
-        # Replay ALL seeds in migration order: 0171 seeds roles + initial
-        # permission bitmasks, 0183 overrides them with the authoritative
-        # bitmasks (e.g. Org Admin export on agents/projects), then 0210 adds
-        # the `voice` resource_type bitmasks. Re-seeding only 0171/0183 would
-        # leave tests on the stale pre-0210 permissions (missing `voice`
-        # entirely — every non-superadmin request to a VOICE-gated endpoint
-        # would 403 in tests even though the migration seeds it correctly).
-        roles_module = import_module("tables.migrations.0171_seed_builtin_roles")
-        roles_module.seed_builtin_roles(django_apps, None)
-        perms_module = import_module(
-            "tables.migrations.0183_seed_builtin_role_permissions"
-        )
-        perms_module.seed_role_permissions(django_apps, None)
-        voice_perms_module = import_module(
-            "tables.migrations.0210_seed_voice_role_permissions"
-        )
-        voice_perms_module.seed_voice_permissions(django_apps, None)
-        surface_perms_module = import_module(
-            "tables.migrations.0205_seed_surface_permissions"
-        )
-        surface_perms_module.seed(django_apps, None)
+        seed_builtin_roles_and_permissions()
+
+
+@pytest.fixture(autouse=True)
+def heal_builtin_roles(request):
+    """Make sure the built-in Roles exist before every database test.
+
+    A `django_db(transaction=True)` test truncates every table at teardown,
+    including the built-in Roles that `flush_test_db_once` seeds once per
+    session. That damage cannot be repaired by the offending test: fixture
+    teardown is LIFO, and pytest-django's transactional helper is set up
+    before anything the test itself requests, so its flush always runs
+    *last*. Healing at setup time is therefore the only order-independent
+    place to do it.
+
+    Cheap in the common case — one EXISTS query when the rows are present.
+    Skipped entirely for tests that never touch the database, so it cannot
+    trigger database setup for a pure unit test.
+    """
+    touches_db = request.node.get_closest_marker("django_db") is not None or bool(
+        {"db", "transactional_db"} & set(request.fixturenames)
+    )
+    if not touches_db:
+        return
+    if not Role.objects.filter(is_built_in=True).exists():
+        seed_builtin_roles_and_permissions()
 
 
 @pytest.fixture(autouse=True)

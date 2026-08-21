@@ -1,9 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.db.models import Prefetch
+from loguru import logger
 
-from tables.serializers.model_serializers.crew_serializers import (
-    ToolConfigSerializer,
-)
 from src.shared.models import (
     AgentData,
     LocalhostConfigData,
@@ -15,7 +13,6 @@ from src.shared.models import (
     ConditionalEdgeData,
     ConditionData,
     ConditionGroupData,
-    ConfiguredToolData,
     CrewData,
     CrewNodeData,
     DecisionTableNodeData,
@@ -55,7 +52,6 @@ from tables.models import (
     PythonCode,
     PythonCodeTool,
     Task,
-    ToolConfig,
 )
 from tables.models.crew_models import (
     AgentConfiguredTools,
@@ -106,10 +102,6 @@ from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from tables.validators.crew_memory_validator import CrewMemoryValidator
 from tables.validators.task_validator import TaskValidator
-from tables.validators.tool_config_validator import (
-    ToolConfigValidator,
-    validate_tool_configs,
-)
 from utils.graph_utils import (
     SINGLE_LOOKUP_RESOLVER,
     NodeNameResolver,
@@ -117,9 +109,6 @@ from utils.graph_utils import (
 from utils.singleton_meta import SingletonMeta
 from tables.services.rag_assignment_service import SearchConfigService
 
-tool_config_serializer = ToolConfigSerializer(
-    ToolConfigValidator(validate_missing_reqired_fields=True, validate_null_fields=True)
-)
 from tables.models.embedding_models import EmbeddingConfig
 
 
@@ -419,9 +408,16 @@ class ConverterService(metaclass=SingletonMeta):
             entry.pythoncodetoolconfig for entry in agent.python_code_tool_configs.all()
         ]
         configured_tools = [entry.toolconfig for entry in agent.configured_tools.all()]
+        if configured_tools:
+            logger.warning(
+                "Agent {} has {} configured tool(s) attached, but the "
+                "configured-tool mechanism was removed; skipping them.",
+                agent.pk,
+                len(configured_tools),
+            )
         mcp_tools = [entry.mcptool for entry in agent.mcp_tools.all()]
 
-        all_tools = python_tools + python_tool_configs + configured_tools + mcp_tools
+        all_tools = python_tools + python_tool_configs + mcp_tools
         return [
             self.convert_tool_to_base_tool_pydantic(
                 tool, graph_id=graph_id, session_id=session_id
@@ -435,9 +431,18 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
     ) -> list[BaseToolData]:
+        configured_tools = [
+            entry.tool for entry in task.task_configured_tool_list.all()
+        ]
+        if configured_tools:
+            logger.warning(
+                "Task {} has {} configured tool(s) attached, but the "
+                "configured-tool mechanism was removed; skipping them.",
+                task.pk,
+                len(configured_tools),
+            )
         tools = (
-            [entry.tool for entry in task.task_configured_tool_list.all()]
-            + [entry.tool for entry in task.task_python_code_tool_list.all()]
+            [entry.tool for entry in task.task_python_code_tool_list.all()]
             + [entry.tool for entry in task.task_python_code_tool_config_list.all()]
             + [entry.tool for entry in task.task_mcp_tool_list.all()]
         )
@@ -450,7 +455,7 @@ class ConverterService(metaclass=SingletonMeta):
 
     def convert_tool_to_base_tool_pydantic(
         self,
-        tool: PythonCodeTool | ToolConfig | McpTool | PythonCodeToolConfig,
+        tool: PythonCodeTool | McpTool | PythonCodeToolConfig,
         graph_id: int | None = None,
         session_id: int | None = None,
         storage_allowed_paths_override: list[str] | None = None,
@@ -471,9 +476,6 @@ class ConverterService(metaclass=SingletonMeta):
                 session_id=session_id,
                 storage_allowed_paths_override=storage_allowed_paths_override,
             )
-        elif isinstance(tool, ToolConfig):
-            unique_name = f"configured-tool:{tool.pk}"
-            data = self.convert_configured_tool_to_pydantic(tool)
         elif isinstance(tool, McpTool):
             unique_name = f"mcp-tool:{tool.pk}"
             data = self.convert_mcp_tool_to_pydantic(tool)
@@ -835,39 +837,6 @@ class ConverterService(metaclass=SingletonMeta):
             python_code=python_code_data,
         )
 
-    def convert_configured_tool_to_pydantic(
-        self, tool_config: ToolConfig
-    ) -> ConfiguredToolData:
-        data: dict = tool_config_serializer.to_representation(
-            tool_config, format="pydantic"
-        )
-        configuration = data["configuration"]
-
-        tool_llm_config_id = configuration.pop("llm_config", None)
-        llm_config = None
-        if tool_llm_config_id:
-            llm_config = LLMConfig.objects.get(
-                pk=tool_llm_config_id
-            ).fill_with_defaults()
-
-        tool_embedding_config_id = configuration.pop("embedding_config", None)
-
-        embedding_config = None
-        if tool_embedding_config_id:
-            embedding_config = EmbeddingConfig.objects.get(pk=tool_embedding_config_id)
-
-        tool_config_data = ToolConfigData(
-            id=tool_config.pk,
-            llm=self.convert_llm_config_to_pydantic(llm_config),
-            embedder=self.convert_embedding_config_to_pydantic(embedding_config),
-            tool_init_configuration=configuration,
-        )
-
-        return ConfiguredToolData(
-            name_alias=tool_config.tool.name_alias,
-            tool_config=tool_config_data,
-        )
-
     def convert_mcp_tool_to_pydantic(self, mcp_tool: McpTool) -> McpToolData:
         return McpToolData(
             transport=mcp_tool.transport,
@@ -1081,7 +1050,6 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
     ) -> CrewNodeData:
         crew: Crew = crew_node.crew
-        validate_tool_configs(crew)
         crew_data = self.convert_crew_to_pydantic(
             crew_id=crew.pk, graph_id=graph_id, session_id=session_id
         )

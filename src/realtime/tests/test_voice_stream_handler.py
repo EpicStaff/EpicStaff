@@ -24,6 +24,7 @@ import json
 from unittest.mock import AsyncMock, call, patch
 
 import pytest
+from infrastructure.persistence.stream_token_repository import StreamTokenRepository
 from utils.singleton_meta import SingletonMeta
 
 
@@ -38,11 +39,15 @@ def _assert_not_auth_rejected(ws: AsyncMock) -> None:
 
 @pytest.fixture(autouse=True)
 def reset_singletons():
-    """StreamTokenRepository (and any other SingletonMeta instance) must not
-    leak minted/consumed tokens across tests."""
-    SingletonMeta._instances.clear()
+    """`StreamTokenRepository` must not leak minted/consumed tokens across
+    tests. Only this one class's registered instance is dropped -- clearing
+    the whole `SingletonMeta._instances` dict would also orphan unrelated
+    singletons (e.g. `api.main`'s module-level `connection_repository`,
+    which other test modules rely on being the SAME instance `api.main`
+    itself uses)."""
+    SingletonMeta._instances.pop(StreamTokenRepository, None)
     yield
-    SingletonMeta._instances.clear()
+    SingletonMeta._instances.pop(StreamTokenRepository, None)
 
 
 def _start_event(stream_token: str | None = None) -> str:

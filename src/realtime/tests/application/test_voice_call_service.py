@@ -58,6 +58,7 @@ def service(twilio_ws):
         connections={},
         factory=MagicMock(),
         initial_message=None,
+        django_api_base_url="http://django_app:8000/api",
     )
 
 

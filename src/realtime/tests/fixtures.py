@@ -93,8 +93,6 @@ def tool_manager(redis_service) -> ToolManagerService:
         python_code_executor_service=PythonCodeExecutorService(redis_service),
         knowledge_search_get_channel="knowledge:search:get",
         knowledge_search_response_channel="knowledge:search:response",
-        manager_host="localhost",
-        manager_port=8080,
     )
 
 

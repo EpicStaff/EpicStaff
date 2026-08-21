@@ -11,13 +11,11 @@ from tables.exceptions import (
 )
 from tables.models.crew_models import (
     Agent,
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
     Crew,
     Task,
-    TaskConfiguredTools,
     TaskContext,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
@@ -222,27 +220,6 @@ class AgentReadSerializer(serializers.ModelSerializer):
             ).select_related("tool__python_code"):
                 tools.append(BaseToolSerializer(tool).data)
 
-        if hasattr(agent, "prefetched_configured_tools"):
-            for link in agent.prefetched_configured_tools:
-                tools.append(BaseToolSerializer(link.toolconfig).data)
-        else:
-            for tool in (
-                ToolConfig.objects.filter(
-                    id__in=AgentConfiguredTools.objects.filter(
-                        agent_id=agent.id
-                    ).values_list("toolconfig_id", flat=True)
-                )
-                .select_related("tool")
-                .prefetch_related(
-                    Prefetch(
-                        "tool__tool_fields",
-                        queryset=ToolConfigField.objects.all(),
-                        to_attr="prefetched_config_fields",
-                    )
-                )
-            ):
-                tools.append(BaseToolSerializer(tool).data)
-
         if hasattr(agent, "prefetched_mcp_tools"):
             for link in agent.prefetched_mcp_tools:
                 tools.append(BaseToolSerializer(link.mcptool).data)
@@ -344,7 +321,6 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
     def _get_tools_models_map(self) -> dict[type[Model], tuple[type[Model], str, str]]:
         return {
-            ToolConfig: (AgentConfiguredTools, "configured-tool", "toolconfig_id"),
             PythonCodeTool: (
                 AgentPythonCodeTools,
                 "python-code-tool",
@@ -563,7 +539,6 @@ class TaskReadSerializer(serializers.ModelSerializer):
 
     def get_tools(self, task: Task) -> list[dict]:
         all_task_tools = chain(
-            task.task_configured_tool_list.all(),
             task.task_python_code_tool_list.all(),
             task.task_python_code_tool_config_list.all(),
             task.task_mcp_tool_list.all(),
@@ -675,7 +650,6 @@ class TaskWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
     def _get_tools_models_map(self) -> dict[type[Model], tuple[type[Model], str, str]]:
         return {
-            ToolConfig: (TaskConfiguredTools, "configured-tool", "tool_id"),
             PythonCodeTool: (TaskPythonCodeTools, "python-code-tool", "tool_id"),
             PythonCodeToolConfig: (
                 TaskPythonCodeToolConfigs,

@@ -54,7 +54,7 @@ def test_first_setup_flow_is_idempotent(api_client):
 
     r = api_client.get(url)
     assert r.status_code == 200
-    assert r.json() == {"needs_setup": True}
+    assert r.json() == {"needs_setup": True, "setup_mode": "open"}
 
     r = api_client.post(
         url,
@@ -68,7 +68,7 @@ def test_first_setup_flow_is_idempotent(api_client):
     assert "access" in payload and "refresh" in payload
 
     r = api_client.get(url)
-    assert r.json() == {"needs_setup": False}
+    assert r.json() == {"needs_setup": False, "setup_mode": "open"}
 
     r = api_client.post(
         url,

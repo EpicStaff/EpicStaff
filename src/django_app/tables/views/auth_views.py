@@ -1,3 +1,4 @@
+from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -9,6 +10,7 @@ from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
+from tables.services.rbac.first_setup_mode import FirstSetupMode
 from tables.services.rbac.permissions import IsSuperadmin
 from tables.models.rbac_models import ApiKey, OrganizationUser
 from django.contrib.auth import get_user_model
@@ -25,7 +27,10 @@ from tables.services.rbac.auth_service import TokenPair
 from tables.services.rbac.auth_validation_service import AuthValidationService
 from tables.services.rbac.first_setup_service import FirstSetupService
 from tables.services.rbac.password_recovery_service import PasswordRecoveryService
-from tables.services.rbac.rbac_exceptions import InvalidRefreshTokenError
+from tables.services.rbac.rbac_exceptions import (
+    FirstSetupDisabledError,
+    InvalidRefreshTokenError,
+)
 from tables.services.rbac.reset_user_service import ResetUserService
 from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
 from tables.services.rbac.utils.refresh_cookie import (
@@ -144,10 +149,21 @@ class FirstSetupView(APIView):
 
     @extend_schema(**FIRST_SETUP_GET)
     def get(self, request):
-        return Response({"needs_setup": self._service.is_setup_required()})
+        # `needs_setup` stays false whenever the HTTP path is closed, so the
+        # frontend never offers a setup form it cannot submit.
+        http_allowed = FirstSetupMode.is_http_allowed(settings.FIRST_SETUP_MODE)
+        return Response(
+            {
+                "needs_setup": http_allowed and self._service.is_setup_required(),
+                "setup_mode": settings.FIRST_SETUP_MODE,
+            }
+        )
 
     @extend_schema(**FIRST_SETUP_POST)
     def post(self, request):
+        if not FirstSetupMode.is_http_allowed(settings.FIRST_SETUP_MODE):
+            raise FirstSetupDisabledError()
+
         cleaned = self._validator.validate_first_setup(request.data)
 
         result = self._service.setup(
@@ -208,9 +224,7 @@ class TokenIntrospectView(APIView):
             )
         )
         is_superadmin = (
-            get_user_model()
-            .objects.filter(pk=user_id, is_superadmin=True)
-            .exists()
+            get_user_model().objects.filter(pk=user_id, is_superadmin=True).exists()
         )
 
         return Response(
@@ -423,9 +437,7 @@ class ResetUserView(APIView):
         tokens = TokenPair.for_user(user)
 
         response = Response(
-            {
-                "access": tokens.access,
-            },
+            {"access": tokens.access},
             status=status.HTTP_201_CREATED,
         )
         set_refresh_cookie(response, tokens.refresh)
