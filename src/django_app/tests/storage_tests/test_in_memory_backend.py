@@ -1,3 +1,4 @@
+import zipfile
 from io import BytesIO
 
 import pytest
@@ -256,3 +257,18 @@ class TestUploadArchive:
     ):
         with pytest.raises(ValueError, match="protected"):
             fake_backend.upload_archive("", password_zip, "encrypted.zip")
+
+    def test_upload_archive_rejects_zip_slip_and_writes_nothing(self, fake_backend):
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            # Malicious entry is written first so the generator fails before
+            # any legitimate entry gets extracted, proving there is no
+            # partial extraction on the way to the ValueError.
+            zf.writestr("../evil.txt", "evil content")
+            zf.writestr("safe.txt", "safe content")
+        buf.seek(0)
+
+        with pytest.raises(ValueError, match="escapes the target folder"):
+            fake_backend.upload_archive("", buf, "malicious.zip")
+
+        assert fake_backend._objects == {}
