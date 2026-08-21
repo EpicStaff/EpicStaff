@@ -565,6 +565,7 @@ services:
       - SETUID
       - SETGID
       - CHOWN
+      - DAC_READ_SEARCH
     image: nginx
     container_name: epicstaff-nginx
     ports:
