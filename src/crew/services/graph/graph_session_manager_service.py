@@ -17,6 +17,7 @@ from services.run_python_code_service import RunPythonCodeService
 from services.knowledge_search_service import KnowledgeSearchService
 from utils.singleton_meta import SingletonMeta
 from models.graph_models import GraphMessage
+from settings import DEFAULT_TOKEN_BUDGET
 
 from src.shared.models import SessionData, StopSessionMessage
 from src.crew.services.graph.shared_variables import (
@@ -39,11 +40,12 @@ def _extract_finish_token_total(message_data: dict) -> int:
 
     Mirrors the extraction logic in
     tables/services/redis_pubsub.py::_calculate_subgraph_token_usage so both
-    sides agree on where token usage lives in a "finish" message: CrewNode
-    (services/graph/nodes/crew_node.py) embeds it as output["token_usage"].
+    sides agree on where token usage lives in a "finish" message: AgentNode
+    (services/graph/nodes/agent_node.py) and TaskNode
+    (services/graph/nodes/task_node.py) embed it as output["token_usage"].
     Subgraph finish messages are re-streamed through the same parent
     graph.astream() custom-stream (see subgraphs/subgraph_node.py
-    _execute_subgraph -> writer(data)), so nested crew nodes' finish
+    _execute_subgraph -> writer(data)), so nested agent/task nodes' finish
     messages surface here too and are counted the same way.
     """
     if not isinstance(message_data, dict):
@@ -115,6 +117,20 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             # Copy so popping the reserved budget key never mutates the
             # pydantic SessionData model itself.
             initial_state = dict(session_data.initial_state)
+
+            # EST-3285 4.2c: optional run-level token budget hard stop.
+            # Per-run override (if Django threaded one through the request)
+            # takes precedence over the global env/settings default. Both
+            # default to None ("no limit"), so this is fully inert unless
+            # explicitly configured -- byte-for-byte unchanged behavior for
+            # existing runs.
+            token_budget = initial_state.pop(TOKEN_BUDGET_STATE_KEY, None)
+            if token_budget is None:
+                token_budget = DEFAULT_TOKEN_BUDGET
+            # Local to this call -- NOT stored on `self` -- so concurrent
+            # sessions (GraphSessionManagerService is a process-wide
+            # singleton) never share or leak a running total.
+            token_usage_total = 0
 
             session_graph_builder = SessionGraphBuilder(
                 session_id=session_id,
@@ -209,6 +225,26 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
                     assert isinstance(data, dict), "custom chunk must be a dict"
                     data["uuid"] = str(uuid.uuid4())
+
+                    if token_budget is not None:
+                        token_usage_total += _extract_finish_token_total(
+                            data.get("message_data") or {}
+                        )
+                        if token_usage_total > token_budget:
+                            logger.warning(
+                                f"Session {session_id} exceeded token budget "
+                                f"({token_usage_total} > {token_budget}). "
+                                "Stopping session."
+                            )
+                            stop_event.reason = "token budget exceeded"
+                            # Reuse the existing manual-stop status/path
+                            # (StopEvent default_status="stop") -- same
+                            # mechanism as _handle_stop_session /
+                            # _handle_session_timeout, so the abort is
+                            # handled by the already-exercised StopSession
+                            # flow (nodes' _cleanup_on_stop, EndNode skip,
+                            # etc.) with no new status.
+                            stop_event.set()
 
                     self.redis_service.publish("graph:messages", data)
                 elif stream_mode == "values":
