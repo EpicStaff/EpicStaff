@@ -11,22 +11,23 @@ import {
     JsonEditorComponent,
     SelectComponent,
     SelectItem,
-    ValidationErrorsComponent, WebhookTriggerSelectComponent,
+    ValidationErrorsComponent,
+    WebhookTriggerSelectComponent,
 } from '@shared/components';
-import { SecretsStorageService } from "@shared/services";
+import { SecretsStorageService } from '@shared/services';
 import { tap } from 'rxjs/operators';
 
 import {
     DisplayedTelegramField,
     TelegramTriggerNodeField,
 } from '../../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
-import { ToastService } from "../../../../services/notifications";
+import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
-import { WebhookTriggerModel } from "../../../core/models/webhook-trigger.model";
+import { WebhookTriggerModel } from '../../../core/models/webhook-trigger.model';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
 import { WebhookStatus } from './webhook-status.model';
 
@@ -49,8 +50,7 @@ import { WebhookStatus } from './webhook-status.model';
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTriggerNodeModel> implements OnInit
-{
+export class TelegramTriggerNodePanelComponent extends BaseSidePanel<TelegramTriggerNodeModel> implements OnInit {
     public override readonly isExpanded = input<boolean>(false);
 
     private dialog = inject(Dialog);

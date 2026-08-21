@@ -3,7 +3,7 @@ import { WebhookTriggerModel } from '../../../visual-programming/core/models/web
 export interface TwilioChannel {
     channel: number;
     account_sid: string;
-    auth_token: string;
+    auth_token_secret_id: number | null;
     phone_number: string | null;
     webhook_trigger: WebhookTriggerModel | null;
 }
@@ -35,7 +35,7 @@ export interface UpdateRealtimeChannelRequest {
 export interface CreateTwilioChannelRequest {
     channel: number;
     account_sid: string;
-    auth_token: string;
+    auth_token_secret_id: number | null;
     phone_number?: string | null;
     webhook_trigger?: number | null;
 }
@@ -43,7 +43,7 @@ export interface CreateTwilioChannelRequest {
 export interface UpdateTwilioChannelRequest {
     channel: number;
     account_sid?: string;
-    auth_token?: string;
+    auth_token_secret_id?: number | null;
     phone_number?: string | null;
     webhook_trigger?: number | null;
 }

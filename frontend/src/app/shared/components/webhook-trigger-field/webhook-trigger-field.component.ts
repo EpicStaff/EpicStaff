@@ -27,6 +27,7 @@ import {
     WebhookTriggerModel,
     WebhookTriggerWrite,
 } from '../../../visual-programming/core/models/webhook-trigger.model';
+import { SecretsStorageService } from '../../services/secrets/secrets-storage.service';
 import { WebhookTriggerService } from '../../services/webhook-trigger/webhook-trigger.service';
 import { CustomInputComponent } from '../form-input/form-input.component';
 import { SelectComponent, SelectItem } from '../select/select.component';
@@ -61,6 +62,7 @@ type Mode = 'existing' | 'new';
 export class WebhookTriggerFieldComponent implements ControlValueAccessor, Validator, OnInit {
     private fb = inject(FormBuilder);
     private service = inject(WebhookTriggerService);
+    private secretsStorageService = inject(SecretsStorageService);
     private destroyRef = inject(DestroyRef);
 
     /** Allow choosing an existing trigger (reference by id). Off for the management create/edit dialog. */
@@ -85,6 +87,13 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
     providerItems = computed<SelectItem[]>(() =>
         this.allowLocalhost() ? WEBHOOK_PROVIDER_ITEMS : WEBHOOK_PROVIDER_ITEMS.filter((i) => i.value !== 'localhost')
     );
+    secretItems = computed<SelectItem[]>(() =>
+        this.secretsStorageService.secrets().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.secretsStorageService.maskTail(secret.tail),
+        }))
+    );
     readonly regionItems = WEBHOOK_REGION_ITEMS;
     readonly modeItems: SelectItem[] = [
         { name: 'Create new', value: 'new' },
@@ -95,7 +104,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         path: ['', [Validators.required]],
         provider_type: [null as WebhookProviderType | null],
         ngrok_name: [''],
-        ngrok_auth_token: [''],
+        ngrok_auth_token_secret_id: [null as number | null],
         ngrok_domain: [''],
         ngrok_region: ['eu'],
         localhost_name: [''],
@@ -137,11 +146,15 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
         this.service.changed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
             if (this.triggersLoaded()) this.loadTriggers();
         });
+        this.secretsStorageService
+            .getSecrets()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({ error: () => {} });
     }
 
     private applyProviderValidators(pt: WebhookProviderType | null): void {
         const ngrokName = this.form.controls.ngrok_name;
-        const ngrokToken = this.form.controls.ngrok_auth_token;
+        const ngrokToken = this.form.controls.ngrok_auth_token_secret_id;
         const localhostName = this.form.controls.localhost_name;
 
         if (pt === 'ngrok') {
@@ -230,7 +243,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
                 provider === 'ngrok'
                     ? {
                           name: v.ngrok_name ?? '',
-                          auth_token: v.ngrok_auth_token ?? '',
+                          auth_token_secret_id: v.ngrok_auth_token_secret_id ?? null,
                           domain: v.ngrok_domain || null,
                           region: (v.ngrok_region as 'us' | 'eu' | 'ap') || 'eu',
                       }
@@ -261,7 +274,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
                     path: value.path ?? '',
                     provider_type: value.provider_type ?? null,
                     ngrok_name: value.ngrok_config?.name ?? '',
-                    ngrok_auth_token: value.ngrok_config?.auth_token ?? '',
+                    ngrok_auth_token_secret_id: value.ngrok_config?.auth_token_secret_id ?? null,
                     ngrok_domain: value.ngrok_config?.domain ?? '',
                     ngrok_region: value.ngrok_config?.region ?? 'eu',
                     localhost_name: value.localhost_config?.name ?? '',
@@ -306,7 +319,7 @@ export class WebhookTriggerFieldComponent implements ControlValueAccessor, Valid
             }
             if (provider === 'ngrok') {
                 if (!(this.form.value.ngrok_name ?? '').trim()) return { ngrokNameRequired: true };
-                if (!(this.form.value.ngrok_auth_token ?? '').trim()) return { ngrokAuthTokenRequired: true };
+                if (this.form.value.ngrok_auth_token_secret_id == null) return { ngrokAuthTokenRequired: true };
             }
             if (provider === 'localhost') {
                 if (!(this.form.value.localhost_name ?? '').trim()) return { localhostNameRequired: true };

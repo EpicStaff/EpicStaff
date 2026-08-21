@@ -82,14 +82,10 @@ export class RealtimeChannelService {
         return twilio;
     }
 
-    getPhoneNumbers(accountSid: string, authToken: string): Observable<TwilioPhoneNumber[]> {
+    getPhoneNumbersForChannel(channelId: number): Observable<TwilioPhoneNumber[]> {
         return this.http
-            .get<ApiListResponse<TwilioPhoneNumber>>(this.configService.apiUrl + 'twilio/phone-numbers/', {
-                headers: new HttpHeaders({
-                    'Content-Type': 'application/json',
-                    'X-Twilio-Account-Sid': accountSid,
-                    'X-Twilio-Auth-Token': authToken,
-                }),
+            .get<ApiListResponse<TwilioPhoneNumber>>(`${this.twilioChannelUrl}${channelId}/phone-numbers/`, {
+                headers: this.headers,
             })
             .pipe(map((r) => r.results));
     }

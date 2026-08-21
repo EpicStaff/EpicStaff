@@ -208,13 +208,16 @@ export class QuickstartSectionComponent implements OnInit {
                         .getAllConfigs(true)
                         .pipe(takeUntilDestroyed(this.destroyRef))
                         .subscribe();
-                    this.openaiRealtimeStorage.getAllConfigs(true)
+                    this.openaiRealtimeStorage
+                        .getAllConfigs(true)
                         .pipe(takeUntilDestroyed(this.destroyRef))
                         .subscribe();
-                    this.geminiRealtimeStorage.getAllConfigs(true)
+                    this.geminiRealtimeStorage
+                        .getAllConfigs(true)
                         .pipe(takeUntilDestroyed(this.destroyRef))
                         .subscribe();
-                    this.elevenLabsRealtimeStorage.getAllConfigs(true)
+                    this.elevenLabsRealtimeStorage
+                        .getAllConfigs(true)
                         .pipe(takeUntilDestroyed(this.destroyRef))
                         .subscribe();
                     this.isSaving.set(false);

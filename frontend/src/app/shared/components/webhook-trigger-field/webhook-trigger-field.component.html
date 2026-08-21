@@ -49,14 +49,17 @@
                 [required]="true"
                 [activeColor]="activeColor()"
             ></app-custom-input>
-            <app-custom-input
-                type="password"
+            <app-select
+                formControlName="ngrok_auth_token_secret_id"
                 label="Ngrok Auth Token"
-                formControlName="ngrok_auth_token"
-                placeholder="From dashboard.ngrok.com"
+                variant="boxed"
+                tooltipText="The stored secret holding this tunnel's ngrok auth token"
+                placeholder="Select a secret"
                 [required]="true"
-                [activeColor]="activeColor()"
-            ></app-custom-input>
+                [items]="secretItems()"
+                [showSearch]="true"
+                searchPlaceholder="Search a secret..."
+            />
             <app-custom-input
                 label="Custom Domain"
                 formControlName="ngrok_domain"

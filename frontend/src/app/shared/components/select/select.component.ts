@@ -69,7 +69,7 @@ export class SelectComponent implements ControlValueAccessor {
 
     changed = output<unknown>();
     opened = output<void>();
-    
+
     selectedValue = model<unknown | null>(null);
 
     open = signal(false);

@@ -2,7 +2,7 @@ export type WebhookProviderType = 'ngrok' | 'localhost';
 
 export interface NgrokConfigInline {
     name: string;
-    auth_token: string;
+    auth_token_secret_id: number | null;
     domain: string | null;
     region: 'us' | 'eu' | 'ap';
 }

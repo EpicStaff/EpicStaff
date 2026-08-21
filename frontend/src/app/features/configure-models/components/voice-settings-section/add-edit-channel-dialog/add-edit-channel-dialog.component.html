@@ -45,14 +45,16 @@
         </div>
 
         <div>
-            <app-custom-input
-                type="secret"
+            <app-select
+                formControlName="auth_token_secret_id"
                 label="Auth Token"
-                formControlName="auth_token"
-                [required]="true"
-                placeholder="Enter Auth Token..."
+                variant="boxed"
                 tooltipText="Your Twilio Auth Token"
-                cautionMessage="You must enter the full new auth token to change it. Partial updates aren't supported."
+                placeholder="Select a secret"
+                [required]="true"
+                [items]="secretItems()"
+                [showSearch]="true"
+                searchPlaceholder="Search a secret..."
             />
         </div>
 
@@ -61,8 +63,13 @@
             formControlName="phone_number"
             [items]="phoneNumberItems()"
             [loading]="phoneNumbersLoading()"
+            [disabled]="phoneNumberSelectDisabled()"
             placeholder="Select a phone number"
-            tooltipText="Twilio phone number in E.164 format"
+            [tooltipText]="
+                phoneNumberSelectDisabled()
+                    ? 'Save the channel first to look up available phone numbers'
+                    : 'Twilio phone number in E.164 format'
+            "
             (opened)="onPhoneSelectOpened()"
         />
         @if (phoneLoadError()) {

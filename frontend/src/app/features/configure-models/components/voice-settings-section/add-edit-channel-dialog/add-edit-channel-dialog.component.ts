@@ -10,7 +10,8 @@ import {
     SelectItem,
     WebhookTriggerFieldComponent,
 } from '@shared/components';
-import { WebhookTriggerService } from '@shared/services';
+import { SecretsStorageService, WebhookTriggerService } from '@shared/services';
+import { extractHttpErrorMessage } from '@shared/utils';
 import { Observable, of, switchMap } from 'rxjs';
 
 import { RealtimeChannel, TwilioChannel } from '../../../../../shared/models/realtime-voice/realtime-channel.model';
@@ -46,6 +47,7 @@ export class AddEditChannelDialogComponent implements OnInit {
     private channelService = inject(RealtimeChannelService);
     private agentsService = inject(AgentsService);
     private webhookTriggerService = inject(WebhookTriggerService);
+    private secretsStorageService = inject(SecretsStorageService);
     private destroyRef = inject(DestroyRef);
 
     data: AddEditChannelDialogData = inject(DIALOG_DATA);
@@ -65,12 +67,20 @@ export class AddEditChannelDialogComponent implements OnInit {
     phoneNumbersLoading = signal<boolean>(false);
     phoneLoadError = signal<string | null>(null);
 
-    private readonly PHONE_CACHE_KEY = 'twilio_phone_numbers_cache';
+    private readonly PHONE_CACHE_KEY = 'twilio_phone_numbers_cache_v2';
 
     agentItems = computed<SelectItem[]>(() => [
         { name: '— None —', value: null },
         ...this.agents().map((a) => ({ name: a.role, value: a.id })),
     ]);
+
+    secretItems = computed<SelectItem[]>(() =>
+        this.secretsStorageService.secrets().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.secretsStorageService.maskTail(secret.tail),
+        }))
+    );
 
     phoneNumberItems = computed<SelectItem[]>(() => [
         { name: '— None —', value: null },
@@ -91,7 +101,7 @@ export class AddEditChannelDialogComponent implements OnInit {
             realtime_agent: [ch?.realtime_agent ?? null],
             is_active: [ch?.is_active ?? true],
             account_sid: [tw?.account_sid ?? ''],
-            auth_token: [tw?.auth_token ?? '', [Validators.required]],
+            auth_token_secret_id: [tw?.auth_token_secret_id ?? null, [Validators.required]],
             phone_number: [tw?.phone_number ?? ''],
             webhook_trigger: [(tw?.webhook_trigger?.id ?? null) as WebhookTriggerWrite | null],
         });
@@ -101,18 +111,23 @@ export class AddEditChannelDialogComponent implements OnInit {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({ next: (agents) => this.agents.set(agents), error: () => {} });
 
+        this.secretsStorageService
+            .getSecrets()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({ error: () => {} });
+
         this.form
             .get('account_sid')!
             .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.resetPhoneNumbers());
 
         this.form
-            .get('auth_token')!
+            .get('auth_token_secret_id')!
             .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.resetPhoneNumbers());
 
-        if (tw?.account_sid && tw?.auth_token && tw?.phone_number) {
-            this.fetchPhoneNumbers(tw.account_sid, tw.auth_token);
+        if (ch?.id && tw?.account_sid && tw?.auth_token_secret_id != null && tw?.phone_number) {
+            this.fetchPhoneNumbers(ch.id);
         }
 
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
@@ -155,7 +170,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                             channel.id,
                             channel.token,
                             v.account_sid,
-                            v.auth_token,
+                            v.auth_token_secret_id,
                             v.phone_number,
                             channel.twilio ?? null
                         );
@@ -187,7 +202,7 @@ export class AddEditChannelDialogComponent implements OnInit {
                             saved.id,
                             saved.token,
                             v.account_sid,
-                            v.auth_token,
+                            v.auth_token_secret_id,
                             v.phone_number,
                             saved.twilio ?? null
                         );
@@ -204,11 +219,11 @@ export class AddEditChannelDialogComponent implements OnInit {
         channelId: number,
         channelToken: string,
         accountSid: string,
-        authToken: string,
+        authTokenSecretId: number | null,
         phoneNumber: string,
         existingTwilio: TwilioChannel | null
     ): void {
-        const hasTwilioData = accountSid || authToken || phoneNumber;
+        const hasTwilioData = accountSid || authTokenSecretId != null || phoneNumber;
 
         if (!hasTwilioData) {
             this.dialogRef.close(true);
@@ -230,14 +245,14 @@ export class AddEditChannelDialogComponent implements OnInit {
                         ? this.channelService.updateTwilioChannel({
                               channel: currentTwilio.channel,
                               account_sid: accountSid,
-                              auth_token: authToken,
+                              auth_token_secret_id: authTokenSecretId,
                               phone_number: phoneNumber || null,
                               webhook_trigger: webhookTriggerId,
                           })
                         : this.channelService.createTwilioChannel({
                               channel: channelId,
                               account_sid: accountSid,
-                              auth_token: authToken,
+                              auth_token_secret_id: authTokenSecretId,
                               phone_number: phoneNumber || null,
                               webhook_trigger: webhookTriggerId,
                           });
@@ -328,11 +343,15 @@ export class AddEditChannelDialogComponent implements OnInit {
     }
 
     onPhoneSelectOpened(): void {
-        const accountSid = this.form.get('account_sid')?.value?.trim();
-        const authToken = this.form.get('auth_token')?.value?.trim();
-        if (!accountSid || !authToken) return;
+        const channelId = this.data.channel?.id;
+        if (channelId == null) return;
         if (this.phoneNumbersLoading() || this.phonesFetched()) return;
-        this.fetchPhoneNumbers(accountSid, authToken);
+        this.fetchPhoneNumbers(channelId);
+    }
+
+    /** Phone number lookup requires an already-saved channel (the TwilioChannel row must exist server-side). */
+    phoneNumberSelectDisabled(): boolean {
+        return this.data.channel?.id == null;
     }
 
     private resetPhoneNumbers(): void {
@@ -342,8 +361,11 @@ export class AddEditChannelDialogComponent implements OnInit {
         this.form.get('phone_number')?.setValue(null, { emitEvent: false });
     }
 
-    private fetchPhoneNumbers(accountSid: string, authToken: string): void {
-        const cached = this.getCachedPhones(accountSid, authToken);
+    private fetchPhoneNumbers(channelId: number): void {
+        const accountSid = this.form.value.account_sid;
+        const authTokenSecretId = this.form.value.auth_token_secret_id;
+
+        const cached = this.getCachedPhones(channelId, accountSid, authTokenSecretId);
         if (cached) {
             this.phoneNumbers.set(cached);
             this.phonesFetched.set(true);
@@ -353,29 +375,44 @@ export class AddEditChannelDialogComponent implements OnInit {
         this.phoneNumbersLoading.set(true);
         this.phoneLoadError.set(null);
         this.channelService
-            .getPhoneNumbers(accountSid, authToken)
+            .getPhoneNumbersForChannel(channelId)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: (phones) => {
                     this.phoneNumbers.set(phones);
                     this.phonesFetched.set(true);
-                    this.setCachedPhones(accountSid, authToken, phones);
+                    this.setCachedPhones(channelId, accountSid, authTokenSecretId, phones);
                     this.phoneNumbersLoading.set(false);
                 },
-                error: () => {
+                error: (err: HttpErrorResponse) => {
                     this.phonesFetched.set(true);
-                    this.phoneLoadError.set('Failed to load phone numbers. Check your credentials.');
+                    this.phoneLoadError.set(extractHttpErrorMessage(err));
                     this.phoneNumbersLoading.set(false);
                 },
             });
     }
 
-    private getCachedPhones(accountSid: string, authToken: string): TwilioPhoneNumber[] | null {
+    private getCachedPhones(
+        channelId: number,
+        accountSid: string,
+        authTokenSecretId: number | null
+    ): TwilioPhoneNumber[] | null {
         try {
             const raw = localStorage.getItem(this.PHONE_CACHE_KEY);
             if (!raw) return null;
-            const cache = JSON.parse(raw) as { account_sid: string; auth_token: string; phones: TwilioPhoneNumber[] };
-            if (cache.account_sid === accountSid && cache.auth_token === authToken) return cache.phones;
+            const cache = JSON.parse(raw) as {
+                channel_id: number;
+                account_sid: string;
+                auth_token_secret_id: number | null;
+                phones: TwilioPhoneNumber[];
+            };
+            if (
+                cache.channel_id === channelId &&
+                cache.account_sid === accountSid &&
+                cache.auth_token_secret_id === authTokenSecretId
+            ) {
+                return cache.phones;
+            }
             localStorage.removeItem(this.PHONE_CACHE_KEY);
             return null;
         } catch {
@@ -383,11 +420,21 @@ export class AddEditChannelDialogComponent implements OnInit {
         }
     }
 
-    private setCachedPhones(accountSid: string, authToken: string, phones: TwilioPhoneNumber[]): void {
+    private setCachedPhones(
+        channelId: number,
+        accountSid: string,
+        authTokenSecretId: number | null,
+        phones: TwilioPhoneNumber[]
+    ): void {
         try {
             localStorage.setItem(
                 this.PHONE_CACHE_KEY,
-                JSON.stringify({ account_sid: accountSid, auth_token: authToken, phones })
+                JSON.stringify({
+                    channel_id: channelId,
+                    account_sid: accountSid,
+                    auth_token_secret_id: authTokenSecretId,
+                    phones,
+                })
             );
         } catch {
             // ignore storage quota errors
