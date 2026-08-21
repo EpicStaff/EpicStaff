@@ -68,9 +68,10 @@ class TestResolveById:
 @pytest.mark.django_db
 class TestResolveMany:
     """Batched counterpart to `resolve()` -- one `pk__in` query for N secret
-    ids belonging to the same org, instead of N individual queries. Used by
-    `ConverterService._build_inbound_credentials` so its cost stops scaling
-    with the number of auth-bearing nodes on a trigger."""
+    ids belonging to the same org, instead of N individual queries. No caller
+    in this codebase yet; exists so a future batch-resolution need (e.g. a
+    node type with multiple secret-backed fields) doesn't have to reinvent
+    the org-scoped-batch-lookup pattern."""
 
     def test_empty_list_returns_empty_dict_with_no_query(self, org, django_assert_num_queries):
         with django_assert_num_queries(0):
@@ -116,7 +117,7 @@ class TestResolveMany:
         the whole point of batching is that one bad id in the list must not
         take the others down with it. Absence from the result IS the signal;
         callers that need fail-closed behavior treat a missing key as
-        unresolvable themselves (see `ConverterService._build_inbound_credentials`)."""
+        unresolvable themselves -- see the module docstring above."""
         secret = secret_service.create(text="sk-many-gone", org=org, name="many-gone")
         secret_id = secret.pk
         secret.delete()

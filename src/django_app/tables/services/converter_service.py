@@ -1107,49 +1107,45 @@ class ConverterService(metaclass=SingletonMeta):
         """Collect and convert enabled WebhookNodeAuths from nodes attached to
         this trigger.
         """
-        auth_data_list = []
-
-        for telegram_node in trigger.telegram_trigger_nodes.all():
-            if (
-                hasattr(telegram_node, "webhook_node_auth")
-                and telegram_node.webhook_node_auth
-                and telegram_node.webhook_node_auth.enabled
-            ):
-                auth = telegram_node.webhook_node_auth
-                auth_data_list.append(
-                    WebhookNodeAuthData(
-                        enabled=auth.enabled,
-                        scheme=auth.scheme,
-                        header_name=auth.header_name,
-                        timestamp_header_name=auth.timestamp_header_name,
-                        tolerance_seconds=auth.tolerance_seconds,
-                        secret_hash=auth.secret_hash,
-                        signing_secret=auth.signing_secret,
-                        principal=f"{telegram_node._meta.label_lower}:{telegram_node.pk}",
-                    )
-                )
-
-        for webhook_node in trigger.webhook_trigger_nodes.all():
-            if (
-                hasattr(webhook_node, "webhook_node_auth")
-                and webhook_node.webhook_node_auth
-                and webhook_node.webhook_node_auth.enabled
-            ):
-                auth = webhook_node.webhook_node_auth
-                auth_data_list.append(
-                    WebhookNodeAuthData(
-                        enabled=auth.enabled,
-                        scheme=auth.scheme,
-                        header_name=auth.header_name,
-                        timestamp_header_name=auth.timestamp_header_name,
-                        tolerance_seconds=auth.tolerance_seconds,
-                        secret_hash=auth.secret_hash,
-                        signing_secret=auth.signing_secret,
-                        principal=f"{webhook_node._meta.label_lower}:{webhook_node.pk}",
-                    )
-                )
-
+        nodes = [
+            *trigger.telegram_trigger_nodes.all(),
+            *trigger.webhook_trigger_nodes.all(),
+        ]
+        auth_data_list = [
+            auth_data
+            for node in nodes
+            if (auth_data := self._convert_node_auth(node)) is not None
+        ]
         return auth_data_list
+
+    @staticmethod
+    def _convert_node_auth(
+        node: TelegramTriggerNode | WebhookTriggerNode,
+    ) -> WebhookNodeAuthData | None:
+        """Convert `node.webhook_node_auth` (a reverse OneToOne) to
+        `WebhookNodeAuthData`, or `None` if there's no enabled auth row.
+
+        `getattr(node, "webhook_node_auth", None)` is deliberate, not a
+        simplification-for-its-own-sake: accessing a reverse OneToOne
+        descriptor with no related row raises `RelatedObjectDoesNotExist`
+        (a subclass of `AttributeError`), and `getattr(..., None)` -- like
+        `hasattr` -- swallows that specific `AttributeError` and returns the
+        default. Using `getattr` instead of `hasattr` + a second attribute
+        access avoids triggering that descriptor lookup twice.
+        """
+        auth = getattr(node, "webhook_node_auth", None)
+        if not auth or not auth.enabled:
+            return None
+        return WebhookNodeAuthData(
+            enabled=auth.enabled,
+            scheme=auth.scheme,
+            header_name=auth.header_name,
+            timestamp_header_name=auth.timestamp_header_name,
+            tolerance_seconds=auth.tolerance_seconds,
+            secret_hash=auth.secret_hash,
+            signing_secret=auth.signing_secret,
+            principal=f"{node._meta.label_lower}:{node.pk}",
+        )
 
     def convert_webhook_trigger_node_to_pydantic(
         self,

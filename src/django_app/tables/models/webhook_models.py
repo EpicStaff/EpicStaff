@@ -90,11 +90,12 @@ class LocalhostWebhookConfig(models.Model):
 
 class WebhookAuthScheme(models.TextChoices):
     STATIC_HEADER = "static_header"  # Telegram: literal header value compare
-    HMAC_SHA256 = "hmac_sha256"  # Generic: signed body + timestamp + replay check
+    HMAC_SHA256 = "hmac_sha256"  # Generic: signed body + one-sided timestamp
+    # window + Redis-backed replay check (see `webhook_routes.handle_webhook`)
 
 
 class WebhookNodeAuth(models.Model):
-    enabled = models.BooleanField(default=False)
+    enabled = models.BooleanField(default=True)
     scheme = models.CharField(max_length=32, choices=WebhookAuthScheme.choices)
 
     header_name = models.CharField(max_length=128)

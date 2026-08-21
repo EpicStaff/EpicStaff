@@ -47,25 +47,27 @@ def webhook_node_auth_post_save_handler(sender, instance: WebhookNodeAuth, **_):
     PREFETCHES`-based query), so this is safe to fire unconditionally for
     BOTH attachment types.
 
-    Also fires when `TelegramTriggerService._ensure_telegram_webhook_node_
-    auth` creates a Telegram node's auth row -- that flow already calls
-    `register_webhooks()` explicitly (before `setWebhook`, with a rollback
-    path on failure), so this adds a harmless redundant push, not a
-    conflicting one; it never touches `TelegramTriggerNode`/`WebhookTrigger
-    Node` itself so it cannot interfere with that flow's own atomic
-    create/rollback transaction.
+    Also fires when `TelegramTriggerService.register_telegram_trigger` calls
+    `WebhookNodeAuth.objects.get_or_create(...)` to create a Telegram node's
+    auth row -- that flow doesn't itself re-push tunnel config afterward, so
+    this handler is what actually gets the freshly created/rotated Telegram
+    credential into the running `webhook` service's registry.
     """
     _re_register_webhooks(sender.__name__, instance.pk)
 
 
 @receiver(post_delete, sender=WebhookNodeAuth)
 def webhook_node_auth_post_delete_handler(sender, instance: WebhookNodeAuth, **_):
-    """Symmetric to the post_save handler above: `_sync_webhook_node_auth`
-    deletes this row when auth is explicitly cleared (falsy `auth_data`), and
-    `TelegramTriggerService._rollback_new_telegram_webhook_node_auth` deletes
-    it on a failed registration attempt -- both must re-push so a
-    disabled/rolled-back credential doesn't stay live in the `webhook`
-    service's registry after the DB row is gone.
+    """Symmetric to the post_save handler above.
+
+    In practice, clearing auth via `WebhookTriggerNodeSerializer._sync_
+    webhook_node_auth` -> `WebhookTriggerService.disable_webhook_auth` does
+    NOT delete this row -- it soft-disables it (`enabled=False`), which is
+    already covered by the post_save handler above. This post_delete handler
+    exists for the less common case where the row is actually removed (e.g.
+    cascading delete of its parent trigger node, or a direct ORM/admin
+    delete) -- it must still re-push so a removed credential doesn't stay
+    live in the `webhook` service's registry after the DB row is gone.
     """
     _re_register_webhooks(sender.__name__, instance.pk)
 

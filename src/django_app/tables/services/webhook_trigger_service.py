@@ -41,13 +41,16 @@ class WebhookTriggerService(metaclass=SingletonMeta):
     ) -> dict | None:
         """Build ORM filter kwargs for `WebhookTriggerNode`.
 
-        `config_id` is resolved by the `webhook` service from the request's
-        actual Host/domain and has the shape `"<provider>:<registered_path>"`.
-        The segment after the provider is NOT an arbitrary config-name
-        label — it is the `path` of the `WebhookTrigger` that was registered
-        for that specific domain/tunnel at connect time.
-        Returns `None` when `config_id` identifies a specific tunnel/domain
-        whose registered path does NOT match the requested `path`.
+        `config_id` is resolved by the `webhook` service purely from the
+        request's path (`TunnelRegistry.resolve_by_path`) -- the Host header
+        is no longer used for routing anywhere in this flow, since it is
+        spoofable. `config_id` has the shape
+        `"<provider>:<registered_path>"`; the segment after the provider is
+        NOT an arbitrary config-name label — it is the `path` of the
+        `WebhookTrigger` that was registered for that specific tunnel at
+        connect time.
+        Returns `None` when `config_id` identifies a specific tunnel whose
+        registered path does NOT match the requested `path`.
         """
         filters = {"webhook_trigger__path": path}
 

@@ -712,6 +712,11 @@ class TestSecretTokenUnconditionalRegistration:
                     register_webhooks=lambda: False,
                 ),
             )
+            # Never make a real outbound call to api.telegram.org -- follow
+            # the same stubbing pattern as the other tests in this class
+            # (e.g. `test_failed_setwebhook_does_not_roll_back_an_existing_
+            # auth_row` above).
+            service._call_telegram_api = lambda *a, **k: {"ok": True}
 
             with pytest.raises(RegisterTelegramTriggerError):
                 service.register_telegram_trigger(telegram_trigger_instance=node)

@@ -121,7 +121,7 @@ class TelegramTriggerService(metaclass=SingletonMeta):
 
         if not created:
             node_auth.scheme = WebhookAuthScheme.STATIC_HEADER
-            node_auth.header_name = "X-Telegram-Bot-Api-Secret-Token"
+            node_auth.header_name = TELEGRAM_WEBHOOK_HEADER
             node_auth.save()
 
         node_auth.set_static_token(raw_secret_token)

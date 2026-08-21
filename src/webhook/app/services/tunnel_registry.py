@@ -8,12 +8,14 @@ from src.shared.models import BaseTunnelConfigData, WebhookConfigData
 
 
 class UnregisteredWebhookPathError(Exception):
-    """Raised when a request's domain is served by this service but no tunnel is
-    registered for the requested path.
+    """Raised when no tunnel config is registered for the requested path.
 
-    The domain is known, so the set of paths registered for it is known too:
-    a request for any other path can never be processed by anything downstream,
-    and must be rejected instead of being attributed to an unrelated config.
+    Routing is purely path-based (see `TunnelRegistry.resolve_by_path`) --
+    the `path` is a cryptographically unguessable name, not a Host header, so
+    it alone is the secure routing key. `domain` is kept as a constructor
+    field for backward compatibility with older callers/log formatting, but
+    is no longer a meaningful routing input; it is always passed as the
+    literal `"N/A (Path Routing)"` placeholder.
     """
 
     def __init__(self, domain: str, path: str, registered_ids: list[str]):
@@ -21,8 +23,8 @@ class UnregisteredWebhookPathError(Exception):
         self.path = path
         self.registered_ids = registered_ids
         super().__init__(
-            f"No webhook registered for path '{path}' on domain '{domain}'. "
-            f"Registered on this domain: {registered_ids}"
+            f"No webhook registered for path '{path}' (domain: '{domain}'). "
+            f"Registered paths: {registered_ids}"
         )
 
 
