@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 from src.shared.models import CodeResultData
 
 from services.storage_credential_manager import StorageCredentialManager
+from utils.environment import build_base_env
 from utils.logger import logger
 
 
@@ -132,12 +133,15 @@ class InstallLibrariesHandler(AbstractHandler):
         if hash_changed:
             logger.info("Installing libraries...")
 
+            env = build_base_env(python_executable)
+
             # Upgrade pip
-            process = await asyncio.create_subprocess_shell(
-                f"{python_executable} -m pip install --upgrade pip",
+            process = await asyncio.create_subprocess_exec(
+                str(python_executable), "-m", "pip", "install", "--upgrade", "pip",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-            )
+                env=env,
+            )  # fmt: off
             stdout, stderr = await process.communicate()
             stderr = stderr.decode("utf-8", errors="replace")
             stdout = stdout.decode("utf-8", errors="replace")
@@ -153,11 +157,12 @@ class InstallLibrariesHandler(AbstractHandler):
 
             # Uninstall all libraries
             logger.info("Uninstalling all libraries...")
-            process = await asyncio.create_subprocess_shell(
-                f"{python_executable} -m pip freeze",
+            process = await asyncio.create_subprocess_exec(
+                str(python_executable), "-m", "pip", "freeze",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-            )
+                env=env,
+            )  # fmt: off
             stdout, stderr = await process.communicate()
             returncode = process.returncode
 
@@ -176,14 +181,16 @@ class InstallLibrariesHandler(AbstractHandler):
             for package in installed_packages:
                 package_name = package.split("==")[0]
                 logger.info(f"Uninstalling {package_name}...")
-                await asyncio.create_subprocess_shell(
-                    f"{python_executable} -m pip uninstall -y {package_name}",
+                process = await asyncio.create_subprocess_exec(
+                    str(python_executable), "-m", "pip", "uninstall", "-y", package_name,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                )
+                    env=env,
+                )  # fmt: off
                 stdout, stderr = await process.communicate()
                 stderr = stderr.decode("utf-8", errors="replace")
                 stdout = stdout.decode("utf-8", errors="replace")
+                returncode = process.returncode
                 if returncode != 0:
                     return CodeResultData(
                         execution_id=context["execution_id"],
@@ -195,11 +202,12 @@ class InstallLibrariesHandler(AbstractHandler):
             # Install libraries
             for library in context["libraries"]:
                 logger.info(f"Installing {library}...")
-                process = await asyncio.create_subprocess_shell(
-                    f"{python_executable} -m pip install {library}",
+                process = await asyncio.create_subprocess_exec(
+                    str(python_executable), "-m", "pip", "install", "--", library,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                )
+                    env=env,
+                )  # fmt: off
                 stdout, stderr = await process.communicate()
                 stderr = stderr.decode("utf-8", errors="replace")
                 stdout = stdout.decode("utf-8", errors="replace")
@@ -220,49 +228,6 @@ class InstallLibrariesHandler(AbstractHandler):
         if self._next_handler:
             return await super().handle(context)
         return "Libraries installed."
-
-
-class BuildEnvironmentHandler(AbstractHandler):
-    async def handle(self, context: Dict[str, Any]) -> Any:
-        env = {
-            "LANG": "C.UTF-8",
-            "PYTHONUTF8": "1",
-            "PYTHONUNBUFFERED": "1",
-            "PYTHONDONTWRITEBYTECODE": "1",
-            "PATH": self._get_path(context["python_executable"]),
-            "HOME": self._get_home(context),
-        }
-
-        if context.get("use_storage"):
-            env["STORAGE_ENDPOINT"] = os.environ["STORAGE_ENDPOINT"]
-            env["STORAGE_BUCKET_NAME"] = os.environ["STORAGE_BUCKET_NAME"]
-            env["STORAGE_ACCESS_KEY"] = context["temp_storage_access_key"]
-            env["STORAGE_SECRET_KEY"] = context["temp_storage_secret_key"]
-
-        if (storage_allowed_paths := context.get("storage_allowed_paths")) is not None:
-            env["STORAGE_ALLOWED_PATHS"] = json.dumps(storage_allowed_paths)
-        if (storage_org_prefix := context.get("storage_org_prefix")) is not None:
-            env["STORAGE_ORG_PREFIX"] = storage_org_prefix
-        if (secrets := context.get("secrets")) is not None:
-            env["EPICSTAFF_SECRETS"] = json.dumps(secrets)
-
-        context["env"] = env
-
-        if self._next_handler:
-            return await super().handle(context)
-        return "Environment built."
-
-    @staticmethod
-    def _get_path(python_executable) -> str:
-        venv_bin = Path(python_executable).parent
-        return os.pathsep.join([str(venv_bin), "/usr/local/bin", "/usr/bin", "/bin"])
-
-    @staticmethod
-    def _get_home(context: Dict[str, Any]) -> str:
-        exec_dir = Path(context["temp_code_path"]).parent
-        home = exec_dir / "home"
-        home.mkdir(parents=True, exist_ok=True)
-        return str(home)
 
 
 class ExecuteCodeHandler(AbstractHandler):
@@ -343,10 +308,21 @@ except Exception:
             f.write(wrapped_code)
 
         # Execute the code asynchronously
-        env = context["env"]
+        env = build_base_env(context["python_executable"])
+        env["HOME"] = context["home_path"]
+        if context.get("use_storage"):
+            env["STORAGE_ENDPOINT"] = os.environ["STORAGE_ENDPOINT"]
+            env["STORAGE_BUCKET_NAME"] = os.environ["STORAGE_BUCKET_NAME"]
+            env["STORAGE_ACCESS_KEY"] = context["temp_storage_access_key"]
+            env["STORAGE_SECRET_KEY"] = context["temp_storage_secret_key"]
+        if (storage_allowed_paths := context.get("storage_allowed_paths")) is not None:
+            env["STORAGE_ALLOWED_PATHS"] = json.dumps(storage_allowed_paths)
+        if (storage_org_prefix := context.get("storage_org_prefix")) is not None:
+            env["STORAGE_ORG_PREFIX"] = storage_org_prefix
 
-        process = await asyncio.create_subprocess_shell(
-            f"{python_executable} {temp_code_path}",
+        process = await asyncio.create_subprocess_exec(
+            str(python_executable),
+            str(temp_code_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
@@ -397,7 +373,6 @@ class DynamicVenvExecutorChain:
         # Build the chain of responsibility
         create_venv_handler = CreateVenvHandler()
         install_libraries_handler = InstallLibrariesHandler()
-        build_environment_handler = BuildEnvironmentHandler()
         execute_code_handler = ExecuteCodeHandler()
 
         self.chain: Handler = DummyHandler()
@@ -406,7 +381,6 @@ class DynamicVenvExecutorChain:
             self.chain
             .set_next(create_venv_handler)
             .set_next(install_libraries_handler)
-            .set_next(build_environment_handler)
             .set_next(execute_code_handler)
         )  # fmt: off
 
@@ -430,6 +404,8 @@ class DynamicVenvExecutorChain:
         output_path = Path(self.output_path) / execution_id
         os.makedirs(output_path, exist_ok=True)
         os.makedirs(self.base_venv_path, exist_ok=True)
+        home_path = output_path / "home"
+        os.makedirs(home_path, exist_ok=True)
 
         context = {
             "base_venv_path": self.base_venv_path,
@@ -441,6 +417,7 @@ class DynamicVenvExecutorChain:
             "func_kwargs": func_kwargs,
             "execution_id": execution_id,
             "global_kwargs": global_kwargs,
+            "home_path": str(home_path),
             "use_storage": use_storage,
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,
