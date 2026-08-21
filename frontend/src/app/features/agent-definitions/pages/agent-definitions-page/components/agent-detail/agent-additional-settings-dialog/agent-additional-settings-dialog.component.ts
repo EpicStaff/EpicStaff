@@ -5,14 +5,14 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { ButtonComponent, IconButtonComponent, TabButtonComponent } from '@shared/components';
 import { FullLLMConfigService } from '@shared/services';
 
+import { AGENT_TOOL_DEFAULTS } from '../../../../../models/agent-definition.model';
 import {
     AdvancedTabComponent,
     ExecutionTabComponent,
     GeneralTabComponent,
     Tab,
     TabId,
-} from '../../../../../../../shared/components/create-agent-form-dialog/tabs';
-import { AGENT_TOOL_DEFAULTS } from '../../../../../models/agent-definition.model';
+} from './tabs';
 
 export interface AgentAdditionalSettingsData {
     fcm_llm_config: number | null;

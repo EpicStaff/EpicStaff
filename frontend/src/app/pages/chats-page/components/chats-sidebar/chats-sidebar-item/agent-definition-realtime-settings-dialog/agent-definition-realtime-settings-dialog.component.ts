@@ -16,10 +16,10 @@ import { ToastService } from '../../../../../../services/notifications/toast.ser
 import { HelpTooltipComponent } from '../../../../../../shared/components/help-tooltip/help-tooltip.component';
 import { AVAILABLE_LANGUAGES } from '../../../../../../shared/constants/languages-selector.constants';
 import { AVAILABLE_VOICES } from '../../../../../../shared/constants/realtime-voice.constants';
-import { AddTranscriptionConfigDialogComponent } from '../realtime-settings-dialog/add-transcription-dialog/add-transcription-dialog.component';
-import { LanguageSelectorComponent } from '../realtime-settings-dialog/language-selector/language-selector.component';
-import { TranscriptionConfigSelectorComponent } from '../realtime-settings-dialog/transcription-model-selector/transcription-config-selector.component';
-import { VoiceSelectorComponent } from '../realtime-settings-dialog/voice-selector/voice-selector.component';
+import { AddTranscriptionConfigDialogComponent } from '../realtime-selectors/add-transcription-dialog/add-transcription-dialog.component';
+import { LanguageSelectorComponent } from '../realtime-selectors/language-selector/language-selector.component';
+import { TranscriptionConfigSelectorComponent } from '../realtime-selectors/transcription-model-selector/transcription-config-selector.component';
+import { VoiceSelectorComponent } from '../realtime-selectors/voice-selector/voice-selector.component';
 
 export interface AgentDefinitionRealtimeSettingsDialogData {
     definitionId: number;

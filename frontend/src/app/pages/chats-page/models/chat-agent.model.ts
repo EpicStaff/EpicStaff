@@ -1,20 +1,17 @@
 import { AgentDefinition } from '../../../features/agent-definitions/models/agent-definition.model';
 import { RealtimeAgentDefinition } from '../../../features/agent-definitions/models/realtime-agent-definition.model';
-import { FullAgent } from '../../../features/staff/services/full-agent.service';
 
-export type ChatAgentKind = 'staff' | 'definition';
-
-// The selectable entity behind a chat. Staff agents carry realtime config inline
-// (realtime_agent), agent definitions carry it in a separate 1-to-1 row whose
-// presence is what makes the definition eligible for the Agents tab.
-export type ChatAgent =
-    | { kind: 'staff'; agent: FullAgent }
-    | { kind: 'definition'; agent: AgentDefinition; realtime: RealtimeAgentDefinition };
+// The selectable entity behind a chat: an agent definition plus its realtime row.
+// The row's presence — and a realtime_config on it — is what makes the definition
+// eligible for the list, since without one it cannot connect.
+export interface ChatAgent {
+    agent: AgentDefinition;
+    realtime: RealtimeAgentDefinition;
+}
 
 // Display-only projection. Never stored — derived from a ChatAgent so templates
-// never branch on kind.
+// never reach into the nested shape.
 export interface ChatAgentVM {
-    kind: ChatAgentKind;
     id: number;
     title: string;
     realtimeConfigId: number | null;
@@ -23,29 +20,28 @@ export interface ChatAgentVM {
     customName: string | null;
 }
 
-// Payload for POST /init-realtime/. The backend requires exactly one of the two ids.
-export type InitRealtimePayload = { agent_id: number } | { agent_definition_id: number };
+// Payload for POST /init-realtime/. The backend requires agent_definition_id.
+export interface InitRealtimePayload {
+    agent_definition_id: number;
+}
 
 export function chatAgentTitle(a: ChatAgent): string {
-    return a.kind === 'staff' ? a.agent.role : a.agent.name;
+    return a.agent.name;
 }
 
 export function chatAgentRealtimeConfigId(a: ChatAgent): number | null {
-    return a.kind === 'staff' ? (a.agent.realtime_agent?.realtime_config ?? null) : a.realtime.realtime_config;
+    return a.realtime.realtime_config;
 }
 
 export function chatAgentTranscriptionConfigId(a: ChatAgent): number | null {
-    return a.kind === 'staff'
-        ? (a.agent.realtime_agent?.realtime_transcription_config ?? null)
-        : a.realtime.realtime_transcription_config;
+    return a.realtime.realtime_transcription_config;
 }
 
 export function toInitRealtimePayload(a: ChatAgent): InitRealtimePayload {
-    return a.kind === 'staff' ? { agent_id: a.agent.id } : { agent_definition_id: a.agent.id };
+    return { agent_definition_id: a.agent.id };
 }
 
-// Same identity iff same kind AND same id — staff and definition id-spaces overlap.
 export function sameChatAgent(a: ChatAgent | null, b: ChatAgent | null): boolean {
     if (!a || !b) return false;
-    return a.kind === b.kind && a.agent.id === b.agent.id;
+    return a.agent.id === b.agent.id;
 }

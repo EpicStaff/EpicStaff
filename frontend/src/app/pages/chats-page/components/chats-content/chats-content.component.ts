@@ -23,19 +23,4 @@ export class ChatsContentComponent {
     public get hasSelection(): boolean {
         return this.chatsService.selectedChatAgent$() !== null;
     }
-
-    // Empty-state CTA points to where you actually create/configure the missing kind.
-    public get isAgentsTab(): boolean {
-        return this.chatsService.activeTab() === 'definition';
-    }
-
-    public get emptyCtaLink(): string {
-        return '/agents';
-    }
-
-    public get emptyCtaLabel(): string {
-        return 'Go to Agents';
-    }
-
-    ngOnDestroy() {}
 }

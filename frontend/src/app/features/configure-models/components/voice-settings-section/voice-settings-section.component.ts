@@ -15,8 +15,8 @@ import { switchMap } from 'rxjs/operators';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
 import { ToastService } from '../../../../services/notifications';
-import { GetAgentRequest } from '../../../staff/models/agent.model';
-import { AgentsService } from '../../../staff/services/staff.service';
+import { AgentDefinition } from '../../../agent-definitions/models/agent-definition.model';
+import { AgentDefinitionsApiService } from '../../../agent-definitions/services/agent-definitions-api.service';
 import { TwilioPhoneNumber, VoiceSettingsService } from '../../services/voice-settings.service';
 
 const PHONE_CACHE_TTL_MS = 60_000;
@@ -45,7 +45,7 @@ interface PhoneNumberCache {
 export class VoiceSettingsSectionComponent implements OnInit {
     private voiceSettingsService = inject(VoiceSettingsService);
     private ngrokApiService = inject(NgrokConfigApiService);
-    private agentsService = inject(AgentsService);
+    private agentDefinitionsApi = inject(AgentDefinitionsApiService);
     private toastService = inject(ToastService);
     private destroyRef = inject(DestroyRef);
     private fb = inject(FormBuilder);
@@ -58,12 +58,12 @@ export class VoiceSettingsSectionComponent implements OnInit {
     testing = signal(false);
     voiceStreamUrl = signal<string | null>(null);
 
-    private agents = signal<GetAgentRequest[]>([]);
+    private agents = signal<AgentDefinition[]>([]);
     private ngrokConfigs = signal<GetNgrokConfigResponse[]>([]);
     phoneNumbers = signal<TwilioPhoneNumber[]>([]);
     selectedPhoneSid = signal<string | null>(null);
 
-    agentItems = computed<SelectItem[]>(() => this.agents().map((a) => ({ name: a.role, value: a.id })));
+    agentItems = computed<SelectItem[]>(() => this.agents().map((a) => ({ name: a.name, value: a.id })));
 
     ngrokItems = computed<SelectItem[]>(() =>
         this.ngrokConfigs().map((c) => ({
@@ -85,7 +85,7 @@ export class VoiceSettingsSectionComponent implements OnInit {
     form = this.fb.group({
         twilio_account_sid: this.fb.nonNullable.control(''),
         twilio_auth_token: this.fb.nonNullable.control(''),
-        voice_agent: this.fb.control<number | null>(null),
+        voice_agent_definition: this.fb.control<number | null>(null),
         ngrok_config: this.fb.control<number | null>(null),
     });
 
@@ -121,11 +121,14 @@ export class VoiceSettingsSectionComponent implements OnInit {
                 error: () => {},
             });
 
-        this.agentsService
-            .getAgentsWithRealtimeConfig()
+        // No server-side filter for "has a realtime config" — the flag comes inline on
+        // AgentDefinitionRead, so narrow it here.
+        this.agentDefinitionsApi
+            .getAgentDefinitions()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (agents) => this.agents.set(agents),
+                next: (agents) =>
+                    this.agents.set(agents.filter((a) => a.agent_definition_realtime_config_id != null)),
                 error: () => {},
             });
 
@@ -138,7 +141,7 @@ export class VoiceSettingsSectionComponent implements OnInit {
                         {
                             twilio_account_sid: vs.twilio_account_sid,
                             twilio_auth_token: vs.twilio_auth_token,
-                            voice_agent: vs.voice_agent,
+                            voice_agent_definition: vs.voice_agent_definition,
                             ngrok_config: vs.ngrok_config,
                         },
                         { emitEvent: false }

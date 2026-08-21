@@ -3,7 +3,6 @@ import { FullRealtimeConfigService } from '@shared/services';
 
 import {
     ChatAgent,
-    ChatAgentKind,
     chatAgentRealtimeConfigId,
     chatAgentTitle,
     chatAgentTranscriptionConfigId,
@@ -18,8 +17,6 @@ export class ChatsService {
 
     private selectedChatAgent = signal<ChatAgent | null>(null);
 
-    readonly activeTab = signal<ChatAgentKind>('staff');
-
     readonly selectedChatAgent$ = computed(() => this.selectedChatAgent());
 
     // Display projection. Resolves realtime model name/custom name from the reactive
@@ -33,7 +30,6 @@ export class ChatsService {
                 ? (this.fullRealtimeConfigService.fullRealtimeConfigs().find((c) => c.id === realtimeConfigId) ?? null)
                 : null;
         return {
-            kind: sel.kind,
             id: sel.agent.id,
             title: chatAgentTitle(sel),
             realtimeConfigId,
@@ -45,9 +41,5 @@ export class ChatsService {
 
     setSelectedChatAgent(agent: ChatAgent | null): void {
         this.selectedChatAgent.set(agent);
-    }
-
-    setActiveTab(tab: ChatAgentKind): void {
-        this.activeTab.set(tab);
     }
 }
