@@ -53,14 +53,29 @@ TWILIO_PHONE_NUMBERS_GET = dict(
 )
 
 TWILIO_CHANNEL_PHONE_NUMBERS_GET = dict(
-    summary="Return the list of incoming phone numbers from Twilio for this channel.",
-    description="Fetches up to 100 incoming phone numbers for the Twilio account configured on this "
-    "`TwilioChannel`. Unlike `TWILIO_PHONE_NUMBERS_GET` (which takes a raw account SID/auth token via "
-    "headers and is superadmin-only), this resolves `account_sid` and the auth token server-side from "
-    "the channel's stored `Secret` — the raw auth token is never exposed to the client. Any authenticated "
-    "member of the channel's own org may call this for their own org's channel (same org scoping as the "
-    "rest of `TwilioChannelViewSet`). Each number includes its SID, phone number, friendly name, and "
-    "currently configured voice URL.",
+    summary="Return the list of incoming phone numbers from Twilio.",
+    description="Fetches up to 100 incoming phone numbers for a Twilio account. "
+    "Unlike `TWILIO_PHONE_NUMBERS_GET` (which takes a raw account SID/auth token via "
+    "headers and is superadmin-only), this expects the Account SID and a Secret ID as "
+    "query parameters. It resolves the auth token server-side from the stored `Secret` — "
+    "the raw auth token is never exposed to the client. Each number includes its SID, "
+    "phone number, friendly name, and currently configured voice URL.",
+    parameters=[
+        OpenApiParameter(
+            name="sid",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description="The Twilio Account SID.",
+        ),
+        OpenApiParameter(
+            name="auth_token_secret_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description="The ID of the stored Secret containing the Twilio Auth Token.",
+        ),
+    ],
     responses={
         200: OpenApiResponse(
             response=OpenApiTypes.STR,
@@ -84,20 +99,18 @@ TWILIO_CHANNEL_PHONE_NUMBERS_GET = dict(
         ),
         400: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Bad Request - Twilio credentials are not configured on this channel.",
+            description="Bad Request - Missing required query parameters.",
             examples=[
                 OpenApiExample(
-                    "Missing credentials",
-                    value={"error": "No Twilio credentials configured for this channel"},
+                    "Missing parameters",
+                    value={
+                        "error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"
+                    },
                     response_only=True,
                 ),
             ],
         ),
         401: UNAUTHORIZED_401_RESPONSE,
-        404: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Not Found - channel does not exist or does not belong to the active org.",
-        ),
         502: OpenApiResponse(
             response=OpenApiTypes.STR,
             description="Bad Gateway - Twilio API request failed.",

@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { map, Observable, Subject } from 'rxjs';
 
@@ -82,10 +82,13 @@ export class RealtimeChannelService {
         return twilio;
     }
 
-    getPhoneNumbersForChannel(channelId: number): Observable<TwilioPhoneNumber[]> {
+    getPhoneNumbersForChannel(sid: string, authTokenSecretId: string): Observable<TwilioPhoneNumber[]> {
+        const params = new HttpParams().set('sid', sid).set('auth_token_secret_id', authTokenSecretId);
+
         return this.http
-            .get<ApiListResponse<TwilioPhoneNumber>>(`${this.twilioChannelUrl}${channelId}/phone-numbers/`, {
+            .get<ApiListResponse<TwilioPhoneNumber>>(`${this.twilioChannelUrl}phone-numbers/`, {
                 headers: this.headers,
+                params: params,
             })
             .pipe(map((r) => r.results));
     }

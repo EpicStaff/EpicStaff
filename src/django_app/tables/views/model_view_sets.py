@@ -1971,31 +1971,28 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
     @extend_schema(**TWILIO_CHANNEL_PHONE_NUMBERS_GET)
-    @action(detail=True, methods=["get"], url_path="phone-numbers")
+    @action(detail=False, methods=["get"], url_path="phone-numbers")
     def phone_numbers(self, request, pk=None):
-        """Return this channel's Twilio incoming phone numbers.
+        """Return this channel's Twilio incoming phone numbers."""
+        
+        sid = request.query_params.get("sid")
+        auth_token_secret_id = request.query_params.get("auth_token_secret_id")
 
-        Unlike `TwilioPhoneNumbersView` (raw account_sid/auth_token via
-        headers, superadmin-only, for browsing an arbitrary Twilio account),
-        this resolves the credentials server-side from the channel's stored
-        `Secret` (EST-1869: `auth_token` is now write-only and the frontend
-        can no longer supply it directly for an existing channel).
-        `get_object()` already scopes by the active org via
-        `OrgScopedChildViewSetMixin.get_queryset` — same as `retrieve`.
-        """
-        twilio = self.get_object()
-        if not twilio.account_sid or twilio.auth_token_secret_id is None:
+        # 2. Validate they were provided
+        if not sid or not auth_token_secret_id:
             return Response(
-                {"error": "No Twilio credentials configured for this channel"},
+                {"error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # 3. Resolve the token and fetch numbers
         auth_token = secret_resolver.resolve(
-            secret_id=twilio.auth_token_secret_id,
+            secret_id=auth_token_secret_id,
             org_id=resolve_active_org_id(request),
             context="TwilioChannel.auth_token",
         )
-        return _twilio_phone_numbers_response(twilio.account_sid, auth_token)
+        
+        return _twilio_phone_numbers_response(sid, auth_token)
 
 
 class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
@@ -2705,11 +2702,7 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
             return Response(
                 {"error": "Channel not found"}, status=status.HTTP_404_NOT_FOUND
             )
-        if (
-            not twilio
-            or not twilio.account_sid
-            or twilio.auth_token_secret_id is None
-        ):
+        if not twilio or not twilio.account_sid or twilio.auth_token_secret_id is None:
             logger.warning(
                 f"configure-webhook: no Twilio credentials for channel {channel.id}"
             )

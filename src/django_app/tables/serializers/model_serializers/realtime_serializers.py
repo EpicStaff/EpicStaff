@@ -201,7 +201,7 @@ class _TwilioChannelReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TwilioChannel
-        fields = ["channel", "account_sid", "phone_number", "webhook_trigger"]
+        fields = ["channel", "account_sid", "auth_token_secret_id", "phone_number", "webhook_trigger"]
 
 
 class RealtimeChannelSerializer(serializers.ModelSerializer):
