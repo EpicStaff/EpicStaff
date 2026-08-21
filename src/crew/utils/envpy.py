@@ -7,7 +7,7 @@ def load_env_from_yaml_config(yaml_config_path):
     loaded = False
     try:
         with open(Path(yaml_config_path).resolve()) as f:
-            cfg: dict = yaml.safe_load(f)
+            cfg: dict = yaml.load(f, Loader=yaml.FullLoader)
         for k, v in cfg.items():
             os.environ[k] = v
         loaded = True

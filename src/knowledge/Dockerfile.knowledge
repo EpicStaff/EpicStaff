@@ -75,7 +75,23 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
     HF_HUB_OFFLINE=1 \
     LITELLM_LOCAL_MODEL_COST_MAP=True
 
+# Create non-root user for runtime (mirrors agent/Dockerfile.agent).
+RUN groupadd --system --gid 1000 app \
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
+COPY ./docker/entrypoint-nonroot.sh /usr/local/bin/entrypoint-nonroot.sh
+RUN chmod +x /usr/local/bin/entrypoint-nonroot.sh
+
+# GRAPH_DATA_DIR lives outside /app, so it needs creating and chowning too.
+RUN mkdir -p /home/user/root/app/graph_data \
+ && chown -R app:app /app /home/user/root/app
+
+ENV HOME=/home/app \
+    NONROOT_CHOWN_PATHS="/home/app /home/user/root/app/graph_data"
+
 WORKDIR /app/src/knowledge
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-nonroot.sh"]
 
 # Run module
 CMD ["python", "main.py"]

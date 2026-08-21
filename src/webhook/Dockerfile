@@ -26,6 +26,17 @@ RUN apt-get update && apt-get install -y curl apt-transport-https gnupg && \
 COPY ./webhook .
 COPY ./shared /app/src/shared
 
+# Create non-root user for runtime (mirrors agent/Dockerfile.agent).
+RUN groupadd --system --gid 1000 app \
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
+ && chown -R app:app /app
+
+ENV HOME=/home/app
+
 EXPOSE 8000
+
+# This service mounts no volumes, so it can drop to a non-root user outright
+# rather than going through docker/entrypoint-nonroot.sh.
+USER app
 
 CMD ["python", "run.py"]

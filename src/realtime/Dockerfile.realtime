@@ -65,7 +65,18 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
 
+# Create non-root user for runtime (mirrors agent/Dockerfile.agent).
+RUN groupadd --system --gid 1000 app \
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
+ && chown -R app:app /app
+
+ENV HOME=/home/app
+
 WORKDIR /app/src/realtime
+
+# This service mounts no volumes, so it can drop to a non-root user outright
+# rather than going through docker/entrypoint-nonroot.sh.
+USER app
 
 # Run module from workdir
 CMD ["python", "run_server.py"]

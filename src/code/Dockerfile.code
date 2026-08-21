@@ -7,9 +7,13 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install opencode CLI
-RUN curl -fsSL https://opencode.ai/install | bash
-ENV PATH="/root/.opencode/bin:${PATH}"
+# Install opencode CLI. The installer drops it in /root/.opencode, but /root is
+# mode 700 so a non-root user cannot traverse into it — relocate the install to a
+# world-readable prefix and point PATH there.
+RUN curl -fsSL https://opencode.ai/install | bash \
+ && mv /root/.opencode /usr/local/opencode \
+ && chmod -R a+rX /usr/local/opencode
+ENV PATH="/usr/local/opencode/bin:${PATH}"
 ENV HOME="/opt/opencode/instances/shared"
 
 # Bake skill files into image
@@ -20,5 +24,24 @@ COPY ./code/instance_manager.py .
 COPY ./code/start.sh .
 
 RUN chmod +x start.sh
+
+# Create non-root user for runtime (mirrors agent/Dockerfile.agent).
+RUN groupadd --system --gid 1000 app \
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
+COPY ./docker/entrypoint-nonroot.sh /usr/local/bin/entrypoint-nonroot.sh
+RUN chmod +x /usr/local/bin/entrypoint-nonroot.sh
+
+# HOME sits inside the code_instances volume, so pre-create it for fresh volumes
+# and let the entrypoint take ownership on pre-existing ones.
+RUN mkdir -p /opt/opencode/instances/shared \
+ && chown -R app:app /opt/opencode /home/user/root/app
+
+# instance_manager.py hard-requires both vars, so the fallbacks below only
+# document the expected shape (see .env.example).
+ENV NONROOT_CHOWN_PATHS="\${CODE_INSTANCES_DIR:-/opt/opencode/instances}" \
+    NONROOT_ADAPT_PATHS="\${CONTAINER_SAVEFILES_PATH:-/app/src/sandbox/savefiles}"
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-nonroot.sh"]
 
 CMD ["./start.sh"]

@@ -47,7 +47,26 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# Create non-root user for runtime (mirrors agent/Dockerfile.agent).
+RUN groupadd --system --gid 1000 app \
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
+COPY ./docker/entrypoint-nonroot.sh /usr/local/bin/entrypoint-nonroot.sh
+RUN chmod +x /usr/local/bin/entrypoint-nonroot.sh
+
+# Pre-create the runtime dirs so a *fresh* named volume inherits app ownership,
+# and hand the whole tree to the app user (pip/venv writes live under here).
+RUN mkdir -p /app/src/sandbox/venvs /app/src/sandbox/executions /app/src/sandbox/savefiles \
+ && chown -R app:app /app
+
+# HOME must be writable: pip and venv write caches there.
+ENV HOME=/home/app \
+    NONROOT_CHOWN_PATHS="/home/app \${BASE_VENV_PATH:-/app/src/sandbox/venvs} \${OUTPUT_PATH:-/app/src/sandbox/executions}" \
+    NONROOT_ADAPT_PATHS="\${CONTAINER_SAVEFILES_PATH:-/app/src/sandbox/savefiles}"
+
 WORKDIR /app/src/sandbox
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-nonroot.sh"]
 
 # Run sandbox module
 CMD ["python", "main.py"]

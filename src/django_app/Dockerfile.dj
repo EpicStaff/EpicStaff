@@ -54,6 +54,23 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     LITELLM_LOCAL_MODEL_COST_MAP=True
 
+# Create non-root user for runtime (mirrors agent/Dockerfile.agent).
+RUN groupadd --system --gid 1000 app \
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
+
+COPY ./docker/entrypoint-nonroot.sh /usr/local/bin/entrypoint-nonroot.sh
+RUN chmod +x /usr/local/bin/entrypoint-nonroot.sh
+
+# staticfiles is written at runtime by `collectstatic` (see entrypoint.sh), and
+# media is a mounted volume; both must belong to the app user.
+RUN mkdir -p /app/src/django_app/staticfiles /app/src/django_app/media \
+ && chown -R app:app /app
+
+ENV HOME=/home/app \
+    NONROOT_CHOWN_PATHS="/home/app \${DJANGO_MEDIA_ROOT:-/app/src/django_app/media} /app/src/django_app/staticfiles"
+
 WORKDIR /app/src/django_app
 
 RUN chmod +x ./entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-nonroot.sh"]

@@ -23,7 +23,7 @@ services:
 
   frontend:
     ports:
-      - "${FRONTEND_PORT:-4201}:80"
+      - "${FRONTEND_PORT:-4201}:8080"
 
   minio:
     ports:

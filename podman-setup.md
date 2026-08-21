@@ -52,6 +52,7 @@ podman network create frontend-network
 podman network create mcp-network
 
 podman volume create sandbox_venvs
+podman volume create sandbox_executions
 podman volume create crew_pgdata
 podman volume create crew_config
 ```
@@ -102,7 +103,7 @@ podman run -d   --name django_app   --network backend-network   -p 8000:8000   -
 ### Manager
 
 ```bash
-podman run -d   --name manager_container   --network backend-network   --env-file .env   -p 8001:8000   -t   -i   -v /var/run/podman/podman.sock:/var/run/docker.sock   manager
+podman run -d   --name manager_container   --network backend-network   --env-file .env   -p 8001:8000   -t   -i   manager
 ```
 
 ---
@@ -134,7 +135,7 @@ podman run -d   --name crew   --network backend-network   --network mcp-network 
 ### Sandbox
 
 ```bash
-podman run -d   --name sandbox   --network backend-network   -v sandbox_venvs:${BASE_VENV_PATH}   -v ${CREW_SAVEFILES_PATH}:${CONTAINER_SAVEFILES_PATH}   --env-file .env   -t   -i   sandbox
+podman run -d   --name sandbox   --network backend-network   -v sandbox_venvs:${BASE_VENV_PATH}   -v sandbox_executions:${OUTPUT_PATH}   -v ${CREW_SAVEFILES_PATH}:${CONTAINER_SAVEFILES_PATH}   --env-file .env   -t   -i   sandbox
 ```
 
 ---
@@ -142,7 +143,7 @@ podman run -d   --name sandbox   --network backend-network   -v sandbox_venvs:${
 ### Frontend
 
 ```bash
-podman run -d   --name frontend   --network frontend-network   -p 4200:80   -v ../frontend-config/frontend-config.json:/usr/share/nginx/html/config.json:ro   frontend
+podman run -d   --name frontend   --network frontend-network   -p 4200:8080   -v ../frontend-config/frontend-config.json:/usr/share/nginx/html/config.json:ro   frontend
 ```
 ---
 
