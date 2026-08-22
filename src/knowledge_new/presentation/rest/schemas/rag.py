@@ -1,4 +1,4 @@
-from domain.models import ChunkingConfig, FoundChunk, PreviewChunk, SearchConfig
+from domain.models import ChunkingConfig, FoundChunk, SearchConfig
 from presentation.rest.schemas.base import BaseSchema
 
 
@@ -12,7 +12,9 @@ class PrechunkInputSchema(BaseSchema):
 
 
 class PrechunkOutputSchema(BaseSchema):
-    chunks: list[PreviewChunk]
+    rag_id: int
+    document_id: int
+    chunk_count: int
 
 
 class SearchInputSchema(BaseSchema):

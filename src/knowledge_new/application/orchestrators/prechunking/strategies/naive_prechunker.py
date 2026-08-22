@@ -1,5 +1,6 @@
 from application.commands import RunPrechunk
 from application.orchestrators.prechunking.base import AbstractPrechunkOrchestrator
+from application.results import PrechunkResult
 from domain.errors import NoPreviewChunksProducedError
 from infrastructure.file_text_extractors import build_file_text_extractor
 from infrastructure.naive.chunkers import build_chunker
@@ -38,4 +39,9 @@ class NaivePrechunkOrchestrator(AbstractPrechunkOrchestrator):
             command.document_id,
             command.rag_id,
             len(preview_chunks),
+        )
+        return PrechunkResult(
+            rag_id=command.rag_id,
+            document_id=command.document_id,
+            chunk_count=len(preview_chunks),
         )

@@ -74,17 +74,15 @@ class RagController(Controller):
         rag_id: int,
         data: schemas.PrechunkInputSchema,
         uow: AbstractUnitOfWork,
-        task_register: TaskRegister,
-    ) -> None:
+    ) -> schemas.PrechunkOutputSchema:
         command = commands.RunPrechunk(
             rag_id=rag_id,
             document_id=data.document_id,
             chunking_config=data.chunking_config,
         )
         orchestrator = build_prechunker(strategy, uow)
-        task = asyncio.create_task(orchestrator.execute(command))
-        key = make_key("rag", strategy, rag_id, "prechunk")
-        task_register.register(key, task)
+        result = await orchestrator.execute(command)
+        return schemas.PrechunkOutputSchema.model_validate(result)
 
     @delete(
         path="{rag_id:int}/{operation:str}/cancel/",
