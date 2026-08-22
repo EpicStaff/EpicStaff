@@ -1,10 +1,10 @@
 from datetime import UTC, datetime
+from typing import Any
 
 __all__ = [
     "utcnow",
+    "make_key",
 ]
-
-from typing import Any
 
 
 def utcnow() -> datetime:
