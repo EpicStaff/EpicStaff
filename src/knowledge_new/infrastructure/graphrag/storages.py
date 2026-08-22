@@ -2,6 +2,7 @@ import asyncio
 import io
 import re
 from collections.abc import Coroutine, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
@@ -18,7 +19,7 @@ def create_storage_config(
 ) -> StorageConfig:
     prefix = f"graphrag/rag_{rag_id}"
     if subdir:
-        prefix += f'/{subdir}'
+        prefix += f"/{subdir}"
     return StorageConfig(
         type="minio",
         prefix=prefix,
@@ -31,8 +32,12 @@ def create_storage_config(
 
 
 def _run_sync[T](coro: Coroutine[Any, Any, T]) -> T:
-    loop = asyncio.get_running_loop()
-    return loop.run_until_complete(coro)
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, coro).result()
 
 
 class MinioStorage(Storage):
