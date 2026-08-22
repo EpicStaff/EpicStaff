@@ -8,7 +8,7 @@ The service requires a running Redis server.
 to load variables from system environment 
 OR
 `python run.py --debug`
-to load variables from `debug.env` file
+to load variables from `.debug.env` file
 
 ## Testing
 ### Send a Test Webhook

@@ -1,85 +1,125 @@
-@if (label()) {
-    <app-tooltip
-        [required]="required()"
-        [tooltipText]="tooltipText()"
-        [label]="label()"
-        [icon]="icon()"
-    />
-}
+@if (!hideTrigger()) {
+    @if (label()) {
+        <app-tooltip
+            [required]="required()"
+            [tooltipText]="tooltipText()"
+            [label]="label()"
+            [icon]="icon()"
+        />
+    }
 
-<div class="selector">
-    <button
-        #triggerBtn
-        class="selector__btn"
-        [disabled]="isDisabled()"
-        [ngClass]="'selector__btn--' + mod()"
-        [class.selector__btn--invalid]="invalid()"
-        [class.selector__btn--open]="open()"
-        [class.selector__btn--placeholder]="!selectedItem()"
-        (click)="toggle()"
-    >
-        @if (loading()) {
-            <div
-                class="selector__spinner"
-                [ngClass]="'selector__spinner--' + mod()"
-            ></div>
-        } @else {
-            @if (selectedItem()?.icon) {
-                <app-svg-icon
-                    [icon]="selectedItem()!.icon!"
-                    [size]="'18px'"
-                ></app-svg-icon>
-            }
-            <span class="selector__text">
-                {{ selectedItem() ? selectedItem()!.name : placeholder() }}
-            </span>
-
-            <svg
-                class="selector__chevron"
-                [class.selector__chevron--open]="open()"
-                [ngClass]="'selector__chevron--' + mod()"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-            >
-                <path
-                    d="M6 9l6 6 6-6"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    fill="none"
-                    stroke-linecap="round"
-                />
-            </svg>
-        }
-    </button>
-</div>
-
-<ng-template #dropdownTemplate>
-    <div class="selector__dropdown">
-        @for (item of items(); track item.name) {
-            <div
-                class="selector__option selector__option--exists"
-                [ngClass]="'selector__option--' + mod()"
-                [class.selector__option--selected]="item.value === selectedValue()"
-                (click)="select(item)"
-            >
-                @if (item.icon) {
+    <div class="selector">
+        <button
+            #triggerBtn
+            class="selector__btn"
+            [disabled]="isDisabled()"
+            [ngClass]="'selector__btn--' + mod()"
+            [class.selector__btn--invalid]="invalid()"
+            [class.selector__btn--open]="open()"
+            [class.selector__btn--placeholder]="!selectedItem()"
+            (click)="toggle()"
+        >
+            @if (loading()) {
+                <div
+                    class="selector__spinner"
+                    [ngClass]="'selector__spinner--' + mod()"
+                ></div>
+            } @else {
+                @if (selectedItem()?.icon) {
                     <app-svg-icon
-                        [icon]="item.icon"
+                        [icon]="selectedItem()!.icon!"
                         [size]="'18px'"
                     ></app-svg-icon>
                 }
-                <span class="selector__text">{{ item.name }}</span>
+                <span
+                    class="selector__text"
+                    [attr.title]="selectedItem()?.name || null"
+                >
+                    {{ selectedItem() ? selectedItem()!.name : placeholder() }}
+                </span>
+
+                <svg
+                    class="selector__chevron"
+                    [class.selector__chevron--open]="open()"
+                    [ngClass]="'selector__chevron--' + mod()"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        d="M6 9l6 6 6-6"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        fill="none"
+                        stroke-linecap="round"
+                    />
+                </svg>
+            }
+        </button>
+    </div>
+} @else {
+    <!-- Projected custom trigger. Use [appSelectTrigger]="selectRef" to open the dropdown. -->
+    <ng-content></ng-content>
+    <span
+        #triggerBtn
+        style="display: none"
+    ></span>
+}
+
+<ng-template #dropdownTemplate>
+    <div
+        class="selector__dropdown"
+        [class.selector__dropdown--boxed]="variant() === 'boxed'"
+    >
+        @if (showSearch()) {
+            <div class="selector__search-wrapper">
+                <input
+                    class="selector__search"
+                    type="text"
+                    [value]="search()"
+                    (input)="search.set($any($event.target).value)"
+                    [placeholder]="searchPlaceholder()"
+                />
             </div>
         }
 
-        @if (!items().length) {
-            <div
-                class="selector__option selector__option--empty"
-                [ngClass]="'selector__option--' + mod()"
-            >
-                No items available
-            </div>
-        }
+        <div
+            class="selector__list"
+            [class.selector__list--boxed]="variant() === 'boxed'"
+        >
+            @for (item of filteredItems(); track item.name) {
+                <div
+                    class="selector__option selector__option--exists"
+                    [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
+                    [class.selector__option--selected]="item.value === selectedValue()"
+                    (click)="select(item)"
+                >
+                    @if (item.icon) {
+                        <app-svg-icon
+                            [icon]="item.icon"
+                            [size]="'16px'"
+                        ></app-svg-icon>
+                    }
+                    <div class="selector__option-body">
+                        <span class="selector__text">{{ item.name }}</span>
+                        @if (item.subtitle && variant() === 'boxed') {
+                            <span class="selector__subtitle">{{ item.subtitle }}</span>
+                        }
+                    </div>
+                    @if (item.tip) {
+                        <span class="selector__tip">{{ item.tip }}</span>
+                    }
+                </div>
+            }
+
+            @if (!filteredItems().length) {
+                <div
+                    class="selector__option selector__option--empty"
+                    [ngClass]="variant() === 'boxed' ? 'selector__option--boxed' : 'selector__option--' + mod()"
+                >
+                    No items available
+                </div>
+            }
+        </div>
     </div>
 </ng-template>

@@ -64,11 +64,10 @@ class LLMConfig(Base):
     presence_penalty = Column(Float, nullable=True)
     frequency_penalty = Column(Float, nullable=True)
     logit_bias = Column(JSON, nullable=True)
-    response_format = Column(JSON, nullable=True)
     seed = Column(Integer, nullable=True)
 
     # API settings
-    api_key = Column(Text, nullable=True)
+    api_key_secret_id = Column(Integer, nullable=True)
     headers = Column(JSON, nullable=True, default=dict)
     extra_headers = Column(JSON, nullable=True, default=dict)
     timeout = Column(Float, nullable=True)

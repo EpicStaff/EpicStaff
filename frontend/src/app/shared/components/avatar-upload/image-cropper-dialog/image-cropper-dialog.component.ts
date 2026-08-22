@@ -1,5 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 import { ImageCroppedEvent, ImageCropperComponent } from 'ngx-image-cropper';
 
@@ -7,7 +8,7 @@ import { ImageCroppedEvent, ImageCropperComponent } from 'ngx-image-cropper';
     selector: 'app-image-cropper-dialog',
     templateUrl: './image-cropper-dialog.component.html',
     styleUrls: ['./image-cropper-dialog.component.scss'],
-    imports: [ImageCropperComponent, ButtonComponent, AppSvgIconComponent],
+    imports: [ImageCropperComponent, ButtonComponent, AppSvgIconComponent, MatTooltip],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ImageCropperDialogComponent {

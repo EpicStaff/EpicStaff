@@ -64,6 +64,13 @@ class VoiceSettings(DefaultBaseModel):
     voice_agent = models.ForeignKey(
         "RealtimeAgent", on_delete=models.SET_NULL, null=True, blank=True, default=None
     )
+    voice_agent_definition = models.ForeignKey(
+        "RealtimeAgentDefinition",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
+    )
     ngrok_config = models.ForeignKey(
         NgrokWebhookConfig,
         on_delete=models.SET_NULL,

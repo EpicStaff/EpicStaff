@@ -1,0 +1,52 @@
+// EpicChat token alias layer — scoped to the FA panel host.
+// Maps EpicChat --ep-color-* / --ep-radius-* / --ep-button-* variables onto the
+// project's existing CSS variables so FA SCSS can be read side-by-side with
+// EpicChat's source without any global theme drift.
+// Source reference: epicstaffchat-master/src/app/chat.component.scss:101-167
+@mixin epicchat-tokens {
+    // surface + text
+    --ep-color-surface: var(--color-nodes-sidepanel-bg);
+    --ep-color-surface-alt: var(--color-input-background);
+    --ep-color-text: var(--color-text-primary);
+    --ep-color-text-muted: var(--color-text-secondary);
+    --ep-color-border: var(--color-divider-regular);
+    --ep-color-border-muted: var(--color-divider-regular);
+    --ep-color-border-subtle: var(--color-divider-subtle);
+
+    // accent
+    --ep-color-accent: var(--accent-color);
+    --ep-color-accent-contrast: var(--color-ks-white);
+    --ep-color-accent-soft: rgba(104, 95, 255, 0.12);
+    --ep-color-header-icon: var(--ep-color-accent);
+
+    // danger / link
+    --ep-color-danger: var(--color-error);
+    --ep-color-link: var(--accent-color);
+    --ep-color-link-hover: #8b85ff;
+
+    // chat-specific surface colours
+    --ep-chat-bg-answer: var(--ep-color-surface-alt);
+    --ep-chat-bg-question: var(--ep-color-accent);
+    --ep-chat-text-question: #ffffff;
+
+    // menu panel
+    --ep-menu-panel-item-hover-bg: rgba(255, 255, 255, 0.06);
+
+    // radius scale
+    --ep-radius-sm: 4px;
+    --ep-radius-md: 6px;
+    --ep-radius-lg: 10px;
+    --ep-button-radius: 12px;
+
+    // button variants
+    --ep-button-ghost-hover-bg: rgba(154, 115, 175, 0.1);
+    --ep-button-primary-bg: var(--ep-color-accent);
+    --ep-button-primary-text: var(--ep-color-accent-contrast);
+    --ep-button-primary-hover-bg: color-mix(in srgb, var(--ep-color-accent) 85%, black);
+    --ep-button-secondary-border: var(--color-divider-regular);
+    --ep-button-secondary-text: var(--ep-color-text);
+    --ep-button-secondary-hover-bg: rgba(154, 115, 175, 0.1);
+
+    // typography
+    --ep-font-family: 'Inter', 'Inter var', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+}

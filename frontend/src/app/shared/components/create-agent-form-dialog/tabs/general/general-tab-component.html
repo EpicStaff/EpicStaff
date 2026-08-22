@@ -12,12 +12,24 @@
         <app-llm-model-selector
             formControlName="fcm_llm_config"
             placeholder="Select function LLM"
-            [llmConfigs]="combinedLLMs()"
             [loading]="loadingLLMs()"
         ></app-llm-model-selector>
     </div>
 
-    @if (form().get('llm_config')) {
+    @if (form().get('realtime_config')) {
+    <div class="form-group">
+        <app-tooltip
+            tooltipText="Select the realtime (voice) model this agent uses for live voice interaction."
+            label="Realtime Config"
+        />
+        <app-llm-model-selector
+            kind="realtime"
+            formControlName="realtime_config"
+            placeholder="Select realtime config"
+            [loading]="loadingLLMs()"
+        ></app-llm-model-selector>
+    </div>
+    } @if (form().get('llm_config')) {
     <div class="form-group">
         <app-tooltip
             tooltipText="Select the language model that will power this agent's reasoning and responses."
@@ -26,21 +38,18 @@
         <app-llm-model-selector
             formControlName="llm_config"
             placeholder="Select agent LLM"
-            [llmConfigs]="combinedLLMs()"
             [loading]="loadingLLMs()"
         ></app-llm-model-selector>
     </div>
-    } @if (form().get('configured_tools') && form().get('python_code_tools')) {
+    } @if (form().get('python_code_tools')) {
     <div class="form-group">
         <app-tooltip
             tooltipText="Select the tools this agent will have access to. Tools provide additional capabilities for the agent."
             label="Tools"
         />
         <app-tools-selector
-            [selectedConfiguredTools]="form().get('configured_tools')?.value || []"
             [selectedPythonCodeTools]="form().get('python_code_tools')?.value || []"
             [selectedMcpTools]="form().get('mcp_tools')?.value || [] "
-            (configuredToolsChange)="onConfiguredToolsChange($event)"
             (pythonCodeToolsChange)="onPythonToolsChange($event)"
             (mcpToolsChange)="onMcpToolsChange($event)"
             (mergedToolsChange)="mergedToolsChange.emit($event)"

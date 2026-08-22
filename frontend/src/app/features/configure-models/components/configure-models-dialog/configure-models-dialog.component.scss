@@ -93,27 +93,35 @@
         }
     }
 
+    &__tab + &__tab::before {
+        content: '/';
+        margin-right: 10px;
+        color: var(--color-text-secondary, var(--color-text-primary));
+        user-select: none;
+        font-size: 20px;
+        font-weight: 500;
+        line-height: 1;
+        pointer-events: none;
+    }
+
     &__tab-icon {
         font-size: 20px;
         line-height: 1;
         color: inherit;
     }
 
-    &__tabs-separator {
-        padding: 0 6px;
-        color: var(--color-text-secondary, var(--color-text-primary));
-        user-select: none;
-        font-size: 20px;
-        font-weight: 500;
-        line-height: 1;
-        height: 100%;
-        display: inline-flex;
-        align-items: center;
-    }
-
     &__content {
         flex: 1;
         overflow: auto;
         padding: 20px 40px;
+    }
+
+    // Lets a panel opt into filling the content area's height (e.g. Secrets, so its own table
+    // can scroll internally with a sticky header) instead of just growing with its content.
+    &__panel {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
     }
 }

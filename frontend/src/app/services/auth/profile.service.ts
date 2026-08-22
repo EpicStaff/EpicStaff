@@ -1,11 +1,14 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import {
+    AccessToken,
+    CreateApiKeyRequest,
+    CreateApiKeyResponse,
     GetMeResponse,
+    GetMyApiKeyResponse,
     PasswordChangeConfirmRequest,
     PasswordChangeVerifyRequest,
     PasswordChangeVerifyResponse,
-    TokenPair,
     UpdateMeRequest,
     UserRole,
 } from '@shared/models';
@@ -41,11 +44,11 @@ export class ProfileService {
         const user = this.currentUser();
         if (!user) return '—';
         if (user.is_superadmin) return ROLE_LABELS[UserRole.SUPER_ADMIN];
-        const highestRole = user.memberships.reduce<UserRole | null>(
-            (best, m) => (best === null || m.role.id < best ? (m.role.id as UserRole) : best),
-            null
-        );
-        return highestRole !== null ? (ROLE_LABELS[highestRole] ?? '—') : '—';
+
+        const currentOrgId = this.activeOrgService.activeOrgId();
+        const currentMembership = user.memberships.find((m) => m.organization.id === currentOrgId);
+
+        return currentMembership ? currentMembership.role.name : '—';
     });
 
     /** Simple single fetch — use for refreshing profile data mid-session. */
@@ -58,9 +61,7 @@ export class ProfileService {
      *  Called once by the route resolver on app load. */
     bootstrapUser(): Observable<GetMeResponse> {
         const cachedUser = this.currentUserSignal();
-        const user$ = cachedUser
-            ? of(cachedUser)
-            : this.http.get<GetMeResponse>(this.baseUrl).pipe(tap((u) => this.setUser(u)));
+        const user$ = cachedUser ? of(cachedUser) : this.getCurrentUser();
 
         return user$.pipe(
             switchMap((user) => {
@@ -98,8 +99,8 @@ export class ProfileService {
         return this.http.post<PasswordChangeVerifyResponse>(`${this.baseUrl}password-change/request/`, dto);
     }
 
-    confirmPasswordChange(dto: PasswordChangeConfirmRequest): Observable<TokenPair> {
-        return this.http.post<TokenPair>(`${this.baseUrl}password-change/confirm/`, dto);
+    confirmPasswordChange(dto: PasswordChangeConfirmRequest): Observable<AccessToken> {
+        return this.http.post<AccessToken>(`${this.baseUrl}password-change/confirm/`, dto, { withCredentials: true });
     }
 
     /** Switches the active organization: clears all caches, sets the new org,
@@ -114,8 +115,25 @@ export class ProfileService {
         this.currentUser.set(null);
     }
 
+    createApiKey(dto: CreateApiKeyRequest): Observable<CreateApiKeyResponse> {
+        return this.http.post<CreateApiKeyResponse>(`${this.baseUrl}api-keys/`, dto);
+    }
+
+    getMyApiKeys(): Observable<GetMyApiKeyResponse[]> {
+        return this.http.get<GetMyApiKeyResponse[]>(`${this.baseUrl}api-keys/`);
+    }
+
+    revokeApiKey(id: number): Observable<GetMyApiKeyResponse> {
+        return this.http.post<GetMyApiKeyResponse>(`${this.baseUrl}api-keys/${id}/revoke/`, {});
+    }
+
+    deleteApiKey(id: number): Observable<void> {
+        return this.http.delete<void>(`${this.baseUrl}api-keys/${id}/`);
+    }
+
     private setUser(user: GetMeResponse): void {
         this.currentUser.set(user);
+        this.permissionsService.setSuperadmin(user.is_superadmin);
     }
 
     private updateUser(partial: Partial<GetMeResponse>): void {

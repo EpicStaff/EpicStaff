@@ -1,0 +1,7 @@
+tool-data:
+  name: "Schedule Manager Tool"
+  description: "Creates, lists, updates and deletes cron-style scheduled (recurring or one-off) triggers for a single saved EpicStaff flow (graph), via the existing `/api/schedule-trigger-nodes/` REST endpoint. Requires the 'graph_id' (which saved flow this tool manages schedules for) and 'api_key' (an EpicStaff API key) configuration fields to be set when configuring this tool for an agent. The agent only supplies the 'action' and the schedule fields — it can never target a schedule belonging to a different graph."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"

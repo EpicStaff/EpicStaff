@@ -4,7 +4,6 @@ import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
 import { NgxJsonViewerModule } from 'ngx-json-viewer';
 import { MarkdownModule } from 'ngx-markdown';
 
-import { FullAgent } from '../../../../../../features/staff/services/full-agent.service';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ChatsService } from '../../../../services/chats.service';
 import { ConsoleService } from '../../../../services/console.service';
@@ -113,8 +112,8 @@ export class ChatMessagesComponent {
         });
     }
 
-    get agent(): FullAgent | null {
-        return this.chatsService.selectedAgent$();
+    get agentTitle(): string | null {
+        return this.chatsService.selectedAgentVM$()?.title ?? null;
     }
 
     // Helper to safely get a timestamp from an item

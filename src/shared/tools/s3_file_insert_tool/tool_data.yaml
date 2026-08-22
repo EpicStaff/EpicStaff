@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Insert Tool"
+  description: "Insert content before a specific 1-based line number in an S3-stored file, shifting existing lines down. Params: file_path, line_number, content (all required). line_number must be between 1 and (current line count + 1); out-of-range values return an error stating the file's actual line count. Creates the file if it does not exist. To add at the very end of a file, use s3_file_append_tool instead. To replace a specific line, use s3_file_edit_tool instead."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

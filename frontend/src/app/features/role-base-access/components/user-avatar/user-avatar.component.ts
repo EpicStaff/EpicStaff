@@ -10,7 +10,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
                 class="avatar-img"
             />
         } @else {
-            {{ initials() }}
+            <span class="initials">{{ initials() }}</span>
         }
     `,
     styles: [
@@ -27,7 +27,13 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
                 color: var(--text-secondary-60);
                 font-size: 12px;
                 font-weight: 500;
+                line-height: 1;
                 overflow: hidden;
+            }
+
+            .initials {
+                display: block;
+                line-height: 24px;
             }
 
             .avatar-img {

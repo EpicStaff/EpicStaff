@@ -85,12 +85,12 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     constructor() {
         super();
         effect(() => {
-            const refreshed = this.refreshedIsActive();
-            const isActive = refreshed !== undefined ? refreshed : (this.node().data.isActive ?? false);
+            const nodeIsActive = this.node().data.isActive ?? false;
             const ctrl = this.form?.get('is_active');
             if (!ctrl) return;
-            if (ctrl.value !== isActive) {
-                ctrl.patchValue(isActive, { emitEvent: false });
+            if (this.scheduleDirty()) return;
+            if (ctrl.value !== nodeIsActive) {
+                ctrl.patchValue(nodeIsActive, { emitEvent: false });
             }
         });
         this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -258,6 +258,21 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         return super.onSaveSilently();
     }
 
+    /**
+     * The global "Save Flow" action (`FlowGraphComponent.emitSave()`) captures the open panel
+     * via `captureForValidation()`. The base implementation always returns a node (so panels
+     * like the task node panel can report their own invalid state via a flow-wide toast
+     * instead of a hard client-side abort) — but this panel's schedule/timezone checks aren't
+     * reactive-form controls, so they need to run and surface their own inline errors, and a
+     * save with bad schedule data must never reach the backend. Delegating to
+     * `onSaveSilently()` (which does exactly that: sets `submitted`/`startRowError`/
+     * `endRowError`/`timezoneError` and returns `null` on failure) restores the exact
+     * pre-existing behavior for this panel.
+     */
+    public override captureForValidation(): ScheduleTriggerNodeModel | null {
+        return this.onSaveSilently();
+    }
+
     initializeForm(): FormGroup {
         this.refreshedNextRun.set(undefined);
         this.refreshedIsActive.set(undefined);
@@ -396,7 +411,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
                         this.refreshedNextRun.set(dto.schedule?.next_run_date_time ?? null);
                         this.refreshedIsActive.set(dto.is_active);
                         this.refreshedCurrentRuns.set(dto.current_runs);
-                        this.syncRefreshedDataToNode(dto);
+                        this.syncRefreshedDataToNode(dto, false);
                         this.stopPolling$.next();
                         this.schedulePoll(this.computeNextPollDelay(dto));
                     },
@@ -826,10 +841,10 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
             });
     }
 
-    private syncRefreshedDataToNode(dto: GetScheduleTriggerNodeRequest): void {
+    private syncRefreshedDataToNode(dto: GetScheduleTriggerNodeRequest, includeIsActive = true): void {
         if (this.scheduleDirty()) return;
         const current = this.node();
-        const newIsActive = dto.is_active;
+        const newIsActive = includeIsActive ? dto.is_active : current.data.isActive;
         const newNextRun = dto.schedule?.next_run_date_time ?? null;
         const newCurrentRuns = dto.current_runs;
         if (

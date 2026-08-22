@@ -1,7 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, effect, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
+import { from } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 
+import { ToastService } from '../../../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CollapseOnOverflowDirective } from '../../../../../../shared/directives/collapse-on-overflow.directive';
 import { ConsoleService } from '../../../../services/console.service';
@@ -17,8 +21,9 @@ import { VoiceVisualizerComponent } from './voice-visualizer/voice-visualizer.co
         FormsModule,
         MicrophoneSelectorComponent,
         VoiceVisualizerComponent,
-        CollapseOnOverflowDirective,
         AppSvgIconComponent,
+        MatTooltip,
+        CollapseOnOverflowDirective,
     ],
     templateUrl: './chat-controls.component.html',
     styleUrls: ['./chat-controls.component.scss'],
@@ -34,28 +39,25 @@ export class ChatControlsComponent implements OnInit {
     messageText = '';
 
     wavRecorderService = inject(WavRecorderService);
+    private readonly toastService = inject(ToastService);
 
     constructor(public consoleService: ConsoleService) {
-        // React to changes in the WavRecorderService's initialization state
         effect(() => {
             this.isRecorderInitialized.set(this.wavRecorderService.isInitialized());
         });
     }
 
     ngOnInit(): void {
-        // Initialize microphone muted state
         this.updateMicrophoneState();
     }
 
-    /**
-     * Update the internal microphone state from the service
-     */
     private updateMicrophoneState(): void {
         this.isMicrophoneMuted.set(this.wavRecorderService.getStatus() === 'paused');
     }
 
     /**
-     * Start a conversation
+     * Request mic under this click first, then connect. Otherwise validation
+     * errors (e.g. missing transcription) abort before any permission prompt.
      */
     onStartSpeaking(): void {
         if (!this.canStartSpeaking()) {
@@ -64,29 +66,38 @@ export class ChatControlsComponent implements OnInit {
 
         this.isConnecting.set(true);
 
-        this.consoleService.connectConversation().subscribe({
-            next: (result) => {
-                this.isConnecting.set(false);
-                if (result.success) {
-                    // Ensure microphone state is updated
-                    this.updateMicrophoneState();
-                } else {
-                    console.error('Failed to connect conversation:', result.error);
-                }
-            },
-            error: (error) => {
-                this.isConnecting.set(false);
-                console.error('Error connecting conversation:', error);
-            },
-        });
+        from(this.wavRecorderService.ensureDevicesReady())
+            .pipe(
+                switchMap((devices) => {
+                    if (!devices.length) {
+                        this.toastService.warning('Microphone permission is required to start speaking');
+                        return from([{ success: false as const, error: new Error('Microphone permission denied') }]);
+                    }
+                    return this.consoleService.connectConversation();
+                })
+            )
+            .subscribe({
+                next: (result) => {
+                    this.isConnecting.set(false);
+                    if (result.success) {
+                        this.updateMicrophoneState();
+                    } else {
+                        console.error('Failed to connect conversation:', result.error);
+                    }
+                },
+                error: (error) => {
+                    this.isConnecting.set(false);
+                    console.error('Error connecting conversation:', error);
+                },
+            });
     }
 
     /**
-     * Check if we can start speaking
-     * Button should be disabled if connecting or if recorder is not initialized
+     * Start Speaking is always available while idle — mic permission is requested
+     * on click (or devices are already known if permission was previously granted).
      */
     canStartSpeaking(): boolean {
-        return !this.isConnecting() && this.wavRecorderService.audioDevices().length > 0;
+        return !this.isConnecting();
     }
 
     /**

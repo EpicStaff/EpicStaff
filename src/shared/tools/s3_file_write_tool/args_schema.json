@@ -1,0 +1,15 @@
+{
+  "title": "S3FileWriteArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "S3 file path to write. Created if it doesn't exist, overwritten unconditionally if it does."
+    },
+    "content": {
+      "type": "string",
+      "description": "Full content to write to the file, replacing anything currently there."
+    }
+  },
+  "required": ["file_path", "content"]
+}

@@ -2,12 +2,15 @@ from typing import List
 from collections import defaultdict
 
 from django.db import transaction
+from rest_framework.exceptions import PermissionDenied
 
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.enums import NodeType, EntityType
 from tables.import_export.constants import DEPENDENCY_ORDER
 from tables.import_export.schemas import ImportSettings
+from tables.import_export.permissions import ENTITY_RESOURCE_MAP
+from tables.models.rbac_models.rbac_enums import Permission
 
 
 class ImportService:
@@ -19,11 +22,15 @@ class ImportService:
         export_data: dict,
         main_entity: str,
         settings: ImportSettings = None,
+        org_id: int = None,
+        user=None,
+        effective_permissions=None,
     ):
         if settings is None:
             settings = ImportSettings()
 
         id_mapper = IDMapper()
+        denied_resources = set()
 
         with transaction.atomic():
             ordered_types = self._resolve_import_order(export_data)
@@ -33,26 +40,28 @@ class ImportService:
                 strategy = self.registry.get_strategy(entity_type)
 
                 if entity_type == EntityType.GRAPH:
-                    ordered_graphs = self._resolve_graph_order(entities)
-                    for entity_data in ordered_graphs:
-                        self._import_single_entity(
-                            entity_data,
-                            entity_type,
-                            strategy,
-                            id_mapper,
-                            entity_type == main_entity,
-                            settings=settings,
-                        )
-                else:
-                    for entity_data in entities:
-                        self._import_single_entity(
-                            entity_data,
-                            entity_type,
-                            strategy,
-                            id_mapper,
-                            entity_type == main_entity,
-                            settings=settings,
-                        )
+                    entities = self._resolve_graph_order(entities)
+
+                for entity_data in entities:
+                    denied = self._import_single_entity(
+                        entity_data,
+                        entity_type,
+                        strategy,
+                        id_mapper,
+                        entity_type == main_entity,
+                        settings=settings,
+                        org_id=org_id,
+                        user=user,
+                        effective_permissions=effective_permissions,
+                    )
+                    if denied is not None:
+                        denied_resources.add(denied)
+
+            if denied_resources:
+                names = ", ".join(sorted(r.value for r in denied_resources))
+                raise PermissionDenied(
+                    f"Missing CREATE permission on: {names}. No changes were made."
+                )
 
         return id_mapper, self.registry
 
@@ -77,22 +86,41 @@ class ImportService:
         id_mapper,
         is_main,
         settings: ImportSettings = None,
+        org_id=None,
+        user=None,
+        effective_permissions=None,
         **kwargs,
     ):
         old_id = entity_data["id"]
 
         existing = None
         if not is_main:
-            existing = strategy.find_existing(entity_data, id_mapper)
+            existing = strategy.find_existing(entity_data, id_mapper, org_id=org_id)
 
         was_created = existing is None
 
+        denied = None
+        if was_created and effective_permissions is not None:
+            resource = ENTITY_RESOURCE_MAP.get(entity_type)
+            if resource is not None and not effective_permissions.can(
+                resource, Permission.CREATE
+            ):
+                denied = resource
+
+        kwargs["org_id"] = org_id
+        kwargs["user"] = user
+
         instance = strategy.import_entity(
-            entity_data, id_mapper, is_main, settings=settings
+            entity_data, id_mapper, is_main, settings=settings, **kwargs
         )
         if instance is None:
-            return
-        id_mapper.map(entity_type, old_id, instance.id, was_created)
+            return denied
+        # Some strategies (e.g. GraphStrategy) register their own mapping
+        # at creation time so downstream logic within the same
+        # create_entity call can resolve it. Don't overwrite that mapping.
+        if not id_mapper.has_mapping(entity_type, old_id):
+            id_mapper.map(entity_type, old_id, instance.id, was_created)
+        return denied
 
     def _resolve_graph_order(self, graphs: List[dict]) -> List[dict]:
         """

@@ -1,19 +1,21 @@
+from django.conf import settings
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
+from tables.services.rbac.first_setup_mode import FirstSetupMode
 from tables.services.rbac.permissions import IsSuperadmin
 from tables.models.rbac_models import ApiKey
 from tables.serializers.rbac_serializers import (
     AdminPasswordResetSerializer,
     LoginSerializer,
-    LogoutRequestSerializer,
     PasswordResetConfirmResponseSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestResponseSerializer,
@@ -24,19 +26,29 @@ from tables.services.rbac.auth_service import TokenPair
 from tables.services.rbac.auth_validation_service import AuthValidationService
 from tables.services.rbac.first_setup_service import FirstSetupService
 from tables.services.rbac.password_recovery_service import PasswordRecoveryService
-from tables.services.rbac.rbac_exceptions import InvalidRefreshTokenError
+from tables.services.rbac.rbac_exceptions import (
+    FirstSetupDisabledError,
+    InvalidRefreshTokenError,
+)
 from tables.services.rbac.reset_user_service import ResetUserService
-from tables.services.rbac.sse_ticket_service import SseTicketService
+from tables.services.rbac.ticket_service import sse_ticket_service, ws_ticket_service
+from tables.services.rbac.utils.refresh_cookie import (
+    clear_refresh_cookie,
+    get_refresh_from_cookie,
+    set_refresh_cookie,
+)
 from tables.swagger_schemas.auth_schema import (
     API_KEY_VALIDATE_GET,
     FIRST_SETUP_GET,
     FIRST_SETUP_POST,
     LOGIN_POST,
     LOGOUT_POST,
+    REFRESH_POST,
     RESET_USER_POST,
     SSE_TICKET_POST,
     SWAGGER_TOKEN_POST,
     TOKEN_INTROSPECT_POST,
+    WS_TICKET_POST,
 )
 from tables.throttles import LoginThrottle, PasswordResetRequestThrottle
 
@@ -53,40 +65,43 @@ class LoginView(TokenObtainPairView):
         # before delegating to simplejwt. Wrong-credential errors stay a
         # flat 401 to avoid user-enumeration leaks.
         self._validator.validate_login(request.data)
-        return super().post(request, *args, **kwargs)
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            refresh_token = response.data.pop("refresh", None)
+            if refresh_token:
+                set_refresh_cookie(response, refresh_token)
+        return response
 
 
 class LogoutView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(**LOGOUT_POST)
     def post(self, request):
-        serializer = LogoutRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            token = RefreshToken(serializer.validated_data["refresh"])
-            # Ownership check: a leaked refresh token must not let a third
-            # party log the owner out. Mismatch is reported with the same
-            # exception as malformed/expired tokens so the caller cannot
-            # distinguish "real but not yours" from "garbage".
-            token_user_id = token.payload.get("user_id")
-            if token_user_id is None or int(token_user_id) != request.user.id:
-                raise InvalidRefreshTokenError()
-            token.blacklist()
-        except TokenError as exc:
-            raise InvalidRefreshTokenError() from exc
-        return Response(
+        refresh_value = get_refresh_from_cookie(request)
+        if refresh_value:
+            try:
+                token = RefreshToken(refresh_value)
+                # Ownership check: a leaked refresh token must not let a
+                # third party log the owner out.
+                token_user_id = token.payload.get("user_id")
+                if token_user_id is None or int(token_user_id) != request.user.id:
+                    raise InvalidRefreshTokenError()
+                token.blacklist()
+            except TokenError as exc:
+                raise InvalidRefreshTokenError() from exc
+        response = Response(
             {"detail": "Logged out."},
             status=status.HTTP_205_RESET_CONTENT,
         )
+        clear_refresh_cookie(response)
+        return response
 
 
 class SseTicketView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
-
-    _service = SseTicketService()
 
     @extend_schema(**SSE_TICKET_POST)
     def post(self, request):
@@ -97,7 +112,30 @@ class SseTicketView(APIView):
                 {"detail": "This endpoint requires a user context."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        ticket, ttl = self._service.issue(request.user)
+        ticket, ttl = sse_ticket_service.issue(request.user)
+        return Response({"ticket": ticket, "expires_in": ttl})
+
+
+class WsTicketView(APIView):
+    """
+    Issue a single-use WebSocket ticket bound to the calling user.
+    The client appends `?ticket=<value>` when opening the WS connection
+    because WebSocket connections cannot carry an Authorization header.
+    """
+
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(**WS_TICKET_POST)
+    def post(self, request):
+        if not getattr(request.user, "is_authenticated", False) or not hasattr(
+            request.user, "email"
+        ):
+            return Response(
+                {"detail": "This endpoint requires a user context."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        ticket, ttl = ws_ticket_service.issue(request.user)
         return Response({"ticket": ticket, "expires_in": ttl})
 
 
@@ -110,10 +148,21 @@ class FirstSetupView(APIView):
 
     @extend_schema(**FIRST_SETUP_GET)
     def get(self, request):
-        return Response({"needs_setup": self._service.is_setup_required()})
+        # `needs_setup` stays false whenever the HTTP path is closed, so the
+        # frontend never offers a setup form it cannot submit.
+        http_allowed = FirstSetupMode.is_http_allowed(settings.FIRST_SETUP_MODE)
+        return Response(
+            {
+                "needs_setup": http_allowed and self._service.is_setup_required(),
+                "setup_mode": settings.FIRST_SETUP_MODE,
+            }
+        )
 
     @extend_schema(**FIRST_SETUP_POST)
     def post(self, request):
+        if not FirstSetupMode.is_http_allowed(settings.FIRST_SETUP_MODE):
+            raise FirstSetupDisabledError()
+
         cleaned = self._validator.validate_first_setup(request.data)
 
         result = self._service.setup(
@@ -122,7 +171,7 @@ class FirstSetupView(APIView):
         )
         tokens = TokenPair.for_user(result.user)
 
-        return Response(
+        response = Response(
             {
                 "user": {
                     "id": result.user.id,
@@ -136,21 +185,25 @@ class FirstSetupView(APIView):
                     "is_active": result.organization.is_active,
                 },
                 "access": tokens.access,
-                "refresh": tokens.refresh,
             },
             status=status.HTTP_201_CREATED,
         )
+        set_refresh_cookie(response, tokens.refresh)
+        return response
 
 
 class TokenIntrospectView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(**TOKEN_INTROSPECT_POST)
     def post(self, request):
-        if not isinstance(request.auth, ApiKey):
+        if (
+            not isinstance(request.auth, ApiKey)
+            or request.auth.key_type != ApiKey.KeyType.SYSTEM
+        ):
             return Response(
-                {"detail": "API key required"},
+                {"detail": "System API key required"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -175,7 +228,7 @@ class TokenIntrospectView(APIView):
 
 
 class ApiKeyValidateView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
     @extend_schema(**API_KEY_VALIDATE_GET)
@@ -191,7 +244,6 @@ class ApiKeyValidateView(APIView):
                 "active": True,
                 "name": key.name,
                 "prefix": key.prefix,
-                "scopes": key.scopes or [],
                 "owner_user_id": key.created_by_id,
             },
             status=status.HTTP_200_OK,
@@ -293,7 +345,7 @@ class AdminPasswordResetView(APIView):
     `PasswordRecoveryService.admin_reset` stays as a redundant safety net.
     """
 
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, IsSuperadmin]
 
     _validator = AuthValidationService()
@@ -319,8 +371,43 @@ class AdminPasswordResetView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class CookieTokenRefreshView(APIView):
+    """Read the refresh token from the HttpOnly cookie, validate it via
+    SimpleJWT, and return a fresh access token.  When token rotation is
+    enabled the new refresh token is set as a cookie as well."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(**REFRESH_POST)
+    def post(self, request):
+        refresh_value = get_refresh_from_cookie(request)
+        if not refresh_value:
+            return Response(
+                {"detail": "No refresh token."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        serializer = TokenRefreshSerializer(data={"refresh": refresh_value})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError:
+            response = Response(
+                {"detail": "Token is invalid or expired."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+            clear_refresh_cookie(response)
+            return response
+
+        response = Response({"access": serializer.validated_data["access"]})
+        new_refresh = serializer.validated_data.get("refresh")
+        if new_refresh:
+            set_refresh_cookie(response, new_refresh)
+        return response
+
+
 class ResetUserView(APIView):
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, IsSuperadmin]
 
     _service = ResetUserService()
@@ -330,17 +417,15 @@ class ResetUserView(APIView):
     def post(self, request):
         cleaned = self._validator.validate_reset_user(request.data)
 
-        user, raw_key = self._service.reset(
+        user = self._service.reset(
             email=cleaned["email"],
             password=cleaned["password"],
         )
         tokens = TokenPair.for_user(user)
 
-        return Response(
-            {
-                "access": tokens.access,
-                "refresh": tokens.refresh,
-                "api_key": raw_key,
-            },
+        response = Response(
+            {"access": tokens.access},
             status=status.HTTP_201_CREATED,
         )
+        set_refresh_cookie(response, tokens.refresh)
+        return response

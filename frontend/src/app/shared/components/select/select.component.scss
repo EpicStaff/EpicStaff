@@ -1,5 +1,6 @@
 :host {
-    width: 100%;
+    flex-grow: 1;
+    flex-shrink: 0;
     min-width: 0;
     flex-shrink: 0;
     overflow: hidden;
@@ -101,7 +102,7 @@
 
         &--default {
             right: 10px;
-            top: 12px;
+            top: 10px;
         }
 
         &--small {
@@ -126,12 +127,76 @@
         overflow-y: auto;
         overflow-x: hidden;
         white-space: nowrap;
+
+        // Boxed variant: card-like items with padding and optional search box on top.
+        &--boxed {
+            display: flex;
+            flex-direction: column;
+            max-height: 360px;
+            padding: 1rem 0 1rem 1rem;
+            gap: 1rem;
+        }
+    }
+
+    &__search-wrapper {
+        display: block;
+        overflow-y: auto;
+        scrollbar-gutter: stable;
+        flex-shrink: 0;
+    }
+
+    &__list {
+        scrollbar-gutter: stable;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+    }
+
+    &__option-body {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1;
+        line-height: 100%;
+    }
+
+    &__subtitle {
+        font-size: 0.75rem;
+        color: var(--color-ks-transparent-text-60);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     &__item-icon {
         font-size: 1rem;
         flex-shrink: 0;
         line-height: 1;
+    }
+
+    &__search {
+        width: 100%;
+        padding: 0.25rem 0.75rem;
+        height: 40px;
+        font-size: 0.875rem;
+        border-radius: 4px;
+        border: 1px solid var(--color-input-border);
+        background-color: var(--color-input-background);
+        color: var(--color-text-primary);
+        transition: border-color 0.15s ease;
+        flex-shrink: 0;
+
+        &:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        &::placeholder {
+            color: var(--color-input-text-placeholder);
+        }
     }
 
     &__text {
@@ -142,6 +207,12 @@
         flex: 1;
         min-width: 0;
         transition: background 0.15s ease;
+    }
+
+    &__tip {
+        flex-shrink: 0;
+        color: var(--text-secondary-60);
+        font-size: 0.8125rem;
     }
 
     &__option {
@@ -172,6 +243,17 @@
             }
         }
 
+        &--boxed {
+            padding: 0.25rem 1rem;
+            height: 40px;
+            flex-shrink: 0;
+            font-size: 0.875rem;
+            border-radius: 4px;
+            border: 1px solid var(--color-divider-subtle);
+            background-color: var(--color-input-background);
+            transition: border-color 0.15s ease;
+        }
+
         &--exists {
             cursor: pointer;
 
@@ -181,8 +263,12 @@
         }
 
         &--selected {
-            color: var(--accent-color, #685fff);
+            color: var(--accent-color);
             font-weight: 500;
+
+            &.selector__option--boxed {
+                border-color: var(--accent-color);
+            }
         }
 
         &--empty {

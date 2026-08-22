@@ -20,7 +20,6 @@ class TablesConfig(AppConfig):
         import tables.import_export.version_conversions.convertions
         import tables.signals.schedule_signals
         from tables.services.schedule_trigger_service import ScheduleTriggerService
-        from tables.services.config_service import YamlConfigService
         from tables.services.converter_service import ConverterService
         from tables.services.redis_service import RedisService
         from tables.services.session_manager_service import SessionManagerService
@@ -41,6 +40,26 @@ class TablesConfig(AppConfig):
             tags,
             session,
             label,
+            surface,
+            agent_definition,
+        )
+        from tables.import_export.strategies.nodes import (
+            start_node,
+            crew_node,
+            python_node,
+            audio_transcription_node,
+            file_extractor_node,
+            telegram_trigger_node,
+            webhook_trigger_node,
+            decision_table_node,
+            classification_decision_table_node,
+            subgraph_node,
+            end_node,
+            note_node,
+            code_agent_node,
+            schedule_trigger_node,
+            agent_node,
+            task_node,
         )
 
         if "runserver" in sys.argv:
@@ -52,7 +71,6 @@ class TablesConfig(AppConfig):
             redis_service=redis_service,
             converter_service=converter_service,
         )
-        YamlConfigService()
         RunPythonCodeService(redis_service=redis_service)
         RealtimeService(
             redis_service=redis_service, converter_service=converter_service
@@ -80,6 +98,8 @@ class TablesConfig(AppConfig):
         entity_registry.register(python_tools.PythonCodeToolStrategy())
         entity_registry.register(mcp_tools.McpToolStrategy())
         entity_registry.register(agent.AgentStrategy())
+        entity_registry.register(surface.SurfaceStrategy())
+        entity_registry.register(agent_definition.AgentDefinitionStrategy())
         entity_registry.register(crew.CrewStrategy())
         entity_registry.register(graph.GraphStrategy())
         entity_registry.register(session.SessionStrategy())
@@ -91,3 +111,23 @@ class TablesConfig(AppConfig):
         entity_registry.register(tags.LLMConfigTagStrategy())
         entity_registry.register(tags.LLMModelTagStrategy())
         entity_registry.register(tags.EmbeddingModelTagStrategy())
+        entity_registry.register(start_node.StartNodeStrategy())
+        entity_registry.register(crew_node.CrewNodeStrategy())
+        entity_registry.register(python_node.PythonNodeStrategy())
+        entity_registry.register(
+            audio_transcription_node.AudioTranscriptionNodeStrategy()
+        )
+        entity_registry.register(file_extractor_node.FileExtractorNodeStrategy())
+        entity_registry.register(telegram_trigger_node.TelegramTriggerNodeStrategy())
+        entity_registry.register(webhook_trigger_node.WebhookTriggerNodeStrategy())
+        entity_registry.register(decision_table_node.DecisionTableNodeStrategy())
+        entity_registry.register(
+            classification_decision_table_node.ClassificationDecisionTableNodeStrategy()
+        )
+        entity_registry.register(subgraph_node.SubgraphNodeStrategy())
+        entity_registry.register(end_node.EndNodeStrategy())
+        entity_registry.register(note_node.NoteNodeStrategy())
+        entity_registry.register(code_agent_node.CodeAgentNodeStrategy())
+        entity_registry.register(schedule_trigger_node.ScheduleTriggerNodeStrategy())
+        entity_registry.register(agent_node.AgentNodeStrategy())
+        entity_registry.register(task_node.TaskNodeStrategy())

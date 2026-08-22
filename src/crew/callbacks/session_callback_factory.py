@@ -28,6 +28,28 @@ SESSION_STATUS_CHANNEL = os.environ.get(
     "SESSION_STATUS_CHANNEL", "sessions:session_status"
 )
 
+# Typed findings channel (EST-3285 5.3): src/shared/tools/report_findings_tool/main.py
+# returns a dict carrying this marker key when it successfully reports findings.
+# The tool's return value goes to CrewAI as a JSON string (result_data is always
+# json.dumps(...) of whatever the sandboxed main() returns), so we recognize it
+# here, in the same place the "agent" message is already published, and
+# republish the payload as its own GraphSessionMessage(message_type="findings")
+# for the frontend to render natively (table/cards) instead of as plain text.
+# Keep this key in sync with FINDINGS_MARKER_KEY in report_findings_tool/main.py.
+FINDINGS_MARKER_KEY = "__epicstaff_message_type__"
+FINDINGS_MESSAGE_TYPE = "findings"
+
+# Upper bound on a plausible report_findings_tool JSON payload, used to skip
+# json.loads on the hot path (_maybe_publish_findings_message runs for every
+# tool result, every agent, every run). A realistic worst case is ~50 findings
+# with ~2000-char "details" each: 50 * 2000 = 100_000 chars, plus per-finding
+# JSON overhead (title/severity/file/line keys, quoting, commas) roughly
+# doubling that to ~200_000, plus the marker key/envelope. 256_000 (250 KiB)
+# is comfortably above that bound while still being cheap to reject anything
+# bigger without parsing (a findings payload is bounded by the tool's own
+# caps, so a bigger result definitionally isn't findings).
+MAX_FINDINGS_RESULT_BYTES = 256_000
+
 
 class GraphSessionCallbackFactory:
     def __init__(
@@ -214,9 +236,53 @@ class CrewCallbackFactory:
                     text=agent_action.thought or agent_action.text,
                     category="agent_reasoning",
                 )
+                self._maybe_publish_findings_message(agent_action.result)
 
         except Exception as e:
             logger.error(f"Error in step callback for session {self.session_id}: {e}")
+
+    def _maybe_publish_findings_message(self, tool_result: str) -> None:
+        """Recognize a report_findings_tool result (see FINDINGS_MARKER_KEY) and
+        republish it as a distinct GraphSessionMessage(message_type="findings")
+        so the frontend can render it natively instead of as plain agent text.
+        Never raises: any parsing failure is swallowed, the normal "agent"
+        message published above is unaffected either way."""
+        if self.stream_writer is None:
+            return
+        if not isinstance(tool_result, str) or not tool_result:
+            return
+
+        stripped = tool_result.strip()
+        if not stripped.startswith("{"):
+            return
+        if len(tool_result) > MAX_FINDINGS_RESULT_BYTES:
+            return
+
+        try:
+            parsed = json.loads(tool_result)
+        except (ValueError, TypeError):
+            return
+
+        if (
+            not isinstance(parsed, dict)
+            or parsed.get(FINDINGS_MARKER_KEY) != "findings"
+        ):
+            return
+
+        try:
+            message_data = {k: v for k, v in parsed.items() if k != FINDINGS_MARKER_KEY}
+            message_data["message_type"] = FINDINGS_MESSAGE_TYPE
+            self._message_writer.add_custom_message(
+                session_id=self.session_id,
+                node_name=self.node_name,
+                writer=self.stream_writer,
+                execution_order=self.execution_order,
+                message_data=message_data,
+            )
+        except Exception as e:
+            logger.error(
+                f"Error publishing findings message for session {self.session_id}: {e}"
+            )
 
     def get_task_callback(self, task_id: int) -> Callable[[TaskOutput], None]:
         def inner(output: TaskOutput) -> None:
@@ -260,7 +326,7 @@ class CrewCallbackFactory:
         sse_visible is controlled by stream_config."""
         if not text or self.stream_writer is None:
             return
-        visible = self.stream_config.get(category, True)
+        visible = bool(self.stream_config.get(category, True))
         self._message_writer.add_custom_message(
             session_id=self.session_id,
             node_name=self.node_name,
@@ -284,6 +350,7 @@ class CrewCallbackFactory:
         agent_knowledge_collection_id=None,
         rag_type_id=None,
         rag_search_config=None,
+        rag_embedder_api_key=None,
         stop_event: Optional[StopEvent] = None,
     ) -> Callable[[], str]:
         def inner() -> str:
@@ -372,6 +439,7 @@ class CrewCallbackFactory:
                         query=str(user_input),
                         rag_search_config=rag_search_config,
                         stop_event=stop_event,
+                        rag_embedder_api_key=rag_embedder_api_key,
                     )
                     user_input_with_knowledges += self._extract_knowledges(
                         agent_knowledges

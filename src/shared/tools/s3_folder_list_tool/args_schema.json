@@ -1,0 +1,19 @@
+{
+  "title": "S3FolderListArgs",
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "S3 folder path to list contents of. Must be within your flow's allowed files (the files attached to this flow); root/whole-bucket listing is not available - pass one of your allowed paths."
+    },
+    "recursive": {
+      "type": "boolean",
+      "description": "Descend into every nested folder (like ls -R) instead of listing only one level. Defaults to false."
+    },
+    "long": {
+      "type": "boolean",
+      "description": "Include size and last-modified time for each entry (like ls -l). Defaults to false."
+    }
+  },
+  "required": []
+}

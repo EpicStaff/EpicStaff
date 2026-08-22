@@ -16,6 +16,7 @@ from tables.models.base_models import (
     SoftDeleteMixin,
 )
 from tables.models.label_models import Label
+from tables.models.rbac_models.org_scoped import OrgScopedModel
 from tables.exceptions import GraphSaveVersionConflictError
 
 
@@ -45,20 +46,20 @@ class GraphManager(models.Manager):
         return self.filter(id__in=subgraph_ids).prefetch_related("tags")
 
 
-class Graph(TimestampMixin, models.Model):
+class Graph(OrgScopedModel, TimestampMixin):
     objects = GraphManager()
 
     tags = models.ManyToManyField(to="GraphTag", blank=True, default=[])
     labels = models.ManyToManyField(Label, blank=True, related_name="flows")
 
     uuid = models.UUIDField(default=uuid.uuid4, unique=True)
-    name = models.CharField(max_length=255, blank=False, unique=True)
+    name = models.CharField(max_length=255, blank=False)
     description = models.TextField(blank=True)
     metadata = models.JSONField(default=dict)
     time_to_live = models.IntegerField(
         default=3600, help_text="Session lifitime duration in seconds."
     )
-    persistent_variables = models.BooleanField(
+    enable_persistent_variables = models.BooleanField(
         default=False, help_text="If 'True' -> use variables from last session."
     )
     epicchat_enabled = models.BooleanField(
@@ -84,6 +85,14 @@ class Graph(TimestampMixin, models.Model):
             raise GraphSaveVersionConflictError(current_version=current)
         return expected + 1
 
+    class Meta(OrgScopedModel.Meta):
+        abstract = False
+        constraints = [
+            models.UniqueConstraint(
+                fields=["org", "name"], name="unique_graph_name_per_org"
+            ),
+        ]
+
 
 class BaseNode(BaseGraphEntity, BaseGlobalNode):
     graph = models.ForeignKey("Graph", on_delete=models.CASCADE)
@@ -106,6 +115,12 @@ class BaseNode(BaseGraphEntity, BaseGlobalNode):
 
 
 class CrewNode(BaseNode):
+    """
+    DEPRECATED: CrewNode is deprecated. Use AgentNode or TaskNode instead.
+    New flows must not create CrewNodes; this model exists only for backward
+    compatibility with existing graphs.
+    """
+
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="crew_node_list"
     )
@@ -204,6 +219,12 @@ class SubGraphNode(BaseNode):
 
 
 class CodeAgentNode(BaseNode):
+    """
+    DEPRECATED: CodeAgentNode is deprecated. Use AgentNode or TaskNode instead.
+    New flows must not create CodeAgentNodes; this model exists only for backward
+    compatibility with existing graphs.
+    """
+
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="code_agent_node_list"
     )
@@ -242,15 +263,17 @@ class Edge(BaseGraphEntity, models.Model):
         ]
 
     def clean(self):
-        # Using the unified class method to find any node type by ID
+        # Start/end nodes must exist AND belong to this edge's graph (which also
+        # keeps them in the same org). A node in another graph/org is treated as
+        # not found.
         start_node = BaseGlobalNode.find_globally(self.start_node_id)
-        if not start_node:
+        if not start_node or start_node.graph_id != self.graph_id:
             raise ObjectDoesNotExist(
                 f"Start node with ID {self.start_node_id} not found."
             )
 
         end_node = BaseGlobalNode.find_globally(self.end_node_id)
-        if not end_node:
+        if not end_node or end_node.graph_id != self.graph_id:
             raise ObjectDoesNotExist(f"End node with ID {self.end_node_id} not found.")
 
 
@@ -360,7 +383,7 @@ class DecisionTableNode(BaseGraphEntity, BaseGlobalNode):
 
         if self.default_next_node_id:
             default_next_node = BaseGlobalNode.find_globally(self.default_next_node_id)
-            if not default_next_node:
+            if not default_next_node or default_next_node.graph_id != self.graph_id:
                 raise ValidationError(
                     {
                         "default_next_node_id": f"Default next node with ID '{self.default_next_node_id}' not found."
@@ -369,7 +392,7 @@ class DecisionTableNode(BaseGraphEntity, BaseGlobalNode):
 
         if self.next_error_node_id:
             next_error_node = BaseGlobalNode.find_globally(self.next_error_node_id)
-            if not next_error_node:
+            if not next_error_node or next_error_node.graph_id != self.graph_id:
                 raise ValidationError(
                     {
                         "next_error_node_id": f"Error node with ID '{self.next_error_node_id}' not found."
@@ -416,7 +439,9 @@ class ConditionGroup(ContentHashMixin, models.Model):
 
         if self.next_node_id:
             next_node = BaseGlobalNode.find_globally(self.next_node_id)
-            if not next_node:
+            # Same graph as the owning decision table (⇒ same org).
+            owner_graph_id = getattr(self.decision_table_node, "graph_id", None)
+            if not next_node or next_node.graph_id != owner_graph_id:
                 raise ValidationError(
                     {
                         "next_node_id": f"Next node with ID '{self.next_node_id}' not found."
@@ -448,7 +473,7 @@ class Condition(ContentHashMixin, models.Model):
 # GraphOrganizationUser below now hold per-flow persistent variables scoped to
 # those RBAC entities.
 #
-# - GraphOrganization(graph, organization)          -> org-level persistent vars
+# - GraphOrganization(graph)                         -> org-level persistent vars
 #   .user_variables                                 -> seed template for new
 #                                                      GraphOrganizationUser rows
 # - GraphOrganizationUser(graph, organization_user) -> per-membership persistent
@@ -467,11 +492,9 @@ class BasePersistentEntity(models.Model):
 
 
 class GraphOrganization(BasePersistentEntity):
-    organization = models.ForeignKey(
-        "Organization",
-        on_delete=models.CASCADE,
-        related_name="graph_persistent_states",
-    )
+    # Org is derived from graph.org (a flow has exactly one owning org), so this
+    # row is a 1:1 extension of Graph holding org-level persistent variables.
+    # TODO refactor to use user_variable for persistent variables
     user_variables = models.JSONField(
         default=dict,
         help_text="Seed template of variables copied into each user's GraphOrganizationUser row",
@@ -480,8 +503,8 @@ class GraphOrganization(BasePersistentEntity):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["graph", "organization"],
-                name="unique_organization_per_flow",
+                fields=["graph"],
+                name="unique_persistent_state_per_flow",
             )
         ]
 
@@ -489,6 +512,7 @@ class GraphOrganization(BasePersistentEntity):
 class GraphOrganizationUser(BasePersistentEntity):
     # FK points at RBAC OrganizationUser (User x Org membership), so per-user
     # persistent state is scoped per-org as well
+    # TODO refactor to use user_variable for persistent variables
     organization_user = models.ForeignKey(
         "OrganizationUser",
         on_delete=models.CASCADE,
@@ -546,8 +570,12 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode):
 
 class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode):
     node_name = models.CharField(max_length=255, blank=False)
-    telegram_bot_api_key = models.CharField(
-        max_length=255, blank=True, null=True, default=None
+    telegram_bot_api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="telegram_trigger_nodes",
     )
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="telegram_trigger_node_list"
@@ -652,6 +680,147 @@ class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode):
         return hashlib.sha256(data_string).hexdigest()
 
 
+class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode):
+    graph = models.ForeignKey(
+        "Graph",
+        on_delete=models.CASCADE,
+        related_name="classification_decision_table_node_list",
+    )
+    node_name = models.CharField(max_length=255, blank=True)
+    pre_python_code = models.ForeignKey(
+        "PythonCode",
+        on_delete=models.CASCADE,
+        null=True,
+        default=None,
+        related_name="cdt_pre_nodes",
+    )
+    pre_input_map = models.JSONField(default=dict, blank=True)
+    pre_output_variable_path = models.CharField(
+        max_length=512, null=True, default=None, blank=True
+    )
+    post_python_code = models.ForeignKey(
+        "PythonCode",
+        on_delete=models.CASCADE,
+        null=True,
+        default=None,
+        related_name="cdt_post_nodes",
+    )
+    post_input_map = models.JSONField(default=dict, blank=True)
+    post_output_variable_path = models.CharField(
+        max_length=512, null=True, default=None, blank=True
+    )
+    prompts = models.JSONField(default=dict, blank=True)
+    default_llm_config = models.ForeignKey(
+        "LLMConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cdt_nodes_as_default",
+    )
+    default_next_node_id = models.BigIntegerField(null=True, default=None)
+    next_error_node_id = models.BigIntegerField(null=True, default=None)
+
+    def clean(self):
+        super().clean()
+
+        if self.default_next_node_id:
+            default_next_node = BaseGlobalNode.find_globally(self.default_next_node_id)
+            if not default_next_node:
+                raise ValidationError(
+                    {
+                        "default_next_node_id": f"Default next node with ID '{self.default_next_node_id}' not found."
+                    }
+                )
+
+        if self.next_error_node_id:
+            next_error_node = BaseGlobalNode.find_globally(self.next_error_node_id)
+            if not next_error_node:
+                raise ValidationError(
+                    {
+                        "next_error_node_id": f"Error node with ID '{self.next_error_node_id}' not found."
+                    }
+                )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["graph", "node_name"],
+                name="unique_graph_node_name_for_classification_dt_node",
+            )
+        ]
+
+
+class ClassificationDecisionTablePrompt(TimestampMixin, models.Model):
+    cdt_node = models.ForeignKey(
+        "ClassificationDecisionTableNode",
+        on_delete=models.CASCADE,
+        related_name="prompt_configs",
+    )
+    prompt_key = models.CharField(max_length=255)
+    prompt_text = models.TextField(blank=True, default="")
+    llm_config = models.ForeignKey(
+        "LLMConfig",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cdt_prompts",
+    )
+    output_schema = models.JSONField(default=dict, blank=True)
+    result_variable = models.CharField(max_length=255, default="prompt_result")
+    variable_mappings = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        unique_together = ("cdt_node", "prompt_key")
+
+
+class ClassificationConditionGroup(BaseGraphEntity, models.Model):
+    classification_decision_table_node = models.ForeignKey(
+        "ClassificationDecisionTableNode",
+        on_delete=models.CASCADE,
+        related_name="condition_groups",
+    )
+    group_name = models.CharField(max_length=255, blank=False)
+    order = models.PositiveIntegerField(blank=False, default=0)
+    expression = models.TextField(null=True, default=None, blank=True)
+    prompt = models.ForeignKey(
+        "ClassificationDecisionTablePrompt",
+        on_delete=models.SET_NULL,
+        null=True,
+        default=None,
+        related_name="condition_groups",
+    )
+    manipulation = models.TextField(null=True, default=None, blank=True)
+    continue_flag = models.BooleanField(default=False)
+    next_node_id = models.BigIntegerField(null=True, default=None)
+    dock_visible = models.BooleanField(default=True)
+    field_expressions = models.JSONField(default=dict, blank=True)
+    field_manipulations = models.JSONField(default=dict, blank=True)
+    route_code = models.CharField(max_length=128, null=True, default=None, blank=True)
+    section = models.CharField(max_length=128, null=True, default=None, blank=True)
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["classification_decision_table_node", "route_code"],
+                condition=models.Q(route_code__isnull=False),
+                name="unique_route_code_per_cdt_node",
+            )
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if self.next_node_id is not None:
+            next_node = BaseGlobalNode.find_globally(self.next_node_id)
+            if not next_node:
+                raise ValidationError(
+                    {
+                        "next_node_id": f"Error node with ID '{self.next_node_id}' not found."
+                    }
+                )
+
+
 class GraphNote(BaseGraphEntity, BaseGlobalNode):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="graph_note_list"
@@ -694,17 +863,54 @@ class GraphVersion(SoftDeleteMixin, models.Model):
 
 
 class StorageFile(models.Model):
+    ITEM_TYPE_CHOICES = [("file", "file"), ("folder", "folder")]
+
     org = models.ForeignKey(
-        "Organization", on_delete=models.CASCADE, related_name="storage_files"
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="storage_files",
+        help_text="Organization that owns this storage entry.",
     )
     path = models.CharField(
-        max_length=1000, help_text="Org-relative path, never starts with '/'"
+        max_length=1000,
+        help_text="Org-relative path, never starts with '/'. Folders end with '/'.",
     )
     name = models.CharField(
-        max_length=255, help_text="Last path segment, denormalized for search"
+        max_length=255, help_text="Last path segment, denormalized for search."
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    item_type = models.CharField(
+        max_length=6,
+        choices=ITEM_TYPE_CHOICES,
+        default="file",
+        help_text="Whether this row represents a file or a folder.",
+    )
+    size = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="File size in bytes. NULL for folders or when size is unknown.",
+    )
+    s3_modified = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="LastModified timestamp from the storage backend. NULL when unknown.",
+    )
+    is_system = models.BooleanField(
+        default=False,
+        help_text="True for files written by the platform itself (e.g. session outputs). Not filtered yet.",
+    )
+    parent_path = models.CharField(
+        max_length=1000,
+        default="",
+        help_text="Immediate parent directory path ending in '/', or '' for root entries. Enables single-level listing.",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Timestamp when this DB row was first created.",
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="Timestamp of the last update to this row.",
+    )
 
     class Meta:
         constraints = [
@@ -712,7 +918,10 @@ class StorageFile(models.Model):
                 fields=["org", "path"], name="unique_storage_file_per_org"
             )
         ]
-        indexes = [models.Index(fields=["org", "path"])]
+        indexes = [
+            models.Index(fields=["org", "path"]),
+            models.Index(fields=["org", "parent_path"]),
+        ]
 
 
 class GraphStorageFile(models.Model):
@@ -748,3 +957,135 @@ class SessionStorageFile(models.Model):
                 name="unique_session_storage_file",
             )
         ]
+
+
+class TaskNode(BaseNode):
+    graph = models.ForeignKey(
+        "Graph",
+        on_delete=models.CASCADE,
+        related_name="task_node_list",
+        help_text="Graph this task node belongs to.",
+    )
+    agent_definition = models.ForeignKey(
+        "agents.AgentDefinition",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="task_nodes",
+        help_text="AgentDefinition that executes this task. Null allowed — runtime surfaces a missing-agent error.",
+    )
+    instructions = models.TextField(
+        blank=True,
+        default="",
+        help_text="Prompt text passed to the agent for this task. Empty means no task-level instructions.",
+    )
+    output_schema = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="JSON schema the task output must conform to. Empty dict means no schema enforcement.",
+    )
+    remember_output = models.BooleanField(
+        default=False,
+        help_text="If True, this task's output is remembered for the current run and injected as context into subsequently executed task nodes in the same session.",
+    )
+    surface_list = models.ManyToManyField(
+        "agents.Surface",
+        blank=True,
+        related_name="task_nodes",
+        help_text="Surfaces attached to this task node.",
+    )
+
+
+class AgentNode(BaseNode):
+    """Node representing an agent that executes an ordered list of sub-tasks (AgentNodeTask) with shared surfaces."""
+
+    graph = models.ForeignKey(
+        "Graph",
+        on_delete=models.CASCADE,
+        related_name="agent_node_list",
+        help_text="Graph this agent node belongs to.",
+    )
+    agent_definition = models.ForeignKey(
+        "agents.AgentDefinition",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="agent_nodes",
+        help_text="AgentDefinition that executes this node's tasks. Null allowed — runtime surfaces a missing-agent error.",
+    )
+    surface_list = models.ManyToManyField(
+        "agents.Surface",
+        blank=True,
+        related_name="agent_nodes",
+        help_text="Surfaces attached to this agent node.",
+    )
+
+
+class AgentNodeTask(TimestampMixin):
+    """Child sub-task of an AgentNode; not a graph node — executes sequentially within the parent node."""
+
+    agent_node = models.ForeignKey(
+        AgentNode,
+        on_delete=models.CASCADE,
+        related_name="tasks",
+        help_text="Parent AgentNode this task belongs to.",
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="Name of this sub-task, unique within the parent agent node.",
+    )
+    order = models.PositiveIntegerField(
+        help_text="Zero-based position within the parent agent node. Tasks execute in ascending order.",
+    )
+    instructions = models.TextField(
+        blank=True,
+        default="",
+        help_text="Prompt text passed to the agent for this sub-task. Empty means no task-level instructions.",
+    )
+    output_schema = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Optional JSON schema the task output must conform to. Empty dict = no enforcement.",
+    )
+    context_tasks = models.ManyToManyField(
+        "self",
+        symmetrical=False,
+        blank=True,
+        related_name="dependent_tasks",
+        help_text="Earlier sibling tasks whose outputs are injected as context for this task.",
+    )
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["agent_node", "order"],
+                name="uniq_agentnodetask_node_order",
+                deferrable=models.Deferrable.DEFERRED,
+            ),
+            models.UniqueConstraint(
+                fields=["agent_node", "name"],
+                name="uniq_agentnodetask_node_name",
+                deferrable=models.Deferrable.DEFERRED,
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if self.pk:
+            invalid = self.context_tasks.exclude(agent_node=self.agent_node)
+
+            if invalid.exists():
+                raise ValidationError(
+                    "context_tasks must belong to the same agent_node."
+                )
+
+            forward = self.context_tasks.filter(order__gte=self.order)
+
+            if forward.exists():
+                raise ValidationError(
+                    "context_tasks must reference tasks with a strictly lower order."
+                )

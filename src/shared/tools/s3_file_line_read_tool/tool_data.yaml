@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 Line Read File Tool"
+  description: "Read a file from S3 storage (Claude-Code-Read semantics). Returns content as cat -n style lines: a right-aligned line number, a tab, then the line text. Params: file_path (required); offset - 1-based line to start from (default 1); limit - max lines to return (default 2000), for paging through large files. Refuses to read files larger than 50MB - use s3_file_count_lines_tool to check size first, or narrow offset/limit. Use this before s3_file_edit_tool to see the exact current content, including whitespace."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

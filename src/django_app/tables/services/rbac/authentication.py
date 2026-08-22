@@ -1,17 +1,15 @@
-from typing import Optional, Tuple
+from typing import Optional
 
-from django.contrib.auth.models import AnonymousUser
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework.authentication import BaseAuthentication
-from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.request import Request
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from tables.models.rbac_models import ApiKey
+from tables.services.rbac.api_key.authenticator import ApiKeyAuthenticator
 
 
-class JwtOrApiKeyAuthenticationScheme(OpenApiAuthenticationExtension):
-    target_class = "tables.services.rbac.authentication.JwtOrApiKeyAuthentication"
+class BearerAuthScheme(OpenApiAuthenticationExtension):
+    target_class = "tables.services.rbac.authentication.JwtAuthentication"
     name = "BearerAuth"
 
     def get_security_definition(self, auto_schema):
@@ -24,6 +22,14 @@ class JwtOrApiKeyAuthenticationScheme(OpenApiAuthenticationExtension):
                 }
             },
         }
+
+
+class ApiKeyAuthScheme(OpenApiAuthenticationExtension):
+    target_class = "tables.services.rbac.authentication.ApiKeyAuthentication"
+    name = "ApiKeyAuth"
+
+    def get_security_definition(self, auto_schema):
+        return {"type": "apiKey", "in": "header", "name": "X-Api-Key"}
 
 
 def _get_header(request: Request, name: str) -> Optional[str]:
@@ -48,46 +54,33 @@ def _get_api_key_from_headers(request: Request) -> Optional[str]:
     return None
 
 
-class JwtOrApiKeyAuthentication(BaseAuthentication):
-    """
-    Bearer JWT or X-Api-Key / `Authorization: ApiKey ...` authentication.
+class JwtAuthentication(JWTAuthentication):
+    """Bearer JWT authentication (simplejwt) with the project's 401 envelope.
 
-    For API keys, `request.user` resolves to the key's owning User (or
-    AnonymousUser for env-seeded keys with no `created_by`). `request.auth` is
-    the ApiKey instance, so downstream code can still inspect key scopes and
-    distinguish key vs. JWT callers via `isinstance(request.auth, ApiKey)`.
+    RFC 7235: a 401 response MUST include a WWW-Authenticate challenge.
+    Without this override DRF may fall back to 403 for unauthenticated
+    requests, contradicting the documented auth envelope.
     """
-
-    def __init__(self) -> None:
-        self.jwt_auth = JWTAuthentication()
 
     def authenticate_header(self, request: Request) -> str:
-        # RFC 7235: a 401 response MUST include a WWW-Authenticate challenge.
-        # Without this method DRF falls back to 403 for unauthenticated
-        # requests, which contradicts the documented auth envelope and makes
-        # it harder for clients to distinguish "no creds" from "forbidden".
         return "Bearer"
 
-    def authenticate(self, request: Request) -> Optional[Tuple[object, object]]:
-        auth_header = _get_header(request, "HTTP_AUTHORIZATION")
-        if auth_header and auth_header.lower().startswith("bearer "):
-            return self.jwt_auth.authenticate(request)
 
-        api_key = _get_api_key_from_headers(request)
-        if api_key:
-            return self._authenticate_api_key(api_key)
+class ApiKeyAuthentication(BaseAuthentication):
+    """X-Api-Key / `Authorization: ApiKey ...` authentication.
 
-        return None
+    `request.user` is the key owner (USER keys) or SystemServicePrincipal
+    (SYSTEM keys); `request.auth` is the ApiKey instance so downstream code
+    can distinguish key callers via `isinstance(request.auth, ApiKey)`.
+    """
 
-    def _authenticate_api_key(self, api_key: str) -> Tuple[object, ApiKey]:
-        prefix = api_key[:8]
-        keys = ApiKey.objects.filter(
-            prefix=prefix, revoked_at__isnull=True
-        ).select_related("created_by")
-        for key in keys:
-            if key.check_key(api_key):
-                key.mark_used()
-                owner = key.created_by or AnonymousUser()
-                return owner, key
+    _authenticator = ApiKeyAuthenticator()
 
-        raise AuthenticationFailed("Invalid API key")
+    def authenticate_header(self, request: Request) -> str:
+        return "Bearer"
+
+    def authenticate(self, request: Request):
+        raw_key = _get_api_key_from_headers(request)
+        if not raw_key:
+            return None
+        return self._authenticator.authenticate(raw_key)

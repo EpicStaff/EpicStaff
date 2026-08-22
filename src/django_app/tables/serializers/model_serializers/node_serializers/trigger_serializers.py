@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from tables.models.secret_models import Secret
+
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.models.graph_models import (
     Graph,
@@ -19,6 +21,7 @@ from tables.serializers.base_serializer import (
     ContentHashWritableMixin,
 )
 from tables.serializers.utils.mixins import NestedPythonCodeMixin, WebhookCreationMixin
+from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
 from tables.serializers.base_serializers import (
     WebhookTriggerNestedSerializer,
 )
@@ -33,6 +36,7 @@ class WebhookTriggerNodeSerializer(
     python_code = PythonCodeSerializer()
 
     webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = WebhookTriggerNode
@@ -106,17 +110,26 @@ class TelegramTriggerNodeFieldSerializer(
 
 
 class TelegramTriggerNodeSerializer(
-    ContentHashWritableMixin, WebhookCreationMixin, serializers.ModelSerializer
+    ContentHashWritableMixin,
+    WebhookCreationMixin,
+    serializers.ModelSerializer,
 ):
+    telegram_bot_api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="telegram_bot_api_key_secret",
+        required=False,
+        allow_null=True,
+    )
     webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
     fields = TelegramTriggerNodeFieldSerializer(many=True)
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = TelegramTriggerNode
         fields = [
             "id",
             "node_name",
-            "telegram_bot_api_key",
+            "telegram_bot_api_key_secret_id",
             "graph",
             "fields",
             "webhook_trigger",
@@ -223,7 +236,7 @@ class ScheduleTriggerNodeSerializer(serializers.Serializer):
     """
 
     id = serializers.IntegerField(read_only=True)
-    graph = serializers.PrimaryKeyRelatedField(queryset=Graph.objects.all())
+    graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
     node_name = serializers.CharField(max_length=255)
     is_active = serializers.BooleanField(required=False)
     metadata = serializers.JSONField(required=False)

@@ -23,7 +23,6 @@ import {
     EmbeddingConfigStorageService,
     FullEmbeddingConfig,
     FullEmbeddingConfigService,
-    FullLLMConfig,
     FullLLMConfigService,
     LlmConfigStorageService,
 } from '@shared/services';
@@ -74,7 +73,6 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
     public embeddingConfigs = signal<GetEmbeddingConfigRequest[]>([]);
 
     // Full config objects for the selectors
-    public fullLLMConfigs = signal<FullLLMConfig[]>([]);
     public fullEmbeddingConfigs = signal<FullEmbeddingConfig[]>([]);
 
     public isLoading = signal(true);
@@ -166,14 +164,7 @@ export class SettingsSectionComponent implements OnInit, OnChanges {
         });
 
         // Fetch full LLM configs for the selector
-        this.fullLLMConfigService.getFullLLMConfigs().subscribe({
-            next: (configs) => {
-                this.fullLLMConfigs.set(configs);
-            },
-            error: (error) => {
-                console.error('Error fetching full LLM configs:', error);
-            },
-        });
+        this.fullLLMConfigService.getFullLLMConfigs().subscribe();
 
         // Fetch full embedding configs for the selector
         this.fullEmbeddingConfigService.getFullEmbeddingConfigs().subscribe({

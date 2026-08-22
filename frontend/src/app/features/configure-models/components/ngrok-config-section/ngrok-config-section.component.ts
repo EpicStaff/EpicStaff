@@ -8,7 +8,8 @@ import {
     ConfirmationResult,
     LoadingSpinnerComponent,
 } from '@shared/components';
-import { GetNgrokConfigResponse } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, GetNgrokConfigResponse, ResourceCode } from '@shared/models';
 import { NgrokConfigStorageService } from '@shared/services';
 
 import { LoadingState } from '../../../../core/enums/loading-state.enum';
@@ -20,7 +21,13 @@ import { NgrokConfigItemComponent } from '../ngrok-config-item/ngrok-config-item
     selector: 'app-ngrok-config-section',
     templateUrl: './ngrok-config-section.component.html',
     styleUrls: ['./ngrok-config-section.component.scss'],
-    imports: [ReactiveFormsModule, ButtonComponent, NgrokConfigItemComponent, LoadingSpinnerComponent],
+    imports: [
+        ReactiveFormsModule,
+        ButtonComponent,
+        NgrokConfigItemComponent,
+        LoadingSpinnerComponent,
+        HasPermissionDirective,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppNgrokSectionComponent implements OnInit {
@@ -69,7 +76,7 @@ export class AppNgrokSectionComponent implements OnInit {
 
     private openConfigDialog(action: 'create' | 'update', config?: GetNgrokConfigResponse): void {
         this.dialog.open(AddNgrokConfigDialogComponent, {
-            width: '500px',
+            width: '600px',
             disableClose: true,
             data: { config, action },
         });
@@ -91,4 +98,7 @@ export class AppNgrokSectionComponent implements OnInit {
                 }
             });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

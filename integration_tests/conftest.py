@@ -2,6 +2,8 @@ import pytest
 import pytest_asyncio
 import os
 
+pytest_plugins = ["mcp_fixture"]
+
 from loguru import logger
 
 from utils.knowledge_utils import (

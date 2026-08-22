@@ -298,6 +298,29 @@ def test_create_edge_with_real_node_ids(auth_client, graph, python_node, crew_no
 
 
 @pytest.mark.django_db
+def test_create_edge_from_start_node(auth_client, graph, start_node, python_node):
+    """Edge from a StartNode uses OrgScopedPrimaryKeyRelatedField('graph') on
+    EdgeSerializer; must resolve via the active org from the request, not just
+    the org fallback used for validate()."""
+    payload = {
+        "save_version": graph.save_version,
+        "edge_list": [
+            {
+                "graph": graph.id,
+                "start_node_id": start_node.id,
+                "end_node_id": python_node.id,
+            }
+        ],
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert Edge.objects.filter(
+        graph=graph, start_node_id=start_node.id, end_node_id=python_node.id
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_create_edge_with_temp_id(auth_client, graph, crew_node):
     """New PythonNode created in same request; edge references it via temp_id."""
     temp_id = "cccc0000-0000-0000-0000-000000000002"
@@ -425,7 +448,7 @@ def test_invalid_node_id_in_payload(auth_client, graph):
 
 @pytest.mark.django_db
 def test_delete_node_from_different_graph(auth_client, graph, python_code):
-    other_graph = Graph.objects.create(name="other_graph")
+    other_graph = Graph.objects.create(name="other_graph", org=graph.org)
     other_node = PythonNode.objects.create(graph=other_graph, python_code=python_code)
 
     payload = {

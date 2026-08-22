@@ -11,20 +11,3 @@ export interface SubGraphNode {
     output_variable_path: string | null;
     metadata: Record<string, unknown>;
 }
-
-export interface CreateSubGraphNodeRequest {
-    node_name: string;
-    graph: number;
-    subgraph: number;
-    input_map: Record<string, unknown>;
-    output_variable_path: string | null;
-    metadata?: Record<string, unknown>;
-}
-
-export interface UpdateSubGraphNodeRequest {
-    node_name?: string;
-    graph?: number;
-    subgraph?: number;
-    input_map?: Record<string, unknown>;
-    output_variable_path?: string | null;
-}

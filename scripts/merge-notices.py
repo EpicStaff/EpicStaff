@@ -38,8 +38,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 NOTICES_FILE = REPO_ROOT / "THIRD-PARTY-NOTICES.md"
 PARTIAL_FILE = REPO_ROOT / "scripts" / "python-notices-partial.md"
+EMBEDDED_PARTIAL_FILE = REPO_ROOT / "scripts" / "embedded-assets-notices.md"
 
 BACKEND_HEADER = "## Backend (Python)"
+EMBEDDED_HEADER = "## Embedded assets (prebuilt epicchat-widget)"
 REFRESH_HEADER = "## How to refresh this file"
 SUMMARY_HEADER = "## License summary"
 
@@ -59,6 +61,7 @@ def read(path: Path) -> str:
 # Section utilities
 # ---------------------------------------------------------------------------
 
+
 def find_section(text: str, header: str) -> tuple[int, int] | None:
     """Return (start, end) byte offsets of a `## header` section, where end is
     the offset of the next `## ` header or EOF. Returns None if not found."""
@@ -68,7 +71,7 @@ def find_section(text: str, header: str) -> tuple[int, int] | None:
         return None
     start = m.start()
     # find next top-level header (## but not ###)
-    next_match = re.search(r"^## (?!#)", text[m.end():], re.MULTILINE)
+    next_match = re.search(r"^## (?!#)", text[m.end() :], re.MULTILINE)
     if next_match:
         end = m.end() + next_match.start()
     else:
@@ -105,14 +108,16 @@ def parse_summary_table(text: str) -> tuple[OrderedDict[str, int], str] | None:
     return counts, block
 
 
-def parse_backend_license_counts(partial: str) -> OrderedDict[str, int]:
-    """Pull the per-license counts out of the partial's `### Python license
-    summary` table."""
+def parse_partial_license_counts(
+    partial: str, table_header: str
+) -> OrderedDict[str, int]:
+    """Pull the per-license counts out of a partial's `### <table_header>`
+    summary table."""
     counts: OrderedDict[str, int] = OrderedDict()
     in_table = False
     for line in partial.splitlines():
         s = line.strip()
-        if s.startswith("### Python license summary"):
+        if s.startswith(table_header):
             in_table = True
             continue
         if in_table:
@@ -138,7 +143,9 @@ def render_summary_section(combined: dict[str, int]) -> str:
     out: list[str] = []
     out.append(SUMMARY_HEADER)
     out.append("")
-    out.append("Combined totals for frontend (npm) production dependencies and backend (Python) main dependencies.")
+    out.append(
+        "Combined totals for frontend (npm) production dependencies, assets embedded in the prebuilt epicchat-widget bundle, and backend (Python) main dependencies."
+    )
     out.append("")
     out.append("| License | Packages |")
     out.append("|---|---|")
@@ -152,6 +159,7 @@ def render_summary_section(combined: dict[str, int]) -> str:
 # ---------------------------------------------------------------------------
 # Merge steps
 # ---------------------------------------------------------------------------
+
 
 def replace_section(text: str, header: str, new_block: str) -> str:
     """Replace existing `## header` section (up to next ## or EOF) with
@@ -177,8 +185,31 @@ def insert_backend_section(notices: str, backend_block: str) -> str:
         start, _ = refresh
         return notices[:start] + backend_block.rstrip() + "\n\n" + notices[start:]
 
-    sep = "" if notices.endswith("\n\n") else ("\n" if notices.endswith("\n") else "\n\n")
+    sep = (
+        "" if notices.endswith("\n\n") else ("\n" if notices.endswith("\n") else "\n\n")
+    )
     return notices + sep + backend_block.rstrip() + "\n"
+
+
+def insert_embedded_section(notices: str, embedded_block: str) -> str:
+    """Insert / replace the Embedded assets section, placing it directly
+    before `## Backend (Python)` (falling back to `## How to refresh this
+    file`, then EOF)."""
+    section = find_section(notices, EMBEDDED_HEADER)
+    if section is not None:
+        start, end = section
+        return notices[:start] + embedded_block.rstrip() + "\n\n" + notices[end:]
+
+    for anchor in (BACKEND_HEADER, REFRESH_HEADER):
+        anchor_section = find_section(notices, anchor)
+        if anchor_section is not None:
+            start, _ = anchor_section
+            return notices[:start] + embedded_block.rstrip() + "\n\n" + notices[start:]
+
+    sep = (
+        "" if notices.endswith("\n\n") else ("\n" if notices.endswith("\n") else "\n\n")
+    )
+    return notices + sep + embedded_block.rstrip() + "\n"
 
 
 def patch_refresh_instructions(notices: str) -> str:
@@ -197,7 +228,7 @@ def patch_refresh_instructions(notices: str) -> str:
         "Whenever any backend service's `pyproject.toml` `main` dependency group changes "
         "(additions, version bumps, removals in any of `src/django_app`, `src/crew`, "
         "`src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, `src/webhook`, "
-        "`src/tool`, `src/voice_app`), regenerate the backend section of this file.\n"
+        "`src/voice_app`), regenerate the backend section of this file.\n"
         "\n"
         "From the repository root, in PowerShell:\n"
         "\n"
@@ -222,21 +253,32 @@ def patch_refresh_instructions(notices: str) -> str:
     if sub_match:
         # Replace existing backend subsection up to next ### or end of block.
         sub_start = sub_match.start()
-        rest = block[sub_match.end():]
+        rest = block[sub_match.end() :]
         next_sub = re.search(r"^### ", rest, re.MULTILINE)
         if next_sub:
             sub_end = sub_match.end() + next_sub.start()
         else:
             sub_end = len(block)
-        new_block = block[:sub_start] + backend_instructions.rstrip() + "\n\n" + block[sub_end:]
+        new_block = (
+            block[:sub_start] + backend_instructions.rstrip() + "\n\n" + block[sub_end:]
+        )
     else:
         # Append before the trailing `### Manual overrides applied` subsection
         # if present, otherwise at the end of the refresh section.
         manual = re.search(r"^### Manual overrides applied\s*$", block, re.MULTILINE)
         if manual:
-            new_block = block[:manual.start()] + backend_instructions.rstrip() + "\n\n" + block[manual.start():]
+            new_block = (
+                block[: manual.start()]
+                + backend_instructions.rstrip()
+                + "\n\n"
+                + block[manual.start() :]
+            )
         else:
-            sep = "" if block.endswith("\n\n") else ("\n" if block.endswith("\n") else "\n\n")
+            sep = (
+                ""
+                if block.endswith("\n\n")
+                else ("\n" if block.endswith("\n") else "\n\n")
+            )
             new_block = block + sep + backend_instructions
 
     return notices[:start] + new_block.rstrip() + "\n\n" + notices[end:]
@@ -246,20 +288,38 @@ def patch_refresh_instructions(notices: str) -> str:
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> int:
     notices = read(NOTICES_FILE)
     partial = read(PARTIAL_FILE)
+    embedded_partial = (
+        EMBEDDED_PARTIAL_FILE.read_text(encoding="utf-8")
+        if EMBEDDED_PARTIAL_FILE.exists()
+        else None
+    )
+    if embedded_partial is None:
+        log(
+            f"embedded assets partial not found ({EMBEDDED_PARTIAL_FILE}); skipping that section"
+        )
 
     # 1. Update the top-level license summary with combined totals.
     fe_summary = parse_summary_table(notices)
-    backend_counts = parse_backend_license_counts(partial)
+    backend_counts = parse_partial_license_counts(partial, "### Python license summary")
+    embedded_counts = (
+        parse_partial_license_counts(
+            embedded_partial, "### Embedded assets license summary"
+        )
+        if embedded_partial
+        else OrderedDict()
+    )
     if fe_summary is None:
         log("could not locate frontend License summary table; leaving it untouched")
     else:
         fe_counts, _ = fe_summary
         combined: dict[str, int] = dict(fe_counts)
-        for lic, cnt in backend_counts.items():
-            combined[lic] = combined.get(lic, 0) + cnt
+        for counts in (backend_counts, embedded_counts):
+            for lic, cnt in counts.items():
+                combined[lic] = combined.get(lic, 0) + cnt
         new_summary = render_summary_section(combined)
         notices = replace_section(notices, SUMMARY_HEADER, new_summary)
         log(f"updated license summary: {sum(combined.values())} total packages")
@@ -267,6 +327,11 @@ def main() -> int:
     # 2. Insert / replace the Backend (Python) section.
     notices = insert_backend_section(notices, partial)
     log("backend section merged")
+
+    # 2b. Insert / replace the Embedded assets section (before the backend one).
+    if embedded_partial:
+        notices = insert_embedded_section(notices, embedded_partial)
+        log("embedded assets section merged")
 
     # 3. Patch `How to refresh this file` with backend run instructions.
     notices = patch_refresh_instructions(notices)

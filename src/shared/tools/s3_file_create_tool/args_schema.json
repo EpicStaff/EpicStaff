@@ -1,0 +1,19 @@
+{
+  "title": "S3FileCreateArgs",
+  "type": "object",
+  "properties": {
+    "file_path": {
+      "type": "string",
+      "description": "S3 file path to create."
+    },
+    "content": {
+      "type": "string",
+      "description": "Initial file content. Defaults to empty string."
+    },
+    "fail_if_exists": {
+      "type": "boolean",
+      "description": "If true (default), refuse to create the file when it already exists. Set to false to overwrite an existing file."
+    }
+  },
+  "required": ["file_path"]
+}

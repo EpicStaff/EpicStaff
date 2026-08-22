@@ -1,8 +1,11 @@
 import { NodeType } from '../../core/enums/node-type';
+import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { ConnectionModel } from '../../core/models/connection.model';
 import { FlowModel } from '../../core/models/flow.model';
 import {
+    AgentNodeModel,
     AudioToTextNodeModel,
+    ClassificationDecisionTableNodeModel,
     CodeAgentNodeModel,
     DecisionTableNodeModel,
     EndNodeModel,
@@ -15,6 +18,7 @@ import {
     ScheduleTriggerNodeModel,
     StartNodeModel,
     SubGraphNodeModel,
+    TaskNodeModel,
     TelegramTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
@@ -125,11 +129,58 @@ function toCrewComparable(node: ProjectNodeModel): unknown {
 function toPythonComparable(node: PythonNodeModel): unknown {
     return {
         node_name: node.node_name,
-        python_code: node.data,
+        // secret_ids order is incidental (which secret record happened to resolve first), not a
+        // real difference — sort it so two independent reconstructions of the same set don't
+        // register as a change.
+        python_code: { ...node.data, secret_ids: [...(node.data.secret_ids || [])].sort() },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         stream_config: node.stream_config ?? {},
         test_input: node.test_input ?? {},
+        metadata: toNodeMetadata(node),
+    };
+}
+
+function toTaskComparable(node: TaskNodeModel): unknown {
+    return {
+        node_name: node.node_name,
+        instructions: node.data.instructions,
+        output_schema: node.data.output_schema ?? {},
+        remember_output: node.data.remember_output ?? false,
+        agent_definition: node.data.agent_definition ?? null,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        surface_list: node.data.surface_list ?? [],
+        inline_surface: node.data.inline_surface ?? null,
+        metadata: toNodeMetadata(node),
+    };
+}
+
+function toAgentTaskComparableRef(ref: { id?: number; tempId?: string }): { id: number | null; tempId: string | null } {
+    return ref.id != null ? { id: ref.id, tempId: null } : { id: null, tempId: ref.tempId ?? null };
+}
+
+function toAgentComparable(node: AgentNodeModel): unknown {
+    return {
+        node_name: node.node_name,
+        agent_definition: node.data.agent_definition ?? null,
+        input_map: node.input_map || {},
+        output_variable_path: node.output_variable_path || null,
+        surface_list: node.data.surface_list ?? [],
+        inline_surface: node.data.inline_surface ?? null,
+        // Array order is significant — index === task order. Do NOT sort this array.
+        tasks: (node.data.tasks ?? []).map((t) => ({
+            id: t.id ?? null,
+            ...(t.id == null ? { tempId: t.tempId } : {}),
+            name: t.name,
+            instructions: t.instructions,
+            output_schema: t.output_schema ?? {},
+            contextRefs: (t.contextRefs ?? []).map(toAgentTaskComparableRef).sort((a, b) => {
+                const aKey = a.id != null ? `id:${a.id}` : `tempId:${a.tempId}`;
+                const bKey = b.id != null ? `id:${b.id}` : `tempId:${b.tempId}`;
+                return aKey.localeCompare(bKey);
+            }),
+        })),
         metadata: toNodeMetadata(node),
     };
 }
@@ -182,7 +233,10 @@ function toSubgraphComparable(node: SubGraphNodeModel): unknown {
 function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
     return {
         node_name: node.node_name,
-        python_code: node.data.python_code,
+        python_code: {
+            ...node.data.python_code,
+            secret_ids: [...(node.data.python_code.secret_ids || [])].sort(),
+        },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         webhook_trigger_path: '',
@@ -194,7 +248,7 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
 function toTelegramComparable(node: TelegramTriggerNodeModel): unknown {
     return {
         node_name: node.node_name,
-        telegram_bot_api_key: node.data.telegram_bot_api_key,
+        telegram_bot_api_key_secret_id: node.data.telegram_bot_api_key_secret_id,
         webhook_trigger: node.data.webhook_trigger,
         fields: node.data.fields,
         metadata: toNodeMetadata(node),
@@ -252,6 +306,80 @@ function toCodeAgentComparable(node: CodeAgentNodeModel): unknown {
     };
 }
 
+interface CdtConditionGroupUi {
+    group_name: string;
+    order?: number;
+    expression?: string | null;
+    prompt_id?: string | null;
+    manipulation?: string | null;
+    continue_flag?: boolean;
+    continue?: boolean;
+    route_code?: string | null;
+    next_node?: string | null;
+    dock_visible?: boolean;
+    field_expressions?: Record<string, unknown>;
+    field_manipulations?: Record<string, unknown>;
+    section?: string | null;
+}
+
+function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: NodeModel[]): unknown {
+    const tableData = node.data?.table;
+    const resolveRef = (uuid: string | null): number | `temp:${string}` | null => {
+        if (!uuid) return null;
+        const backendId = allNodes.find((n) => n.id === uuid)?.backendId ?? null;
+        return backendId != null ? backendId : (`temp:${uuid}` as const);
+    };
+
+    const preCode = tableData?.pre_computation?.code || tableData?.pre_computation_code || null;
+    const postCode = tableData?.post_computation?.code || tableData?.post_computation_code || null;
+
+    return {
+        node_name: node.node_name,
+        pre_computation_code: preCode,
+        condition_groups: ((tableData?.condition_groups || []) as CdtConditionGroupUi[])
+            .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
+            .map((g, idx) => ({
+                group_name: g.group_name,
+                order: typeof g.order === 'number' ? g.order : idx + 1,
+                expression: g.expression || null,
+                prompt_id: g.prompt_id || null,
+                manipulation: g.manipulation || null,
+                continue_flag: !!(g.continue_flag ?? g.continue),
+                route_code: g.route_code || null,
+                section: g.section ?? null,
+                next_node_id: resolveRef(g.next_node ?? null),
+                dock_visible: g.dock_visible !== false,
+                field_expressions: g.field_expressions || {},
+                field_manipulations: (g.field_manipulations || {}) as Record<string, string>,
+            })),
+        prompt_configs: Object.entries((tableData?.prompts || {}) as Record<string, PromptConfig>)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([key, cfg]) => ({
+                prompt_key: key,
+                prompt_text: cfg.prompt_text ?? '',
+                llm_config: cfg.llm_config ?? null,
+                output_schema: cfg.output_schema ?? null,
+                result_variable: cfg.result_variable ?? '',
+                variable_mappings: cfg.variable_mappings ?? {},
+            })),
+        default_llm_config: tableData?.default_llm_config ?? null,
+        default_next_node: tableData?.default_next_node || null,
+        next_error_node: tableData?.next_error_node || null,
+        pre_input_map: tableData?.pre_computation?.input_map || tableData?.pre_input_map || {},
+        pre_output_variable_path:
+            tableData?.pre_computation?.output_variable_path || tableData?.pre_output_variable_path || null,
+        post_computation_code: postCode,
+        post_input_map: tableData?.post_computation?.input_map || tableData?.post_input_map || {},
+        post_output_variable_path:
+            tableData?.post_computation?.output_variable_path || tableData?.post_output_variable_path || null,
+        pre_libraries: tableData?.pre_computation?.libraries || [],
+        post_libraries: tableData?.post_computation?.libraries || [],
+        pre_secret_ids: [...(tableData?.pre_computation?.secret_ids || [])].sort(),
+        post_secret_ids: [...(tableData?.post_computation?.secret_ids || [])].sort(),
+        metadata: toNodeMetadata(node),
+    };
+}
+
 export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffByType {
     return {
         startNodes: diffNodesByBackendId(
@@ -268,6 +396,16 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<PythonNodeModel>(previous.nodes, NodeType.PYTHON),
             nodesByType<PythonNodeModel>(current.nodes, NodeType.PYTHON),
             toPythonComparable
+        ),
+        taskNodes: diffNodesByBackendId(
+            nodesByType<TaskNodeModel>(previous.nodes, NodeType.TASK),
+            nodesByType<TaskNodeModel>(current.nodes, NodeType.TASK),
+            toTaskComparable
+        ),
+        agentNodes: diffNodesByBackendId(
+            nodesByType<AgentNodeModel>(previous.nodes, NodeType.AGENT),
+            nodesByType<AgentNodeModel>(current.nodes, NodeType.AGENT),
+            toAgentComparable
         ),
         llmNodes: diffNodesByBackendId(
             nodesByType<LLMNodeModel>(previous.nodes, NodeType.LLM),
@@ -324,6 +462,11 @@ export function getNodeDiff(previous: FlowModel, current: FlowModel): NodeDiffBy
             nodesByType<CodeAgentNodeModel>(current.nodes, NodeType.CODE_AGENT),
             toCodeAgentComparable
         ),
+        classificationDecisionTableNodes: diffNodesByBackendId(
+            nodesByType<ClassificationDecisionTableNodeModel>(previous.nodes, NodeType.CLASSIFICATION_TABLE),
+            nodesByType<ClassificationDecisionTableNodeModel>(current.nodes, NodeType.CLASSIFICATION_TABLE),
+            (n) => toCdtComparable(n, current.nodes)
+        ),
     };
 }
 
@@ -333,7 +476,12 @@ function getPlainConnections(flow: FlowModel): ConnectionModel[] {
         const source = nodeById.get(conn.sourceNodeId);
         const target = nodeById.get(conn.targetNodeId);
         if (!source || !target) return false;
-        if (source.type === NodeType.TABLE || source.type === NodeType.EDGE) return false;
+        if (
+            source.type === NodeType.TABLE ||
+            source.type === NodeType.CLASSIFICATION_TABLE ||
+            source.type === NodeType.EDGE
+        )
+            return false;
         if (target.type === NodeType.EDGE) return false;
         return true;
     });

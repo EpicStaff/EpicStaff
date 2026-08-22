@@ -5,6 +5,7 @@
             icon="x"
             size="2rem"
             ariaLabel="Close dialog"
+            tooltip="Close"
             (onClick)="dialogRef.close()"
         ></app-icon-button>
     </div>
@@ -38,6 +39,7 @@
                     Delete Selected
                 </button>
                 <app-action-dropdown-button
+                    *appHasPermission="[ResourceCode.Flows, ActionCode.Export]"
                     [label]="'Export (' + (selectedIds().size === 0 ? totalCount : selectedIds().size) + ')'"
                     [items]="exportItems"
                     [disabled]="isDeleting() || isExporting() || (selectedIds().size === 0 && totalCount === 0)"
@@ -58,6 +60,11 @@
                 (stopSession)="onStopSession($event)"
                 [statusFilter]="statusFilter()"
                 (statusFilterChange)="onStatusFilterChange($event)"
+                [trigger]="triggerFilter()"
+                (triggerFilterChange)="onTriggerFilterChange($event)"
+                [showDateFilter]="true"
+                [dateFilter]="dateFilter()"
+                (dateFilterChange)="onDateFilterChange($event)"
                 (selectedIdsChange)="onSelectedIdsChange($event)"
             >
             </app-flow-sessions-table>

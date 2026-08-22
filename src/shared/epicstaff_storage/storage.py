@@ -15,6 +15,38 @@ class StoragePermissionError(PermissionError):
     pass
 
 
+class StorageSizeLimitError(RuntimeError):
+    pass
+
+
+class StorageLineEditMismatchError(ValueError):
+    pass
+
+
+MAX_LINE_READ_BYTES = 50 * 1024 * 1024
+
+
+def split_lines(content: str) -> list[str]:
+    """Split ``content`` into logical lines using wc-with-final-fragment
+    semantics: a trailing ``"\\n"`` terminates the preceding line (no
+    phantom empty line is produced after it), while content that does
+    *not* end in ``"\\n"`` still counts its final, unterminated fragment
+    as a line. An empty string has zero lines.
+
+    This is the single source of truth for line counting/addressing:
+    ``count_lines``, ``read_lines``, and ``insert_lines`` below, plus the
+    ``s3_file_count_lines_tool`` / ``s3_file_insert_tool`` /
+    ``s3_file_line_read_tool`` / ``s3_bash_tool`` (head/tail) callers, all
+    rely on this so identical content yields identical line numbers
+    everywhere.
+    """
+    if content == "":
+        return []
+    if content.endswith("\n"):
+        content = content[:-1]
+    return content.split("\n")
+
+
 __cache: dict[str, list[str] | None] = {}
 
 _mutations: list[dict] = []
@@ -52,14 +84,33 @@ def __is_path_allowed(normalized_path: str, allowed_paths: list[str]) -> bool:
     return False
 
 
+_MAX_ALLOWED_PATHS_IN_MESSAGE = 15
+
+
+def __format_allowed_paths(allowed: list[str]) -> str:
+    shown = ", ".join(allowed[:_MAX_ALLOWED_PATHS_IN_MESSAGE])
+    remainder = len(allowed) - _MAX_ALLOWED_PATHS_IN_MESSAGE
+    if remainder > 0:
+        shown += f" ({remainder} more)"
+    return shown
+
+
 def check_storage_permission(operation: str, path: str) -> None:
     allowed = __get_allowed_paths()
     if allowed is None:
         return
     normalized = __normalize_path(path)
     if not __is_path_allowed(normalized, allowed):
+        if allowed:
+            allowed_hint = (
+                f" Allowed paths: [{__format_allowed_paths(allowed)}]. "
+                "Specify one of these (root/'' listing is not available)."
+            )
+        else:
+            allowed_hint = " This flow has no allowed files."
         raise StoragePermissionError(
-            f"Access denied: {operation} on '{path}' — not in this flow's allowed files."
+            f"Access denied: {operation} on '{path}' is not within this flow's "
+            f"allowed files.{allowed_hint}"
         )
 
 
@@ -109,6 +160,12 @@ class EpicStaffStorage:
         if prefix:
             return f"{prefix}/{relative}"
         return relative
+
+    def _strip_org_prefix(self, key: str) -> str:
+        prefix = os.environ.get("STORAGE_ORG_PREFIX") or None
+        if prefix and key.startswith(f"{prefix}/"):
+            return key[len(prefix) + 1 :]
+        return key
 
     def _bucket_name(self) -> str:
         self._get_client()
@@ -197,6 +254,63 @@ class EpicStaffStorage:
 
         return entries
 
+    def walk(self, path: str) -> list[dict]:
+        """
+        Recursively list every object under ``path`` (no ``Delimiter`` —
+        descends through all nested "folders"), org prefix stripped.
+
+        Returns ``list[dict]`` with keys:
+          - ``"path"``: object path relative to the org root — the same
+            format accepted by ``read``/``write``/``delete``/etc.
+          - ``"size"``: object size in bytes.
+          - ``"modified"``: ISO-8601 timestamp string, or ``None``.
+
+        ``.keep`` folder markers are skipped. Pagination is handled
+        internally — callers get the full flattened listing in one call.
+        This is the primitive backing recursive tools (glob/grep/rm -r/
+        ls -R/find/du); those tools should use this return shape rather
+        than re-deriving directory structure themselves.
+        """
+        check_storage_permission("walk", path)
+        client = self._get_client()
+        prefix = self._normalize_key(path)
+        if prefix and not prefix.endswith("/"):
+            prefix = prefix + "/"
+
+        entries: list[dict] = []
+        continuation_token: str | None = None
+
+        while True:
+            kwargs: dict = {"Bucket": self._bucket_name(), "Prefix": prefix}
+            if continuation_token:
+                kwargs["ContinuationToken"] = continuation_token
+            try:
+                response = client.list_objects_v2(**kwargs)  # type: ignore[attr-defined]
+            except Exception as error:
+                self._handle_client_error(error, path)
+                raise  # unreachable, satisfies type checker
+
+            for obj in response.get("Contents") or []:
+                object_key = obj["Key"]
+                object_name = object_key.split("/")[-1]
+                if object_name == ".keep":
+                    continue
+                modified = obj.get("LastModified")
+                entries.append(
+                    {
+                        "path": self._strip_org_prefix(object_key),
+                        "size": obj.get("Size", 0),
+                        "modified": modified.isoformat() if modified else None,
+                    }
+                )
+
+            if response.get("IsTruncated"):
+                continuation_token = response.get("NextContinuationToken")
+            else:
+                break
+
+        return entries
+
     def exists(self, path: str) -> bool:
         check_storage_permission("exists", path)
         client = self._get_client()
@@ -237,6 +351,107 @@ class EpicStaffStorage:
 
         _mutations.append({"op": "delete", "path": key})
 
+    def delete_folder(self, path: str) -> None:
+        """
+        Delete every object under the folder prefix ``path`` (including
+        ``.keep`` markers), using batched ``delete_objects`` calls
+        (<=1000 keys/batch) instead of per-key ``delete_object``.
+
+        Records one ``{"op": "delete", "path": key}`` mutation per object
+        that S3 actually confirms as deleted — the django `StorageFile`
+        index sync (``storage_mutations_handler`` /
+        ``StorageFileSync.on_delete``) processes mutations one path at a
+        time, so a single folder-level mutation would leave every
+        contained file as a ghost row.
+
+        Mutations are recorded batch-by-batch, right after each
+        ``delete_objects`` call returns, instead of only after every batch
+        has succeeded. This guarantees keys deleted by earlier batches
+        stay recorded even if a later batch fails outright or reports
+        per-key errors. A batch that comes back HTTP 200 with a per-key
+        ``response["Errors"]`` list (boto3's partial-failure shape) has
+        those specific keys excluded from the mutation list — S3 is
+        explicitly telling us they were not deleted.
+
+        If any keys end up unresolved this way (per-key ``Errors``, across
+        one or more batches), this method raises ``RuntimeError`` naming
+        the failed keys *after* recording every key that was confirmed
+        deleted. A batch call that raises outright still propagates
+        immediately via ``_handle_client_error`` (which always re-raises)
+        rather than continuing to later batches — but mutations for every
+        already-completed batch remain recorded.
+
+        Raises:
+            ValueError: ``path`` is empty/root ("", "/", ".").
+            FileNotFoundError: nothing exists under the prefix.
+            RuntimeError: one or more keys failed to delete (partial
+                failure reported via ``response["Errors"]``) — the message
+                names/counts the failed keys. Keys that did delete
+                successfully (this batch or earlier ones) are still
+                recorded as mutations before this is raised.
+        """
+        relative = path.lstrip("/")
+        normalized = posixpath.normpath(relative) if relative else ""
+        if normalized in ("", "."):
+            raise ValueError(f"Refusing to delete root or empty path: '{path}'")
+
+        check_storage_permission("delete", path)
+        client = self._get_client()
+        bucket = self._bucket_name()
+        prefix = self._normalize_key(path).rstrip("/") + "/"
+
+        keys: list[str] = []
+        continuation_token: str | None = None
+        while True:
+            kwargs: dict = {"Bucket": bucket, "Prefix": prefix}
+            if continuation_token:
+                kwargs["ContinuationToken"] = continuation_token
+            try:
+                response = client.list_objects_v2(**kwargs)  # type: ignore[attr-defined]
+            except Exception as error:
+                self._handle_client_error(error, path)
+                raise  # unreachable, satisfies type checker
+
+            keys.extend(obj["Key"] for obj in response.get("Contents") or [])
+
+            if response.get("IsTruncated"):
+                continuation_token = response.get("NextContinuationToken")
+            else:
+                break
+
+        if not keys:
+            raise FileNotFoundError(f"Not found in storage: {path}")
+
+        batch_size = 1000
+        failed_keys: list[str] = []
+        for i in range(0, len(keys), batch_size):
+            batch = keys[i : i + batch_size]
+            try:
+                response = client.delete_objects(  # type: ignore[attr-defined]
+                    Bucket=bucket,
+                    Delete={"Objects": [{"Key": key} for key in batch]},
+                )
+            except Exception as error:
+                self._handle_client_error(error, path)
+                raise  # unreachable, satisfies type checker
+
+            error_keys = {err["Key"] for err in (response.get("Errors") or [])}
+            for key in batch:
+                if key in error_keys:
+                    failed_keys.append(key)
+                else:
+                    _mutations.append({"op": "delete", "path": key})
+
+        if failed_keys:
+            shown = ", ".join(failed_keys[:10])
+            remainder = (
+                f", and {len(failed_keys) - 10} more" if len(failed_keys) > 10 else ""
+            )
+            raise RuntimeError(
+                f"Failed to delete {len(failed_keys)} object(s) under '{path}': "
+                f"{shown}{remainder}"
+            )
+
     def mkdir(self, path: str) -> None:
         check_storage_permission("mkdir", path)
         client = self._get_client()
@@ -246,6 +461,27 @@ class EpicStaffStorage:
             client.put_object(Bucket=self._bucket_name(), Key=keep_key, Body=b"")  # type: ignore[attr-defined]
         except Exception as error:
             self._handle_client_error(error, path)
+
+        # Mirrors write_bytes' mutation recording. Django's own S3 backend
+        # (tables/services/storage_service/s3_backend.py) uses a different
+        # empty-folder marker (a trailing-slash zero-byte key, not ".keep")
+        # and StorageManager.mkdir never calls a StorageFileSync hook at
+        # all — django does not index empty folders as StorageFile rows;
+        # they only exist implicitly as a prefix of real file paths. There
+        # is no "on_mkdir" sync method and no dedicated mutation op for
+        # folder creation. Recording a "write" mutation for the .keep key
+        # is the only mechanism this SDK has to make an empty folder
+        # visible to django's index at all — storage_mutations_handler
+        # treats every "write" mutation uniformly via
+        # StorageFileSync.on_upload(org_id, rel_path), regardless of the
+        # path, so this is consistent with how every other write in this
+        # module is already synced. The tradeoff: an empty folder now
+        # surfaces as a StorageFile row named ".keep" rather than not
+        # existing in the index at all (matching neither django's own
+        # convention, since django never creates one, nor a "no row"
+        # outcome). walk() skips ".keep" objects so tool-facing listings
+        # never show it.
+        _mutations.append({"op": "write", "path": keep_key})
 
     def move(self, src: str, dst: str) -> None:
         check_storage_permission("move", src)
@@ -288,6 +524,104 @@ class EpicStaffStorage:
             "content_type": response.get("ContentType", ""),
             "modified": modified.isoformat() if modified else None,
         }
+
+    def read_lines(
+        self, path: str, line_number: int, num_lines: int | None = None
+    ) -> str:
+        file_info = self.info(path)
+        if file_info["size"] > MAX_LINE_READ_BYTES:
+            raise StorageSizeLimitError(
+                f"File '{path}' exceeds the {MAX_LINE_READ_BYTES // (1024 * 1024)} MB read limit."
+            )
+
+        if line_number < 1:
+            raise ValueError(f"line_number must be >= 1, got {line_number}.")
+
+        content = self.read(path)
+        lines = split_lines(content)
+
+        if line_number > len(lines):
+            raise ValueError(
+                f"line_number {line_number} is out of range (file has {len(lines)} lines)."
+            )
+
+        end_index = line_number - 1 + num_lines if num_lines is not None else len(lines)
+        selected = lines[line_number - 1 : end_index]
+
+        return "".join(
+            f"{line_number + idx}: {line}\n" for idx, line in enumerate(selected)
+        )
+
+    def count_lines(self, path: str) -> int:
+        file_info = self.info(path)
+        if file_info["size"] > MAX_LINE_READ_BYTES:
+            raise StorageSizeLimitError(
+                f"File '{path}' exceeds the {MAX_LINE_READ_BYTES // (1024 * 1024)} MB read limit."
+            )
+
+        content = self.read(path)
+        return len(split_lines(content))
+
+    def edit_line(
+        self, path: str, line_number: int, expected_text: str, new_text: str
+    ) -> None:
+        content = self.read(path)
+        lines = content.split("\n")
+
+        if line_number < 1 or line_number > len(lines):
+            raise ValueError(
+                f"line_number {line_number} is out of range (file has {len(lines)} lines)."
+            )
+
+        actual = lines[line_number - 1].rstrip("\n")
+        expected = expected_text.rstrip("\n")
+        if actual != expected:
+            raise StorageLineEditMismatchError(
+                f"Line {line_number} mismatch: expected {expected!r}, got {actual!r}."
+            )
+
+        lines[line_number - 1] = new_text
+        self.write(path, "\n".join(lines))
+
+    def append_text(self, path: str, content: str) -> None:
+        try:
+            existing = self.read(path)
+        except FileNotFoundError:
+            existing = ""
+
+        self.write(path, existing + content)
+
+    def insert_lines(self, path: str, line_number: int, content: str) -> None:
+        """Insert ``content`` as one or more new lines before line
+        ``line_number`` (1-based; ``line_count + 1`` appends).
+
+        Uses :func:`split_lines` for both the existing file and the
+        inserted ``content`` so a trailing ``"\\n"`` never manufactures a
+        phantom blank line. Trailing-newline round-trip fidelity is
+        preserved independently of ``content``: the result ends in
+        ``"\\n"`` iff the *existing* file did (or didn't exist at all),
+        never because the inserted ``content`` happened to end in one.
+        """
+        if line_number < 1:
+            raise ValueError(f"line_number must be >= 1, got {line_number}")
+
+        try:
+            existing = self.read(path)
+        except FileNotFoundError:
+            existing = ""
+
+        keep_trailing_newline = existing == "" or existing.endswith("\n")
+        lines = split_lines(existing)
+        idx = min(line_number - 1, len(lines))
+        # An empty `content` means "insert one blank line" rather than
+        # "insert nothing" — split_lines("") would otherwise collapse to [].
+        new_lines = split_lines(content) if content != "" else [""]
+        merged = lines[:idx] + new_lines + lines[idx:]
+
+        result = "\n".join(merged)
+        if keep_trailing_newline:
+            result += "\n"
+        self.write(path, result)
 
     @contextmanager
     def as_local(self, path: str) -> Generator[str, None, None]:

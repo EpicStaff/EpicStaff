@@ -2,14 +2,15 @@ import { NodeType } from './node-type';
 
 export const NODE_ICONS: Record<NodeType, string> = {
     [NodeType.AGENT]: 'ti ti-robot',
-    [NodeType.TASK]: 'ti ti-list-check',
+    [NodeType.TASK]: 'ti ti-circle-check',
     [NodeType.TOOL]: 'ti ti-tools',
     [NodeType.LLM]: 'ti ti-brain',
     [NodeType.PROJECT]: 'ti ti-folder',
     [NodeType.PYTHON]: 'ti ti-brand-python',
     [NodeType.EDGE]: 'ti ti-route-alt-left',
-    [NodeType.START]: 'ti ti-player-play-filled',
+    [NodeType.START]: 'ti ti-filled ti-player-play',
     [NodeType.TABLE]: 'ti ti-table',
+    [NodeType.CLASSIFICATION_TABLE]: 'ti ti-table-options',
     [NodeType.NOTE]: 'ti ti-note',
     [NodeType.FILE_EXTRACTOR]: 'ti ti-file',
     [NodeType.WEBHOOK_TRIGGER]: 'ti ti-world',
@@ -22,8 +23,8 @@ export const NODE_ICONS: Record<NodeType, string> = {
 };
 
 export const NODE_COLORS: Record<NodeType, string> = {
-    [NodeType.AGENT]: '#8e5cd9',
-    [NodeType.TASK]: '#30a46c',
+    [NodeType.AGENT]: '#685fff',
+    [NodeType.TASK]: '#2aba6b',
     [NodeType.TOOL]: '#9f6a00',
     [NodeType.LLM]: '#e0575b',
     [NodeType.PROJECT]: '#5672cd',
@@ -31,6 +32,7 @@ export const NODE_COLORS: Record<NodeType, string> = {
     [NodeType.EDGE]: '#8e5cd9',
     [NodeType.START]: '#d3d3d3',
     [NodeType.TABLE]: '#00aaff',
+    [NodeType.CLASSIFICATION_TABLE]: '#2a5bd7',
     [NodeType.NOTE]: '#ffffd1',
     [NodeType.FILE_EXTRACTOR]: '#2196F3',
     [NodeType.WEBHOOK_TRIGGER]: '#21f367ff',

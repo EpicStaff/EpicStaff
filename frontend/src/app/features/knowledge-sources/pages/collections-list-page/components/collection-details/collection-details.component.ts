@@ -11,16 +11,21 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
+    AppSvgIconComponent,
     ConfirmationDialogService,
     DragDropAreaComponent,
     SpinnerComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { AppSvgIconComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { notWhitespaceValidator } from '@shared/form-validators';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, filter, throwError } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, finalize, switchMap } from 'rxjs/operators';
 
+import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { CopyCollectionFilesDialogComponent } from '../../../../components/copy-collection-files-dialog/copy-collection-files-dialog.component';
 import { CreateCollectionDialogComponent } from '../../../../components/create-collection-dialog/create-collection-dialog.component';
@@ -44,32 +49,41 @@ import { CollectionRagsComponent } from './collection-rags/collection-rags.compo
         ReactiveFormsModule,
         DragDropAreaComponent,
         CollectionFilesComponent,
+        // TODO check why cant be imported
         CollectionRagsComponent,
         CollectionInfoComponent,
         SpinnerComponent,
         ValidationErrorsComponent,
         AppSvgIconComponent,
+        MatTooltipModule,
+        HasPermissionDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionDetailsComponent implements OnInit {
-    private destroyRef = inject(DestroyRef);
-    private dialog = inject(Dialog);
     private confirmationDialogService = inject(ConfirmationDialogService);
     private collectionsStorageService = inject(CollectionsStorageService);
     private documentsStorageService = inject(DocumentsStorageService);
     private documentsApiService = inject(DocumentsApiService);
     private fileListService = inject(FileListService);
     private toastService = inject(ToastService);
-
-    selectedCollectionId = this.collectionsStorageService.selectedCollectionId;
+    private permissionsService = inject(PermissionsService);
+    private dialog = inject(Dialog);
+    private destroyRef = inject(DestroyRef);
 
     loadingCollection = signal<boolean>(false);
     loadingDocuments = signal<boolean>(false);
     fullCollection = signal<CreateCollectionDtoResponse | null>(null);
     documents = signal<DisplayedListDocument[]>([]);
+    selectedCollectionId = this.collectionsStorageService.selectedCollectionId;
 
-    collectionName: FormControl = new FormControl('', [Validators.required, Validators.maxLength(255)]);
+    readonly descriptionSaveFailedTick = signal<number>(0);
+    collectionName: FormControl = new FormControl('', [
+        Validators.required,
+        notWhitespaceValidator(),
+        Validators.maxLength(255),
+    ]);
+
 
     private lastInitializedCollectionId: number | null = null;
 
@@ -139,6 +153,22 @@ export class CollectionDetailsComponent implements OnInit {
             .subscribe(() => this.toastService.success('Collection Updated'));
     }
 
+    onDescriptionSave(description: string): void {
+        const collection = this.fullCollection();
+        if (!collection) return;
+        this.collectionsStorageService
+            .updateCollectionById(collection.collection_id, { description })
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                catchError(() => {
+                    this.toastService.error('Collection Update failed');
+                    this.descriptionSaveFailedTick.update((n) => n + 1);
+                    return EMPTY;
+                })
+            )
+            .subscribe(() => this.toastService.success('Collection Updated'));
+    }
+
     private getCollectionData(id: number): void {
         this.loadingCollection.set(true);
         this.collectionsStorageService
@@ -191,6 +221,7 @@ export class CollectionDetailsComponent implements OnInit {
     }
 
     onFilesDropped(files: FileList) {
+        if (!this.permissionsService.can(ResourceCode.KnowledgeSources, ActionCode.Update)) return;
         const collectionId = this.fullCollection()?.collection_id;
         if (!collectionId) return;
         // 1: filter duplicates by file name
@@ -307,4 +338,6 @@ export class CollectionDetailsComponent implements OnInit {
     }
 
     protected readonly FILE_TYPES = FILE_TYPES;
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

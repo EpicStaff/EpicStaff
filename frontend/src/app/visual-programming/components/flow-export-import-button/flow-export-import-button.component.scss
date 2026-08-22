@@ -1,0 +1,55 @@
+:host {
+    display: inline-block;
+    flex: 0 0 auto;
+}
+
+.feib {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    height: 36px;
+    padding: 0 10px;
+    border-radius: 4px;
+    border: 1.5px solid var(--color-divider-subtle, #444);
+    background: var(--color-surface-card, #232323);
+    color: var(--color-text-primary, #e6e6e6);
+    cursor: pointer;
+    transition: background 0.15s;
+
+    &:hover {
+        background: #222222;
+    }
+
+    &--open {
+        border-color: var(--color-divider-regular, #555);
+    }
+
+    &--active {
+        .feib__icon {
+            color: #685fff;
+        }
+    }
+
+    &__icon {
+        flex-shrink: 0;
+    }
+
+    &__count {
+        font-size: 12px;
+        font-weight: 600;
+        color: #685fff;
+        line-height: 1;
+        flex-shrink: 0;
+    }
+
+    &__chevron {
+        flex-shrink: 0;
+        opacity: 0.5;
+        transition: transform 0.2s ease;
+
+        &--open {
+            transform: rotate(180deg);
+            opacity: 0.8;
+        }
+    }
+}

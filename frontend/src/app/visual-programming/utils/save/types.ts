@@ -1,6 +1,8 @@
 import { ConnectionModel } from '../../core/models/connection.model';
 import {
+    AgentNodeModel,
     AudioToTextNodeModel,
+    ClassificationDecisionTableNodeModel,
     CodeAgentNodeModel,
     DecisionTableNodeModel,
     EndNodeModel,
@@ -12,6 +14,7 @@ import {
     ScheduleTriggerNodeModel,
     StartNodeModel,
     SubGraphNodeModel,
+    TaskNodeModel,
     TelegramTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../core/models/node.model';
@@ -26,6 +29,8 @@ export interface NodeDiffByType {
     startNodes: NodeDiff<StartNodeModel>;
     crewNodes: NodeDiff<ProjectNodeModel>;
     pythonNodes: NodeDiff<PythonNodeModel>;
+    taskNodes: NodeDiff<TaskNodeModel>;
+    agentNodes: NodeDiff<AgentNodeModel>;
     llmNodes: NodeDiff<LLMNodeModel>;
     fileExtractorNodes: NodeDiff<FileExtractorNodeModel>;
     audioToTextNodes: NodeDiff<AudioToTextNodeModel>;
@@ -37,6 +42,7 @@ export interface NodeDiffByType {
     decisionTableNodes: NodeDiff<DecisionTableNodeModel>;
     noteNodes: NodeDiff<GraphNoteModel>;
     codeAgentNodes: NodeDiff<CodeAgentNodeModel>;
+    classificationDecisionTableNodes: NodeDiff<ClassificationDecisionTableNodeModel>;
 }
 
 export interface ConnectionDiff {

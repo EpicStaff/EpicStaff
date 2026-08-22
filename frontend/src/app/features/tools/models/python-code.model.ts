@@ -26,4 +26,5 @@ export interface CustomPythonCode {
     code: string;
     entrypoint: string;
     use_storage?: boolean;
+    secret_ids?: number[];
 }

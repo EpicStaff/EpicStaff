@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, Inject, inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { of, Subscription } from 'rxjs';
 import { finalize, map, switchMap } from 'rxjs/operators';
 
@@ -20,7 +21,14 @@ export interface FlowDialogData {
 @Component({
     selector: 'app-create-flow-dialog',
     standalone: true,
-    imports: [CommonModule, ReactiveFormsModule, ButtonComponent, AppSvgIconComponent, LabelDropdownComponent],
+    imports: [
+        CommonModule,
+        ReactiveFormsModule,
+        MatTooltipModule,
+        ButtonComponent,
+        AppSvgIconComponent,
+        LabelDropdownComponent,
+    ],
     templateUrl: './create-flow-dialog.component.html',
     styleUrls: ['./create-flow-dialog.component.scss'],
 })

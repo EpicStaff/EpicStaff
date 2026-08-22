@@ -1,61 +1,48 @@
 from typing import Callable
 
-from tables.constants.variables_constants import (
-    DOMAIN_ORGANIZATION_KEY,
-    DOMAIN_USER_KEY,
+from agents.models.surface_models import AgentInlineSurface, InlineSurface
+from agents.services.surface_content_service import (
+    AGENT_INLINE_SURFACE_CONTENT,
+    INLINE_SURFACE_CONTENT,
 )
 from tables.import_export.enums import NodeType
 from tables.models import Graph
 from tables.models.graph_models import (
+    AgentNode,
     AudioTranscriptionNode,
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
+    ClassificationDecisionTablePrompt,
     ConditionGroup,
     Condition,
     CrewNode,
     DecisionTableNode,
     EndNode,
     FileExtractorNode,
-    GraphOrganization,
-    GraphOrganizationUser,
     GraphNote,
     PythonNode,
     ScheduleTriggerNode,
     StartNode,
     SubGraphNode,
+    TaskNode,
     TelegramTriggerNode,
     TelegramTriggerNodeField,
     CodeAgentNode,
     WebhookTriggerNode,
 )
 from tables.services.copy_services.helpers import copy_python_code, get_base_node_fields
-from tables.services.persistent_variables_service import PersistentVariablesService
+from tables.services.copy_services.inline_surface_copy_helpers import (
+    copy_agent_node_tasks,
+    copy_node_inline_surface,
+)
 
 
 def copy_start_node(graph: Graph, node: StartNode) -> StartNode:
-    new_node = StartNode.objects.create(
+    return StartNode.objects.create(
         graph=graph,
         variables=node.variables,
         metadata=node.metadata,
     )
-
-    source_org = GraphOrganization.objects.filter(graph=node.graph).first()
-    if source_org:
-        service = PersistentVariablesService()
-        GraphOrganization.objects.create(
-            graph=graph,
-            organization=source_org.organization,
-            persistent_variables=service.extract(
-                node.variables, DOMAIN_ORGANIZATION_KEY
-            ),
-            user_variables=service.extract(node.variables, DOMAIN_USER_KEY),
-        )
-        for org_user in GraphOrganizationUser.objects.filter(graph=node.graph):
-            GraphOrganizationUser.objects.create(
-                graph=graph,
-                organization_user=org_user.organization_user,
-                persistent_variables=service.extract(node.variables, DOMAIN_USER_KEY),
-            )
-
-    return new_node
 
 
 def copy_end_node(graph: Graph, node: EndNode) -> EndNode:
@@ -134,7 +121,7 @@ def copy_telegram_trigger_node(
     new_node = TelegramTriggerNode.objects.create(
         graph=graph,
         node_name=node.node_name,
-        telegram_bot_api_key=node.telegram_bot_api_key,
+        telegram_bot_api_key_secret=node.telegram_bot_api_key_secret,
         webhook_trigger=node.webhook_trigger,
         metadata=node.metadata,
     )
@@ -223,6 +210,96 @@ def copy_decision_table_node(
     return new_node
 
 
+def copy_classification_decision_table_node(
+    graph: Graph, node: ClassificationDecisionTableNode
+) -> ClassificationDecisionTableNode:
+    new_pre_code = (
+        copy_python_code(node.pre_python_code) if node.pre_python_code else None
+    )
+    new_post_code = (
+        copy_python_code(node.post_python_code) if node.post_python_code else None
+    )
+
+    new_node = ClassificationDecisionTableNode.objects.create(
+        graph=graph,
+        node_name=node.node_name,
+        pre_python_code=new_pre_code,
+        pre_input_map=node.pre_input_map,
+        pre_output_variable_path=node.pre_output_variable_path,
+        post_python_code=new_post_code,
+        post_input_map=node.post_input_map,
+        post_output_variable_path=node.post_output_variable_path,
+        default_llm_config=node.default_llm_config,
+        default_next_node_id=node.default_next_node_id,
+        next_error_node_id=node.next_error_node_id,
+        metadata=node.metadata,
+    )
+
+    new_prompts = ClassificationDecisionTablePrompt.objects.bulk_create(
+        [
+            ClassificationDecisionTablePrompt(
+                cdt_node=new_node,
+                prompt_key=pc.prompt_key,
+                prompt_text=pc.prompt_text,
+                llm_config=pc.llm_config,
+                output_schema=pc.output_schema,
+                result_variable=pc.result_variable,
+                variable_mappings=pc.variable_mappings,
+            )
+            for pc in node.prompt_configs.all()
+        ]
+    )
+    new_prompt_map = {p.prompt_key: p for p in new_prompts}
+
+    for group in node.condition_groups.all():
+        ClassificationConditionGroup.objects.create(
+            classification_decision_table_node=new_node,
+            group_name=group.group_name,
+            order=group.order,
+            expression=group.expression,
+            prompt=new_prompt_map.get(group.prompt.prompt_key)
+            if group.prompt
+            else None,
+            manipulation=group.manipulation,
+            continue_flag=group.continue_flag,
+            dock_visible=group.dock_visible,
+            field_expressions=group.field_expressions,
+            field_manipulations=group.field_manipulations,
+        )
+
+    return new_node
+
+
+def copy_task_node(graph: Graph, node: TaskNode) -> TaskNode:
+    new_node = TaskNode.objects.create(
+        graph=graph,
+        agent_definition=node.agent_definition,
+        instructions=node.instructions,
+        output_schema=node.output_schema,
+        remember_output=node.remember_output,
+        **get_base_node_fields(node),
+    )
+    new_node.surface_list.set(node.surface_list.all())
+    copy_node_inline_surface(
+        node, new_node, InlineSurface, "task_node", INLINE_SURFACE_CONTENT
+    )
+    return new_node
+
+
+def copy_agent_node(graph: Graph, node: AgentNode) -> AgentNode:
+    new_node = AgentNode.objects.create(
+        graph=graph,
+        agent_definition=node.agent_definition,
+        **get_base_node_fields(node),
+    )
+    new_node.surface_list.set(node.surface_list.all())
+    copy_node_inline_surface(
+        node, new_node, AgentInlineSurface, "agent_node", AGENT_INLINE_SURFACE_CONTENT
+    )
+    copy_agent_node_tasks(node, new_node)
+    return new_node
+
+
 # Maps each NodeType to (relation_name, handler_function).
 # relation_name is the Graph reverse accessor used to iterate existing nodes.
 # To add a new node type: write a copy_<name> function above and add one entry here.
@@ -257,8 +334,14 @@ NODE_COPY_HANDLERS: dict[NodeType, tuple[str, Callable]] = {
         "decision_table_node_list",
         copy_decision_table_node,
     ),
+    NodeType.CLASSIFICATION_DECISION_TABLE_NODE: (
+        "classification_decision_table_node_list",
+        copy_classification_decision_table_node,
+    ),
     NodeType.CODE_AGENT_NODE: (
         "code_agent_node_list",
         copy_code_agent_node,
     ),
+    NodeType.TASK_NODE: ("task_node_list", copy_task_node),
+    NodeType.AGENT_NODE: ("agent_node_list", copy_agent_node),
 }

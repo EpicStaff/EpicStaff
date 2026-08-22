@@ -1,9 +1,10 @@
 from tables.import_export.utils import ensure_unique_identifier
 from tables.models import Graph
-from tables.models.graph_models import ConditionalEdge, Edge
+from tables.models.graph_models import ConditionalEdge, Edge, StartNode
 from tables.services.copy_services.base_copy_service import BaseCopyService
 from tables.services.copy_services.helpers import copy_python_code
 from tables.services.copy_services.node_copy_handlers import NODE_COPY_HANDLERS
+from tables.services.persistent_variables_service import PersistentVariablesService
 
 
 class GraphCopyService(BaseCopyService):
@@ -15,21 +16,29 @@ class GraphCopyService(BaseCopyService):
     DecisionTableNode fields and graph metadata JSON.
     """
 
-    def copy(self, graph: Graph, name: str | None = None) -> Graph:
+    def copy(
+        self, graph: Graph, name: str | None = None, org_id: int | None = None
+    ) -> Graph:
         existing_names = Graph.objects.values_list("name", flat=True)
         new_name = ensure_unique_identifier(
             base_name=name if name else graph.name,
             existing_names=existing_names,
         )
 
+        target_org_id = org_id if org_id is not None else graph.org_id
         new_graph = Graph.objects.create(
             name=new_name,
             description=graph.description,
             metadata=graph.metadata,
             time_to_live=graph.time_to_live,
-            persistent_variables=graph.persistent_variables,
+            enable_persistent_variables=graph.enable_persistent_variables,
+            org_id=target_org_id,
         )
         new_graph.labels.set(graph.labels.all())
+        source_start = StartNode.objects.filter(graph=graph).first()
+        PersistentVariablesService().seed_for_copy(
+            new_graph, source_start.variables if source_start else {}
+        )
 
         node_id_map: dict[int, int] = {}
         for _, (relation_name, handler) in NODE_COPY_HANDLERS.items():
@@ -58,6 +67,7 @@ class GraphCopyService(BaseCopyService):
             )
 
         self._remap_decision_table_references(new_graph, node_id_map)
+        self._remap_classification_decision_table_references(new_graph, node_id_map)
         self._remap_metadata_node_ids(new_graph, node_id_map)
 
         return new_graph
@@ -85,6 +95,38 @@ class GraphCopyService(BaseCopyService):
                 )
 
             for group in dt_node.condition_groups.all():
+                if group.next_node_id and group.next_node_id in node_id_map:
+                    group.next_node_id = node_id_map[group.next_node_id]
+                    group.save(update_fields=["next_node_id"])
+
+    def _remap_classification_decision_table_references(
+        self, graph: Graph, node_id_map: dict[int, int]
+    ) -> None:
+        for cdt_node in graph.classification_decision_table_node_list.all():
+            updated = False
+
+            if (
+                cdt_node.default_next_node_id
+                and cdt_node.default_next_node_id in node_id_map
+            ):
+                cdt_node.default_next_node_id = node_id_map[
+                    cdt_node.default_next_node_id
+                ]
+                updated = True
+
+            if (
+                cdt_node.next_error_node_id
+                and cdt_node.next_error_node_id in node_id_map
+            ):
+                cdt_node.next_error_node_id = node_id_map[cdt_node.next_error_node_id]
+                updated = True
+
+            if updated:
+                cdt_node.save(
+                    update_fields=["default_next_node_id", "next_error_node_id"]
+                )
+
+            for group in cdt_node.condition_groups.all():
                 if group.next_node_id and group.next_node_id in node_id_map:
                     group.next_node_id = node_id_map[group.next_node_id]
                     group.save(update_fields=["next_node_id"])

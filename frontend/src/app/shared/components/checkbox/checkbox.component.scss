@@ -13,6 +13,13 @@ input[type='checkbox'] {
     cursor: pointer;
     display: inline-block;
     position: relative;
+    transition:
+        border-color 0.15s,
+        background 0.15s;
+}
+
+input[type='checkbox']:hover:not(:checked):not(:indeterminate):not(:disabled) {
+    border-color: var(--color-text-primary);
 }
 
 input[type='checkbox']:checked {

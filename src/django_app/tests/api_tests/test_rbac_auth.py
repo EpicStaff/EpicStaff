@@ -17,6 +17,7 @@ from unittest.mock import patch
 import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 from django.core import mail
 from django.core.cache import cache
 from django.test import override_settings
@@ -29,8 +30,16 @@ from rest_framework_simplejwt.token_blacklist.models import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from tables.models.rbac_models import PasswordResetToken
+from tables.models.rbac_models import (
+    Organization,
+    OrganizationUser,
+    PasswordResetToken,
+    Role,
+)
+from tables.models.rbac_models.rbac_enums import BuiltInRole
+from tables.services.rbac.reset_user_service import ResetUserService
 from tables.services.rbac.sse_ticket_service import SseTicketService
+from tables.services.rbac.utils.superadmin_bootstrap import SuperadminBootstrap
 
 LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"
 OPAQUE_RESET_CODE = "invalid_or_expired_reset_token"
@@ -45,7 +54,7 @@ def test_first_setup_flow_is_idempotent(api_client):
 
     r = api_client.get(url)
     assert r.status_code == 200
-    assert r.json() == {"needs_setup": True}
+    assert r.json() == {"needs_setup": True, "setup_mode": "open"}
 
     r = api_client.post(
         url,
@@ -59,7 +68,7 @@ def test_first_setup_flow_is_idempotent(api_client):
     assert "access" in payload and "refresh" in payload
 
     r = api_client.get(url)
-    assert r.json() == {"needs_setup": False}
+    assert r.json() == {"needs_setup": False, "setup_mode": "open"}
 
     r = api_client.post(
         url,
@@ -218,22 +227,20 @@ def test_sse_ticket_is_single_use(auth_client, regular_user):
     ticket = r.json()["ticket"]
     assert r.json()["expires_in"] == settings.SSE_TICKET_TTL_SECONDS
 
-    service = SseTicketService()
-    user = service.consume(ticket)
+    user = sse_ticket_service.consume(ticket)
     assert user is not None
     assert user.pk == regular_user.pk
 
     # Second consume fails — GETDEL already removed the ticket atomically.
-    assert service.consume(ticket) is None
+    assert sse_ticket_service.consume(ticket) is None
 
 
 @pytest.mark.django_db
 def test_sse_ticket_expired_or_unknown_returns_none():
     cache.clear()
-    service = SseTicketService()
-    assert service.consume("no-such-ticket") is None
-    assert service.consume("") is None
-    assert service.consume(None) is None
+    assert sse_ticket_service.consume("no-such-ticket") is None
+    assert sse_ticket_service.consume("") is None
+    assert sse_ticket_service.consume(None) is None
 
 
 @pytest.mark.django_db
@@ -1092,3 +1099,82 @@ class TestPasswordResetRequestThrottleNonString:
         assert any(
             "must be a string" in e["reason"].lower() for e in email_errors
         ), body
+
+
+# ---------------- Default-org: single-default constraint ----------------
+
+
+@pytest.mark.django_db
+def test_only_one_org_can_be_default():
+    Organization.objects.create(name="Alpha", is_default=True)
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            Organization.objects.create(name="Beta", is_default=True)
+
+
+@pytest.mark.django_db
+def test_many_orgs_can_be_non_default():
+    Organization.objects.create(name="Alpha", is_default=False)
+    Organization.objects.create(name="Beta", is_default=False)
+    assert Organization.objects.filter(is_default=False).count() == 2
+
+
+# ---------------- Default-org: flag-first bootstrap resolution ----------------
+
+
+@pytest.mark.django_db
+def test_bootstrap_creates_flagged_default_org_on_empty_db():
+    # Superadmin role is seeded by conftest's session fixture.
+    assert Role.objects.filter(
+        name=BuiltInRole.SUPERADMIN, is_built_in=True, org__isnull=True
+    ).exists()
+    result = SuperadminBootstrap().provision(
+        email="a@example.com", password="StrongPass123!"
+    )
+    assert result.organization.is_default is True
+    assert result.default_org_created is True
+    assert Organization.objects.filter(is_default=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_bootstrap_reuses_flagged_org_regardless_of_name():
+    # The flagged org is named differently from DEFAULT_ORGANIZATION_NAME; a
+    # name-based resolver would create a second "Organization" row.
+    flagged = Organization.objects.create(name="Renamed Co", is_default=True)
+    result = SuperadminBootstrap().provision(
+        email="a@example.com", password="StrongPass123!"
+    )
+    assert result.organization.id == flagged.id
+    assert result.default_org_created is False
+    assert Organization.objects.count() == 1  # no duplicate "Organization"
+
+
+@pytest.mark.django_db
+@override_settings(DEFAULT_ORGANIZATION_NAME="Acme")
+def test_bootstrap_self_heals_unflagged_name_matched_org():
+    # Org exists by configured name but predates the flag.
+    legacy = Organization.objects.create(name="Acme", is_default=False)
+    result = SuperadminBootstrap().provision(
+        email="a@example.com", password="StrongPass123!"
+    )
+    legacy.refresh_from_db()
+    assert result.organization.id == legacy.id
+    assert result.default_org_created is False
+    assert legacy.is_default is True
+
+
+@pytest.mark.django_db
+def test_reset_user_after_rename_reuses_org_no_duplicate():
+    SuperadminBootstrap().provision(
+        email="first@example.com", password="StrongPass123!"
+    )
+    org = Organization.objects.get(is_default=True)
+    org.name = "Renamed Co"
+    org.save(update_fields=["name"])
+
+    ResetUserService().reset(email="second@example.com", password="StrongPass123!")
+
+    assert Organization.objects.count() == 1
+    survivor = Organization.objects.get(is_default=True)
+    assert survivor.name == "Renamed Co"
+    assert OrganizationUser.objects.filter(org=survivor).count() == 1

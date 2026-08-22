@@ -17,6 +17,7 @@
           [showTags]="true"
         ></app-filters-list> -->
                 <app-save-with-indicator
+                    *appHasPermission="[ResourceCode.Agents, [ActionCode.Create, ActionCode.Update, ActionCode.Delete]]"
                     [isSaving]="isSaving"
                     [disabled]="isSaving || !hasUnsavedChanges"
                     [hasUnsavedChanges]="hasUnsavedChanges"
@@ -24,6 +25,7 @@
                 ></app-save-with-indicator>
 
                 <app-button
+                    *appHasPermission="[ResourceCode.Agents, ActionCode.Create]"
                     type="primary"
                     class="btn-primary create-btn"
                     [leftIcon]="'plus'"
