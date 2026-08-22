@@ -10,8 +10,6 @@ from tables.models.graph_models import (
 )
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.utils.telegram_fields import load_telegram_trigger_fields
-from tables.models import Tool
-from tables.models import Crew
 from tables.models import Agent
 from tables.services.realtime_service import RealtimeService
 from agents.models import AgentDefinition
@@ -23,6 +21,7 @@ from utils.logger import logger
 from drf_spectacular.utils import (
     extend_schema_view,
     OpenApiParameter,
+    OpenApiResponse,
 )
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
@@ -31,10 +30,7 @@ from src.shared.enums.knowledge_new import RAGStrategy
 from tables.clients import KnowledgeClient
 from tables.clients.errors import ClientError
 
-from rest_framework.mixins import RetrieveModelMixin, UpdateModelMixin, ListModelMixin
-from rest_framework.viewsets import GenericViewSet
-
-from rest_framework.decorators import api_view, action
+from rest_framework.decorators import action
 from rest_framework import viewsets, mixins
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework import filters
@@ -94,7 +90,6 @@ from tables.models.knowledge_models import NaiveRag, GraphRag
 from tables.services.rbac.permissions import (
     HasOrgPermission,
     IsSuperadmin,
-    IsSuperadminOrReadOnly,
 )
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.session_access import assert_session_org_access
