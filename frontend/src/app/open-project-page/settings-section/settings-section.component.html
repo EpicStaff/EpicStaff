@@ -202,7 +202,6 @@
                 </div>
                 <div class="setting-value">
                     <app-llm-model-selector
-                        [llmConfigs]="fullLLMConfigs()"
                         [placeholder]="'Select memory LLM model'"
                         [ngModel]="memory_llm_config()"
                         (ngModelChange)="memory_llm_config.set($event); onMemoryLLMConfigChange()"
@@ -271,7 +270,6 @@
                 </div>
                 <div class="setting-value">
                     <app-llm-model-selector
-                        [llmConfigs]="fullLLMConfigs()"
                         [placeholder]="'Select LLM model'"
                         [ngModel]="manager_llm_config()"
                         (ngModelChange)="manager_llm_config.set($event); onLLMConfigChange()"

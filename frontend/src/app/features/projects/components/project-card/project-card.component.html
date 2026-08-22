@@ -37,17 +37,4 @@
     <div class="description">
         {{ project.description || 'No description provided.' }}
     </div>
-    <div class="tags-container">
-        <div class="tags">
-            <ng-container *ngFor="let tag of displayedTags()">
-                <app-tag [tag]="tag"></app-tag>
-            </ng-container>
-            <span
-                class="more-tags"
-                *ngIf="hasMoreTags()"
-            >
-                +{{ additionalTagsCount() }} more
-            </span>
-        </div>
-    </div>
 </div>

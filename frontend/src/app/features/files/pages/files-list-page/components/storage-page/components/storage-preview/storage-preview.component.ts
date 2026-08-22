@@ -1,5 +1,8 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from "@angular/material/tooltip";
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { BlobPreviewComponent } from '../../../../../../../../shared/components/blob-preview/blob-preview.component';
@@ -9,7 +12,7 @@ import { StorageApiService } from '../../../../../../services/storage-api.servic
 
 @Component({
     selector: 'app-storage-preview',
-    imports: [AppSvgIconComponent, BlobPreviewComponent, ButtonComponent],
+    imports: [AppSvgIconComponent, BlobPreviewComponent, ButtonComponent, MatTooltipModule, HasPermissionDirective],
     templateUrl: './storage-preview.component.html',
     styleUrls: ['./storage-preview.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -18,6 +21,8 @@ export class StoragePreviewComponent {
     item = input<StorageItem | null>(null);
     selectedItems = input<StorageItem[]>([]);
     showSidebar = input(true);
+    content = input<string | null>(null);
+    readOnly = input<boolean>(false);
     toggleSidebar = output<void>();
     contextAction = output<{ action: string; item: StorageItem; selectedItems?: StorageItem[] }>();
     breadcrumbClick = output<string>();
@@ -33,6 +38,7 @@ export class StoragePreviewComponent {
 
     constructor() {
         effect(() => {
+            this.content();
             this.loadPreview(this.item());
         });
     }
@@ -79,6 +85,7 @@ export class StoragePreviewComponent {
         }
     }
 
+    // TODO check app-blob-preview and made changes according to ones in main
     private loadPreview(currentItem: StorageItem | null): void {
         this.previewBlob.set(null);
         this.previewError.set(null);
@@ -103,4 +110,7 @@ export class StoragePreviewComponent {
                 },
             });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

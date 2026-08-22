@@ -5,6 +5,8 @@
             <button
                 class="files-dialog__icon-btn files-dialog__icon-btn--cancel"
                 aria-label="Cancel"
+                matTooltip="Close"
+                matTooltipPosition="above"
                 (click)="onCancel()"
             >
                 <app-svg-icon
@@ -15,6 +17,8 @@
             <button
                 class="files-dialog__icon-btn files-dialog__icon-btn--confirm"
                 aria-label="Save changes"
+                matTooltip="Confirm"
+                matTooltipPosition="above"
                 [disabled]="isSaving()"
                 (click)="onConfirm()"
             >
@@ -119,10 +123,6 @@
                             [title]="node.name"
                             >{{ node.name }}</span
                         >
-
-                        @if (node.isLoading) {
-                            <span class="files-dialog__node-spinner">...</span>
-                        }
 
                         @if (node.type === 'file' && node.size != null) {
                             <span class="files-dialog__item-size">({{ formatSize(node.size) }})</span>

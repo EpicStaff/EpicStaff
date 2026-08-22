@@ -24,172 +24,137 @@
     </div>
 </div>
 
-@if (isLoading()) {
-    <app-loading-spinner size="sm" />
-} @else {
-    <app-table
-        [columns]="columns()"
-        [data]="filteredUsers()"
-        [selectable]="false"
-        rowId="id"
+<app-table
+    [columns]="columns()"
+    [data]="filteredUsers()"
+    [selectable]="false"
+    rowId="id"
+>
+    <!-- USER -->
+    <ng-template
+        appTableCell="user"
+        let-row
     >
-        <!-- USER -->
-        <ng-template
-            appTableCell="user"
-            let-row
-        >
-            <div class="user-cell">
-                <app-user-avatar
-                    [name]="row['display_name'] || row['email']"
-                    [avatarUrl]="row['avatar']"
-                />
-                <div class="user-info">
-                    <span class="user-name">{{ row['name'] }}</span>
-                    <span class="user-email">{{ row['email'] }}</span>
-                </div>
+        <div class="user-cell">
+            <app-user-avatar
+                [name]="row['display_name'] || row['email']"
+                [avatarUrl]="row['avatar']"
+            />
+            <div class="user-info">
+                <span class="user-name">{{ row['name'] }}</span>
+                <span class="user-email">{{ row['email'] }}</span>
             </div>
-        </ng-template>
+        </div>
+    </ng-template>
 
-        <!-- ROLE -->
-        <ng-template
-            appTableCell="roles"
-            let-row
-        >
-            @if (row['roles']?.length) {
-                <div
-                    class="badges-cell"
-                    appOverflowItems
-                    #roleOverflow="overflowItems"
-                >
-                    @if (row['isSuperadmin']) {
-                        <span
-                            appOverflowItem
-                            appOverflowLabel="Super Admin"
-                            class="role-chip"
-                            >Super Admin</span
-                        >
-                    }
-                    @for (role of row['roles']; track role) {
-                        <span
-                            appOverflowItem
-                            [appOverflowLabel]="role"
-                            class="role-chip"
-                            >{{ role }}</span
-                        >
-                    }
+    <!-- ROLE -->
+    <ng-template
+        appTableCell="roles"
+        let-row
+    >
+        @if (row['roles']?.length) {
+            <div
+                class="badges-cell"
+                appOverflowItems
+                #roleOverflow="overflowItems"
+            >
+                @if (row['isSuperadmin']) {
                     <span
-                        appOverflowBadge
-                        class="overflow-badge"
-                        [matTooltip]="roleOverflow.hiddenLabels()"
-                        matTooltipPosition="above"
-                        >+{{ roleOverflow.overflowCount() }}</span
+                        appOverflowItem
+                        appOverflowLabel="Super Admin"
+                        class="role-chip"
+                        >Super Admin</span
                     >
-                </div>
-            } @else {
-                <span class="empty-value">-</span>
-            }
-        </ng-template>
-
-        <!-- ORGANIZATION -->
-        <ng-template
-            appTableCell="organization"
-            let-row
-        >
-            @if (row['organizationDetails']?.length) {
-                <div
-                    class="badges-cell"
-                    appOverflowItems
-                    #orgOverflow="overflowItems"
-                >
-                    @for (org of row['organizationDetails']; track org.id) {
-                        <app-org-avatar
-                            appOverflowItem
-                            [appOverflowLabel]="org.name"
-                            [name]="org.name"
-                            [title]="org.name"
-                        />
-                    }
+                }
+                @for (role of row['roles']; track role) {
                     <span
-                        appOverflowBadge
-                        class="overflow-badge"
-                        [matTooltip]="orgOverflow.hiddenLabels()"
-                        matTooltipPosition="above"
-                        >+{{ orgOverflow.overflowCount() }}</span
+                        appOverflowItem
+                        [appOverflowLabel]="role"
+                        class="role-chip"
+                        >{{ role }}</span
                     >
-                </div>
-            } @else {
-                <span class="empty-value">-</span>
-            }
-        </ng-template>
-
-        <!-- ACTIVE -->
-        <ng-template
-            appTableCell="lastActive"
-            let-row
-        >
-            @if (row['lastActive']) {
-                <div class="date-cell">
-                    <span class="date">{{ formatDate(row['lastActive']) }}</span>
-                    <span class="relative">{{ getRelativeTime(row['lastActive']) }}</span>
-                </div>
-            } @else {
-                <span class="empty-value">-</span>
-            }
-        </ng-template>
-
-        <!-- STATUS -->
-        <ng-template
-            appTableCell="status"
-            let-row
-        >
-            @if (row['status']) {
-                <app-status-badge
-                    [modifier]="row['status']"
-                    [label]="statusLabel(row['status'])"
-                />
-            } @else {
-                <span class="empty-value">-</span>
-            }
-        </ng-template>
-
-        <!-- ACTIONS -->
-        <ng-template
-            appTableCell="actions"
-            let-row
-        >
-            <div class="actions-cell">
-                <!--                <button-->
-                <!--                    class="action-btn"-->
-                <!--                    type="button"-->
-                <!--                    title="View"-->
-                <!--                >-->
-                <!--                    <app-svg-icon-->
-                <!--                        icon="eye"-->
-                <!--                        size="16px"-->
-                <!--                    />-->
-                <!--                </button>-->
-                <button
-                    class="action-btn"
-                    type="button"
-                    title="Edit"
-                    (click)="onEditUser(row['id'])"
+                }
+                <span
+                    appOverflowBadge
+                    class="overflow-badge"
+                    [matTooltip]="roleOverflow.hiddenLabels()"
+                    matTooltipPosition="above"
+                    >+{{ roleOverflow.overflowCount() }}</span
                 >
-                    <app-svg-icon
-                        icon="edit"
-                        size="16px"
+            </div>
+        } @else {
+            <span class="empty-value">-</span>
+        }
+    </ng-template>
+
+    <!-- ORGANIZATION -->
+    <ng-template
+        appTableCell="organization"
+        let-row
+    >
+        @if (row['organizationDetails']?.length) {
+            <div
+                class="badges-cell"
+                appOverflowItems
+                #orgOverflow="overflowItems"
+            >
+                @for (org of row['organizationDetails']; track org.id) {
+                    <app-org-avatar
+                        appOverflowItem
+                        [appOverflowLabel]="org.name"
+                        [name]="org.name"
+                        [title]="org.name"
                     />
-                </button>
-                <!--                <button-->
-                <!--                    class="action-btn action-btn&#45;&#45;danger"-->
-                <!--                    type="button"-->
-                <!--                    title="Delete"-->
-                <!--                >-->
-                <!--                    <app-svg-icon-->
-                <!--                        icon="trash"-->
-                <!--                        size="16px"-->
-                <!--                    />-->
-                <!--                </button>-->
+                }
+                <span
+                    appOverflowBadge
+                    class="overflow-badge"
+                    [matTooltip]="orgOverflow.hiddenLabels()"
+                    matTooltipPosition="above"
+                    >+{{ orgOverflow.overflowCount() }}</span
+                >
             </div>
-        </ng-template>
-    </app-table>
-}
+        } @else {
+            <span class="empty-value">-</span>
+        }
+    </ng-template>
+
+    <!-- ACTIVE -->
+    <ng-template
+        appTableCell="lastActive"
+        let-row
+    >
+        @if (row['lastActive']) {
+            <div class="date-cell">
+                <span class="date">{{ formatDate(row['lastActive']) }}</span>
+                <span class="relative">{{ getRelativeTime(row['lastActive']) }}</span>
+            </div>
+        } @else {
+            <span class="empty-value">-</span>
+        }
+    </ng-template>
+
+    <!-- STATUS -->
+    <ng-template
+        appTableCell="status"
+        let-row
+    >
+        @if (row['status']) {
+            <app-status-badge
+                [modifier]="row['status']"
+                [label]="statusLabel(row['status'])"
+            />
+        } @else {
+            <span class="empty-value">-</span>
+        }
+    </ng-template>
+
+    <div tableEmpty>
+        @if (isLoading()) {
+            <app-loading-spinner size="sm" />
+        } @else {
+            <h4 class="empty-title">No users yet</h4>
+            <p class="empty-subtitle">Create a user account to grant access to this organization.</p>
+        }
+    </div>
+</app-table>

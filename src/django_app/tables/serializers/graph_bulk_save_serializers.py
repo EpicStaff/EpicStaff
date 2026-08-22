@@ -1,7 +1,9 @@
 from rest_framework import serializers
 
 from tables.serializers.model_serializers import (
+    AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
+    ClassificationDecisionTableNodeSerializer,
     CodeAgentNodeSerializer,
     ConditionalEdgeSerializer,
     CrewNodeSerializer,
@@ -14,6 +16,7 @@ from tables.serializers.model_serializers import (
     ScheduleTriggerNodeSerializer,
     StartNodeSerializer,
     SubGraphNodeSerializer,
+    TaskNodeSerializer,
     WebhookTriggerNodeSerializer,
     TelegramTriggerNodeSerializer,
 )
@@ -37,10 +40,22 @@ class BulkSaveEntityMixin:
 
 
 class CodeAgentNodeBulkSerializer(BulkSaveEntityMixin, CodeAgentNodeSerializer):
+    """
+    DEPRECATED: CodeAgentNodeBulkSerializer is deprecated. Use
+    AgentNodeBulkSerializer or TaskNodeBulkSerializer instead. Exists only for
+    backward compatibility with existing CodeAgentNode rows.
+    """
+
     pass
 
 
 class CrewNodeBulkSerializer(BulkSaveEntityMixin, CrewNodeSerializer):
+    """
+    DEPRECATED: CrewNodeBulkSerializer is deprecated. Use
+    AgentNodeBulkSerializer or TaskNodeBulkSerializer instead. Exists only for
+    backward compatibility with existing CrewNode rows.
+    """
+
     pass
 
 
@@ -68,6 +83,33 @@ class EndNodeBulkSerializer(BulkSaveEntityMixin, EndNodeSerializer):
 
 class SubGraphNodeBulkSerializer(BulkSaveEntityMixin, SubGraphNodeSerializer):
     pass
+
+
+class TaskNodeBulkSerializer(BulkSaveEntityMixin, TaskNodeSerializer):
+    pass
+
+
+class AgentNodeBulkSerializer(BulkSaveEntityMixin, AgentNodeSerializer):
+    pass
+
+
+class ClassificationDecisionTableNodeBulkSerializer(
+    BulkSaveEntityMixin, ClassificationDecisionTableNodeSerializer
+):
+    def get_validators(self):
+        # The UniqueTogetherValidator for (graph, node_name) fires during Pass 1
+        # (validation), before deletions run. If a node with the same name is being
+        # deleted and re-created in the same bulk-save request, the old record is
+        # still in the DB at validation time, causing a false positive error.
+        # The DB-level constraint still enforces correctness: deletions always
+        # precede inserts inside the atomic _execute_writes transaction.
+        from rest_framework.validators import UniqueTogetherValidator
+
+        return [
+            v
+            for v in super().get_validators()
+            if not isinstance(v, UniqueTogetherValidator)
+        ]
 
 
 class DecisionTableNodeBulkSerializer(BulkSaveEntityMixin, DecisionTableNodeSerializer):

@@ -3,9 +3,11 @@ from functools import lru_cache
 from django.apps import apps
 from django.db import connection, transaction
 
+from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.models.base_models import BaseGlobalNode
 from tables.models import Graph
 from tables.models.graph_models import ConditionalEdge, Edge
+from tables.models.rbac_models import Organization
 
 from tables.serializers.graph_bulk_save_serializers import (
     ConditionalEdgeBulkSerializer,
@@ -42,6 +44,25 @@ class GraphBulkSaveService:
     fails validation. No DB writes happen in that case.
     """
 
+    # The active request, set per-invocation in save(). Threaded into every
+    # node/edge serializer's context so org-scoped fields can resolve the active
+    # org. Defaults to None so a helper called without save() denies (fail-safe).
+    _request = None
+
+    @staticmethod
+    def _resolve_organization() -> Organization | None:
+        """Resolve the default organization for serializer validation context.
+
+        Serializers treat a missing "organization" key in context as
+        permissive (skip org-scoped validation) — see TaskNodeSerializer.validate.
+        Falling back to None here preserves that behavior instead of raising
+        when the default organization has not been provisioned.
+        """
+        try:
+            return Organization.objects.get(name=DEFAULT_ORGANIZATION_NAME)
+        except Organization.DoesNotExist:
+            return None
+
     @staticmethod
     @lru_cache(maxsize=1)
     def _get_global_node_models() -> tuple[type, ...]:
@@ -53,12 +74,20 @@ class GraphBulkSaveService:
         )
 
     @transaction.atomic
-    def save(self, graph: Graph, validated_input: dict) -> Graph:
+    def save(self, graph: Graph, validated_input: dict, request=None) -> Graph:
+        # Thread the request so node/edge serializers can org-scope their FK
+        # fields (e.g. CrewNode.crew_id, SubGraphNode.subgraph). Without it those
+        # fields deny all pks rather than falling back to an unfiltered queryset.
+        self._request = request
         expected_save_version = validated_input["save_version"]
         deleted_data = validated_input.get("deleted", {})
         all_errors: dict = {}
         node_saveables: list[_NodeSaveable] = []
         edge_saveables: list = []
+        self._serializer_context = {
+            "organization": self._resolve_organization(),
+            "request": self._request,
+        }
 
         payload_temp_ids: set[str] = self._collect_payload_temp_ids(validated_input)
 
@@ -219,9 +248,11 @@ class GraphBulkSaveService:
             return BuildSaveableResult(error={"index": index, "errors": routing_errors})
 
         s = (
-            config.serializer_class(instance, data=data)
+            config.serializer_class(
+                instance, data=data, context=self._serializer_context
+            )
             if instance is not None
-            else config.serializer_class(data=data)
+            else config.serializer_class(data=data, context=self._serializer_context)
         )
         if not s.is_valid():
             return BuildSaveableResult(error={"index": index, "errors": s.errors})
@@ -280,7 +311,7 @@ class GraphBulkSaveService:
 
             if item_id is None:
                 item_data.pop("id", None)
-                s = serializer_class(data=item_data)
+                s = serializer_class(data=item_data, context=self._serializer_context)
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
@@ -299,7 +330,9 @@ class GraphBulkSaveService:
                     continue
 
                 item_data.pop("id", None)
-                s = serializer_class(db_instance, data=item_data)
+                s = serializer_class(
+                    db_instance, data=item_data, context=self._serializer_context
+                )
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
@@ -338,7 +371,9 @@ class GraphBulkSaveService:
 
             if item_id is None:
                 item_data.pop("id", None)
-                s = ConditionalEdgeBulkSerializer(data=item_data)
+                s = ConditionalEdgeBulkSerializer(
+                    data=item_data, context=self._serializer_context
+                )
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
@@ -357,7 +392,9 @@ class GraphBulkSaveService:
                     continue
 
                 item_data.pop("id", None)
-                s = ConditionalEdgeBulkSerializer(db_instance, data=item_data)
+                s = ConditionalEdgeBulkSerializer(
+                    db_instance, data=item_data, context=self._serializer_context
+                )
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})
                     continue

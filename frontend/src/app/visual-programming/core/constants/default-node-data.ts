@@ -1,8 +1,17 @@
+import { AgentNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/agent-node.model';
 import { ScheduleTriggerNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/schedule-trigger.model';
+import { TaskNodeData } from '../../../pages/flows-page/components/flow-visual-programming/models/task-node.model';
 import { NODE_COLORS } from '../enums/node-config';
 import { NodeType } from '../enums/node-type';
 
 export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
+    [NodeType.AGENT]: (): AgentNodeData => ({
+        name: 'Agent Node',
+        agent_definition: null,
+        surface_list: [],
+        inline_surface: null,
+        tasks: [],
+    }),
     [NodeType.EDGE]: () => ({
         source: null,
         then: null,
@@ -17,6 +26,16 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         libraries: [],
         code: 'def main(arg1: str, arg2: str) -> dict:\n    return {\n        "result": arg1 + arg2,\n    }\n',
         entrypoint: 'main',
+    }),
+    [NodeType.TASK]: (): TaskNodeData => ({
+        name: 'Task Node',
+        instructions: '',
+        output_schema: {},
+        output_schema_invalid: false,
+        remember_output: false,
+        agent_definition: null,
+        surface_list: [],
+        inline_surface: null,
     }),
     [NodeType.TABLE]: () => ({
         name: 'Decision Table',
@@ -53,7 +72,7 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         },
     }),
     [NodeType.TELEGRAM_TRIGGER]: () => ({
-        telegram_bot_api_key: '',
+        telegram_bot_api_key_secret_id: null,
         fields: [],
     }),
     [NodeType.SCHEDULE_TRIGGER]: (): ScheduleTriggerNodeData => {

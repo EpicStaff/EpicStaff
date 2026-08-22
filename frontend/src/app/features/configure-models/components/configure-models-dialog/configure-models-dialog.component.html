@@ -12,27 +12,36 @@
             class="configure-models-dialog__close-btn"
             icon="close"
             size="1.25rem"
+            matTooltip="Close"
+            matTooltipPosition="above"
             (click)="close()"
         />
     </header>
 
     <nav class="configure-models-dialog__tabs">
-        @for (tab of tabs; track tab.id; let isLast = $last) {
-            <button
-                type="button"
-                class="configure-models-dialog__tab"
-                [class.configure-models-dialog__tab--active]="activeTabId() === tab.id"
-                (click)="selectTab(tab.id)"
-            >
-                <i
-                    class="configure-models-dialog__tab-icon"
-                    [ngClass]="tab.iconClass"
-                    aria-hidden="true"
-                ></i>
-                {{ tab.label }}
-            </button>
-            @if (!isLast) {
-                <span class="configure-models-dialog__tabs-separator">/</span>
+        @for (tab of tabs; track tab.id) {
+            @if (tab.isPermitted) {
+                <button
+                    type="button"
+                    class="configure-models-dialog__tab"
+                    [class.configure-models-dialog__tab--active]="activeTabId() === tab.id"
+                    (click)="selectTab(tab.id)"
+                >
+                    @if (tab.svgIcon) {
+                        <app-svg-icon
+                            class="configure-models-dialog__tab-icon"
+                            [icon]="tab.svgIcon"
+                            size="14px"
+                        />
+                    } @else {
+                        <i
+                            class="configure-models-dialog__tab-icon"
+                            [ngClass]="tab.iconClass"
+                            aria-hidden="true"
+                        ></i>
+                    }
+                    {{ tab.label }}
+                </button>
             }
         }
     </nav>
@@ -41,7 +50,7 @@
         @switch (activeTabId()) {
             @case (tabIds.QUICKSTART) {
                 <section class="configure-models-dialog__panel">
-                    <app-quickstart-section [activeTabSignal]="activeTabId"></app-quickstart-section>
+                    <app-quickstart-section [activeTabSignal]="activeTabId!"></app-quickstart-section>
                 </section>
             }
             @case (tabIds.DEFAULT_LLMS) {
@@ -61,6 +70,11 @@
             }
             @case (tabIds.VOICE_SETTINGS) {
                 <app-voice-settings-tab></app-voice-settings-tab>
+            }
+            @case (tabIds.SECRETS) {
+                <section class="configure-models-dialog__panel">
+                    <app-secrets-section></app-secrets-section>
+                </section>
             }
         }
     </main>

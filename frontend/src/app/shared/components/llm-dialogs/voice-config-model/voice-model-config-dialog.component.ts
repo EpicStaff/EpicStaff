@@ -1,0 +1,146 @@
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
+import { RealtimeConfigStorageService, SecretsStorageService } from '@shared/services';
+
+import { ToastService } from '../../../../services/notifications';
+import { ValidationErrorsComponent } from '../../app-validation-errors/validation-errors.component';
+import { ButtonComponent, IconButtonComponent } from '../../buttons';
+import { CustomInputComponent } from '../../form-input/form-input.component';
+import { HintMessageComponent } from '../../hint-message/hint-message.component';
+import { SelectComponent, SelectItem } from '../../select/select.component';
+import { LlmModelSelectorComponent } from '../llm-model-selector/llm-model-selector.component';
+
+@Component({
+    selector: 'app-voice-config-model',
+    templateUrl: './voice-model-config-dialog.component.html',
+    styleUrls: ['./voice-model-config-dialog.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [
+        ButtonComponent,
+        CustomInputComponent,
+        IconButtonComponent,
+        LlmModelSelectorComponent,
+        ReactiveFormsModule,
+        ValidationErrorsComponent,
+        SelectComponent,
+        HintMessageComponent,
+    ],
+})
+export class VoiceModelConfigDialogComponent {
+    private fb = inject(FormBuilder);
+    private destroyRef = inject(DestroyRef);
+    private realtimeModelConfigsService = inject(RealtimeConfigStorageService);
+    private secretsStorageService = inject(SecretsStorageService);
+    private toast = inject(ToastService);
+    private data = inject(DIALOG_DATA, { optional: true });
+
+    dialogRef = inject(DialogRef);
+
+    isSaving = signal<boolean>(false);
+    isLoading = signal<boolean>(false);
+
+    isEditMode = computed(() => !!this.data?.configId);
+    title = computed(() => (this.isEditMode() ? 'Edit Voice Configuration' : 'Add Voice Configuration'));
+    saveLabel = computed(() => (this.isEditMode() ? 'Save Changes' : 'Add Voice Model'));
+
+    secretItems = computed<SelectItem[]>(() =>
+        this.secretsStorageService.secrets().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.secretsStorageService.maskTail(secret.tail),
+        }))
+    );
+
+    form!: FormGroup;
+
+    ngOnInit() {
+        this.form = this.fb.group({
+            custom_name: ['', [Validators.required]],
+            api_key_secret_id: [null, [Validators.required]],
+            realtime_model: [null, [Validators.required]],
+        });
+
+        if (this.data?.configId) {
+            this.loadConfig(this.data.configId);
+        }
+
+        this.secretsStorageService
+            .getSecrets()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                error: () => this.toast.error('Failed to load secrets.'),
+            });
+
+        this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+            if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+                event.preventDefault();
+                this.onSave();
+            }
+        });
+    }
+
+    private loadConfig(configId: number): void {
+        this.isLoading.set(true);
+        this.realtimeModelConfigsService
+            .getConfigById(configId)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (config) => {
+                    this.form.patchValue(config);
+                    this.isLoading.set(false);
+                },
+                error: () => {
+                    this.toast.error('Failed to load configuration.');
+                    this.isLoading.set(false);
+                },
+            });
+    }
+
+    onModelChanged(data: { model: LLMModel; provider: LLMProvider }): void {
+        const nameControl = this.form.get('custom_name');
+
+        if (!nameControl) return;
+
+        if (!nameControl.value) {
+            nameControl.setValue(`${data.provider.name}/${data.model.name}`);
+        }
+    }
+
+    onCancel(): void {
+        this.dialogRef.close();
+    }
+
+    onSave(): void {
+        if (this.form.invalid || this.isSaving() || this.isLoading()) {
+            this.form.markAllAsTouched();
+            return;
+        }
+
+        this.isSaving.set(true);
+        const formValue = this.form.value;
+
+        const request$ = this.isEditMode()
+            ? this.realtimeModelConfigsService.updateConfig({ id: this.data!.configId!, ...formValue })
+            : this.realtimeModelConfigsService.createConfig(formValue);
+
+        request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+            next: () => {
+                this.isSaving.set(false);
+                this.toast.success(
+                    this.isEditMode() ? 'Configuration updated successfully.' : 'Configuration created successfully.'
+                );
+                this.dialogRef.close();
+            },
+            error: (err) => {
+                this.isSaving.set(false);
+                this.toast.error(this.isEditMode() ? 'Configuration update failed.' : 'Configuration creation failed.');
+                console.error(err);
+            },
+        });
+    }
+
+    protected readonly ModelTypes = ModelTypes;
+}

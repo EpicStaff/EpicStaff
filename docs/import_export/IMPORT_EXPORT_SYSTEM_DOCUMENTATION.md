@@ -48,6 +48,37 @@ The import/export process follows these steps:
 
 ---
 
+## Organization Scoping
+
+Imports run in the caller's **active organization** (resolved at the endpoint and
+threaded as `org_id` through `ImportService` into every strategy). Both reuse and
+creation are organization-scoped:
+
+- **Reuse (`find_existing`)** is filtered by `strategy.get_org_scope_q(org_id)`:
+  - **Strict** resources (Agent, LLM/Embedding/Realtime configs, McpTool, Label)
+    match only rows in the active org — `Q(org_id=org_id)`.
+  - **Hybrid** resources (provider models, PythonCodeTool) match shared built-in
+    rows **or** custom rows in the active org — e.g.
+    `Q(is_custom=False) | Q(org_id=org_id)` (models) /
+    `Q(built_in=True) | Q(org_id=org_id)` (python tools).
+  - **WebhookTrigger** has no org column; it matches only when a flow in the
+    active org already references its path —
+    `Q(webhook_trigger_nodes__graph__org_id=org_id)`.
+  - **Tags** are global and never scoped (default `Q()`).
+- **Creation (`create_entity`)** stamps the active org, overriding any `org`
+  carried in the export file. Org-scoped serializers that have a `(org, name)`
+  uniqueness validator must receive the active org in their input data (e.g.
+  `data={**data, "org": org_id}`) so the validator checks the target org, not the
+  source org. A newly-created **hybrid** row is created as custom + org-owned
+  (`is_custom=True` / `built_in=False`) — imports never create global built-ins.
+- **Naming** uniqueness (`ensure_unique_identifier`) is checked within the active
+  org, except provider models whose `(name, provider)` constraint is global.
+
+Every `get_org_scope_q` returns `Q()` when `org_id is None`, so direct/internal
+callers that do not pass an org are unaffected.
+
+---
+
 ## Adding New Entities
 
 To add a new entity to the import/export system, follow these steps:
@@ -68,6 +99,7 @@ To add a new entity to the import/export system, follow these steps:
    - Override `extract_dependencies_from_instance()` if necessary.
    - Override `find_existing()` if logic is needed to find existing entities.
    - Override `create_entity()` to handle all creation logic for the entity.
+   - Override `get_org_scope_q()` and stamp `org_id` in `create_entity()` if the entity is organization-scoped (see [Organization Scoping](#organization-scoping)).
 
 4. **Register the Entity**:
    - Open the `tables/apps.py` file.
@@ -83,16 +115,30 @@ To add a new node to the import/export system, follow these steps:
 
 1. **Create a NodeType**:
    - Add a new record to the `NodeType` enum in `enums.py`.
+   - Add the corresponding `EntityType` record to the `EntityType` enum in `enums.py` (node types and entity types share the same string values).
 
-2. **Create a Serializer**:
-   - Add a new serializer class in `serializers/graph.py` inheriting from `BaseNodeImportSerializer`.
+2. **Add to Dependency Order**:
+   - Add the new `EntityType` to `DEPENDENCY_ORDER` in `constants.py`.
 
-3. **Register the Serializer for the Node**:
-   - Add the new `NodeType` to `NODE_HANDLERS` in `strategies/node_handlers.py`.
-   - Add a `"relation"` key to retrieve this type of node from the graph instance.
-   - Create a separate `import_{node_name}_node` function if custom import logic is needed, and register it as an `"import_hook"` in `NODE_HANDLERS`.
+3. **Create a Serializer**:
+   - Add a new file in the `serializers/` directory, following the same pattern as other node serializers.
 
-**Note:** Most nodes do not require a separate import function. Use one only if the node depends on other entities in the system (e.g., `subgraph_node`).
+4. **Create a Strategy**:
+   - Add a new file in the `strategies/` directory.
+   - Define a strategy class inheriting from `EntityImportExportStrategy`.
+   - Set `entity_type` to the new `EntityType`.
+   - Set `serializer_class` to the new serializer.
+   - Override `create_entity()` if the node has custom import logic.
+
+5. **Register the Node Relation**:
+   - Add the new `NodeType` to `NODE_RELATIONS` in `strategies/node_handlers.py`, mapping it to the reverse-relation accessor name on the `Graph` model.
+   - `NODE_TYPE_TO_ENTITY_TYPE` is derived automatically from `NODE_RELATIONS` — no manual update needed.
+
+6. **Register the Strategy**:
+   - Open `tables/apps.py`.
+   - Import the new strategy module and register it with `entity_registry.register(MyNodeStrategy())`.
+
+**Note:** Most nodes do not require a custom `create_entity()` override. Add one only if the node depends on other entities tracked by the `IDMapper` (e.g., `subgraph_node`).
 
 ---
 

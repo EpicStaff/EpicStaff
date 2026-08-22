@@ -1,0 +1,384 @@
+@use '../../../styles/node-panel-mixins.scss' as mixins;
+
+.panel-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.panel-content {
+    @include mixins.panel-content;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-container {
+    @include mixins.form-container;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-layout {
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+
+    &.expanded {
+        display: flex;
+        gap: 1rem;
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+    }
+
+    &.collapsed {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        overflow: visible;
+    }
+}
+
+.form-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    flex: 0 0 400px;
+    max-width: 400px;
+    height: 100%;
+    overflow-y: auto;
+    padding-right: 1rem;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    &--row {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    &__label-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    &__label {
+        font-size: 0.875rem;
+        color: var(--color-text-primary);
+        margin: 0;
+
+        .required {
+            color: var(--color-required-asterisk, var(--accent-color));
+            margin-left: 2px;
+        }
+    }
+}
+
+.dropdown-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+
+    &:hover {
+        border-color: var(--accent-color);
+    }
+
+    &--invalid {
+        border-color: var(--color-error);
+    }
+
+    &__label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &--placeholder {
+            color: var(--color-input-text-placeholder);
+        }
+    }
+}
+
+.surface-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+
+    &__select {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
+// Reaches into app-multi-select's internal default trigger button to match the
+// bordered field look used by the rest of this panel (mirrors the ::ng-deep override
+// pattern already used in multi-select.component.scss for its own internal checkbox).
+::ng-deep .surface-row .multi-select__btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--color-input-background);
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+}
+
+.view-summary-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 12px 0 16px;
+    white-space: nowrap;
+    background: transparent;
+    border: 1px solid var(--accent-color);
+    border-radius: 4px;
+    color: var(--accent-color);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
+
+    app-svg-icon {
+        color: var(--accent-color);
+    }
+
+    &:hover {
+        background: var(--color-ghost-btn-hover);
+        border-color: var(--accent-color-hover);
+        color: var(--accent-color-hover);
+    }
+}
+
+.output-schema-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-bottom: 1rem;
+}
+
+.task-error {
+    font-size: 0.75rem;
+    color: #ff6b6b;
+}
+
+.output-schema-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    width: 100%;
+
+    &__chevron {
+        transition: transform 0.2s ease;
+
+        &--open {
+            transform: rotate(180deg);
+        }
+    }
+}
+
+.icon-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--color-text-secondary, #d9d9d999);
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease;
+
+    &:hover {
+        background: var(--color-divider-subtle);
+        color: var(--color-text-primary);
+    }
+}
+
+.editor-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    &__title {
+        min-width: 0;
+    }
+
+    &__actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-shrink: 0;
+    }
+
+    &__action {
+        color: var(--text-secondary-60);
+        cursor: pointer;
+    }
+}
+
+.editor-block__textarea {
+    width: 100%;
+}
+
+::ng-deep .editor-block__textarea .vht-field {
+    background: var(--color-background-body, #212325);
+}
+
+// Right (main) pane — holds whichever of Instructions / Output Schema is
+// currently selected via `mainView`, filling the full column height. Its
+// header is styled to align (height/padding) with the json-editor's own
+// native header so both panes look consistent when swapped.
+.main-editor-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--color-input-background, #1e1e1e);
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.6rem 1rem;
+        border-bottom: 1px solid var(--color-divider-subtle);
+        color: var(--color-text-primary);
+        font-size: 0.875rem;
+        flex-shrink: 0;
+    }
+
+    &__title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        .required {
+            color: var(--color-required-asterisk, var(--accent-color));
+            margin-left: 2px;
+        }
+    }
+
+    &__title-icon {
+        color: var(--accent-color);
+    }
+
+    &__actions {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    &__body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--color-background-body, #212325);
+    }
+
+    app-json-editor {
+        flex: 1;
+        min-height: 0;
+        height: 100%;
+    }
+
+    &__textarea {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+        height: 100%;
+        padding: 0.75rem;
+    }
+
+    &__validation {
+        flex: 0 0 auto;
+        padding: 0 0.75rem 0.5rem;
+    }
+
+    > .task-error {
+        flex: 0 0 auto;
+        padding: 0.4rem 0.75rem;
+    }
+}
+
+::ng-deep .main-editor-pane__textarea .vht-wrapper {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+::ng-deep .main-editor-pane__textarea .vht-field {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    background: var(--color-background-body, #212325) !important;
+    border: none !important;
+    box-shadow: none;
+}
+
+::ng-deep .main-editor-pane__textarea .vht-field:focus-within {
+    border-color: transparent !important;
+}
+
+::ng-deep .main-editor-pane__textarea .vht-backdrop {
+    background: var(--color-background-body, #212325);
+}
+
+::ng-deep .main-editor-pane__textarea .vht-textarea {
+    flex: 1;
+    min-height: 0;
+    height: 100% !important;
+    resize: none;
+    outline: none !important;
+}

@@ -10,7 +10,7 @@ from tables.serializers.organization_serializers import (
     OrganizationRenameRequestSerializer,
     OrganizationResponseSerializer,
 )
-from tables.services.rbac.authentication import JwtOrApiKeyAuthentication
+from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.organization_management_service import (
     OrganizationManagementService,
 )
@@ -33,7 +33,7 @@ class OrganizationAdminViewSet(viewsets.ViewSet):
     view layer does not catch or translate them.
     """
 
-    authentication_classes = [JwtOrApiKeyAuthentication]
+    authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, IsSuperadmin]
     lookup_value_regex = "[0-9]+"
 

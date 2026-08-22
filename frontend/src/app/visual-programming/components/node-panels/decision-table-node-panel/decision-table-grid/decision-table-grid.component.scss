@@ -59,6 +59,13 @@
             border-top-right-radius: 8px;
         }
 
+        .ti-trash {
+            color: #ff3b30;
+            font-size: 1.1rem;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
         .ti-trash:hover {
             color: #ff5449 !important;
             transform: scale(1.1);

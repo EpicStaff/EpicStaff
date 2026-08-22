@@ -1,0 +1,77 @@
+<div class="dialog">
+    <div class="header">
+        <h2 class="title">
+            {{ title() }}
+        </h2>
+        <app-icon-button
+            icon="x"
+            ariaLabel="Close dialog"
+            size="2rem"
+            tooltip="Close"
+            (onClick)="dialogRef.close()"
+        >
+        </app-icon-button>
+    </div>
+
+    <div
+        class="form"
+        [formGroup]="form"
+    >
+        <div>
+            <app-llm-model-selector
+                formControlName="realtime_transcription_model"
+                label="Provider"
+                placeholder="Select provider"
+                tooltipText="The AI provider and model this configuration will use (e.g. OpenAI GPT-4o)"
+                [provider]="ModelTypes.TRANSCRIPTION"
+                [required]="true"
+                (modelChanged)="onModelChanged($event)"
+            />
+            <app-validation-errors [control]="form.get('realtime_transcription_model')!" />
+        </div>
+        <div>
+            <app-select
+                formControlName="api_key_secret_id"
+                label="API Key"
+                variant="boxed"
+                placeholder="Select a secret"
+                tooltipText="The stored secret holding this provider's API key"
+                [items]="secretItems()"
+                [showSearch]="true"
+                searchPlaceholder="Search a secret..."
+            />
+            @if (!form.get('api_key_secret_id')?.value) {
+                <app-hint-message>
+                    Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                </app-hint-message>
+            }
+            <app-validation-errors [control]="form.get('api_key_secret_id')!" />
+        </div>
+        <div>
+            <app-custom-input
+                formControlName="custom_name"
+                label="Configuration Name"
+                placeholder="Enter a custom name"
+                tooltipText="A friendly name to identify this configuration across the app"
+                [required]="true"
+            />
+            <app-validation-errors [control]="form.get('custom_name')!" />
+        </div>
+    </div>
+
+    <div class="footer">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+        >
+            Cancel
+        </app-button>
+        <app-button
+            type="primary"
+            [disabled]="form.invalid || isSaving() || isLoading()"
+            (click)="onSave()"
+        >
+            {{ saveLabel() }}
+        </app-button>
+    </div>
+</div>

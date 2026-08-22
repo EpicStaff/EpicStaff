@@ -32,10 +32,60 @@
 
 .form-header {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr auto;
     gap: 1.5rem;
     flex-shrink: 0;
     padding: 1.5rem 1.5rem 0 1.5rem;
+    align-items: start;
+}
+
+// Convert-to-CDT toggle column
+.convert-toggle-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 140px;
+}
+
+.convert-toggle-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.55);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+// Toggle switch — OFF state (DT = not a CDT)
+.cdt-toggle {
+    position: relative;
+    width: 50px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    cursor: pointer;
+    border: none;
+    padding: 0;
+    transition: background 0.2s ease;
+    margin-top: 2px;
+
+    &:hover {
+        background: rgba(104, 95, 255, 0.35);
+    }
+
+    .toggle-thumb {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 14px;
+        height: 14px;
+        background: #fff;
+        border-radius: 30%;
+        transition: transform 0.2s ease;
+    }
 }
 
 .grid-section {

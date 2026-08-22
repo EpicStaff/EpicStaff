@@ -1,6 +1,5 @@
 """Project create operations — create new crews, agents, and tasks."""
 
-import json
 
 from common import api_get, api_post, api_patch
 
@@ -16,9 +15,9 @@ def cmd_create_crew(args):
     result = api_post("/crews/", payload)
     cid = result.get("id")
     print(f"Created crew: [{cid}] {result.get('name')} (process={result.get('process')})")
-    print(f"  ⚠️  REMINDER: When adding this crew to a flow, the crew node needs:")
-    print(f"     - input_map: map node parameters to flow variables (e.g. {{\"topic\": \"variables.request.topic\"}})")
-    print(f"     - output_variable_path: set to 'variables' or 'variables.<domain>' to store crew output")
+    print("  ⚠️  REMINDER: When adding this crew to a flow, the crew node needs:")
+    print("     - input_map: map node parameters to flow variables (e.g. {\"topic\": \"variables.request.topic\"})")
+    print("     - output_variable_path: set to 'variables' or 'variables.<domain>' to store crew output")
     return result
 
 
@@ -38,9 +37,9 @@ def cmd_create_agent(args):
     print(f"Created agent: [{aid}] role={result.get('role')}")
 
     if not llm_config_id:
-        print(f"  ⚠️  WARNING: No LLM config set. Agent will not work until an LLM config is assigned.")
+        print("  ⚠️  WARNING: No LLM config set. Agent will not work until an LLM config is assigned.")
         print(f"     Fix: PATCH /agents/{aid}/ with {{\"llm_config\": <config_id>}}")
-        print(f"     Available configs: run 'epicstaff_tools.py -r llm-configs'")
+        print("     Available configs: run 'epicstaff_tools.py -r llm-configs'")
 
     crew_id = getattr(args, "crew_id", None)
     if crew_id:

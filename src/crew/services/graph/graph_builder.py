@@ -14,7 +14,11 @@ from services.graph.nodes import (
     EndNode,
 )
 
+from services.agent_task_service import AgentTaskService
+from services.graph.nodes.agent_node import AgentNode
 from services.graph.nodes.code_agent_node import CodeAgentNode
+from services.graph.nodes.task_node import TaskNode
+from services.graph.remembered_outputs import RememberedOutputsStore
 from services.graph.nodes.webhook_trigger_node import WebhookTriggerNode
 from services.graph.nodes.telegram_trigger_node import TelegramTriggerNode
 from services.graph.nodes.schedule_trigger_node import ScheduleTriggerNode
@@ -23,6 +27,9 @@ from services.graph.subgraphs.decision_table_node import (
     DecisionTableNodeSubgraph,
 )
 from services.graph.subgraphs.subgraph_node import SubGraphNode
+from src.crew.services.graph.subgraphs.classification_decision_table_node import (
+    ClassificationDecisionTableNodeSubgraph,
+)
 from services.crew.crew_parser_service import CrewParserService
 from services.redis_service import RedisService
 from src.shared.models import (
@@ -30,6 +37,7 @@ from src.shared.models import (
     PythonCodeData,
     SessionData,
     SubGraphData,
+    ClassificationDecisionTableNodeData,
 )
 from services.run_python_code_service import RunPythonCodeService
 from services.knowledge_search_service import KnowledgeSearchService
@@ -50,6 +58,7 @@ class SessionGraphBuilder:
         crewai_output_channel: str,
         knowledge_search_service: KnowledgeSearchService,
         stop_event: StopEvent,
+        agent_task_service: AgentTaskService | None = None,
     ):
         """
         Initializes the SessionGraphBuilder with the required services and session details.
@@ -60,6 +69,8 @@ class SessionGraphBuilder:
             crew_parser_service (CrewParserService): The service responsible for parsing crew data.
             python_code_executor_service (RunPythonCodeService): The service responsible for executing Python code.
             crewai_output_channel (str): The output channel for CrewAI communications.
+            agent_task_service (AgentTaskService | None): The service responsible for delegating TaskNode
+                execution to the agent microservice. Required if the graph schema contains task nodes.
         """
 
         self.session_id = session_id
@@ -68,6 +79,10 @@ class SessionGraphBuilder:
         self.python_code_executor_service = python_code_executor_service
         self.crewai_output_channel = crewai_output_channel
         self.knowledge_search_service = knowledge_search_service
+        self.agent_task_service = agent_task_service
+        self.remembered_outputs_store = RememberedOutputsStore(
+            redis_service=redis_service
+        )
 
         self._graph_builder = StateGraph(State)
         self._end_node_result: dict | None = {}
@@ -175,6 +190,35 @@ class SessionGraphBuilder:
             decision_table_node_data.node_name, condition
         )
 
+    def add_classification_decision_table_node(
+        self, node_data: ClassificationDecisionTableNodeData
+    ) -> str:
+        subgraph_builder = StateGraph(State)
+        builder = ClassificationDecisionTableNodeSubgraph(
+            session_id=self.session_id,
+            node_data=node_data,
+            graph_builder=subgraph_builder,
+            stop_event=self.stop_event,
+            redis_service=self.redis_service,
+        )
+        subgraph: CompiledStateGraph = builder.build()
+
+        self._graph_builder.add_node(node_data.node_name, subgraph)
+
+        default_next_node = node_data.default_next_node
+
+        async def condition(
+            state: State,
+            writer: StreamWriter,
+            _default_next_node: str | None = default_next_node,
+        ):
+            result_node = state["system_variables"]["nodes"][builder.node_name][
+                "result_node"
+            ]
+            return result_node or _default_next_node
+
+        self._graph_builder.add_conditional_edges(node_data.node_name, condition)
+
     def add_subgraph_node(
         self,
         subgraph_node_data: SubGraphNode,
@@ -234,6 +278,39 @@ class SessionGraphBuilder:
 
         schema = session_data.graph
 
+        if schema.task_node_list and self.agent_task_service is None:
+            raise RuntimeError(
+                f"Graph '{schema.name}' contains {len(schema.task_node_list)} task node(s) "
+                "but no agent_task_service was provided to SessionGraphBuilder."
+            )
+
+        for task_node_data in schema.task_node_list:
+            task_node = TaskNode(
+                session_id=self.session_id,
+                node_name=task_node_data.node_name,
+                stop_event=self.stop_event,
+                task_node_data=task_node_data,
+                agent_task_service=self.agent_task_service,
+                remembered_outputs_store=self.remembered_outputs_store,
+            )
+            self.add_node(task_node)
+
+        if schema.agent_node_list and self.agent_task_service is None:
+            raise RuntimeError(
+                f"Graph '{schema.name}' contains {len(schema.agent_node_list)} agent node(s) "
+                "but no agent_task_service was provided to SessionGraphBuilder."
+            )
+
+        for agent_node_data in schema.agent_node_list:
+            agent_node = AgentNode(
+                session_id=self.session_id,
+                node_name=agent_node_data.node_name,
+                stop_event=self.stop_event,
+                agent_node_data=agent_node_data,
+                agent_task_service=self.agent_task_service,
+            )
+            self.add_node(agent_node)
+
         for crew_node_data in schema.crew_node_list:
             crew_node = CrewNode(
                 session_id=self.session_id,
@@ -271,6 +348,9 @@ class SessionGraphBuilder:
                 input_map=file_extractor_node_data.input_map,
                 output_variable_path=file_extractor_node_data.output_variable_path,
                 stop_event=self.stop_event,
+                storage_allowed_paths=file_extractor_node_data.storage_allowed_paths,
+                storage_org_prefix=file_extractor_node_data.storage_org_prefix,
+                org_id=file_extractor_node_data.org_id,
             )
             self.add_node(file_extractor_node)
 
@@ -282,6 +362,9 @@ class SessionGraphBuilder:
                 input_map=audio_transcription_node_data.input_map,
                 output_variable_path=audio_transcription_node_data.output_variable_path,
                 stop_event=self.stop_event,
+                storage_allowed_paths=audio_transcription_node_data.storage_allowed_paths,
+                storage_org_prefix=audio_transcription_node_data.storage_org_prefix,
+                org_id=audio_transcription_node_data.org_id,
             )
             self.add_node(audio_transcription_node)
 
@@ -326,6 +409,8 @@ class SessionGraphBuilder:
             self.add_decision_table_node(
                 decision_table_node_data=decision_table_node_data
             )
+        for ct_node_data in schema.classification_decision_table_node_list:
+            self.add_classification_decision_table_node(node_data=ct_node_data)
 
         for subgraph_node_data in schema.subgraph_node_list:
             self.add_subgraph_node(

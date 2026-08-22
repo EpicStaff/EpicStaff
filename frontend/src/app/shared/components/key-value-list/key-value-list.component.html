@@ -31,7 +31,8 @@
             <button
                 type="button"
                 class="kv-list__action-btn kv-list__action-btn--confirm"
-                title="Save"
+                matTooltip="Save"
+                matTooltipPosition="above"
                 (click)="confirm()"
                 [disabled]="isDisabled() || !draftName().trim()"
             >
@@ -40,7 +41,8 @@
             <button
                 type="button"
                 class="kv-list__action-btn kv-list__action-btn--cancel"
-                title="Cancel"
+                matTooltip="Cancel"
+                matTooltipPosition="above"
                 (click)="cancelEdit()"
                 [disabled]="isDisabled()"
             >
@@ -50,7 +52,8 @@
             <button
                 type="button"
                 class="kv-list__action-btn kv-list__action-btn--add"
-                title="Add"
+                matTooltip="Add"
+                matTooltipPosition="above"
                 (click)="confirm()"
                 [disabled]="isDisabled() || !draftName().trim()"
             >
@@ -74,7 +77,8 @@
                     <button
                         type="button"
                         class="kv-list__remove-btn"
-                        title="Remove"
+                        matTooltip="Remove"
+                        matTooltipPosition="above"
                         (click)="removeCard(i); $event.stopPropagation()"
                         [disabled]="isDisabled()"
                     >

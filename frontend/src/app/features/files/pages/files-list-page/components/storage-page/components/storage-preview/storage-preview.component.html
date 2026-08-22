@@ -8,7 +8,8 @@
                 class="storage-preview__toggle-btn"
                 [class.storage-preview__toggle-btn--active]="showSidebar()"
                 (click)="toggleSidebar.emit()"
-                title="Toggle Folder Branches"
+                matTooltip="Toggle Folder Branches"
+                matTooltipPosition="right"
             >
                 <app-svg-icon
                     icon="expand-sidebar"
@@ -33,7 +34,7 @@
                 </div>
             }
         </div>
-        @if (item()) {
+        @if (item() && !readOnly()) {
             <app-button
                 class="storage-preview__add-to-flow"
                 type="outline-primary"
@@ -48,6 +49,8 @@
             <button
                 class="storage-preview__kebab"
                 aria-label="More actions"
+                matTooltip="More options"
+                matTooltipPosition="left"
                 (click)="onKebabClick($event)"
             >
                 <app-svg-icon
@@ -70,18 +73,21 @@
                 [style.top.px]="kebabMenuPosition().top"
             >
                 <button
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
                     class="storage-preview__context-menu-item"
                     (click)="onKebabMenuAction('download')"
                 >
                     Download
                 </button>
                 <button
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
                     class="storage-preview__context-menu-item"
                     (click)="onKebabMenuAction('copy')"
                 >
                     Copy to...
                 </button>
                 <button
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
                     class="storage-preview__context-menu-item"
                     (click)="onKebabMenuAction('rename')"
                 >
@@ -95,6 +101,7 @@
                 </button>
                 <div class="storage-preview__context-menu-divider"></div>
                 <button
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
                     class="storage-preview__context-menu-item"
                     (click)="onKebabMenuAction('delete')"
                 >
@@ -124,12 +131,14 @@
                 ></app-svg-icon>
                 <p>{{ previewError() }}</p>
                 <app-button
+                    *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
                     type="ghost"
                     (click)="onDownload()"
                     >Download file</app-button
                 >
             </div>
         } @else {
+<!--            // TODO check permissions in app-blob-preview -->
             <app-blob-preview
                 [blob]="previewBlob()"
                 [fileName]="item()!.name"

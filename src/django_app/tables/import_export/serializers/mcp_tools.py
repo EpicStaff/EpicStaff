@@ -6,4 +6,4 @@ from tables.models import McpTool
 class McpToolImportSerializer(serializers.ModelSerializer):
     class Meta:
         model = McpTool
-        fields = "__all__"
+        exclude = ["created_by", "auth_secret"]

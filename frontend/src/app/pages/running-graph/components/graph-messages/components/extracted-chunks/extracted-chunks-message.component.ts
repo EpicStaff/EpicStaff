@@ -8,6 +8,7 @@ import {
     ExtractedChunk,
     ExtractedChunksMessageData,
     GraphMessage,
+    MessageType,
 } from '../../../../models/graph-session-message.model';
 
 @Component({
@@ -24,7 +25,7 @@ export class ExtractedChunksMessageComponent {
     isExpanded = true;
 
     get data(): ExtractedChunksMessageData | null {
-        if (this.message?.message_data?.message_type === 'extracted_chunks') {
+        if (this.message?.message_data?.message_type === MessageType.EXTRACTED_CHUNKS) {
             return this.message.message_data as ExtractedChunksMessageData;
         }
         return null;

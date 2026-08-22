@@ -15,6 +15,7 @@ from .tag_models import *
 from .realtime_models import *
 from .mcp_models import *
 from .label_models import *
+from .secret_models import *
 from .rbac_models import (
     User,
     Organization,
@@ -25,3 +26,8 @@ from .rbac_models import (
     ApiKey,
 )
 from .default_models import DefaultModels
+from .flow_assistant_models import (
+    FlowAssistant,
+    FlowAssistantConversation,
+    FlowAssistantMessage,
+)

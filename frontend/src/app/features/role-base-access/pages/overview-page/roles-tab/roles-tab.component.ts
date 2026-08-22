@@ -2,11 +2,12 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-    AppSvgIconComponent,
     AppTableCellDirective,
     AppTableColumnDef,
     AppTableComponent,
+    AppTableRowAction,
     ConfirmationDialogService,
+    LoadingSpinnerComponent,
     SearchComponent,
     TableRow,
 } from '@shared/components';
@@ -21,7 +22,7 @@ import { RolesService } from '../../../services/admin/roles.service';
     templateUrl: './roles-tab.component.html',
     styleUrls: ['./roles-tab.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AppTableComponent, AppTableCellDirective, AppSvgIconComponent, SearchComponent],
+    imports: [AppTableComponent, AppTableCellDirective, SearchComponent, LoadingSpinnerComponent],
 })
 export class RolesTabComponent implements OnInit {
     private dialog = inject(Dialog);
@@ -31,7 +32,8 @@ export class RolesTabComponent implements OnInit {
     protected rolesService = inject(RolesService);
 
     readonly searchTerm = signal('');
-    readonly isLoading = signal(false);
+    readonly isLoading = signal(true);
+    readonly roles = this.rolesService.roles;
 
     ngOnInit(): void {
         this.isLoading.set(true);
@@ -41,11 +43,26 @@ export class RolesTabComponent implements OnInit {
             .subscribe({ complete: () => this.isLoading.set(false) });
     }
 
+    private readonly rowActions: AppTableRowAction[] = [
+        {
+            icon: 'eye',
+            tooltip: 'View role',
+            onClick: (row) => this.onViewRole(row),
+        },
+        {
+            icon: 'trash',
+            tooltip: 'Delete role',
+            variant: 'danger',
+            hidden: (row) => !!row['isBuiltIn'],
+            onClick: (row) => this.onDeleteRole(row),
+        },
+    ];
+
     readonly columns: AppTableColumnDef[] = [
-        { key: 'name', label: 'ROLE NAME', width: '1fr' },
-        { key: 'description', label: 'DESCRIPTION', width: '3fr' },
-        { key: 'members', label: 'MEMBERS', width: '1fr' },
-        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'center' },
+        { key: 'name', label: 'ROLE NAME', width: 'minmax(140px, 1fr)' },
+        { key: 'description', label: 'DESCRIPTION', width: 'minmax(200px, 3fr)' },
+        { key: 'members', label: 'MEMBERS', width: 'minmax(100px, 1fr)' },
+        { key: 'actions', label: 'ACTIONS', width: '130px', align: 'center', actions: this.rowActions },
     ];
 
     readonly tableData = computed<TableRow[]>(() =>
@@ -69,7 +86,7 @@ export class RolesTabComponent implements OnInit {
     });
 
     onViewRole(row: TableRow): void {
-        const role = this.rolesService.roles().find((r) => r.id === row['id']);
+        const role = this.roles().find((r) => r.id === row['id']);
         if (!role) return;
         this.dialog.open(RoleInfoDialogComponent, {
             width: 'calc(100vw - 2rem)',

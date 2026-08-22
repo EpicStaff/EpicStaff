@@ -1,3 +1,5 @@
+from django.db.models import Q
+
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.serializers.label import LabelImportSerializer
 from tables.import_export.id_mapper import IDMapper
@@ -33,16 +35,26 @@ class LabelStrategy(EntityImportExportStrategy):
             data, id_mapper, is_main, settings=settings, **kwargs
         )
 
-    def find_existing(self, data: dict, id_mapper: IDMapper):
+    def find_existing(self, data: dict, id_mapper: IDMapper, org_id: int = None):
         old_parent_id = data.get("parent")
         parent_id = (
             id_mapper.get_or_none(EntityType.LABEL, old_parent_id)
             if old_parent_id
             else None
         )
-        return Label.objects.filter(name=data["name"], parent_id=parent_id).first()
+        return (
+            Label.objects.filter(name=data["name"], parent_id=parent_id)
+            .filter(self.get_org_scope_q(org_id))
+            .first()
+        )
+
+    def get_org_scope_q(self, org_id: int) -> Q:
+        if org_id is None:
+            return Q()
+        return Q(org_id=org_id)
 
     def create_entity(self, data: dict, id_mapper: IDMapper, **kwargs) -> Label:
+        org_id = kwargs.get("org_id")
         old_parent_id = data.get("parent")
         parent_id = (
             id_mapper.get_or_none(EntityType.LABEL, old_parent_id)
@@ -52,6 +64,7 @@ class LabelStrategy(EntityImportExportStrategy):
         label, _ = Label.objects.get_or_create(
             name=data["name"],
             parent_id=parent_id,
+            org_id=org_id,
             defaults={"metadata": data.get("metadata") or {}},
         )
         return label

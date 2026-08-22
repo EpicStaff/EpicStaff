@@ -68,16 +68,25 @@ of caller and org. Cache-friendly.
 
 ```json
 {
-  "actions": ["CREATE", "READ", "UPDATE", "DELETE", "EXECUTE"],
+  "actions": [
+    { "code": "create", "label": "Create", "bit": 1 },
+    { "code": "read",   "label": "View",   "bit": 2 },
+    { "code": "update", "label": "Edit",   "bit": 4 },
+    { "code": "delete", "label": "Delete", "bit": 8 },
+    { "code": "export", "label": "Export", "bit": 16 }
+  ],
   "resource_types": [
-    { "group": "admin",     "key": "USERS",         "label": "Users",         "applicable_actions": ["CREATE", "READ", "UPDATE", "DELETE"] },
-    { "group": "admin",     "key": "ROLES",         "label": "Roles",         "applicable_actions": ["READ"] },
-    { "group": "admin",     "key": "ORGANIZATIONS", "label": "Organizations", "applicable_actions": ["READ", "UPDATE"] },
-    { "group": "workspace", "key": "PROJECTS",      "label": "Projects",      "applicable_actions": ["CREATE", "READ", "UPDATE", "DELETE"] },
-    { "group": "workspace", "key": "GRAPHS",        "label": "Graphs",        "applicable_actions": ["CREATE", "READ", "UPDATE", "DELETE", "EXECUTE"] },
-    { "group": "workspace", "key": "SESSIONS",      "label": "Sessions",      "applicable_actions": ["READ", "EXECUTE"] },
-    { "group": "config",    "key": "LLM_CONFIGS",   "label": "LLM configs",   "applicable_actions": ["CREATE", "READ", "UPDATE", "DELETE"] },
-    { "group": "config",    "key": "API_KEYS",      "label": "API keys",      "applicable_actions": ["CREATE", "READ", "DELETE"] }
+    { "code": "organizations",     "label": "Organizations",       "group": "admin",     "description": "Create, rename, deactivate organizations",       "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "users",             "label": "Users",               "group": "admin",     "description": "Add/remove members, assign roles within org",   "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "roles",             "label": "Roles",               "group": "admin",     "description": "Create/edit custom roles and assign to users",   "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "flows",             "label": "Flows",               "group": "workspace", "description": "Workflow definitions and their nodes",           "applicable_actions": ["create", "read", "update", "delete", "export"] },
+    { "code": "agents",            "label": "Agents",              "group": "workspace", "description": "AI agent configurations",                        "applicable_actions": ["create", "read", "update", "delete", "export"] },
+    { "code": "tools",             "label": "Tools",               "group": "workspace", "description": "Tool definitions and configurations",            "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "knowledge_sources", "label": "Knowledge Sources",   "group": "workspace", "description": "RAG collections and embeddings",                 "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "files",             "label": "Storage (Files)",     "group": "workspace", "description": "Files and folders in organization storage",      "applicable_actions": ["create", "read", "update", "delete", "export"] },
+    { "code": "projects",          "label": "Projects",            "group": "workspace", "description": "Organize AI agents and tasks",                   "applicable_actions": ["create", "read", "update", "delete", "export"] },
+    { "code": "llm_configs",       "label": "LLM Configs",         "group": "config",    "description": "LLM model configurations and settings",          "applicable_actions": ["create", "read", "update", "delete"] },
+    { "code": "secrets",           "label": "API Keys / Secrets",  "group": "config",    "description": "Provider API keys, credentials, sensitive config", "applicable_actions": ["create", "read", "update", "delete"] }
   ]
 }
 ```
@@ -382,3 +391,38 @@ Special cases handled outside this loop:
 | Header malformed on `/api/profile/` | `200` with both active fields `null` (soft-fail) | Same as above. |
 | Zero-membership user calls `/api/profile/` | `200` with `memberships: []` and both active fields `null` | Show "ask an admin to invite you" empty state. |
 | Superadmin sets header to any org (member or not) | `200` — superadmin bypasses membership check | No special handling. |
+
+---
+
+## Resource scoping coverage (EST-2423)
+
+Every workspace/config resource is now scoped to the active org and gated by its `resource_type`.
+Two patterns beyond plain org ownership:
+
+- **Hybrid (built-in + custom).** Custom **models** (`llm-models`, `embedding-models`,
+  `realtime-models`, `realtime-transcription-models` via `is_custom`) and **python-code tools**
+  (`python-code-tool` via `built_in`) show *built-ins to every org* + *that org's custom rows*.
+  Creating one through the API always makes it the org's custom row (never a global built-in).
+- **Global registry, superadmin-only writes.** `providers`, `ngrok-config`, the `default-*` config
+  singletons, and `voice-settings`/Twilio are readable by any member but writable only by a
+  superadmin (`voice-settings`/Twilio are superadmin for **read too** — they hold the platform
+  Twilio secret). Cross-org file `move`/`copy` is likewise superadmin-only.
+
+| Resource type | Endpoints (examples) | Member | Org Admin |
+|---|---|---|---|
+| FLOWS | graphs, nodes, sessions, **labels**, **webhook-triggers** | C R U | C R U D E |
+| AGENTS | agents, realtime-agents, **realtime-agent-chats** | C R U | C R U D E |
+| PROJECTS | crews, tasks | C R U | C R U D E |
+| TOOLS | python-code-tool(-configs/-fields), mcp-tools, python-code | C R U | C R U D |
+| KNOWLEDGE_SOURCES | source-collections, documents, naive-rag, graph-rag, indexing | **R** | C R U D |
+| LLM_CONFIGS | llm/embedding/realtime configs **and custom models** | **R** | C R U D |
+| FILES | storage | C R U E | C R U D E |
+
+**Cross-org references are rejected** like a non-existent pk (`400 Invalid pk … does not exist`): a
+write in org A cannot attach org B's tool (`tool_ids`), knowledge collection, rag, or LLM/embedding
+config.
+
+**Deprecated / deferred (not gated):** `/api/tools/`, `/api/tool-configs/`, `*-tags`,
+`template-agents`, `environment/config` (deprecating); `memory`, `realtime-session-items`,
+`python-code-result` (opaque runtime — pending a denormalized org); and the run/voice/trigger
+execution callbacks.

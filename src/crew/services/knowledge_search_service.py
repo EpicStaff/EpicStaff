@@ -86,6 +86,7 @@ class KnowledgeSearchService:
         crew_id: int | None = None,
         agent_id: int | None = None,
         stream_writer: Optional["StreamWriter"] = None,
+        rag_embedder_api_key: str | None = None,
     ):
         self.redis_service = redis_service
         self.session_id = session_id
@@ -94,6 +95,7 @@ class KnowledgeSearchService:
         self.agent_id = agent_id
         self.execution_order = execution_order
         self.writer = stream_writer
+        self.rag_embedder_api_key = rag_embedder_api_key
 
     def search_knowledges(
         self,
@@ -104,6 +106,7 @@ class KnowledgeSearchService:
         rag_search_config: Dict[str, Any],
         stop_event: Optional[StopEvent] = None,
         timeout: Optional[int] = None,
+        rag_embedder_api_key: str | None = None,
     ) -> list[str]:
         """
         Search knowledge using specified RAG implementation.
@@ -129,6 +132,7 @@ class KnowledgeSearchService:
 
         request = SearchRequest(rag_id=rag_id, query=query, search_config=search_config)
 
+        # TODO add api keys
         try:
             with KnowledgeClient() as client:
                 result = client.search(

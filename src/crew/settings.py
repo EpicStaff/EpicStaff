@@ -22,6 +22,16 @@ KNOWLEDGE_SEARCH_REQUEST_CHANNEL = os.getenv("KNOWLEDGE_SEARCH_REQUEST_CHANNEL")
 KNOWLEDGE_SEARCH_RESPONSE_CHANNEL = os.getenv("KNOWLEDGE_SEARCH_RESPONSE_CHANNEL")
 
 
+# EST-3285 4.2c: optional run-level token budget hard stop.
+# Global fallback used when a session does not carry a per-run override
+# (see GraphSessionManagerService.run_session / SessionData.initial_state
+# reserved key "__token_budget__"). None (default) means "no limit" —
+# the feature is fully inert unless TOKEN_BUDGET is set or a run explicitly
+# opts in, so existing runs are byte-for-byte unchanged.
+_raw_token_budget = os.environ.get("TOKEN_BUDGET")
+DEFAULT_TOKEN_BUDGET: int | None = int(_raw_token_budget) if _raw_token_budget else None
+
+
 PGVECTOR_MEMORY_CONFIG = {
     "provider": "local_mem0",
     "config": {"user_id": USER_ID, "run_id": SESSION_ID},

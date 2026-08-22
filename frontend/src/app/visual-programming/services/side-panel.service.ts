@@ -10,6 +10,7 @@ import { FlowService } from './flow.service';
 export class SidePanelService {
     private readonly selectedNodeIdSignal = signal<string | null>(null);
     private readonly autosaveTriggerSignal = signal<boolean>(false);
+    private readonly fullSaveRequestSignal = signal<number>(0);
 
     private readonly expandRequestSignal = signal<boolean>(false);
     public readonly expandRequest: Signal<boolean> = this.expandRequestSignal.asReadonly();
@@ -19,6 +20,9 @@ export class SidePanelService {
 
     private readonly graphSavedSubject = new Subject<void>();
     public readonly graphSaved$: Observable<void> = this.graphSavedSubject.asObservable();
+
+    private readonly reloadRequestedSubject = new Subject<void>();
+    public readonly reloadRequested$: Observable<void> = this.reloadRequestedSubject.asObservable();
 
     private readonly savingNodeIdSignal = signal<string | null>(null);
     public readonly savingNodeId: Signal<string | null> = this.savingNodeIdSignal.asReadonly();
@@ -34,6 +38,7 @@ export class SidePanelService {
     });
 
     public readonly autosaveTrigger: Signal<boolean> = this.autosaveTriggerSignal.asReadonly();
+    public readonly fullSaveRequest: Signal<number> = this.fullSaveRequestSignal.asReadonly();
 
     public requestExpand(): void {
         this.expandRequestSignal.set(true);
@@ -93,11 +98,19 @@ export class SidePanelService {
         this.graphSavedSubject.next();
     }
 
+    public requestReload(): void {
+        this.reloadRequestedSubject.next();
+    }
+
     public markNodeSaving(nodeId: string): void {
         this.savingNodeIdSignal.set(nodeId);
     }
 
     public clearNodeSaving(): void {
         this.savingNodeIdSignal.set(null);
+    }
+
+    public requestFullSave(): void {
+        this.fullSaveRequestSignal.update((v) => v + 1);
     }
 }

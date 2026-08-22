@@ -1,10 +1,15 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 
+from rest_framework.permissions import IsAuthenticated
+
+from tables.models import SourceCollection
+from tables.models.embedding_models import EmbeddingConfig
+from tables.models.llm_models import LLMConfig
 from tables.models.knowledge_models import GraphRag
+from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.serializers.graph_rag_serializers import (
     GraphRagSerializer,
     GraphRagCreateSerializer,
@@ -14,6 +19,10 @@ from tables.serializers.graph_rag_serializers import (
     GraphRagDocumentListSerializer,
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
+from tables.views.mixins import OrgScopedServiceViewSetMixin
+from tables.services.rbac.permissions import HasOrgPermission
+from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
+
 from tables.exceptions import (
     RagException,
     GraphRagNotFoundException,
@@ -26,7 +35,11 @@ from tables.exceptions import (
 )
 
 
-class GraphRagViewSet(viewsets.GenericViewSet):
+# ORM path from a GraphRag up to the owning collection's org.
+_GRAPH_RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
+
+
+class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
     """
     ViewSet for GraphRag operations.
 
@@ -41,6 +54,19 @@ class GraphRagViewSet(viewsets.GenericViewSet):
     - POST /graph-rag/{id}/documents/initialize/ - Re-add all docs from collection
     """
 
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.KNOWLEDGE_SOURCES
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "create_or_update": Permission.CREATE,
+        "get_by_collection": Permission.READ,
+        "update_index_config": Permission.UPDATE,
+        "remove_documents": Permission.UPDATE,
+        "delete_document": Permission.UPDATE,
+        "list_documents": Permission.READ,
+        "initialize_documents": Permission.UPDATE,
+    }
+
     queryset = GraphRag.objects.all()
     serializer_class = GraphRagSerializer
 
@@ -48,6 +74,9 @@ class GraphRagViewSet(viewsets.GenericViewSet):
         if getattr(self, "swagger_fake_view", False):
             return GraphRag.objects.none()
         return super().get_queryset()
+
+    def _assert_graph_rag_in_active_org(self, pk):
+        self.get_in_active_org_or_404(GraphRag, int(pk), _GRAPH_RAG_ORG_PATH)
 
     def get_serializer_class(self):
         if self.action == "create_or_update":
@@ -82,11 +111,17 @@ class GraphRagViewSet(viewsets.GenericViewSet):
         except (ValueError, TypeError):
             raise InvalidFieldType("collection_id", collection_id)
 
+        # The collection must live in the active org (404 otherwise).
+        self.get_in_active_org_or_404(SourceCollection, collection_id)
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         embedder_id = serializer.validated_data["embedder_id"]
         llm_id = serializer.validated_data["llm_id"]
+        # Referenced configs must belong to the active org (404 like a missing pk).
+        self.get_in_active_org_or_404(EmbeddingConfig, embedder_id)
+        self.get_in_active_org_or_404(LLMConfig, llm_id)
 
         try:
             graph_rag = GraphRagService.create_or_update_graph_rag(
@@ -135,6 +170,8 @@ class GraphRagViewSet(viewsets.GenericViewSet):
         except (ValueError, TypeError):
             raise InvalidFieldType("collection_id", collection_id)
 
+        self.get_in_active_org_or_404(SourceCollection, collection_id)
+
         try:
             graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(
                 collection_id
@@ -161,6 +198,7 @@ class GraphRagViewSet(viewsets.GenericViewSet):
 
         URL: GET /graph-rag/{id}/
         """
+        self._assert_graph_rag_in_active_org(pk)
         try:
             graph_rag = GraphRagService.get_graph_rag(int(pk))
 
@@ -181,6 +219,7 @@ class GraphRagViewSet(viewsets.GenericViewSet):
 
         URL: DELETE /graph-rag/{id}/
         """
+        self._assert_graph_rag_in_active_org(pk)
         try:
             result = GraphRagService.delete_graph_rag(int(pk))
 
@@ -216,6 +255,7 @@ class GraphRagViewSet(viewsets.GenericViewSet):
             "max_cluster_size": 10
         }
         """
+        self._assert_graph_rag_in_active_org(pk)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -259,6 +299,7 @@ class GraphRagViewSet(viewsets.GenericViewSet):
             "document_ids": [1, 2, 3]
         }
         """
+        self._assert_graph_rag_in_active_org(pk)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -299,6 +340,7 @@ class GraphRagViewSet(viewsets.GenericViewSet):
 
         URL: DELETE /graph-rag/{id}/documents/{document_id}/
         """
+        self._assert_graph_rag_in_active_org(pk)
         try:
             result = GraphRagService.delete_document(
                 graph_rag_id=int(pk),
@@ -330,6 +372,7 @@ class GraphRagViewSet(viewsets.GenericViewSet):
 
         URL: GET /graph-rag/{id}/documents/list/
         """
+        self._assert_graph_rag_in_active_org(pk)
         try:
             documents = GraphRagService.get_documents_for_graph_rag(int(pk))
             serializer = GraphRagDocumentListSerializer(documents, many=True)
@@ -348,16 +391,12 @@ class GraphRagViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @swagger_auto_schema(
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={},
-            description="No body required - send empty JSON object {}",
-        ),
+    @extend_schema(
+        request=None,
         responses={
-            200: "All documents initialized",
-            404: "GraphRag not found",
-            500: "Internal server error",
+            200: OpenApiResponse(description="All documents initialized"),
+            404: OpenApiResponse(description="GraphRag not found"),
+            500: OpenApiResponse(description="Internal server error"),
         },
     )
     def initialize_documents(self, request, pk=None):
@@ -367,6 +406,7 @@ class GraphRagViewSet(viewsets.GenericViewSet):
 
         URL: POST /graph-rag/{id}/documents/initialize/
         """
+        self._assert_graph_rag_in_active_org(pk)
         try:
             result = GraphRagService.init_documents_from_collection(int(pk))
 

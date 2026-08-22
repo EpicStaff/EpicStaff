@@ -12,6 +12,7 @@ import {
     Output,
     SimpleChanges,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { getProviderIconPath } from '@shared/utils';
 
@@ -27,7 +28,7 @@ interface SectionStates {
 
 @Component({
     selector: 'app-staff-agent-card',
-    imports: [CommonModule, AppSvgIconComponent],
+    imports: [CommonModule, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './staff-agent-card.component.html',
     styleUrls: ['./staff-agent-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -155,11 +156,6 @@ export class StaffAgentCardComponent implements OnInit, OnChanges {
     }
 
     public getToolDisplayName(tool: { configName: string; toolName: string; type: string }): string {
-        // For tool-config type, show the config name if it's different from tool name
-        if (tool.type === 'tool-config' && tool.configName !== tool.toolName) {
-            return `${tool.configName} (${tool.toolName})`;
-        }
-        // For python-tool type or when config name equals tool name, just show the name
         return tool.configName;
     }
 
@@ -192,14 +188,9 @@ export class StaffAgentCardComponent implements OnInit, OnChanges {
             return 'No tools';
         }
 
-        const toolConfigs = this.agent.mergedTools.filter((t) => t.type === 'tool-config').length;
         const pythonTools = this.agent.mergedTools.filter((t) => t.type === 'python-tool').length;
 
-        if (toolConfigs > 0 && pythonTools > 0) {
-            return `${toolConfigs} configured tools, ${pythonTools} Python tools`;
-        } else if (toolConfigs > 0) {
-            return `${toolConfigs} configured tools`;
-        } else if (pythonTools > 0) {
+        if (pythonTools > 0) {
             return `${pythonTools} Python tools`;
         }
 

@@ -6,6 +6,7 @@ from settings import UnitOfWork
 from utils.singleton_meta import SingletonMeta
 from src.shared.models import BaseRagSearchConfig
 from services.cancellation_token import CancellationToken
+from services.credential_mapper import RagCredentials
 
 
 class CollectionProcessorService(metaclass=SingletonMeta):
@@ -17,9 +18,17 @@ class CollectionProcessorService(metaclass=SingletonMeta):
     def _get_strategy(self, rag_type: str) -> BaseRAGStrategy:
         return RAGStrategyFactory.get_strategy(rag_type)
 
-    def process_rag_indexing(self, rag_id: int, rag_type: str):
+    def process_rag_indexing(
+        self,
+        *,
+        rag_id: int,
+        rag_type: str,
+        credentials: RagCredentials | None = None,
+    ):
         strategy = self._get_strategy(rag_type)
-        strategy.process_rag_indexing(rag_id=rag_id)
+        strategy.process_rag_indexing(
+            rag_id=rag_id, credentials=credentials or RagCredentials()
+        )
 
     def process_preview_chunking(
         self,
@@ -58,6 +67,7 @@ class CollectionProcessorService(metaclass=SingletonMeta):
         uuid: str,
         query: str,
         rag_search_config: BaseRagSearchConfig,
+        credentials: RagCredentials | None = None,
     ):
         strategy = self._get_strategy(rag_type)
         return strategy.search(
@@ -66,4 +76,5 @@ class CollectionProcessorService(metaclass=SingletonMeta):
             uuid=uuid,
             query=query,
             rag_search_config=rag_search_config,
+            credentials=credentials or RagCredentials(),
         )

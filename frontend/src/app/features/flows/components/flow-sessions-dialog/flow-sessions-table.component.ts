@@ -11,27 +11,42 @@ import {
     signal,
     SimpleChanges,
 } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
-import { CheckboxComponent, IconButtonComponent, LoadingSpinnerComponent } from '@shared/components';
+import {
+    AppSvgIconComponent,
+    CheckboxComponent,
+    IconButtonComponent,
+    LoadingSpinnerComponent,
+} from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { GraphDto } from '../../models/graph.model';
 import {
     DurationFilter,
     GraphSessionLight,
     GraphSessionStatus,
     isTerminalSessionStatus,
+    SessionTrigger,
+    TriggerType,
 } from '../../services/flows-sessions.service';
+import { DatePickerDropdownComponent } from './date-picker-dropdown.component';
 import { DurationFilterDropdownComponent } from './duration-filter-dropdown.component';
 import { FlowNameFilterDropdownComponent } from './flow-name-filter-dropdown.component';
 import { FlowSessionStatusBadgeComponent } from './flow-session-status-badge.component';
 import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-filter-dropdown.component';
+import { getTriggerDisplay, TriggerDisplay } from './trigger-display.constants';
+import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.component';
 @Component({
     selector: 'app-flow-sessions-table',
     standalone: true,
     imports: [
         CommonModule,
         CheckboxComponent,
+        AppSvgIconComponent,
         FlowSessionStatusBadgeComponent,
         LoadingSpinnerComponent,
         IconButtonComponent,
@@ -39,13 +54,23 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
         FlowSessionStatusFilterDropdownComponent,
         FlowNameFilterDropdownComponent,
         DurationFilterDropdownComponent,
+        HasPermissionDirective,
+        MatTooltipModule,
+        DatePickerDropdownComponent,
+        TriggerFilterDropdownComponent,
     ],
     template: `
-        <div class="sessions-table-wrapper">
+        <div
+            class="sessions-table-wrapper"
+            [class.has-flow-name]="showFlowName"
+        >
             <table>
                 <thead>
                     <tr>
-                        <th>
+                        <th
+                            class="col-select"
+                            *appHasPermission="[ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]]"
+                        >
                             <app-checkbox
                                 [checked]="areAllSelected()"
                                 [disabled]="isLoading || sessions.length === 0"
@@ -53,31 +78,43 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 id="select-all-checkbox"
                             ></app-checkbox>
                         </th>
-                        <th>ID</th>
-                        <th>
+                        <th class="col-id">ID</th>
+                        <th class="col-status">
                             <app-flow-session-status-filter-dropdown
                                 [value]="statusFilter"
                                 (valueChange)="statusFilterChange.emit($event)"
                             >
                             </app-flow-session-status-filter-dropdown>
                         </th>
-                        <th *ngIf="showFlowName">
+                        <th
+                            class="col-flow"
+                            *ngIf="showFlowName"
+                        >
                             <app-flow-name-filter-dropdown
                                 [flows]="flows"
                                 [value]="flowNameFilter"
                                 (valueChange)="flowNameFilterChange.emit($event)"
                             ></app-flow-name-filter-dropdown>
                         </th>
-                        <th
-                            [class.sortable]="sortable"
-                            (click)="sortable && toggleSort()"
-                        >
-                            Created At
-                            @if (sortable) {
-                                <span class="sort-icon">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                        <th class="col-trigger">
+                            <app-trigger-filter-dropdown
+                                [value]="trigger"
+                                (valueChange)="triggerFilterChange.emit($event)"
+                            ></app-trigger-filter-dropdown>
+                        </th>
+                        <th class="col-created">
+                            @if (showDateFilter) {
+                                <app-created-at-filter-dropdown
+                                    [value]="dateFilter"
+                                    (valueChange)="dateFilterChange.emit($event)"
+                                >
+                                    Created At
+                                </app-created-at-filter-dropdown>
+                            } @else {
+                                Created At
                             }
                         </th>
-                        <th>
+                        <th class="col-duration">
                             @if (showDuration) {
                                 <app-duration-filter-dropdown
                                     [value]="durationFilter"
@@ -87,19 +124,14 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 Finished At
                             }
                         </th>
-                        <th
-                            style="text-align: center"
-                            class="actions"
-                        >
-                            Actions
-                        </th>
+                        <th class="col-actions actions">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     @if (isLoading) {
                         <tr>
                             <td
-                                [attr.colspan]="showFlowName ? 7 : 6"
+                                [attr.colspan]="colspan"
                                 style="text-align: center; padding: 40px;"
                             >
                                 <app-loading-spinner
@@ -111,7 +143,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                     } @else if (showEmptyState) {
                         <tr>
                             <td
-                                [attr.colspan]="showFlowName ? 7 : 6"
+                                [attr.colspan]="colspan"
                                 style="text-align: center; padding: 40px;"
                             >
                                 <div class="no-sessions-message">
@@ -123,40 +155,58 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                     } @else {
                         <ng-container *ngFor="let session of sessions; trackBy: trackById">
                             <tr [class.row-expanded]="!externalPreview && expandedSessionId() === session.id">
-                                <td>
+                                <td
+                                    class="col-select"
+                                    *appHasPermission="[ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]]"
+                                >
                                     <app-checkbox
                                         [checked]="isSelected(session.id)"
                                         (changed)="toggleSelection(session.id, $event)"
                                         [id]="'session-checkbox-' + session.id"
                                     ></app-checkbox>
                                 </td>
-                                <td>{{ session.id }}</td>
-                                <td>
+                                <td class="col-id">{{ session.id }}</td>
+                                <td class="col-status">
                                     <app-flow-session-status-badge
                                         [status]="session.status"
                                     ></app-flow-session-status-badge>
                                 </td>
                                 <td
                                     *ngIf="showFlowName"
-                                    class="flow-link-td"
+                                    class="col-flow flow-link-td"
                                 >
                                     <a
                                         class="flow-link"
                                         (click)="navigateToFlow(session.graph_id)"
                                     >
-                                        {{ session.graph_name }}
+                                        <app-svg-icon
+                                            icon="flow"
+                                            size="14px"
+                                            class="flow-link-icon"
+                                        ></app-svg-icon>
+                                        <span class="flow-link-name">{{ session.graph_name }}</span>
                                     </a>
                                 </td>
-
-                                <td>{{ session.created_at | date: 'medium' }}</td>
-                                <td>
+                                <td class="col-trigger">
+                                    <span
+                                        class="trigger-chip"
+                                        [style.--trigger-color]="getTriggerChip(session.trigger).color"
+                                    >
+                                        @if (getTriggerChip(session.trigger).icon) {
+                                            <i [class]="getTriggerChip(session.trigger).icon"></i>
+                                        }
+                                        <span>{{ getTriggerChip(session.trigger).label }}</span>
+                                    </span>
+                                </td>
+                                <td class="col-created">{{ session.created_at | date: 'medium' }}</td>
+                                <td class="col-duration">
                                     @if (showDuration) {
                                         {{ getDuration(session) }}
                                     } @else {
                                         {{ session.finished_at ? (session.finished_at | date: 'medium') : 'Active' }}
                                     }
                                 </td>
-                                <td>
+                                <td class="col-actions">
                                     <div class="actions-container">
                                         <button
                                             class="view-btn"
@@ -165,28 +215,43 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                         >
                                             {{ expandedSessionId() === session.id ? 'Hide' : 'Preview' }}
                                         </button>
-                                        <img
-                                            src="assets/icons/ui/session-arrow.svg"
-                                            alt="arrow-icon"
-                                            class="arrow-icon"
+                                        <button
+                                            type="button"
+                                            class="icon-img-btn"
+                                            matTooltip="View session"
+                                            matTooltipPosition="above"
                                             (click)="viewSession.emit(session.id)"
-                                        />
-                                        <img
-                                            src="assets/icons/ui/stop-session.svg"
-                                            alt="arrow-icon"
+                                        >
+                                            <img
+                                                src="assets/icons/ui/session-arrow.svg"
+                                                alt="arrow-icon"
+                                                class="arrow-icon"
+                                            />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="icon-img-btn"
                                             *ngIf="canStop(session.status)"
+                                            matTooltip="Stop session"
+                                            matTooltipPosition="above"
                                             (click)="stopSession.emit(session.id)"
-                                            title="Stop session"
-                                            style="margin-left: 8px;"
-                                            class="arrow-icon"
-                                        />
-                                        <app-icon-button
-                                            *ngIf="!canStop(session.status)"
-                                            icon="x"
-                                            size="1.5rem"
-                                            ariaLabel="Delete session"
-                                            (onClick)="deleteSelected.emit([session.id])"
-                                        ></app-icon-button>
+                                        >
+                                            <img
+                                                src="assets/icons/ui/stop-session.svg"
+                                                alt="arrow-icon"
+                                                class="arrow-icon"
+                                            />
+                                        </button>
+                                        <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Delete]">
+                                            <app-icon-button
+                                                *ngIf="!canStop(session.status)"
+                                                icon="x"
+                                                size="1.5rem"
+                                                ariaLabel="Delete session"
+                                                tooltip="Delete session"
+                                                (onClick)="deleteSelected.emit([session.id])"
+                                            ></app-icon-button>
+                                        </ng-container>
                                     </div>
                                 </td>
                             </tr>
@@ -196,7 +261,7 @@ import { FlowSessionStatusFilterDropdownComponent } from './flow-session-status-
                                 class="preview-row"
                             >
                                 <td
-                                    [attr.colspan]="showFlowName ? 7 : 6"
+                                    [attr.colspan]="colspan"
                                     class="preview-cell"
                                 >
                                     <div class="preview-content">
@@ -230,21 +295,26 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     @Input() selectedIds: Set<number> = new Set();
     @Input() flows: { id: number; name: string }[] = [];
-    @Input() flowNameFilter: string | null = null;
+    @Input() flowNameFilter: string[] = [];
+    @Input() trigger: TriggerType[] = [];
     @Input() durationFilter: DurationFilter | null = null;
 
     @Input() externalPreview: boolean = false;
     @Input() activePreviewId: number | null = null;
+    @Input() showDateFilter: boolean = false;
+    @Input() dateFilter: DateRangeFilter | null = null;
 
     @Output() deleteSelected = new EventEmitter<number[]>();
     @Output() viewSession = new EventEmitter<number>();
     @Output() stopSession = new EventEmitter<number>();
     @Output() sortChange = new EventEmitter<'asc' | 'desc'>();
     @Output() statusFilterChange = new EventEmitter<string[]>();
-    @Output() flowNameFilterChange = new EventEmitter<string | null>();
+    @Output() flowNameFilterChange = new EventEmitter<string[]>();
+    @Output() triggerFilterChange = new EventEmitter<TriggerType[]>();
     @Output() durationFilterChange = new EventEmitter<DurationFilter | null>();
     @Output() selectedIdsChange = new EventEmitter<Set<number>>();
     @Output() previewSession = new EventEmitter<number | null>();
+    @Output() dateFilterChange = new EventEmitter<DateRangeFilter | null>();
 
     public expandedSessionId = signal<number | null>(null);
 
@@ -254,8 +324,14 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     constructor(
         private readonly cdr: ChangeDetectorRef,
-        private router: Router
+        private router: Router,
+        private perms: PermissionsService
     ) {}
+
+    public get colspan(): number {
+        const canSelect = this.perms.canAny(ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]);
+        return 6 + (this.showFlowName ? 1 : 0) + (canSelect ? 1 : 0);
+    }
 
     public ngOnChanges(changes: SimpleChanges): void {
         if (changes['sessions'] || changes['showDuration']) {
@@ -347,4 +423,12 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
         if (minutes > 0) return `${minutes}m ${seconds}s`;
         return `${seconds}s`;
     }
+
+    public getTriggerChip(trigger: SessionTrigger | null): TriggerDisplay {
+        if (!trigger) return { label: 'Unknown', icon: null, color: null };
+        return getTriggerDisplay(trigger.trigger_type);
+    }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

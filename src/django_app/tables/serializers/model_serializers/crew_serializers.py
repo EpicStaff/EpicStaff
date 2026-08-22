@@ -11,13 +11,11 @@ from tables.exceptions import (
 )
 from tables.models.crew_models import (
     Agent,
-    AgentConfiguredTools,
     AgentMcpTools,
     AgentPythonCodeToolConfigs,
     AgentPythonCodeTools,
     Crew,
     Task,
-    TaskConfiguredTools,
     TaskContext,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
@@ -31,6 +29,12 @@ from tables.models.embedding_models import EmbeddingConfig
 from tables.models.llm_models import LLMConfig
 from tables.models.python_models import PythonCodeTool, PythonCodeToolConfig
 from tables.models.realtime_models import RealtimeAgent
+from tables.models import SourceCollection
+from tables.models.knowledge_models import NaiveRag, GraphRag
+from tables.serializers.org_scoped_fields import (
+    OrgScopedPrimaryKeyRelatedField,
+    resolve_active_org_id,
+)
 from tables.serializers.knowledge_serializers import (
     NestedSearchConfigSerializer,
     RagInputSerializer,
@@ -54,21 +58,6 @@ class ToolConfigFieldSerializer(serializers.ModelSerializer):
     class Meta:
         model = ToolConfigField
         fields = ["name", "description", "data_type", "required"]
-
-
-class ToolSerializer(serializers.ModelSerializer):
-    tool_fields = ToolConfigFieldSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = Tool
-        fields = ["id", "name", "name_alias", "description", "enabled", "tool_fields"]
-        read_only_fields = [
-            "id",
-            "name",
-            "name_alias",
-            "description",
-            "tool_fields",
-        ]
 
 
 class ToolConfigSerializer(serializers.ModelSerializer):
@@ -166,6 +155,12 @@ class ToolConfigSerializer(serializers.ModelSerializer):
 
 
 class AgentReadSerializer(serializers.ModelSerializer):
+    """
+    DEPRECATED: AgentReadSerializer is deprecated. Use agents.AgentDefinition
+    serializers + AgentNode instead. Exists only for backward compatibility
+    with existing Agent rows.
+    """
+
     tools = serializers.SerializerMethodField()
     realtime_agent = RealtimeAgentSerializer(read_only=True)
     rag = serializers.SerializerMethodField()
@@ -224,27 +219,6 @@ class AgentReadSerializer(serializers.ModelSerializer):
             ).select_related("tool__python_code"):
                 tools.append(BaseToolSerializer(tool).data)
 
-        if hasattr(agent, "prefetched_configured_tools"):
-            for link in agent.prefetched_configured_tools:
-                tools.append(BaseToolSerializer(link.toolconfig).data)
-        else:
-            for tool in (
-                ToolConfig.objects.filter(
-                    id__in=AgentConfiguredTools.objects.filter(
-                        agent_id=agent.id
-                    ).values_list("toolconfig_id", flat=True)
-                )
-                .select_related("tool")
-                .prefetch_related(
-                    Prefetch(
-                        "tool__tool_fields",
-                        queryset=ToolConfigField.objects.all(),
-                        to_attr="prefetched_config_fields",
-                    )
-                )
-            ):
-                tools.append(BaseToolSerializer(tool).data)
-
         if hasattr(agent, "prefetched_mcp_tools"):
             for link in agent.prefetched_mcp_tools:
                 tools.append(BaseToolSerializer(link.mcptool).data)
@@ -270,16 +244,53 @@ class AgentReadSerializer(serializers.ModelSerializer):
 
 
 class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
+    """
+    DEPRECATED: AgentWriteSerializer is deprecated. Use agents.AgentDefinition
+    serializers + AgentNode instead. Exists only for backward compatibility
+    with existing Agent rows.
+    """
+
     tool_ids = serializers.ListField(
         child=serializers.CharField(),
         required=False,
     )
     realtime_agent = RealtimeAgentSerializer(required=False)
-    llm_config = serializers.PrimaryKeyRelatedField(
+    llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(), required=False, allow_null=True
+    )
+    fcm_llm_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=LLMConfig.objects.all(), required=False, allow_null=True
+    )
+    knowledge_collection = OrgScopedPrimaryKeyRelatedField(
+        queryset=SourceCollection.objects.all(), required=False, allow_null=True
     )
     rag = RagInputSerializer(required=False, allow_null=True)
     search_configs = NestedSearchConfigSerializer(required=False, allow_null=True)
+
+    # ORM path from a rag (naive/graph) up to its owning collection's org.
+    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
+    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
+
+    def _assert_rag_in_active_org(self, rag_data):
+        """A rag may only be assigned if it belongs to the active org (via its
+        collection). Rejected like a non-existent pk — no existence leak."""
+        request = self.context.get("request")
+        if request is None or not rag_data:
+            return
+        model = self._RAG_MODELS.get(rag_data["rag_type"])
+        org_id = resolve_active_org_id(request)
+        in_org = (
+            model is not None
+            and model.objects.filter(
+                pk=rag_data["rag_id"], **{self._RAG_ORG_PATH: org_id}
+            ).exists()
+        )
+        if not in_org:
+            raise serializers.ValidationError(
+                {
+                    "rag": f'Invalid pk "{rag_data.get("rag_id")}" - object does not exist.'
+                }
+            )
 
     class Meta:
         model = Agent
@@ -309,7 +320,6 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
     def _get_tools_models_map(self) -> dict[type[Model], tuple[type[Model], str, str]]:
         return {
-            ToolConfig: (AgentConfiguredTools, "configured-tool", "toolconfig_id"),
             PythonCodeTool: (
                 AgentPythonCodeTools,
                 "python-code-tool",
@@ -336,6 +346,8 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"rag": "This field is required when knowledge_collection is provided"}
             )
+
+        self._assert_rag_in_active_org(rag_data)
 
         agent: Agent = super().create(validated_data)
 
@@ -390,6 +402,8 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
                         }
                     )
 
+        self._assert_rag_in_active_org(rag_data)
+
         instance = super().update(instance, validated_data)
 
         self._sync_tools(instance, "agent_id", tool_ids)
@@ -417,18 +431,11 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
         return instance
 
 
-class TemplateAgentSerializer(serializers.ModelSerializer):
-    configured_tools = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=ToolConfig.objects.all()
-    )
-
-    class Meta:
-        model = TemplateAgent
-        fields = "__all__"
-
-
 class TaskContextListField(serializers.Field):
     """
+    DEPRECATED: TaskContextListField is deprecated. Use AgentNodeTask.context_tasks
+    instead. Exists only for backward compatibility with existing Task rows.
+
     Custom field to handle task context list as integers.
     """
 
@@ -488,7 +495,7 @@ class TaskContextListField(serializers.Field):
             )
 
         # context tasks existing
-        context_tasks = Task.objects.filter(id__in=context_ids)
+        context_tasks = Task.objects.filter(id__in=context_ids, crew_id=crew_id)
         if context_tasks.count() != len(context_ids):
             existing_ids = set(context_tasks.values_list("id", flat=True))
             missing_ids = set(context_ids) - existing_ids
@@ -516,6 +523,12 @@ class TaskContextListField(serializers.Field):
 
 
 class TaskReadSerializer(serializers.ModelSerializer):
+    """
+    DEPRECATED: TaskReadSerializer is deprecated. Use TaskNode/AgentNodeTask
+    serializers instead. Exists only for backward compatibility with existing
+    Task rows.
+    """
+
     task_context_list = TaskContextListField(read_only=True)
     tools = serializers.SerializerMethodField()
 
@@ -525,7 +538,6 @@ class TaskReadSerializer(serializers.ModelSerializer):
 
     def get_tools(self, task: Task) -> list[dict]:
         all_task_tools = chain(
-            task.task_configured_tool_list.all(),
             task.task_python_code_tool_list.all(),
             task.task_python_code_tool_config_list.all(),
             task.task_mcp_tool_list.all(),
@@ -534,10 +546,24 @@ class TaskReadSerializer(serializers.ModelSerializer):
 
 
 class TaskWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
+    """
+    DEPRECATED: TaskWriteSerializer is deprecated. Use TaskNode/AgentNodeTask
+    serializers instead. Exists only for backward compatibility with existing
+    Task rows.
+    """
+
     task_context_list = TaskContextListField(required=False)
     tool_ids = serializers.ListField(
         child=serializers.CharField(),
         required=False,
+    )
+    # Org isolation: a task may only reference an agent/crew from the caller's
+    # active org (covers both create and update).
+    agent = OrgScopedPrimaryKeyRelatedField(
+        queryset=Agent.objects.all(), required=False, allow_null=True
+    )
+    crew = OrgScopedPrimaryKeyRelatedField(
+        queryset=Crew.objects.all(), required=False, allow_null=True
     )
 
     class Meta:
@@ -623,7 +649,6 @@ class TaskWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
     def _get_tools_models_map(self) -> dict[type[Model], tuple[type[Model], str, str]]:
         return {
-            ToolConfig: (TaskConfiguredTools, "configured-tool", "tool_id"),
             PythonCodeTool: (TaskPythonCodeTools, "python-code-tool", "tool_id"),
             PythonCodeToolConfig: (
                 TaskPythonCodeToolConfigs,
@@ -647,25 +672,37 @@ class TaskWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
 
 
 class CrewSerializer(serializers.ModelSerializer):
+    """
+    DEPRECATED: CrewSerializer is deprecated. Use the new Agent/Task graph node
+    serializers (AgentNode, TaskNode) instead. Exists only for backward
+    compatibility with existing Crew rows.
+    """
+
     tasks = serializers.PrimaryKeyRelatedField(
         many=True, read_only=True, source="task_set"
     )
-    manager_llm_config = serializers.PrimaryKeyRelatedField(
+    manager_llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(),
         required=False,
         allow_null=True,
     )
-    embedding_config = serializers.PrimaryKeyRelatedField(
+    embedding_config = OrgScopedPrimaryKeyRelatedField(
         queryset=EmbeddingConfig.objects.all(),
         required=False,
         allow_null=True,
     )
-    memory_llm_config = serializers.PrimaryKeyRelatedField(
+    memory_llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(),
         required=False,
         allow_null=True,
     )
-    agents = serializers.PrimaryKeyRelatedField(
+    planning_llm_config = OrgScopedPrimaryKeyRelatedField(
+        queryset=LLMConfig.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    # Org isolation: only agents from the caller's active org are assignable.
+    agents = OrgScopedPrimaryKeyRelatedField(
         queryset=Agent.objects.all(),
         many=True,
         required=False,
@@ -675,3 +712,4 @@ class CrewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Crew
         fields = "__all__"
+        read_only_fields = ["org", "created_by"]

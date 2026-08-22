@@ -21,16 +21,18 @@ from django_app.settings import (
     REQUEST_WEBHOOK_UPDATE_CHANNEL,
 )
 from tables.models import (
-    GraphOrganization,
     GraphSessionMessage,
-    PythonCodeResult,
     Session,
     SessionStorageFile,
     StorageFile,
 )
+from tables.models.session_models import SessionTrigger
+from tables.services.run_python_code_service import RunPythonCodeService
+from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.services.schedule_trigger_service import ScheduleTriggerService
+from tables.services.trigger_spec import TriggerSpec
 from src.shared.models import (
     CodeResultData,
     GraphSessionMessageData,
@@ -45,6 +47,7 @@ class RedisPubSub:
         self.buffers = {GRAPH_MESSAGES_CHANNEL: deque(maxlen=1000)}
         self.redis_client = self._create_redis_client()
         self.pubsub = self.redis_client.pubsub()
+        self.persistent_variables_service = PersistentVariablesService()
 
     @staticmethod
     def _create_redis_client() -> redis.Redis:
@@ -82,7 +85,7 @@ class RedisPubSub:
 
     def session_status_handler(self, message: dict):
         try:
-            logger.debug(f"Received message from session_status_handler: {message}")
+            logger.debug("Received message from session_status_handler: {}", message)
             data = json.loads(message["data"])
             close_old_connections()
             with transaction.atomic():
@@ -104,13 +107,18 @@ class RedisPubSub:
                     session.status = data["status"]
                     session.status_data = status_data
                     session.token_usage = status_data["total_token_usage"]
-                    session.save()
+                    session.save(force_update=True)
 
                     if session.status in [
                         Session.SessionStatus.END,
                         Session.SessionStatus.ERROR,
                     ]:
-                        self._save_organization_variables(session=session, data=data)
+                        self.persistent_variables_service.persist_session_results(
+                            session=session,
+                            final_variables=data.get("status_data", {}).get(
+                                "variables"
+                            ),
+                        )
                         self._save_session_storage_files(session=session)
 
         except Exception as e:
@@ -118,17 +126,19 @@ class RedisPubSub:
 
     def code_results_handler(self, message: dict):
         try:
-            logger.debug(f"Received message from code_result_handler: {message}")
-            data = json.loads(message["data"])
-            CodeResultData.model_validate(data)
+            logger.debug("Received message from code_result_handler: {}", message)
+            result = CodeResultData.model_validate_json(message["data"])
             close_old_connections()
-            PythonCodeResult.objects.create(**data)
+            if not RunPythonCodeService().save_execution_result(result):
+                logger.debug(
+                    f"No pending execution for {result.execution_id}, skipping"
+                )
         except Exception as e:
             logger.error(f"Error handling code_results message: {e}")
 
     def storage_mutations_handler(self, message: dict):
         try:
-            logger.debug(f"Received storage mutation event: {message}")
+            logger.debug("Received storage mutation event: {}", message)
             data = json.loads(message["data"])
             event = StorageMutationEvent.model_validate(data)
 
@@ -178,7 +188,7 @@ class RedisPubSub:
 
     def webhook_events_handler(self, message: dict):
         try:
-            logger.debug(f"Received webhook event: {message}")
+            logger.debug("Received webhook event: {}", message)
             data = WebhookEventData.model_validate_json(message["data"])
             if data.path.startswith(TELEGRAM_TRIGGER_PREFIX):
                 TelegramTriggerService().handle_telegram_trigger(
@@ -205,45 +215,6 @@ class RedisPubSub:
             logger.error(
                 f"Error updating webhook with current webhook configurations {e}"
             )
-
-    def _save_organization_variables(self, session: Session, data: dict):
-        """
-        Save organization and organization_user variables to database.
-        Only updates values that exist in the persistent_variables structure.
-        """
-        try:
-            variables = data.get("status_data", {}).get("variables")
-            if not variables:
-                return
-
-            graph_organization = GraphOrganization.objects.filter(
-                graph=session.graph
-            ).first()
-            if graph_organization and graph_organization.persistent_variables:
-                if self._update_persistent_values(
-                    graph_organization.persistent_variables, variables
-                ):
-                    graph_organization.save(update_fields=["persistent_variables"])
-
-            if (
-                session.graph_user
-                and graph_organization
-                and graph_organization.user_variables
-                and not session.graph_user.persistent_variables
-            ):
-                session.graph_user.persistent_variables = (
-                    graph_organization.user_variables
-                )
-                session.graph_user.save()
-
-            if session.graph_user and session.graph_user.persistent_variables:
-                if self._update_persistent_values(
-                    session.graph_user.persistent_variables, variables
-                ):
-                    session.graph_user.save(update_fields=["persistent_variables"])
-
-        except Exception as e:
-            logger.error(f"Error handling organization variables message: {e}")
 
     def _save_session_storage_files(self, session: Session):
         try:
@@ -286,36 +257,16 @@ class RedisPubSub:
         except Exception as e:
             logger.error(f"Error saving session storage files: {e}")
 
-    def _update_persistent_values(self, persistent: dict, incoming: dict) -> bool:
-        """
-        Recursively update values in persistent dict from incoming dict.
-        Only updates keys that already exist in persistent.
-        Returns True if any values were updated.
-        """
-        updated = False
-
-        for key, persistent_value in persistent.items():
-            if key not in incoming:
-                continue
-
-            incoming_value = incoming[key]
-
-            if isinstance(persistent_value, dict) and isinstance(incoming_value, dict):
-                if self._update_persistent_values(persistent_value, incoming_value):
-                    updated = True
-            elif persistent_value != incoming_value:
-                persistent[key] = incoming_value
-                updated = True
-
-        return updated
-
     def _buffer_save(self, data, model: Type[models.Model]):
         try:
             close_old_connections()
             with transaction.atomic():
                 created_objects = model.objects.bulk_create(data, ignore_conflicts=True)
                 logger.debug(
-                    f"{model.__name__} updated with {len(created_objects)}/{len(data)} entities"
+                    "{} updated with {}/{} entities",
+                    model.__name__,
+                    len(created_objects),
+                    len(data),
                 )
         except IntegrityError as e:
             logger.error(f"Failed to save {model.__name__}: {e}")
@@ -329,6 +280,8 @@ class RedisPubSub:
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "successful_requests": 0,
+            "cached_prompt_tokens": 0,
+            "total_cost_usd": 0.0,
         }
 
         for key in cached_keys:
@@ -337,7 +290,7 @@ class RedisPubSub:
                 message_data = data.get("message_data", {})
 
                 if not message_data:
-                    return total_usage
+                    continue
 
                 token_usage = None
 
@@ -356,6 +309,12 @@ class RedisPubSub:
                     total_usage["successful_requests"] += token_usage.get(
                         "successful_requests", 0
                     )
+                    total_usage["cached_prompt_tokens"] += token_usage.get(
+                        "cached_prompt_tokens", 0
+                    )
+                    total_usage["total_cost_usd"] += token_usage.get(
+                        "total_cost_usd", 0
+                    )
 
             except Exception as e:
                 logger.error(f"Error parsing cached message for key {key}: {e}")
@@ -364,7 +323,7 @@ class RedisPubSub:
 
     def graph_session_message_handler(self, message: dict):
         try:
-            logger.info(f"Received message from graph_message_handler: {message}")
+            logger.debug("Received message from graph_message_handler: {}", message)
             data = json.loads(message["data"])
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
             message_uuid = graph_session_message_data.uuid
@@ -621,6 +580,16 @@ class RedisPubSub:
             exec_id_to_session_id[exec_id] = session.pk
             created_sessions.append((exec_id, session, finish_data))
 
+        SessionTrigger.objects.bulk_create(
+            [
+                SessionTrigger(
+                    session=session,
+                    **TriggerSpec.parent_flow(session.parent_session_id).to_fields(),
+                )
+                for _, session, _ in created_sessions
+            ]
+        )
+
         # Copy messages to each subgraph session via buffer,
         # and keep source messages per exec_id for token calculation.
         exec_id_messages = {}
@@ -691,13 +660,15 @@ class RedisPubSub:
 
         Returns:
             Dict with total_tokens, prompt_tokens, completion_tokens,
-            successful_requests.
+            successful_requests, cached_prompt_tokens, total_cost_usd.
         """
         total_usage = {
             "total_tokens": 0,
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "successful_requests": 0,
+            "cached_prompt_tokens": 0,
+            "total_cost_usd": 0.0,
         }
 
         for msg in messages:
@@ -719,6 +690,10 @@ class RedisPubSub:
                 total_usage["successful_requests"] += token_usage.get(
                     "successful_requests", 0
                 )
+                total_usage["cached_prompt_tokens"] += token_usage.get(
+                    "cached_prompt_tokens", 0
+                )
+                total_usage["total_cost_usd"] += token_usage.get("total_cost_usd", 0)
 
         return total_usage
 

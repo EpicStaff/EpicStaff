@@ -1,10 +1,7 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 
-import { ButtonComponent } from '../buttons/button/button.component';
-
 export interface SearchFilterChange {
     searchTerm: string;
-    selectedTagIds?: number[];
 }
 
 @Component({
@@ -12,12 +9,11 @@ export interface SearchFilterChange {
     standalone: true,
     templateUrl: './filters-list.component.html',
     styleUrls: ['./filters-list.component.scss'],
-    imports: [ButtonComponent],
+    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FiltersListComponent implements OnInit {
     @Input() public searchPlaceholder: string = 'Search...';
-    @Input() public showTags: boolean = true;
     @Input() public initialSearchTerm: string = '';
 
     public searchTerm: string = '';

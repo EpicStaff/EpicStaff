@@ -21,13 +21,40 @@
         <app-validation-errors [control]="collectionName" />
     </div>
 
+    <div class="dialog__form-field">
+        <div class="dialog__form-label">
+            <label for="collection-description">Guidance for Agents</label>
+            <app-help-tooltip
+                class="dialog__form-label-icon"
+                text="Describe what's inside this collection and which questions it can answer. Agents use this to decide when to search it."
+                position="right"
+                tooltipClass="dialog__label-tooltip"
+            />
+        </div>
+
+        <textarea
+            #descriptionTa
+            id="collection-description"
+            class="dialog__form-input dialog__form-textarea"
+            [formControl]="description"
+            placeholder="Describe what's inside and which questions this collection can answer..."
+            rows="1"
+            (input)="autoGrow(descriptionTa)"
+            [class.dialog__input--invalid]="description.invalid && description.touched"
+        ></textarea>
+        <app-validation-errors [control]="description" />
+    </div>
+
     <div class="dialog__content">
         @if (!documents().length) {
             <div class="dialog__file-uploader">
                 <h6 class="dialog__content-title">
                     Selected Files: <span class="dialog__content-title--count">(0)</span>
                 </h6>
-                <app-file-uploader (filesUploaded)="onFilesUpload($event)" />
+                <app-file-uploader
+                    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                    (filesUploaded)="onFilesUpload($event)"
+                />
             </div>
         } @else {
             <div class="dialog__files">

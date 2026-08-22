@@ -1,41 +1,50 @@
 <div class="storage-tree">
-    <div class="storage-tree__header">
-        <span class="storage-tree__header-label">Folder Branches</span>
-        <button
-            class="storage-tree__header-close"
-            aria-label="Close panel"
-            (click)="closeSidebar.emit()"
-        >
-            <app-svg-icon
-                icon="x"
-                size="1.25rem"
-            ></app-svg-icon>
-        </button>
-    </div>
+    @if (showHeader()) {
+        <div class="storage-tree__header">
+            <span class="storage-tree__header-label">Folder Branches</span>
+            <button
+                class="storage-tree__header-close"
+                aria-label="Close panel"
+                matTooltip="Close"
+                matTooltipPosition="below"
+                (click)="closeSidebar.emit()"
+            >
+                <app-svg-icon
+                    icon="x"
+                    size="1.25rem"
+                ></app-svg-icon>
+            </button>
+        </div>
 
-    <div class="storage-tree__toolbar">
-        <span class="storage-tree__toolbar-label">Folders</span>
-        <button
-            class="storage-tree__toolbar-btn"
-            aria-label="Add folder"
-            (click)="onAddFolderClick()"
-        >
-            <app-svg-icon
-                icon="plus"
-                size="1rem"
-            ></app-svg-icon>
-        </button>
-        <button
-            class="storage-tree__toolbar-btn"
-            aria-label="More options"
-            (click)="onMoreOptionsClick($event)"
-        >
-            <app-svg-icon
-                icon="dots-vertical"
-                size="1rem"
-            ></app-svg-icon>
-        </button>
-    </div>
+        <div class="storage-tree__toolbar">
+            <span class="storage-tree__toolbar-label">Folders</span>
+            <button
+                *appHasPermission="[ResourceCode.Files, [ActionCode.Create, ActionCode.Update]]"
+                class="storage-tree__toolbar-btn"
+                aria-label="Add folder"
+                matTooltip="Create folder"
+                matTooltipPosition="above"
+                (click)="onAddFolderClick()"
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="1rem"
+                ></app-svg-icon>
+            </button>
+            <button
+                class="storage-tree__toolbar-btn"
+                aria-label="More options"
+                matTooltip="More options"
+                matTooltipPosition="above"
+                (click)="onMoreOptionsClick($event)"
+            >
+                <app-svg-icon
+                    icon="dots-vertical"
+                    size="1rem"
+                ></app-svg-icon>
+            </button>
+        </div>
+    }
 
     <div
         #listEl
@@ -62,9 +71,10 @@
             [attr.data-path]="node.path"
             [class.storage-tree__item--selected]="isItemSelected(node)"
             [class.storage-tree__item--non-empty]="node.type === 'folder' && !node.is_empty"
+            [class.storage-tree__item--empty]="node.type === 'folder' && node.is_empty"
             [class.storage-tree__item--hovered]="hoveredItem() === node"
             [class.storage-tree__item--drop-target]="isDropTarget(node)"
-            [class.storage-tree__item--dragging]="draggedItem()?.path === node.path"
+            [class.storage-tree__item--dragging]="isDraggingItem(node)"
             [attr.draggable]="renamingItem() === null || renamingItem()?.path !== node.path ? 'true' : 'false'"
             [style.padding-left.rem]="0.75 + level * 1.25"
             (click)="onItemClick($event, node)"
@@ -102,7 +112,11 @@
                 <div class="storage-tree__folder-meta">
                     <span
                         class="storage-tree__name storage-tree__name--folder-meta"
-                        [title]="node.name"
+                        appTooltipOnOverflow
+                        [matTooltip]="node.name"
+                        matTooltipPosition="above"
+                        matTooltipShowDelay="500"
+                        matTooltipClass="tree-name-tooltip"
                     >
                         {{ node.name }}
                     </span>
@@ -111,7 +125,11 @@
             } @else {
                 <span
                     class="storage-tree__name"
-                    [title]="node.name"
+                    appTooltipOnOverflow
+                    [matTooltip]="node.name"
+                    matTooltipPosition="above"
+                    matTooltipShowDelay="500"
+                    matTooltipClass="tree-name-tooltip"
                     >{{ node.name }}</span
                 >
             }
@@ -122,8 +140,11 @@
                     [class.storage-tree__hover-actions--visible]="hoveredItem() === node"
                 >
                     <button
+                        *appHasPermission="[ResourceCode.Files, [ActionCode.Create, ActionCode.Update]]"
                         class="storage-tree__hover-btn storage-tree__hover-btn--plus"
                         aria-label="Add folder"
+                        matTooltip="Create folder"
+                        matTooltipPosition="above"
                         (click)="onAddFolderClickForNode($event, node)"
                     >
                         <app-svg-icon
@@ -134,6 +155,8 @@
                     <button
                         class="storage-tree__hover-btn"
                         aria-label="More"
+                        matTooltip="More options"
+                        matTooltipPosition="above"
                         (click)="onKebabClick($event, node)"
                     >
                         <app-svg-icon
@@ -176,6 +199,8 @@
             class="storage-tree__rename-btn storage-tree__rename-btn--cancel"
             type="button"
             aria-label="Cancel rename"
+            matTooltip="Cancel"
+            matTooltipPosition="above"
             (mousedown)="$event.preventDefault()"
             (click)="onRenameCancel($event)"
         >
@@ -188,6 +213,8 @@
             class="storage-tree__rename-btn storage-tree__rename-btn--confirm"
             type="button"
             aria-label="Confirm rename"
+            matTooltip="Confirm"
+            matTooltipPosition="above"
             (mousedown)="$event.preventDefault()"
             (click)="onRenameConfirm()"
         >
@@ -211,6 +238,7 @@
         [style.top.px]="moreMenuPosition().y"
     >
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
             class="storage-tree__context-menu-item"
             [class.storage-tree__context-menu-item--disabled]="selectedPaths().size === 0"
             [disabled]="selectedPaths().size === 0"
@@ -219,6 +247,7 @@
             Download Selected
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
             class="storage-tree__context-menu-item"
             (click)="onMoreMenuAction('download-all')"
         >
@@ -226,6 +255,7 @@
         </button>
         <div class="storage-tree__context-menu-divider"></div>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
             class="storage-tree__context-menu-item"
             [class.storage-tree__context-menu-item--disabled]="selectedPaths().size === 0"
             [disabled]="selectedPaths().size === 0"
@@ -248,30 +278,35 @@
         [style.top.px]="contextMenuPosition().y"
     >
         <button
+            *appHasPermission="[ResourceCode.Flows, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('add-to-flow')"
         >
             Add to flow
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Download]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('download')"
         >
             Download
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('copy')"
         >
             Copy to...
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('duplicate-here')"
         >
             Duplicate here
         </button>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Update]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('rename')"
         >
@@ -285,6 +320,7 @@
         </button>
         <div class="storage-tree__context-menu-divider"></div>
         <button
+            *appHasPermission="[ResourceCode.Files, ActionCode.Delete]"
             class="storage-tree__context-menu-item"
             (click)="onContextMenuAction('delete')"
         >

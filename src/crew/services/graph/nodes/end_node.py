@@ -38,7 +38,7 @@ class EndNode(BaseNode):
         graph_message = GraphMessage(
             session_id=self.session_id,
             name=self.node_name,
-            execution_order=0,
+            execution_order=kwargs.get("execution_order", 0),
             message_data=result,
         )
         writer(graph_message)

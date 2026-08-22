@@ -1,3 +1,16 @@
+from .agent_service import (
+    RunType,
+    SearchConfigEntry,
+    CollectionSpec,
+    AgentSpec,
+    AgentTaskSpec,
+    S3FileSpec,
+    AgentRequest,
+    ToolResult,
+    ContextAttachment,
+    LoopResult,
+    TaskRunSummary,
+)
 from .agents import (
     AgentData,
     RealtimeAgentChatData,
@@ -37,6 +50,25 @@ from .graph_nodes import (
     GraphData,
     SubGraphData,
     CodeAgentNodeData,
+    PromptConfigData,
+    ClassificationConditionGroupData,
+    ClassificationDecisionTableNodeData,
+    AgentDefinitionData,
+    TaskNodeData,
+    AgentNodeTaskData,
+    AgentNodeData,
+)
+from .surfaces import (
+    ToolModeLiteral,
+    StorageAccessLiteral,
+    CombinedSurfacePythonToolData,
+    CombinedSurfaceMcpToolData,
+    CombinedSurfaceStorageItemData,
+    SurfaceNaiveSearchConfigData,
+    SurfaceGraphBasicSearchConfigData,
+    SurfaceGraphLocalSearchConfigData,
+    CombinedSurfaceKnowledgeData,
+    CombinedSurfaceData,
 )
 from .knowledge import (
     BaseRagSearchConfig,
@@ -80,11 +112,10 @@ from .tools import (
     ToolConfigData,
     ConfiguredToolData,
     McpToolData,
+    ArgsSchema,
     PythonCodeData,
     PythonCodeToolData,
     BaseToolData,
-    RunToolParamsModel,
-    ToolInitConfigurationModel,
     CodeResultData,
     CodeTaskData,
 )
@@ -105,8 +136,27 @@ from .variables import (
     ArrayNestedVariable,
     NestedVariable,
 )
+from .variable_conversion import (
+    args_schema_to_variables,
+    json_schema_node_to_nested_variable,
+    nested_variable_to_json_schema_node,
+    variables_to_args_schema,
+    _normalize_type,
+)
 
 __all__ = [
+    # agent_service
+    "RunType",
+    "SearchConfigEntry",
+    "CollectionSpec",
+    "AgentSpec",
+    "AgentTaskSpec",
+    "S3FileSpec",
+    "AgentRequest",
+    "ToolResult",
+    "ContextAttachment",
+    "LoopResult",
+    "TaskRunSummary",
     # agents
     "AgentData",
     "RealtimeAgentChatData",
@@ -144,6 +194,24 @@ __all__ = [
     "GraphData",
     "SubGraphData",
     "CodeAgentNodeData",
+    "PromptConfigData",
+    "ClassificationConditionGroupData",
+    "ClassificationDecisionTableNodeData",
+    "AgentDefinitionData",
+    "TaskNodeData",
+    "AgentNodeTaskData",
+    "AgentNodeData",
+    # surfaces
+    "ToolModeLiteral",
+    "StorageAccessLiteral",
+    "CombinedSurfacePythonToolData",
+    "CombinedSurfaceMcpToolData",
+    "CombinedSurfaceStorageItemData",
+    "SurfaceNaiveSearchConfigData",
+    "SurfaceGraphBasicSearchConfigData",
+    "SurfaceGraphLocalSearchConfigData",
+    "CombinedSurfaceKnowledgeData",
+    "CombinedSurfaceData",
     # knowledge
     "BaseRagSearchConfig",
     "NaiveRagSearchConfig",
@@ -183,11 +251,10 @@ __all__ = [
     "ToolConfigData",
     "ConfiguredToolData",
     "McpToolData",
+    "ArgsSchema",
     "PythonCodeData",
     "PythonCodeToolData",
     "BaseToolData",
-    "RunToolParamsModel",
-    "ToolInitConfigurationModel",
     "CodeResultData",
     "CodeTaskData",
     # variables
@@ -206,4 +273,10 @@ __all__ = [
     "ObjectNestedVariable",
     "ArrayNestedVariable",
     "NestedVariable",
+    # variable_conversion
+    "args_schema_to_variables",
+    "json_schema_node_to_nested_variable",
+    "nested_variable_to_json_schema_node",
+    "variables_to_args_schema",
+    "_normalize_type",
 ]

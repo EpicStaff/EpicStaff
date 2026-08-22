@@ -6,7 +6,6 @@ import { LabelsStorageService } from '../../features/flows/services/labels-stora
 import { CollectionsStorageService } from '../../features/knowledge-sources/services/collections-storage.service';
 import { DocumentsStorageService } from '../../features/knowledge-sources/services/documents-storage.service';
 import { NaiveRagDocumentsStorageService } from '../../features/knowledge-sources/services/naive-rag-documents-storage.service';
-import { ProjectTagsStorageService } from '../../features/projects/services/project-tags-storage.service';
 import { ProjectsStorageService } from '../../features/projects/services/projects-storage.service';
 import { OrganizationsStorageService } from '../../features/role-base-access/services/admin/organizations-storage.service';
 import { RolesService } from '../../features/role-base-access/services/admin/roles.service';
@@ -21,6 +20,7 @@ import {
     NgrokConfigStorageService,
     RealtimeConfigStorageService,
     RealtimeModelsStorageService,
+    SecretsStorageService,
     TranscriptionConfigStorageService,
     TranscriptionModelsStorageService,
 } from './index';
@@ -42,7 +42,6 @@ export class AppStorageService {
         inject(CollectionsStorageService),
         inject(DocumentsStorageService),
         inject(NaiveRagDocumentsStorageService),
-        inject(ProjectTagsStorageService),
         inject(ProjectsStorageService),
         inject(EmbeddingConfigStorageService),
         inject(EmbeddingModelsStorageService),
@@ -52,11 +51,17 @@ export class AppStorageService {
         inject(NgrokConfigStorageService),
         inject(RealtimeConfigStorageService),
         inject(RealtimeModelsStorageService),
+        inject(SecretsStorageService),
         inject(TranscriptionConfigStorageService),
         inject(TranscriptionModelsStorageService),
     ];
 
     clearAll(): void {
         this.storages.forEach((s) => s.clear());
+    }
+
+    /** Clears each given storage once (duplicates are ignored). */
+    invalidate(storages: Iterable<StorageService>): void {
+        new Set(storages).forEach((s) => s.clear());
     }
 }

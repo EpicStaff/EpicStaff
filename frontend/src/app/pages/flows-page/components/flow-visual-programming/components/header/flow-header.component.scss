@@ -161,6 +161,7 @@
             }
         }
 
+        .open-chat-button,
         .connect-chat-button,
         .get-curl-button {
             background-color: transparent;
@@ -170,6 +171,18 @@
             &:hover {
                 background-color: rgba(154, 115, 175, 0.1);
             }
+        }
+
+        .open-chat-button__icon {
+            width: 1.25rem;
+            height: 1.25rem;
+            flex-shrink: 0;
+            display: block;
+        }
+
+        .open-chat-button.btn--icon-only .open-chat-button__icon {
+            width: 1.5rem;
+            height: 1.5rem;
         }
 
         .save-split-btn {

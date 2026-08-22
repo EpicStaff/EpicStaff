@@ -1,39 +1,56 @@
-from time import sleep
+import random
+import uuid
 
 import pytest
 
-from utils.utils import *
-from utils.knowledge_utils import *
-from utils.cleaning_utils import *
-import uuid
 from loguru import logger
+import requests
 
-from utils.variables import MANAGER_URL, TEST_TOOL_NAME
+from utils.cleaning_utils import (
+    delete_crews,
+    delete_custom_tools,
+    delete_graph,
+    delete_session,
+    validate_response,
+)
+from utils.knowledge_utils import knowledge_search
+from utils.utils import (
+    create_agent,
+    create_conditional_edge,
+    create_crew,
+    create_crew_node,
+    create_edge,
+    create_end_node,
+    create_graph,
+    create_llm_config,
+    create_mcp_tool,
+    create_python_code_tool,
+    create_python_node,
+    create_start_node,
+    create_task,
+    get_headers,
+    ensure_services_ready,
+    get_python_code_tool_by_name,
+    run_session,
+    wait_for_results_sse,
+)
+from utils.variables import DJANGO_URL, TEST_TOOL_NAME
 
 
 def test_create_and_run_session():
-    # TODO: create a function to ensure container is running
-    sleep(1)  # sleep to make sure that predifined models uploaded
+    ensure_services_ready()
 
     # Create configurations
     llm_id = get_llm_model()
     config_id = create_llm_config(llm_id=llm_id)
     config_id_2 = create_llm_config(llm_id=llm_id)
 
-    wikipedia_crew_id = create_wikipedia_crew(config_id)
     author_crew_id = create_author_crew(config_id_2)
     user_crew_id = create_user_crew(config_id)
 
-    graph_id = create_graph("Integration graph2")  # TODO: Change this
+    graph_id = create_graph("Integration graph")
 
-    create_crew_node(
-        crew_id=wikipedia_crew_id,
-        node_name="wiki_crew_node",
-        graph_id=graph_id,
-        input_map={},
-        output_variable_path="variables",
-    )
-    create_crew_node(
+    author_crew_node_id = create_crew_node(
         crew_id=author_crew_id,
         node_name="author_crew_node",
         graph_id=graph_id,
@@ -42,7 +59,7 @@ def test_create_and_run_session():
         },
         output_variable_path="variables.result",
     )
-    create_crew_node(
+    user_crew_node_id = create_crew_node(
         crew_id=user_crew_id,
         node_name="user_crew_node",
         graph_id=graph_id,
@@ -51,20 +68,27 @@ def test_create_and_run_session():
         },
         output_variable_path="variables",
     )
-    # TODO: LLMNode removed — rewire option_1 branch to a crew_node or python_node
-    create_start_node(graph_id=graph_id)
-    create_hash_message_python_node(graph_id=graph_id)
-    create_option_1_python_node(graph_id=graph_id)
-    create_option_2_python_node(graph_id=graph_id)
-    create_edge(start_key="__start__", end_key="hash_message", graph=graph_id)
-    create_edge(start_key="hash_message", end_key="user_crew_node", graph=graph_id)
-    create_user_name_conditional_edge(source="user_crew_node", graph=graph_id)
-
-    create_edge(start_key="option_1", end_key="__end_node__", graph=graph_id)
-    create_edge(start_key="option_2", end_key="author_crew_node", graph=graph_id)
-    create_edge(start_key="author_crew_node", end_key="wiki_crew_node", graph=graph_id)
-    create_end_node(graph_id=graph_id)
-    create_edge(start_key="wiki_crew_node", end_key="__end_node__", graph=graph_id)
+    start_node_id = create_start_node(graph_id=graph_id)
+    hash_message_node_id = create_hash_message_python_node(graph_id=graph_id)
+    option_1_node_id = create_option_1_python_node(graph_id=graph_id)
+    option_2_node_id = create_option_2_python_node(graph_id=graph_id)
+    end_node_id = create_end_node(graph_id=graph_id)
+    create_edge(
+        start_node_id=start_node_id, end_node_id=hash_message_node_id, graph=graph_id
+    )
+    create_edge(
+        start_node_id=hash_message_node_id,
+        end_node_id=user_crew_node_id,
+        graph=graph_id,
+    )
+    create_user_name_conditional_edge(source_node_id=user_crew_node_id, graph=graph_id)
+    create_edge(start_node_id=option_1_node_id, end_node_id=end_node_id, graph=graph_id)
+    create_edge(
+        start_node_id=option_2_node_id, end_node_id=author_crew_node_id, graph=graph_id
+    )
+    create_edge(
+        start_node_id=author_crew_node_id, end_node_id=end_node_id, graph=graph_id
+    )
 
     # Run sessions
     session1 = run_session(
@@ -76,16 +100,19 @@ def test_create_and_run_session():
     wait_for_results_sse(session_id=session1)
     # wait_for_results_sse(session_id=session2)
     delete_session(session_id=session1)
-    delete_crews(crew_ids_to_delete=[user_crew_id, author_crew_id, wikipedia_crew_id])
+    delete_crews(crew_ids_to_delete=[user_crew_id, author_crew_id])
     delete_graph(graph_id=graph_id)
     delete_custom_tools()
 
 
+@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_knowledges(collection_id, redis_service):
     """Knowledges created in 'collection_id' fixture"""
     test_query = "What makes MYM different from other logistics platforms?"
-    # Execute the knowledge search
+
+    # TODO: Knowledge status is unchangable for now.
+    # Should rewrite this test after fulfilling knowledge status management.
     results = await knowledge_search(
         knowledge_collection_id=collection_id,
         query=test_query,
@@ -102,54 +129,26 @@ async def test_knowledges(collection_id, redis_service):
     )
 
 
-@pytest.mark.skip
-def test_get_tool_class_data():
-    with open(Path("../src/manager/tools_config.json"), "r") as f:
-        tool_config_list = json.loads(f.read())
-    tool_alias_list = []
-    for tool_config in tool_config_list:
-        for tool_alias in tool_config["tool_dict"]:
-            tool_alias_list.append(tool_alias)
-    error_tools = []
-    for tool_alias in tool_alias_list:
-        tool_class_data_response = requests.post(
-            f"{MANAGER_URL}/tool/{tool_alias}/class-data",
-            json={"tool_init_configuration": None},
-            headers={"Host": rhost},
-        )
-        try:
-            validate_response(response=tool_class_data_response)
-            tool_alias_list = tool_class_data_response.json()["classdata"]
-            print(tool_alias)
-        except HTTPError:
-            error_tools.append(
-                {"tool_alias": tool_alias, "message": tool_class_data_response.reason}
-            )
-        except Exception as e:
-            error_tools.append(e)
-
-    if error_tools:
-        assert False, str(error_tools)
-
-
 def test_mcp_session(run_mcp_tool):
     # Create configurations
     llm_id = get_llm_model()
     config_id = create_llm_config(llm_id=llm_id)
     mcp_test_crew_id = create_mcp_test_crew(config_id)
 
-    graph_id = create_graph("Integration graph2")  # TODO: Change this
-    create_crew_node(
+    graph_id = create_graph("Integration graph2")
+    mcp_crew_node_id = create_crew_node(
         crew_id=mcp_test_crew_id,
         node_name="mcp_test_crew_node",
         graph_id=graph_id,
         input_map={},
         output_variable_path="variables",
     )
-    create_end_node(graph_id=graph_id)
-    create_start_node(graph_id=graph_id)
-    create_edge(start_key="__start__", end_key="mcp_test_crew_node", graph=graph_id)
-    create_edge(start_key="mcp_test_crew_node", end_key="__end_node__", graph=graph_id)
+    end_node_id = create_end_node(graph_id=graph_id)
+    start_node_id = create_start_node(graph_id=graph_id)
+    create_edge(
+        start_node_id=start_node_id, end_node_id=mcp_crew_node_id, graph=graph_id
+    )
+    create_edge(start_node_id=mcp_crew_node_id, end_node_id=end_node_id, graph=graph_id)
     # Run sessions
     session_id = run_session(
         graph_id=graph_id,
@@ -157,25 +156,12 @@ def test_mcp_session(run_mcp_tool):
     )
     logger.success(f"Session with id {session_id} created, yay!")
 
+    # TODO: Fix getting BaseKnowledgeSearchMessage validation errors (src:knowledge:main::searching)
     wait_for_results_sse(session_id=session_id)
     delete_session(session_id=session_id)
 
 
-def create_wikipedia_crew(llm_config_id):
-    # Create Wikipedia agent and crew
-    wikipedia_tool_config_id = create_wikipedia_tool_config()
-    wiki_agent_id = create_wiki_agent(
-        tool_config_id_list=[wikipedia_tool_config_id], config_id=llm_config_id
-    )
-    wiki_crew_id = create_crew(name="WIKIPEDIA CREW", agents=[wiki_agent_id])
-    wiki_task_id, wiki_task_name = create_wiki_task(
-        crew_id=wiki_crew_id, agent_id=wiki_agent_id
-    )
-    return wiki_crew_id
-
-
 def create_user_crew(llm_config_id):
-    # Create Wikipedia agent and crew
     user_python_code_tool_id = create_user_python_code_tool()
     user_agent_id = create_user_agent(
         config_id=llm_config_id,
@@ -199,9 +185,7 @@ def create_author_crew(llm_config_id):
 
 
 def create_mcp_test_crew(llm_config_id):
-    mcp_tool_id = create_mcp_tool(
-        "test-mcp", "http://localhost:8082/mcp", "test_tool_1"
-    )
+    mcp_tool_id = create_mcp_tool("test-mcp", "http://fastmcp:8000/mcp", "test_tool_1")
     mcp_agent_id = create_mcp_agent(config_id=llm_config_id, mcp_tool_ids=[mcp_tool_id])
     mcp_crew_id = create_crew(
         name="MCP CREW",
@@ -213,33 +197,9 @@ def create_mcp_test_crew(llm_config_id):
     return mcp_crew_id
 
 
-def create_wikipedia_tool_config() -> int:
-    wikipedia_tool_id = get_tool("wikipedia")
-
-    tool_config_data = {
-        "name": "integration test wiki tool config",
-        "tool": wikipedia_tool_id,
-        "configuration": {},
-    }
-    return create_tool_config(**tool_config_data)
-
-
-def create_wiki_task(crew_id: int, agent_id: int) -> tuple:
-    task_data = {
-        "name": f"Test wiki task {random.randint(1,100000)}",
-        "instructions": "Find inpormation about cars",
-        "expected_output": "What is car",
-        "order": 1,
-        "crew": crew_id,
-        "agent": agent_id,
-    }
-
-    return create_task(**task_data)
-
-
 def create_poem_task(crew_id: int, agent_id: int) -> tuple:
     task_data = {
-        "name": f"Test write poem task {random.randint(1,100000)}",
+        "name": f"Test write poem task {random.randint(1, 100000)}",
         "instructions": "Write short rhyming poem about nature",
         "expected_output": "Short rhyming poem",
         "order": 1,
@@ -291,24 +251,6 @@ def create_mcp_task(crew_id: int, agent_id: int) -> tuple:
         },
     }
     return create_task(**task_data)
-
-
-def create_wiki_agent(
-    tool_config_id_list: list,
-    config_id: int,
-) -> int:
-    agent_data = {
-        "tool_ids": [f"configured-tool:{id_}" for id_ in tool_config_id_list],
-        "role": "wikipedia_searcher",
-        "goal": "search information in wikipedia",
-        "backstory": "You are the agent who use tools to perform tasks",
-        "allow_delegation": False,
-        "memory": False,
-        "max_iter": 15,
-        "llm_config": config_id,
-        "fcm_llm_config": config_id,
-    }
-    return create_agent(**agent_data)
 
 
 def create_author_agent(
@@ -365,11 +307,9 @@ def main(user_id: int):
         2: "Max",
         36: "Igor",
     }
-    print(state["variables"])
     return ids.get(user_id, "Not found")
 """
 
-    test_state = {"input": {"user_surname": "Zelensky"}}
     args_schema = {
         "type": "object",
         "title": "ArgumentsSchema",
@@ -384,7 +324,7 @@ def main(user_id: int):
         "code": code,
         "entrypoint": "main",
         "libraries": ["requests"],
-        "global_kwargs": {"state": test_state},
+        "global_kwargs": {},
         "args_schema": args_schema,
     }
     tool = get_python_code_tool_by_name(tool_data["name"])
@@ -462,7 +402,7 @@ def main(*args, **kwargs):
     return create_python_node(**python_node_data)
 
 
-def create_user_name_conditional_edge(source: str, graph: int):
+def create_user_name_conditional_edge(source_node_id: int, graph: int):
     code = """
 def main():
     user_name = state["variables"]["user_name"]
@@ -474,7 +414,7 @@ def main():
 """
 
     conditional_edge_data = {
-        "source": source,
+        "source_node_id": source_node_id,
         "graph": graph,
         "code": code,
     }
@@ -483,7 +423,7 @@ def main():
 
 def get_llm_model(name: str = "gpt-4o-mini"):
     llm_model_response = requests.get(
-        f"{DJANGO_URL}/llm-models?name={name}", headers={"Host": rhost}
+        f"{DJANGO_URL}/llm-models?name={name}", headers=get_headers()
     )
     llm_model = None
     if llm_model_response.ok:

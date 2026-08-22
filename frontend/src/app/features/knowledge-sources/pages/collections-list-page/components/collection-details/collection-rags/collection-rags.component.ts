@@ -62,6 +62,7 @@ export class CollectionRagsComponent {
             .confirmDelete(ragName)
             .pipe(
                 filter((result) => result === true),
+                // TODO support graph rag delete
                 switchMap(() => this.ragDeleteRegistry.deleteRag(type, ragId)),
                 switchMap(() =>
                     this.collectionsStorageService.getFullCollection(this.collection().collection_id, true)

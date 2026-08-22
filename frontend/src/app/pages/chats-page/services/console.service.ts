@@ -9,13 +9,15 @@ import { ConfigService } from '../../../services/config/config.service';
 import { ToastService } from '../../../services/notifications/toast.service';
 // @ts-ignore
 import { RealtimeClient } from '../libs/openai/client';
+import {
+    chatAgentRealtimeConfigId,
+    chatAgentTranscriptionConfigId,
+    InitRealtimePayload,
+    toInitRealtimePayload,
+} from '../models/chat-agent.model';
 import { ChatsService } from './chats.service';
 import { WavStreamPlayerService } from './wav-player.service';
 import { WavRecorderService } from './wav-recorder.service';
-
-export interface InitRealtime {
-    agent_id: number;
-}
 
 export interface ConnectionResult {
     success: boolean;
@@ -66,10 +68,11 @@ export class ConsoleService implements OnDestroy {
         this.connectionError$.complete();
     }
 
-    private connectToRealtime(): void {
+    private connectToRealtime(connectionKey: string): void {
         this.client = new RealtimeClient({
             url: this.configService.realtimeApiUrl,
             dangerouslyAllowAPIKeyInBrowser: false,
+            connectionKey,
         });
         this.setupClient();
     }
@@ -97,9 +100,17 @@ export class ConsoleService implements OnDestroy {
      * @returns Observable<ConnectionResult>
      */
     private initiateConnection(): Observable<ConnectionResult> {
-        const selectedAgent = this.chatsService.selectedAgent$();
+        const selected = this.chatsService.selectedChatAgent$();
 
-        if (!selectedAgent?.realtime_agent.realtime_config) {
+        if (!selected) {
+            this.toastService.warning('No agent is selected');
+            return of<ConnectionResult>({
+                success: false,
+                error: new Error('No agent selected'),
+            });
+        }
+
+        if (!chatAgentRealtimeConfigId(selected)) {
             this.toastService.warning('The selected agent does not have Realtime LLM specified');
             return of<ConnectionResult>({
                 success: false,
@@ -107,15 +118,7 @@ export class ConsoleService implements OnDestroy {
             });
         }
 
-        if (!selectedAgent?.id) {
-            this.toastService.warning('The selected agent does not have a valid ID');
-            return of<ConnectionResult>({
-                success: false,
-                error: new Error('No agent ID found'),
-            });
-        }
-
-        if (!selectedAgent?.realtime_agent.realtime_transcription_config) {
+        if (!chatAgentTranscriptionConfigId(selected)) {
             this.toastService.warning('The selected agent does not have a transcription config');
             return of<ConnectionResult>({
                 success: false,
@@ -123,34 +126,21 @@ export class ConsoleService implements OnDestroy {
             });
         }
 
-        const payload: InitRealtime = {
-            agent_id: selectedAgent.id,
-        };
+        const payload: InitRealtimePayload = toInitRealtimePayload(selected);
         return this.http
             .post<{ connection_key: string }>(this.apiUrl, payload, {
                 headers: this.headers,
             })
             .pipe(
-                tap((response) => {
-                    console.log('POST Response:', response);
-                    if (response.connection_key) {
-                        localStorage.setItem('connectionKey', response.connection_key);
-                    } else {
-                        throw new Error('connection_key is missing in the response');
-                    }
-                }),
                 delay(200),
                 takeUntilDestroyed(this.destroyRef),
 
-                switchMap(() => {
-                    const storedKey: string | null = localStorage.getItem('connectionKey');
-                    console.log('Retrieved connectionKey:', storedKey);
-
-                    if (!storedKey) {
-                        throw new Error('No connectionKey found in localStorage');
+                switchMap((response) => {
+                    if (!response.connection_key) {
+                        throw new Error('connection_key is missing in the response');
                     }
 
-                    this.connectToRealtime();
+                    this.connectToRealtime(response.connection_key);
                     this.updateItems();
 
                     // Begin a sequence of initialization steps

@@ -1,7 +1,6 @@
 :host {
     display: flex;
     flex-direction: column;
-    width: 30%;
     height: 100%;
     background-color: var(--color-background-body);
     border-right: 1px solid var(--color-divider-subtle);
@@ -10,6 +9,7 @@
     overflow-x: auto;
     flex-shrink: 0;
     font-family: 'Inter', sans-serif;
+    position: relative;
 }
 
 .sidebar-header {
@@ -52,7 +52,7 @@
 .sidebar-content {
     flex: 1;
     overflow-y: auto;
-    overflow-x: auto;
+    overflow-x: hidden;
     padding-bottom: 1rem;
 }
 
@@ -65,7 +65,7 @@
     color: var(--color-ks-text);
     font-size: 14px;
     position: relative;
-    min-width: max-content;
+    min-width: 0;
 
     &:hover {
         background: var(--color-ghost-btn-hover);
@@ -79,7 +79,10 @@
 
     .item-actions {
         visibility: hidden;
-        margin-left: auto;
+        position: absolute;
+        right: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
         display: flex;
         gap: 0.6rem;
         align-items: center;
@@ -93,7 +96,14 @@
     .label-name {
         flex: 1;
         white-space: nowrap;
-        min-width: 80px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+
+    // 5rem clears three 28px .action-btn + gaps + right offset.
+    &:hover .label-name {
+        padding-right: 5rem;
     }
 
     .label-icon {
@@ -160,7 +170,7 @@
     gap: 8px;
     padding: 0.3rem 0.5rem;
     margin: 0.1rem 0.5rem;
-    min-width: max-content;
+    min-width: 0;
 
     &.child-add {
         padding-left: 0;
@@ -336,13 +346,9 @@
 }
 
 .label-item {
-    ::ng-deep .label-icon svg path {
-        fill: var(--label-color, var(--color-ks-text));
-        transition: fill 0.15s ease;
-    }
-
-    &:hover ::ng-deep .label-icon svg path {
-        fill: var(--label-color, var(--color-ks-text));
+    ::ng-deep .label-icon {
+        color: var(--label-color, var(--color-ks-text));
+        transition: color 0.15s ease;
     }
 }
 

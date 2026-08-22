@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Delete Tool"
+  description: "Delete a single file from S3 storage. Param: file_path (required). Only deletes files - if file_path points at a folder, this tool returns an error telling you to use s3_folder_delete_tool with recursive intent instead. Fails with a clear error if the file does not exist."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

@@ -29,6 +29,7 @@ class TestListFiles:
     def test_list_returns_items_from_manager(self, auth_client, mock_manager):
         mock_manager.list_.return_value = [
             FileListItem(
+                id=1,
                 name="a.txt",
                 type="file",
                 size=10,
@@ -47,6 +48,7 @@ class TestListFiles:
 class TestInfo:
     def test_info_returns_metadata_with_linked_graphs(self, auth_client, mock_manager):
         mock_manager.info.return_value = FileInfo(
+            id=1,
             name="f.txt",
             path="f.txt",
             size=5,
@@ -83,7 +85,7 @@ class TestDownload:
 
         resp = auth_client.get("/api/storage/download/", {"path": "ghost.txt"})
 
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.status_code == status.HTTP_404_NOT_FOUND
 
 
 class TestUpload:
@@ -109,6 +111,33 @@ class TestUpload:
         )
 
         resp = auth_client.post("/api/storage/upload/", {"files": uploaded_file})
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+class TestDownloadZip:
+    def test_download_zip_returns_filename_from_manager(
+        self, auth_client, mock_manager
+    ):
+        mock_manager.download_zip.return_value = ("folder.zip", [b"zip-bytes"])
+
+        resp = auth_client.post(
+            "/api/storage/download-zip/", {"paths": ["folder"]}, format="json"
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp["Content-Type"] == "application/zip"
+        assert resp["Content-Disposition"] == 'attachment; filename="folder.zip"'
+        assert resp.content == b"zip-bytes"
+
+    def test_download_zip_returns_error_for_missing_path(
+        self, auth_client, mock_manager
+    ):
+        mock_manager.download_zip.side_effect = FileNotFoundError("gone")
+
+        resp = auth_client.post(
+            "/api/storage/download-zip/", {"paths": ["ghost"]}, format="json"
+        )
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -227,7 +256,7 @@ class TestAddToGraph:
     ):
         graph = Graph.objects.create(name="test-graph")
         mock_manager.info.return_value = FolderInfo(
-            name="docs", path="docs/", modified="2024-01-01T00:00:00Z"
+            id=1, name="docs", path="docs/", modified="2024-01-01T00:00:00Z"
         )
 
         resp = auth_client.post(
@@ -251,7 +280,9 @@ class TestRemoveFromGraph:
 
         org = Organization.objects.get(name="Default Organization")
         graph = Graph.objects.create(name="test-graph")
-        storage_file = StorageFile.objects.create(org=org, path="file.txt")
+        storage_file = StorageFile.objects.create(
+            org=org, path="file.txt", name="file.txt"
+        )
         GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
 
         resp = auth_client.delete(
@@ -274,7 +305,9 @@ class TestGraphFiles:
 
         org = Organization.objects.get(name="Default Organization")
         graph = Graph.objects.create(name="test-graph")
-        storage_file = StorageFile.objects.create(org=org, path="attached.txt")
+        storage_file = StorageFile.objects.create(
+            org=org, path="attached.txt", name="attached.txt"
+        )
         GraphStorageFile.objects.create(graph=graph, storage_file=storage_file)
 
         resp = auth_client.get("/api/storage/graph-files/", {"graph_id": graph.id})
@@ -287,6 +320,7 @@ class TestGraphFiles:
 class TestTree:
     def test_tree_returns_nested_structure(self, auth_client, mock_manager):
         root = TreeNode(
+            id=None,
             name="reports",
             path="reports/",
             type="folder",
@@ -294,6 +328,7 @@ class TestTree:
             modified=None,
             children=[
                 TreeNode(
+                    id=42,
                     name="q1.pdf",
                     path="reports/q1.pdf",
                     type="file",
@@ -304,6 +339,7 @@ class TestTree:
             ],
         )
         mock_manager.info.return_value = FolderInfo(
+            id=1,
             name="reports",
             path="reports/",
             modified="2024-01-01T00:00:00Z",
@@ -320,11 +356,17 @@ class TestTree:
 
     def test_tree_forwards_max_depth_to_manager(self, auth_client, mock_manager):
         mock_manager.info.return_value = FolderInfo(
-            name="", path="", modified="2024-01-01T00:00:00Z"
+            id=1, name="", path="", modified="2024-01-01T00:00:00Z"
         )
         mock_manager.list_tree.return_value = (
             TreeNode(
-                name="", path="", type="folder", size=0, modified=None, children=[]
+                id=None,
+                name="",
+                path="",
+                type="folder",
+                size=0,
+                modified=None,
+                children=[],
             ),
             False,
         )
@@ -333,11 +375,17 @@ class TestTree:
 
     def test_tree_surfaces_truncated_flag(self, auth_client, mock_manager):
         mock_manager.info.return_value = FolderInfo(
-            name="", path="", modified="2024-01-01T00:00:00Z"
+            id=1, name="", path="", modified="2024-01-01T00:00:00Z"
         )
         mock_manager.list_tree.return_value = (
             TreeNode(
-                name="", path="", type="folder", size=0, modified=None, children=[]
+                id=None,
+                name="",
+                path="",
+                type="folder",
+                size=0,
+                modified=None,
+                children=[],
             ),
             True,
         )
@@ -351,6 +399,7 @@ class TestTree:
 
     def test_tree_rejects_file_path_with_400(self, auth_client, mock_manager):
         mock_manager.info.return_value = FileInfo(
+            id=1,
             name="f.txt",
             path="f.txt",
             size=1,
@@ -361,12 +410,71 @@ class TestTree:
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
 
+class TestFilesByIds:
+    def test_returns_matching_files_with_expected_fields(
+        self, auth_client, mock_manager
+    ):
+        mock_manager.list_.return_value = []
+        auth_client.get("/api/storage/list/", {"path": ""})
+        org = Organization.objects.get(name="Default Organization")
+
+        storage_file = StorageFile.objects.create(
+            org=org, path="reports/q1.pdf", name="q1.pdf", size=100
+        )
+
+        resp = auth_client.get("/api/storage/files/", {"ids": str(storage_file.id)})
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert len(resp.data) == 1
+        assert resp.data[0]["id"] == storage_file.id
+        assert resp.data[0]["path"] == "reports/q1.pdf"
+        assert resp.data[0]["name"] == "q1.pdf"
+        assert resp.data[0]["size"] == 100
+
+    def test_omits_missing_ids(self, auth_client, mock_manager):
+        mock_manager.list_.return_value = []
+        auth_client.get("/api/storage/list/", {"path": ""})
+        org = Organization.objects.get(name="Default Organization")
+
+        storage_file = StorageFile.objects.create(org=org, path="a.txt", name="a.txt")
+
+        resp = auth_client.get(
+            "/api/storage/files/", {"ids": f"{storage_file.id},999999"}
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert len(resp.data) == 1
+        assert resp.data[0]["id"] == storage_file.id
+
+    def test_omits_files_of_another_org(self, auth_client, mock_manager):
+        mock_manager.list_.return_value = []
+        auth_client.get("/api/storage/list/", {"path": ""})
+
+        other_org = Organization.objects.create(name="other-org")
+        foreign_file = StorageFile.objects.create(
+            org=other_org, path="foreign.txt", name="foreign.txt"
+        )
+
+        resp = auth_client.get("/api/storage/files/", {"ids": str(foreign_file.id)})
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data == []
+
+    def test_rejects_non_numeric_ids(self, auth_client, mock_manager):
+        resp = auth_client.get("/api/storage/files/", {"ids": "1,abc"})
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_rejects_empty_ids(self, auth_client, mock_manager):
+        resp = auth_client.get("/api/storage/files/", {"ids": ""})
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
 class TestSearch:
     def test_search_returns_paged_results(self, auth_client, mock_manager):
         mock_manager.search.return_value = (
             [
-                {"path": "reports/q1_report.pdf", "name": "q1_report.pdf"},
-                {"path": "archive/old_report.txt", "name": "old_report.txt"},
+                {"id": 1, "path": "reports/q1_report.pdf", "name": "q1_report.pdf"},
+                {"id": 2, "path": "archive/old_report.txt", "name": "old_report.txt"},
             ],
             137,
         )
@@ -405,3 +513,37 @@ class TestSearch:
     def test_search_rejects_limit_over_max(self, auth_client, mock_manager):
         resp = auth_client.get("/api/storage/search/", {"q": "rep", "limit": 999})
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+class TestSandboxMutationFeedsListing:
+    """
+    Verifies that calling StorageFileSync.on_upload (the code path that the
+    sandbox Redis mutation handler uses) results in the file appearing in a
+    real DB-backed list_ call.
+    """
+
+    def test_on_upload_then_list_returns_file(self, auth_client):
+        from tables.models import Organization
+        from tables.services.storage_service.db_sync import StorageFileSync
+        from tables.services.storage_service.manager import StorageManager
+        from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
+        from unittest.mock import patch
+
+        # Use a real in-memory backend with a real manager (no mock_manager fixture here).
+        backend = InMemoryStorageBackend(organization_prefix="")
+        manager = StorageManager(backend)
+
+        with patch(
+            "tables.views.storage_views.get_storage_manager",
+            return_value=manager,
+        ):
+            # Trigger _resolve_context to create the default org.
+            resp = auth_client.get("/api/storage/list/", {"path": ""})
+            org = Organization.objects.get(name="Default Organization")
+
+            StorageFileSync.on_upload(org.id, "gen/out.txt")
+
+            resp = auth_client.get("/api/storage/list/", {"path": "gen"})
+            assert resp.status_code == 200
+            names = [item["name"] for item in resp.data["items"]]
+            assert "out.txt" in names

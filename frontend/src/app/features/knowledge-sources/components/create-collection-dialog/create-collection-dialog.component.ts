@@ -3,6 +3,7 @@ import { NgComponentOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, ViewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ButtonComponent, ConfirmationDialogService, StepConfig } from '@shared/components';
 import { AppSvgIconComponent, StepperComponent } from '@shared/components';
 import { EMPTY, filter, Observable, of } from 'rxjs';
@@ -35,10 +36,12 @@ export interface CreateCollectionDialogData {
     imports: [
         ButtonComponent,
         StepperComponent,
+        // TODO check why cant import
         StepUploadFilesComponent,
         StepSelectRagComponent,
         AppSvgIconComponent,
         NgComponentOutlet,
+        MatTooltipModule,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

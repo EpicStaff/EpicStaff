@@ -6,6 +6,7 @@ import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { GraphMessage } from '../../../pages/running-graph/models/graph-session-message.model';
 import { WarningMessages } from '../../../pages/running-graph/models/warning-messages.model';
 import { ConfigService } from '../../../services/config/config.service';
+import { DateRangeFilter } from '../../../shared/models/date-range-filter.model';
 
 export interface GraphSessionGraph {
     id: number;
@@ -46,6 +47,13 @@ export interface SessionUpdates {
     status: GraphSessionStatus;
 }
 
+export type TriggerType = 'manual' | 'schedule' | 'webhook' | 'telegram' | 'parent_flow';
+
+export interface SessionTrigger {
+    trigger_type: TriggerType | string;
+    trigger_id: number | null;
+}
+
 export interface GraphSessionLight {
     id: number;
     graph_id: number;
@@ -54,6 +62,7 @@ export interface GraphSessionLight {
     status_updated_at: string;
     created_at: string;
     finished_at: string | null;
+    trigger: SessionTrigger | null;
 }
 
 export interface DurationFilter {
@@ -62,29 +71,7 @@ export interface DurationFilter {
     value2?: number;
 }
 
-export type SessionStatusesCounts = {
-    run: number;
-    wait_for_user: number;
-    error: number;
-    pending: number;
-    stop: number;
-};
-
 export type DurationOperator = 'lessThan' | 'greaterThan' | 'equal' | 'between';
-
-export type GraphSessionStatusesCounts = {
-    [graph_id: string]: SessionStatusesCounts;
-};
-
-export type SessionStatusesCountsMap = Map<string, SessionStatusesCounts>;
-
-export const defaultSessionStatusesCounts = (): SessionStatusesCounts => ({
-    run: 0,
-    wait_for_user: 0,
-    error: 0,
-    pending: 0,
-    stop: 0,
-});
 
 @Injectable({
     providedIn: 'root',
@@ -100,31 +87,6 @@ export class GraphSessionService {
 
     private get apiUrl(): string {
         return this.configService.apiUrl + 'sessions/';
-    }
-
-    getAllSessions(): Observable<GraphSession[]> {
-        return this.http.get<ApiGetRequest<GraphSession>>(this.apiUrl).pipe(
-            map((response) => {
-                return response.results.sort((a, b) => b.id - a.id);
-            })
-        );
-    }
-
-    getSessionStatuses(graphId?: string): Observable<SessionStatusesCountsMap> {
-        const params = new HttpParams().set('graph_id', graphId!.toString());
-        return this.http.get<GraphSessionStatusesCounts>(this.apiUrl + 'statuses/', { params }).pipe(
-            map((response) => {
-                const outerMap: SessionStatusesCountsMap = new Map();
-                Object.entries(response).forEach(([graphId, statuses]) => {
-                    const normalizedStatuses: SessionStatusesCounts = {
-                        ...defaultSessionStatusesCounts(),
-                        ...statuses,
-                    };
-                    outerMap.set(graphId, normalizedStatuses);
-                });
-                return outerMap;
-            })
-        );
     }
 
     getSessionById(sessionId: number): Observable<GraphSession> {
@@ -152,7 +114,9 @@ export class GraphSessionService {
         status?: string[],
         nodeName?: string | null,
         isErrorCause?: boolean,
-        durationFilter?: DurationFilter | null
+        durationFilter?: DurationFilter | null,
+        triggerType?: TriggerType[],
+        dateFilter?: DateRangeFilter | null
     ): Observable<ApiGetRequest<GraphSessionLight>>;
 
     getSessionsByGraphId(
@@ -163,7 +127,9 @@ export class GraphSessionService {
         status?: string[],
         nodeName?: string | null,
         isErrorCause?: boolean,
-        durationFilter?: DurationFilter | null
+        durationFilter?: DurationFilter | null,
+        triggerType?: TriggerType[],
+        dateFilter?: DateRangeFilter | null
     ): Observable<ApiGetRequest<GraphSession | GraphSessionLight>> {
         let params = new HttpParams().set('graph_id', graphId.toString());
 
@@ -174,6 +140,8 @@ export class GraphSessionService {
         if (nodeName) params = params.set('node_name', nodeName);
         if (isErrorCause) params = params.set('is_error_cause', 'true');
         if (durationFilter) params = this.applyDurationParams(params, durationFilter);
+        if (triggerType && triggerType.length > 0) params = params.set('trigger_type', triggerType.join(','));
+        if (dateFilter) params = this.applyDateParams(params, dateFilter);
         if (detailed === false) {
             return this.http.get<ApiGetRequest<GraphSessionLight>>(this.apiUrl, {
                 params,
@@ -183,14 +151,6 @@ export class GraphSessionService {
                 params,
             });
         }
-    }
-
-    deleteSessionById(sessionId: number): Observable<void> {
-        return this.http.delete<void>(`${this.apiUrl}${sessionId}/`).pipe(
-            map(() => {
-                this._sessionsChanged$.next();
-            })
-        );
     }
 
     bulkDeleteSessions(ids: number[]): Observable<void> {
@@ -232,9 +192,11 @@ export class GraphSessionService {
         offset?: number,
         status?: string[],
         ordering?: string,
-        graphName?: string | null,
+        graphName?: string[],
+        triggerType?: TriggerType[],
         isErrorCause?: boolean,
-        durationFilter?: DurationFilter | null
+        durationFilter?: DurationFilter | null,
+        dateFilter?: DateRangeFilter | null
     ): Observable<ApiGetRequest<GraphSessionLight>> {
         let params = new HttpParams();
         params = params.set('detailed', 'false');
@@ -242,11 +204,19 @@ export class GraphSessionService {
         if (offset !== undefined) params = params.set('offset', offset.toString());
         if (status && !status.includes('all')) params = params.set('status', status.join(','));
         if (ordering) params = params.set('ordering', ordering);
-        if (graphName) params = params.set('graph_name', graphName);
+        if (graphName && graphName.length > 0) params = params.set('graph_name', graphName.join(','));
+        if (triggerType && triggerType.length > 0) params = params.set('trigger_type', triggerType.join(','));
         if (isErrorCause) params = params.set('is_error_cause', 'true');
         if (durationFilter) params = this.applyDurationParams(params, durationFilter);
+        if (dateFilter) params = this.applyDateParams(params, dateFilter);
 
         return this.http.get<ApiGetRequest<GraphSessionLight>>(this.apiUrl, { params });
+    }
+
+    private applyDateParams(params: HttpParams, filter: DateRangeFilter): HttpParams {
+        if (filter.after) params = params.set('created_at_after', filter.after);
+        if (filter.before) params = params.set('created_at_before', filter.before);
+        return params;
     }
 
     private applyDurationParams(params: HttpParams, filter: DurationFilter): HttpParams {

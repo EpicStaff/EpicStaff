@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent } from '@shared/components';
 
 import { FileSizePipe } from '../../../../../shared/pipes/file-size.pipe';
@@ -14,7 +15,7 @@ interface GraphRagDocumentWithDisabled extends GraphRagDocument {
     selector: 'app-graph-rag-files-list',
     templateUrl: './files-list.component.html',
     styleUrls: ['./files-list.component.scss'],
-    imports: [ButtonComponent, FileSizePipe, AppSvgIconComponent, CheckboxComponent],
+    imports: [ButtonComponent, FileSizePipe, AppSvgIconComponent, CheckboxComponent, MatTooltipModule,],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GraphRagFilesListComponent {

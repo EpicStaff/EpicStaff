@@ -1,6 +1,6 @@
 from pydantic import BaseModel
-from typing import Any, Optional
-from pydantic import ConfigDict, model_validator
+from typing import Any, Literal, Optional
+from pydantic import ConfigDict, Field, model_validator
 from .ai_providers import LLMData, EmbedderData
 
 
@@ -35,6 +35,9 @@ class McpToolData(BaseModel):
     auth: Optional[str] = None
     """Authorization token or OAuth string, if the server requires it."""
 
+    auth_secret_id: Optional[int] = Field(default=None, exclude=True)
+    """In-memory carrier for SecretResolver; excluded from every dump."""
+
     init_timeout: Optional[float] = 10
     """Timeout for session initialization. Optional, default is 10 seconds."""
 
@@ -54,8 +57,46 @@ class PythonCodeData(BaseModel):
     storage_allowed_paths: list[str] | None = None
     storage_org_prefix: str | None = None
     session_id: int | None = None
+    org_id: int | None = None
+
+    secret_names: list[str] = Field(default_factory=list, exclude=True)
+    """Names this code is *allowed* to read — its declared allow-list.
+
+    Read from PythonCode.secrets, the relation written through `secret_ids`. Not
+    from the code: parse_secret_names() only checks that the code asks for nothing
+    outside this set. Everything listed here is injected whether the code reads it
+    or not, which is what lets a computed name like get_secret(f"KEY_{env}")
+    resolve.
+
+    Excluded because this model is nested in GraphData, which becomes
+    Session.graph_schema. The names are not credentials, but they are the
+    caller's data and nothing downstream of Redis needs them.
+    """
+
+    secrets: dict[str, str] = Field(default_factory=dict)
+    """{name: plaintext}, filled on the resolved copy only.
+
+    NOT excluded: this is how the resolved value reaches crew — redis_service
+    publishes `resolved.model_dump_json()`, and if this field were excluded
+    that dump could never carry it, no matter how it was filled.
+
+    This is safe because resolution happens only on the deep copy that
+    SecretResolver.resolve_payload() returns, never on the caller's object.
+    `Session.graph_schema` is built from that original, unresolved object
+    (see session_manager_service.py), so its `secrets` is always the empty
+    default here — never plaintext. Nothing prevents future code from
+    resolving in place instead of on a copy; that discipline, not a Field
+    flag, is what keeps this field's value out of persisted storage.
+    """
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ArgsSchema(BaseModel):
+    type: Literal["object"] = "object"
+    title: str = "ArgumentsSchema"
+    properties: dict[str, Any]
+    required: list[str] = []
 
 
 class PythonCodeToolData(BaseModel):
@@ -63,6 +104,7 @@ class PythonCodeToolData(BaseModel):
     name: str
     description: str
     variables: list[dict] = []
+    args_schema: ArgsSchema | None = None
     python_code: PythonCodeData
 
     model_config = ConfigDict(from_attributes=True)
@@ -114,18 +156,6 @@ class BaseToolData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class RunToolParamsModel(BaseModel):
-    tool_config: ToolConfigData | None = None
-    run_args: list[str]
-    run_kwargs: dict[str, Any]
-
-
-class ToolInitConfigurationModel(BaseModel):
-    tool_init_configuration: dict[str, Any] | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class CodeResultData(BaseModel):
     execution_id: str
     result_data: str | None = None
@@ -148,5 +178,24 @@ class CodeTaskData(BaseModel):
     storage_allowed_paths: list[str] | None = None
     storage_org_prefix: str | None = None
     session_id: int | None = None
+    org_id: int | None = None
+
+    secrets: dict[str, str] = {}
+    """{name: plaintext} for the sandbox. NOT excluded: this message is never
+    persisted, and excluding it would silently deliver no secrets."""
+
+    def log_summary(self) -> str:
+        """A log-safe description of this task.
+
+        `secrets` holds resolved plaintext, so neither its values nor its keys
+        are rendered — only its size, which is what actually helps when
+        debugging ("did the node receive its declarations?"). Callers must log
+        this instead of the message body.
+        """
+        return (
+            f"execution_id={self.execution_id} venv={self.venv_name} "
+            f"entrypoint={self.entrypoint} libraries={len(self.libraries)} "
+            f"secrets={len(self.secrets)}"
+        )
 
     model_config = ConfigDict(from_attributes=True)

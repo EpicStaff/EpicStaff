@@ -64,32 +64,9 @@
                 outline: none;
                 border-color: #685fff;
             }
-        }
 
-        .input-with-icon {
-            position: relative;
-
-            .text-input {
-                padding-right: 40px;
-            }
-
-            .eye-button {
-                position: absolute;
-                right: 10px;
-                top: 50%;
-                transform: translateY(-50%);
-                background: none;
-                border: none;
-                color: rgba(255, 255, 255, 0.6);
-                cursor: pointer;
-                padding: 4px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-
-                &:hover {
-                    color: rgba(255, 255, 255, 0.9);
-                }
+            &.masked {
+                -webkit-text-security: disc;
             }
         }
 
