@@ -21,6 +21,8 @@ import {
     LlmModelConfigDialogComponent,
     VoiceModelConfigDialogComponent,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { FullLLMConfig, FullLLMConfigService, FullRealtimeConfig, FullRealtimeConfigService } from '@shared/services';
 import { forkJoin, Subject } from 'rxjs';
 import { finalize, takeUntil } from 'rxjs/operators';
@@ -30,7 +32,7 @@ import { LlmItemComponent } from './llm-item/llm-item.component';
 
 @Component({
     selector: 'app-llm-popup',
-    imports: [FormsModule, LlmItemComponent, AppSvgIconComponent, ButtonComponent],
+    imports: [FormsModule, LlmItemComponent, AppSvgIconComponent, ButtonComponent, HasPermissionDirective],
     templateUrl: './llm-popup.component.html',
     styleUrls: ['./llm-popup.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -208,4 +210,7 @@ export class LLMPopupComponent implements OnInit, OnDestroy, AfterViewInit {
             width: '600px',
         });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

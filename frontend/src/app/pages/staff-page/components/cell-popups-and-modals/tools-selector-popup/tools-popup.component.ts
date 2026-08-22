@@ -18,6 +18,8 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ButtonComponent } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { forkJoin, Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -32,7 +34,15 @@ import { PythonToolItemComponent } from './python-tool-item/python-tool-item.com
 
 @Component({
     selector: 'app-tools-list',
-    imports: [NgFor, NgIf, FormsModule, PythonToolItemComponent, McpToolItemComponent, ButtonComponent],
+    imports: [
+        NgFor,
+        NgIf,
+        FormsModule,
+        PythonToolItemComponent,
+        McpToolItemComponent,
+        ButtonComponent,
+        HasPermissionDirective,
+    ],
     templateUrl: './tools-popup.component.html',
     styleUrls: ['./tools-popup.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -300,4 +310,7 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     private _notifyChildDialogClosed(): void {
         setTimeout(() => this.childDialogOpenChange.emit(false));
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }

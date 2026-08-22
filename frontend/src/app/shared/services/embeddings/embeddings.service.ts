@@ -1,9 +1,10 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { CreateEmbeddingModelRequest, EmbeddingModel } from '@shared/models';
+import { ActionCode, CreateEmbeddingModelRequest, EmbeddingModel, ResourceCode } from '@shared/models';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config';
 
@@ -39,6 +40,12 @@ export class EmbeddingModelsService {
             .get<ApiGetRequest<EmbeddingModel>>(this.apiUrl, {
                 headers: this.headers,
                 params,
+                context: withPermission<ApiGetRequest<EmbeddingModel>>(ResourceCode.LlmConfigs, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
             })
             .pipe(map((response: ApiGetRequest<EmbeddingModel>) => response.results));
     }

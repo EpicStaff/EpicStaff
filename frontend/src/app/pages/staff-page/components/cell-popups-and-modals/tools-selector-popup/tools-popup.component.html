@@ -31,6 +31,7 @@
 
             @if (selectedMenu === 'custom') {
                 <app-button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
                     type="primary"
                     mod="small"
                     iconSize="0.9rem"
@@ -41,6 +42,7 @@
                 </app-button>
             } @else if (selectedMenu === 'mcp') {
                 <app-button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
                     type="primary"
                     mod="small"
                     iconSize="0.9rem"
@@ -79,6 +81,7 @@
             >
                 <p>No custom tools available</p>
                 <app-button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
                     type="primary"
                     class="btn-primary create-btn"
                     [leftIcon]="'plus'"
@@ -127,6 +130,7 @@
             >
                 <p>No MCP tools available</p>
                 <app-button
+                    *appHasPermission="[ResourceCode.Tools, ActionCode.Create]"
                     type="primary"
                     class="btn-primary create-btn"
                     [leftIcon]="'plus'"

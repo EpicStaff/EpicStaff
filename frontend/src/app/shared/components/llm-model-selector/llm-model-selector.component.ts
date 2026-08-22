@@ -16,6 +16,8 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { DropdownManagerService, FullLLMConfig, FullLLMConfigService } from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
 
@@ -26,7 +28,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
 @Component({
     selector: 'app-llm-model-selector',
     standalone: true,
-    imports: [CommonModule, FormsModule, AppSvgIconComponent, LlmModelItemComponent],
+    imports: [CommonModule, FormsModule, AppSvgIconComponent, LlmModelItemComponent, HasPermissionDirective],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -104,6 +106,7 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                             (click)="$event.stopPropagation()"
                         />
                         <button
+                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
                             class="create-btn"
                             (click)="onCreateLlm()"
                         >
@@ -520,4 +523,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
             }
         }, 0);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

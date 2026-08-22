@@ -1,7 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { map, Observable } from 'rxjs';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
 import {
@@ -32,20 +34,45 @@ export class AgentsService {
     // GET all agents
     getAgents(): Observable<GetAgentRequest[]> {
         const url = this.apiUrl;
-        return this.http.get<ApiGetRequest<GetAgentRequest>>(url).pipe(map((response) => response.results));
+        return this.http
+            .get<ApiGetRequest<GetAgentRequest>>(url, {
+                context: withPermission<ApiGetRequest<GetAgentRequest>>(ResourceCode.Agents, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
+            .pipe(map((response) => response.results));
     }
 
     // GET agents that have a realtime config configured
     getAgentsWithRealtimeConfig(): Observable<GetAgentRequest[]> {
         return this.http
-            .get<ApiGetRequest<GetAgentRequest>>(`${this.apiUrl}?has_realtime_config=true`)
+            .get<ApiGetRequest<GetAgentRequest>>(`${this.apiUrl}?has_realtime_config=true`, {
+                context: withPermission<ApiGetRequest<GetAgentRequest>>(ResourceCode.Agents, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
             .pipe(map((response) => response.results));
     }
 
     // GET agents by project (crew) ID
     getAgentsByProjectId(projectId: number): Observable<GetAgentRequest[]> {
         const url = `${this.apiUrl}?crew_id=${projectId}`;
-        return this.http.get<ApiGetRequest<GetAgentRequest>>(url).pipe(map((response) => response.results));
+        return this.http
+            .get<ApiGetRequest<GetAgentRequest>>(url, {
+                context: withPermission<ApiGetRequest<GetAgentRequest>>(ResourceCode.Agents, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
+            .pipe(map((response) => response.results));
     }
 
     getAgentById(agentId: number): Observable<GetAgentRequest> {

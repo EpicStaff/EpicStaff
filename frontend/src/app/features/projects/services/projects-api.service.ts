@@ -1,8 +1,10 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
 import { CreateProjectRequest, GetProjectRequest, UpdateProjectRequest } from '../models/project.model';
@@ -23,7 +25,16 @@ export class ProjectsApiService {
     }
 
     getProjects(): Observable<GetProjectRequest[]> {
-        return this.http.get<ApiGetRequest<GetProjectRequest>>(this.apiUrl).pipe(map((response) => response.results));
+        return this.http
+            .get<ApiGetRequest<GetProjectRequest>>(this.apiUrl, {
+                context: withPermission<ApiGetRequest<GetProjectRequest>>(ResourceCode.Projects, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
+            .pipe(map((response) => response.results));
     }
 
     getProjectById(id: number): Observable<GetProjectRequest> {

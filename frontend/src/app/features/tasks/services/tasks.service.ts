@@ -1,7 +1,9 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { map, Observable } from 'rxjs';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config/config.service';
 import { CreateTaskRequest, GetTaskRequest, UpdateTaskRequest } from '../models/task.model';
@@ -23,12 +25,30 @@ export class TasksService {
 
     getTasks(): Observable<GetTaskRequest[]> {
         const url = `${this.apiUrl}?limit=1000`;
-        return this.http.get<ApiGetRequest<GetTaskRequest>>(url).pipe(map((response) => response.results));
+        return this.http
+            .get<ApiGetRequest<GetTaskRequest>>(url, {
+                context: withPermission<ApiGetRequest<GetTaskRequest>>(ResourceCode.Projects, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
+            .pipe(map((response) => response.results));
     }
 
     getTasksByProjectId(projectId: string): Observable<GetTaskRequest[]> {
         const url = `${this.apiUrl}?crew=${projectId}`;
-        return this.http.get<ApiGetRequest<GetTaskRequest>>(url).pipe(map((response) => response.results));
+        return this.http
+            .get<ApiGetRequest<GetTaskRequest>>(url, {
+                context: withPermission<ApiGetRequest<GetTaskRequest>>(ResourceCode.Projects, ActionCode.Read, {
+                    count: 0,
+                    next: null,
+                    previous: null,
+                    results: [],
+                }),
+            })
+            .pipe(map((response) => response.results));
     }
 
     // GET task by ID

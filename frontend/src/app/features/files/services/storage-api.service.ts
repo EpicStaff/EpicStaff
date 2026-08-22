@@ -1,8 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { EMPTY, Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
+import { withPermission } from '../../../core/http/permission-context';
 import { ConfigService } from '../../../services/config/config.service';
 import { AddFilesPayload } from '../components/create-folder-dialog/create-folder-dialog.component';
 import {
@@ -34,6 +36,10 @@ export class StorageApiService {
         return this.http
             .get<{ path: string; items: StorageItem[] }>(`${this.apiUrl}list/`, {
                 params: { path },
+                context: withPermission<{ path: string; items: StorageItem[] }>(ResourceCode.Files, ActionCode.Read, {
+                    path,
+                    items: [],
+                }),
             })
             .pipe(map((res) => res.items ?? []));
     }
@@ -155,6 +161,7 @@ export class StorageApiService {
     getGraphFiles(graphId: number): Observable<GraphFileRecord[]> {
         return this.http.get<GraphFileRecord[]>(`${this.apiUrl}graph-files/`, {
             params: { graph_id: graphId.toString() },
+            context: withPermission<GraphFileRecord[]>(ResourceCode.Files, ActionCode.Read, []),
         });
     }
 

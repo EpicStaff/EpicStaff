@@ -10,6 +10,7 @@ import { routes } from './app.routes';
 import { activeOrgInterceptor } from './core/interceptors/active-org.interceptor';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { forbiddenInterceptor } from './core/interceptors/forbidden.interceptor';
+import { preflightPermissionInterceptor } from './core/interceptors/preflight-permission.interceptor';
 import { validationErrorsInterceptor } from './core/interceptors/validation-errors.interceptor';
 import { ConfigService } from './services/config/config.service';
 
@@ -24,7 +25,13 @@ export const appConfig: ApplicationConfig = {
         provideAnimationsAsync(),
 
         provideHttpClient(
-            withInterceptors([authInterceptor, activeOrgInterceptor, validationErrorsInterceptor, forbiddenInterceptor])
+            withInterceptors([
+                preflightPermissionInterceptor,
+                authInterceptor,
+                activeOrgInterceptor,
+                validationErrorsInterceptor,
+                forbiddenInterceptor,
+            ])
         ),
         importProvidersFrom(MarkdownModule.forRoot({}), MonacoEditorModule.forRoot()),
 
