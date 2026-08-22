@@ -2,8 +2,10 @@ import asyncio
 
 __all__ = ["TaskRegister"]
 
+from application.ports.task_register import AbstractTaskRegister
 
-class TaskRegister:
+
+class TaskRegister(AbstractTaskRegister):
     def __init__(self):
         self._tasks: dict[str, asyncio.Task] = {}
 
