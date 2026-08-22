@@ -7,12 +7,12 @@ from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
 from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
 from domain.models import Rag
 from graphrag.api import build_index
+from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
 from graphrag_storage import create_storage
 from infrastructure.graphrag.storages import create_storage_config
-from loguru import logger
-
 from infrastructure.graphrag.vector_stores import create_vector_store_config
+from loguru import logger
 
 
 class GraphIndexOrchestrator(AbstractIndexOrchestrator):
@@ -25,12 +25,12 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         target_slot = None
         if rag.status == IndexStatusEnum.COMPLETED:
             if self._has_indexed_document(documents):
-                logger.debug('REINDEX')
+                logger.debug("REINDEX")
                 documents += await self._get_indexed_documents_excluding(
                     rag.id, command.document_ids
                 )
                 target_slot = SlotEnum.A if rag.slot == SlotEnum.B else SlotEnum.B
-                self.state['target_slot'] = target_slot
+                self.state["target_slot"] = target_slot
             else:
                 is_update_run = True
 
@@ -141,7 +141,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
 
     async def _finish_rag(self, rag: Rag, document_ids: set[int]):
         old_slot = rag.slot
-        target_slot = self.state.get('target_slot')
+        target_slot = self.state.get("target_slot")
 
         async with self.uow:
             rag.finish_document(*document_ids)
@@ -178,7 +178,9 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
     def _swap_slot_for_config(target_slot: SlotEnum, rag_id: int, config: GraphRagConfig):
         config.input_storage = create_storage_config(rag_id=rag_id, subdir=f"{target_slot}/input")
         config.output_storage = create_storage_config(rag_id=rag_id, subdir=f"{target_slot}/output")
-        config.update_output_storage = create_storage_config(rag_id=rag_id, subdir=f"{target_slot}/update_output")
+        config.update_output_storage = create_storage_config(
+            rag_id=rag_id, subdir=f"{target_slot}/update_output"
+        )
         config.vector_store = create_vector_store_config(rag_id=rag_id, subdir=target_slot)
 
     @staticmethod
