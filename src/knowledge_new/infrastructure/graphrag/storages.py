@@ -1,11 +1,10 @@
-import asyncio
 import io
 import re
-from collections.abc import Coroutine, Iterator
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
+from common.utils import run_async_to_sync
 from graphrag_storage import Storage, StorageConfig, register_storage
 from graphrag_storage.storage import get_timestamp_formatted_with_local_tz
 from miniopy_async import Minio, S3Error
@@ -29,15 +28,6 @@ def create_storage_config(
         secret_key=settings.MINIO_SECRET_KEY,
         encoding=settings.GRAPHRAG_ENCODING,
     )
-
-
-def _run_sync[T](coro: Coroutine[Any, Any, T]) -> T:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(asyncio.run, coro).result()
 
 
 class MinioStorage(Storage):
@@ -106,7 +96,7 @@ class MinioStorage(Storage):
                         matches.append(self._strip_prefix(name))
                 return matches
 
-        return iter(_run_sync(_collect()))
+        return iter(run_async_to_sync(_collect()))
 
     async def get(self, key: str, as_bytes: bool | None = None, encoding: str | None = None) -> Any:
         async with self._client_manager() as client:
@@ -199,7 +189,7 @@ class MinioStorage(Storage):
                     if obj.object_name and not obj.is_dir
                 ]
 
-        return _run_sync(_collect())
+        return run_async_to_sync(_collect())
 
     async def get_creation_date(self, key: str) -> str:
         async with self._client_manager() as client:
