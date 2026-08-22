@@ -1,6 +1,8 @@
 import asyncio
 from typing import Literal
 
+from loguru import logger
+
 from application import commands
 from application.commands import RemoveRag
 from application.orchestrators.indexing import build_indexer
@@ -85,14 +87,14 @@ class RagController(Controller):
         return schemas.PrechunkOutputSchema.model_validate(result)
 
     @delete(
-        path="{rag_id:int}/{operation:str}/cancel/",
-        summary="Cancel a running index or prechunk",
+        path="{rag_id:int}/cancel/{operation:str}/",
+        summary="Cancel a running index",
     )
     async def cancel_operation(
         self,
         strategy: RAGStrategy,
         rag_id: int,
-        operation: Literal["index", "prechunk"],
+        operation: Literal["index"],
         task_register: TaskRegister,
     ) -> None:
         key = make_key("rag", strategy, rag_id, operation)

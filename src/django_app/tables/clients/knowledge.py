@@ -63,7 +63,7 @@ class KnowledgeClient:
         rag_id: int,
         operation: Literal["index", "prechunk"],
     ) -> None:
-        self._request(method="delete", url=f"rags/{strategy}/{rag_id}/{operation}/cancel/")
+        self._request(method="delete", url=f"rags/{strategy}/{rag_id}/cancel/{operation}/")
 
     def delete(self, strategy: RAGStrategy, rag_id: int):
         self._request(method="delete", url=f"rags/{strategy}/{rag_id}/")
