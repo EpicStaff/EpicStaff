@@ -31,7 +31,7 @@ def _build_completion_model(llm_config: LLMConfig) -> ModelConfig:
     return ModelConfig(
         model_provider=llm_model.llm_provider.name,
         model=llm_model.name,
-        api_key='dummy',
+        api_key="dummy",
         api_base=llm_model.base_url,
         api_version=llm_model.api_version,
         call_args=call_args,
@@ -43,7 +43,7 @@ def _build_embedding_model(embedder_config: ORMEmbeddingConfig) -> ModelConfig:
     return ModelConfig(
         model_provider=embedding_model.embedding_provider.name,
         model=embedding_model.name,
-        api_key='dummy',
+        api_key="dummy",
         api_base=embedding_model.base_url,
     )
 

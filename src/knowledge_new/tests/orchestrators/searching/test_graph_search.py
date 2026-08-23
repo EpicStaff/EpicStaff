@@ -209,7 +209,9 @@ async def test_extra_kwargs_forwarded_to_searcher(method, search_config, uow, mo
 
     monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
 
-    request = RunSearch(rag_id=1, query="q", search_config=search_config, embedding_api_key="sk-test")
+    request = RunSearch(
+        rag_id=1, query="q", search_config=search_config, embedding_api_key="sk-test"
+    )
     await GraphSearchOrchestrator(uow).on_execute(request)
 
     real_extra_kwargs = GraphSearchOrchestrator._SEARCH_MAP[method].extra_kwargs
@@ -314,7 +316,9 @@ async def test_required_files_forwarded_as_searcher_kwargs(
 
     monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
 
-    request = RunSearch(rag_id=1, query="q", search_config=search_config, embedding_api_key="sk-test")
+    request = RunSearch(
+        rag_id=1, query="q", search_config=search_config, embedding_api_key="sk-test"
+    )
     await GraphSearchOrchestrator(uow).on_execute(request)
 
     call_kwargs = fake.calls[0]
@@ -416,7 +420,9 @@ async def test_result_propagation_string(uow, monkeypatch):
 
     monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
 
-    request = RunSearch(rag_id=1, query="q", search_config=GraphBasicSearchConfig(), embedding_api_key="sk-test")
+    request = RunSearch(
+        rag_id=1, query="q", search_config=GraphBasicSearchConfig(), embedding_api_key="sk-test"
+    )
     response = await GraphSearchOrchestrator(uow).on_execute(request)
 
     assert isinstance(response.result, str)
@@ -442,7 +448,9 @@ async def test_result_propagation_structured(uow, monkeypatch):
 
     monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
 
-    request = RunSearch(rag_id=1, query="q", search_config=GraphBasicSearchConfig(), embedding_api_key="sk-test")
+    request = RunSearch(
+        rag_id=1, query="q", search_config=GraphBasicSearchConfig(), embedding_api_key="sk-test"
+    )
     response = await GraphSearchOrchestrator(uow).on_execute(request)
 
     assert response.result == chunks
@@ -461,7 +469,9 @@ async def test_get_config_called_with_correct_rag_id(repo, uow, monkeypatch):
 
     monkeypatch.setattr(GraphSearchOrchestrator, "_resolve_files", staticmethod(fake_resolve_files))
 
-    request = RunSearch(rag_id=77, query="q", search_config=GraphGlobalSearchConfig(), embedding_api_key="sk-test")
+    request = RunSearch(
+        rag_id=77, query="q", search_config=GraphGlobalSearchConfig(), embedding_api_key="sk-test"
+    )
     await GraphSearchOrchestrator(uow).on_execute(request)
 
     assert repo.get_config_calls == [77]
@@ -487,7 +497,9 @@ async def test_resolve_files_called_with_correct_parameters(uow, monkeypatch):
         GraphSearchOrchestrator, "_resolve_files", staticmethod(recording_resolve_files)
     )
 
-    request = RunSearch(rag_id=1, query="q", search_config=GraphLocalSearchConfig(), embedding_api_key="sk-test")
+    request = RunSearch(
+        rag_id=1, query="q", search_config=GraphLocalSearchConfig(), embedding_api_key="sk-test"
+    )
     await GraphSearchOrchestrator(uow).on_execute(request)
 
     assert len(resolve_calls) == 1

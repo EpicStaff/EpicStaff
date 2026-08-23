@@ -104,8 +104,8 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id, slot=slot)
         if not config:
             raise GraphRagConfigNotFoundError(rag_id=rag_id)
-        config.embedding_models['default_embedding_model'].api_key = embedding_api_key
-        config.completion_models['default_completion_model'].api_key = llm_api_key
+        config.embedding_models["default_embedding_model"].api_key = embedding_api_key
+        config.completion_models["default_completion_model"].api_key = llm_api_key
         return config
 
     async def _get_documents_under_uow(

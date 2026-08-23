@@ -97,8 +97,8 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
         async with self.uow:
             config = await self.uow.graph_rag_repo.get_config(command.rag_id)
 
-        config.embedding_models['default_embedding_model'].api_key = command.embedding_api_key
-        config.completion_models['default_completion_model'].api_key = command.llm_api_key
+        config.embedding_models["default_embedding_model"].api_key = command.embedding_api_key
+        config.completion_models["default_completion_model"].api_key = command.llm_api_key
 
         if command.search_config.method not in self._SEARCH_MAP:
             raise UnsupportedError(

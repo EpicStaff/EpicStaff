@@ -6,7 +6,6 @@ from typing import Literal
 
 from infrastructure.processing_run import set_process_pool
 from settings import settings
-from src.shared.communication import Consumer, Producer, brokers, storages
 
 __all__ = ["get_lifespans"]
 

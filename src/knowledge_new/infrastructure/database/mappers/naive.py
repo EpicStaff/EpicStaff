@@ -63,11 +63,7 @@ def naive_rag_doc_config_to_document(config: NaiveRagDocumentConfig) -> Document
 
 
 def embedding_row_to_embedding_config(provider_name: str, model_name: str) -> EmbeddingConfig:
-    return EmbeddingConfig(
-        provider=provider_name.lower(),
-        model=model_name,
-        extra={}
-    )
+    return EmbeddingConfig(provider=provider_name.lower(), model=model_name, extra={})
 
 
 def search_rows_to_found_chunks(rows, similarity_threshold: float) -> list[FoundChunk]:

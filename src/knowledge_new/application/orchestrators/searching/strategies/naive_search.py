@@ -21,7 +21,9 @@ class NaiveSearchOrchestrator(AbstractSearchOrchestrator):
         if embedding_config is None:
             raise EmbeddingConfigNotFoundError(rag_id=command.rag_id)
 
-        embedder = build_embedder(embedding_config.provider, command.embedding_api_key, embedding_config)
+        embedder = build_embedder(
+            embedding_config.provider, command.embedding_api_key, embedding_config
+        )
         vector = await embedder.embed(command.query)
 
         async with self.uow:
