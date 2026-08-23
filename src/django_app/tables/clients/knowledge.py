@@ -34,11 +34,17 @@ class KnowledgeClient:
         strategy: RAGStrategy,
         rag_id: int,
         document_ids: frozenset[int],
+        embedding_api_key: str,
+        llm_api_key: str | None = None,
     ) -> None:
         self._request(
             method="post",
             url=f"rags/{strategy}/{rag_id}/index/",
-            json={"document_ids": list(document_ids)},
+            json={
+                "document_ids": list(document_ids),
+                "embedding_api_key": embedding_api_key,
+                "llm_api_key": llm_api_key,
+            },
         )
 
     def prechunk(

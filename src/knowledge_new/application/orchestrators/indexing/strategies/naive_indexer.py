@@ -23,7 +23,7 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
     async def on_execute(self, command: RunIndex) -> None:
         async with self.uow:
             rag = await self._get_rag_under_uow(command.rag_id)
-            embedder = await self._get_embedder_under_uow(rag.id)
+            embedder = await self._get_embedder_under_uow(rag.id, command.embedding_api_key)
             documents = await self._get_documents_under_uow(rag.id, command.document_ids)
 
         rag.mark_as_processing(command.document_ids)
@@ -134,11 +134,11 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
         self.state["rag"] = rag
         return rag
 
-    async def _get_embedder_under_uow(self, rag_id: int) -> AbstractEmbedder:
+    async def _get_embedder_under_uow(self, rag_id: int, api_key: str) -> AbstractEmbedder:
         embedding_config = await self.uow.naive_rag_repo.get_embedding_config(rag_id=rag_id)
         if embedding_config is None:
             raise EmbeddingConfigNotFoundError(rag_id=rag_id)
-        return build_embedder(embedding_config.provider, embedding_config)
+        return build_embedder(embedding_config.provider, api_key, embedding_config)
 
     async def _get_documents_under_uow(self, rag_id: int, ids: frozenset[int]) -> list[Document]:
         documents = await self.uow.naive_rag_repo.get_documents(rag_id=rag_id, ids=ids)

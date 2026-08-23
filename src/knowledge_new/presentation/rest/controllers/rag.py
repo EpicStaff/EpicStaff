@@ -36,6 +36,8 @@ class RagController(Controller):
         command = commands.RunIndex(
             rag_id=rag_id,
             document_ids=data.document_ids,
+            embedding_api_key=data.embedding_api_key,
+            llm_api_key=data.llm_api_key,
         )
         orchestrator = build_indexer(strategy, uow)
         task = asyncio.create_task(orchestrator.execute(command))

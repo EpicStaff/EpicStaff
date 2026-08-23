@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from domain.models import ChunkingConfig, SearchConfig
 
@@ -20,6 +20,8 @@ class Command:
 class RunIndex(Command):
     rag_id: int
     document_ids: frozenset[int]
+    embedding_api_key: str
+    llm_api_key: str | None = field(default=None)
 
 
 @dataclass(frozen=True)

@@ -62,11 +62,11 @@ def naive_rag_doc_config_to_document(config: NaiveRagDocumentConfig) -> Document
     return document
 
 
-def embedding_row_to_embedding_config(
-    provider_name: str, api_key: str, model_name: str
-) -> EmbeddingConfig:
+def embedding_row_to_embedding_config(provider_name: str, model_name: str) -> EmbeddingConfig:
     return EmbeddingConfig(
-        provider=provider_name.lower(), api_key=api_key, model=model_name, extra={}
+        provider=provider_name.lower(),
+        model=model_name,
+        extra={}
     )
 
 
