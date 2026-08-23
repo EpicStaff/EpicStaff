@@ -21,11 +21,7 @@ def _processing_rag(rag_id: int = 1) -> Rag:
 
 
 class FakeGraphRagRepo:
-    """Minimal in-memory repo covering the GraphRagRemoveOrchestrator call surface.
-
-    Exposes get_rag (the only method the orchestrator calls) plus get_config and
-    remove_rag with call tracking so tests can assert they were never invoked.
-    """
+    """Minimal in-memory repo covering the GraphRagRemoveOrchestrator call surface."""
 
     def __init__(self, *, rag: Rag | None):
         self._rag = rag
@@ -44,10 +40,7 @@ class FakeGraphRagRepo:
 
 
 class FakeUoW:
-    """Re-enterable unit of work that delegates to a single FakeGraphRagRepo.
-
-    commit_count tracks how many times commit() was called.
-    """
+    """Re-enterable unit of work that delegates to a single FakeGraphRagRepo."""
 
     def __init__(self, repo: FakeGraphRagRepo):
         self.graph_rag_repo = repo
@@ -64,10 +57,7 @@ class FakeUoW:
 
 
 class FakeStorage:
-    """Stand-in for a graphrag storage object.
-
-    async clear() — records clear_called = True; raises clear_error when set.
-    """
+    """Stand-in for a graphrag storage object."""
 
     def __init__(self, *, clear_error: BaseException | None = None):
         self.clear_called: bool = False
