@@ -999,9 +999,25 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         )
 
 
-class CancelRagIndexingView(APIView):
+class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
+    _RAG_MODELS = {"naive": NaiveRag, "graph": GraphRag}
+    _RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
+
     @extend_schema(**CANCEL_RAG_INDEXING_DELETE)
     def delete(self, request, rag_type: str, rag_id: int):
+        model = self._RAG_MODELS.get(rag_type)
+        if model is None:
+            return Response(
+                {"error": f"Unknown rag_type '{rag_type}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
         try:
             with KnowledgeClient() as client:
                 client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")

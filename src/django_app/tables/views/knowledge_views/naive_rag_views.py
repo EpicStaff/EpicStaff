@@ -1,4 +1,4 @@
-from django.db.models import Case, When, Count, F
+from django.db.models import Count
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,7 +8,6 @@ from drf_spectacular.utils import (
     OpenApiParameter,
 )
 from drf_spectacular.types import OpenApiTypes
-from rest_framework import serializers as drf_serializers
 from django.http import Http404
 from rest_framework.exceptions import ValidationError
 from loguru import logger
@@ -29,7 +28,6 @@ from tables.models.knowledge_models import (
     NaiveRag,
     NaiveRagDocumentConfig,
     NaiveRagChunk,
-    NaiveRagPreviewChunk,
 )
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.views.mixins import (
@@ -592,7 +590,13 @@ class NaiveRagChunkViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet):
 class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView):
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST)
     def post(self, request, naive_rag_id: int, document_config_id: int):
-        # TODO add organization
+        self.get_in_active_org_or_404(NaiveRag, naive_rag_id, _NAIVE_RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
         serializer = ChunkingConfigSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
@@ -638,9 +642,16 @@ class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView)
         )
 
 
-class CancelNaiveRagDocumentChunkingView(APIView):
+class CancelNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView):
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CANCEL_CHUNKING_DELETE)
     def delete(self, request, naive_rag_id: int, document_config_id: int):
+        self.get_in_active_org_or_404(NaiveRag, naive_rag_id, _NAIVE_RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.UPDATE,
+        )
         try:
             with KnowledgeClient() as client:
                 client.cancel(strategy=RAGStrategy.NAIVE, rag_id=naive_rag_id, operation="prechunk")
@@ -669,8 +680,14 @@ class NaiveRagChunkPreviewView(OrgScopedServiceViewSetMixin, APIView):
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET)
     def get(self, request, naive_rag_id: int, document_config_id: int):
+        self.get_in_active_org_or_404(NaiveRag, naive_rag_id, _NAIVE_RAG_ORG_PATH)
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.KNOWLEDGE_SOURCES,
+            Permission.READ,
+        )
         # Validate document config exists and belongs to naive_rag
-        # TODO check organizations
         try:
             config = (
                 NaiveRagDocumentConfig.objects
