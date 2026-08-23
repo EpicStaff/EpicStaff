@@ -16,7 +16,7 @@ import { RagCreationStrategy } from '../interfaces/rag-creation-strategy.interfa
     providedIn: 'root',
 })
 export class NaiveRagStrategy implements RagCreationStrategy {
-    private naiveRag!: CreateNaiveRag;
+    private naiveRagSignal = signal<CreateNaiveRag | null>(null);
     private _canIndex: WritableSignal<boolean> = signal(false);
     readonly canIndex: Signal<boolean> = this._canIndex.asReadonly();
 
@@ -36,13 +36,14 @@ export class NaiveRagStrategy implements RagCreationStrategy {
 
     create(collectionId: number, embedderId: number): Observable<boolean> {
         return this.naiveRagService.createRagForCollection(collectionId, embedderId).pipe(
-            tap((res) => (this.naiveRag = res.naive_rag)),
+            tap((res) => this.naiveRagSignal.set(res.naive_rag)),
             map(() => true)
         );
     }
 
     startIndexing(data?: { configIds: number[]; pendingDeleteIds?: number[] }): Observable<boolean> {
-        const naiveRagId = this.naiveRag.naive_rag_id;
+        const naiveRagId = this.naiveRagSignal()?.naive_rag_id;
+        if (!naiveRagId) return of(false);
         const configIds =
             data?.configIds ?? this.documentsStorageService.documents().map((d) => d.naive_rag_document_id);
 
@@ -69,7 +70,8 @@ export class NaiveRagStrategy implements RagCreationStrategy {
     }
 
     stopIndexing() {
-        const naiveRagId = this.naiveRag.naive_rag_id;
+        const naiveRagId = this.naiveRagSignal()?.naive_rag_id;
+        if (!naiveRagId) return of(false);
         const processing = this.collectionsStorage.processingConfigIds();
         const configIds = this.documentsStorageService
             .documents()
@@ -99,8 +101,8 @@ export class NaiveRagStrategy implements RagCreationStrategy {
     }
 
     getConfigurationInputs(): Record<string, unknown> {
-        const { naive_rag_id, collection_id } = this.naiveRag;
-
-        return { naiveRagId: naive_rag_id, collectionId: collection_id, canIndexChange: this._canIndex };
+        const rag = this.naiveRagSignal();
+        if (!rag) return {};
+        return { naiveRagId: rag.naive_rag_id, collectionId: rag.collection_id, canIndexChange: this._canIndex };
     }
 }

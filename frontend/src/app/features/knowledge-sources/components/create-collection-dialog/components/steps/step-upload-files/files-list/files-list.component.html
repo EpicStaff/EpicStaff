@@ -71,7 +71,7 @@
                                         icon="x"
                                         class="files__file-action"
                                         size="1rem"
-                                        (click)="onDelete(item)"
+                                        (click)="$event.stopPropagation(); onDelete(item)"
                                     />
                                 </app-list-actions>
                             }

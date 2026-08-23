@@ -3,7 +3,6 @@ import { ComponentType } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
-import { MATERIAL_FORMS } from '@shared/material-forms';
 import { filter, switchMap } from 'rxjs/operators';
 
 import { ToastService } from '../../../../../../../services/notifications';
@@ -21,7 +20,7 @@ import { RagDeleteRegistryService } from '../../../../../services/rag-delete-reg
     selector: 'app-collection-details-rags',
     templateUrl: 'collection-rags.component.html',
     styleUrls: ['./collection-rags.component.scss'],
-    imports: [AppSvgIconComponent, MATERIAL_FORMS],
+    imports: [AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionRagsComponent {
