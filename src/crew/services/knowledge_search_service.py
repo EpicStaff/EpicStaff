@@ -58,9 +58,17 @@ class RagSearchConfigFactory:
                 f"Supported types: {list(cls._configs.keys())}"
             )
 
-        data = {k: v for k, v in config_dict['search_params'].items() if k != 'search_method'}
-        data['rag_strategy'] = rag_type
-        data['method'] = config_dict['search_params']['search_method']
+        if rag_type == "naive":
+            # naive config is flat — no search_params nesting and no method discriminator
+            data = {k: v for k, v in config_dict.items() if k != "rag_type"}
+            data["rag_strategy"] = rag_type
+            return config_class(data)
+
+        # graph: params nested under search_params, discriminated by search_method
+        search_params = config_dict["search_params"]
+        data = {k: v for k, v in search_params.items() if k != "search_method"}
+        data["rag_strategy"] = rag_type
+        data["method"] = search_params["search_method"]
 
         return config_class(data)
 
@@ -87,6 +95,7 @@ class KnowledgeSearchService:
         agent_id: int | None = None,
         stream_writer: Optional["StreamWriter"] = None,
         rag_embedder_api_key: str | None = None,
+        rag_llm_api_key: str | None = None,
     ):
         self.redis_service = redis_service
         self.session_id = session_id
@@ -96,6 +105,7 @@ class KnowledgeSearchService:
         self.execution_order = execution_order
         self.writer = stream_writer
         self.rag_embedder_api_key = rag_embedder_api_key
+        self.rag_llm_api_key = rag_llm_api_key
 
     def search_knowledges(
         self,
@@ -107,6 +117,7 @@ class KnowledgeSearchService:
         stop_event: Optional[StopEvent] = None,
         timeout: Optional[int] = None,
         rag_embedder_api_key: str | None = None,
+        rag_llm_api_key: str | None = None,
     ) -> list[str]:
         """
         Search knowledge using specified RAG implementation.
@@ -132,7 +143,9 @@ class KnowledgeSearchService:
 
         request = SearchRequest(rag_id=rag_id, query=query, search_config=search_config)
 
-        # TODO add api keys
+        resolved_embedder_key = rag_embedder_api_key if rag_embedder_api_key is not None else self.rag_embedder_api_key
+        resolved_llm_key = rag_llm_api_key if rag_llm_api_key is not None else self.rag_llm_api_key
+
         try:
             with KnowledgeClient() as client:
                 result = client.search(
@@ -141,6 +154,8 @@ class KnowledgeSearchService:
                     query=query,
                     search_config=search_config,
                     timeout=timeout,
+                    embedding_api_key=resolved_embedder_key,
+                    llm_api_key=resolved_llm_key,
                 )
         except ClientTimeoutError as e:
             raise TimeoutError(

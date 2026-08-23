@@ -89,6 +89,7 @@ class CrewParserService(metaclass=SingletonMeta):
             execution_order=execution_order,
             stream_writer=stream_writer,
             rag_embedder_api_key=agent_data.rag_embedder_api_key,
+            rag_llm_api_key=agent_data.rag_llm_api_key,
         )
         agent_config = {
             "role": agent_data.role,
@@ -246,6 +247,7 @@ class CrewParserService(metaclass=SingletonMeta):
                     rag_type_id=agent_data.rag_type_id,
                     rag_search_config=rag_search_config,
                     rag_embedder_api_key=agent_data.rag_embedder_api_key,
+                    rag_llm_api_key=agent_data.rag_llm_api_key,
                     stop_event=stop_event,
                 ),
                 inputs=inputs,

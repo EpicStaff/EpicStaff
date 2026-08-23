@@ -351,6 +351,7 @@ class CrewCallbackFactory:
         rag_type_id=None,
         rag_search_config=None,
         rag_embedder_api_key=None,
+        rag_llm_api_key=None,
         stop_event: Optional[StopEvent] = None,
     ) -> Callable[[], str]:
         def inner() -> str:
@@ -440,6 +441,7 @@ class CrewCallbackFactory:
                         rag_search_config=rag_search_config,
                         stop_event=stop_event,
                         rag_embedder_api_key=rag_embedder_api_key,
+                        rag_llm_api_key=rag_llm_api_key,
                     )
                     user_input_with_knowledges += self._extract_knowledges(
                         agent_knowledges

@@ -60,6 +60,8 @@ class RagController(Controller):
             rag_id=rag_id,
             query=data.query,
             search_config=data.search_config,
+            embedding_api_key=data.embedding_api_key,
+            llm_api_key=data.llm_api_key,
         )
         orchestrator = build_search(strategy, uow)
         result = await orchestrator.execute(command)

@@ -22,6 +22,8 @@ class PrechunkOutputSchema(BaseSchema):
 class SearchInputSchema(BaseSchema):
     query: str
     search_config: SearchConfig
+    embedding_api_key: str
+    llm_api_key: str | None = None
 
 
 class SearchOutputSchema(BaseSchema):

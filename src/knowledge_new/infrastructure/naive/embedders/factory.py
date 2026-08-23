@@ -13,7 +13,9 @@ _STRATEGIES: dict[EmbedderProviderEnum, type[AbstractEmbedder]] = {
 }
 
 
-def build_embedder(provider: EmbedderProviderEnum, config: EmbeddingConfig) -> AbstractEmbedder:
+def build_embedder(
+    provider: EmbedderProviderEnum, api_key: str, config: EmbeddingConfig
+) -> AbstractEmbedder:
     """Create the embedder registered for `provider`.
 
     Args:
@@ -25,4 +27,4 @@ def build_embedder(provider: EmbedderProviderEnum, config: EmbeddingConfig) -> A
     """
     if provider not in _STRATEGIES:
         raise UnsupportedError(that="embedding provider", got=provider)
-    return _STRATEGIES[provider](config)
+    return _STRATEGIES[provider](api_key, config)

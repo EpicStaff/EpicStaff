@@ -35,6 +35,8 @@ class KnowledgeClient:
         query: str,
         search_config: SearchConfig,
         timeout: float,
+        embedding_api_key: str,
+        llm_api_key: str | None,
     ) -> list[FoundChunk] | str:
         response = self._request(
             method="post",
@@ -42,6 +44,8 @@ class KnowledgeClient:
             json={
                 "query": query,
                 "search_config": search_config.model_dump(mode="json"),
+                "embedding_api_key": embedding_api_key,
+                "llm_api_key": llm_api_key,
             },
             timeout=timeout,
         )

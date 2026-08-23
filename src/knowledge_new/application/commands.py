@@ -29,6 +29,8 @@ class RunSearch(Command):
     rag_id: int
     query: str
     search_config: SearchConfig
+    embedding_api_key: str
+    llm_api_key: str | None = field(default=None)
 
 
 @dataclass(frozen=True)

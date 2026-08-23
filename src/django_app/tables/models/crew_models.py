@@ -173,6 +173,14 @@ class Agent(OrgScopedModel, AbstractDefaultFillableModel):
 
         return None
 
+    def get_rag_llm_secret_id(self) -> int | None:
+        """Get the graph RAG LLM's Secret id, or None if there is none or for naive RAG."""
+        agent_graph_rag = self.agent_graph_rags.select_related("graph_rag__llm").first()
+        if agent_graph_rag:
+            llm = agent_graph_rag.graph_rag.llm
+            return llm.api_key_secret_id if llm else None
+        return None
+
     @staticmethod
     def _embedder_secret_id(*, rag) -> int | None:
         """Get the RAG embedder's Secret id, tolerating both nullable hops."""
