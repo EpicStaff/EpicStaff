@@ -57,6 +57,10 @@ export class GraphRagService {
         return this.http.delete<void>(`${this.apiUrl}${ragId}/documents/${fileId}/`);
     }
 
+    deleteGraphRag(ragId: number): Observable<void> {
+        return this.http.delete<void>(`${this.apiUrl}${ragId}/`);
+    }
+
     bulkDeleteDocuments(ragId: number, fileIds: number[]): Observable<{ document_ids: number[] }> {
         const body = { document_ids: fileIds };
         return this.http.post<{ document_ids: number[] }>(`${this.apiUrl}${ragId}/documents/bulk-delete/`, body);

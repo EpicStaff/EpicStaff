@@ -138,10 +138,12 @@
                 >
             </div>
         } @else {
-<!--            // TODO check permissions in app-blob-preview -->
             <app-blob-preview
                 [blob]="previewBlob()"
                 [fileName]="item()!.name"
+                [size]="item()!.size"
+                [showDownload]="canDownload"
+                (downloadClick)="onDownload()"
             />
         }
     </div>

@@ -6,6 +6,11 @@
     padding: 24px;
     container-type: inline-size;
 
+    .rag-select {
+        width: 100%;
+        flex-grow: 0;
+    }
+
     &__items {
         display: flex;
         flex-direction: column;

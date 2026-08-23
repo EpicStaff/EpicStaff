@@ -114,12 +114,10 @@
                         }
                     }
                     @case ('docx') {
-                        @if (docxHtml()) {
-                            <div
-                                class="blob-preview__docx"
-                                [innerHTML]="docxHtml()"
-                            ></div>
-                        }
+                        <div
+                            #docxContainer
+                            class="blob-preview__docx"
+                        ></div>
                     }
                     @case ('unsupported') {
                         <div class="blob-preview__unsupported">
@@ -128,6 +126,18 @@
                                 size="66px"
                             />
                             <p class="blob-preview__unsupported-name">{{ fileName() }}</p>
+                            @if (size()) {
+                                <p class="blob-preview__unsupported-size">{{ size() | number }} bytes</p>
+                            }
+                            @if (showDownload()) {
+                                <app-button
+                                    type="ghost"
+                                    [leftIcon]="'download'"
+                                    (click)="downloadClick.emit()"
+                                >
+                                    Download
+                                </app-button>
+                            }
                         </div>
                     }
                 }

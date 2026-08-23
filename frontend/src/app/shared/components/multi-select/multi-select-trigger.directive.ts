@@ -21,10 +21,6 @@ export class MultiSelectTriggerDirective {
 
     readonly multiSelect = input.required<MultiSelectComponent>({ alias: 'appMultiSelectTrigger' });
 
-    constructor() {
-        this.multiSelect.registerTrigger(this.elementRef);
-    }
-
     @HostListener('click')
     onClick(): void {
         const ms = this.multiSelect();

@@ -36,7 +36,6 @@ export interface CreateCollectionDialogData {
     imports: [
         ButtonComponent,
         StepperComponent,
-        // TODO check why cant import
         StepUploadFilesComponent,
         StepSelectRagComponent,
         AppSvgIconComponent,
