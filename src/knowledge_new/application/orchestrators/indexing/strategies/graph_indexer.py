@@ -34,7 +34,9 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             else:
                 is_update_run = True
 
-        config = await self._get_config_under_uow(rag.id, slot=target_slot)
+        config = await self._get_config_under_uow(
+            rag.id, target_slot, command.embedding_api_key, command.llm_api_key
+        )
 
         rag.mark_as_processing(command.document_ids)
         await self._update_rag(rag)
@@ -95,11 +97,15 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         self.state["rag"] = rag
         return rag
 
-    async def _get_config_under_uow(self, rag_id: int, slot: SlotEnum | None = None):
+    async def _get_config_under_uow(
+        self, rag_id: int, slot: SlotEnum, embedding_api_key: str, llm_api_key: str
+    ):
         async with self.uow:
             config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id, slot=slot)
         if not config:
             raise GraphRagConfigNotFoundError(rag_id=rag_id)
+        config.embedding_models['default_embedding_model'].api_key = embedding_api_key
+        config.completion_models['default_completion_model'].api_key = llm_api_key
         return config
 
     async def _get_documents_under_uow(

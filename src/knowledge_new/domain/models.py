@@ -4,7 +4,8 @@ from pathlib import Path
 from domain.enums import (
     DocumentStatusEnum,
     EmbedderProviderEnum,
-    IndexStatusEnum, SlotEnum,
+    IndexStatusEnum,
+    SlotEnum,
 )
 from pydantic import Field, computed_field
 from src.shared.models.base import Entity, ValueObject
@@ -132,6 +133,5 @@ class EmbeddingConfig(ValueObject):
     """Configuration for an embedding provider client."""
 
     provider: EmbedderProviderEnum
-    api_key: str = Field(exclude=True)
     model: str
     extra: dict = Field(default_factory=dict)

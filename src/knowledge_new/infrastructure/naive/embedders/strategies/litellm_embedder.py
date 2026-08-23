@@ -8,9 +8,9 @@ class LiteLLMEmbedder(AbstractEmbedder):
     async def _embed(self, text: str) -> list[float]:
         text = text.replace("\n", " ")
         response = await litellm.aembedding(
-            model=self.config.model,
             input=[text],
-            api_key=self.config.api_key,
+            api_key=self.api_key,
+            model=self.config.model,
             custom_llm_provider=self.config.provider,
             **self._extra_params(),
         )

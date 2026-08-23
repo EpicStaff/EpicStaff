@@ -57,7 +57,6 @@ class EmbeddingConfig(BaseModel):
     id = Column(Integer, primary_key=True, autoincrement=True)
     custom_name = Column(Text, unique=True, nullable=False)
     task_type = Column(String(255), nullable=False, default="retrieval_doc")
-    api_key = Column(Text, nullable=True)
     is_visible = Column(Boolean, default=True)
 
     model_id = Column(Integer, ForeignKey("tables_embeddingmodel.id"), nullable=True)

@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 from collections import defaultdict
 import uuid
 import base64
+
+from tables.services.secrets import SecretResolver
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models.graph_models import (
     TelegramTriggerNode,
@@ -938,14 +940,11 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         serializer = ProcessRagIndexingSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
         document_config_ids = serializer.validated_data["document_config_ids"]
 
-        IndexingService.validate_and_prepare_indexing(rag_id=rag_id, rag_type=rag_type)
-
-        # The rag must live in the active org (404), and indexing mutates it.
+        org_id = self.get_active_org_id()
         model = self._RAG_MODELS.get(rag_type)
         if model is None:
             return Response(
@@ -955,18 +954,37 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
         assert_org_permission(
             request.user,
-            self.get_active_org_id(),
+            org_id,
             ResourceType.KNOWLEDGE_SOURCES,
             Permission.UPDATE,
         )
 
-        # TODO add secrets
+        indexing_data = IndexingService.validate_and_prepare_indexing(rag_id, rag_type)
+        secret_resolver = SecretResolver()
+
+        embedding_api_key_secret_id = indexing_data["embedder_api_key_secret_id"]
+        embedding_api_key = secret_resolver.resolve(
+            secret_id=embedding_api_key_secret_id,
+            org_id=org_id,
+        )
+
+        llm_api_key_secret_id = indexing_data.get("llm_api_key_secret_id")
+        if llm_api_key_secret_id is not None:
+            llm_api_key = secret_resolver.resolve(
+                secret_id=llm_api_key_secret_id,
+                org_id=org_id,
+            )
+        else:
+            llm_api_key = None
+
         try:
             with KnowledgeClient() as client:
                 client.index(
                     strategy=RAGStrategy(rag_type),
                     rag_id=rag_id,
                     document_ids=frozenset(document_config_ids),
+                    embedding_api_key=embedding_api_key,
+                    llm_api_key=llm_api_key,
                 )
         except ClientError as e:
             return Response({"error": str(e)}, status=e.status_code)

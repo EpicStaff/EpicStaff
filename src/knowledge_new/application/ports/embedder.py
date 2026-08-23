@@ -7,7 +7,8 @@ from domain.models import EmbeddingConfig
 class AbstractEmbedder(abc.ABC):
     """Abstract base for turning text into an embedding vector."""
 
-    def __init__(self, config: EmbeddingConfig):
+    def __init__(self, api_key: str, config: EmbeddingConfig):
+        self.api_key = api_key
         self.config = config
 
     async def embed(self, text: str) -> list[float]:

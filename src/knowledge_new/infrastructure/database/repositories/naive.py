@@ -55,7 +55,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractNaiveR
 
     async def get_embedding_config(self, rag_id: int) -> EmbeddingConfig | None:
         result = await self._session.execute(
-            select(Provider.name, ORMEmbeddingConfig.api_key, EmbeddingModel.name)
+            select(Provider.name, EmbeddingModel.name)
             .select_from(NaiveRag)
             .join(ORMEmbeddingConfig, NaiveRag.embedder_id == ORMEmbeddingConfig.id)
             .join(EmbeddingModel, ORMEmbeddingConfig.model_id == EmbeddingModel.id)
@@ -63,7 +63,7 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractNaiveR
             .where(NaiveRag.naive_rag_id == rag_id)
         )
         if row := result.one_or_none():
-            return embedding_row_to_embedding_config(row[0], row[1], row[2])
+            return embedding_row_to_embedding_config(row[0], row[1])
         return None
 
     async def get_document(self, rag_id: int, document_id: int) -> Document | None:

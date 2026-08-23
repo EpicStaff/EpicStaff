@@ -59,5 +59,5 @@ class FileExtensionEnum(StrEnum):
 
 
 class SlotEnum(StrEnum):
-    A = 'a'
-    B = 'b'
+    A = "a"
+    B = "b"

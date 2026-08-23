@@ -4,6 +4,8 @@ from presentation.rest.schemas.base import BaseSchema
 
 class IndexInputSchema(BaseSchema):
     document_ids: frozenset[int]
+    embedding_api_key: str
+    llm_api_key: str | None = None
 
 
 class PrechunkInputSchema(BaseSchema):
