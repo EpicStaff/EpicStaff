@@ -1,5 +1,5 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { isEqual } from 'lodash-es';
+import { deepEqual } from '@shared/utils';
 import { EMPTY, Observable, throwError } from 'rxjs';
 import { catchError, map, tap } from 'rxjs/operators';
 
@@ -74,7 +74,7 @@ export class NaiveRagChunkPreviewService {
             if (!s.chunkedWith) return s;
             if (s.status === 'chunking' || s.status === 'fetching_chunks') return s;
 
-            const paramsMatch = isEqual(s.chunkedWith, effectiveParams);
+            const paramsMatch = deepEqual(s.chunkedWith, effectiveParams);
             if (paramsMatch) {
                 if (s.status !== 'chunks_outdated') return s;
                 return s.chunks.length > 0 ? { ...s, status: 'chunks_ready' } : { ...s, status: 'new' };

@@ -54,15 +54,12 @@ export class CollectionRagsComponent {
     }
 
     onDeleteRag(type: RagType, ragId: number): void {
-        if (type !== 'naive') return;
-
         const ragName = this.ragTypeConfig[type].name;
 
         this.confirmationService
             .confirmDelete(ragName)
             .pipe(
                 filter((result) => result === true),
-                // TODO support graph rag delete
                 switchMap(() => this.ragDeleteRegistry.deleteRag(type, ragId)),
                 switchMap(() =>
                     this.collectionsStorageService.getFullCollection(this.collection().collection_id, true)

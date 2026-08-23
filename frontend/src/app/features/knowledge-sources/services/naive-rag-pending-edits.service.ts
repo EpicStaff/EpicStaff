@@ -1,5 +1,5 @@
 import { computed, Injectable, signal } from '@angular/core';
-import { isEqual } from 'lodash-es';
+import { deepEqual } from '@shared/utils';
 
 import { UpdateNaiveRagDocumentDtoRequest } from '../models/naive-rag-document.model';
 
@@ -67,7 +67,7 @@ export class NaiveRagPendingEditsService {
                 if (value === undefined || value === null) continue;
 
                 const baselineValue = baseline[key];
-                if (isEqual(baselineValue, value)) {
+                if (deepEqual(baselineValue, value)) {
                     delete current[key];
                 } else {
                     current[key] = value;

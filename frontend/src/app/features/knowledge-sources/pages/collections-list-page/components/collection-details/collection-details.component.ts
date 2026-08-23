@@ -49,7 +49,6 @@ import { CollectionRagsComponent } from './collection-rags/collection-rags.compo
         ReactiveFormsModule,
         DragDropAreaComponent,
         CollectionFilesComponent,
-        // TODO check why cant be imported
         CollectionRagsComponent,
         CollectionInfoComponent,
         SpinnerComponent,
@@ -83,7 +82,6 @@ export class CollectionDetailsComponent implements OnInit {
         notWhitespaceValidator(),
         Validators.maxLength(255),
     ]);
-
 
     private lastInitializedCollectionId: number | null = null;
 
