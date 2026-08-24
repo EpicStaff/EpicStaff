@@ -1,3 +1,4 @@
+import functools
 import os
 import asyncio
 import json
@@ -8,6 +9,7 @@ from loguru import logger
 from services.collection_processor_service import CollectionProcessorService
 from services.redis_service import RedisService
 from services.chunking_job_registry import chunking_job_registry
+from services.credential_mapper import RagCredentials
 from src.shared.models import (
     ChunkDocumentMessage,
     ChunkDocumentMessageResponse,
@@ -47,6 +49,8 @@ async def execute_indexing(
     rag_type: str,
     executor: ThreadPoolExecutor,
     semaphore: asyncio.Semaphore,
+    embedder_api_key: str | None = None,
+    llm_api_key: str | None = None,
 ):
     """
     Execute a single RAG indexing job (chunking + embedding).
@@ -56,19 +60,29 @@ async def execute_indexing(
         rag_type: Type of RAG (e.g., "naive")
         executor: ThreadPoolExecutor for CPU-bound work
         semaphore: Semaphore for rate limiting
+        embedder_api_key: Plaintext embedder credential resolved by Django
+        llm_api_key: Plaintext LLM credential resolved by Django (graph only)
     """
     async with semaphore:
         try:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 executor,
-                collection_processor_service.process_rag_indexing,
-                rag_id,
-                rag_type,
+                functools.partial(
+                    collection_processor_service.process_rag_indexing,
+                    rag_id=rag_id,
+                    rag_type=rag_type,
+                    credentials=RagCredentials(
+                        embedder_api_key=embedder_api_key,
+                        llm_api_key=llm_api_key,
+                    ),
+                ),
             )
-            logger.info(f"RAG indexing completed: rag_type={rag_type}, rag_id={rag_id}")
+            logger.info(
+                "RAG indexing completed: rag_type={}, rag_id={}", rag_type, rag_id
+            )
         except Exception as e:
-            logger.error(f"Error processing indexing: {e}")
+            logger.error("Error processing indexing: {}", e)
 
 
 async def indexing(
@@ -101,6 +115,8 @@ async def indexing(
                         rag_type=indexing_message.rag_type,
                         executor=executor,
                         semaphore=semaphore,
+                        embedder_api_key=indexing_message.embedder_api_key,
+                        llm_api_key=indexing_message.llm_api_key,
                     )
                 )
                 background_tasks.add(task)
@@ -291,6 +307,7 @@ async def execute_search(
     redis_service: RedisService,
     response_channel: str,
     semaphore: asyncio.Semaphore,
+    embedder_api_key: str | None = None,
 ):
     """
     Execute a single search query.
@@ -316,31 +333,33 @@ async def execute_search(
                 uuid=uuid,
                 query=query,
                 rag_search_config=rag_search_config,
+                credentials=RagCredentials(embedder_api_key=embedder_api_key),
             )
 
             await redis_service.async_publish(response_channel, result)
 
-            logger.info(f"Search completed for {rag_type}_rag_id: {rag_id}")
+            logger.info("Search completed for {}_rag_id: {}", rag_type, rag_id)
         except Exception as e:
-            error_message = f"Error processing search: {e}"
-            logger.error(error_message)
-
-            response = BaseKnowledgeSearchMessageResponse(
-                rag_id=rag_id,
-                rag_type=rag_type,
-                collection_id=collection_id,
-                uuid=uuid,
-                retrieved_chunks=0,
-                query=query,
-                chunks=[],
-                rag_search_config=rag_search_config,
-                status=KnowledgeStatus.FAILED,
-                message=error_message,
-            )
-            await redis_service.async_publish(
-                channel=response_channel,
-                message=response.model_dump(),
-            )
+            logger.error("Error processing search: {}", e)
+            try:
+                failure = BaseKnowledgeSearchMessageResponse(
+                    rag_id=rag_id,
+                    rag_type=rag_type,
+                    collection_id=collection_id,
+                    uuid=uuid,
+                    retrieved_chunks=0,
+                    query=query,
+                    chunks=[],
+                    rag_search_config=rag_search_config,
+                    status=KnowledgeStatus.FAILED,
+                    results=[],
+                    error=str(e),
+                )
+                await redis_service.async_publish(
+                    response_channel, failure.model_dump()
+                )
+            except Exception as publish_error:
+                logger.error("Failed to publish search failure: {}", publish_error)
 
 
 async def searching(
@@ -377,6 +396,7 @@ async def searching(
                         redis_service=redis_service,
                         response_channel=knowledge_search_response_channel,
                         semaphore=semaphore,
+                        embedder_api_key=data.embedder_api_key,
                     )
                 )
                 background_tasks.add(task)

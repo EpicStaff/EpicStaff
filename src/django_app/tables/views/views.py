@@ -15,6 +15,7 @@ from tables.models import Tool
 from tables.models import Crew
 from tables.models import Agent
 from tables.services.realtime_service import RealtimeService
+from agents.models import AgentDefinition
 from tables.swagger_schemas.python_node_test_mode_schema import (
     LAST_TEST_INPUT_SWAGGER as _LAST_TEST_INPUT_SWAGGER,
 )
@@ -745,17 +746,18 @@ class InitRealtimeAPIView(APIView):
         if not serializer.is_valid():
             logger.warning(f"Invalid data received in request: {serializer.errors}")
             return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST,
                 data={"error": str(serializer.errors)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        agent_id = serializer.validated_data["agent_id"]
+        agent_id = serializer.validated_data.get("agent_id")
+        agent_definition_id = serializer.validated_data.get("agent_definition_id")
         config = serializer.validated_data.get("config", {})
 
         # Org isolation: starting a realtime session is a read/use of an agent,
-        # so require AGENTS.READ and reject an agent_id outside the active org
-        # (rejected like a missing id — existence never leaks).
+        # so require AGENTS.READ and reject an agent_id/agent_definition_id
+        # outside the active org (rejected like a missing id — existence
+        # never leaks).
         org_id = self._org_context.resolve(
             request=request, view_kwargs=getattr(self, "kwargs", {})
         )
@@ -765,20 +767,40 @@ class InitRealtimeAPIView(APIView):
             resource_type=ResourceType.AGENTS,
             action=Permission.READ,
         )
-        if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
-            raise ValidationError(
-                {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
-            )
+        if agent_id is not None:
+            if not Agent.objects.filter(id=agent_id, org_id=org_id).exists():
+                raise ValidationError(
+                    {"agent_id": f'Invalid pk "{agent_id}" - object does not exist.'}
+                )
+
+        if agent_definition_id is not None:
+            if not AgentDefinition.objects.filter(
+                pk=agent_definition_id, organization_id=org_id
+            ).exists():
+                raise ValidationError(
+                    {
+                        "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
+                    }
+                )
 
         try:
-            connection_key = realtime_service.init_realtime(
-                agent_id=agent_id,
-                config=config,
-            )
+            if agent_definition_id is not None:
+                connection_key = realtime_service.init_realtime_agent_definition(
+                    agent_definition_id=agent_definition_id,
+                    config=config,
+                    org_id=org_id,
+                )
+            else:
+                connection_key = realtime_service.init_realtime(
+                    agent_id=agent_id,
+                    config=config,
+                    org_id=org_id,
+                )
 
         except Exception as e:
             logger.exception(
-                f"Error occurred while creating realtime agent for agent_id {agent_id}"
+                f"Error occurred while creating realtime agent for agent_id {agent_id} "
+                f"or agent_definition_id {agent_definition_id}"
             )
             return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
         else:
@@ -827,49 +849,59 @@ class QuickstartView(APIView):
 
     @extend_schema(**QUICKSTART_POST)
     def post(self, request):
-        serializer = QuickstartSerializer(data=request.data)
-        if serializer.is_valid():
-            provider = serializer.validated_data["provider"]
-            api_key = serializer.validated_data["api_key"]
-            org_id = self._org_context.resolve(
-                request=request, view_kwargs=getattr(self, "kwargs", {})
-            )
-            assert_org_permission(
-                user=request.user,
-                org_id=org_id,
-                resource_type=self.rbac_resource_type,
-                action=self.rbac_required_action,
+        # The request must be in context: OrgScopedPrimaryKeyRelatedField reads the
+        # active org from it and denies every pk without it (fail-safe).
+        serializer = QuickstartSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+
+        provider = serializer.validated_data["provider"]
+        api_key = serializer.validated_data.get("api_key")
+        secret = serializer.validated_data.get("api_key_secret_id")
+        org_id = self._org_context.resolve(
+            request=request, view_kwargs=getattr(self, "kwargs", {})
+        )
+        assert_org_permission(
+            user=request.user,
+            org_id=org_id,
+            resource_type=self.rbac_resource_type,
+            action=self.rbac_required_action,
+        )
+
+        result = quickstart_service.quickstart(
+            provider=provider,
+            api_key=api_key,
+            secret=secret,
+            org_id=org_id,
+        )
+
+        if not result.get("success", False):
+            return Response(
+                data={"detail": "Error quickstart", "error": result.get("error")},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-            result = quickstart_service.quickstart(provider, api_key, org_id=org_id)
-
-            if result.get("success", False):
-                config_name = result["config_name"]
-                configs = QuickstartConfigSerializer(
-                    {
-                        "config_name": config_name,
-                        "llm_config": result["llm_config"],
-                        "embedding_config": result["embedding_config"],
-                        "realtime_config": result["realtime_config"],
-                        "realtime_transcription_config": result[
-                            "realtime_transcription_config"
-                        ],
-                    }
-                ).data
-                return Response(
-                    data={
-                        "detail": "Quickstart initiated successfully!",
-                        "config_name": config_name,
-                        "configs": configs,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            else:
-                return Response(
-                    data={"detail": "Error quickstart", "error": result.get("error")},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        config_name = result["config_name"]
+        configs = QuickstartConfigSerializer(
+            {
+                "config_name": config_name,
+                "llm_config": result["llm_config"],
+                "embedding_config": result["embedding_config"],
+                "realtime_config": result["realtime_config"],
+                "realtime_transcription_config": result[
+                    "realtime_transcription_config"
+                ],
+            }
+        ).data
+        return Response(
+            data={
+                "detail": "Quickstart initiated successfully!",
+                "config_name": config_name,
+                "configs": configs,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class QuickstartApplyView(APIView):
@@ -943,6 +975,9 @@ class ProcessRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
                 rag_id=indexing_data["rag_id"],
                 rag_type=indexing_data["rag_type"],
                 collection_id=indexing_data["collection_id"],
+                org_id=self.get_active_org_id(),
+                embedder_api_key_secret_id=indexing_data["embedder_api_key_secret_id"],
+                llm_api_key_secret_id=indexing_data["llm_api_key_secret_id"],
             )
 
             return Response(
@@ -1021,13 +1056,26 @@ class RegisterWebhooksApiView(APIView):
         return Response(status=status.HTTP_200_OK)
 
 
-class PythonNodeLastTestInputView(APIView):
+class PythonNodeLastTestInputView(OrgScopedServiceViewSetMixin, APIView):
+    """
+    GET last tests input for python node from last
+    successfull session with that node
+    """
+
+    _PYTHONNODE_ORG_PATH = "graph__org_id"
+
     @extend_schema(**_LAST_TEST_INPUT_SWAGGER)
     def get(self, request, pk):
-        try:
-            python_node = PythonNode.objects.get(pk=pk)
-        except PythonNode.DoesNotExist:
-            raise NotFound(detail="PythonNode not found.")
+        assert_org_permission(
+            request.user,
+            self.get_active_org_id(),
+            ResourceType.FLOWS,
+            Permission.READ,
+        )
+
+        python_node = self.get_in_active_org_or_404(
+            PythonNode, pk, org_path=self._PYTHONNODE_ORG_PATH
+        )
 
         python_node_name = f"{python_node.node_name} #{python_node.pk}"
         found_input = (

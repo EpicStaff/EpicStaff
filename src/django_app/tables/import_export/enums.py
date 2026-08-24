@@ -19,6 +19,8 @@ class EntityType(str, Enum):
     GRAPH = "Flow"
     SESSION = "Session"
     LABEL = "Label"
+    AGENT_DEFINITION = "AgentDefinition"
+    SURFACE = "Surface"
 
     AGENT_TAG = "AgentTag"
     CREW_TAG = "CrewTag"
@@ -42,6 +44,8 @@ class EntityType(str, Enum):
     CODE_AGENT_NODE = "CodeAgentNode"
     SCHEDULE_TRIGGER_NODE = "ScheduleTriggerNode"
     KNOWLEDGE_NODE = "KnowledgeNode"
+    AGENT_NODE = "AgentNode"
+    TASK_NODE = "TaskNode"
 
 
 class NodeType(str, Enum):
@@ -60,3 +64,5 @@ class NodeType(str, Enum):
     CODE_AGENT_NODE = "CodeAgentNode"
     SCHEDULE_TRIGGER_NODE = "ScheduleTriggerNode"
     KNOWLEDGE_NODE = "KnowledgeNode"
+    AGENT_NODE = "AgentNode"
+    TASK_NODE = "TaskNode"

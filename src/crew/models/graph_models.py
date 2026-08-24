@@ -24,6 +24,7 @@ class SubGraphStartMessageData:
     subgraph_id: int
     subgraph_execution_id: str
     message_type: str = "subgraph_start"
+    sse_visible: bool = True
 
 
 @dataclass
@@ -32,6 +33,7 @@ class SubGraphFinishMessageData:
     output: object
     subgraph_execution_id: str
     message_type: str = "subgraph_finish"
+    sse_visible: bool = True
 
 
 @dataclass
@@ -40,31 +42,35 @@ class FinishMessageData:
     state: dict
     message_type: str = "finish"
     additional_data: dict | None = None
-    sse_visible: bool | None = None
+    sse_visible: bool = True
 
 
 @dataclass
 class StartMessageData:
     input: object
     message_type: str = "start"
+    sse_visible: bool = True
 
 
 @dataclass
 class ErrorMessageData:
     details: object
     message_type: str = "error"
+    sse_visible: bool = True
 
 
 @dataclass
 class PythonMessageData:
     python_code_execution_data: dict
     message_type: str = "python"
+    sse_visible: bool = True
 
 
 @dataclass
 class LLMMessageData:
     response: str
     message_type: str = "llm"
+    sse_visible: bool = True
 
 
 @dataclass
@@ -77,6 +83,7 @@ class AgentMessageData:
     text: str
     result: str
     message_type: str = "agent"
+    sse_visible: bool = True
 
 
 @dataclass
@@ -87,6 +94,7 @@ class AgentFinishMessageData:
     text: str
     output: str
     message_type: str = "agent_finish"
+    sse_visible: bool = True
 
 
 @dataclass
@@ -94,6 +102,7 @@ class UserMessageData:
     crew_id: int
     text: str
     message_type: str = "user"
+    sse_visible: bool = True
 
 
 @dataclass
@@ -106,6 +115,7 @@ class TaskMessageData:
     expected_output: str
     agent: str
     message_type: str = "task"
+    sse_visible: bool = True
 
 
 @dataclass
@@ -114,6 +124,7 @@ class UpdateSessionStatusMessageData:
     status: str
     status_data: dict = field(default_factory=dict)
     message_type: str = "update_session_status"
+    sse_visible: bool = True
 
 
 @dataclass
@@ -122,6 +133,7 @@ class ConditionGroupMessageData:
     result: bool
     expression: str | None = None
     message_type: str = "condition_group"
+    sse_visible: bool = True
 
 
 @dataclass
@@ -130,6 +142,7 @@ class ConditonGroupManipulationMessageData:
     state: dict
     changed_variables: dict = field(default_factory=dict)
     message_type: str = "condition_group_manipulation"
+    sse_visible: bool = True
 
 
 @dataclass
@@ -153,3 +166,4 @@ class ClassificationPromptMessageData:
     result_variable: str
     usage: dict
     message_type: str = "classification_prompt"
+    sse_visible: bool = True

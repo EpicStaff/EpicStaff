@@ -40,6 +40,8 @@ class TablesConfig(AppConfig):
             tags,
             session,
             label,
+            surface,
+            agent_definition,
         )
         from tables.import_export.strategies.nodes import (
             start_node,
@@ -57,6 +59,8 @@ class TablesConfig(AppConfig):
             code_agent_node,
             schedule_trigger_node,
             knowledge_node,
+            agent_node,
+            task_node,
         )
 
         if "runserver" in sys.argv:
@@ -95,6 +99,8 @@ class TablesConfig(AppConfig):
         entity_registry.register(python_tools.PythonCodeToolStrategy())
         entity_registry.register(mcp_tools.McpToolStrategy())
         entity_registry.register(agent.AgentStrategy())
+        entity_registry.register(surface.SurfaceStrategy())
+        entity_registry.register(agent_definition.AgentDefinitionStrategy())
         entity_registry.register(crew.CrewStrategy())
         entity_registry.register(graph.GraphStrategy())
         entity_registry.register(session.SessionStrategy())
@@ -124,4 +130,6 @@ class TablesConfig(AppConfig):
         entity_registry.register(note_node.NoteNodeStrategy())
         entity_registry.register(code_agent_node.CodeAgentNodeStrategy())
         entity_registry.register(schedule_trigger_node.ScheduleTriggerNodeStrategy())
+        entity_registry.register(agent_node.AgentNodeStrategy())
+        entity_registry.register(task_node.TaskNodeStrategy())
         entity_registry.register(knowledge_node.KnowledgeNodeStrategy())

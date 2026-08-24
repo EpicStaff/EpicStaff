@@ -82,6 +82,7 @@ class BaseKnowledgeSearchMessage(BaseModel):
     rag_search_config: (
         RagSearchConfig  # Discriminated union automatically handles subtypes
     )
+    embedder_api_key: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -109,6 +110,7 @@ class BaseKnowledgeSearchMessageResponse(BaseModel):
     token_usage: dict = {}
     status: KnowledgeStatus = KnowledgeStatus.COMPLETED
     message: str | None = None  # error detail when status == "failed"
+    error: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -134,6 +136,10 @@ class ProcessRagIndexingMessage(BaseModel):
     rag_id: int
     rag_type: Literal["naive", "graph"]
     collection_id: int
+    embedder_api_key: str | None = None
+    embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
+    llm_api_key: str | None = None
+    llm_api_key_secret_id: int | None = Field(default=None, exclude=True)
 
 
 class ChunkDocumentMessage(BaseModel):
@@ -146,7 +152,7 @@ class ChunkDocumentMessageResponse(BaseModel):
     chunking_job_id: str  # UUID
     rag_type: Literal["naive", "graph"]
     document_config_id: int
-    status: str
+    status: str  # "completed", "failed", "cancelled"
     chunk_count: int | None = None
     message: str | None = None
     elapsed_time: float | None = None

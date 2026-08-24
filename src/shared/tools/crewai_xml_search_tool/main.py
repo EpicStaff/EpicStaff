@@ -3,11 +3,12 @@ import xml.etree.ElementTree as ET
 import requests
 from typing import Optional
 
+
 def main(
     search_query: str,
     xml: str,
     similarity_threshold: Optional[float] = None,
-    limit: Optional[int] = None
+    limit: Optional[int] = None,
 ) -> str:
     """
     Search for a query in the XML file content.
@@ -24,7 +25,7 @@ def main(
     try:
         # Load XML from URL or file
         if xml.startswith("http://") or xml.startswith("https://"):
-            response = requests.get(xml)
+            response = requests.get(xml, timeout=10)
             response.raise_for_status()
             content = response.text
         else:

@@ -33,6 +33,8 @@ NODE_RELATIONS: dict[str, str] = {
     NodeType.CODE_AGENT_NODE: "code_agent_node_list",
     NodeType.SCHEDULE_TRIGGER_NODE: "schedule_trigger_node_list",
     NodeType.KNOWLEDGE_NODE: "knowledge_node_list",
+    NodeType.AGENT_NODE: "agent_node_list",
+    NodeType.TASK_NODE: "task_node_list",
 }
 
 
