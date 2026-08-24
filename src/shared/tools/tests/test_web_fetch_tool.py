@@ -1,5 +1,4 @@
 import httpx
-import pytest
 
 from conftest import load_tool_main
 

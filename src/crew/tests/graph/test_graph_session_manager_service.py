@@ -20,7 +20,6 @@ from services.graph.graph_session_manager_service import (
     GraphSessionManagerService,
     _extract_finish_token_total,
 )
-from services.graph.exceptions import StopSession
 from src.shared.models import SessionData
 from src.shared.models.graph_nodes import GraphData
 

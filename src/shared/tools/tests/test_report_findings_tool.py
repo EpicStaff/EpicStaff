@@ -1,5 +1,3 @@
-import pytest
-
 from conftest import load_tool_main
 
 report_findings_module = load_tool_main("report_findings_tool")

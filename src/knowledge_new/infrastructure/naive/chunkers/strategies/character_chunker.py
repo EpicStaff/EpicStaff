@@ -10,13 +10,15 @@ class CharacterChunker(AbstractChunker):
         super().__init__(config)
         self.chunk_size = self.config.chunk_size
         self.chunk_overlap = self.config.chunk_overlap
-        self.regex_pattern = self.config.extra.get("character", {}).get("regex")
+        self.regex_pattern = (
+            self.config.extra.get("character", {}).get("regex") or r".+"
+        )
 
     @run_in_process
     def _chunk(self, text: str) -> list[PreviewChunk]:
         text = text.replace("\r", "")
 
-        parts = re.split(self.regex_pattern, text) if self.regex_pattern else [text]
+        parts = re.split(self.regex_pattern, text)
 
         chunks = []
         step = self.chunk_size - self.chunk_overlap
