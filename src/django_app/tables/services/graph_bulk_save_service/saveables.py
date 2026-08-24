@@ -1,4 +1,10 @@
-from tables.models.graph_models import Condition, ConditionGroup, DecisionTableNode
+from tables.models.graph_models import (
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
+    Condition,
+    ConditionGroup,
+    DecisionTableNode,
+)
 from tables.services.graph_bulk_save_service.data_types import NodeRef
 
 
@@ -120,6 +126,63 @@ class _DecisionTableNodeRefsSaveable:
                 )
 
 
+class _ClassificationDecisionTableNodeRefsSaveable:
+    """
+    Deferred resolver for the routing node-id fields of ClassificationDecisionTableNode
+    that may reference a temp_id belonging to a node created in the same request:
+        - ClassificationDecisionTableNode.default_next_node_id
+        - ClassificationDecisionTableNode.next_error_node_id
+        - ClassificationConditionGroup.next_node_id  (one per condition group)
+    """
+
+    def __init__(
+        self,
+        default_next_ref: NodeRef | None,
+        next_error_ref: NodeRef | None,
+        group_refs: list[NodeRef | None],
+    ):
+        self._default_next_ref = default_next_ref
+        self._next_error_ref = next_error_ref
+        self._group_refs = group_refs
+
+        self._cdt_node_id: int | None = None
+        self._group_ids: list[int] = []
+
+    def set_node_id(self, node_id: int) -> None:
+        self._cdt_node_id = node_id
+
+    def set_group_ids(self, groups: list) -> None:
+        self._group_ids = [g.id for g in groups]
+
+    def resolve_and_save(self, temp_id_map: dict) -> None:
+        node_updates: dict = {}
+
+        if self._default_next_ref is not None:
+            ref = self._default_next_ref
+            node_updates["default_next_node_id"] = (
+                temp_id_map[str(ref.value)] if ref.is_temp else ref.value
+            )
+
+        if self._next_error_ref is not None:
+            ref = self._next_error_ref
+            node_updates["next_error_node_id"] = (
+                temp_id_map[str(ref.value)] if ref.is_temp else ref.value
+            )
+
+        if node_updates:
+            ClassificationDecisionTableNode.objects.filter(id=self._cdt_node_id).update(
+                **node_updates
+            )
+
+        for group_id, ref in zip(self._group_ids, self._group_refs):
+            if ref is not None:
+                ClassificationConditionGroup.objects.filter(id=group_id).update(
+                    next_node_id=temp_id_map[str(ref.value)]
+                    if ref.is_temp
+                    else ref.value
+                )
+
+
 class DecisionTableNodeSaveable:
     """
     Wraps a validated DecisionTableNodeBulkSerializer and its condition_groups data.
@@ -221,6 +284,164 @@ class DecisionTableNodeSaveable:
             Condition.objects.bulk_create(conditions_to_create)
 
         return created_groups
+
+
+class ClassificationDecisionTableNodeSaveable:
+    """
+    Wraps a validated ClassificationDecisionTableNodeBulkSerializer and its condition_groups data.
+    On update, deletes old ClassificationConditionGroup records and bulk_creates new ones.
+    """
+
+    def __init__(
+        self,
+        serializer,
+        condition_groups_data,
+        deferred_refs_saveable=None,
+        instance=None,
+    ):
+        self._serializer = serializer
+        self._condition_groups_data = condition_groups_data
+        self._deferred = deferred_refs_saveable  # _ClassificationDecisionTableNodeRefsSaveable | None
+        self._instance = instance
+
+    _GROUP_EXCLUDED_FIELDS = frozenset(
+        {
+            "id",
+            "classification_decision_table_node",
+            "next_node_temp_id",
+            # Prompt reference forms — resolved to the `prompt` FK below (by
+            # prompt_key, or numeric pk fallback); never written as columns.
+            "prompt",
+            "prompt_key",
+        }
+    )
+
+    def save(self):
+        s = self._serializer
+        validated = dict(s.validated_data)
+        _clean_for_write(validated)
+
+        node = (
+            s.create(validated)
+            if s.instance is None
+            else s.update(s.instance, validated)
+        )
+        # NOTE: s.update() now upserts prompt_configs by prompt_key (stable IDs).
+
+        if self._deferred is not None:
+            self._deferred.set_node_id(node.id)
+
+        created_groups = []
+
+        if self._condition_groups_data is not None:
+            # Build prompt map keyed by old prompt ID → new prompt instance,
+            # using prompt_key as the stable bridge.
+            # After s.update() the prompts are upserted, so their IDs are stable
+            # across saves. We still need to map the frontend's integer prompt PK
+            # to the current DB instance in case this is a newly-created node.
+            node_prompts = list(node.prompt_configs.all())
+            prompt_by_id = {p.id: p for p in node_prompts}
+            # prompt_key is the preferred bridge: it links a group to a prompt
+            # created in this same payload (which has no stable pk yet on create).
+            prompt_by_key = {p.prompt_key: p for p in node_prompts}
+
+            incoming_route_codes = {
+                gd["route_code"]
+                for gd in self._condition_groups_data
+                if gd.get("route_code")
+            }
+
+            if self._instance is not None:
+                incoming_names = {
+                    gd["group_name"]
+                    for gd in self._condition_groups_data
+                    if not gd.get("route_code") and gd.get("group_name")
+                }
+                # Delete groups that are no longer in the payload.
+                node.condition_groups.exclude(route_code__isnull=True).exclude(
+                    route_code__in=incoming_route_codes
+                ).delete()
+                node.condition_groups.filter(route_code__isnull=True).exclude(
+                    group_name__in=incoming_names
+                ).delete()
+
+            excluded = self._GROUP_EXCLUDED_FIELDS
+            # ordered_groups preserves input order for deferred ref resolution.
+            ordered_groups: list = [None] * len(self._condition_groups_data)
+            to_bulk_create: list[tuple[int, ClassificationConditionGroup]] = []
+            to_bulk_update: list[ClassificationConditionGroup] = []
+
+            existing_by_rc = {}
+            existing_by_name = {}
+            if self._instance is not None:
+                for g in node.condition_groups.all():
+                    if g.route_code:
+                        existing_by_rc[g.route_code] = g
+                    else:
+                        existing_by_name[g.group_name] = g
+
+            for idx, group_data in enumerate(self._condition_groups_data):
+                gd = {k: v for k, v in group_data.items() if k not in excluded}
+
+                # Resolve the prompt FK node-locally: prefer prompt_key (works for
+                # a prompt created in this same payload), fall back to numeric pk.
+                key = group_data.get("prompt_key")
+                old_prompt_id = group_data.get("prompt")
+                if key:
+                    gd["prompt"] = prompt_by_key.get(key)
+                elif old_prompt_id is not None:
+                    gd["prompt"] = prompt_by_id.get(old_prompt_id)
+
+                rc = gd.get("route_code")
+                existing = (
+                    existing_by_rc.get(rc)
+                    if rc
+                    else existing_by_name.get(gd.get("group_name"))
+                )
+
+                if existing is not None:
+                    for attr, val in gd.items():
+                        setattr(existing, attr, val)
+                    to_bulk_update.append(existing)
+                    ordered_groups[idx] = existing
+                else:
+                    obj = ClassificationConditionGroup(
+                        classification_decision_table_node=node, **gd
+                    )
+                    to_bulk_create.append((idx, obj))
+                    ordered_groups[idx] = obj  # will have .id after bulk_create
+
+            if to_bulk_update:
+                ClassificationConditionGroup.objects.bulk_update(
+                    to_bulk_update,
+                    [
+                        "group_name",
+                        "order",
+                        "expression",
+                        "prompt",
+                        "manipulation",
+                        "continue_flag",
+                        "next_node_id",
+                        "dock_visible",
+                        "field_expressions",
+                        "field_manipulations",
+                        "section",
+                    ],
+                )
+
+            if to_bulk_create:
+                new_objs = ClassificationConditionGroup.objects.bulk_create(
+                    [obj for _, obj in to_bulk_create]
+                )
+                for (idx, _), new_obj in zip(to_bulk_create, new_objs):
+                    ordered_groups[idx] = new_obj
+
+            created_groups = ordered_groups
+
+        if self._deferred is not None:
+            self._deferred.set_group_ids(created_groups)
+
+        return node
 
 
 class _NodeSaveable:

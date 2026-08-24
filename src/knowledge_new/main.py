@@ -1,32 +1,36 @@
-import asyncio
-from concurrent.futures.process import ProcessPoolExecutor
-
-from handlers import IndexHandler, PrechunkHandler, SearchHandler
-from handlers.cancel_handler import CancelHandler
-from loguru import logger
-from services.processing_run import set_process_pool
+from bootstrap.di import get_dependencies
+from bootstrap.lifespans import get_lifespans
+from litestar import Litestar
+from litestar.openapi import OpenAPIConfig
+from litestar.openapi.plugins import (
+    RapidocRenderPlugin,
+    ScalarRenderPlugin,
+    StoplightRenderPlugin,
+    SwaggerRenderPlugin,
+)
+from presentation.rest.controllers.maintenances import MaintenanceController
+from presentation.rest.controllers.rag import RagController
+from presentation.rest.error_handlers import get_error_handlers
 from settings import settings
-from src.shared.communication import Consumer, Producer, brokers, storages
-from services.prompt_patching import patch_graphrag_prompts
 
-
-async def main():
-    patch_graphrag_prompts()
-    process_pool = ProcessPoolExecutor(settings.MAX_PROCESS_WORKERS)
-    set_process_pool(process_pool)
-
-    broker = brokers.RedisPubSubBroker(settings.BROKER_DNS)
-    storage = storages.RedisStorage(settings.STORAGE_DNS)
-    producer = Producer(broker, storage)
-    consumer = Consumer(broker, storage)
-
-    handlers = [PrechunkHandler, IndexHandler, SearchHandler, CancelHandler]
-    logger.info("knowledge_new started; handlers: {}", [h.__name__ for h in handlers])
-
-    handler_tasks = [asyncio.create_task(h(producer, consumer).run()) for h in handlers]
-
-    await asyncio.gather(*handler_tasks)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+app = Litestar(
+    debug=settings.DEBUG,
+    route_handlers=[
+        MaintenanceController,
+        RagController,
+    ],
+    on_startup=get_lifespans("on_startup"),
+    on_shutdown=get_lifespans("on_shutdown"),
+    dependencies=get_dependencies(),
+    exception_handlers=get_error_handlers(),
+    openapi_config=OpenAPIConfig(
+        title="Knowledge API",
+        version="1.0.0",
+        render_plugins=[
+            ScalarRenderPlugin(),
+            RapidocRenderPlugin(),
+            StoplightRenderPlugin(),
+            SwaggerRenderPlugin(),
+        ],
+    ),
+)

@@ -67,9 +67,11 @@ class SessionFilter(filters.FilterSet):
     node_name = filters.CharFilter(
         field_name="graphsessionmessage__name", lookup_expr="exact", distinct=True
     )
-    graph_name = filters.CharFilter(field_name="graph__name", lookup_expr="iexact")
+    graph_name = CharInFilter(field_name="graph__name", lookup_expr="in")
     is_error_cause = filters.BooleanFilter(method="filter_by_error_cause")
+    trigger_type = CharInFilter(field_name="trigger__trigger_type", lookup_expr="in")
 
+    created_at = filters.DateTimeFromToRangeFilter(field_name="created_at")
     # duration filters
     duration_lt = filters.NumberFilter(method="filter_duration_lt")
     duration_gt = filters.NumberFilter(method="filter_duration_gt")
@@ -78,7 +80,7 @@ class SessionFilter(filters.FilterSet):
 
     class Meta:
         model = Session
-        fields = ["graph_id", "graph_name", "status", "node_name"]
+        fields = ["graph_id", "graph_name", "status", "node_name", "trigger_type"]
 
     def _annotate_duration(self, queryset):
         """Calculate duration and cast it to integer type"""

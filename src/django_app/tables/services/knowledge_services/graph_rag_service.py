@@ -1,8 +1,10 @@
 from typing import List, Dict, Any, Optional
 from django.db import transaction
-from django.db.models import Q, F, OuterRef
+from django.db.models import Q
 from loguru import logger
 
+from src.shared.enums.knowledge_new import RAGStrategy
+from tables.clients import KnowledgeClient
 from tables.models.knowledge_models import (
     SourceCollection,
     BaseRagType,
@@ -20,7 +22,6 @@ from tables.exceptions import (
     CollectionNotFoundException,
     InvalidGraphRagParametersException,
     GraphRagDocumentNotFoundException,
-    DocumentConfigNotFoundException,
     InvalidChunkParametersException,
 )
 from tables.constants.knowledge_constants import (
@@ -521,6 +522,9 @@ class GraphRagService:
 
         # Delete base_rag_type (cascades to GraphRag and GraphRagDocument)
         base_rag_type.delete()
+
+        with KnowledgeClient() as client:
+            client.delete(strategy=RAGStrategy.GRAPH, rag_id=int(graph_rag_id))
 
         logger.info(
             f"Deleted GraphRag {graph_rag_id} for collection {collection_id} "

@@ -22,7 +22,6 @@ RUN poetry install --no-ansi --no-root
 
 # Copy source code
 COPY ./manager /app/src/manager
-COPY ./tool /app/src/manager/tool
 COPY ./shared /app/src/shared
 
 # --- Stage 2: Runtime ---

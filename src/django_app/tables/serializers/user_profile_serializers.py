@@ -1,19 +1,26 @@
 from rest_framework import serializers
 
-from tables.serializers.user_management_serializers import UserResponseSerializer
+from tables.serializers.user_management_serializers import (
+    MembershipNestedSerializer,
+    UserResponseSerializer,
+)
 
 
 class ProfileResponseSerializer(UserResponseSerializer):
     """GET / PATCH / POST-avatar response for /api/profile/.
 
-    Strict superset of UserResponseSerializer:
-    same fields, plus `avatar_url`, `active_organization_id`,
-    `active_permissions`. Memberships are filtered to active
-    organizations at the queryset layer (UserProfileService.get_profile),
-    so this serializer stays shape-stable.
+    Strict superset of UserResponseSerializer: same fields, plus
+    `avatar_url`, `active_organization_id`, `active_permissions`. The
+    `memberships` list is computed in UserProfileService.get_profile — a
+    normal user's real active memberships, or (for a superadmin) every active
+    organization with the built-in Superadmin role — so the response shape is
+    unchanged.
     """
 
     avatar_url = serializers.SerializerMethodField()
+    memberships = MembershipNestedSerializer(
+        source="_profile_memberships", many=True, read_only=True
+    )
     active_organization_id = serializers.IntegerField(
         source="_active_organization_id", allow_null=True, default=None, read_only=True
     )
@@ -76,4 +83,3 @@ class PasswordChangeConfirmResponseSerializer(serializers.Serializer):
     """`POST /api/profile/password-change/confirm/` — response schema."""
 
     access = serializers.CharField()
-    refresh = serializers.CharField()

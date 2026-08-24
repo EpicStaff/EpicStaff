@@ -88,3 +88,24 @@ class AuthValidationService(BaseRBACValidator):
 
         self._raise_if_any(errors)
         return {"email": email, "password": password}
+
+    def validate_new_password(self, data: dict) -> dict:
+        """Validate `new_password` alone.
+
+        For callers that set a password without proving knowledge of the
+        current one — the CLI recovery commands, which are already
+        authorized by shell access. Runs the same
+        AUTH_PASSWORD_VALIDATORS as every other entry point.
+
+        Raises:
+            FormValidationError: the password failed one or more validators.
+        """
+        new_password = data.get("new_password")
+
+        errors: list[FieldError] = []
+        errors.extend(
+            self._validate_password_field(new_password, field_name="new_password")
+        )
+
+        self._raise_if_any(errors)
+        return {"new_password": new_password}

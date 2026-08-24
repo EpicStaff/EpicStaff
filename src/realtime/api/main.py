@@ -12,7 +12,6 @@ from fastapi import (
     HTTPException,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from twilio.request_validator import RequestValidator
 from src.shared.models import RealtimeAgentChatData
 from application.conversation_service import ConversationService
 from application.voice_call_service import VoiceCallService
@@ -35,6 +34,7 @@ from infrastructure.transcription.transcription_client_factory import (
 from utils.instructions_concatenator import generate_instruction
 from core.config import settings
 from utils.auth import introspect_token
+from utils.twilio_signature import validate_twilio_signature
 
 
 from infrastructure.persistence.database import get_db, engine
@@ -53,8 +53,6 @@ tool_manager_service = ToolManagerService(
     python_code_executor_service=python_code_executor_service,
     knowledge_search_get_channel=settings.KNOWLEDGE_SEARCH_GET_CHANNEL,
     knowledge_search_response_channel=settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
-    manager_host=settings.MANAGER_HOST,
-    manager_port=settings.MANAGER_PORT,
 )
 elevenlabs_agent_provisioner = ElevenLabsAgentProvisioner(redis_service=redis_service)
 factory = RealtimeAgentClientFactory(
@@ -129,7 +127,9 @@ async def _run_forever(coro_fn, name: str, restart_delay: float = 2.0):
     while True:
         try:
             await coro_fn()
-            logger.warning(f"{name} exited unexpectedly, restarting in {restart_delay}s")
+            logger.warning(
+                f"{name} exited unexpectedly, restarting in {restart_delay}s"
+            )
         except Exception as e:
             logger.error(f"{name} crashed: {e}, restarting in {restart_delay}s")
         await asyncio.sleep(restart_delay)
@@ -261,7 +261,6 @@ async def twilio_voice_webhook(request: Request):
     vs = await get_voice_settings()
     auth_token = vs.get("twilio_auth_token")
     if auth_token:
-        validator = RequestValidator(auth_token)
         signature = request.headers.get("X-Twilio-Signature", "")
         proto = request.headers.get("x-forwarded-proto", "https")
         host = request.headers.get("x-forwarded-host") or request.headers.get(
@@ -272,7 +271,7 @@ async def twilio_voice_webhook(request: Request):
         url = f"{proto}://{host}{path}{query}"
         form_data = dict(await request.form())
         logger.debug(f"Twilio validation URL: {url}")
-        if not validator.validate(url, form_data, signature):
+        if not validate_twilio_signature(url, form_data, signature, auth_token):
             logger.warning(
                 f"Invalid Twilio signature from {request.client.host}, url={url}"
             )
@@ -298,10 +297,11 @@ async def voice_stream(twilio_ws: WebSocket):
     await twilio_ws.accept()
     logger.info("Twilio MediaStream WebSocket accepted")
 
-    # 1. Resolve agent_id from Voice Settings
+    # 1. Resolve agent_id / agent_definition_id from Voice Settings
     vs = await get_voice_settings()
     agent_id = vs.get("voice_agent")
-    if not agent_id:
+    agent_definition_id = vs.get("voice_agent_definition")
+    if not agent_id and not agent_definition_id:
         logger.error("No voice agent configured in Voice Settings")
         await twilio_ws.close()
         return
@@ -320,19 +320,28 @@ async def voice_stream(twilio_ws: WebSocket):
         logger.warning(f"Could not read Twilio start event: {e}")
         first_msg = None
 
-    # 2. Call Django init-realtime with the resolved agent_id
+    # 2. Call Django init-realtime with the resolved agent_id / agent_definition_id
+    audio_config = {
+        "input_audio_format": "g711_ulaw",
+        "output_audio_format": "g711_ulaw",
+    }
+    if agent_definition_id:
+        init_realtime_payload = {
+            "agent_definition_id": agent_definition_id,
+            "config": audio_config,
+        }
+    else:
+        init_realtime_payload = {
+            "agent_id": agent_id,
+            "config": audio_config,
+        }
+
     async with httpx.AsyncClient() as http_client:
         try:
             resp = await http_client.post(
                 settings.INIT_API_URL,
                 headers={"Host": "localhost"},
-                json={
-                    "agent_id": agent_id,
-                    "config": {
-                        "input_audio_format": "g711_ulaw",
-                        "output_audio_format": "g711_ulaw",
-                    },
-                },
+                json=init_realtime_payload,
                 timeout=10.0,
             )
             if resp.status_code >= 400:
@@ -340,7 +349,9 @@ async def voice_stream(twilio_ws: WebSocket):
                 await twilio_ws.close()
                 return
             conn_key = resp.json().get("connection_key")
-            logger.info(f"Init realtime response: status={resp.status_code} conn_key={conn_key}")
+            logger.info(
+                f"Init realtime response: status={resp.status_code} conn_key={conn_key}"
+            )
         except Exception as e:
             logger.error(f"Failed to init realtime session: {e}")
             await twilio_ws.close()

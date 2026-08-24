@@ -5,19 +5,20 @@ from typing import Optional
 import pandas as pd
 from loguru import logger
 
-from graphrag.api.index import build_index
-from graphrag.api.query import basic_search, local_search
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 
 from rag.base_rag_strategy import BaseRAGStrategy
 from rag.graph_rag.graph_rag_file_manager import GraphRagFileManager
 from rag.graph_rag.graph_rag_config_builder import GraphRagConfigBuilder
+from rag.graph_rag.exceptions import GraphRAGUnavailableError
+from services.credential_mapper import RagCredentials, apply_credential
 from src.shared.models import (
     GraphRagSearchConfig,
     BaseKnowledgeSearchMessageResponse,
     KnowledgeChunkResponse,
 )
 from settings import UnitOfWork
+from utils.cpu_features import supports_avx2
 
 
 class GraphRAGStrategy(BaseRAGStrategy):
@@ -42,13 +43,24 @@ class GraphRAGStrategy(BaseRAGStrategy):
         Args:
             base_dir: Optional base directory for graph data storage.
                      Defaults to <project>/src/knowledge/graph_data
+
+        Raises:
+            GraphRAGUnavailableError: If the host CPU lacks AVX2 support,
+                which lancedb (used internally by graphrag) requires.
         """
+        if not supports_avx2():
+            raise GraphRAGUnavailableError(
+                "GraphRAG is unavailable: this host's CPU lacks AVX2 support required by lancedb."
+            )
+
         self.file_manager = GraphRagFileManager(base_dir=base_dir)
         self.config_builder = GraphRagConfigBuilder()
 
     # ==================== Indexing ====================
 
-    def process_rag_indexing(self, rag_id: int):
+    def process_rag_indexing(
+        self, rag_id: int, credentials: RagCredentials | None = None
+    ):
         """
         Process RAG indexing for a GraphRag.
 
@@ -91,6 +103,19 @@ class GraphRAGStrategy(BaseRAGStrategy):
                 )
                 embedder_config = uow_ctx.graph_rag_storage.get_embedder_configuration(
                     graph_rag_id
+                )
+
+                creds = credentials or RagCredentials()
+                creds_llm = creds.llm_api_key
+                llm_config = apply_credential(
+                    config=llm_config,
+                    api_key=creds_llm,
+                    context=f"graph_rag_id={graph_rag_id} llm",
+                )
+                embedder_config = apply_credential(
+                    config=embedder_config,
+                    api_key=creds.embedder_api_key,
+                    context=f"graph_rag_id={graph_rag_id} embedder",
                 )
 
                 # Get all documents linked to this GraphRag
@@ -181,6 +206,9 @@ class GraphRAGStrategy(BaseRAGStrategy):
         Args:
             config: GraphRagConfig instance
         """
+        # Deferred: keeps this module importable on CPUs without AVX2 (lancedb requires AVX2)
+        from graphrag.api.index import build_index
+
         # GraphRAG's build_index is async
         asyncio.run(build_index(config))
 
@@ -304,6 +332,9 @@ class GraphRAGStrategy(BaseRAGStrategy):
         query: str,
     ) -> tuple:
         """Run basic search using text_units only."""
+        # Deferred: keeps this module importable on CPUs without AVX2 (lancedb requires AVX2)
+        from graphrag.api.query import basic_search
+
         text_units = self._load_parquet(root_folder, "text_units.parquet")
         return asyncio.run(
             basic_search(
@@ -323,6 +354,9 @@ class GraphRAGStrategy(BaseRAGStrategy):
         Run local search using entities, communities, community_reports,
         text_units, relationships, and optional covariates.
         """
+        # Deferred: keeps this module importable on CPUs without AVX2 (lancedb requires AVX2)
+        from graphrag.api.query import local_search
+
         text_units = self._load_parquet(root_folder, "text_units.parquet")
         entities = self._load_parquet(root_folder, "entities.parquet")
         communities = self._load_parquet(root_folder, "communities.parquet")

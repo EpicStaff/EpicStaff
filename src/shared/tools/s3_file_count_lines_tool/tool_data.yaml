@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Count Lines Tool"
+  description: "Count lines, words, and bytes in an S3-stored file (wc semantics). Param: file_path (required). Returns '<lines> <words> <bytes> <file_path>', matching the shape of the Unix wc command. Refuses files over 50MB. Use before s3_file_line_read_tool to gauge how much of a file to page through."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

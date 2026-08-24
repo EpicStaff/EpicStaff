@@ -2,9 +2,34 @@ from rest_framework import serializers
 from django.db.models import Model
 from django.db import transaction
 
+from tables.models.base_models import BaseGlobalNode
 from tables.models.webhook_models import WebhookTrigger
 from tables.models.python_models import PythonCode
 from tables.models import Agent, PythonCodeTool, ToolConfig, McpTool
+from tables.services.copy_services.helpers import (
+    apply_python_code_fields,
+    create_python_code,
+)
+from tables.serializers.org_scoped_fields import (
+    org_visible_queryset,
+    resolve_active_org_id,
+)
+
+
+def assert_node_ref_in_graph(node_id, graph, field: str) -> None:
+    """A node id referenced from within a graph (edge endpoints, decision-table
+    next/error/condition next nodes) must belong to that SAME graph — which also
+    guarantees the same organization. A cross-graph, cross-org, or non-existent
+    id is rejected identically ("Invalid pk … does not exist"), so existence
+    never leaks. ``graph`` may be a Graph instance or None (skips when unknown).
+    """
+    if node_id is None or graph is None:
+        return
+    node = BaseGlobalNode.find_globally(node_id)
+    if node is None or getattr(node, "graph_id", None) != getattr(graph, "id", None):
+        raise serializers.ValidationError(
+            {field: f'Invalid pk "{node_id}" - object does not exist.'}
+        )
 
 
 class NestedAgentExportMixin:
@@ -153,7 +178,7 @@ class TagHandlingMixin:
 class NestedPythonCodeMixin:
     def _create_with_python_code(self, model_class, validated_data):
         python_code_data = validated_data.pop("python_code")
-        python_code = PythonCode.objects.create(**python_code_data)
+        python_code = create_python_code(python_code_data=python_code_data)
         return model_class.objects.create(python_code=python_code, **validated_data)
 
     def _update_python_code(self, instance, validated_data):
@@ -163,9 +188,9 @@ class NestedPythonCodeMixin:
             expected_hash = python_code_data.pop("content_hash", None)
             if expected_hash is not None:
                 python_code._expected_hash = expected_hash
-            for attr, value in python_code_data.items():
-                setattr(python_code, attr, value)
-            python_code.save()
+            apply_python_code_fields(
+                python_code=python_code, python_code_data=python_code_data
+            )
 
     def create(self, validated_data):
         return self._create_with_python_code(self.Meta.model, validated_data)
@@ -202,15 +227,54 @@ class ToolsConnectionMixin:
         Return mapping for tool synchronization.
 
         Key:
-            Tool model class (e.g. ToolConfig)
+            Tool model class (e.g. PythonCodeTool)
 
         Value:
             tuple:
-                - through model class (e.g. TaskConfiguredTools)
-                - tool prefix used in tool_ids (e.g. "configured-tool")
+                - through model class (e.g. TaskPythonCodeTools)
+                - tool prefix used in tool_ids (e.g. "python-code-tool")
                 - FK field name in through model (e.g. "tool_id")
         """
         raise NotImplementedError
+
+    def validate_tool_ids(self, value: list[str]) -> list[str]:
+        """Fail-fast org-isolation check on `tool_ids` (runs in is_valid(),
+        before any row is written). A tool from another org — or a non-existent
+        one — is rejected exactly like a missing pk, no existence leak. Skipped
+        when there is no request in context (import / internal paths)."""
+        request = self.context.get("request")
+        if request is None or not value:
+            return value
+
+        org_id = resolve_active_org_id(request)
+        tools_dict = self._resolve_tool_ids(value)
+        prefix_to_model = {
+            prefix: model
+            for model, (_through, prefix, _fk) in self._get_tools_models_map().items()
+        }
+        for prefix, ids in tools_dict.items():
+            model = prefix_to_model.get(prefix)
+            if model is None:
+                raise serializers.ValidationError(
+                    {"tool_ids": [f'Unknown tool type "{prefix}".']}
+                )
+            visible = {
+                str(pk)
+                for pk in org_visible_queryset(model, org_id)
+                .filter(id__in=ids)
+                .values_list("id", flat=True)
+            }
+            missing = [str(i) for i in ids if str(i) not in visible]
+            if missing:
+                raise serializers.ValidationError(
+                    {
+                        "tool_ids": [
+                            f'Invalid pk "{prefix}:{m}" - object does not exist.'
+                            for m in missing
+                        ]
+                    }
+                )
+        return value
 
     def _sync_tools(self, instance: Model, fk_to_instance: str, tool_ids: list[str]):
         """
@@ -227,6 +291,10 @@ class ToolsConnectionMixin:
         tools_dict = self._resolve_tool_ids(tool_ids)
         tools_map = self._get_tools_models_map()
 
+        # Resolve the active org so a tool from another org can't be attached
+        request = self.context.get("request")
+        org_id = resolve_active_org_id(request) if request is not None else None
+
         with transaction.atomic():
             for tool_model, (through_model, prefix, fk_field) in tools_map.items():
                 through_model.objects.filter(**{fk_to_instance: instance.pk}).delete()
@@ -235,9 +303,15 @@ class ToolsConnectionMixin:
                 if not ids:
                     continue
 
-                db_ids = tool_model.objects.filter(id__in=ids).values_list(
-                    "id", flat=True
+                # Defense in depth: only link tools visible to the active org
+                # (validate_tool_ids already rejected cross-org ids on the API
+                # path; this also protects any non-validated caller)
+                base = (
+                    org_visible_queryset(tool_model, org_id)
+                    if org_id is not None
+                    else tool_model.objects.all()
                 )
+                db_ids = list(base.filter(id__in=ids).values_list("id", flat=True))
 
                 through_model.objects.bulk_create(
                     [
@@ -251,6 +325,20 @@ class WebhookCreationMixin:
     def _get_or_create_webhook_trigger(self, data):
         path = data.get("path")
         ngrok_conf = data.get("ngrok_webhook_config")
+
+        # ngrok_webhook_config is global platform infrastructure managed by
+        # superadmins (the /api/ngrok-config/ endpoint is superadmin-only). Non-
+        # superadmins may not assign it via a webhook-trigger node either — drop
+        # it so a caller can't bind an arbitrary config by id.
+        #
+        # TODO: TECH DEBT (per-org ngrok): NgrokWebhookConfig has no `org` column, so
+        # this is a superadmin gate rather than org scoping. To make webhook
+        # tunnels per-organization, add an `org` FK to NgrokWebhookConfig, scope
+        # it, and replace this gate with OrgScopedPrimaryKeyRelatedField.
+        request = self.context.get("request")
+        is_superadmin = getattr(getattr(request, "user", None), "is_superadmin", False)
+        if not is_superadmin:
+            ngrok_conf = None
 
         return WebhookTrigger.objects.get_or_create(
             path=path, ngrok_webhook_config=ngrok_conf

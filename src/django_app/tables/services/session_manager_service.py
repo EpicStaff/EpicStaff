@@ -1,15 +1,22 @@
+from dataclasses import replace
+
+from django.db import transaction
+
 from tables.exceptions import GraphEntryPointException
 from tables.models import (
     AudioTranscriptionNode,
+    CodeAgentNode,
     CrewNode,
     Edge,
     FileExtractorNode,
     Graph,
-    GraphOrganizationUser,
     PythonNode,
     Session,
 )
 from tables.models.graph_models import (
+    AgentNode,
+    ClassificationConditionGroup,
+    ClassificationDecisionTableNode,
     ConditionalEdge,
     ConditionGroup,
     DecisionTableNode,
@@ -17,44 +24,41 @@ from tables.models.graph_models import (
     ScheduleTriggerNode,
     StartNode,
     SubGraphNode,
+    TaskNode,
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
 from src.shared.models import (
-    AudioTranscriptionNodeData,
+    AgentNodeData,
     CodeAgentNodeData,
     ConditionalEdgeData,
-    CrewNodeData,
-    DecisionTableNodeData,
     EdgeData,
-    FileExtractorNodeData,
     GraphData,
     GraphSessionMessageData,
-    PythonNodeData,
     SessionData,
     SubGraphData,
     SubGraphNodeData,
-    TelegramTriggerNodeData,
+    TaskNodeData,
 )
-from tables.models import (
-    CodeAgentNode,
-    CrewNode,
-    Session,
-    Edge,
-    Graph,
-    GraphStorageFile,
-    PythonNode,
-    FileExtractorNode,
-    AudioTranscriptionNode,
-    GraphOrganizationUser,
-)
+from tables.models.session_models import SessionTrigger, SessionWarningMessage
 from tables.constants.variables_constants import DOMAIN_VARIABLES_KEY
+from tables.services.agent_node_payload_service import AgentNodePayloadService
 from tables.services.converter_service import ConverterService
+from tables.services.persistent_variables_service import PersistentVariablesService
 from tables.services.redis_service import RedisService
+from tables.services.secrets import (
+    UndeclaredSecretError,
+    secret_declaration_validator,
+)
+from tables.services.surface_knowledge_warning_service import (
+    SurfaceKnowledgeWarningService,
+)
+from tables.services.trigger_spec import TriggerSpec
+from tables.services.task_node_payload_service import TaskNodePayloadService
 from tables.validators.end_node_validator import EndNodeValidator
 from tables.validators.file_node_validator import FileNodeValidator
 from tables.validators.subgraph_validator import SubGraphValidator
-from utils.graph_utils import NodeNameResolver, resolve_node_names
+from utils.graph_utils import NodeNameResolver, generate_node_name, resolve_node_names
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
 
@@ -70,6 +74,8 @@ class SessionManagerService(metaclass=SingletonMeta):
         self.file_node_validator: FileNodeValidator = FileNodeValidator()
         self.end_node_validator: EndNodeValidator = EndNodeValidator()
         self.subgraph_validator = SubGraphValidator()
+        self.persistent_variables_service = PersistentVariablesService()
+        self.surface_knowledge_warning_service = SurfaceKnowledgeWarningService()
 
     def get_session(self, session_id: int) -> Session:
         return Session.objects.get(id=session_id)
@@ -81,12 +87,46 @@ class SessionManagerService(metaclass=SingletonMeta):
         session: Session = self.get_session(session_id=session_id)
         return session.status
 
+    def _resolve_template_variables(self, obj, context: dict):
+        """Recursively resolve {variable} or {variable:default} templates in nested structures"""
+        if isinstance(obj, str):
+            import re
+
+            pattern = r"\{([^}:]+)(?::([^}]*))?\}"
+
+            def replace_template(match):
+                var_name = match.group(1)
+                default_value = match.group(2)
+                if var_name in context:
+                    return str(context[var_name])
+                elif default_value is not None:
+                    return default_value
+                else:
+                    return match.group(0)
+
+            return re.sub(pattern, replace_template, obj)
+        elif isinstance(obj, dict):
+            return {
+                self._resolve_template_variables(
+                    k, context
+                ): self._resolve_template_variables(v, context)
+                for k, v in obj.items()
+            }
+        elif isinstance(obj, list):
+            return [self._resolve_template_variables(item, context) for item in obj]
+        else:
+            return obj
+
     def create_session(
         self,
         graph_id: int,
+        *,
         variables: dict | None = None,
-        username: str | None = None,
+        graph_user=None,
+        trigger: TriggerSpec,
         entrypoint: str | None = None,
+        parent_session_id: int | None = None,
+        token_budget: int | None = None,
     ) -> Session:
         if variables is None:
             variables = dict()
@@ -94,72 +134,119 @@ class SessionManagerService(metaclass=SingletonMeta):
         start_node = StartNode.objects.filter(graph_id=graph_id).first()
 
         if start_node is not None:
-            if variables and start_node.variables:
-                start_node_variables = self._get_actual_variables(start_node.variables)
-                variables = self._deep_merge_dicts(start_node_variables, variables)
-            elif start_node.variables:
-                variables = start_node.variables
+            if start_node.variables:
+                # Resolve template variables in start_node config using user-provided variables
+                resolved_start_vars = self._resolve_template_variables(
+                    start_node.variables, variables
+                )
+                start_node_variables = self._get_actual_variables(resolved_start_vars)
+                if variables:
+                    variables = self.persistent_variables_service.deep_merge(
+                        start_node_variables, variables
+                    )
+                else:
+                    variables = start_node_variables
 
         variables = self._get_actual_variables(variables)
 
-        time_to_live = Graph.objects.get(pk=graph_id).time_to_live
-        # TODO: replace with
-        # request.user + org context instead of email lookup.
-        graph_user = GraphOrganizationUser.objects.filter(
-            organization_user__user__email=username, graph_id=graph_id
-        ).first()
-        session = Session.objects.create(
-            graph_id=graph_id,
-            status=Session.SessionStatus.PENDING,
-            variables=variables,
-            time_to_live=time_to_live,
-            graph_user=graph_user,
-            entrypoint=entrypoint,
+        # Remove 'shared' initialization dict - it's for Redis proxy, not storage
+        variables_for_db = {k: v for k, v in variables.items() if k != "shared"}
+
+        graph = Graph.objects.get(pk=graph_id)
+        status_data = {"token_budget": token_budget} if token_budget is not None else {}
+        # Trigger nodes name the entrypoint; manual/parent-flow triggers have no
+        # node id, so generate_node_name returns None and an explicitly passed
+        # entrypoint wins.
+        entrypoint = (
+            generate_node_name(trigger.node_id, trigger.node_name) or entrypoint
         )
+
+        with transaction.atomic():
+            session = Session.objects.create(
+                graph_id=graph_id,
+                status=Session.SessionStatus.PENDING,
+                variables=variables_for_db,
+                time_to_live=graph.time_to_live,
+                graph_user=graph_user,
+                entrypoint=entrypoint,
+                parent_session_id=parent_session_id,
+                status_data=status_data,
+            )
+            SessionTrigger.objects.create(session=session, **trigger.to_fields())
         return session
 
     def create_session_data(
         self,
         session: Session,
+        token_budget: int | None = None,
     ) -> SessionData:
         self.subgraph_validator.validate(session.graph)
 
         unique_subgraphs: dict[int, SubGraphData] = {}
         graph_data = self._build_graph_data(session.graph, unique_subgraphs, session)
 
+        initial_state = dict(session.variables)
+        if token_budget is not None:
+            # See TOKEN_BUDGET_STATE_KEY in
+            # crew/services/graph/graph_session_manager_service.py -- popped
+            # back out before it becomes a live flow variable.
+            initial_state["__token_budget__"] = token_budget
+
         return SessionData(
             id=session.pk,
             graph=graph_data,
             unique_subgraph_list=list(unique_subgraphs.values()),
-            initial_state=session.variables,
+            initial_state=initial_state,
         )
 
     def run_session(
         self,
         graph_id: int,
+        *,
         variables: dict | None = None,
-        username: str | None = None,
+        user=None,
+        trigger: TriggerSpec,
         entrypoint: str | None = None,
+        parent_session_id: int | None = None,
+        token_budget: int | None = None,
     ) -> int:
         variables = self._get_actual_variables(variables)
-        logger.info(f"'run_session' got variables: {variables=}")
+        logger.info("'run_session' got variables: {}", variables)
 
-        # Choose to use variables from previous flow or left 'variables' param None
-        variables = self.choose_variables(graph_id, variables)
+        graph = Graph.objects.get(pk=graph_id)
+        run_vars = self.persistent_variables_service.build_run_variables(
+            graph=graph, user=user, payload=variables
+        )
+
+        if trigger.trigger_type == SessionTrigger.TriggerType.MANUAL:
+            trigger = replace(trigger, triggered_by_user=run_vars.graph_user)
 
         session: Session = self.create_session(
             graph_id=graph_id,
-            variables=variables,
-            username=username,
+            variables=run_vars.variables,
+            graph_user=run_vars.graph_user,
+            trigger=trigger,
             entrypoint=entrypoint,
+            parent_session_id=parent_session_id,
+            token_budget=token_budget,
         )
         try:
-            session_data: SessionData = self.create_session_data(session=session)
+            violations = secret_declaration_validator.violations(graph_id=graph_id)
+            if violations:
+                raise UndeclaredSecretError(
+                    "Session aborted: "
+                    + " ".join(violation.describe() for violation in violations)
+                )
+
+            session_data: SessionData = self.create_session_data(
+                session=session, token_budget=token_budget
+            )
             # TODO: add ping or waiting for crew to accept connections
 
             session.graph_schema = session_data.graph.model_dump(mode="json")
             received_n = self.redis_service.publish_session_data(
                 session_data=session_data,
+                org_id=graph.org_id,
             )
             required_listeners = 2
             if received_n != required_listeners:
@@ -169,7 +256,7 @@ class SessionManagerService(metaclass=SingletonMeta):
                     "reason": f"Data was sent and received by ({received_n}) listeners, but ({required_listeners}) required."
                 }
             logger.info(
-                f"Session data published in Redis for session ID: {session.pk}."
+                "Session data published in Redis for session ID: {}.", session.pk
             )
 
         except Exception as e:
@@ -180,10 +267,25 @@ class SessionManagerService(metaclass=SingletonMeta):
             raise e
         finally:
             session.save()
+
+        surface_knowledge_warnings = (
+            self.surface_knowledge_warning_service.build_warnings(graph)
+        )
+        all_warnings = run_vars.warnings + surface_knowledge_warnings
+        if all_warnings:
+            SessionWarningMessage.objects.create(
+                session_id=session.pk, messages=all_warnings
+            )
         return session.pk
 
+    # message_type values handled generically by the branch below: this is a
+    # plain GraphSessionMessage row + redis republish. "user" is the original
+    # AnswerToLLM path (kept byte-for-byte). Adding a message_type here never
+    # requires a migration -- message_data is a free-form JSONField.
+    _GENERIC_MESSAGE_TYPES = ("user",)
+
     def register_message(self, data: dict, created_at_dt) -> None:
-        if data["message_data"]["message_type"] == "user":
+        if data["message_data"]["message_type"] in self._GENERIC_MESSAGE_TYPES:
             graph_session_message_data = GraphSessionMessageData.model_validate(data)
             session = Session.objects.get(id=graph_session_message_data.session_id)
             GraphSessionMessage.objects.create(
@@ -204,83 +306,10 @@ class SessionManagerService(metaclass=SingletonMeta):
                 f"Unsupported message_type: {data['message_data']['message_type']}"
             )
 
-    def choose_variables(
-        self, graph_id: int, variables: dict | None = None
-    ) -> dict | None:
-        """
-        Function returns variables ether from previous session which ended successfully
-        (with status: 'end') if 'persistent_variables' field in graph_obj is True and there
-        is at least one session.
-        OR
-        Returns an emtpy dict
-        """
-
-        use_prev_vars = Graph.objects.filter(pk=graph_id, persistent_variables=True)
-        m1 = "This run will be using variables from the last flow ended with status: 'end'"
-        m2 = "This run will be using new variables"
-        logger.info(f"{m1 if use_prev_vars else m2}")
-
-        if use_prev_vars:
-            # Get last session which ended successfully
-            latest_ended_session_id = (
-                Session.objects.filter(
-                    graph_id=graph_id, status=Session.SessionStatus.END
-                )
-                .order_by("-id")
-                .values_list("id", flat=True)
-                .first()
-            )
-            if not latest_ended_session_id:
-                logger.warning(
-                    "There are no sessions for this graph which ended successfully"
-                )
-                return variables
-
-            logger.info(f"LAST SESSION /W STATUS: END ID IS: {latest_ended_session_id}")
-
-            try:
-                # Retrieve variables from previous session
-                message = (
-                    GraphSessionMessage.objects.filter(
-                        session_id=latest_ended_session_id
-                    )
-                    .order_by("-created_at")
-                    .first()
-                )
-                prev_session_vars = message.message_data["state"]["variables"]
-                logger.info(f"prev_session_var: {prev_session_vars}")
-                variables = prev_session_vars
-                logger.info(
-                    f"Variables from previous session are set to current run: {variables}"
-                )
-            except Exception as e:
-                logger.error(
-                    f"Error while retrieving variables from previous session. {e}"
-                )
-                return variables
-
-        return variables
-
     def _get_actual_variables(self, variables: dict) -> dict:
         actual_variables = variables.get(DOMAIN_VARIABLES_KEY)
         output = actual_variables if actual_variables else variables
         return output
-
-    def _deep_merge_dicts(self, base: dict, updates: dict) -> dict:
-        """Merge updates into base, recursively merging nested dicts."""
-        result = base.copy()
-
-        for key, value in updates.items():
-            if (
-                key in result
-                and isinstance(result[key], dict)
-                and isinstance(value, dict)
-            ):
-                result[key] = self._deep_merge_dicts(result[key], value)
-            else:
-                result[key] = value
-
-        return result
 
     def _build_graph_data(
         self,
@@ -320,6 +349,67 @@ class SessionManagerService(metaclass=SingletonMeta):
         telegram_trigger_node_list = TelegramTriggerNode.objects.filter(graph=graph.pk)
         schedule_trigger_node_list = ScheduleTriggerNode.objects.filter(graph=graph.pk)
         code_agent_node_list = CodeAgentNode.objects.filter(graph=graph.pk)
+        classification_decision_table_node_list = (
+            ClassificationDecisionTableNode.objects.filter(
+                graph=graph.pk
+            ).prefetch_related("condition_groups")
+        )
+        task_node_list = (
+            TaskNode.objects.filter(graph=graph.pk)
+            .select_related(
+                "inline_surface",
+                "agent_definition",
+                "agent_definition__llm_config",
+                "agent_definition__llm_config__model",
+                "agent_definition__llm_config__model__llm_provider",
+                "agent_definition__fcm_llm_config",
+                "agent_definition__fcm_llm_config__model",
+                "agent_definition__fcm_llm_config__model__llm_provider",
+            )
+            .prefetch_related(
+                "surface_list__python_tools",
+                "surface_list__mcp_tools",
+                "surface_list__storage_items",
+                "surface_list__knowledge__naive_search_config",
+                "surface_list__knowledge__graph_basic_search_config",
+                "surface_list__knowledge__graph_local_search_config",
+                "inline_surface__python_tools",
+                "inline_surface__mcp_tools",
+                "inline_surface__storage_items",
+                "inline_surface__knowledge__naive_search_config",
+                "inline_surface__knowledge__graph_basic_search_config",
+                "inline_surface__knowledge__graph_local_search_config",
+            )
+        )
+        agent_node_list = (
+            AgentNode.objects.filter(graph=graph.pk)
+            .select_related(
+                "inline_surface",
+                "agent_definition",
+                "agent_definition__llm_config",
+                "agent_definition__llm_config__model",
+                "agent_definition__llm_config__model__llm_provider",
+                "agent_definition__fcm_llm_config",
+                "agent_definition__fcm_llm_config__model",
+                "agent_definition__fcm_llm_config__model__llm_provider",
+            )
+            .prefetch_related(
+                "tasks",
+                "tasks__context_tasks",
+                "surface_list__python_tools",
+                "surface_list__mcp_tools",
+                "surface_list__storage_items",
+                "surface_list__knowledge__naive_search_config",
+                "surface_list__knowledge__graph_basic_search_config",
+                "surface_list__knowledge__graph_local_search_config",
+                "inline_surface__python_tools",
+                "inline_surface__mcp_tools",
+                "inline_surface__storage_items",
+                "inline_surface__knowledge__naive_search_config",
+                "inline_surface__knowledge__graph_basic_search_config",
+                "inline_surface__knowledge__graph_local_search_config",
+            )
+        )
 
         if file_extractor_node_list:
             self.file_node_validator.validate_file_nodes(file_extractor_node_list)
@@ -332,6 +422,12 @@ class SessionManagerService(metaclass=SingletonMeta):
             ).values_list("next_node_id", flat=True)
         )
 
+        classification_condition_group_next_ids = list(
+            ClassificationConditionGroup.objects.filter(
+                classification_decision_table_node__in=classification_decision_table_node_list
+            ).values_list("next_node_id", flat=True)
+        )
+
         # Build name cache directly from already-fetched node instances
         # to avoid re-querying the same tables via NodeNameResolver
         name_cache: dict[int, str] = {}
@@ -341,11 +437,14 @@ class SessionManagerService(metaclass=SingletonMeta):
             file_extractor_node_list,
             audio_transcription_node_list,
             decision_table_node_list,
+            classification_decision_table_node_list,
             subgraph_node_list,
             webhook_trigger_node_list,
             telegram_trigger_node_list,
             schedule_trigger_node_list,
             code_agent_node_list,
+            task_node_list,
+            agent_node_list,
         ):
             for n in node_list:
                 name_cache[n.id] = f"{n.node_name} #{n.id}"
@@ -355,10 +454,13 @@ class SessionManagerService(metaclass=SingletonMeta):
         edge_referenced_ids = set(
             [n.default_next_node_id for n in decision_table_node_list]
             + [n.next_error_node_id for n in decision_table_node_list]
+            + [n.default_next_node_id for n in classification_decision_table_node_list]
+            + [n.next_error_node_id for n in classification_decision_table_node_list]
             + [e.start_node_id for e in edge_list]
             + [e.end_node_id for e in edge_list]
             + [e.source_node_id for e in conditional_edge_list]
             + condition_group_next_ids
+            + classification_condition_group_next_ids
         )
         missing_ids = [
             i for i in edge_referenced_ids if i is not None and i not in name_cache
@@ -373,7 +475,12 @@ class SessionManagerService(metaclass=SingletonMeta):
         cv = self.converter_service
 
         crew_node_data_list = [
-            cv.convert_crew_node_to_pydantic(crew_node=item, resolver=resolver)
+            cv.convert_crew_node_to_pydantic(
+                crew_node=item,
+                resolver=resolver,
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
+            )
             for item in crew_node_list
         ]
         python_node_data_list = [
@@ -405,13 +512,19 @@ class SessionManagerService(metaclass=SingletonMeta):
         ]
         file_extractor_node_data_list = [
             cv.convert_file_extractor_node_to_pydantic(
-                file_extractor_node=item, resolver=resolver
+                file_extractor_node=item,
+                resolver=resolver,
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
             )
             for item in file_extractor_node_list
         ]
         audio_transcription_node_data_list = [
             cv.convert_audio_transcription_node_to_pydantic(
-                audio_transcription_node=item, resolver=resolver
+                audio_transcription_node=item,
+                resolver=resolver,
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
             )
             for item in audio_transcription_node_list
         ]
@@ -438,6 +551,28 @@ class SessionManagerService(metaclass=SingletonMeta):
                     output_schema=item.output_schema or {},
                 )
             )
+
+        task_node_payload_service = TaskNodePayloadService(cv)
+        task_node_data_list: list[TaskNodeData] = [
+            task_node_payload_service.build_task_node_data(
+                item,
+                node_name=resolver(item.id),
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
+            )
+            for item in task_node_list
+        ]
+
+        agent_node_payload_service = AgentNodePayloadService(cv)
+        agent_node_data_list: list[AgentNodeData] = [
+            agent_node_payload_service.build_agent_node_data(
+                item,
+                node_name=resolver(item.id),
+                graph_id=graph.pk,
+                session_id=session.pk if session else None,
+            )
+            for item in agent_node_list
+        ]
 
         entrypoint = session.entrypoint if session else None
         start_node_obj = StartNode.objects.filter(graph=graph.pk).first()
@@ -485,7 +620,9 @@ class SessionManagerService(metaclass=SingletonMeta):
                 and item.subgraph_id not in unique_subgraphs
             ):
                 subgraph_data = self._build_graph_data(subgraph, unique_subgraphs, None)
-                variables = subgraph.start_node_list.first().variables or {}
+                variables = self._get_actual_variables(
+                    subgraph.start_node_list.first().variables or {}
+                )
                 unique_subgraphs[item.subgraph_id] = SubGraphData(
                     id=subgraph.id,
                     data=subgraph_data,
@@ -495,6 +632,14 @@ class SessionManagerService(metaclass=SingletonMeta):
             subgraph_node_data_list.append(
                 cv.convert_subgraph_node_to_pydantic(
                     subgraph_node=item, subgraph=subgraph, resolver=resolver
+                )
+            )
+
+        classification_dt_node_data_list = []
+        for item in classification_decision_table_node_list:
+            classification_dt_node_data_list.append(
+                cv.convert_classification_decision_table_node_to_pydantic(
+                    node=item, resolver=resolver
                 )
             )
 
@@ -516,6 +661,8 @@ class SessionManagerService(metaclass=SingletonMeta):
             file_extractor_node_list=file_extractor_node_data_list,
             audio_transcription_node_list=audio_transcription_node_data_list,
             code_agent_node_list=code_agent_node_data_list,
+            task_node_list=task_node_data_list,
+            agent_node_list=agent_node_data_list,
             edge_list=edge_data_list,
             conditional_edge_list=conditional_edge_data_list,
             decision_table_node_list=decision_table_node_data_list,
@@ -524,4 +671,5 @@ class SessionManagerService(metaclass=SingletonMeta):
             end_node=end_node_data,
             telegram_trigger_node_data_list=telegram_trigger_node_data_list,
             schedule_trigger_node_data_list=schedule_trigger_node_data_list,
+            classification_decision_table_node_list=classification_dt_node_data_list,
         )

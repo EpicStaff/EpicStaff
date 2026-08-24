@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Copy Tool"
+  description: "Copy a file within S3 storage. Params: from_path, to_path (both required). Fails with a clear error if from_path does not exist. Use s3_file_move_tool instead if you want to relocate rather than duplicate the file."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

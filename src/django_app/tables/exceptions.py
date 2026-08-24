@@ -391,3 +391,58 @@ class GraphRagIndexNotReadyException(RagException):
             f"GraphRAG index for collection {collection_id} not ready. "
             f"Run indexing and wait for rag_status='completed'."
         )
+
+
+class LLMConfigMissingError(CustomAPIExeption):
+    """Raised when FlowAssistant.llm_config is None."""
+
+    status_code = 400
+    default_detail = (
+        "No LLM config is set for this flow assistant. "
+        "Please configure one in the settings panel."
+    )
+    default_code = "flow_assistant_llm_config_missing"
+
+
+class LLMConfigInvalidError(CustomAPIExeption):
+    """Raised when the llm_config can't be loaded into a usable client."""
+
+    status_code = 400
+    default_detail = "LLM configuration is invalid."
+    default_code = "flow_assistant_llm_config_invalid"
+
+
+class ToolExecutionError(CustomAPIExeption):
+    """Raised when a tool callable raises during execution."""
+
+    status_code = 500
+    default_detail = "Tool execution failed."
+    default_code = "flow_assistant_tool_execution_failed"
+
+
+class PromptNotFoundError(CustomAPIExeption):
+    """Raised when a prompt reference in a condition group doesn't resolve to one of THIS node's prompts."""
+
+    status_code = 400
+    default_code = "prompt_not_found"
+
+    def __init__(self, value: int | str):
+        self.value = value
+        super().__init__(
+            f"Prompt {value} doesn't exist or belong to another organization.",
+            code=self.default_code,
+        )
+
+
+class ClassificationDecisionTableNodeNotFoundError(CustomAPIExeption):
+    """Raised when a CDT node id doesn't resolve within the caller's org (cross-org and nonexistent ids are indistinguishable)."""
+
+    status_code = 404
+    default_code = "classification_decision_table_node_not_found"
+
+    def __init__(self, pk):
+        self.pk = pk
+        super().__init__(
+            f"Classification decision table node {pk} not found.",
+            code=self.default_code,
+        )

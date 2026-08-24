@@ -142,6 +142,29 @@ The entire Pass 2 runs inside a single database transaction.
 
 ---
 
+## Organization scoping
+
+The endpoint operates within the caller's **active organization** (the `X-Organization-Id`
+header, the same contract as every other resource endpoint). The graph in `{pk}` must belong
+to the active org; otherwise the request returns `404`.
+
+Every entity the payload **references by id** is validated against the active org:
+
+| Reference | Must resolve to |
+|---|---|
+| `crew_node_list[].crew_id` | a Crew in the active org |
+| `subgraph_node_list[].subgraph` | a Graph in the active org |
+| `code_agent_node_list[].llm_config` | an LLMConfig in the active org |
+
+A referenced id that belongs to **another** organization is rejected **exactly like a
+non-existent id**: the request fails validation with HTTP 400 and nothing is written.
+Existence in another org is never revealed.
+
+Existing-record ids (the `id` field on updates) and all `deleted` ids are likewise scoped to
+the target graph — an id from another graph/org is reported as `not found in graph {pk}`.
+
+---
+
 ## Per-Node Notes
 
 ### CrewNode
@@ -504,6 +527,8 @@ If any of the three operations fail validation, none of the writes happen.
 | Mistake | Error |
 |---|---|
 | Sending `id` that does not exist in this graph | `{ "index": 0, "errors": "id=99999 not found in graph 12" }` |
+| Referencing another org's `crew_id` | `{ "index": 0, "errors": { "crew_id": ["Invalid crew_id: crew does not exist."] } }` |
+| Referencing another org's `subgraph` / `llm_config` | `{ "index": 0, "errors": { "subgraph": ["Invalid pk \"77\" - object does not exist."] } }` |
 | Sending both `start_node_id` and `start_temp_id` on the same edge | `{ "index": 0, "errors": "Provide exactly one of start_node_id or start_temp_id, not both." }` |
 | `start_temp_id` value not matching any `temp_id` in the node lists | `{ "index": 0, "errors": "start_temp_id='...' does not match any temp_id in the node lists of this request." }` |
 | Deleting a node id that belongs to a different graph | `"deleted": ["python_node_ids: IDs [42] not found in graph 12"]` |

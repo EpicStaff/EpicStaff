@@ -10,7 +10,7 @@ class JSONChunker(BaseChunker):
 
     def chunk(self, text: str) -> list[BaseChunkData]:
         json_obj = self._convert_text_to_json(text)
-        text_chunks = self.json_splitter.split_text(json_obj)
+        text_chunks = self.json_splitter.split_text(json_obj, convert_lists=True)
         return [BaseChunkData(text=chunk) for chunk in text_chunks]
 
     def _convert_text_to_json(self, json_text: str) -> dict | list:

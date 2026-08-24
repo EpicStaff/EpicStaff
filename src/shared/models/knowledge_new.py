@@ -2,6 +2,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_serializer
 from src.shared.enums.knowledge_new import (
+    ChunkStrategyEnum,
     GraphSearchMethodEnum,
     RAGStrategy,
 )
@@ -267,6 +268,15 @@ GraphSearchConfig = Annotated[
 SearchConfig = Annotated[
     GraphSearchConfig | NaiveSearchConfig, Field(discriminator="rag_strategy")
 ]
+
+
+class ChunkingConfig(ValueObject):
+    """Parameters controlling how a document is chunked."""
+
+    chunk_strategy: ChunkStrategyEnum
+    chunk_size: int
+    chunk_overlap: int
+    extra: dict = Field(default_factory=dict)
 
 
 class PrechunkRequest(ValueObject):

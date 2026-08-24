@@ -3,7 +3,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 
-from services.processing_run import set_process_pool
+from infrastructure.processing_run import set_process_pool
 
 
 async def offload_to_process(make_coro) -> tuple[Any, int]:

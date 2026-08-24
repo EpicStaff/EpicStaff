@@ -1,10 +1,10 @@
 import os
 
 import pytest
-from enums import ChunkStrategyEnum
-from errors import ChunkingError
-from models import PreviewChunk
-from services.chunkers.strategies.csv_chunker import CSVChunker
+from domain.enums import ChunkStrategyEnum
+from domain.errors import ChunkingError
+from domain.models import PreviewChunk
+from infrastructure.naive.chunkers.strategies.csv_chunker import CSVChunker
 from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
 

@@ -1,0 +1,15 @@
+{
+  "title": "S3FileMoveArgs",
+  "type": "object",
+  "properties": {
+    "from_path": {
+      "type": "string",
+      "description": "Source S3 file path to move from."
+    },
+    "to_path": {
+      "type": "string",
+      "description": "Destination S3 file path to move to."
+    }
+  },
+  "required": ["from_path", "to_path"]
+}

@@ -721,9 +721,11 @@ def main(event_type=None, text=None, full_reply=None, context=None, **kwargs):
                         "text": thinking_text,
                         "is_final": False,
                         "step_id": stream_step_id,
-                        "sse_visible": not self.stream_config
-                        or self.stream_config.get("reasoning", True)
-                        or self.stream_config.get("tool_calls", True),
+                        "sse_visible": bool(
+                            not self.stream_config
+                            or self.stream_config.get("reasoning", True)
+                            or self.stream_config.get("tool_calls", True)
+                        ),
                     },
                 )
 

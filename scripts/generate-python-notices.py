@@ -3,11 +3,21 @@
 Generates scripts/python-notices-partial.md.
 
 Scope: production Python dependencies of every backend microservice under
-src/. For each service that has a pyproject.toml the script ensures a .venv
-exists (bootstrapping it via `python -m poetry install --only main --no-root`
+src/. For each service that has a pyproject.toml the script reconciles its
+.venv via `python -m poetry install --no-root --without <groups>` (regenerating
 if needed), installs pip-licenses into that venv, scrapes license metadata and
-license texts, then removes pip-licenses. Dev / test groups are excluded.
-Packages present in multiple services are deduplicated by name + version.
+license texts, then removes pip-licenses.
+
+The `--without` groups are computed per service, not hardcoded: the script
+parses each service's own `[tool.poetry.group.<name>.dependencies]` tables and
+excludes only dev/test TOOLING groups (dev, test, tests, lint, typing, docs).
+Non-dev PRODUCTION groups — e.g. knowledge's `graphrag` (pulls networkx,
+pyarrow via a vendored path dependency) or crew's `crew` / `dotdict` — are
+deliberately INCLUDED, because the corresponding Dockerfiles install them too
+(`poetry install` / `--only crew,dotdict` there, not `--only main`). Excluding
+them previously caused real shipped dependencies to be missing from the
+notices. Packages present in multiple services are deduplicated by name +
+version.
 
 The output is a partial Markdown fragment intended to be stitched into
 THIRD-PARTY-NOTICES.md by scripts/merge-notices.py. Idempotent — re-running
@@ -28,6 +38,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 from collections import defaultdict
 from pathlib import Path
 
@@ -43,7 +54,6 @@ SERVICES = [
     "src/realtime",
     "src/sandbox",
     "src/webhook",
-    "src/tool",
     "src/voice_app",
 ]
 
@@ -59,6 +69,14 @@ BOOTSTRAP_PACKAGES = {
 
 FIRST_PARTY_NAMES: frozenset[str] = frozenset({"dotdict"})
 FIRST_PARTY_AUTHOR_DOMAINS: tuple[str, ...] = ("hys-enterprise.com",)
+
+# Poetry dependency-group names treated as dev/test TOOLING and excluded via
+# `poetry install --without`. Anything else a service declares (graphrag,
+# crew, dotdict, ...) is a production group and stays installed, matching
+# what that service's Dockerfile actually ships.
+DEV_GROUP_NAMES: frozenset[str] = frozenset(
+    {"dev", "test", "tests", "lint", "typing", "docs"}
+)
 
 # C6 — SPDX overrides for packages whose PyPI metadata declares the wrong license.
 # Each entry confirmed by reading the actual shipped LICENSE body text from the wheel.
@@ -122,6 +140,67 @@ def lock_hash(svc_dir: Path) -> str:
     return hashlib.sha256(lock.read_bytes()).hexdigest()[:16]
 
 
+def load_pyproject(svc_dir: Path) -> dict:
+    """Parse a service's pyproject.toml. Returns {} if missing/unreadable."""
+    pyproject = svc_dir / "pyproject.toml"
+    if not pyproject.exists():
+        return {}
+    with pyproject.open("rb") as f:
+        return tomllib.load(f)
+
+
+def poetry_group_names(svc_dir: Path) -> set[str]:
+    """Names of `[tool.poetry.group.<name>.dependencies]` tables declared by
+    this service's pyproject.toml, e.g. {"dev", "graphrag"} for knowledge,
+    {"dev", "crew", "dotdict"} for crew."""
+    data = load_pyproject(svc_dir)
+    groups = data.get("tool", {}).get("poetry", {}).get("group", {})
+    return set(groups.keys())
+
+
+def poetry_without_groups(svc_dir: Path) -> list[str]:
+    """Groups to pass to `poetry install --without` for this service: only
+    the dev/test tooling groups it declares (see DEV_GROUP_NAMES).
+    Production-only groups (graphrag, crew, dotdict, ...) are intentionally
+    kept installed — they ship in the service's Docker image and must be
+    captured in the notices."""
+    declared = poetry_group_names(svc_dir)
+    excluded = {g for g in declared if g.lower() in DEV_GROUP_NAMES}
+    return sorted(excluded)
+
+
+def poetry_root_name(svc_dir: Path) -> str | None:
+    """The service's own root/self package name, e.g. "webhook",
+    "crewai-sheets-ui" for crew, "backend" for realtime, "knowledge",
+    "voice-app". Used to exclude a service's own first-party package from
+    the notices even if it ended up installed in the venv (stale venv
+    predating `--no-root`, or a developer running a plain `poetry install`).
+
+    Poetry 2.x projects declare the name either the legacy way
+    (`[tool.poetry].name`) or via PEP 621 (`[project].name`, used by e.g.
+    knowledge and voice_app here) — both are checked, legacy takes
+    precedence if a project somehow declares both."""
+    data = load_pyproject(svc_dir)
+    name = data.get("tool", {}).get("poetry", {}).get("name") or data.get(
+        "project", {}
+    ).get("name")
+    return normalize_name(name) if name else None
+
+
+def poetry_install_cmd(svc_dir: Path, dry_run: bool = False) -> list[str]:
+    """Build the `poetry install --no-root [--without ...] [--dry-run]`
+    command for this service. Excludes only the dev/test tooling groups it
+    declares, so production-only groups install the same way the service's
+    own Dockerfile installs them."""
+    cmd = [sys.executable, "-m", "poetry", "install", "--no-root"]
+    without = poetry_without_groups(svc_dir)
+    if without:
+        cmd += ["--without", ",".join(without)]
+    if dry_run:
+        cmd.append("--dry-run")
+    return cmd
+
+
 def run(
     cmd: list[str], cwd: Path | None = None, check: bool = True
 ) -> subprocess.CompletedProcess:
@@ -155,42 +234,58 @@ def poetry_venv_path(svc_dir: Path) -> Path | None:
         return None
 
 
+def uninstall_stale_root_package(venv_dir: Path, svc_dir: Path) -> None:
+    """Best-effort removal of the service's own root package from its venv.
+
+    `--no-root` only stops a *fresh* `poetry install` from installing the
+    root package — it does not retroactively remove one that is already
+    present (e.g. a venv created before this script passed --no-root, or by
+    a developer running a plain `poetry install`). Left in place, that
+    self-package (e.g. webhook 0.1.0) leaks into the notices as a first-party
+    package with no license. Uninstalling it here is idempotent: a no-op if
+    it was never installed."""
+    root_name = poetry_root_name(svc_dir)
+    if not root_name:
+        return
+    py = venv_python(venv_dir)
+    run([str(py), "-m", "pip", "uninstall", "--quiet", "-y", root_name], check=False)
+
+
 def bootstrap_venv(svc_dir: Path) -> Path | None:
-    """Ensure a venv exists and main deps are installed.
+    """Ensure the venv has exactly the production dependency groups
+    installed (main + any non-dev/test groups such as graphrag, crew,
+    dotdict) and no leftover root/self package.
     Returns the venv directory Path on success, None on failure.
 
     Strategy:
     1. If lock is outdated (pyproject.toml changed), regenerate with `poetry lock`.
-    2. Install with `poetry install --only main --no-root`.
+    2. Install with `poetry install --no-root --without <dev/test groups>`.
+       This always runs, even if a .venv already exists — a stale venv
+       (created before this fix, with the wrong group scope, or with the
+       root package installed) must reconcile to the correct scope rather
+       than being reused as-is.
     3. Locate the venv via `poetry env info --path` (works whether in-project or cached).
+    4. Remove any stale root-package install left over from before --no-root.
     """
     pyproject = svc_dir / "pyproject.toml"
     if not pyproject.exists():
         log(f"  skip {svc_dir.name}: no pyproject.toml")
         return None
 
-    # Fast path: existing .venv in project dir.
     in_project_venv = svc_dir / ".venv"
-    if in_project_venv.exists() and venv_python(in_project_venv).exists():
-        return in_project_venv
-
-    log(f"  {svc_dir.name}: no .venv — bootstrapping via poetry")
+    already_has_venv = (
+        in_project_venv.exists() and venv_python(in_project_venv).exists()
+    )
+    without = poetry_without_groups(svc_dir)
+    without_desc = ",".join(without) if without else "(none)"
+    if already_has_venv:
+        log(f"  {svc_dir.name}: .venv exists — reconciling (--without {without_desc})")
+    else:
+        log(f"  {svc_dir.name}: no .venv — bootstrapping (--without {without_desc})")
 
     # If lock is outdated regenerate it (Poetry 2.x dropped --no-update flag).
     try:
-        run(
-            [
-                sys.executable,
-                "-m",
-                "poetry",
-                "install",
-                "--only",
-                "main",
-                "--no-root",
-                "--dry-run",
-            ],
-            cwd=svc_dir,
-        )
+        run(poetry_install_cmd(svc_dir, dry_run=True), cwd=svc_dir)
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.strip()
         if "poetry.lock was last generated" in stderr or "lock" in stderr.lower():
@@ -203,12 +298,9 @@ def bootstrap_venv(svc_dir: Path) -> Path | None:
                 )
                 return None
 
-    # Install main deps.
+    # Install deps (production groups only).
     try:
-        run(
-            [sys.executable, "-m", "poetry", "install", "--only", "main", "--no-root"],
-            cwd=svc_dir,
-        )
+        run(poetry_install_cmd(svc_dir), cwd=svc_dir)
         log(f"  {svc_dir.name}: poetry install done")
     except subprocess.CalledProcessError as exc:
         log(f"  {svc_dir.name}: poetry install failed: {exc.stderr.strip()[:400]}")
@@ -219,6 +311,8 @@ def bootstrap_venv(svc_dir: Path) -> Path | None:
     if venv_dir is None or not venv_python(venv_dir).exists():
         log(f"  {svc_dir.name}: could not locate venv after install")
         return None
+
+    uninstall_stale_root_package(venv_dir, svc_dir)
 
     log(f"  {svc_dir.name}: venv at {venv_dir}")
     return venv_dir
@@ -234,6 +328,12 @@ def run_pip_licenses(py: Path) -> list[dict]:
             "--with-license-file",
             "--with-notice-file",
             "--no-license-path",
+            # Required for the FIRST_PARTY_AUTHOR_DOMAINS check below: without
+            # --with-authors, pip-licenses' JSON rows never include an
+            # "Author" key at all (it's not a default column), so
+            # entry.get("Author") was always empty and that check never
+            # fired for ANY package.
+            "--with-authors",
         ],
         check=True,
     )
@@ -289,11 +389,36 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
             pass
 
 
+def is_internal_placeholder_package(version: str, entry: dict) -> bool:
+    """Secondary safety net for a first-party root/path package that isn't
+    caught by name (FIRST_PARTY_NAMES / a service's own poetry_root_name) or
+    by author domain — e.g. a future service added without updating those
+    lists. Deliberately narrow: internal scaffold packages are version
+    0.1.0 (poetry's default for a new project) AND ship no SPDX license AND
+    no license text. A real PyPI package matching all three simultaneously
+    would be extremely unusual for something actually used in production."""
+    if version != "0.1.0":
+        return False
+    spdx = (entry.get("License") or "UNKNOWN").strip() or "UNKNOWN"
+    license_text = (entry.get("LicenseText") or "UNKNOWN").strip() or "UNKNOWN"
+    return spdx.upper() == "UNKNOWN" and license_text.upper() == "UNKNOWN"
+
+
 def collect_packages() -> dict[tuple[str, str], dict]:
     """Scan each service's .venv with pip-licenses and return a deduplicated
     dict keyed by (normalized_name, version)."""
     packages: dict[tuple[str, str], dict] = {}
     skipped: list[str] = []
+
+    # Each service's own root package name (e.g. "webhook", "crewai-sheets-ui"
+    # for crew, "backend" for realtime) — read dynamically from each
+    # pyproject.toml rather than hardcoded, so it stays correct if a
+    # service's poetry project name ever changes.
+    first_party_root_names = {
+        root_name
+        for svc_rel in SERVICES
+        if (root_name := poetry_root_name(REPO_ROOT / svc_rel)) is not None
+    }
 
     for svc_rel in SERVICES:
         svc = REPO_ROOT / svc_rel
@@ -310,9 +435,18 @@ def collect_packages() -> dict[tuple[str, str], dict]:
             if normalize_name(name) in FIRST_PARTY_NAMES:
                 log(f"  skipping first-party package: {name}")
                 continue
+            if normalize_name(name) in first_party_root_names:
+                log(f"  skipping first-party package (service root package): {name}")
+                continue
             author_raw = (entry.get("Author") or "").strip().lower()
             if any(domain in author_raw for domain in FIRST_PARTY_AUTHOR_DOMAINS):
                 log(f"  skipping first-party package (author domain): {name}")
+                continue
+            if is_internal_placeholder_package(version, entry):
+                log(
+                    f"  skipping first-party package (unversioned internal, no license): "
+                    f"{name}@{version}"
+                )
                 continue
             key = (normalize_name(name), version)
             if key in packages:
@@ -379,7 +513,7 @@ def build_markdown(
     lines.append(
         "This section lists third-party Python packages bundled into EpicStaff backend microservices "
         "(`src/django_app`, `src/crew`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, "
-        "`src/webhook`, `src/tool`, `src/voice_app`). Dev / test dependencies are excluded. "
+        "`src/webhook`, `src/voice_app`). Dev / test dependencies are excluded. "
         "Packages present in multiple services are deduplicated by `name + version`."
     )
     lines.append("")

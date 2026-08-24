@@ -39,7 +39,8 @@ services:
     environment:
       <<: [*common_env, *communication_env]
       DEBUG: ${DEBUG:-False}
-      SECRET_KEY: ${SECRET_KEY:-unsafe-dev-key}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-WARNING}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — generate one with `openssl rand -base64 48`.}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       DB_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -56,13 +57,12 @@ services:
       DJANGO_PORT: ${DJANGO_PORT:-8000}
       LOAD_DEBUG_ENV: ${LOAD_DEBUG_ENV}
       TIMEZONE: ${TIMEZONE:-UTC}
-      STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
       STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-epicstaff}
       STORAGE_LOCAL_ROOT: ${STORAGE_LOCAL_ROOT:-/app/storage}
-      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required — generate one with `openssl rand -base64 48`.}
       JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-15}
       JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-7}
       PASSWORD_RESET_TOKEN_TTL: ${PASSWORD_RESET_TOKEN_TTL:-900}
@@ -76,10 +76,9 @@ services:
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-no-reply@epicstaff.local}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:4200}
       FRONTEND_PASSWORD_RESET_PATH: ${FRONTEND_PASSWORD_RESET_PATH:-/reset-password}
-      DJANGO_AUTO_CREATE_ADMIN: ${DJANGO_AUTO_CREATE_ADMIN:-False}
-      DJANGO_ADMIN_EMAIL: ${DJANGO_ADMIN_EMAIL:-}
-      DJANGO_ADMIN_PASSWORD: ${DJANGO_ADMIN_PASSWORD:-}
-      DEFAULT_ORGANIZATION_NAME: ${DEFAULT_ORGANIZATION_NAME:-}
+      DEFAULT_ORGANIZATION_NAME: ${DEFAULT_ORGANIZATION_NAME:-Organization}
+      FIRST_SETUP_MODE: ${FIRST_SETUP_MODE:-cli_only}
+      LOGIN_THROTTLE_RATE: ${LOGIN_THROTTLE_RATE:-5/min}
       DJANGO_API_KEY: ${DJANGO_API_KEY:-}
       PASSWORD_CHANGE_TICKET_TTL_SECONDS: ${PASSWORD_CHANGE_TICKET_TTL_SECONDS:-300}
       AVATAR_MAX_BYTES: ${AVATAR_MAX_BYTES:-5242880}
@@ -94,7 +93,9 @@ services:
     volumes:
       - media_data:/app/src/django_app/media
     networks:
-      - backend-network
+      backend-network:
+        aliases:
+          - djangoapp
     depends_on:
       crewdb:
         condition: service_started
@@ -120,8 +121,6 @@ services:
       KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: knowledge:search:response
       REALTIME_AGENTS_SCHEMA_CHANNEL: realtime_agents:schema
       REALTIME_PORT: ${REALTIME_PORT:-8050}
-      MANAGER_HOST: ${MANAGER_HOST:-host.docker.internal}
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
       DB_REALTIME_USER: ${DB_REALTIME_USER}
       DB_REALTIME_PASSWORD: ${DB_REALTIME_PASSWORD}
       DJANGO_AUTH_URL: ${DJANGO_AUTH_URL}
@@ -155,14 +154,10 @@ services:
     container_name: manager_container
     environment:
       <<: *common_env
-      PULL_TOOL: ${PULL_TOOL}
       MANAGER_PORT: ${MANAGER_PORT:-8001}
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
       CREW_SAVEFILES_PATH: ${CREW_SAVEFILES_PATH}
-    volumes:
-      - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
-      - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
     networks:
       - backend-network
     tty: true
@@ -244,9 +239,9 @@ services:
       MANAGER_HOST: ${MANAGER_HOST}
       MANAGER_PORT: ${MANAGER_PORT:-8001}
       CODE_CONTAINER_URL: http://code:${CODE_MANAGER_PORT:-4080}
-      HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED}
-      ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY}
-      EC_TELEMETRY: ${EC_TELEMETRY}
+      HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED:-False}
+      ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY:-False}
+      EC_TELEMETRY: ${EC_TELEMETRY:-False}
       MEM0_TELEMETRY: ${MEM0_TELEMETRY:-False}
       MONITORING_MODE: ${MONITORING_MODE}
       DB_CREW_USER: ${DB_CREW_USER}
@@ -255,12 +250,13 @@ services:
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT}
       GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT}
-
       KNOWLEDGE_SEARCH_REQUEST_CHANNEL: ${KNOWLEDGE_SEARCH_REQUEST_CHANNEL}
       KNOWLEDGE_SEARCH_RESPONSE_CHANNEL: ${KNOWLEDGE_SEARCH_RESPONSE_CHANNEL}
-    volumes:
-      - ${DOCKER_SOCK_PATH}:${DOCKER_SOCK_PATH}
-      - ${DOCKER_BIN_PATH}:${DOCKER_BIN_PATH}
+      LLM_HEADERS: ${LLM_HEADERS:-}
+      AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:-agent.requests}
+      AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:-agent.results}
+      AGENT_RESULT_TIMEOUT_S: ${AGENT_RESULT_TIMEOUT_S:-600}
+      REMEMBERED_OUTPUTS_TTL_S: ${REMEMBERED_OUTPUTS_TTL_S:-3600}
     networks:
       - backend-network
     tty: true
@@ -286,6 +282,7 @@ services:
       <<: *common_env
       BASE_VENV_PATH: ${BASE_VENV_PATH}
       OUTPUT_PATH: ${OUTPUT_PATH}
+      MASK_SECRET: ${MASK_SECRET:-true}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://minio:9000}
       STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
@@ -299,6 +296,7 @@ services:
       - backend-network
     tty: true
     stdin_open: true
+    mem_limit: "2g"
     depends_on:
       redis:
         condition: service_healthy
@@ -345,7 +343,9 @@ services:
       KNOWLEDGE_SOURCES_CHANNEL: knowledge_sources
       DB_KNOWLEDGE_USER: ${DB_KNOWLEDGE_USER}
       DB_KNOWLEDGE_PASSWORD: ${DB_KNOWLEDGE_PASSWORD}
+      EMBEDDING_HEADERS: ${EMBEDDING_HEADERS:-}
       GRAPH_DATA_DIR: /home/user/root/app/graph_data
+
     volumes:
       - graph_data:/home/user/root/app/graph_data
     networks:
@@ -491,6 +491,30 @@ services:
     networks:
       - backend-network
 
+  agent:
+    image: ghcr.io/epicstaff/agent:${IMAGE_TAG:-latest}
+    container_name: agent
+    build:
+      context: .
+      dockerfile: ./agent/Dockerfile.agent
+    environment:
+      <<: *common_env
+      AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:-agent.requests}
+      AGENT_RESULT_STREAM: ${AGENT_RESULT_STREAM:-agent.results}
+      AGENT_CONSUMER_GROUP: ${AGENT_CONSUMER_GROUP:-agent-executors}
+      AGENT_DEFAULT_MAX_RETRIES: ${AGENT_DEFAULT_MAX_RETRIES:-5}
+      AGENT_DEFAULT_MAX_ITER: ${AGENT_DEFAULT_MAX_ITER:-25}
+      AGENT_SCHEMA_MAX_RETRIES: ${AGENT_SCHEMA_MAX_RETRIES:-2}
+      AGENT_DROP_UNSUPPORTED_LLM_PARAMS: ${AGENT_DROP_UNSUPPORTED_LLM_PARAMS:-true}
+      AGENT_CONTEXT_WARNING_RATIO: ${AGENT_CONTEXT_WARNING_RATIO:-0.8}
+      AGENT_LOG_LEVEL: ${AGENT_LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-network
+
+
   knowledge_new:
     container_name: knowledge_new
 #    image: ghcr.io/epicstaff/knowledge:${IMAGE_TAG:-latest}
@@ -499,6 +523,8 @@ services:
       dockerfile: ./knowledge_new/Dockerfile
     networks:
       - backend-network
+    ports:
+      - "8100:8100"
     depends_on:
       communication_redis_broker:
         condition: service_healthy
@@ -518,6 +544,10 @@ services:
       KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL: ${KNOWLEDGE_PRECHUNK_RESPONSE_CHANNEL}
       KNOWLEDGE_INDEX_REQUEST_CHANNEL: ${KNOWLEDGE_INDEX_REQUEST_CHANNEL}
       KNOWLEDGE_CANCEL_REQUEST_CHANNEL: ${KNOWLEDGE_CANCEL_REQUEST_CHANNEL}
+
+      KNOWLEDGE_MINIO_HOST: ${STORAGE_ENDPOINT:-http://minio:9000}
+      KNOWLEDGE_MINIO_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
+      KNOWLEDGE_MINIO_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin_secret}
 
 
   communication_redis_broker:

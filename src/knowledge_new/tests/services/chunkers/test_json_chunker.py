@@ -2,16 +2,18 @@ import json
 import os
 
 import pytest
-from enums import ChunkStrategyEnum
-from errors import ChunkingError
-from models import PreviewChunk
-from services.chunkers.strategies.json_chunker import JSONChunker
+from domain.enums import ChunkStrategyEnum
+from domain.errors import ChunkingError
+from domain.models import PreviewChunk
+from infrastructure.naive.chunkers.strategies.json_chunker import JSONChunker
 from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
 
 
 def build_chunker(chunk_size: int = 200, chunk_overlap: int = 0) -> JSONChunker:
-    config = make_config(ChunkStrategyEnum.JSON, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    config = make_config(
+        ChunkStrategyEnum.JSON, chunk_size=chunk_size, chunk_overlap=chunk_overlap
+    )
     return JSONChunker(config)
 
 

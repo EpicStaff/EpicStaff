@@ -90,24 +90,33 @@ class CollectionManagementService:
     @staticmethod
     @transaction.atomic
     def create_collection(
-        collection_name: str = None, user_id: str = None, collection_origin: str = None
+        collection_name: str = None,
+        description: str = "",
+        user_id: str = None,
+        collection_origin: str = None,
+        org_id: int = None,
     ) -> SourceCollection:
         """
         Create a new empty collection.
 
         Args:
             collection_name: Name for collection (auto-generated if None)
+            description: LLM-facing context appended to generated knowledge tool
+                descriptions (defaults to blank)
             user_id: User ID (defaults to "dummy_user")
             collection_origin: Origin of collection (defaults to USER)
+            org_id: Owning organization id (required — collection.org is NOT NULL)
 
         Returns:
             SourceCollection: Created collection
         """
         collection = SourceCollection.objects.create(
             collection_name=collection_name or "Untitled Collection",
+            description=description or "",
             user_id=user_id or "dummy_user",
             collection_origin=collection_origin
             or SourceCollection.SourceCollectionOrigin.USER,
+            org_id=org_id,
         )
 
         logger.info(
@@ -118,13 +127,18 @@ class CollectionManagementService:
 
     @staticmethod
     @transaction.atomic
-    def update_collection(collection_id: int, collection_name: str) -> SourceCollection:
+    def update_collection(
+        collection_id: int,
+        collection_name: str = None,
+        description: str = None,
+    ) -> SourceCollection:
         """
-        Update collection name.
+        Update collection name and/or description.
 
         Args:
             collection_id: ID of collection to update
-            collection_name: New collection name
+            collection_name: New collection name (unchanged if None)
+            description: New description (unchanged if None)
 
         Returns:
             SourceCollection: Updated collection
@@ -133,10 +147,23 @@ class CollectionManagementService:
             CollectionNotFoundException: If collection not found
         """
         collection = CollectionManagementService.get_collection(collection_id)
-        collection.collection_name = collection_name
-        collection.save()
 
-        logger.info(f"Updated collection {collection_id} name to '{collection_name}'")
+        update_fields = []
+
+        if collection_name is not None:
+            collection.collection_name = collection_name
+            update_fields.append("collection_name")
+
+        if description is not None:
+            collection.description = description
+            update_fields.append("description")
+
+        if update_fields:
+            collection.save()
+
+        logger.info(
+            f"Updated collection {collection_id} fields: {update_fields or 'none'}"
+        )
 
         return collection
 
@@ -286,6 +313,7 @@ class CollectionManagementService:
     def copy_collection(
         source_collection_id: int,
         new_collection_name: str = None,
+        org_id: int = None,
     ) -> SourceCollection:
         """
         Copy a collection without duplicating binary content.
@@ -310,7 +338,9 @@ class CollectionManagementService:
         # Create new collection (name auto-deduplicated by model.save())
         new_collection = SourceCollection.objects.create(
             collection_name=new_collection_name
-            or f"{source_collection.collection_name} (Copy)"
+            or f"{source_collection.collection_name} (Copy)",
+            description=source_collection.description,
+            org_id=org_id,
         )
 
         # Get source documents with content
@@ -491,6 +521,8 @@ class CollectionManagementService:
             "llm_name": graph_rag.llm.custom_name if graph_rag.llm else None,
             "llm_id": graph_rag.llm.id if graph_rag.llm else None,
             "documents_count": documents_count,
+            "processing_document_ids": list(graph_rag.indexing_document_config_ids),
+            "message": graph_rag.error_message,
             "indexed_at": graph_rag.indexed_at,
             "created_at": graph_rag.created_at,
             "updated_at": graph_rag.updated_at,

@@ -122,6 +122,7 @@ class BaseKnowledgeSearchMessage(BaseModel):
     rag_search_config: (
         RagSearchConfig  # Discriminated union automatically handles subtypes
     )
+    embedder_api_key: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -147,6 +148,7 @@ class BaseKnowledgeSearchMessageResponse(BaseModel):
     # Support backwards compatibility
     results: List[str] = []  # deprecated, use chunks instead
     token_usage: dict = {}
+    error: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -172,6 +174,10 @@ class ProcessRagIndexingMessage(BaseModel):
     rag_id: int
     rag_type: Literal["naive", "graph"]
     collection_id: int
+    embedder_api_key: str | None = None
+    embedder_api_key_secret_id: int | None = Field(default=None, exclude=True)
+    llm_api_key: str | None = None
+    llm_api_key_secret_id: int | None = Field(default=None, exclude=True)
 
 
 class ChunkDocumentMessage(BaseModel):

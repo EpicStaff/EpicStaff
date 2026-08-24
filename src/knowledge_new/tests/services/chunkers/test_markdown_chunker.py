@@ -1,10 +1,10 @@
 import os
 
 import pytest
-from enums import ChunkStrategyEnum
-from errors import ChunkingError
-from models import PreviewChunk
-from services.chunkers.strategies.markdown_chunker import MarkdownChunker
+from domain.enums import ChunkStrategyEnum
+from domain.errors import ChunkingError
+from domain.models import PreviewChunk
+from infrastructure.naive.chunkers.strategies.markdown_chunker import MarkdownChunker
 from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
 
@@ -40,7 +40,9 @@ async def test_no_headers_config_returns_single_chunk():
 
 async def test_long_section_is_split_by_char_size():
     body = " ".join(f"word{i}" for i in range(60))
-    chunker = build_chunker(chunk_size=50, extra={"markdown": {"headers_to_split_on": ["#"]}})
+    chunker = build_chunker(
+        chunk_size=50, extra={"markdown": {"headers_to_split_on": ["#"]}}
+    )
     chunks = await chunker.chunk(f"# Title\n{body}")
     assert len(chunks) > 1
     assert all(len(c.text) <= 50 for c in chunks)

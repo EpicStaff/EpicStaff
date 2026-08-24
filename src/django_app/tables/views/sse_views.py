@@ -13,12 +13,15 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers as drf_serializers
 from asgiref.sync import sync_to_async
+from django.http import JsonResponse
+from rest_framework.exceptions import APIException
 
 from tables.utils.mixins import SSEMixin
 from tables.models.session_models import Session
 from tables.models.vector_models import MemoryDatabase
 from tables.models.graph_models import GraphSessionMessage
 from tables.services.redis_service import RedisService
+from tables.services.rbac.session_access import assert_session_org_access
 from tables.swagger_schemas.sessions_schema import RUN_SESSION_SSE_GET
 
 
@@ -226,6 +229,32 @@ class RunSessionSSEView(SSEMixin):
             except Exception as e:
                 logger.exception(f"Error processing live update: {e}")
                 continue
+
+    async def authorize(self, request, *args, **kwargs):
+        """The SSE ticket only proves identity; gate the stream by the org that
+        owns the session's graph (org membership + FLOWS READ). Superadmin
+        passes. Returns a JSON error response on denial, else None."""
+        session_id = self.kwargs.get("session_id")
+        session = await sync_to_async(
+            Session.objects.select_related("graph").filter(pk=session_id).first
+        )()
+        if session is None:
+            return JsonResponse(
+                {
+                    "status_code": 404,
+                    "code": "session_not_found",
+                    "message": "Session not found.",
+                },
+                status=404,
+            )
+        try:
+            await sync_to_async(assert_session_org_access)(self.user, session)
+        except APIException as exc:
+            return JsonResponse(
+                {"status_code": exc.status_code, "message": str(exc.detail)},
+                status=exc.status_code,
+            )
+        return None
 
     async def get(self, request, *args, **kwargs):
         """

@@ -1,7 +1,5 @@
 """Tool inspection commands — list and show tool details."""
 
-import json
-
 from common import api_get
 
 
@@ -28,12 +26,16 @@ def cmd_tools(args):
             return
         print(f"Tools in flow {args.graph_id} ({len(tool_map)}):")
         for tid, d in sorted(tool_map.items()):
-            print(f"  [{tid:3d}] {d.get('name','?'):40s} — {str(d.get('description',''))[:60]}")
+            print(
+                f"  [{tid:3d}] {d.get('name','?'):40s} — {str(d.get('description',''))[:60]}"
+            )
     else:
         tools = api_get("/python-code-tool/")
         print(f"All tools ({len(tools)}):")
         for t in tools:
-            print(f"  [{t['id']:3d}] {t.get('name','?'):40s} — {str(t.get('description',''))[:60]}")
+            print(
+                f"  [{t['id']:3d}] {t.get('name','?'):40s} — {str(t.get('description',''))[:60]}"
+            )
 
 
 def cmd_tool(args):
@@ -44,7 +46,7 @@ def cmd_tool(args):
     schema = tool.get("args_schema", {})
     props = schema.get("properties", {})
     if props:
-        print(f"  args:")
+        print("  args:")
         for k, v in props.items():
             print(f"    {k}: {v.get('type','?')} — {v.get('description','')}")
     code_obj = tool.get("python_code", {})

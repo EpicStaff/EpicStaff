@@ -1,10 +1,9 @@
 from typing import Dict, Any, Optional
-import threading
+
 from loguru import logger
 from langgraph.types import StreamWriter
 from pydantic import TypeAdapter
 
-import settings
 from models.graph_models import GraphMessage
 from services.graph.events import StopEvent
 from services.redis_service import RedisService
@@ -13,16 +12,16 @@ from constants.constants import (
     GRAPH_RAG_SEARCH_TIMEOUT,
     DEFAULT_RAG_SEARCH_TIMEOUT,
 )
-from src.shared.communication import Message
+from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import (
     NaiveSearchConfig,
     GraphSearchConfig,
     SearchConfig,
     SearchRequest,
-    SearchResponse,
-    CancelRequest,
+    FoundChunk,
 )
-from services.communication import producer, consumer
+from clients import KnowledgeClient
+from clients.errors import ClientTimeoutError
 
 
 class RagSearchConfigFactory:
@@ -59,14 +58,17 @@ class RagSearchConfigFactory:
                 f"Supported types: {list(cls._configs.keys())}"
             )
 
-        if rag_type == "graph":
-            search_params = config_dict["search_params"]
-            data = {k: v for k, v in search_params.items() if k != "search_method"}
-            data["rag_strategy"] = rag_type
-            data["method"] = search_params["search_method"]
-        else:
+        if rag_type == "naive":
+            # naive config is flat — no search_params nesting and no method discriminator
             data = {k: v for k, v in config_dict.items() if k != "rag_type"}
             data["rag_strategy"] = rag_type
+            return config_class(data)
+
+        # graph: params nested under search_params, discriminated by search_method
+        search_params = config_dict["search_params"]
+        data = {k: v for k, v in search_params.items() if k != "search_method"}
+        data["rag_strategy"] = rag_type
+        data["method"] = search_params["search_method"]
 
         return config_class(data)
 
@@ -92,6 +94,8 @@ class KnowledgeSearchService:
         crew_id: int | None = None,
         agent_id: int | None = None,
         stream_writer: Optional["StreamWriter"] = None,
+        rag_embedder_api_key: str | None = None,
+        rag_llm_api_key: str | None = None,
     ):
         self.redis_service = redis_service
         self.session_id = session_id
@@ -100,6 +104,8 @@ class KnowledgeSearchService:
         self.agent_id = agent_id
         self.execution_order = execution_order
         self.writer = stream_writer
+        self.rag_embedder_api_key = rag_embedder_api_key
+        self.rag_llm_api_key = rag_llm_api_key
 
     def search_knowledges(
         self,
@@ -110,6 +116,8 @@ class KnowledgeSearchService:
         rag_search_config: Dict[str, Any],
         stop_event: Optional[StopEvent] = None,
         timeout: Optional[int] = None,
+        rag_embedder_api_key: str | None = None,
+        rag_llm_api_key: str | None = None,
     ) -> list[str]:
         """
         Search knowledge using specified RAG implementation.
@@ -135,60 +143,46 @@ class KnowledgeSearchService:
 
         request = SearchRequest(rag_id=rag_id, query=query, search_config=search_config)
 
-        producer.send(
-            settings.KNOWLEDGE_SEARCH_REQUEST_CHANNEL,
-            Message(payload=request.model_dump()),
+        resolved_embedder_key = (
+            rag_embedder_api_key
+            if rag_embedder_api_key is not None
+            else self.rag_embedder_api_key
         )
-        logger.info(
-            "Sent knowledge search rag_id=%s sender=%s query=%r", rag_id, sender, query
+        resolved_llm_key = (
+            rag_llm_api_key if rag_llm_api_key is not None else self.rag_llm_api_key
         )
 
-        search_done = threading.Event()
-        if stop_event is not None:
-            self._cancel_search_on_stop(request, stop_event, search_done)
         try:
-            msg = consumer.receive(
-                settings.KNOWLEDGE_SEARCH_RESPONSE_CHANNEL,
-                timeout=timeout,
-            )
-        finally:
-            search_done.set()
-        if msg is None:
+            with KnowledgeClient() as client:
+                result = client.search(
+                    strategy=RAGStrategy(rag_type),
+                    rag_id=rag_id,
+                    query=query,
+                    search_config=search_config,
+                    timeout=timeout,
+                    embedding_api_key=resolved_embedder_key,
+                    llm_api_key=resolved_llm_key,
+                )
+        except ClientTimeoutError as e:
             raise TimeoutError(
                 f"Knowledge search timeout for {rag_type_id} after {timeout}s"
+            ) from e
+
+        logger.info(
+            "Knowledge search completed rag_id=%s sender=%s query=%r",
+            rag_id,
+            sender,
+            query,
+        )
+
+        if self.writer is not None:
+            self._add_knowledges_to_graph_message(
+                request, result, knowledge_collection_id
             )
 
-        response = SearchResponse(**msg.payload)
-        if self.writer is not None:
-            self._add_knowledges_to_graph_message(response, knowledge_collection_id)
-
-        if isinstance(response.result, str):
-            return [response.result] if response.result.strip() else []
-        return [chunk.text for chunk in response.result]
-
-    @staticmethod
-    def _cancel_search_on_stop(
-        request: SearchRequest,
-        stop_event: StopEvent,
-        search_done: threading.Event,
-    ) -> None:
-        def _watch() -> None:
-            while not search_done.wait(0.1):
-                if stop_event.is_set():
-                    producer.send(
-                        settings.KNOWLEDGE_CANCEL_REQUEST_CHANNEL,
-                        Message(
-                            payload=CancelRequest(
-                                target_request=request.model_dump()
-                            ).model_dump()
-                        ),
-                    )
-                    logger.info(
-                        "Sent knowledge search cancellation rag_id=%s", request.rag_id
-                    )
-                    return
-
-        threading.Thread(target=_watch, daemon=True).start()
+        if isinstance(result, str):
+            return [result]
+        return [chunk.text for chunk in result]
 
     @staticmethod
     def _parse_rag_type_id(rag_type_id: str) -> tuple[str, int]:
@@ -212,12 +206,12 @@ class KnowledgeSearchService:
             ) from e
 
     def _add_knowledges_to_graph_message(
-        self, response: SearchResponse, collection_id: int
-    ):
-        if isinstance(response.result, str):
-            chunks = [response.result]
+        self, request: SearchRequest, result: list[FoundChunk] | str, collection_id: int
+    ) -> None:
+        if isinstance(result, str):
+            chunks = [result]
         else:
-            chunks = [c.model_dump() for c in response.result]
+            chunks = [c.model_dump() for c in result]
 
         knowledge_results_data = {
             "message_type": "extracted_chunks",
@@ -225,8 +219,8 @@ class KnowledgeSearchService:
             "agent_id": self.agent_id,
             "collection_id": collection_id,
             "retrieved_chunks": len(chunks),
-            "knowledge_query": response.request.query,
-            "rag_search_config": response.request.search_config.model_dump(),
+            "knowledge_query": request.query,
+            "rag_search_config": request.search_config.model_dump(),
             "chunks": chunks,
             "token_usage": {},  # not yet in new contract thats why empty
         }

@@ -16,6 +16,22 @@ from tables.services.knowledge_services.collection_management_service import (
 )
 
 
+COLLECTION_DESCRIPTION_MAX_LENGTH = 2000
+
+
+def validate_collection_description(value):
+    """Shared length validation for SourceCollection.description.
+
+    The value is injected verbatim into every knowledge tool description sent
+    to the LLM, so an unbounded length would bloat every prompt.
+    """
+    if value and len(value) > COLLECTION_DESCRIPTION_MAX_LENGTH:
+        raise serializers.ValidationError(
+            f"Description must be {COLLECTION_DESCRIPTION_MAX_LENGTH} characters or less."
+        )
+    return value
+
+
 class RagConfigurationSummarySerializer(serializers.Serializer):
     """
     Serializer for RAG configuration summary.
@@ -54,6 +70,11 @@ class RagConfigurationSummarySerializer(serializers.Serializer):
         child=serializers.IntegerField(),
         required=False,
         help_text="IDs of document configs included in the current/last indexing run",
+    )
+    processing_document_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text="IDs of documents in the current/last graph rag indexing run",
     )
     message = serializers.CharField(
         required=False,
@@ -246,6 +267,7 @@ class SourceCollectionListSerializer(serializers.ModelSerializer):
         fields = [
             "collection_id",
             "collection_name",
+            "description",
             "user_id",
             "status",
             "document_count",
@@ -306,6 +328,7 @@ class SourceCollectionDetailSerializer(serializers.ModelSerializer):
         fields = [
             "collection_id",
             "collection_name",
+            "description",
             "user_id",
             "status",
             "document_count",
@@ -366,6 +389,7 @@ class SourceCollectionCreateSerializer(serializers.ModelSerializer):
         fields = [
             "collection_id",
             "collection_name",
+            "description",
             "user_id",
             "status",
             "created_at",
@@ -379,6 +403,7 @@ class SourceCollectionCreateSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {
             "collection_name": {"required": False, "allow_blank": True},
+            "description": {"required": False, "allow_blank": True},
             "user_id": {"required": False},
         }
         validators = []
@@ -390,6 +415,9 @@ class SourceCollectionCreateSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate_description(self, value):
+        return validate_collection_description(value)
+
 
 class SourceCollectionUpdateSerializer(serializers.ModelSerializer):
     """
@@ -399,7 +427,10 @@ class SourceCollectionUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SourceCollection
-        fields = ["collection_name"]
+        fields = ["collection_name", "description"]
+        extra_kwargs = {
+            "description": {"required": False, "allow_blank": True},
+        }
 
     def validate_collection_name(self, value):
         if not value or not value.strip():
@@ -410,6 +441,9 @@ class SourceCollectionUpdateSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate_description(self, value):
+        return validate_collection_description(value)
+
 
 class UpdateSourceCollectionSerializer(serializers.ModelSerializer):
     """
@@ -418,8 +452,11 @@ class UpdateSourceCollectionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SourceCollection
-        fields = ["collection_name"]
+        fields = ["collection_name", "description"]
         validators = []
+
+    def validate_description(self, value):
+        return validate_collection_description(value)
 
 
 class CopySourceCollectionSerializer(serializers.Serializer):

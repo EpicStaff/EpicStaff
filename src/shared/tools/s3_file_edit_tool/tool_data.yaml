@@ -1,0 +1,8 @@
+tool-data:
+  name: "S3 File Edit Line Tool"
+  description: "Replace an exact string in an S3-stored file (Claude-Code-Edit semantics). Params: file_path, old_string, new_string (all required); replace_all (default false). old_string must match the file's content exactly, including whitespace, and must occur exactly once unless replace_all=true - otherwise the tool returns an error explaining how to fix it (add surrounding context, or set replace_all). old_string and new_string must differ. Read the file with s3_file_line_read_tool first to see the exact current text."
+  args-schema: "args_schema.json"
+  code-file: "main.py"
+  entrypoint: "main"
+  requirements: "requirements.txt"
+  use-storage: true

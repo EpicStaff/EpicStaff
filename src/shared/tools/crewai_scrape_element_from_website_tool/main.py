@@ -31,7 +31,7 @@ def main(website_url: str, css_element: str) -> str:
     Returns:
         str: Extracted text joined by newlines
     """
-    response = requests.get(website_url, headers=HEADERS)
+    response = requests.get(website_url, headers=HEADERS, timeout=15)
     response.raise_for_status()
 
     soup = BeautifulSoup(response.content, "html.parser")

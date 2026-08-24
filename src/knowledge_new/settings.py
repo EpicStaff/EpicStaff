@@ -24,14 +24,18 @@ class MainSettings(BaseSettings):
 
     BROKER_BACKEND: str = "redis"
     BROKER_USER: str = Field(default="", validation_alias="COMMUNICATION_BROKER_USER")
-    BROKER_PASSWORD: str = Field(default="", validation_alias="COMMUNICATION_BROKER_PASSWORD")
+    BROKER_PASSWORD: str = Field(
+        default="", validation_alias="COMMUNICATION_BROKER_PASSWORD"
+    )
     BROKER_HOST: str = Field(validation_alias="COMMUNICATION_BROKER_HOST")
     BROKER_PORT: int = Field(validation_alias="COMMUNICATION_BROKER_PORT")
     BROKER_NAME: str = Field(validation_alias="COMMUNICATION_BROKER_NAME")
 
     STORAGE_BACKEND: str = "redis"
     STORAGE_USER: str = Field(default="", validation_alias="COMMUNICATION_STORAGE_USER")
-    STORAGE_PASSWORD: str = Field(default="", validation_alias="COMMUNICATION_STORAGE_PASSWORD")
+    STORAGE_PASSWORD: str = Field(
+        default="", validation_alias="COMMUNICATION_STORAGE_PASSWORD"
+    )
     STORAGE_HOST: str = Field(validation_alias="COMMUNICATION_STORAGE_HOST")
     STORAGE_PORT: int = Field(validation_alias="COMMUNICATION_STORAGE_PORT")
     STORAGE_NAME: str = Field(validation_alias="COMMUNICATION_STORAGE_NAME")
@@ -43,7 +47,12 @@ class MainSettings(BaseSettings):
     INDEX_REQUEST_CHANNEL: str
     CANCEL_REQUEST_CHANNEL: str
 
-    GRAPHRAG_ROOT: Path = BASE_DIR / "graph_data"
+    MINIO_HOST: str = "http://minio:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin_secret"
+    MINIO_BUCKET: str = "knowledge"
+
+    GRAPHRAG_ENCODING: str = "utf-8"
 
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / "../.env",

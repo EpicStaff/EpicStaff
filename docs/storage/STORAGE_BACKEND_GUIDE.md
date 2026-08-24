@@ -2,15 +2,7 @@
 
 ## Overview
 
-The application supports three storage backends for file management:
-
-| Backend | `STORAGE_BACKEND` value | Use case |
-|---------|------------------------|----------|
-| **MinIO (S3-compatible)** | `s3` (default) | Development and production with self-hosted object storage |
-| **AWS S3** | `s3` | Production with managed cloud storage |
-| **Local filesystem** | `local` | Simple deployments without object storage |
-
-The backend is selected at startup via the `STORAGE_BACKEND` environment variable. No code changes are needed to switch.
+The application uses an S3-compatible object storage backend (`S3StorageBackend`) for all file management. It works with MinIO (self-hosted) or AWS S3 (managed) — the same backend code handles both, distinguished only by `STORAGE_ENDPOINT`.
 
 ---
 
@@ -31,22 +23,11 @@ The `minio-init` service auto-creates the bucket on first start.
 
 ```bash
 # Set env vars in .env
-STORAGE_BACKEND=s3
 STORAGE_ENDPOINT=           # leave empty for AWS
 STORAGE_ACCESS_KEY=<your-aws-access-key>
 STORAGE_SECRET_KEY=<your-aws-secret-key>
 STORAGE_BUCKET_NAME=<your-bucket-name>
 ```
-
-### Local storage
-
-```bash
-# Set env vars in .env
-STORAGE_BACKEND=local
-STORAGE_LOCAL_ROOT=/app/storage
-```
-
-Files are stored at the `STORAGE_LOCAL_ROOT` path inside the container.
 
 ---
 
@@ -54,12 +35,10 @@ Files are stored at the `STORAGE_LOCAL_ROOT` path inside the container.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `STORAGE_BACKEND` | `s3` | Backend type: `s3` or `local` |
 | `STORAGE_ENDPOINT` | `http://minio:9000` | S3 endpoint URL. Leave empty for AWS S3. |
 | `STORAGE_ACCESS_KEY` | `minioadmin` | S3 access key / MinIO root user |
 | `STORAGE_SECRET_KEY` | `minioadmin_secret` | S3 secret key / MinIO root password |
 | `STORAGE_BUCKET_NAME` | `epicstaff` | S3 bucket name |
-| `STORAGE_LOCAL_ROOT` | `/app/storage` | Root directory for local backend |
 | `MINIO_PORT` | `9000` | MinIO API port (used in healthcheck and mc commands) |
 | `MINIO_CONSOLE_PORT` | `9001` | MinIO web console port |
 | `STORAGE_MUTATION_CHANNEL` | `storage_mutations` | Redis pub/sub channel for storage mutation events |
@@ -72,14 +51,12 @@ Files are stored at the `STORAGE_LOCAL_ROOT` path inside the container.
 ```
 StorageAPIView (REST endpoints)
        |
-  StorageManager (org isolation, permissions)
+  StorageManager (org isolation, path composition)
        |
-  get_storage_backend()          <-- factory, reads STORAGE_BACKEND env var
+  get_storage_backend()          <-- factory, builds S3StorageBackend from settings
        |
-  +-----------+-----------------+
-  |                             |
-LocalStorageBackend     S3StorageBackend
-(pathlib / shutil)      (boto3 / S3 API)
+  S3StorageBackend
+  (boto3 / S3 API)
 ```
 
 ### Key files
@@ -88,14 +65,10 @@ LocalStorageBackend     S3StorageBackend
 |------|---------|
 | `tables/services/storage_service/__init__.py` | Factory functions `get_storage_backend()`, `get_storage_manager()` |
 | `tables/services/storage_service/base.py` | `AbstractStorageBackend` interface |
-| `tables/services/storage_service/local_backend.py` | Local filesystem implementation |
 | `tables/services/storage_service/s3_backend.py` | S3/MinIO implementation |
-| `tables/services/storage_service/manager.py` | `StorageManager` (org prefixing, permissions, archive handling) |
-| `tables/services/storage_service/enums.py` | `StorageAction` enum |
-| `tables/services/storage_service/decorators.py` | `@check_permission` decorator |
+| `tables/services/storage_service/manager.py` | `StorageManager` (org prefixing, archive handling) |
 | `tables/services/storage_service/db_sync.py` | `StorageFileSync` — keeps DB in sync with storage mutations |
 | `tables/services/storage_service/dataclasses.py` | Data classes: `FileListItem`, `FileInfo`, `FolderInfo`, `UploadResult`, etc. |
-| `tables/storage_permissions.py` | `StoragePermission` DRF permission class |
 | `tables/validators/file_upload_validator.py` | `FileValidator` — blocks executable uploads, scans archives |
 | `tables/models/graph_models.py` | `StorageFile`, `GraphStorageFile`, `SessionStorageFile` models |
 | `tables/views/storage_views.py` | `StorageAPIView` REST endpoints |
@@ -108,7 +81,7 @@ LocalStorageBackend     S3StorageBackend
 
 ## Backend Interface
 
-Both backends implement the same `AbstractStorageBackend` methods:
+`S3StorageBackend` implements `AbstractStorageBackend`:
 
 - `list_(prefix)` -- list files and folders
 - `upload(path, file)` -- upload a file
@@ -122,6 +95,8 @@ Both backends implement the same `AbstractStorageBackend` methods:
 - `download_zip(paths)` -- create a zip archive
 - `upload_archive(prefix, archive)` -- extract an archive (ZIP or TAR)
 
+Tests exercise the same interface against `InMemoryStorageBackend` (see `django_app/tests/storage_tests/in_memory_backend.py`), a fake that mirrors S3 semantics without touching a real bucket.
+
 ---
 
 ## StorageManager
@@ -132,9 +107,13 @@ Both backends implement the same `AbstractStorageBackend` methods:
 
 All paths are automatically prefixed with `org_{org_id}/`. The caller works with relative paths only — the org prefix is added/stripped transparently.
 
-### Permission checks
+### Authorization
 
-Every public method is decorated with `@check_permission`, which calls `_require_permission()` before touching storage. Currently checks org membership via `OrganizationUser`. Extension points exist for role-based access and path-based ACLs.
+The `StorageManager` performs **no** authorization — it only composes org-scoped
+keys and delegates to the backend. Access control is enforced at the REST API layer
+(`StorageAPIView`): `IsAuthenticated` + `HasOrgPermission(FILES)` + active-org
+membership (via `OrgContextService`), with cross-org transfers restricted to
+superadmin. See `docs/rbac/organization_scoping.md`.
 
 ### Archive auto-extraction
 
@@ -150,10 +129,11 @@ Document formats (`.xlsx`, `.docx`, `.pptx`, `.epub`, `.jar`, `.apk`, `.war`, `.
 
 ### Cross-org operations
 
-- `copy_cross_org(user_name, src_org_id, src_path, dst_org_id, dst_path)` -- copy between orgs
-- `move_cross_org(user_name, src_org_id, src_path, dst_org_id, dst_path)` -- move between orgs (non-atomic: if delete fails after copy, file exists in both)
+- `copy_cross_org(src_org_id, src_path, dst_org_id, dst_path)` -- copy between orgs
+- `move_cross_org(src_org_id, src_path, dst_org_id, dst_path)` -- move between orgs (non-atomic: if delete fails after copy, file exists in both)
 
-Both require the user to have permission in source and destination orgs.
+Cross-org transfers are restricted to **superadmin**, enforced at the API layer
+(`StorageAPIView`); the manager itself does not check permissions.
 
 ---
 
