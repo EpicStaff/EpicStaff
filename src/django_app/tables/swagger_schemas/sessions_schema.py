@@ -202,7 +202,6 @@ RUN_SESSION_SSE_GET = dict(
                             "session_id": 42,
                             "message_data": {
                                 "message_type": "finish",
-                                "sse_visible": True,
                                 "content": "Task completed successfully.",
                             },
                         },

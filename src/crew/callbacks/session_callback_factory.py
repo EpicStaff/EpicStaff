@@ -323,7 +323,6 @@ class CrewCallbackFactory:
         The widget recognizes this message_type for the Thinking expander."""
         if not text or self.stream_writer is None:
             return
-        visible = True
         self._message_writer.add_custom_message(
             session_id=self.session_id,
             node_name=self.node_name,
@@ -334,7 +333,6 @@ class CrewCallbackFactory:
                 "text": text,
                 "category": category,
                 "is_final": False,
-                "sse_visible": visible,
             },
         )
 

@@ -103,7 +103,6 @@ from tables.views.storage_views import StorageAPIView
 from tables.views.sse_views import (
     RunSessionSSEView,
     RunSessionSSEViewSwagger,
-    FilteredRunSessionSSEView,
 )
 from tables.views.flow_assistant_views import (
     FlowAssistantAuditView,
@@ -266,11 +265,6 @@ urlpatterns = [
         "run-session/subscribe/<int:session_id>/",
         RunSessionSSEView.as_view(),
         name="run-session-subscribe",
-    ),
-    path(
-        "run-session/subscribe/<int:session_id>/filtered/",
-        FilteredRunSessionSSEView.as_view(),
-        name="run-session-subscribe-filtered",
     ),
     path(
         "run-session/subscribe/<int:session_id>/swagger/",

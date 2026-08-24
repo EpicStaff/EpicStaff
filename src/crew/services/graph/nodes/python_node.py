@@ -47,7 +47,6 @@ class PythonNode(BaseNode):
                 "message_type": "python_stream",
                 "text": f"Executing '{self.node_name}'...",
                 "is_final": False,
-                "sse_visible": True,
             },
         )
 

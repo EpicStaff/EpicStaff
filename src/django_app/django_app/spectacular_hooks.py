@@ -104,7 +104,6 @@ TAGS_ORDER = [
     "Agent Definitions",
     "Surfaces",
     "Agent Tags",
-    "Code Agent Nodes",
     "Crews",
     "Crew Tags",
     "Tasks",
