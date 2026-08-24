@@ -12,9 +12,7 @@ GIT_MISSING = shutil.which("git") is None
 
 
 def _run_git(args, cwd):
-    subprocess.run(
-        ["git", *args], cwd=str(cwd), capture_output=True, text=True, check=True
-    )
+    subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, check=True)
 
 
 @pytest.fixture
@@ -103,7 +101,9 @@ class TestExitWorktreeTool:
     def test_exit_worktree_keep_true_preserves_it(self, sandbox_dir, git_repo):
         enter_worktree_main(repo_path="repo", name="kept-wt")
 
-        exit_result = exit_worktree_main(worktree_path=".worktrees/kept-wt", keep=True)
+        exit_result = exit_worktree_main(
+            worktree_path=".worktrees/kept-wt", keep=True
+        )
 
         assert "kept" in exit_result
         assert (sandbox_dir / ".worktrees" / "kept-wt").exists()

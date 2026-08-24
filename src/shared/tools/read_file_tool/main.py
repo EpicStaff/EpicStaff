@@ -207,7 +207,7 @@ def _read_pdf(file_savepath: Path, pages: Optional[str]) -> str:
             if total_pages > PDF_PAGES_REQUIRED_THRESHOLD:
                 return (
                     f"Error: {file_savepath.name} has {total_pages} pages, which is more "
-                    'than 10. Pass the \'pages\' argument (e.g. "1-5" or "3") to select '
+                    "than 10. Pass the 'pages' argument (e.g. \"1-5\" or \"3\") to select "
                     "which pages to read."
                 )
             page_numbers = list(range(1, total_pages + 1))
@@ -283,17 +283,13 @@ def main(
     """
     try:
         if not file_path:
-            return (
-                "Error: file_path argument is mandatory and was not given to the tool."
-            )
+            return "Error: file_path argument is mandatory and was not given to the tool."
 
         offset = offset or 1
         limit = limit or MAX_LINES
 
         if offset < 1:
-            return (
-                f"Error: offset must be >= 1, got {offset}. Fix the offset and retry."
-            )
+            return f"Error: offset must be >= 1, got {offset}. Fix the offset and retry."
         if limit < 1:
             return f"Error: limit must be >= 1, got {limit}. Fix the limit and retry."
         if limit > MAX_LINES:

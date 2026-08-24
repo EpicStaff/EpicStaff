@@ -59,14 +59,14 @@ def main(
             return "Error: notebook_path argument is mandatory and was not given to the tool."
 
         if new_source is None:
-            return (
-                "Error: new_source argument is mandatory and was not given to the tool."
-            )
+            return "Error: new_source argument is mandatory and was not given to the tool."
 
         edit_mode = edit_mode or "replace"
 
         if edit_mode not in VALID_EDIT_MODES:
-            return f"Error: edit_mode must be one of {VALID_EDIT_MODES}, got '{edit_mode}'."
+            return (
+                f"Error: edit_mode must be one of {VALID_EDIT_MODES}, got '{edit_mode}'."
+            )
 
         if edit_mode in ("replace", "delete") and not cell_id:
             return f"Error: cell_id is required for edit_mode='{edit_mode}'."

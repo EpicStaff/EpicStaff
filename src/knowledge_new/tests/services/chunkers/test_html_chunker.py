@@ -8,9 +8,7 @@ from infrastructure.naive.chunkers.strategies.html_chunker import HTMLChunker
 from tests.conftest import offload_to_process
 from tests.services.chunkers.conftest import make_config
 
-SAMPLE_HTML = (
-    "<h1>Title</h1><p>Hello world paragraph.</p><h2>Sub</h2><p>Second section text.</p>"
-)
+SAMPLE_HTML = "<h1>Title</h1><p>Hello world paragraph.</p><h2>Sub</h2><p>Second section text.</p>"
 
 
 def build_chunker(
@@ -37,9 +35,7 @@ async def test_chunk_prefixes_metadata_when_split_on_headers():
 async def test_chunk_without_headers_has_no_metadata_prefix():
     chunker = build_chunker()
     chunks = await chunker.chunk(SAMPLE_HTML)
-    assert chunks == [
-        PreviewChunk(text="Title Hello world paragraph. Sub Second section text.")
-    ]
+    assert chunks == [PreviewChunk(text="Title Hello world paragraph. Sub Second section text.")]
 
 
 @pytest.mark.parametrize("text", ["", "just plain text with no tags"])

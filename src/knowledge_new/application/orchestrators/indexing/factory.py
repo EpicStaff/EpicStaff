@@ -10,9 +10,7 @@ _STRATEGIES: dict[RAGStrategy, type[AbstractIndexOrchestrator]] = {
 }
 
 
-def build_indexer(
-    strategy: RAGStrategy, uow: AbstractUnitOfWork
-) -> AbstractIndexOrchestrator:
+def build_indexer(strategy: RAGStrategy, uow: AbstractUnitOfWork) -> AbstractIndexOrchestrator:
     """Build the indexer registered for `strategy`.
 
     Args:

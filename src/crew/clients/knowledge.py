@@ -62,9 +62,7 @@ class KnowledgeClient:
         timeout: float,
     ) -> httpx.Response:
         try:
-            response = getattr(self._client, method)(
-                url=url, json=json, timeout=timeout
-            )
+            response = getattr(self._client, method)(url=url, json=json, timeout=timeout)
         except httpx.TimeoutException as e:
             raise ClientTimeoutError("Knowledge service timed out.") from e
         except httpx.RequestError as e:

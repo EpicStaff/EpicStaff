@@ -1,3 +1,5 @@
+import pytest
+
 from conftest import load_tool_main
 
 report_findings_module = load_tool_main("report_findings_tool")
@@ -10,12 +12,7 @@ class TestReportFindingsToolHappyPath:
     def test_basic_findings_reported(self):
         result = report_findings_main(
             findings=[
-                {
-                    "title": "SQL injection risk",
-                    "severity": "high",
-                    "file": "a.py",
-                    "line": 12,
-                },
+                {"title": "SQL injection risk", "severity": "high", "file": "a.py", "line": 12},
                 {"title": "Missing docstring", "severity": "low"},
             ],
             title="Security Review",
@@ -74,9 +71,7 @@ class TestReportFindingsToolSeverityValidation:
     def test_all_valid_severities_accepted(self):
         severities = ["info", "low", "medium", "high", "critical"]
         result = report_findings_main(
-            findings=[
-                {"title": f"f{i}", "severity": s} for i, s in enumerate(severities)
-            ]
+            findings=[{"title": f"f{i}", "severity": s} for i, s in enumerate(severities)]
         )
 
         assert [f["severity"] for f in result["findings"]] == severities
@@ -146,9 +141,7 @@ class TestReportFindingsToolErrorPaths:
         assert "missing required 'title'" in result["message"]
 
     def test_all_findings_invalid_returns_error_string(self):
-        result = report_findings_main(
-            findings=[{"severity": "high"}, {"no_title": True}]
-        )
+        result = report_findings_main(findings=[{"severity": "high"}, {"no_title": True}])
 
         assert isinstance(result, str)
         assert result.startswith("Error:")

@@ -53,10 +53,7 @@ async def test_multi_chunk_overlap_edges_and_invariant(chunk_size, chunk_overlap
     assert all(c.token_count and c.token_count > 0 for c in chunks)
     assert chunks[0].overlap_start is None
     assert chunks[-1].overlap_end is None
-    assert all(
-        chunks[i].overlap_end == chunks[i + 1].overlap_start
-        for i in range(len(chunks) - 1)
-    )
+    assert all(chunks[i].overlap_end == chunks[i + 1].overlap_start for i in range(len(chunks) - 1))
 
 
 async def test_empty_string_returns_empty():

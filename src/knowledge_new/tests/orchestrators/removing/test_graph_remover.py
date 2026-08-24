@@ -17,9 +17,7 @@ def _completed_rag(rag_id: int = 1) -> Rag:
 
 
 def _processing_rag(rag_id: int = 1) -> Rag:
-    return Rag(
-        id=rag_id, status=IndexStatusEnum.PROCESSING, indexing_document_ids=set()
-    )
+    return Rag(id=rag_id, status=IndexStatusEnum.PROCESSING, indexing_document_ids=set())
 
 
 class FakeGraphRagRepo:
@@ -89,9 +87,7 @@ async def test_happy_path_clears_storage(monkeypatch):
         create_storage_calls.append(storage_cfg)
         return storage
 
-    monkeypatch.setattr(
-        graph_remover, "create_storage_config", fake_create_storage_config
-    )
+    monkeypatch.setattr(graph_remover, "create_storage_config", fake_create_storage_config)
     monkeypatch.setattr(graph_remover, "create_storage", fake_create_storage)
 
     await GraphRagRemoveOrchestrator(uow).execute(RemoveRag(rag_id=42))
@@ -119,9 +115,7 @@ async def test_rag_not_found_raises_and_never_touches_storage(monkeypatch):
         create_storage_calls.append(storage_cfg)
         return FakeStorage()
 
-    monkeypatch.setattr(
-        graph_remover, "create_storage_config", fake_create_storage_config
-    )
+    monkeypatch.setattr(graph_remover, "create_storage_config", fake_create_storage_config)
     monkeypatch.setattr(graph_remover, "create_storage", fake_create_storage)
 
     with pytest.raises(RagNotFoundError):
@@ -147,9 +141,7 @@ async def test_rag_in_processing_raises_and_never_touches_storage(monkeypatch):
         create_storage_calls.append(storage_cfg)
         return FakeStorage()
 
-    monkeypatch.setattr(
-        graph_remover, "create_storage_config", fake_create_storage_config
-    )
+    monkeypatch.setattr(graph_remover, "create_storage_config", fake_create_storage_config)
     monkeypatch.setattr(graph_remover, "create_storage", fake_create_storage)
 
     with pytest.raises(RagInProcessingError):
@@ -192,9 +184,7 @@ async def test_storage_config_derived_from_rag_id(monkeypatch):
         create_storage_calls.append(storage_cfg)
         return FakeStorage()
 
-    monkeypatch.setattr(
-        graph_remover, "create_storage_config", fake_create_storage_config
-    )
+    monkeypatch.setattr(graph_remover, "create_storage_config", fake_create_storage_config)
     monkeypatch.setattr(graph_remover, "create_storage", fake_create_storage)
 
     await GraphRagRemoveOrchestrator(uow).execute(RemoveRag(rag_id=99))

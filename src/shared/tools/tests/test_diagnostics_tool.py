@@ -9,9 +9,7 @@ diagnostics_main = load_tool_main("diagnostics_tool").main
 RUFF_MISSING = shutil.which("ruff") is None
 
 
-@pytest.mark.skipif(
-    RUFF_MISSING, reason="ruff is not installed in this test environment"
-)
+@pytest.mark.skipif(RUFF_MISSING, reason="ruff is not installed in this test environment")
 class TestDiagnosticsToolPython:
     def test_known_ruff_violation_reported(self, sandbox_dir):
         (sandbox_dir / "bad.py").write_text("import os\n\n\ndef f():\n    return 1\n")
@@ -52,9 +50,7 @@ class TestDiagnosticsToolPython:
 
 
 class TestDiagnosticsToolJsTs:
-    def test_javascript_without_eslint_returns_clear_error(
-        self, sandbox_dir, monkeypatch
-    ):
+    def test_javascript_without_eslint_returns_clear_error(self, sandbox_dir, monkeypatch):
         (sandbox_dir / "app.js").write_text("console.log('hi')\n")
         monkeypatch.setattr(shutil, "which", lambda name: None)
 

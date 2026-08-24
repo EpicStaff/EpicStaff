@@ -14,9 +14,7 @@ _STRATEGIES: dict[FileExtensionEnum, type[AbstractFileTextExtractor]] = {
 }
 
 
-def build_file_text_extractor(
-    extension: FileExtensionEnum,
-) -> AbstractFileTextExtractor:
+def build_file_text_extractor(extension: FileExtensionEnum) -> AbstractFileTextExtractor:
     """Create the text extractor registered for `extension`.
 
     Args:

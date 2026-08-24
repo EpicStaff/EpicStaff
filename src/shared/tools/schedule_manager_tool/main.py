@@ -159,9 +159,7 @@ def _check_ownership(node: dict, graph_id) -> str | None:
     return None
 
 
-def _build_schedule_block(
-    baseline: dict, args: dict, apply_jitter: bool, jitter_max: int
-):
+def _build_schedule_block(baseline: dict, args: dict, apply_jitter: bool, jitter_max: int):
     """Merge `baseline` (an existing node's rendered `schedule` block, or {}
     for a brand-new schedule) with agent-supplied overrides in `args`, and
     return (schedule_dict, jitter_offset_seconds|None, error|None).
@@ -178,13 +176,9 @@ def _build_schedule_block(
 
     run_mode = args.get("run_mode", baseline.get("run_mode"))
     if run_mode not in VALID_RUN_MODES:
-        return (
-            None,
-            None,
-            (
-                f"Error: 'run_mode' must be one of {sorted(VALID_RUN_MODES)} "
-                f"(got {run_mode!r})."
-            ),
+        return None, None, (
+            f"Error: 'run_mode' must be one of {sorted(VALID_RUN_MODES)} "
+            f"(got {run_mode!r})."
         )
 
     timezone_name = args.get("timezone", baseline.get("timezone")) or "UTC"
@@ -202,13 +196,9 @@ def _build_schedule_block(
 
     if run_mode == "repeat":
         if every is None or unit is None:
-            return (
-                None,
-                None,
-                (
-                    "Error: run_mode='repeat' requires both 'every' and 'unit' "
-                    "(supply both together, not just one)."
-                ),
+            return None, None, (
+                "Error: run_mode='repeat' requires both 'every' and 'unit' "
+                "(supply both together, not just one)."
             )
         if unit not in VALID_UNITS:
             return None, None, f"Error: 'unit' must be one of {sorted(VALID_UNITS)}."
@@ -218,11 +208,7 @@ def _build_schedule_block(
 
     end_type = args.get("end_type", baseline_end.get("type")) or "never"
     if end_type not in VALID_END_TYPES:
-        return (
-            None,
-            None,
-            f"Error: 'end_type' must be one of {sorted(VALID_END_TYPES)}.",
-        )
+        return None, None, f"Error: 'end_type' must be one of {sorted(VALID_END_TYPES)}."
 
     end_date_time = args.get("end_date_time", baseline_end.get("date_time"))
     max_runs = args.get("max_runs", baseline_end.get("max_runs"))

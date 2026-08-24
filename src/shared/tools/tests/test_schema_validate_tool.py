@@ -86,7 +86,9 @@ class TestSchemaValidateToolFail:
         big_schema = {
             "type": "object",
             "required": [f"field_{i}" for i in range(40)],
-            "properties": {f"field_{i}": {"type": "string"} for i in range(40)},
+            "properties": {
+                f"field_{i}": {"type": "string"} for i in range(40)
+            },
         }
 
         result = schema_validate_main(output={}, schema=big_schema)

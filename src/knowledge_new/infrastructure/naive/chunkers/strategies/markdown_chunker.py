@@ -1,10 +1,7 @@
 from application.ports import AbstractChunker
 from domain.models import ChunkingConfig, PreviewChunk
 from infrastructure.processing_run import run_in_process
-from langchain_text_splitters import (
-    MarkdownHeaderTextSplitter,
-    RecursiveCharacterTextSplitter,
-)
+from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
 
 class MarkdownChunker(AbstractChunker):

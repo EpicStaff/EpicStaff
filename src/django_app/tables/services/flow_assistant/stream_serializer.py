@@ -22,10 +22,7 @@ async def handle_token_event(
     node_index: dict | None,
 ) -> tuple[dict, bool]:
     """Token deltas -> SSE token frames."""
-    return (
-        {"event": "token", "data": {"type": "token", "content": event.content}},
-        False,
-    )
+    return ({"event": "token", "data": {"type": "token", "content": event.content}}, False)
 
 
 async def handle_tool_call_event(
@@ -143,9 +140,7 @@ async def serialize_stream_event(
     # isinstance check first — StructuredEvent is dispatched by type identity,
     # not by the string 'type' attribute.
     if isinstance(event, StructuredEvent):
-        return await handle_structured_event(
-            event, graph_id=graph_id, node_index=node_index
-        )
+        return await handle_structured_event(event, graph_id=graph_id, node_index=node_index)
     handler = _STREAM_EVENT_HANDLERS.get(getattr(event, "type", None))
     if handler is None:
         return None

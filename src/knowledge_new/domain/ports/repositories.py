@@ -160,9 +160,7 @@ class AbstractGraphRagRepository(abc.ABC):
         """
 
     @abc.abstractmethod
-    async def get_documents(
-        self, rag_id: int, ids: frozenset[int]
-    ) -> list[TextDocument]:
+    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[TextDocument]:
         """Return `TextDocument` objects for the given `ids` within `rag_id`, with text extracted from raw content.
 
         Args:
@@ -177,9 +175,7 @@ class AbstractGraphRagRepository(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_config(
-        self, rag_id: int, slot: SlotEnum | None = None
-    ) -> GraphRagConfig | None:
+    async def get_config(self, rag_id: int, slot: SlotEnum | None = None) -> GraphRagConfig | None:
         """Return a fully-populated `GraphRagConfig` assembled from the DB records for `rag_id`.
 
         When `slot` is provided the config is built for that slot, overriding the slot

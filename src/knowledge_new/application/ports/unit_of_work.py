@@ -1,10 +1,7 @@
 import abc
 from contextlib import AbstractAsyncContextManager
 
-from domain.ports.repositories import (
-    AbstractGraphRagRepository,
-    AbstractNaiveRagRepository,
-)
+from domain.ports.repositories import AbstractGraphRagRepository, AbstractNaiveRagRepository
 
 
 class AbstractUnitOfWork(AbstractAsyncContextManager, abc.ABC):

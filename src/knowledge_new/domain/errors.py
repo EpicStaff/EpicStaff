@@ -66,9 +66,7 @@ class GraphRagConfigNotFoundError(KnowledgeError):
 
 
 class ChunksNotIndexedError(KnowledgeError):
-    default_message = (
-        "Document(id={document_id}) chunks not indexed for RAG(id={rag_id})."
-    )
+    default_message = "Document(id={document_id}) chunks not indexed for RAG(id={rag_id})."
 
 
 class RagNotFoundError(KnowledgeError):

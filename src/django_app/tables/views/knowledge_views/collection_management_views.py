@@ -80,9 +80,7 @@ class SourceCollectionViewSet(OrgScopedResolverMixin, viewsets.ModelViewSet):
         queryset = SourceCollection.objects.filter(org_id=self.get_active_org_id())
 
         if self.action == "list" or self.action == "retrieve":
-            queryset = queryset.prefetch_related("documents").annotate(
-                document_count=Count("documents")
-            )
+            queryset = queryset.prefetch_related("documents").annotate(document_count=Count("documents"))
 
         return queryset
 

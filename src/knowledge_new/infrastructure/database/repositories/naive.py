@@ -37,9 +37,7 @@ from sqlalchemy import delete, exists, select, update
 from sqlalchemy.orm import joinedload, selectinload
 
 
-class NaiveRagSQLAlchemyRepository(
-    BaseSQLAlchemyRepositoryMixin, AbstractNaiveRagRepository
-):
+class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractNaiveRagRepository):
     async def get_rag(self, rag_id: int) -> Rag | None:
         result = await self._session.execute(
             select(NaiveRag).where(NaiveRag.naive_rag_id == rag_id)
@@ -143,10 +141,7 @@ class NaiveRagSQLAlchemyRepository(
             )
         )
         self._session.add_all(
-            [
-                preview_chunk_to_orm(document_id, c, index)
-                for index, c in enumerate(chunks, start=1)
-            ]
+            [preview_chunk_to_orm(document_id, c, index) for index, c in enumerate(chunks, start=1)]
         )
         await self._session.flush()
 
@@ -157,9 +152,7 @@ class NaiveRagSQLAlchemyRepository(
             )
         )
         await self._session.execute(
-            delete(NaiveRagChunk).where(
-                NaiveRagChunk.naive_rag_document_config_id == document_id
-            )
+            delete(NaiveRagChunk).where(NaiveRagChunk.naive_rag_document_config_id == document_id)
         )
         await self._session.execute(
             delete(NaiveRagPreviewChunk).where(
@@ -167,9 +160,7 @@ class NaiveRagSQLAlchemyRepository(
             )
         )
         for index, chunk in enumerate(chunks, start=1):
-            orm_chunk, orm_embedding = indexed_chunk_to_orm_pair(
-                document_id, chunk, index
-            )
+            orm_chunk, orm_embedding = indexed_chunk_to_orm_pair(document_id, chunk, index)
             orm_chunk.embedding = orm_embedding
             self._session.add(orm_chunk)
         await self._session.flush()
@@ -187,9 +178,7 @@ class NaiveRagSQLAlchemyRepository(
     async def search_chunks(
         self, rag_id: int, vector: list[float], limit: int, similarity_threshold: float
     ) -> list[FoundChunk]:
-        similarity = (1 - NaiveRagEmbedding.vector.cosine_distance(vector)).label(
-            "similarity"
-        )
+        similarity = (1 - NaiveRagEmbedding.vector.cosine_distance(vector)).label("similarity")
         result = await self._session.execute(
             select(
                 NaiveRagChunk.chunk_index,

@@ -18,15 +18,11 @@ __all__ = ["get_error_handlers"]
 _error_handlers: dict[type[Exception], Callable[[Request, Exception], Response]] = {}
 
 
-def get_error_handlers() -> (
-    dict[type[Exception], Callable[[Request, Exception], Response]]
-):
+def get_error_handlers() -> dict[type[Exception], Callable[[Request, Exception], Response]]:
     return _error_handlers
 
 
-def create_response(
-    request: Request, status_code: int, code: str, error: Exception
-) -> Response:
+def create_response(request: Request, status_code: int, code: str, error: Exception) -> Response:
     return Response(
         content={
             "code": code,
@@ -43,9 +39,7 @@ def registry(*errors: type[Exception]):
             if handler is None:
                 _error_handlers[error] = fn
             else:
-                raise ValueError(
-                    f"'{error.__name__}' has had {handler.__name__} handler yet."
-                )
+                raise ValueError(f"'{error.__name__}' has had {handler.__name__} handler yet.")
         return fn
 
     return decorator
@@ -64,9 +58,7 @@ def handler_not_found(request: Request, error: Exception) -> Response:
 
 @registry(UnsupportedError)
 def handler_unsupported(request, error: Exception) -> Response:
-    return create_response(
-        request, status_codes.HTTP_400_BAD_REQUEST, "unsupported", error
-    )
+    return create_response(request, status_codes.HTTP_400_BAD_REQUEST, "unsupported", error)
 
 
 @registry(KnowledgeError)

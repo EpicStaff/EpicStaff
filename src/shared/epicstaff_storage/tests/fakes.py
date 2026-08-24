@@ -109,11 +109,7 @@ class FakeS3Client:
         for key in keys:
             if key in self.delete_objects_error_keys:
                 errors.append(
-                    {
-                        "Key": key,
-                        "Code": "InternalError",
-                        "Message": "Simulated failure",
-                    }
+                    {"Key": key, "Code": "InternalError", "Message": "Simulated failure"}
                 )
                 continue
             if key in self.objects:

@@ -1,4 +1,5 @@
 import httpx
+import pytest
 
 from conftest import load_tool_main
 
@@ -78,10 +79,7 @@ class TestWebFetchTool:
 
         result = web_fetch_main(url="https://example.com/")
 
-        assert (
-            result
-            == "Redirects to https://other-host.com/target — call again with that URL"
-        )
+        assert result == "Redirects to https://other-host.com/target — call again with that URL"
 
     def test_same_host_redirect_is_followed(self, monkeypatch):
         def handler(request: httpx.Request) -> httpx.Response:

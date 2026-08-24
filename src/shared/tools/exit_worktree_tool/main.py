@@ -111,9 +111,7 @@ def main(worktree_path: str, keep: bool = False) -> str:
             ["worktree", "remove", str(worktree_savepath.resolve())], cwd=main_root
         )
         if returncode == 0:
-            return (
-                f"Removed worktree at {worktree_path} (clean, no uncommitted changes)."
-            )
+            return f"Removed worktree at {worktree_path} (clean, no uncommitted changes)."
 
         # A refusal here is almost always due to uncommitted/untracked
         # changes. keep=False means the caller explicitly wants the worktree

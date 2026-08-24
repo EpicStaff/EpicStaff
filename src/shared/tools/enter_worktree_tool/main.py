@@ -52,9 +52,7 @@ def main(repo_path: str, name: str | None = None) -> str:
     """
     try:
         if not repo_path:
-            return (
-                "Error: repo_path argument is mandatory and was not given to the tool."
-            )
+            return "Error: repo_path argument is mandatory and was not given to the tool."
 
         if shutil.which("git") is None:
             return "Error: git is not available in this environment."
@@ -106,9 +104,7 @@ def main(repo_path: str, name: str | None = None) -> str:
             cwd=repo_savepath,
         )
         if returncode != 0:
-            return (
-                f"Error: failed to create worktree: {stderr.strip() or stdout.strip()}"
-            )
+            return f"Error: failed to create worktree: {stderr.strip() or stdout.strip()}"
 
         try:
             relative_worktree_path = worktree_path.resolve().relative_to(

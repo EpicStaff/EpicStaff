@@ -137,9 +137,7 @@ def main(
 
         payload = {
             FINDINGS_MARKER_KEY: "findings",
-            "title": _truncate(title, MAX_TITLE_LEN)
-            if isinstance(title, str)
-            else None,
+            "title": _truncate(title, MAX_TITLE_LEN) if isinstance(title, str) else None,
             "summary": _truncate(summary, MAX_SUMMARY_LEN)
             if isinstance(summary, str)
             else None,
@@ -151,9 +149,7 @@ def main(
 
         message = f"Reported {len(normalized)} finding(s)."
         if count_truncated:
-            message += (
-                f" (input truncated from {total_submitted} to {MAX_FINDINGS} findings)"
-            )
+            message += f" (input truncated from {total_submitted} to {MAX_FINDINGS} findings)"
         if warnings:
             shown = warnings[:MAX_WARNINGS_SHOWN]
             message += " Warnings: " + " | ".join(shown)

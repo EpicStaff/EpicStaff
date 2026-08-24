@@ -33,9 +33,7 @@ class TestCancelNaiveRagDocumentChunkingView:
             "chunk_overlap": naive_rag_document_config.chunk_overlap,
         }
 
-        with patch(
-            "tables.views.knowledge_views.naive_rag_views.producer"
-        ) as mock_producer:
+        with patch("tables.views.knowledge_views.naive_rag_views.producer") as mock_producer:
             response = auth_client.post(url, body, format="json")
 
         assert response.status_code == 202

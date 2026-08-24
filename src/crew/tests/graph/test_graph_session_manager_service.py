@@ -20,6 +20,7 @@ from services.graph.graph_session_manager_service import (
     GraphSessionManagerService,
     _extract_finish_token_total,
 )
+from services.graph.exceptions import StopSession
 from src.shared.models import SessionData
 from src.shared.models.graph_nodes import GraphData
 
@@ -200,9 +201,7 @@ async def test_budget_is_per_session_not_shared(service, monkeypatch):
     chunks_a = [make_finish_chunk(session_a_id, total_tokens=60)]
     _patch_builder(monkeypatch, FakeCompiledGraph(chunks_a))
     stop_event_a = StopEvent()
-    await service.run_session(
-        _session_data(session_a_id, token_budget=100), stop_event_a
-    )
+    await service.run_session(_session_data(session_a_id, token_budget=100), stop_event_a)
     assert not stop_event_a.is_set()
 
     chunks_b = [
@@ -211,9 +210,7 @@ async def test_budget_is_per_session_not_shared(service, monkeypatch):
     ]
     _patch_builder(monkeypatch, FakeCompiledGraph(chunks_b))
     stop_event_b = StopEvent()
-    await service.run_session(
-        _session_data(session_b_id, token_budget=100), stop_event_b
-    )
+    await service.run_session(_session_data(session_b_id, token_budget=100), stop_event_b)
     assert stop_event_b.is_set()
 
     # Re-running session A's exact scenario again afterwards must still not

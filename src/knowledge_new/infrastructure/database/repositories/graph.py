@@ -24,9 +24,7 @@ from sqlalchemy import delete, exists, select, update
 from sqlalchemy.orm import joinedload
 
 
-class GraphRagSQLAlchemyRepository(
-    BaseSQLAlchemyRepositoryMixin, AbstractGraphRagRepository
-):
+class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphRagRepository):
     async def get_rag(self, rag_id: int) -> Rag | None:
         result = await self._session.execute(
             select(GraphRag).where(GraphRag.graph_rag_id == rag_id)
@@ -47,9 +45,7 @@ class GraphRagSQLAlchemyRepository(
             select(GraphRagDocument)
             .where(GraphRagDocument.graph_rag_id == rag_id, *conditions)
             .options(
-                joinedload(GraphRagDocument.document).joinedload(
-                    DocumentMetadata.document_content
-                )
+                joinedload(GraphRagDocument.document).joinedload(DocumentMetadata.document_content)
             )
         )
         rows = result.scalars().all()
@@ -62,9 +58,7 @@ class GraphRagSQLAlchemyRepository(
             documents.append(graph_document_orm_to_text_document(row, text))
         return documents
 
-    async def get_documents(
-        self, rag_id: int, ids: frozenset[int]
-    ) -> list[TextDocument]:
+    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[TextDocument]:
         return await self._get_documents(
             rag_id,
             GraphRagDocument.graph_rag_document_id.in_(ids),
@@ -127,9 +121,7 @@ class GraphRagSQLAlchemyRepository(
         )
         return result.scalar_one()
 
-    async def get_config(
-        self, rag_id: int, slot: SlotEnum | None = None
-    ) -> GraphRagConfig | None:
+    async def get_config(self, rag_id: int, slot: SlotEnum | None = None) -> GraphRagConfig | None:
         result = await self._session.execute(
             select(GraphRag)
             .where(GraphRag.graph_rag_id == rag_id)
@@ -152,6 +144,4 @@ class GraphRagSQLAlchemyRepository(
         await self._session.execute(
             delete(GraphRagDocument).where(GraphRagDocument.graph_rag_id == rag_id)
         )
-        await self._session.execute(
-            delete(GraphRag).where(GraphRag.graph_rag_id == rag_id)
-        )
+        await self._session.execute(delete(GraphRag).where(GraphRag.graph_rag_id == rag_id))

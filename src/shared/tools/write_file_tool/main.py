@@ -30,9 +30,7 @@ def main(file_path: str, content: str, overwrite: bool = False) -> str:
     """
     try:
         if not file_path:
-            return (
-                "Error: file_path argument is mandatory and was not given to the tool."
-            )
+            return "Error: file_path argument is mandatory and was not given to the tool."
 
         if content is None:
             return "Error: content argument is mandatory and was not given to the tool."
@@ -56,7 +54,9 @@ def main(file_path: str, content: str, overwrite: bool = False) -> str:
             return f"Error: {file_path} is a directory. Choose a file path instead."
 
         if file_savepath.exists() and not overwrite:
-            return f"Error: file {file_path} already exists. Pass overwrite=true to replace it."
+            return (
+                f"Error: file {file_path} already exists. Pass overwrite=true to replace it."
+            )
 
         file_savepath.parent.mkdir(parents=True, exist_ok=True)
         file_savepath.write_bytes(content_bytes)

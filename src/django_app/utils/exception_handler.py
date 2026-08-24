@@ -1,3 +1,4 @@
+
 from rest_framework.views import exception_handler
 from rest_framework.exceptions import APIException, ValidationError
 from django_app.settings import DEBUG
@@ -26,23 +27,17 @@ def custom_exception_handler(exc, context):
             "code": exc.default_code,
             "message": MESSAGE_PATTERN.format(
                 error_name=type(exc).__name__,
-                error_detail=exc.args[0]
-                if exc.args
-                else exc.detail or exc.default_detail,
+                error_detail=exc.args[0] if exc.args else exc.detail or exc.default_detail
             ),
         }
 
-        if (errors := getattr(exc, "errors", None)) is not None:
+        if (errors := getattr(exc, 'errors', None)) is not None:
             error_data["errors"] = errors
 
         elif errors is None and isinstance(exc, ValidationError):
             if isinstance(exc.detail, dict):
                 detail = [exc.detail]
-            elif (
-                isinstance(exc.detail, list)
-                and exc.detail
-                and isinstance(exc.detail[0], dict)
-            ):
+            elif isinstance(exc.detail, list) and exc.detail and isinstance(exc.detail[0], dict):
                 detail = exc.detail
             else:
                 detail = [{None: exc.detail}]
@@ -51,9 +46,7 @@ def custom_exception_handler(exc, context):
                 {
                     "field": field,
                     "value": None,
-                    "reason": "; ".join(
-                        reason if isinstance(reason, list) else [str(reason)]
-                    ),
+                    "reason": "; ".join(reason if isinstance(reason, list) else [str(reason)])
                 }
                 for data in detail
                 for field, reason in data.items()

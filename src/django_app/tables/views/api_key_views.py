@@ -143,7 +143,9 @@ class ApiKeyManagementViewSet(viewsets.ViewSet):
     @extend_schema(**API_KEYS_MANAGEMENT_REVOKE_POST)
     def revoke(self, request, pk=None):
         key = self._service.revoke_key(org_id=self._resolve_org_id(request), key_id=pk)
-        return Response(ApiKeyAdminSerializer(key, context={"request": request}).data)
+        return Response(
+            ApiKeyAdminSerializer(key, context={"request": request}).data
+        )
 
     @extend_schema(**API_KEYS_MANAGEMENT_DELETE)
     def destroy(self, request, pk=None):

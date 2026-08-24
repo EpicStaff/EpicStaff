@@ -1,8 +1,5 @@
 from application.ports import AbstractUnitOfWork
-from domain.ports.repositories import (
-    AbstractGraphRagRepository,
-    AbstractNaiveRagRepository,
-)
+from domain.ports.repositories import AbstractGraphRagRepository, AbstractNaiveRagRepository
 from infrastructure.database.config import SessionLocal
 from infrastructure.database.repositories.graph import GraphRagSQLAlchemyRepository
 from infrastructure.database.repositories.naive import NaiveRagSQLAlchemyRepository

@@ -12,9 +12,7 @@ def _write_notebook(sandbox_dir, file_path: str, cell_sources):
     from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
     cells = [
-        new_code_cell(source=src)
-        if cell_type == "code"
-        else new_markdown_cell(source=src)
+        new_code_cell(source=src) if cell_type == "code" else new_markdown_cell(source=src)
         for cell_type, src in cell_sources
     ]
     nb = new_notebook(cells=cells)

@@ -10,9 +10,7 @@ _STRATEGIES: dict[RAGStrategy, type[AbstractSearchOrchestrator]] = {
 }
 
 
-def build_search(
-    strategy: RAGStrategy, uow: AbstractUnitOfWork
-) -> AbstractSearchOrchestrator:
+def build_search(strategy: RAGStrategy, uow: AbstractUnitOfWork) -> AbstractSearchOrchestrator:
     """Build the searcher registered for `strategy`.
 
     Args:

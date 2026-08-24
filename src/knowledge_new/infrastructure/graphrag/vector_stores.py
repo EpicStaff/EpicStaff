@@ -59,9 +59,7 @@ class MinioLanceDBVectorStore(LanceDBVectorStore):
         self._storage_options = storage_options
 
     def connect(self) -> None:
-        self.db_connection = lancedb.connect(
-            self.db_uri, storage_options=self._storage_options
-        )
+        self.db_connection = lancedb.connect(self.db_uri, storage_options=self._storage_options)
         if self.index_name and self.index_name in self.db_connection.table_names():
             self.document_collection = self.db_connection.open_table(self.index_name)
 

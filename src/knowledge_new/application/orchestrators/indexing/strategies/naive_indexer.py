@@ -23,12 +23,8 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
     async def on_execute(self, command: RunIndex) -> None:
         async with self.uow:
             rag = await self._get_rag_under_uow(command.rag_id)
-            embedder = await self._get_embedder_under_uow(
-                rag.id, command.embedding_api_key
-            )
-            documents = await self._get_documents_under_uow(
-                rag.id, command.document_ids
-            )
+            embedder = await self._get_embedder_under_uow(rag.id, command.embedding_api_key)
+            documents = await self._get_documents_under_uow(rag.id, command.document_ids)
 
         rag.mark_as_processing(command.document_ids)
         await self._update_rag(rag)
@@ -58,9 +54,7 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
                     extractor = build_file_text_extractor(document.extension)
                     text = await extractor.extract(document.content)
 
-                    chuncker = build_chunker(
-                        document.config.chunk_strategy, document.config
-                    )
+                    chuncker = build_chunker(document.config.chunk_strategy, document.config)
                     preview_chunks = await chuncker.chunk(text)
                     if not preview_chunks:
                         raise NoPreviewChunksProducedError(
@@ -103,9 +97,7 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
             await self._finish_document(rag, document)
 
         await self._finish_rag(rag)
-        logger.info(
-            "Finished indexing in RAG(id={}, status={})", rag.id, rag.status.value
-        )
+        logger.info("Finished indexing in RAG(id={}, status={})", rag.id, rag.status.value)
 
     async def on_cancel(self, command: RunIndex):
         if (
@@ -142,19 +134,13 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
         self.state["rag"] = rag
         return rag
 
-    async def _get_embedder_under_uow(
-        self, rag_id: int, api_key: str
-    ) -> AbstractEmbedder:
-        embedding_config = await self.uow.naive_rag_repo.get_embedding_config(
-            rag_id=rag_id
-        )
+    async def _get_embedder_under_uow(self, rag_id: int, api_key: str) -> AbstractEmbedder:
+        embedding_config = await self.uow.naive_rag_repo.get_embedding_config(rag_id=rag_id)
         if embedding_config is None:
             raise EmbeddingConfigNotFoundError(rag_id=rag_id)
         return build_embedder(embedding_config.provider, api_key, embedding_config)
 
-    async def _get_documents_under_uow(
-        self, rag_id: int, ids: frozenset[int]
-    ) -> list[Document]:
+    async def _get_documents_under_uow(self, rag_id: int, ids: frozenset[int]) -> list[Document]:
         documents = await self.uow.naive_rag_repo.get_documents(rag_id=rag_id, ids=ids)
 
         if not documents:
@@ -168,16 +154,12 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
 
     async def _update_document(self, rag_id: int, document: Document):
         async with self.uow:
-            await self.uow.naive_rag_repo.update_document(
-                rag_id=rag_id, document=document
-            )
+            await self.uow.naive_rag_repo.update_document(rag_id=rag_id, document=document)
             await self.uow.commit()
 
     async def _finish_document(self, rag: Rag, document: Document):
         async with self.uow:
-            await self.uow.naive_rag_repo.update_document(
-                rag_id=rag.id, document=document
-            )
+            await self.uow.naive_rag_repo.update_document(rag_id=rag.id, document=document)
             if document.status == DocumentStatusEnum.COMPLETED:
                 await self.uow.naive_rag_repo.save_indexed_chunks(
                     document_id=document.id,
@@ -189,15 +171,9 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
 
     async def _finish_rag(self, rag: Rag):
         async with self.uow:
-            has_outdated = await self.uow.naive_rag_repo.has_outdated_document(
-                rag_id=rag.id
-            )
-            has_completed = await self.uow.naive_rag_repo.has_completed_document(
-                rag_id=rag.id
-            )
-            has_failed = await self.uow.naive_rag_repo.has_failed_document(
-                rag_id=rag.id
-            )
+            has_outdated = await self.uow.naive_rag_repo.has_outdated_document(rag_id=rag.id)
+            has_completed = await self.uow.naive_rag_repo.has_completed_document(rag_id=rag.id)
+            has_failed = await self.uow.naive_rag_repo.has_failed_document(rag_id=rag.id)
 
             if has_outdated:
                 rag.mark_as_outdated()

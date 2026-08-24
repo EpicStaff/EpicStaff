@@ -37,10 +37,7 @@ def _coerce_positive_number(raw):
     if raw != raw or raw in (float("inf"), float("-inf")):  # NaN/inf guard
         return None, f"Error: 'seconds' must be a finite positive number (got {raw!r})."
     if raw <= 0:
-        return (
-            None,
-            f"Error: 'seconds' must be a positive number greater than 0 (got {raw!r}).",
-        )
+        return None, f"Error: 'seconds' must be a positive number greater than 0 (got {raw!r})."
     return float(raw), None
 
 
@@ -69,11 +66,7 @@ def main(
 
         max_seconds_raw = globals().get("max_seconds")
         try:
-            max_seconds = (
-                float(max_seconds_raw)
-                if max_seconds_raw is not None
-                else DEFAULT_MAX_SECONDS
-            )
+            max_seconds = float(max_seconds_raw) if max_seconds_raw is not None else DEFAULT_MAX_SECONDS
         except (TypeError, ValueError):
             max_seconds = DEFAULT_MAX_SECONDS
         if max_seconds < 0:

@@ -40,9 +40,7 @@ def test_path_traversal_rejected_when_allowlist_set(monkeypatch, storage, fake_c
         storage.read("allowed/../../etc/passwd")
 
 
-def test_denied_root_op_lists_allowed_paths_in_message(
-    monkeypatch, storage, fake_client
-):
+def test_denied_root_op_lists_allowed_paths_in_message(monkeypatch, storage, fake_client):
     allow_paths(monkeypatch, ["allowed/", "reports/x.csv"])
 
     with pytest.raises(StoragePermissionError) as exc_info:

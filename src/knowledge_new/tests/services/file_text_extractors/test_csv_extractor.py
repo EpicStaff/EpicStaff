@@ -2,9 +2,7 @@ import os
 
 import pytest
 from domain.errors import FileTextExtractingError
-from infrastructure.file_text_extractors.strategies.csv_extractor import (
-    CSVTextExtractor,
-)
+from infrastructure.file_text_extractors.strategies.csv_extractor import CSVTextExtractor
 from tests.conftest import offload_to_process
 
 

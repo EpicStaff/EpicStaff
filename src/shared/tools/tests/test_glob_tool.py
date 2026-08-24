@@ -79,9 +79,7 @@ class TestGlobTool:
 
         assert result == "nested.py"
 
-    def test_glob_pattern_escaping_root_returns_no_out_of_root_matches(
-        self, sandbox_dir
-    ):
+    def test_glob_pattern_escaping_root_returns_no_out_of_root_matches(self, sandbox_dir):
         _touch_with_mtime(sandbox_dir.parent / "secret.txt", time.time())
         _touch_with_mtime(sandbox_dir / "inside.txt", time.time())
 

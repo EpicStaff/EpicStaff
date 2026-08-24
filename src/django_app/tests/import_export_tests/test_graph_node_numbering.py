@@ -57,10 +57,7 @@ class TestNodeRenamingOnImport:
 
     def test_counter_continues_above_existing_max(self, graph, crew):
         CrewNode.objects.create(
-            graph=graph,
-            crew=crew,
-            node_name="Existing #50",
-            metadata={"nodeNumber": 50},
+            graph=graph, crew=crew, node_name="Existing #50", metadata={"nodeNumber": 50}
         )
         _import_one_crew_node(graph, crew, "My Node", {})
         node = CrewNode.objects.get(node_name="My Node #51")

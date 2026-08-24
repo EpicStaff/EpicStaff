@@ -72,15 +72,7 @@ def _run_ruff(target: Path, working_root: Path):
 
     try:
         result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "ruff",
-                "check",
-                "--output-format",
-                "json",
-                str(target),
-            ],
+            [sys.executable, "-m", "ruff", "check", "--output-format", "json", str(target)],
             cwd=str(working_root),
             capture_output=True,
             text=True,
@@ -94,10 +86,7 @@ def _run_ruff(target: Path, working_root: Path):
     # ruff check exits 0 (no violations) or 1 (violations found) on a normal
     # run; anything else means it failed to run at all.
     if result.returncode not in (0, 1):
-        return (
-            None,
-            f"Error: ruff failed: {result.stderr.strip() or result.stdout.strip()}",
-        )
+        return None, f"Error: ruff failed: {result.stderr.strip() or result.stdout.strip()}"
 
     try:
         violations = json.loads(result.stdout or "[]")

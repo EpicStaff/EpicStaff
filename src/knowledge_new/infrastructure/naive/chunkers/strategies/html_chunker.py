@@ -60,9 +60,7 @@ class HTMLChunker(AbstractChunker):
         documents = self.splitter.split_text(text)
         chunks = [
             PreviewChunk(
-                text=f"{doc.metadata}\n{doc.page_content}"
-                if doc.metadata
-                else doc.page_content
+                text=f"{doc.metadata}\n{doc.page_content}" if doc.metadata else doc.page_content
             )
             for doc in documents
         ]

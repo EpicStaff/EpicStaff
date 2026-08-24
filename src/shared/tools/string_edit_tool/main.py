@@ -68,19 +68,13 @@ def main(
     """
     try:
         if not file_path:
-            return (
-                "Error: file_path argument is mandatory and was not given to the tool."
-            )
+            return "Error: file_path argument is mandatory and was not given to the tool."
 
         if old_string is None:
-            return (
-                "Error: old_string argument is mandatory and was not given to the tool."
-            )
+            return "Error: old_string argument is mandatory and was not given to the tool."
 
         if new_string is None:
-            return (
-                "Error: new_string argument is mandatory and was not given to the tool."
-            )
+            return "Error: new_string argument is mandatory and was not given to the tool."
 
         if old_string == new_string:
             return "Error: new_string must differ from old_string."
@@ -133,9 +127,7 @@ def main(
         first_index = normalized_text.index(normalized_old)
 
         if replace_all:
-            new_normalized_text = normalized_text.replace(
-                normalized_old, normalized_new
-            )
+            new_normalized_text = normalized_text.replace(normalized_old, normalized_new)
             occurrences = count
         else:
             new_normalized_text = (
@@ -148,9 +140,7 @@ def main(
         context = _context_snippet(new_normalized_text, first_index)
 
         final_text = (
-            new_normalized_text.replace("\n", "\r\n")
-            if has_crlf
-            else new_normalized_text
+            new_normalized_text.replace("\n", "\r\n") if has_crlf else new_normalized_text
         )
 
         try:

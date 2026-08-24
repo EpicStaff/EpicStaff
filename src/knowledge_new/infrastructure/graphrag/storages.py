@@ -98,9 +98,7 @@ class MinioStorage(Storage):
 
         return iter(run_async_to_sync(_collect()))
 
-    async def get(
-        self, key: str, as_bytes: bool | None = None, encoding: str | None = None
-    ) -> Any:
+    async def get(self, key: str, as_bytes: bool | None = None, encoding: str | None = None) -> Any:
         async with self._client_manager() as client:
             try:
                 response = await client.get_object(
@@ -118,11 +116,7 @@ class MinioStorage(Storage):
             return data.decode(encoding or self._encoding)
 
     async def set(self, key: str, value: Any, encoding: str | None = None) -> None:
-        data = (
-            value
-            if isinstance(value, bytes)
-            else value.encode(encoding or self._encoding)
-        )
+        data = value if isinstance(value, bytes) else value.encode(encoding or self._encoding)
 
         async with self._client_manager() as client:
             await client.put_object(

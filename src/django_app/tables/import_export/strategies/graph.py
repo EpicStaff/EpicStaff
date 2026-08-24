@@ -5,7 +5,7 @@ from typing import Optional
 
 from tables.models import (
     Graph,
-    Crew,
+    Crew, 
     GraphOrganization,
 )
 from agents.models import (

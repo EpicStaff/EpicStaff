@@ -28,9 +28,7 @@ class RunSessionSerializer(serializers.Serializer):
     # SessionManagerService.create_session_data) rather than a new typed
     # SessionData field. Omitted/None (default) means "no limit" -- inert
     # for every existing caller.
-    token_budget = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1
-    )
+    token_budget = serializers.IntegerField(required=False, allow_null=True, min_value=1)
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
@@ -126,9 +124,7 @@ class ProcessRagIndexingSerializer(serializers.Serializer):
 
     rag_id = serializers.IntegerField(required=True, min_value=1)
     rag_type = serializers.ChoiceField(required=True, choices=["naive", "graph"])
-    document_config_ids = serializers.ListField(
-        child=serializers.IntegerField(min_value=1)
-    )
+    document_config_ids = serializers.ListField(child=serializers.IntegerField(min_value=1))
 
 
 class BulkExportSerializer(serializers.Serializer):

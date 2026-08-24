@@ -77,7 +77,8 @@ def test_tampered_signature_is_rejected():
         "A" if valid_signature[-1] != "A" else "B"
     )
     assert (
-        validate_twilio_signature(url, params, tampered_signature, AUTH_TOKEN) is False
+        validate_twilio_signature(url, params, tampered_signature, AUTH_TOKEN)
+        is False
     )
 
 
@@ -92,5 +93,6 @@ def test_wrong_auth_token_is_rejected():
     params = {"Digits": "1234"}
     valid_signature = "pA9T74XaVTq8oX3FDhv0CTa4HE4="
     assert (
-        validate_twilio_signature(url, params, valid_signature, "wrong-token") is False
+        validate_twilio_signature(url, params, valid_signature, "wrong-token")
+        is False
     )

@@ -14,9 +14,7 @@ _STRATEGIES: dict[ChunkStrategyEnum, type[AbstractChunker]] = {
 }
 
 
-def build_chunker(
-    strategy: ChunkStrategyEnum, config: ChunkingConfig
-) -> AbstractChunker:
+def build_chunker(strategy: ChunkStrategyEnum, config: ChunkingConfig) -> AbstractChunker:
     """Create the chunker registered for `strategy`.
 
     Args:

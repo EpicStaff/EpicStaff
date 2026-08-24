@@ -102,9 +102,7 @@ def main(
         has_domain_filter = bool(allowed_domains or blocked_domains)
         request_num = max_results
         if has_domain_filter:
-            request_num = min(
-                max_results * DOMAIN_FILTER_MULTIPLIER, SERPER_PAGE_SIZE_CAP
-            )
+            request_num = min(max_results * DOMAIN_FILTER_MULTIPLIER, SERPER_PAGE_SIZE_CAP)
 
         try:
             with httpx.Client(timeout=DEFAULT_TIMEOUT_SECONDS) as client:

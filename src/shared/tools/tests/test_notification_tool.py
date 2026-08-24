@@ -76,9 +76,7 @@ class TestNotificationToolEmail:
         assert result.startswith("Error:")
         assert "api_key" in result
 
-    def test_api_key_passed_as_stray_kwarg_is_absorbed_and_global_wins(
-        self, monkeypatch
-    ):
+    def test_api_key_passed_as_stray_kwarg_is_absorbed_and_global_wins(self, monkeypatch):
         """Regression test (EST-3285 smoke test): python_code.global_kwargs
         folds user_input config (api_key) into func_kwargs, so main() may
         also receive it as a kwarg. The global remains the source of

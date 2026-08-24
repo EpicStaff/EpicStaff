@@ -21,9 +21,7 @@ class Provider(BaseModel):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, unique=True, nullable=False)
 
-    embedding_models = relationship(
-        "EmbeddingModel", back_populates="embedding_provider"
-    )
+    embedding_models = relationship("EmbeddingModel", back_populates="embedding_provider")
 
     __tablename__ = "tables_provider"
 
@@ -42,9 +40,7 @@ class EmbeddingModel(BaseModel):
     is_visible = Column(Boolean, default=True)
     is_custom = Column(Boolean, default=False)
 
-    embedding_provider_id = Column(
-        Integer, ForeignKey("tables_provider.id"), nullable=True
-    )
+    embedding_provider_id = Column(Integer, ForeignKey("tables_provider.id"), nullable=True)
 
     embedding_provider = relationship("Provider", back_populates="embedding_models")
     embedding_configs = relationship("EmbeddingConfig", back_populates="model")
@@ -97,9 +93,7 @@ class SourceCollection(BaseModel):
 
     __tablename__ = "tables_sourcecollection"
     __table_args__ = (
-        UniqueConstraint(
-            "user_id", "collection_name", name="unique_collection_name_per_user"
-        ),
+        UniqueConstraint("user_id", "collection_name", name="unique_collection_name_per_user"),
     )
 
     def __str__(self):
@@ -118,9 +112,7 @@ class DocumentContent(BaseModel):
     id = Column(Integer, primary_key=True, autoincrement=True)
     content = Column(LargeBinary)
 
-    metadata_records = relationship(
-        "DocumentMetadata", back_populates="document_content"
-    )
+    metadata_records = relationship("DocumentMetadata", back_populates="document_content")
 
     def __str__(self):
         return f"Content {self.id}"
@@ -137,14 +129,10 @@ class DocumentMetadata(BaseModel):
     source_collection_id = Column(
         Integer, ForeignKey("tables_sourcecollection.collection_id"), nullable=True
     )
-    document_content_id = Column(
-        Integer, ForeignKey("tables_documentcontent.id"), nullable=True
-    )
+    document_content_id = Column(Integer, ForeignKey("tables_documentcontent.id"), nullable=True)
 
     source_collection = relationship("SourceCollection", back_populates="documents")
-    document_content = relationship(
-        "DocumentContent", back_populates="metadata_records"
-    )
+    document_content = relationship("DocumentContent", back_populates="metadata_records")
     naive_rag_document_configs = relationship(
         "NaiveRagDocumentConfig",
         back_populates="document",
@@ -152,9 +140,7 @@ class DocumentMetadata(BaseModel):
     )
 
     __tablename__ = "tables_documentmetadata"
-    __table_args__ = (
-        Index("ix_documentmetadata_source_collection", "source_collection_id"),
-    )
+    __table_args__ = (Index("ix_documentmetadata_source_collection", "source_collection_id"),)
 
     def __str__(self):
         return self.file_name or "Unnamed Document"

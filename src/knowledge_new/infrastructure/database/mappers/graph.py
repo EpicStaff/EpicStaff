@@ -56,18 +56,14 @@ def _build_chunking_config(index_config: GraphRagIndexConfig) -> GraphRagChunkin
     )
 
 
-def _build_extract_graph_config(
-    index_config: GraphRagIndexConfig,
-) -> ExtractGraphConfig:
+def _build_extract_graph_config(index_config: GraphRagIndexConfig) -> ExtractGraphConfig:
     return ExtractGraphConfig(
         entity_types=index_config.entity_types,
         max_gleanings=index_config.max_gleanings,
     )
 
 
-def _build_cluster_graph_config(
-    index_config: GraphRagIndexConfig,
-) -> ClusterGraphConfig:
+def _build_cluster_graph_config(index_config: GraphRagIndexConfig) -> ClusterGraphConfig:
     return ClusterGraphConfig(max_cluster_size=index_config.max_cluster_size)
 
 
@@ -82,40 +78,26 @@ def graph_rag_orm_to_rag(orm_rag: GraphRag) -> Rag:
     )
 
 
-def graph_rag_orm_to_graphrag_config(
-    orm_rag: GraphRag, *, slot: SlotEnum
-) -> GraphRagConfig:
+def graph_rag_orm_to_graphrag_config(orm_rag: GraphRag, *, slot: SlotEnum) -> GraphRagConfig:
     llm_config: LLMConfig = orm_rag.llm
     embedding_config: ORMEmbeddingConfig = orm_rag.embedder
     index_config: GraphRagIndexConfig = orm_rag.index_config
     return GraphRagConfig(
-        completion_models={
-            "default_completion_model": _build_completion_model(llm_config)
-        },
-        embedding_models={
-            "default_embedding_model": _build_embedding_model(embedding_config)
-        },
+        completion_models={"default_completion_model": _build_completion_model(llm_config)},
+        embedding_models={"default_embedding_model": _build_embedding_model(embedding_config)},
         chunking=_build_chunking_config(index_config),
         extract_graph=_build_extract_graph_config(index_config),
         cluster_graph=_build_cluster_graph_config(index_config),
-        input_storage=create_storage_config(
-            rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/input"
-        ),
-        output_storage=create_storage_config(
-            rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/output"
-        ),
+        input_storage=create_storage_config(rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/input"),
+        output_storage=create_storage_config(rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/output"),
         update_output_storage=create_storage_config(
             rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/update_output"
         ),
-        vector_store=create_vector_store_config(
-            rag_id=orm_rag.graph_rag_id, subdir=slot
-        ),
+        vector_store=create_vector_store_config(rag_id=orm_rag.graph_rag_id, subdir=slot),
     )
 
 
-def graph_document_orm_to_text_document(
-    row: GraphRagDocument, text: str
-) -> TextDocument:
+def graph_document_orm_to_text_document(row: GraphRagDocument, text: str) -> TextDocument:
     document = row.document
     return TextDocument(
         id=str(row.graph_rag_document_id),

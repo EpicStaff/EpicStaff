@@ -70,9 +70,7 @@ class Rag(Entity):
     def mark_as_failed(self, error: Exception | str):
         self.status = IndexStatusEnum.FAILED
         if isinstance(error, BaseExceptionGroup):
-            sub_details = "; ".join(
-                f"{type(e).__name__}: {e}" for e in error.exceptions
-            )
+            sub_details = "; ".join(f"{type(e).__name__}: {e}" for e in error.exceptions)
             self.error_message = (
                 f"{error.message} [{sub_details}]" if sub_details else error.message
             )
@@ -114,10 +112,7 @@ class Document(Entity):
         return Path(self.name).suffix
 
     def has_config_changed(self) -> bool:
-        return (
-            self.last_indexing_config is not None
-            and self.config != self.last_indexing_config
-        )
+        return self.last_indexing_config is not None and self.config != self.last_indexing_config
 
     def mark_as_processing(self):
         self.status = DocumentStatusEnum.PROCESSING

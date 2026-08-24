@@ -108,7 +108,9 @@ def test_throttle_blocks_after_limit_and_sends_no_mail(auth_client, monkeypatch)
         NotifyEmailThrottle, "THROTTLE_RATES", {"notify_email": "2/hour"}
     )
 
-    with patch("tables.services.notification_email_sender.send_mail") as mock_send_mail:
+    with patch(
+        "tables.services.notification_email_sender.send_mail"
+    ) as mock_send_mail:
         for _ in range(2):
             resp = auth_client.post(
                 _url(),

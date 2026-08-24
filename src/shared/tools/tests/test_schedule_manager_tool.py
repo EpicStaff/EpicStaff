@@ -93,12 +93,7 @@ class TestScheduleManagerToolCreate:
             assert payload["graph"] == 4
             return httpx.Response(
                 201,
-                json={
-                    "id": 1,
-                    "graph": 4,
-                    "node_name": payload["node_name"],
-                    "schedule": payload["schedule"],
-                },
+                json={"id": 1, "graph": 4, "node_name": payload["node_name"], "schedule": payload["schedule"]},
             )
 
         _mock_httpx_client(monkeypatch, handler)
@@ -134,12 +129,7 @@ class TestScheduleManagerToolCreate:
             captured["start"] = payload["schedule"]["start_date_time"]
             return httpx.Response(
                 201,
-                json={
-                    "id": 1,
-                    "graph": 7,
-                    "node_name": "n",
-                    "schedule": payload["schedule"],
-                },
+                json={"id": 1, "graph": 7, "node_name": "n", "schedule": payload["schedule"]},
             )
 
         _mock_httpx_client(monkeypatch, handler)
@@ -166,12 +156,7 @@ class TestScheduleManagerToolCreate:
             captured["start"] = payload["schedule"]["start_date_time"]
             return httpx.Response(
                 201,
-                json={
-                    "id": 1,
-                    "graph": 7,
-                    "node_name": "n",
-                    "schedule": payload["schedule"],
-                },
+                json={"id": 1, "graph": 7, "node_name": "n", "schedule": payload["schedule"]},
             )
 
         _mock_httpx_client(monkeypatch, handler)
@@ -297,11 +282,7 @@ class TestScheduleManagerToolUpdate:
                             "timezone": "UTC",
                             "start_date_time": "2026-07-06T09:00:00",
                             "interval": None,
-                            "end": {
-                                "type": "never",
-                                "date_time": None,
-                                "max_runs": None,
-                            },
+                            "end": {"type": "never", "date_time": None, "max_runs": None},
                         },
                     },
                 )

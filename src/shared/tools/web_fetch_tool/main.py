@@ -95,10 +95,7 @@ def _convert_body(body: bytes, content_type: str, truncated: bool, url: str):
 
                 markdown = md(text)
             except Exception as e:
-                return (
-                    None,
-                    f"Error: could not convert HTML from {url} to markdown: {e}",
-                )
+                return None, f"Error: could not convert HTML from {url} to markdown: {e}"
 
         return markdown + note, None
 
@@ -121,9 +118,7 @@ def _fetch_and_convert(url: str):
     current_url = url
     original_host = httpx.URL(url).host
 
-    with httpx.Client(
-        timeout=DEFAULT_TIMEOUT_SECONDS, follow_redirects=False
-    ) as client:
+    with httpx.Client(timeout=DEFAULT_TIMEOUT_SECONDS, follow_redirects=False) as client:
         for _hop in range(MAX_REDIRECTS + 1):
             ok, err = _ssrf_guard(current_url)
             if not ok:
@@ -165,9 +160,7 @@ def _fetch_and_convert(url: str):
                             truncated = True
                             break
 
-                    return _convert_body(
-                        bytes(body), content_type, truncated, current_url
-                    )
+                    return _convert_body(bytes(body), content_type, truncated, current_url)
             except httpx.HTTPError as e:
                 return None, f"Error: network failure while fetching {current_url}: {e}"
 

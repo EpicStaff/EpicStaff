@@ -60,9 +60,7 @@ def _format_failure(errors: list, max_attempts) -> str:
     if total > MAX_ERRORS:
         lines.append(f"(showing first {MAX_ERRORS} of {total} violations, truncated)")
 
-    lines.append(
-        "Fix the listed field(s) and call this tool again with the corrected output."
-    )
+    lines.append("Fix the listed field(s) and call this tool again with the corrected output.")
     return "\n".join(lines)
 
 

@@ -62,9 +62,7 @@ def naive_rag_doc_config_to_document(config: NaiveRagDocumentConfig) -> Document
     return document
 
 
-def embedding_row_to_embedding_config(
-    provider_name: str, model_name: str
-) -> EmbeddingConfig:
+def embedding_row_to_embedding_config(provider_name: str, model_name: str) -> EmbeddingConfig:
     return EmbeddingConfig(provider=provider_name.lower(), model=model_name, extra={})
 
 
@@ -102,9 +100,7 @@ def document_update_values(document: Document) -> dict:
     }
 
 
-def preview_chunk_to_orm(
-    document_id: int, chunk: PreviewChunk, index: int
-) -> NaiveRagPreviewChunk:
+def preview_chunk_to_orm(document_id: int, chunk: PreviewChunk, index: int) -> NaiveRagPreviewChunk:
     return NaiveRagPreviewChunk(
         naive_rag_document_config_id=document_id,
         text=chunk.text,
@@ -126,7 +122,5 @@ def indexed_chunk_to_orm_pair(
         overlap_start_index=chunk.overlap_start,
         overlap_end_index=chunk.overlap_end,
     )
-    orm_embedding = NaiveRagEmbedding(
-        naive_rag_document_config_id=document_id, vector=chunk.vector
-    )
+    orm_embedding = NaiveRagEmbedding(naive_rag_document_config_id=document_id, vector=chunk.vector)
     return orm_chunk, orm_embedding

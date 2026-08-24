@@ -88,9 +88,7 @@ def main(pattern: str, path: str | None = None) -> str:
         result = "\n".join(rendered)
 
         if total > MAX_RESULTS:
-            result += (
-                f"\n(showing {MAX_RESULTS} of {total} matches — narrow the pattern)"
-            )
+            result += f"\n(showing {MAX_RESULTS} of {total} matches — narrow the pattern)"
 
         return result
     except Exception as e:

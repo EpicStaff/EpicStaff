@@ -8,10 +8,7 @@ from django.utils import timezone
 
 from utils.logger import logger
 
-from tables.models.flow_assistant_models import (
-    FlowAssistantConversation,
-    FlowAssistantMessage,
-)
+from tables.models.flow_assistant_models import FlowAssistantConversation, FlowAssistantMessage
 from tables.services.redis_service import RedisService
 from .constants import (
     _CANCEL_KEY,
@@ -156,9 +153,7 @@ def _messages_for_llm(messages: list[dict]) -> list[dict]:
     return result
 
 
-def _dict_to_message_row(
-    conversation_id: int, idx: int, msg: dict
-) -> FlowAssistantMessage:
+def _dict_to_message_row(conversation_id: int, idx: int, msg: dict) -> FlowAssistantMessage:
     """Map a legacy message dict to a FlowAssistantMessage instance (unsaved)."""
     role = msg.get("role", "user")
     content = msg.get("content", "") or ""
@@ -188,9 +183,9 @@ def _load_message_dicts(conversation_id: int) -> list[dict]:
     Falls back to the legacy JSONField column when no rows exist (transition window).
     """
     rows = list(
-        FlowAssistantMessage.objects.filter(conversation_id=conversation_id).order_by(
-            "message_index"
-        )
+        FlowAssistantMessage.objects.filter(
+            conversation_id=conversation_id
+        ).order_by("message_index")
     )
     if not rows:
         # Transition fallback: no rows yet — read from legacy column.

@@ -1020,9 +1020,7 @@ class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
         )
         try:
             with KnowledgeClient() as client:
-                client.cancel(
-                    strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index"
-                )
+                client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
         except ClientError:
             pass
         return Response(status=status.HTTP_204_NO_CONTENT)

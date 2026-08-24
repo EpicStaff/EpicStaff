@@ -4,11 +4,7 @@ import pandas
 from application.commands import RunIndex
 from application.orchestrators.indexing.base import AbstractIndexOrchestrator
 from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
-from domain.errors import (
-    DocumentNotFoundError,
-    GraphRagConfigNotFoundError,
-    RagNotFoundError,
-)
+from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
 from domain.models import Rag
 from graphrag.api import build_index
 from graphrag.config.models.graph_rag_config import GraphRagConfig
@@ -23,9 +19,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
     async def on_execute(self, command: RunIndex):
         async with self.uow:
             rag = await self._get_rag_under_uow(command.rag_id)
-            documents = await self._get_documents_under_uow(
-                rag.id, command.document_ids
-            )
+            documents = await self._get_documents_under_uow(rag.id, command.document_ids)
 
         is_update_run = False
         target_slot = None
@@ -72,9 +66,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         )
         await self._finish_rag(rag, command.document_ids)
 
-        logger.info(
-            "Finished indexing in RAG(id={}, status={}).", rag.id, rag.status.value
-        )
+        logger.info("Finished indexing in RAG(id={}, status={}).", rag.id, rag.status.value)
 
     async def on_cancel(self, command: RunIndex):
         rag: Rag | None = self.state.get("rag")
@@ -137,9 +129,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             await self.uow.commit()
 
     def _has_indexed_document(self, documents: list[TextDocument]) -> bool:
-        return any(
-            d.raw_data["status"] == DocumentStatusEnum.COMPLETED for d in documents
-        )
+        return any(d.raw_data["status"] == DocumentStatusEnum.COMPLETED for d in documents)
 
     async def _update_status_of_documents(
         self,
@@ -162,15 +152,9 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         async with self.uow:
             rag.finish_document(*document_ids)
 
-            has_outdated = await self.uow.graph_rag_repo.has_outdated_document(
-                rag_id=rag.id
-            )
-            has_completed = await self.uow.graph_rag_repo.has_completed_document(
-                rag_id=rag.id
-            )
-            has_failed = await self.uow.graph_rag_repo.has_failed_document(
-                rag_id=rag.id
-            )
+            has_outdated = await self.uow.graph_rag_repo.has_outdated_document(rag_id=rag.id)
+            has_completed = await self.uow.graph_rag_repo.has_completed_document(rag_id=rag.id)
+            has_failed = await self.uow.graph_rag_repo.has_failed_document(rag_id=rag.id)
 
             if has_outdated:
                 rag.mark_as_outdated()
@@ -197,21 +181,13 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             await self._clear_slot_storage(rag.id, old_slot)
 
     @staticmethod
-    def _swap_slot_for_config(
-        target_slot: SlotEnum, rag_id: int, config: GraphRagConfig
-    ):
-        config.input_storage = create_storage_config(
-            rag_id=rag_id, subdir=f"{target_slot}/input"
-        )
-        config.output_storage = create_storage_config(
-            rag_id=rag_id, subdir=f"{target_slot}/output"
-        )
+    def _swap_slot_for_config(target_slot: SlotEnum, rag_id: int, config: GraphRagConfig):
+        config.input_storage = create_storage_config(rag_id=rag_id, subdir=f"{target_slot}/input")
+        config.output_storage = create_storage_config(rag_id=rag_id, subdir=f"{target_slot}/output")
         config.update_output_storage = create_storage_config(
             rag_id=rag_id, subdir=f"{target_slot}/update_output"
         )
-        config.vector_store = create_vector_store_config(
-            rag_id=rag_id, subdir=target_slot
-        )
+        config.vector_store = create_vector_store_config(rag_id=rag_id, subdir=target_slot)
 
     @staticmethod
     async def _clear_slot_storage(rag_id: int, target_slot: SlotEnum):

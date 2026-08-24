@@ -9,9 +9,7 @@ _STRATEGIES: dict[RAGStrategy, type[AbstractRagRemoveOrchestrator]] = {
 }
 
 
-def build_remover(
-    strategy: RAGStrategy, uow: AbstractUnitOfWork
-) -> AbstractRagRemoveOrchestrator:
+def build_remover(strategy: RAGStrategy, uow: AbstractUnitOfWork) -> AbstractRagRemoveOrchestrator:
     """Build the remover registered for `strategy`.
 
     Args:

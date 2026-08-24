@@ -76,7 +76,9 @@ def test_walk_paginates_across_multiple_pages(monkeypatch, storage, fake_client)
     entries = storage.walk("folder1")
 
     assert len(entries) == 5
-    assert {e["path"] for e in entries} == {f"folder1/file{i}.txt" for i in range(5)}
+    assert {e["path"] for e in entries} == {
+        f"folder1/file{i}.txt" for i in range(5)
+    }
 
 
 def test_walk_does_not_leak_sibling_prefix(storage, fake_client):

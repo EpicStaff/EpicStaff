@@ -62,9 +62,7 @@ def _unknown_type_rejected(resp):
     # so both checks must match on the stringified body rather than a key
     # lookup on resp.data itself.
     body = str(resp.data)
-    return (
-        resp.status_code == 400 and "tool_ids" in body and "Unknown tool type" in body
-    )
+    return resp.status_code == 400 and "tool_ids" in body and "Unknown tool type" in body
 
 
 # ---- Agent write path ----

@@ -11,9 +11,7 @@ from tests.services.chunkers.conftest import make_config
 
 
 def build_chunker(chunk_size: int = 200, chunk_overlap: int = 0) -> JSONChunker:
-    config = make_config(
-        ChunkStrategyEnum.JSON, chunk_size=chunk_size, chunk_overlap=chunk_overlap
-    )
+    config = make_config(ChunkStrategyEnum.JSON, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     return JSONChunker(config)
 
 

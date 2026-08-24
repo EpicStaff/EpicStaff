@@ -104,9 +104,7 @@ class RagController(Controller):
             raise NotRunningOperationError(operation=operation, rag_id=rag_id)
 
     @delete(path="{rag_id:int}/", summary="Delete a RAG and its result storage.")
-    async def remove(
-        self, strategy: RAGStrategy, rag_id: int, uow: AbstractUnitOfWork
-    ) -> None:
+    async def remove(self, strategy: RAGStrategy, rag_id: int, uow: AbstractUnitOfWork) -> None:
         command = RemoveRag(rag_id=rag_id)
         orchestrator = build_remover(strategy, uow)
         await orchestrator.execute(command)

@@ -12,20 +12,16 @@ class TestWriteFileTool:
         assert result == f"File written: new.txt ({len('hello world'.encode())} bytes)"
 
     def test_write_creates_parent_directories(self, sandbox_dir):
-        result = write_file_main(
-            file_path="nested/dir/new.txt", content="nested content"
-        )
+        result = write_file_main(file_path="nested/dir/new.txt", content="nested content")
 
         written_path = sandbox_dir / "nested" / "dir" / "new.txt"
         assert written_path.exists()
         assert written_path.read_text() == "nested content"
-        assert result.startswith(
-            "File written: nested/dir/new.txt"
-        ) or result.startswith("File written: nested\\dir\\new.txt")
+        assert result.startswith("File written: nested/dir/new.txt") or result.startswith(
+            "File written: nested\\dir\\new.txt"
+        )
 
-    def test_double_write_without_overwrite_fails_then_succeeds_with_flag(
-        self, sandbox_dir
-    ):
+    def test_double_write_without_overwrite_fails_then_succeeds_with_flag(self, sandbox_dir):
         first = write_file_main(file_path="dup.txt", content="v1")
         assert first.startswith("File written:")
 
