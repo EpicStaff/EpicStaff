@@ -1,6 +1,8 @@
 @use '@fontsource/inter/300.css' as inter-300;
 @use '@fontsource/inter/400.css' as inter-400;
 @use '@fontsource/inter/500.css' as inter-500;
+@use '@fontsource/inter/600.css' as inter-600;
+@use '@fontsource/inter/700.css' as inter-700;
 @use '@fontsource/roboto/300.css' as roboto-300;
 @use '@fontsource/roboto/400.css' as roboto-400;
 @use '@fontsource/roboto/500.css' as roboto-500;
@@ -14,19 +16,5 @@
 @use './styles/_prompt-tooltip';
 @use './styles/_action-dropdown-overlay';
 @use './styles/_tabler-icons-filled.scss';
-
-.waypoint-tooltip {
-    display: none;
-    position: fixed;
-    z-index: 9999;
-    background: #1e1e1e;
-    color: #c8c8cc;
-    font-size: 11px;
-    line-height: 1;
-    padding: 4px 8px;
-    border-radius: 4px;
-    border: 1px solid #3a3a3a;
-    pointer-events: none;
-    white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-}
+@use './styles/_resizable-handle';
+@use './styles/_waypoint-tooltip';

@@ -32,28 +32,15 @@
   link.href = basePath + "styles.css";
   document.head.appendChild(link);
 
-  // Load polyfills.js (zone.js) first, then main.js sequentially.
-  // Angular bootstraps on module evaluation — zone.js must be fully executed
-  // before main.js starts, so we cannot load them in parallel.
-  var polyfills = document.createElement("script");
-  polyfills.type = "module";
-  polyfills.src = basePath + "polyfills.js";
+  // Load main.js directly — the widget is zoneless, so there is no zone.js
+  // polyfill step anymore (one fewer sequential request before bootstrap).
+  var main = document.createElement("script");
+  main.type = "module";
+  main.src = basePath + "main.js";
 
-  polyfills.onload = function () {
-    var main = document.createElement("script");
-    main.type = "module";
-    main.src = basePath + "main.js";
-
-    main.onerror = function () {
-      console.error("[epic-chat] Failed to load main.js from " + basePath);
-    };
-
-    document.head.appendChild(main);
+  main.onerror = function () {
+    console.error("[epic-chat] Failed to load main.js from " + basePath);
   };
 
-  polyfills.onerror = function () {
-    console.error("[epic-chat] Failed to load polyfills.js from " + basePath);
-  };
-
-  document.head.appendChild(polyfills);
+  document.head.appendChild(main);
 })();

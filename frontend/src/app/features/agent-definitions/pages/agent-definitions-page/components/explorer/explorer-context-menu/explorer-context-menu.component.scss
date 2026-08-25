@@ -1,0 +1,45 @@
+.explorer-menu__overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+}
+
+.explorer-menu {
+    position: fixed;
+    z-index: 1001;
+    width: 170px;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    background-color: #212325;
+    border: 1px solid #2b2d30;
+    border-radius: 8px;
+    box-shadow:
+        0 2px 3px rgba(0, 0, 0, 0.3),
+        0 6px 10px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+
+    &__item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 16px;
+        border: none;
+        background: transparent;
+        color: var(--color-text-primary);
+        font-size: 13px;
+        text-align: left;
+        cursor: pointer;
+
+        &:hover:not(:disabled) {
+            background-color: var(--color-ghost-btn-hover);
+        }
+
+        &--disabled,
+        &:disabled {
+            color: color-mix(in srgb, var(--color-text-primary) 35%, transparent);
+            cursor: default;
+        }
+    }
+}

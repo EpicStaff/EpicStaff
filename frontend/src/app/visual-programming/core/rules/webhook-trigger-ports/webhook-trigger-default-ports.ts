@@ -17,6 +17,8 @@ export const DEFAULT_WEBHOOK_TRIGGER_NODE_PORTS: BasePort[] = [
             'audio-to-text-in',
             'end-in',
             'code-agent-in',
+            'task-in',
+            'agent-in',
             'knowledge-retriever-in',
         ],
         position: 'right',

@@ -5,6 +5,7 @@ export interface ComputationConfig {
     input_map?: Record<string, string>;
     output_variable_path?: string | null;
     libraries?: string[];
+    secret_ids?: number[];
 }
 
 export interface ClassificationDecisionTableData {

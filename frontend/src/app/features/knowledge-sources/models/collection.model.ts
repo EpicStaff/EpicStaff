@@ -9,6 +9,7 @@ export enum CreateCollectionStep {
 
 export interface CreateCollectionDtoRequest {
     collection_name: string;
+    description?: string;
 }
 
 export enum CollectionStatus {
@@ -22,6 +23,7 @@ export enum CollectionStatus {
 export interface CreateCollectionDtoResponse {
     collection_id: number;
     collection_name: string;
+    description: string | null;
     user_id: string;
     status: CollectionStatus;
     document_count: number;
@@ -33,6 +35,7 @@ export interface CreateCollectionDtoResponse {
 export interface GetCollectionRequest {
     collection_id: number;
     collection_name: string;
+    description: string | null;
     user_id: string;
     status: CollectionStatus;
     document_count: number;

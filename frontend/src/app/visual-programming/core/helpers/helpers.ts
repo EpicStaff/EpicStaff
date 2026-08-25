@@ -3,6 +3,7 @@ import { ConnectionModel } from '../models/connection.model';
 import { ConditionGroup } from '../models/decision-table.model';
 import { BaseNodeModel } from '../models/node.model';
 import { BasePort, CustomPortId, ViewPort } from '../models/port.model';
+import { DEFAULT_AGENT_NODE_PORTS } from '../rules/agent-ports/agent-node-default-ports';
 import { PORTS_DICTIONARY } from '../rules/all_ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from '../rules/audio-to-text-node-ports/audio-to-text-node-ports';
 import { DEFAULT_CODE_AGENT_NODE_PORTS } from '../rules/code-agent-ports/code-agent-node-default-ports';
@@ -47,6 +48,8 @@ export function getPortsForType(nodeType: NodeType): BasePort[] {
     switch (nodeType) {
         case NodeType.TASK:
             return DEFAULT_TASK_NODE_PORTS;
+        case NodeType.AGENT:
+            return DEFAULT_AGENT_NODE_PORTS;
         case NodeType.LLM:
             return DEFAULT_LLM_NODE_PORTS;
         case NodeType.TOOL:

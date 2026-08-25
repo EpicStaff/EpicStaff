@@ -6,7 +6,11 @@
             [class.form-container--expanded]="isExpanded()"
         >
             <div class="form-layout">
-                <div class="form-data">
+                <div
+                    #formColumn
+                    class="form-data"
+                    [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
+                >
                     <div class="form-fields">
                         <app-custom-input
                             label="Trigger Name"
@@ -18,17 +22,27 @@
                             [errorMessage]="getNodeNameErrorMessage()"
                         ></app-custom-input>
 
-                        <app-custom-input
-                            label="Telegram bot key"
-                            tooltipText="Bot key"
-                            formControlName="telegram_bot_api_key"
-                            placeholder="Enter webhook name"
-                            type="secret"
-                            cautionMessage="You must enter the full new key to change it. Partial updates aren't supported."
-                            [required]="true"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getTelegramKeyErrorMessage()"
-                        ></app-custom-input>
+                        <div>
+                            <app-select
+                                formControlName="telegram_bot_api_key_secret_id"
+                                label="Telegram bot key"
+                                variant="boxed"
+                                tooltipText="The stored secret holding this bot's Telegram API key"
+                                placeholder="Select a secret"
+                                [required]="true"
+                                [items]="secretItems()"
+                                [showSearch]="true"
+                                searchPlaceholder="Search a secret..."
+                                (changed)="notifyExternalChange()"
+                            />
+                            @if (!form.get('telegram_bot_api_key_secret_id')?.value) {
+                                <app-hint-message>
+                                    Choose an existing secret. To add a new one, go to the
+                                    <strong>Secrets tab</strong>.
+                                </app-hint-message>
+                            }
+                            <app-validation-errors [control]="form.get('telegram_bot_api_key_secret_id')!" />
+                        </div>
 
                         <app-custom-input
                             label="Webhook trigger path"
@@ -116,7 +130,20 @@
                     </div>
                 </div>
 
-                <div class="code-editor-section">
+                @if (isExpanded()) {
+                    <app-column-resize-divider
+                        ariaLabel="Resize form and mock data columns"
+                        [column]="formColumn"
+                        [opposite]="mockDataColumn"
+                        [(width)]="leftColumnWidth.width"
+                        [defaultWidth]="leftColumnWidth.defaultWidth"
+                    />
+                }
+
+                <div
+                    #mockDataColumn
+                    class="code-editor-section"
+                >
                     <label> Mock Data </label>
                     <div class="code-editor-section__info">
                         <app-help-tooltip

@@ -31,7 +31,7 @@ const MONTH_NAMES = [
     'December',
 ];
 
-export const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+export const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export interface DayCell {
     day: number | null;
@@ -111,9 +111,9 @@ export class DatePickerComponent implements ControlValueAccessor {
         const year = view.getFullYear();
         const month = view.getMonth();
 
-        // Monday-start: Sun=0 → 6, Mon=1 → 0, …, Sat=6 → 5
+        // Sunday-start: Sun=0 … Sat=6, matches getDay() directly
         const firstDow = new Date(year, month, 1).getDay();
-        const leadingEmpties = firstDow === 0 ? 6 : firstDow - 1;
+        const leadingEmpties = firstDow;
         const daysInMonth = new Date(year, month + 1, 0).getDate();
 
         const cells: DayCell[] = [];

@@ -1,0 +1,50 @@
+<div class="detail-header">
+    <button
+        type="button"
+        class="detail-header__toggle"
+        [class.detail-header__toggle--active]="showSidebar()"
+        title="Toggle Branches"
+        (click)="toggleSidebar.emit()"
+    >
+        <app-svg-icon
+            icon="expand-sidebar"
+            size="0.85rem"
+        />
+    </button>
+
+    <nav class="crumbs">
+        @for (crumb of crumbs(); track $index; let last = $last) {
+            @if (crumb.navAgentId != null) {
+                <button
+                    type="button"
+                    class="crumbs__item crumbs__item--link"
+                    (click)="navAgent.emit(crumb.navAgentId)"
+                >
+                    {{ crumb.label }}
+                </button>
+            } @else if (crumb.navAgentSurfacesId != null) {
+                <button
+                    type="button"
+                    class="crumbs__item crumbs__item--link"
+                    (click)="navAgentSurfaces.emit(crumb.navAgentSurfacesId)"
+                >
+                    {{ crumb.label }}
+                </button>
+            } @else {
+                <span
+                    class="crumbs__item"
+                    [class.crumbs__item--current]="last"
+                >
+                    {{ crumb.label }}
+                </span>
+            }
+            @if (!last) {
+                <span class="crumbs__sep">/</span>
+            }
+        }
+    </nav>
+
+    <div class="detail-header__actions">
+        <ng-content></ng-content>
+    </div>
+</div>

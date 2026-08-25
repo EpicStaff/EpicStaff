@@ -38,6 +38,8 @@ export function getNodeTitle(node: NodeModel): string {
         case NodeType.KNOWLEDGE_RETRIEVER:
         case NodeType.CODE_AGENT:
         case NodeType.SCHEDULE_TRIGGER:
+        case NodeType.TASK:
+        case NodeType.AGENT:
             return node.node_name || '';
 
         // Entity-name types — display the referenced entity name with the badge number.

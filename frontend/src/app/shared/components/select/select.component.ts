@@ -30,6 +30,8 @@ export interface SelectItem<T = unknown> {
     value: T;
     group?: string;
     icon?: string;
+    /** app-svg-icon id for an optional trailing action button rendered at the end of the item row (e.g. edit-pencil). */
+    trailingActionIcon?: string;
 }
 
 export type SelectVariant = 'default' | 'boxed';
@@ -60,6 +62,7 @@ export class SelectComponent implements ControlValueAccessor {
     invalid = input<boolean>(false);
     disabled = input<boolean>(false);
     hideTrigger = input<boolean>(false);
+    panelClass = input<string | string[]>('');
     variant = input<SelectVariant>('default');
     showSearch = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
@@ -110,6 +113,7 @@ export class SelectComponent implements ControlValueAccessor {
     /** Opens the dropdown anchored to `originElement`. Useful with `hideTrigger` + a projected trigger. */
     openAt(originElement: HTMLElement, minWidth = 160) {
         if (this.isDisabled()) return;
+        this.search.set('');
 
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
@@ -132,6 +136,7 @@ export class SelectComponent implements ControlValueAccessor {
             scrollStrategy: this.overlay.scrollStrategies.reposition(),
             hasBackdrop: true,
             backdropClass: 'transparent-backdrop',
+            panelClass: this.panelClass() || undefined,
             minWidth: Math.max(originElement.offsetWidth || 0, minWidth),
         });
 

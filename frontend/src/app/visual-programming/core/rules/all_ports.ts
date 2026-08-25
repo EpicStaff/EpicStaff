@@ -1,4 +1,5 @@
 import { BasePort } from '../models/port.model';
+import { DEFAULT_AGENT_NODE_PORTS } from './agent-ports/agent-node-default-ports';
 import { DEFAULT_AUDIO_TO_TEXT_NODE_PORTS } from './audio-to-text-node-ports/audio-to-text-node-ports';
 import { DEFAULT_CODE_AGENT_NODE_PORTS } from './code-agent-ports/code-agent-node-default-ports';
 import { DEFAULT_EDGE_NODE_PORTS } from './edge-ports/edge-node-default-ports';
@@ -20,6 +21,7 @@ import { DEFAULT_WEBHOOK_TRIGGER_NODE_PORTS } from './webhook-trigger-ports/webh
 export const PORTS_DICTIONARY: { [role: string]: BasePort } = Object.fromEntries(
     [
         ...DEFAULT_TASK_NODE_PORTS,
+        ...DEFAULT_AGENT_NODE_PORTS,
         ...DEFAULT_LLM_NODE_PORTS,
         ...DEFAULT_TOOL_NODE_PORTS,
         ...DEFAULT_PROJECT_NODE_PORTS,
@@ -38,12 +40,3 @@ export const PORTS_DICTIONARY: { [role: string]: BasePort } = Object.fromEntries
         ...DEFAULT_KNOWLEDGE_RETRIEVER_NODE_PORTS,
     ].map((port) => [port.role, port])
 );
-
-// export const ALL_PORTS: BasePort[] = [
-//   ...DEFAULT_TASK_NODE_PORTS,
-//   ...DEFAULT_AGENT_NODE_PORTS,
-//   ...DEFAULT_LLM_NODE_PORTS,
-//   ...DEFAULT_TOOL_NODE_PORTS,
-//   ...DEFAULT_PROJECT_NODE_PORTS,
-//   ...DEFAULT_PYTHON_NODE_PORTS,
-// ];
