@@ -50,7 +50,12 @@ from tables.swagger_schemas.auth_schema import (
     TOKEN_INTROSPECT_POST,
     WS_TICKET_POST,
 )
-from tables.throttles import LoginThrottle, PasswordResetRequestThrottle
+from tables.throttles import (
+    LoginThrottle,
+    PasswordResetConfirmThrottle,
+    PasswordResetRequestThrottle,
+    TokenRefreshThrottle,
+)
 
 
 class LoginView(TokenObtainPairView):
@@ -313,6 +318,7 @@ class PasswordResetConfirmView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [PasswordResetConfirmThrottle]
 
     _validator = AuthValidationService()
     _service = PasswordRecoveryService()
@@ -378,6 +384,7 @@ class CookieTokenRefreshView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [TokenRefreshThrottle]
 
     @extend_schema(**REFRESH_POST)
     def post(self, request):
