@@ -3,6 +3,8 @@ import posixpath
 import tempfile
 from typing import Any
 from datetime import timedelta, datetime, timezone
+
+from loguru import logger
 from miniopy_async import MinioAdmin as MinioAdminClient
 from miniopy_async.credentials import StaticProvider
 
@@ -56,7 +58,7 @@ class StorageCredentialManager:
             raise CredentialManagerError("No folders provided.")
 
         bucket = f"arn:aws:s3:::{allowed_bucket}"
-        prefixes = sorted(f"{self._normalize_path(f)}/*" for f in allowed_folders)
+        prefixes = sorted(f"{self._normalize_path(f)}" for f in allowed_folders)
         resources = [f"{bucket}/{prefix}" for prefix in prefixes]
         return {
             "Version": "2012-10-17",
@@ -91,7 +93,7 @@ class StorageCredentialManager:
 
     @staticmethod
     def _normalize_path(path: str) -> str:
-        stripped = path.strip().strip("/")
+        stripped = path.strip()
         normalized = posixpath.normpath(stripped) if stripped else ""
         if normalized in ("", "."):
             raise CredentialManagerError(
@@ -99,4 +101,5 @@ class StorageCredentialManager:
             )
         if normalized.startswith(".."):
             raise CredentialManagerError(f"Path traversal in path: '{path}'")
-        return normalized
+
+        return f'{normalized}/*' if stripped.endswith('/') else normalized
