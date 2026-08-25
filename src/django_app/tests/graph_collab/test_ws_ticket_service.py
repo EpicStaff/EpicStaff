@@ -153,6 +153,7 @@ async def test_middleware_sets_user_for_valid_ticket(fake_redis):
     User = get_user_model()
     from asgiref.sync import sync_to_async
 
+    User = get_user_model()
     user = await sync_to_async(User.objects.create_user)(
         email="mw1@example.com", password="Pass123!"
     )

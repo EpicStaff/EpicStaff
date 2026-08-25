@@ -291,6 +291,7 @@ export class DatePickerComponent implements ControlValueAccessor {
         const portal = new TemplatePortal(this.dropdownTemplate, this.vcr);
         this.overlayRef.attach(portal);
         this.isOpen.set(true);
+        this.dateInputEl?.nativeElement.focus();
     }
 
     toggleDropdown(): void {

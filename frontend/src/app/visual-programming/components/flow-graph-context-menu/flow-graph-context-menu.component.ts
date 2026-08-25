@@ -41,6 +41,7 @@ export type { ContextMenuTab };
 export class FlowGraphContextMenuComponent implements AfterViewInit {
     public readonly position = input.required<IPoint>();
     public readonly currentFlowId = input<number | null>(null);
+    public readonly canEdit = input<boolean>(true);
     public readonly nodeSelected = output<CreateNodeRequest>();
 
     @ViewChild('menuTemplate', { static: true })

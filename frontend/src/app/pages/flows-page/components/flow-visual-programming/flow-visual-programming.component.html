@@ -4,10 +4,7 @@
         [graphId]="graph.id"
         [isAssistantOpen]="flowAssistantService.isOpen()"
         [graph]="graph"
-        [isSaving]="isSaving()"
         [isRunning]="isRunning()"
-        [hasUnsavedChanges]="hasUnsavedChangesSignal()"
-        (save)="onHeaderSave()"
         (saveVersion)="onSaveVersion()"
         (viewVersionHistory)="onViewVersionHistory()"
         (viewSessions)="handleViewSessions()"
@@ -38,9 +35,8 @@
             [flowName]="graph.name"
             [initialNodeId]="initialNodeId"
             [initialNodeExpand]="initialNodeExpand"
-            [isSaving]="isSaving()"
             [hasUnsavedChanges]="hasUnsavedChanges()"
-            (save)="onGraphSave($event)"
+            [canEdit]="canEditFlow()"
             (openShortcuts)="openShortcutsModal($event)"
             (requestReload)="refreshCurrentFlow()"
             (importComplete)="handlePartialImportComplete()"
@@ -84,12 +80,6 @@
                     (sessionSelected)="onSessionSelected($event)"
                 ></app-flow-messages-panel>
             }
-        }
-        @if (isSaving()) {
-            <div
-                class="saving-lock-overlay"
-                title="Saving… editing is locked until the save completes"
-            ></div>
         }
     </div>
     @if (flowAssistantService.isOpen()) {

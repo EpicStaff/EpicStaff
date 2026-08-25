@@ -12,55 +12,75 @@
                     [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
                 >
                     <div class="form-fields">
-                        <app-custom-input
-                            label="Trigger Name"
-                            tooltipText="Trigger name"
-                            formControlName="node_name"
-                            placeholder="Enter node name"
-                            [required]="true"
-                            [activeColor]="activeColor"
-                            [errorMessage]="getNodeNameErrorMessage()"
-                        ></app-custom-input>
-
-                        <div>
-                            <app-select
-                                formControlName="telegram_bot_api_key_secret_id"
-                                label="Telegram bot key"
-                                variant="boxed"
-                                tooltipText="The stored secret holding this bot's Telegram API key"
-                                placeholder="Select a secret"
+                        <app-lockable-field
+                            fieldId="node_name"
+                            [nodeId]="node().id"
+                        >
+                            <app-custom-input
+                                label="Trigger Name"
+                                tooltipText="Trigger name"
+                                formControlName="node_name"
+                                placeholder="Enter node name"
                                 [required]="true"
-                                [items]="secretItems()"
-                                [showSearch]="true"
-                                searchPlaceholder="Search a secret..."
-                                (changed)="notifyExternalChange()"
+                                [activeColor]="activeColor"
+                                [errorMessage]="getNodeNameErrorMessage()"
+                            ></app-custom-input>
+                        </app-lockable-field>
+
+                        <app-lockable-field
+                            fieldId="telegram_bot_api_key_secret_id"
+                            [nodeId]="node().id"
+                        >
+                            <div>
+                                <app-select
+                                    formControlName="telegram_bot_api_key_secret_id"
+                                    label="Telegram bot key"
+                                    variant="boxed"
+                                    tooltipText="The stored secret holding this bot's Telegram API key"
+                                    placeholder="Select a secret"
+                                    [required]="true"
+                                    [items]="secretItems()"
+                                    [showSearch]="true"
+                                    searchPlaceholder="Search a secret..."
+                                    (changed)="notifyExternalChange()"
+                                />
+                                @if (!form.get('telegram_bot_api_key_secret_id')?.value) {
+                                    <app-hint-message>
+                                        Choose an existing secret. To add a new one, go to the
+                                        <strong>Secrets tab</strong>.
+                                    </app-hint-message>
+                                }
+                                <app-validation-errors [control]="form.get('telegram_bot_api_key_secret_id')!" />
+                            </div>
+                        </app-lockable-field>
+
+                        <app-lockable-field
+                            fieldId="webhook_trigger_path"
+                            [nodeId]="node().id"
+                        >
+                            <app-custom-input
+                                label="Webhook trigger path"
+                                tooltipText="Path"
+                                formControlName="webhook_trigger_path"
+                                placeholder="Enter webhook path"
+                                [required]="true"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+                        </app-lockable-field>
+
+                        <app-lockable-field
+                            fieldId="ngrok_webhook_config"
+                            [nodeId]="node().id"
+                        >
+                            <app-select
+                                [loading]="ngrokConfigsLoading()"
+                                label="Select Ngrok config"
+                                tooltipText="Select the ngrok config. Full URL is shown below."
+                                formControlName="ngrok_webhook_config"
+                                [items]="ngrokConfigSelectItems()"
+                                (changed)="onNgrokConfigChanged($event)"
                             />
-                            @if (!form.get('telegram_bot_api_key_secret_id')?.value) {
-                                <app-hint-message>
-                                    Choose an existing secret. To add a new one, go to the
-                                    <strong>Secrets tab</strong>.
-                                </app-hint-message>
-                            }
-                            <app-validation-errors [control]="form.get('telegram_bot_api_key_secret_id')!" />
-                        </div>
-
-                        <app-custom-input
-                            label="Webhook trigger path"
-                            tooltipText="Path"
-                            formControlName="webhook_trigger_path"
-                            placeholder="Enter webhook path"
-                            [required]="true"
-                            [activeColor]="activeColor"
-                        ></app-custom-input>
-
-                        <app-select
-                            [loading]="ngrokConfigsLoading()"
-                            label="Select Ngrok config"
-                            tooltipText="Select the ngrok config. Full URL is shown below."
-                            formControlName="ngrok_webhook_config"
-                            [items]="ngrokConfigSelectItems()"
-                            (changed)="onNgrokConfigChanged($event)"
-                        />
+                        </app-lockable-field>
                     </div>
 
                     <div class="webhook-section">

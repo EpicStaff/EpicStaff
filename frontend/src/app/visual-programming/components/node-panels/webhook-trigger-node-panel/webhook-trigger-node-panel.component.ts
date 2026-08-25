@@ -29,6 +29,7 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
 import { NodeType } from '../../../core/enums/node-type';
 import { WebhookTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 
 export const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
@@ -44,6 +45,7 @@ export const WEBHOOK_NAME_PATTERN = /^[A-Za-z0-9\-._~/]*$/;
         ClipboardModule,
         SelectComponent,
         MatTooltipModule,
+        LockableFieldComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
     ],

@@ -39,6 +39,7 @@ import {
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 import { themeQuartz } from 'ag-grid-community';
 
+import { ToastService } from '../../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ButtonComponent } from '../../../../../shared/components/buttons/button/button.component';
 import { ConfirmationDialogService } from '../../../../../shared/components/cofirm-dialog/confimation-dialog.service';
@@ -109,6 +110,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     private overlay = inject(Overlay);
     private vcr = inject(ViewContainerRef);
     private confirmDialog = inject(ConfirmationDialogService);
+    private toastService = inject(ToastService);
 
     private gridApi!: GridApi;
     private outsideClickUnlisten: (() => void) | null = null;
@@ -402,15 +404,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     constructor() {
         effect(() => {
             const groups = this.conditionGroups();
-            if (groups && groups.length > 0) {
-                untracked(() => {
-                    this.rowData.set([...groups]);
-                    if (!this.fieldColumnsInitialized) {
-                        this.initFieldColumnsFromData(groups);
-                        this.fieldColumnsInitialized = true;
-                    }
-                });
-            }
+            untracked(() => {
+                this.rowData.set(groups ? [...groups] : []);
+                if (groups && groups.length > 0 && !this.fieldColumnsInitialized) {
+                    this.initFieldColumnsFromData(groups);
+                    this.fieldColumnsInitialized = true;
+                }
+            });
         });
         effect(() => {
             this.prompts();
@@ -577,6 +577,7 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         suppressRowTransform: true,
         suppressCellFocus: false,
         stopEditingWhenCellsLoseFocus: true,
+        popupParent: document.body,
         domLayout: 'autoHeight',
         rowDragManaged: false,
         animateRows: true,
@@ -1150,15 +1151,6 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 },
                 cellEditorParams: {
                     maxLength: 1000000,
-                    cellEditorValidator: (value: string) => {
-                        if (!value || value.trim() === '') {
-                            return {
-                                valid: false,
-                                message: 'Condition Name cannot be empty (cell will not be saved).',
-                            };
-                        }
-                        return { valid: true };
-                    },
                 },
                 cellClassRules: {
                     'cell-required-invalid': (p) => String(p.value ?? '').trim().length === 0,
@@ -1250,7 +1242,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                     this.openPromptLibrary.emit({ action: 'edit', promptId });
                 },
             }),
-            cellEditorPopup: false,
+            cellEditorPopup: true,
+            cellEditorPopupPosition: 'under',
             cellStyle: {
                 fontSize: '14px',
             },
@@ -1882,6 +1875,22 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
                 this.gridApi?.refreshCells({ rowNodes: [event.node!], force: true });
             } finally {
                 this.isSyncing = false;
+            }
+        } else if (colId === 'group_name') {
+            const typedName = (event.newValue ?? '').toString().trim();
+            if (!typedName) {
+                const fallbackName =
+                    (event.oldValue ?? '').toString().trim() || `Condition ${(event.rowIndex ?? 0) + 1}`;
+
+                this.isSyncing = true;
+                try {
+                    rowData.group_name = fallbackName;
+                    this.gridApi?.refreshCells({ rowNodes: [event.node!], columns: ['group_name'], force: true });
+                } finally {
+                    this.isSyncing = false;
+                }
+
+                this.toastService.warning('Condition name cannot be empty, node is not saved', 3000, 'bottom-right');
             }
         } else if (colId.startsWith(CDT_MANIP_PREFIX)) {
             // Manip params → manipulation sync

@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { forkJoin } from 'rxjs';
+import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
 
 import { ToastService } from '../../../../services/notifications/toast.service';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
@@ -52,6 +53,7 @@ export class SelectStorageFilesDialogComponent implements OnInit {
     private readonly toastService = inject(ToastService);
     private readonly dialog = inject(Dialog);
     private readonly destroyRef = inject(DestroyRef);
+    private readonly wsService = inject(GraphCollaborationWsService);
 
     readonly flowId = this.data.flowId;
     readonly flowName = this.data.flowName;
@@ -136,6 +138,17 @@ export class SelectStorageFilesDialogComponent implements OnInit {
     }
 
     ngOnInit(): void {
+        this.loadFilesList();
+
+        this.wsService.graphFilesChanged$
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.loadFilesList());
+    }
+
+    private loadFilesList(): void {
+        this.rootNodes.set([]);
+        this.allNodes.set([]);
+        this.isLoadingRoot.set(true);
         this.loadAttachedFiles(() => {
             const folders = new Set(this.attachedFolderPaths());
             this.selectedFolderPaths.set(folders);

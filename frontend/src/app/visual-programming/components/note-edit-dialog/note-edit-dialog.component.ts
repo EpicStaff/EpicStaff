@@ -4,14 +4,19 @@ import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
     Component,
+    computed,
     DestroyRef,
     HostListener,
     Inject,
+    inject,
+    OnDestroy,
     OnInit,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
+import { ProfileService } from 'src/app/services/auth/profile.service';
 
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GraphNoteModel } from '../../core/models/node.model';
@@ -57,8 +62,12 @@ import { GraphNoteModel } from '../../core/models/node.model';
                             class="note-textarea"
                             [(ngModel)]="noteContent"
                             placeholder="Add note text..."
+                            [disabled]="lockedByOther() || !!data.readonly"
                             autofocus
                         ></textarea>
+                        @if (lockedByOther()) {
+                            <div class="locked-hint">Editing by {{ lockerName() }}</div>
+                        }
                     </div>
                 </div>
             </div>
@@ -168,16 +177,45 @@ import { GraphNoteModel } from '../../core/models/node.model';
             .note-textarea:focus {
                 border-color: var(--accent-color, #4a6da7);
             }
+
+            .note-textarea:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+
+            .locked-hint {
+                margin-top: 0.5rem;
+                font-size: 0.75rem;
+                color: var(--color-text-secondary, #999);
+            }
         `,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class NoteEditDialogComponent implements OnInit {
+export class NoteEditDialogComponent implements OnInit, OnDestroy {
     noteContent: string = '';
+
+    private readonly wsService = inject(GraphCollaborationWsService);
+    private readonly profileService = inject(ProfileService);
+
+    protected readonly contentLock = computed(
+        () => this.wsService.lockedNodeFields().get(this.data.node.id)?.get('content') ?? null
+    );
+
+    protected readonly lockedByOther = computed(() => {
+        const lock = this.contentLock();
+        if (!lock) return false;
+        return lock.user_id !== this.profileService.currentUserSignal()?.id;
+    });
+
+    protected readonly lockerName = computed(() => {
+        const lock = this.contentLock();
+        return lock?.display_name ?? (lock ? `User ${lock.user_id}` : '');
+    });
 
     constructor(
         public dialogRef: DialogRef<{ content: string }>,
-        @Inject(DIALOG_DATA) public data: { node: GraphNoteModel },
+        @Inject(DIALOG_DATA) public data: { node: GraphNoteModel; readonly?: boolean },
         private cdr: ChangeDetectorRef,
         private destroyRef: DestroyRef
     ) {}
@@ -186,6 +224,10 @@ export class NoteEditDialogComponent implements OnInit {
         // Initialize with the current note content
         this.noteContent = this.data.node.data.content || '';
         this.cdr.detectChanges();
+
+        if (!this.data.readonly && !this.lockedByOther()) {
+            this.wsService.sendNodeLocked(this.data.node.id, 'content');
+        }
 
         this.dialogRef.keydownEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event: KeyboardEvent) => {
             if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
@@ -196,7 +238,19 @@ export class NoteEditDialogComponent implements OnInit {
     }
 
     close(): void {
+        const unchanged = this.noteContent === (this.data.node.data.content || '');
+        if (this.lockedByOther() || unchanged) {
+            this.dialogRef.close();
+            return;
+        }
         this.dialogRef.close({ content: this.noteContent });
+    }
+
+    ngOnDestroy(): void {
+        const lock = this.contentLock();
+        if (lock && lock.user_id === this.profileService.currentUserSignal()?.id) {
+            this.wsService.sendNodeUnlocked(this.data.node.id, 'content');
+        }
     }
 
     @HostListener('document:keydown.escape', ['$event'])

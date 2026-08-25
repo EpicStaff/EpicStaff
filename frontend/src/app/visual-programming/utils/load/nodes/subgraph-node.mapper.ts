@@ -1,4 +1,4 @@
-import { generateUuid } from '@shared/utils';
+import { stableNodeId } from '../../stable-node-id';
 
 import { SubGraphNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/subgraph-node.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -15,7 +15,7 @@ export function mapSubGraphNodeToModel(sn: SubGraphNode): SubGraphNodeModel {
         tags: [],
     };
     return {
-        id: generateUuid(),
+        id: stableNodeId(NodeType.SUBGRAPH, sn.id),
         backendId: sn.id,
         type: NodeType.SUBGRAPH,
         node_name: sn.node_name,

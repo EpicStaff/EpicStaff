@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, input, signal } f
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
-import { Subject, switchMap } from 'rxjs';
+import { Observable, of, Subject, switchMap, throwError } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import { expandCollapseAnimation } from '../../../../shared/animations/animations-expand-collapse';
@@ -24,6 +24,7 @@ import {
 } from '../../../services/python-code-run.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import {
@@ -47,6 +48,7 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
         PythonTerminalComponent,
         NodeStorageSectionComponent,
         AppSvgIconComponent,
+        LockableFieldComponent,
         HelpTooltipComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
@@ -71,29 +73,38 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                             class="form-fields"
                             [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
                         >
-                            <app-custom-input
-                                label="Node Name"
-                                tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
-                                formControlName="node_name"
-                                placeholder="Enter node name"
-                                [activeColor]="activeColor"
-                                [errorMessage]="getNodeNameErrorMessage()"
-                            ></app-custom-input>
-
-                            <div class="input-map">
-                                <app-input-map
+                            <app-lockable-field
+                                fieldId="node_name"
+                                [nodeId]="node().id"
+                            >
+                                <app-custom-input
+                                    label="Node Name"
+                                    tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
+                                    formControlName="node_name"
+                                    placeholder="Enter node name"
                                     [activeColor]="activeColor"
-                                    [showTestMode]="true"
-                                    [testMode]="isOpenTestMode()"
-                                    [pythonNodeId]="node().backendId"
-                                    [graphId]="graphId()"
-                                    [nodeName]="node().node_name"
-                                    [testRunning]="testRunning()"
-                                    [testInputDirty]="testInputDirty()"
-                                    (testModeChange)="isOpenTestMode.set($event)"
-                                    (runTest)="onRunTest($event)"
-                                ></app-input-map>
-                            </div>
+                                    [errorMessage]="getNodeNameErrorMessage()"
+                                ></app-custom-input>
+                            </app-lockable-field>
+
+                            <app-lockable-field
+                                fieldId="input_map"
+                                [nodeId]="node().id"
+                            >
+                                <div class="input-map">
+                                    <app-input-map
+                                        [activeColor]="activeColor"
+                                        [showTestMode]="true"
+                                        [testMode]="isOpenTestMode()"
+                                        [pythonNodeId]="node().backendId"
+                                        [graphId]="graphId()"
+                                        [nodeName]="node().node_name"
+                                        [testRunning]="testRunning()"
+                                        (testModeChange)="isOpenTestMode.set($event)"
+                                        (runTest)="onRunTest($event)"
+                                    ></app-input-map>
+                                </div>
+                            </app-lockable-field>
 
                             <app-node-secrets-field
                                 [activeColor]="activeColor"
@@ -102,49 +113,69 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                                 (valueChange)="onSecretsChange($event)"
                             />
 
-                            <app-custom-input
-                                label="Output Variable Path"
-                                tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
-                                formControlName="output_variable_path"
-                                placeholder="Enter output variable path (leave empty for null)"
-                                [activeColor]="activeColor"
-                            ></app-custom-input>
-
-                            <app-custom-input
-                                label="Libraries"
-                                tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                                formControlName="libraries"
-                                placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                                [activeColor]="activeColor"
-                            ></app-custom-input>
-
-                            <div
-                                class="stream-config-section"
-                                formGroupName="stream_config"
+                            <app-lockable-field
+                                fieldId="output_variable_path"
+                                [nodeId]="node().id"
                             >
-                                <span class="section-label">Streaming to EpicChat</span>
-                                <div class="checkbox-list">
-                                    <label class="checkbox-item">
-                                        <input
-                                            type="checkbox"
-                                            formControlName="execution_status"
-                                            [style.accent-color]="activeColor"
-                                        />
-                                        <span>Execution status</span>
-                                        <app-help-tooltip
-                                            size="18px"
-                                            text="When enabled, this node's execution status updates (started, finished, errored) are streamed to EpicChat."
-                                        />
-                                    </label>
-                                </div>
-                            </div>
+                                <app-custom-input
+                                    label="Output Variable Path"
+                                    tooltipText="The path where the output of this node will be stored in your flow variables. Leave empty if you don't need to store the output."
+                                    formControlName="output_variable_path"
+                                    placeholder="Enter output variable path (leave empty for null)"
+                                    [activeColor]="activeColor"
+                                ></app-custom-input>
+                            </app-lockable-field>
 
-                            <app-node-storage-section
-                                [useStorage]="useStorage()"
-                                (onToggleChange)="onStorageToggle($event)"
-                                (onInsertCode)="insertStorageCode($event)"
-                                (onRemoveCode)="removeStorageCode($event)"
-                            ></app-node-storage-section>
+                            <app-lockable-field
+                                fieldId="libraries"
+                                [nodeId]="node().id"
+                            >
+                                <app-custom-input
+                                    label="Libraries"
+                                    tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
+                                    formControlName="libraries"
+                                    placeholder="Enter libraries (e.g., requests, pandas, numpy)"
+                                    [activeColor]="activeColor"
+                                ></app-custom-input>
+                            </app-lockable-field>
+
+                            <app-lockable-field
+                                fieldId="stream_config"
+                                [nodeId]="node().id"
+                            >
+                                <div
+                                    class="stream-config-section"
+                                    formGroupName="stream_config"
+                                >
+                                    <span class="section-label">Streaming to EpicChat</span>
+                                    <div class="checkbox-list">
+                                        <label class="checkbox-item">
+                                            <input
+                                                type="checkbox"
+                                                formControlName="execution_status"
+                                                [style.accent-color]="activeColor"
+                                            />
+                                            <span>Execution status</span>
+                                            <app-help-tooltip
+                                                size="18px"
+                                                text="When enabled, this node's execution status updates (started, finished, errored) are streamed to EpicChat."
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                            </app-lockable-field>
+
+                            <app-lockable-field
+                                fieldId="use_storage"
+                                [nodeId]="node().id"
+                            >
+                                <app-node-storage-section
+                                    [useStorage]="useStorage()"
+                                    (onToggleChange)="onStorageToggle($event)"
+                                    (onInsertCode)="insertStorageCode($event)"
+                                    (onRemoveCode)="removeStorageCode($event)"
+                                ></app-node-storage-section>
+                            </app-lockable-field>
                         </div>
 
                         @if (isExpanded() && !isCodeEditorFullWidth()) {
@@ -179,15 +210,21 @@ import { TerminalLogEntry, TerminalLogType } from './python-terminal/terminal-lo
                             }
 
                             <div class="code-editor-column">
-                                <app-code-editor
-                                    class="code-editor-section"
-                                    [class.no-bottom-radius]="isOpenTestMode()"
-                                    [pythonCode]="pythonCode"
-                                    [secretNames]="secretNames()"
-                                    [inputMapKeys]="inputMapKeys()"
-                                    (pythonCodeChange)="onPythonCodeChange($event)"
-                                    (errorChange)="onCodeErrorChange($event)"
-                                ></app-code-editor>
+                                <app-lockable-field
+                                    class="fill"
+                                    fieldId="python_code"
+                                    [nodeId]="node().id"
+                                >
+                                    <app-code-editor
+                                        class="code-editor-section"
+                                        [class.no-bottom-radius]="isOpenTestMode()"
+                                        [pythonCode]="pythonCode"
+                                        [secretNames]="secretNames()"
+                                        [inputMapKeys]="inputMapKeys()"
+                                        (pythonCodeChange)="onPythonCodeChange($event)"
+                                        (errorChange)="onCodeErrorChange($event)"
+                                    ></app-code-editor>
+                                </app-lockable-field>
 
                                 @if (isOpenTestMode()) {
                                     <app-python-terminal
@@ -498,16 +535,12 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     pythonCode: string = '';
     initialPythonCode: string = '';
+    private initialUseStorage: boolean = false;
     private initialFormSignatureExceptTestValues: string = '';
     private initialTestInputValuesSignature: string = '';
     codeEditorHasError: boolean = false;
     private readonly pythonCodeChange$ = new Subject<string>();
     private readonly formDirtyTick = signal(0);
-    public readonly testInputDirty = computed(() => {
-        this.formDirtyTick();
-        if (!this.form) return false;
-        return this.buildTestInputValuesSignature() !== this.initialTestInputValuesSignature;
-    });
 
     public override readonly isDirty = computed(() => {
         this.formDirtyTick();
@@ -515,6 +548,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         return (
             this.buildFormSignatureExceptTestValues() !== this.initialFormSignatureExceptTestValues ||
             this.pythonCode !== this.initialPythonCode ||
+            this.useStorage() !== this.initialUseStorage ||
             this.buildTestInputValuesSignature() !== this.initialTestInputValuesSignature
         );
     });
@@ -577,13 +611,13 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                     }
                 });
         });
-        this.sidePanelService.graphSaved$.pipe(takeUntilDestroyed()).subscribe(() => this.resetDirtyAfterGraphSave());
     }
 
     private resetDirtyAfterSave(): void {
         if (!this.form) return;
         this.form.markAsPristine();
         this.initialPythonCode = this.pythonCode;
+        this.initialUseStorage = this.useStorage();
         this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
         this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();
         this.formDirtyTick.update((v) => v + 1);
@@ -603,6 +637,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.formDirtyTick.update((v) => v + 1);
     }
 
+    /** @deprecated was triggered by SidePanelService.graphSaved$ (manual REST save path); no call sites. */
     private resetDirtyAfterGraphSave(): void {
         if (!this.form) return;
         this.initialPythonCode = this.pythonCode;
@@ -613,8 +648,10 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     private buildFormSignatureExceptTestValues(): string {
         const raw = this.form.getRawValue() as Record<string, unknown>;
         const testInput = (raw['test_input'] as { key: string; value: string }[] | undefined) ?? [];
+        const inputMap = (raw['input_map'] as { key: string; value: string }[] | undefined) ?? [];
         const stripped = {
             ...raw,
+            input_map: inputMap.filter((p) => p.key?.trim()),
             test_input: testInput.map((p) => ({ key: p.key, value: '' })),
             secret_ids: [...this.selectedSecretIds()].sort(),
         };
@@ -641,7 +678,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
 
     onSaveClick(): void {
         if (!this.form || this.form.invalid || this.isSaving()) return;
-        const updatedNode = this.createUpdatedNode({ manualSave: true });
+        const updatedNode = this.createUpdatedNode();
         this.sidePanelService.requestSaveNode(updatedNode);
     }
 
@@ -676,10 +713,8 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
     }
 
     initializeForm(): FormGroup {
-        this.terminalLogs.set([]);
         const sc = this.node().stream_config;
 
-        this.useStorage.set(this.node().data.use_storage ?? false);
         this.selectedSecretIds.set(this.node().data.secret_ids ?? []);
 
         const form = this.fb.group({
@@ -696,20 +731,42 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         this.initializeInputMap(form);
         this.initializeTestInput(form);
 
-        this.pythonCode = this.node().data.code || '';
-        this.initialPythonCode = this.pythonCode;
-        this.form = form;
-        this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
-        this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();
-
-        form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-            this.formDirtyTick.update((v) => v + 1);
-        });
-
         return form;
     }
 
-    createUpdatedNode(opts?: { manualSave?: boolean }): PythonNodeModel {
+    protected override onFormReinitialized(): void {
+        this.terminalLogs.set([]);
+        this.useStorage.set(this.node().data.use_storage ?? false);
+        this.initialUseStorage = this.useStorage();
+        this.pythonCode = this.node().data.code || '';
+        this.initialPythonCode = this.pythonCode;
+        this.initialFormSignatureExceptTestValues = this.buildFormSignatureExceptTestValues();
+        this.initialTestInputValuesSignature = this.buildTestInputValuesSignature();
+
+        this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.formDirtyTick.update((v) => v + 1);
+        });
+    }
+
+    // pythonCode lives outside `this.form`, so a remote node_updated never reaches it via
+    // applyRemoteDiff. Adopt the incoming code only if we have no local unsaved edit of our own
+    // (same three-way-merge rule the form fields already follow), otherwise keep typing untouched.
+    protected override onRemoteFormMerged(): void {
+        const remoteCode = this.node().data.code || '';
+        if (this.pythonCode === this.initialPythonCode) {
+            this.pythonCode = remoteCode;
+            this.formDirtyTick.update((v) => v + 1);
+        }
+        this.initialPythonCode = remoteCode;
+
+        const remoteUseStorage = this.node().data.use_storage ?? false;
+        if (this.useStorage() === this.initialUseStorage) {
+            this.useStorage.set(remoteUseStorage);
+        }
+        this.initialUseStorage = remoteUseStorage;
+    }
+
+    createUpdatedNode(): PythonNodeModel {
         const validInputPairs = getValidInputPairs(this.inputMapPairs);
         const inputMapValue = createInputMapFromPairs(validInputPairs);
         if (this.isOpenTestMode()) {
@@ -717,11 +774,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             const testKeys = new Set(
                 testArray.controls.map((c) => (c.value.key as string)?.trim()).filter((k): k is string => !!k)
             );
-            for (const key of Object.keys(inputMapValue)) {
-                if (!testKeys.has(key)) {
-                    delete inputMapValue[key];
-                }
-            }
             for (const key of testKeys) {
                 if (!(key in inputMapValue)) {
                     inputMapValue[key] = 'variables.';
@@ -745,7 +797,7 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
                 secret_ids: this.selectedSecretIds(),
             },
             stream_config: this.form.value.stream_config || {},
-            test_input: opts?.manualSave ? this.getTestInputValue() : this.getTestInputValuePreservingSaved(),
+            test_input: this.getTestInputValue(),
         };
     }
 
@@ -755,19 +807,6 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             const key = (c.value.key as string)?.trim();
             if (key) {
                 acc[key] = (c.value.value as string) ?? '';
-            }
-            return acc;
-        }, {});
-    }
-
-    private getTestInputValuePreservingSaved(): Record<string, string> {
-        const testArray = this.form.get('test_input') as FormArray;
-        const previouslySaved = (this.node().test_input ?? {}) as Record<string, string>;
-        return testArray.controls.reduce((acc: Record<string, string>, c) => {
-            const key = (c.value.key as string)?.trim();
-            if (key) {
-                const currentFormValue = (c.value.value as string) ?? '';
-                acc[key] = previouslySaved[key] ?? currentFormValue;
             }
             return acc;
         }, {});
@@ -816,6 +855,16 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
         }
     }
 
+    private resolvePythonCodeId(): Observable<number | null> {
+        const known = this.node().python_code_id;
+        if (known != null) return of(known);
+
+        const backendId = this.node().backendId;
+        if (backendId == null) return of(null);
+
+        return this.pythonCodeRunService.getPythonCodeId(backendId);
+    }
+
     onRunTest(variables: Record<string, string>): void {
         this.testRunning.set(true);
         this.testResult.set(null);
@@ -835,19 +884,25 @@ export class PythonNodePanelComponent extends BaseSidePanel<PythonNodeModel> {
             Object.entries(variables).map(([k, v]) => [k, this.parseVariableValue(v)])
         );
 
-        const payload: RunPythonCodeRequest = {
-            python_code_id: this.node().python_code_id ?? null,
-            code: this.pythonCode,
-            entrypoint: 'main',
-            libraries,
-            variables: parsedVariables,
-        };
-
         this.addLog('info', `Parameters: ${JSON.stringify(parsedVariables)}`);
 
-        this.pythonCodeRunService
-            .runPythonCode(payload)
+        this.resolvePythonCodeId()
             .pipe(
+                switchMap((pythonCodeId) => {
+                    if (pythonCodeId == null) {
+                        return throwError(
+                            () => new Error('Python code is not saved yet. Please wait for autosave and try again.')
+                        );
+                    }
+                    const payload: RunPythonCodeRequest = {
+                        python_code_id: pythonCodeId,
+                        code: this.pythonCode,
+                        entrypoint: 'main',
+                        libraries,
+                        variables: parsedVariables,
+                    };
+                    return this.pythonCodeRunService.runPythonCode(payload);
+                }),
                 switchMap(({ execution_id }) => this.pythonCodeRunService.pollResultWithEvents(execution_id)),
                 takeUntilDestroyed(this.destroyRef)
             )

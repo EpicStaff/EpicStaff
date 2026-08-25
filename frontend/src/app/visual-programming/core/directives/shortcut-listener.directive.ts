@@ -71,7 +71,12 @@ export class ShortcutListenerDirective implements OnInit, OnDestroy {
 
                         // 2) bail if user is typing in a form or contenteditable, except for Escape
                         const el = evt.target as HTMLElement;
-                        if (key !== 'escape' && el.matches('input,textarea,select,[contenteditable="true"]')) {
+                        const isUndoRedo = mod && (key === 'z' || key === 'я' || key === 'y' || key === 'н');
+                        if (
+                            key !== 'escape' &&
+                            !isUndoRedo &&
+                            el.matches('input,textarea,select,[contenteditable="true"]')
+                        ) {
                             return false;
                         }
 

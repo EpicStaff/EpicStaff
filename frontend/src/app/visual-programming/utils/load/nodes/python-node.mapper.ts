@@ -1,4 +1,4 @@
-import { generateUuid } from '@shared/utils';
+import { stableNodeId } from '../../stable-node-id';
 
 import { PythonNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/python-node.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -8,7 +8,7 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(pn.metadata, NodeType.PYTHON);
     return {
-        id: generateUuid(),
+        id: stableNodeId(NodeType.PYTHON, pn.id),
         backendId: pn.id,
         type: NodeType.PYTHON,
         python_code_id: pn.python_code.id ?? null,

@@ -31,7 +31,7 @@ from tables.serializers.base_serializer import (
 from tables.serializers.org_scoped_fields import (
     OrganizationScopedPrimaryKeyRelatedField,
     OrgScopedPrimaryKeyRelatedField,
-    resolve_active_org_id,
+    resolve_context_org_id,
 )
 from agents.models.agent_models import AgentDefinition
 from agents.models.surface_models import Surface
@@ -136,18 +136,19 @@ class CrewNodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer):
     def validate_crew_id(self, value):
         # Org isolation: the referenced crew must be in the caller's active org.
         # Out-of-org and non-existent ids are rejected identically (no leak).
-        request = self.context.get("request")
-        if request is None:
-            # No request in context => org scope cannot be applied. Deny (fail-safe)
-            # instead of allowing any crew, and log so the missing context surfaces.
+        org_id = resolve_context_org_id(self.context)
+        if org_id is None:
+            # No request or org_id in context => org scope cannot be applied.
+            # Deny (fail-safe) instead of allowing any crew, and log so the
+            # missing context surfaces.
             logger.warning(
-                "CrewNodeSerializer.validate_crew_id was resolved without a request "
-                "in the serializer context; rejecting crew_id because org scope "
-                "cannot be applied. Construct the serializer with the request in "
-                "its context."
+                "CrewNodeSerializer.validate_crew_id was resolved without a "
+                "request or org_id in the serializer context; rejecting crew_id "
+                "because org scope cannot be applied. Construct the serializer "
+                "with a request or org_id in its context."
             )
             raise serializers.ValidationError("Invalid crew_id: crew does not exist.")
-        crews = Crew.objects.only("id").filter(org_id=resolve_active_org_id(request))
+        crews = Crew.objects.only("id").filter(org_id=org_id)
         if not crews.filter(id=value).exists():
             raise serializers.ValidationError("Invalid crew_id: crew does not exist.")
         return value

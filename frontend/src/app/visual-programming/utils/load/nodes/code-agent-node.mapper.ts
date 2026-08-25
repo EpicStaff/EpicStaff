@@ -1,4 +1,4 @@
-import { generateUuid } from '@shared/utils';
+import { stableNodeId } from '../../stable-node-id';
 
 import { GetCodeAgentNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/code-agent-node.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -8,7 +8,7 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 export function mapCodeAgentNodeToModel(ca: GetCodeAgentNodeRequest): CodeAgentNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(ca.metadata, NodeType.CODE_AGENT);
     return {
-        id: generateUuid(),
+        id: stableNodeId(NodeType.CODE_AGENT, ca.id),
         backendId: ca.id,
         type: NodeType.CODE_AGENT,
         node_name: ca.node_name,

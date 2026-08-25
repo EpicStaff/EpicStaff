@@ -15,6 +15,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { EFResizeHandleType, FFlowModule } from '@foblex/flow';
 
 import { AgentDefinitionsApiService } from '../../../features/agent-definitions/services/agent-definitions-api.service';
+import { EditorInfo } from '../../../features/flows/services/graph-collaboration.ws.service';
 import { AppSvgIconComponent } from '../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { GoToButtonComponent } from '../../../shared/components/go-to-button/go-to-button.component';
 import { LlmConfigStorageService } from '../../../shared/services/llms/llm-config-storage.service';
@@ -22,6 +23,7 @@ import { flowUrl } from '../../../shared/utils/flow-links';
 import { ClickOrDragDirective } from '../../core/directives/click-or-drag.directive';
 import { getNodeTitle } from '../../core/enums/node-title.util';
 import { NodeType } from '../../core/enums/node-type';
+import { getAvatarColor } from '../../core/helpers/avatar-colors';
 import {
     AgentNodeModel,
     ClassificationDecisionTableNodeModel,
@@ -70,6 +72,8 @@ import { FlowNodeVariablesOverlayComponent } from './flow-node-variables-overlay
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         '[class]': 'getNodeClass()',
+        '[class.is-locked]': 'lockedByEditor !== null',
+        '[style.--lock-color]': 'lockColor',
     },
 })
 export class FlowBaseNodeComponent {
@@ -86,6 +90,8 @@ export class FlowBaseNodeComponent {
     public isExpanded = signal(false);
     public isToggleDisabled = signal(false);
     @Input() showVariables: boolean = false;
+    @Input() lockedByEditor: EditorInfo | null = null;
+    @Input() canEdit: boolean = true;
     multiSelectActive = input<boolean>(false);
 
     @Output() projectExpandToggled = new EventEmitter<ProjectNodeModel>();
@@ -122,6 +128,7 @@ export class FlowBaseNodeComponent {
     public onDeleteClick(event: MouseEvent): void {
         event.preventDefault();
         event.stopPropagation();
+        if (!this.canEdit) return;
         this.deleteClicked.emit(this.node);
     }
 
@@ -138,6 +145,10 @@ export class FlowBaseNodeComponent {
 
     trackByPort(index: number, port: { id: string }): string {
         return port.id;
+    }
+
+    get lockColor(): string | null {
+        return this.lockedByEditor ? getAvatarColor(this.lockedByEditor.user_id) : null;
     }
 
     public getNodeClass(): string {

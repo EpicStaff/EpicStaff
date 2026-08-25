@@ -27,12 +27,16 @@
         (fCreateConnection)="onConnectionAdded($event)"
         (fReassignConnection)="onReassignConnection($event)"
         (fCreateNode)="onNodeDroppedFromPanel($event)"
+        (fSelectionChange)="onSelectionChanged($event)"
     >
         <f-background>
             <f-circle-pattern></f-circle-pattern>
         </f-background>
         <f-magnetic-lines></f-magnetic-lines>
-        <f-canvas fZoom>
+        <f-canvas
+            fZoom
+            (fCanvasChange)="onCanvasChange($event)"
+        >
             <f-snap-connection
                 fBehavior="fixed"
                 fType="segment"
@@ -110,9 +114,11 @@
                     [node]="node"
                     [showVariables]="flowSettings.showInputsOutputs()"
                     [multiSelectActive]="multiSelectActive()"
+                    [canEdit]="canEdit"
                     [fMinimapClass]="getMinimapClassForNode(node)"
                     fNode
                     fDragHandle
+                    [fNodeDraggingDisabled]="!canEdit"
                     [fNodeId]="node.id"
                     [fNodeSize]="node.size"
                     [fNodePosition]="node.position"
@@ -126,6 +132,9 @@
                     (editClicked)="onOpenNodePanel($event)"
                     (deleteClicked)="onDeleteNode($event)"
                     (projectExpandToggled)="onProjectExpandToggled($event)"
+                    [class.remote-selected]="!!remoteSelectionColors().get(node.id)"
+                    [style.--remote-selection-color]="remoteSelectionColors().get(node.id)"
+                    [lockedByEditor]="nodeLockedMap().get(node.id) ?? null"
                 >
                 </app-flow-base-node>
             }
@@ -206,22 +215,24 @@
                             stroke="none"
                         ></path>
                     </svg>
-                    <div
-                        fConnectionContent
-                        class="connection-center"
-                        [position]="CONNECTION_DELETE_BUTTON_POSITION"
-                    >
-                        <button
-                            type="button"
-                            class="icon-button delete-icon"
-                            matTooltip="Delete connection"
-                            matTooltipPosition="above"
-                            aria-label="Delete connection"
-                            (click)="onDeleteConnection($event, connection.id)"
+                    @if (canEdit) {
+                        <div
+                            fConnectionContent
+                            class="connection-center"
+                            [position]="CONNECTION_DELETE_BUTTON_POSITION"
                         >
-                            <i class="ti ti-trash"></i>
-                        </button>
-                    </div>
+                            <button
+                                type="button"
+                                class="icon-button delete-icon"
+                                matTooltip="Delete connection"
+                                matTooltipPosition="above"
+                                aria-label="Delete connection"
+                                (click)="onDeleteConnection($event, connection.id)"
+                            >
+                                <i class="ti ti-trash"></i>
+                            </button>
+                        </div>
+                    }
 
                     <f-connection-waypoints
                         appWaypointTooltip
@@ -236,6 +247,7 @@
 
         <f-selection-area [fTrigger]="selectionAreaTrigger"></f-selection-area>
         <f-minimap [fMinSize]="1000"></f-minimap>
+        <app-graph-live-cursors [cursors]="screenCursors()" />
     </f-flow>
 
     <div class="top-left-actions">
@@ -291,6 +303,7 @@
                 <app-flow-files-button
                     [flowId]="currentFlowId"
                     [flowName]="flowName"
+                    [canEdit]="canEdit"
                 ></app-flow-files-button>
             }
             <button
@@ -299,7 +312,7 @@
                 title="Auto arrange"
                 matTooltip="Auto arrange"
                 matTooltipPosition="below"
-                [disabled]="isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
+                [disabled]="!canEdit || isArranging() || !(flowService.nodes().length >= 2 && hasUnarrangedChanges())"
                 (click)="onAutoArrange()"
             >
                 <app-svg-icon
@@ -318,12 +331,16 @@
             </button>
         </div>
     </div>
-    <app-flow-action-panel (undoRedoPerformed)="hasUnarrangedChanges.set(true)"></app-flow-action-panel>
+    <app-flow-action-panel
+        (undo)="onUndo()"
+        (redo)="onRedo()"
+    ></app-flow-action-panel>
 
     @if (showContextMenu()) {
         <app-flow-graph-context-menu
             [position]="contextMenuPosition()"
             [currentFlowId]="currentFlowId"
+            [canEdit]="canEdit"
             (nodeSelected)="onAddNodeFromContextMenu($event)"
         >
         </app-flow-graph-context-menu>
@@ -332,6 +349,7 @@
     <app-node-panel-shell
         [node]="sidePanelService.selectedNode()"
         [currentFlowId]="currentFlowId"
+        [canEdit]="canEdit"
         (save)="onNodePanelSaved($event)"
         (autosave)="onNodePanelAutosaved($event)"
         #nodePanelShell

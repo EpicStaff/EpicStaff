@@ -1,4 +1,4 @@
-import { generateUuid } from '@shared/utils';
+import { stableNodeId } from '../../stable-node-id';
 
 import { GetAudioToTextNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/audio-to-text.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -8,7 +8,7 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 export function mapAudioToTextNodeToModel(n: GetAudioToTextNodeRequest): AudioToTextNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(n.metadata, NodeType.AUDIO_TO_TEXT);
     return {
-        id: generateUuid(),
+        id: stableNodeId(NodeType.AUDIO_TO_TEXT, n.id),
         backendId: n.id,
         type: NodeType.AUDIO_TO_TEXT,
         node_name: n.node_name,

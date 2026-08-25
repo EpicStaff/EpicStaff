@@ -45,11 +45,10 @@ export class FlowHeaderComponent {
     @Input() isAssistantOpen = false;
     @Input() isEpicChatEnabled = false;
     @Input() graph?: GraphDto;
-    @Input() isSaving = false;
     @Input() isRunning = false;
+    /** @deprecated the unsaved-changes indicator was removed in EST-3020; no template usage remains. */
     @Input() hasUnsavedChanges = false;
     @Input() editors: EditorInfo[] = [];
-    @Output() save = new EventEmitter<void>();
     @Output() back = new EventEmitter<void>();
     @Output() viewSessions = new EventEmitter<void>();
     @Output() run = new EventEmitter<void>();
@@ -73,10 +72,6 @@ export class FlowHeaderComponent {
 
     closeSaveDropdown(): void {
         this.isSaveDropdownOpen.set(false);
-    }
-
-    onSave() {
-        this.save.emit();
     }
 
     onBack() {

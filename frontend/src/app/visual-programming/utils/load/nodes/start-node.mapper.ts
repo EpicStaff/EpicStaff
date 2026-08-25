@@ -1,4 +1,4 @@
-import { generateUuid } from '@shared/utils';
+import { stableNodeId } from '../../stable-node-id';
 
 import { StartNode } from '../../../../pages/flows-page/components/flow-visual-programming/models/start-node.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -8,7 +8,7 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 export function mapStartNodeToModel(sn: StartNode): StartNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(sn.metadata, NodeType.START);
     return {
-        id: generateUuid(),
+        id: stableNodeId(NodeType.START, sn.id),
         backendId: sn.id,
         type: NodeType.START,
         node_name: '__start__',

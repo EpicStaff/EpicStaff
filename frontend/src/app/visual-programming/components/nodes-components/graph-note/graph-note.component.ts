@@ -47,6 +47,16 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
                 font-size: 14px;
                 color: black;
             }
+
+            :host-context(.remote-selected) .note-container {
+                outline: 2px solid var(--remote-selection-color);
+                box-shadow: 0 0 0 3px color-mix(in srgb, var(--remote-selection-color) 30%, transparent);
+            }
+
+            :host-context(.is-locked) .note-container {
+                outline: 2px solid var(--lock-color);
+                box-shadow: 0 0 0 3px color-mix(in srgb, var(--lock-color) 25%, transparent);
+            }
         `,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,

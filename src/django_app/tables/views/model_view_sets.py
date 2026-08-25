@@ -51,6 +51,7 @@ from tables.exceptions import (
     BulkSaveValidationError,
     TaskSerializerError,
     GraphSaveVersionConflictError,
+    GraphRestoreFlushFailedError,
 )
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
@@ -291,6 +292,11 @@ from tables.models.rbac_models.rbac_enums import ResourceType
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permissions import HasOrgPermission
 from tables.graph_collab.notifications import GraphEditNotifier
+from tables.graph_collab.flush_service import flush_service
+from tables.graph_collab.graph_state_service import graph_state_service
+from tables.graph_collab.lock_service import lock_service
+from tables.graph_collab.presence_service import presence_service
+from asgiref.sync import async_to_sync
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -1036,8 +1042,18 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         return response
 
     @action(detail=True, methods=["post"], url_path="save")
-    @extend_schema(**_SAVE_FLOW_SWAGGER)
+    @extend_schema(**_SAVE_FLOW_SWAGGER, deprecated=True)
     def save_flow(self, request, pk=None):
+        """DEPRECATED: autosave via WebSocket is now the primary persistence path.
+
+        Retained for backwards compatibility. Will be removed in a future release.
+        Clients should not call this endpoint for new integrations.
+        """
+        logger.warning(
+            "DEPRECATED save_flow called for graph {} by user {}",
+            pk,
+            request.user.pk,
+        )
         input_serializer = GraphBulkSaveInputSerializer(data=request.data)
         if not input_serializer.is_valid():
             return Response(
@@ -1210,6 +1226,17 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         if graph.org_id != self.get_active_org_id():
             raise NotFound()
 
+        flush_outcome = async_to_sync(flush_service.flush)(graph.pk)
+        if flush_outcome.saved:
+            GraphEditNotifier.notify_graph_saved(
+                graph_id=graph.pk,
+                new_save_version=flush_outcome.result.new_save_version,
+                user=request.user,
+                saved_at=flush_outcome.result.saved_at,
+                temp_id_map=flush_outcome.result.temp_id_map,
+                deleted_ids=flush_outcome.result.flushed_deleted,
+            )
+
         version = GraphVersioningService().save_version(
             graph=graph,
             name=write_serializer.validated_data["name"],
@@ -1232,24 +1259,77 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
         expected_save_version = input_serializer.validated_data["save_version"]
 
         version = self.get_object()
-        backup = request.query_params.get("backup", "").lower() == "true"
+        graph_id = version.graph_id
+        client_backup = request.query_params.get("backup", "").lower() == "true"
+
+        live_snapshot = async_to_sync(graph_state_service.get_snapshot)(graph_id)
+        has_live_session = live_snapshot is not None
+
+        backup = client_backup
+        try:
+            multiple_editors = len(presence_service.get_editors(graph_id)) > 1
+        except RuntimeError:
+            multiple_editors = True
+        if multiple_editors:
+            backup = True
+
+        current_save_version = Graph.objects.values_list("save_version", flat=True).get(
+            pk=graph_id
+        )
+        if current_save_version != expected_save_version:
+            raise GraphSaveVersionConflictError(current_version=current_save_version)
+
+        if backup:
+            flush_outcome = async_to_sync(flush_service.flush)(graph_id)
+            if not flush_outcome.safe_to_clear:
+                raise GraphRestoreFlushFailedError(
+                    graph_id=graph_id, failure_reason=flush_outcome.failure_reason
+                )
+
+        post_flush_save_version = Graph.objects.values_list(
+            "save_version", flat=True
+        ).get(pk=graph_id)
+
         result = GraphVersioningService().restore_version(
             version,
-            expected_save_version=expected_save_version,
+            expected_save_version=post_flush_save_version,
             backup=backup,
         )
+        new_save_version = post_flush_save_version + 1
 
-        graph_id = result["graph_id"]
-        new_save_version = Graph.objects.values("save_version").get(pk=graph_id)[
-            "save_version"
-        ]
+        if has_live_session:
+            try:
+                restored_flow = async_to_sync(graph_state_service.reset_from_db)(
+                    graph_id
+                )
+            except RuntimeError as exc:
+                logger.warning(
+                    "graph_state_service.reset_from_db raised for graph {} "
+                    "(likely a cross-event-loop asyncio.Lock race with a "
+                    "concurrent WS connect) — proceeding without the view's "
+                    "own reseed: {}",
+                    graph_id,
+                    exc,
+                )
+                restored_flow = None
 
-        GraphEditNotifier.notify_graph_saved(
-            graph_id=graph_id,
-            new_save_version=new_save_version,
-            user=request.user,
-            saved_at=timezone.now().isoformat(),
-        )
+            if restored_flow is None:
+                restored_flow = GraphSerializer(Graph.objects.get(pk=graph_id)).data
+
+            released_locks = lock_service.release_all(graph_id)
+            GraphEditNotifier.notify_nodes_unlocked(
+                graph_id=graph_id,
+                released_pairs=released_locks,
+                user=request.user,
+            )
+
+            GraphEditNotifier.notify_graph_restored(
+                graph_id=graph_id,
+                flow=restored_flow,
+                new_save_version=new_save_version,
+                version_name=version.name,
+                user=request.user,
+            )
 
         return Response(result, status=status.HTTP_200_OK)
 

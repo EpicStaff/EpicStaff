@@ -1,4 +1,10 @@
 <!-- Node badge number -->
+@if (lockedByEditor) {
+    <div class="lock-badge">
+        <i class="ti ti-lock"></i>
+        <span>{{ lockedByEditor.display_name ?? 'User ' + lockedByEditor.user_id }}</span>
+    </div>
+}
 <div
     class="node-name-wrapper"
     *ngIf="
@@ -40,7 +46,7 @@
     </div>
     <!-- Delete Button -->
     <div
-        *ngIf="node.type !== NodeType.START"
+        *ngIf="node.type !== NodeType.START && canEdit"
         class="action-button delete-button"
         matTooltip="Delete node"
         matTooltipPosition="above"

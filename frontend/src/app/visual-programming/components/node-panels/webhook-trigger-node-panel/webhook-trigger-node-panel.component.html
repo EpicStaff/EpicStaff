@@ -15,62 +15,77 @@
                     class="form-fields"
                     [style.flex-basis.px]="isExpanded() ? leftColumnWidth.width() : null"
                 >
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
+                    <app-lockable-field
+                        fieldId="node_name"
+                        [nodeId]="node().id"
+                    >
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="The unique identifier used to reference this Python node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                            [errorMessage]="getNodeNameErrorMessage()"
+                        ></app-custom-input>
+                    </app-lockable-field>
 
-                    <app-custom-input
-                        label="Webhook trigger path"
-                        tooltipText="Only enter the webhook name. The base URL is shown below."
-                        formControlName="webhook_trigger_path"
-                        placeholder="Enter webhook path"
-                        [required]="true"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getWebhookNameErrorMessage()"
-                    ></app-custom-input>
+                    <app-lockable-field
+                        fieldId="webhook_trigger_path"
+                        [nodeId]="node().id"
+                    >
+                        <app-custom-input
+                            label="Webhook trigger path"
+                            tooltipText="Only enter the webhook name. The base URL is shown below."
+                            formControlName="webhook_trigger_path"
+                            placeholder="Enter webhook path"
+                            [required]="true"
+                            [activeColor]="activeColor"
+                            [errorMessage]="getWebhookNameErrorMessage()"
+                        ></app-custom-input>
+                    </app-lockable-field>
 
-                    <div>
-                        <app-select
-                            [loading]="ngrokConfigsLoading()"
-                            label="Select Ngrok config"
-                            tooltipText="Select the ngrok config. Full URL is shown below."
-                            formControlName="ngrok_webhook_config"
-                            [items]="ngrokConfigSelectItems()"
-                            (changed)="onNgrokConfigChanged($event)"
-                        />
-                        <div class="webhook-url-display">
-                            @if (webhookUrlDisplay(); as url) {
-                                <span
-                                    class="webhook-url-text"
-                                    [style.color]="activeColor"
-                                >
-                                    {{ url }}
-                                </span>
-                                <button
-                                    type="button"
-                                    class="copy-button"
-                                    (click)="copyWebhookUrl()"
-                                    [disabled]="!url"
-                                    aria-label="Copy webhook URL"
-                                >
+                    <app-lockable-field
+                        fieldId="ngrok_webhook_config"
+                        [nodeId]="node().id"
+                    >
+                        <div>
+                            <app-select
+                                [loading]="ngrokConfigsLoading()"
+                                label="Select Ngrok config"
+                                tooltipText="Select the ngrok config. Full URL is shown below."
+                                formControlName="ngrok_webhook_config"
+                                [items]="ngrokConfigSelectItems()"
+                                (changed)="onNgrokConfigChanged($event)"
+                            />
+                            <div class="webhook-url-display">
+                                @if (webhookUrlDisplay(); as url) {
                                     <span
-                                        class="copy-icon"
-                                        aria-hidden="true"
-                                    ></span>
-                                    <span>Copy</span>
-                                </button>
-                            } @else if (loadingTunnel()) {
-                                <div class="webhook-url-placeholder">Fetching tunnel URL...</div>
-                            } @else {
-                                <div class="webhook-url-error">Ngrok config or path is empty</div>
-                            }
+                                        class="webhook-url-text"
+                                        [style.color]="activeColor"
+                                    >
+                                        {{ url }}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        class="copy-button"
+                                        (click)="copyWebhookUrl()"
+                                        [disabled]="!url"
+                                        aria-label="Copy webhook URL"
+                                    >
+                                        <span
+                                            class="copy-icon"
+                                            aria-hidden="true"
+                                        ></span>
+                                        <span>Copy</span>
+                                    </button>
+                                } @else if (loadingTunnel()) {
+                                    <div class="webhook-url-placeholder">Fetching tunnel URL...</div>
+                                } @else {
+                                    <div class="webhook-url-error">Ngrok config or path is empty</div>
+                                }
+                            </div>
                         </div>
-                    </div>
+                    </app-lockable-field>
 
                     <app-node-secrets-field
                         [activeColor]="activeColor"
@@ -79,13 +94,18 @@
                         (valueChange)="onSecretsChange($event)"
                     />
 
-                    <app-custom-input
-                        label="Libraries"
-                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                        formControlName="libraries"
-                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                        [activeColor]="activeColor"
-                    ></app-custom-input>
+                    <app-lockable-field
+                        fieldId="libraries"
+                        [nodeId]="node().id"
+                    >
+                        <app-custom-input
+                            label="Libraries"
+                            tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
+                            formControlName="libraries"
+                            placeholder="Enter libraries (e.g., requests, pandas, numpy)"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                    </app-lockable-field>
                 </div>
                 @if (isExpanded()) {
                     @if (!isCodeEditorFullWidth()) {
@@ -125,6 +145,26 @@
                                 />
                             </svg>
                         </button>
+                        <app-lockable-field
+                            class="fill"
+                            fieldId="python_code"
+                            [nodeId]="node().id"
+                        >
+                            <div class="code-editor-section">
+                                <app-code-editor
+                                    [pythonCode]="pythonCode"
+                                    [secretNames]="secretNames()"
+                                    (pythonCodeChange)="onPythonCodeChange($event)"
+                                    (errorChange)="onCodeErrorChange($event)"
+                                ></app-code-editor>
+                            </div>
+                        </app-lockable-field>
+                    </div>
+                } @else {
+                    <app-lockable-field
+                        fieldId="python_code"
+                        [nodeId]="node().id"
+                    >
                         <div class="code-editor-section">
                             <app-code-editor
                                 [pythonCode]="pythonCode"
@@ -133,16 +173,7 @@
                                 (errorChange)="onCodeErrorChange($event)"
                             ></app-code-editor>
                         </div>
-                    </div>
-                } @else {
-                    <div class="code-editor-section">
-                        <app-code-editor
-                            [pythonCode]="pythonCode"
-                            [secretNames]="secretNames()"
-                            (pythonCodeChange)="onPythonCodeChange($event)"
-                            (errorChange)="onCodeErrorChange($event)"
-                        ></app-code-editor>
-                    </div>
+                    </app-lockable-field>
                 }
             </div>
         </form>

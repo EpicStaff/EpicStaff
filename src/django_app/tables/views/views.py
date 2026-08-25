@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from collections import defaultdict
 import uuid
 import base64
+from asgiref.sync import async_to_sync
+from tables.graph_collab.flush_service import flush_service, FlushStatus
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.models.graph_models import (
     TelegramTriggerNode,
@@ -494,6 +496,32 @@ class RunSession(APIView):
             if parent_session_id is not None
             else TriggerSpec.manual()
         )
+
+        # Flush the live collab snapshot (if any) to the DB before assembling the
+        # session, so Run always executes the latest edits instead of waiting for
+        # the next autosave tick.
+        flush_failed = False
+        try:
+            flush_outcome = async_to_sync(flush_service.flush)(graph_id)
+            # version_conflict is transient — a concurrent save already won, so the
+            # DB is current and we proceed silently. Only a persistent failure
+            # (validation / bulk-save / db error) warrants surfacing a warning.
+            flush_failed = (
+                flush_outcome.status is FlushStatus.FAILED and flush_outcome.persistent
+            )
+        except Exception as exc:
+            logger.warning(
+                "Pre-run flush raised for graph {}: {} — running on last-saved DB state",
+                graph_id,
+                exc,
+            )
+            flush_failed = True
+
+        if flush_failed:
+            warning_messages.append(
+                "Could not save the latest live edits before running; the run may use a "
+                "slightly older version of the graph."
+            )
 
         try:
             # Publish session to: crew, maanger

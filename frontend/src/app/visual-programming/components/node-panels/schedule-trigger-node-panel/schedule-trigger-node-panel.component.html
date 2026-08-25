@@ -11,234 +11,263 @@
             >
                 <div class="form-fields">
                     <!-- Node Name -->
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="A name for this node. Used to identify it within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
+                    <app-lockable-field
+                        fieldId="node_name"
+                        [nodeId]="node().id"
+                    >
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="A name for this node. Used to identify it within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [errorMessage]="getNodeNameErrorMessage()"
+                        ></app-custom-input>
+                    </app-lockable-field>
 
                     <!-- Start section -->
-                    <div class="section">
-                        <div class="section-header">Start</div>
-                        <div class="date-time-row">
-                            <div
-                                class="field-col"
-                                [class.has-row-error]="startRowError()"
-                            >
-                                <div class="field-label">
-                                    Start time
-                                    <app-help-tooltip text="The time of day when the schedule first runs." />
+                    <app-lockable-field
+                        fieldId="start_config"
+                        [nodeId]="node().id"
+                    >
+                        <div class="section">
+                            <div class="section-header">Start</div>
+                            <div class="date-time-row">
+                                <div
+                                    class="field-col"
+                                    [class.has-row-error]="startRowError()"
+                                >
+                                    <div class="field-label">
+                                        Start time
+                                        <app-help-tooltip text="The time of day when the schedule first runs." />
+                                    </div>
+                                    <app-time-picker
+                                        formControlName="start_time"
+                                        placeholder="Select start time"
+                                    />
                                 </div>
-                                <app-time-picker
-                                    formControlName="start_time"
-                                    placeholder="Select start time"
-                                />
-                            </div>
-                            <div
-                                class="field-col"
-                                [class.has-row-error]="startRowError()"
-                            >
-                                <div class="field-label">
-                                    Start date
-                                    <app-help-tooltip text="The date when the schedule first runs." />
+                                <div
+                                    class="field-col"
+                                    [class.has-row-error]="startRowError()"
+                                >
+                                    <div class="field-label">
+                                        Start date
+                                        <app-help-tooltip text="The date when the schedule first runs." />
+                                    </div>
+                                    <app-date-picker
+                                        formControlName="start_date"
+                                        placeholder="Select start date"
+                                        [allowPastDates]="true"
+                                    />
                                 </div>
-                                <app-date-picker
-                                    formControlName="start_date"
-                                    placeholder="Select start date"
-                                    [allowPastDates]="true"
-                                />
                             </div>
-                        </div>
-                        @if (startRowError()) {
-                            <div class="row-error">{{ startRowError() }}</div>
-                        }
-
-                        <!-- Next run (read-only, backend-calculated) -->
-                        <div class="next-run-row">
-                            <span class="next-run-label">Next run:</span>
-                            <span class="next-run-value">{{ formattedNextRun() }}</span>
-                        </div>
-
-                        <!-- Timezone -->
-                        <div class="field-col-full">
-                            <div class="field-label">
-                                Timezone
-                                <app-help-tooltip
-                                    text="Sets which local time this schedule follows. For example, 09:00 with Europe/Kyiv means the flow runs at 09:00 Kyiv time."
-                                />
-                            </div>
-                            <app-timezone-selector formControlName="timezone" />
-                            @if (timezoneError()) {
-                                <div class="row-error">{{ timezoneError() }}</div>
+                            @if (startRowError()) {
+                                <div class="row-error">{{ startRowError() }}</div>
                             }
+
+                            <!-- Next run (read-only, backend-calculated) -->
+                            <div class="next-run-row">
+                                <span class="next-run-label">Next run:</span>
+                                <span class="next-run-value">{{ formattedNextRun() }}</span>
+                            </div>
+
+                            <!-- Timezone -->
+                            <div class="field-col-full">
+                                <div class="field-label">
+                                    Timezone
+                                    <app-help-tooltip
+                                        text="Sets which local time this schedule follows. For example, 09:00 with Europe/Kyiv means the flow runs at 09:00 Kyiv time."
+                                    />
+                                </div>
+                                <app-timezone-selector formControlName="timezone" />
+                                @if (timezoneError()) {
+                                    <div class="row-error">{{ timezoneError() }}</div>
+                                }
+                            </div>
                         </div>
-                    </div>
+                    </app-lockable-field>
 
                     <!-- Run mode -->
-                    <div class="section">
-                        <div class="section-header">
-                            Run mode
-                            <app-help-tooltip
-                                text="Once: run the flow a single time. Repeat: run on a recurring schedule."
+                    <app-lockable-field
+                        fieldId="run_mode"
+                        [nodeId]="node().id"
+                    >
+                        <div class="section">
+                            <div class="section-header">
+                                Run mode
+                                <app-help-tooltip
+                                    text="Once: run the flow a single time. Repeat: run on a recurring schedule."
+                                />
+                            </div>
+                            <app-radio-button
+                                [mod]="'segmented'"
+                                formControlName="run_mode"
+                                [options]="runModeOptions"
                             />
                         </div>
-                        <app-radio-button
-                            [mod]="'segmented'"
-                            formControlName="run_mode"
-                            [options]="runModeOptions"
-                        />
-                    </div>
+                    </app-lockable-field>
 
                     <!-- Repeat settings (visible when run_mode = repeat) -->
                     @if (showRepeatFields()) {
-                        <div
-                            [@panelFadeSlide]
-                            class="repeat-fields"
+                        <app-lockable-field
+                            fieldId="repeat_config"
+                            [nodeId]="node().id"
                         >
-                            <div class="section">
-                                <div class="section-header">
-                                    Repeat every
-                                    <app-help-tooltip text="How often the flow should repeat." />
-                                </div>
-                                <div class="repeat-row">
-                                    <app-number-stepper
-                                        formControlName="repeat_every"
-                                        [min]="1"
-                                        [max]="999999"
-                                        [integer]="true"
-                                    />
-                                    <app-select
-                                        formControlName="repeat_unit"
-                                        [items]="repeatUnitItems"
-                                        placeholder="Unit"
-                                    />
-                                </div>
-                            </div>
-
-                            <!-- Repeat on -->
-                            @if (showWeekdays()) {
-                                <div
-                                    [@panelFadeSlide]
-                                    class="section"
-                                >
+                            <div
+                                [@panelFadeSlide]
+                                class="repeat-fields"
+                            >
+                                <div class="section">
                                     <div class="section-header">
-                                        Repeat on
-                                        <app-help-tooltip text="The days of the week when the flow should run." />
+                                        Repeat every
+                                        <app-help-tooltip text="How often the flow should repeat." />
                                     </div>
-                                    <div class="weekday-row">
-                                        @for (wd of weekdays; track wd.value) {
-                                            <app-round-button
-                                                [label]="wd.label"
-                                                [selected]="repeatDays().includes(wd.value)"
-                                                [tooltip]="wd.tooltip"
-                                                (click)="toggleDay(wd.value)"
-                                            />
-                                        }
-                                    </div>
-                                </div>
-                            }
-
-                            <!-- End condition -->
-                            <div class="section">
-                                <div class="section-header">
-                                    End condition
-                                    <app-help-tooltip
-                                        text="When to stop repeating: never, on a specific date, or after a set number of runs."
-                                    />
-                                </div>
-                                <app-radio-button
-                                    [mod]="'segmented'"
-                                    formControlName="end_mode"
-                                    [options]="endModeOptions"
-                                />
-                            </div>
-
-                            <!-- End date/time (visible when end_mode = on_date) -->
-                            @if (showEndDateTime()) {
-                                <div
-                                    [@panelFadeSlide]
-                                    class="section"
-                                >
-                                    <div class="date-time-row">
-                                        <div
-                                            class="field-col"
-                                            [class.has-row-error]="endRowError()"
-                                        >
-                                            <div class="field-label">
-                                                End time
-                                                <app-help-tooltip
-                                                    text="The time of day when the schedule stops repeating."
-                                                />
-                                            </div>
-                                            <app-time-picker
-                                                formControlName="end_time"
-                                                placeholder="hh:mm"
-                                            />
-                                        </div>
-                                        <div
-                                            class="field-col"
-                                            [class.has-row-error]="endRowError()"
-                                        >
-                                            <div class="field-label">
-                                                End date
-                                                <app-help-tooltip text="The date when the schedule stops repeating." />
-                                            </div>
-                                            <app-date-picker
-                                                formControlName="end_date"
-                                                placeholder="dd.mm.yyyy"
-                                            />
-                                        </div>
-                                    </div>
-                                    @if (endRowError()) {
-                                        <div class="row-error">{{ endRowError() }}</div>
-                                    }
-                                </div>
-                            }
-
-                            <!-- Max runs (visible when end_mode = after_n_runs) -->
-                            @if (showMaxRuns()) {
-                                <div
-                                    [@panelFadeSlide]
-                                    class="half-row"
-                                >
-                                    <div class="field-label">
-                                        Max runs
-                                        <app-help-tooltip
-                                            text="The maximum number of times the flow will run before stopping."
+                                    <div class="repeat-row">
+                                        <app-number-stepper
+                                            formControlName="repeat_every"
+                                            [min]="1"
+                                            [max]="999999"
+                                            [integer]="true"
+                                        />
+                                        <app-select
+                                            formControlName="repeat_unit"
+                                            [items]="repeatUnitItems"
+                                            placeholder="Unit"
                                         />
                                     </div>
-                                    <app-number-stepper
-                                        formControlName="max_runs"
-                                        [min]="1"
-                                        [max]="999999"
-                                        [integer]="true"
-                                    />
-                                    <div class="next-run-row">
-                                        <span class="next-run-label">Runs left:</span>
-                                        <span class="next-run-value">{{ runsLeft() }}</span>
-                                    </div>
                                 </div>
-                            }
-                        </div>
+
+                                <!-- Repeat on -->
+                                @if (showWeekdays()) {
+                                    <div
+                                        [@panelFadeSlide]
+                                        class="section"
+                                    >
+                                        <div class="section-header">
+                                            Repeat on
+                                            <app-help-tooltip text="The days of the week when the flow should run." />
+                                        </div>
+                                        <div class="weekday-row">
+                                            @for (wd of weekdays; track wd.value) {
+                                                <app-round-button
+                                                    [label]="wd.label"
+                                                    [selected]="repeatDays().includes(wd.value)"
+                                                    [tooltip]="wd.tooltip"
+                                                    (click)="toggleDay(wd.value)"
+                                                />
+                                            }
+                                        </div>
+                                    </div>
+                                }
+
+                                <!-- End condition -->
+                                <div class="section">
+                                    <div class="section-header">
+                                        End condition
+                                        <app-help-tooltip
+                                            text="When to stop repeating: never, on a specific date, or after a set number of runs."
+                                        />
+                                    </div>
+                                    <app-radio-button
+                                        [mod]="'segmented'"
+                                        formControlName="end_mode"
+                                        [options]="endModeOptions"
+                                    />
+                                </div>
+
+                                <!-- End date/time (visible when end_mode = on_date) -->
+                                @if (showEndDateTime()) {
+                                    <div
+                                        [@panelFadeSlide]
+                                        class="section"
+                                    >
+                                        <div class="date-time-row">
+                                            <div
+                                                class="field-col"
+                                                [class.has-row-error]="endRowError()"
+                                            >
+                                                <div class="field-label">
+                                                    End time
+                                                    <app-help-tooltip
+                                                        text="The time of day when the schedule stops repeating."
+                                                    />
+                                                </div>
+                                                <app-time-picker
+                                                    formControlName="end_time"
+                                                    placeholder="hh:mm"
+                                                />
+                                            </div>
+                                            <div
+                                                class="field-col"
+                                                [class.has-row-error]="endRowError()"
+                                            >
+                                                <div class="field-label">
+                                                    End date
+                                                    <app-help-tooltip
+                                                        text="The date when the schedule stops repeating."
+                                                    />
+                                                </div>
+                                                <app-date-picker
+                                                    formControlName="end_date"
+                                                    placeholder="dd.mm.yyyy"
+                                                />
+                                            </div>
+                                        </div>
+                                        @if (endRowError()) {
+                                            <div class="row-error">{{ endRowError() }}</div>
+                                        }
+                                    </div>
+                                }
+
+                                <!-- Max runs (visible when end_mode = after_n_runs) -->
+                                @if (showMaxRuns()) {
+                                    <div
+                                        [@panelFadeSlide]
+                                        class="half-row"
+                                    >
+                                        <div class="field-label">
+                                            Max runs
+                                            <app-help-tooltip
+                                                text="The maximum number of times the flow will run before stopping."
+                                            />
+                                        </div>
+                                        <app-number-stepper
+                                            formControlName="max_runs"
+                                            [min]="1"
+                                            [max]="999999"
+                                            [integer]="true"
+                                        />
+                                        <div class="next-run-row">
+                                            <span class="next-run-label">Runs left:</span>
+                                            <span class="next-run-value">{{ runsLeft() }}</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </app-lockable-field>
                     }
 
                     <!-- Active toggle -->
-                    <div class="toggle-stack">
-                        <div class="section-header">
-                            Is active
-                            <app-help-tooltip
-                                text="Turn the schedule on or off. When inactive, the flow will not run automatically."
-                            />
+                    <app-lockable-field
+                        fieldId="is_active"
+                        [nodeId]="node().id"
+                    >
+                        <div class="toggle-stack">
+                            <div class="section-header">
+                                Is active
+                                <app-help-tooltip
+                                    text="Turn the schedule on or off. When inactive, the flow will not run automatically."
+                                />
+                            </div>
+                            <div [class.toggle-inactive]="!hasStartDateTime()">
+                                <app-toggle-switch formControlName="is_active" />
+                            </div>
+                            @if (!hasStartDateTime()) {
+                                <div class="toggle-hint">
+                                    Set a start date and time before activating this schedule.
+                                </div>
+                            }
                         </div>
-                        <div [class.toggle-inactive]="!hasStartDateTime()">
-                            <app-toggle-switch formControlName="is_active" />
-                        </div>
-                        @if (!hasStartDateTime()) {
-                            <div class="toggle-hint">Set a start date and time before activating this schedule.</div>
-                        }
-                    </div>
+                    </app-lockable-field>
                 </div>
             </div>
         </form>

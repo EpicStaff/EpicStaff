@@ -16,8 +16,12 @@
                 [formGroup]="form"
                 class="form-container"
             >
-                <!-- Sticky header: node fields + tab row -->
-                <div class="panel-sticky-header">
+                <!-- Header fields (name / default / error) — one lock zone -->
+                <app-lockable-field
+                    class="cdt-header-lock lock-inset"
+                    fieldId="cdt_header"
+                    [nodeId]="node().id"
+                >
                     <!-- Header fields row -->
                     <div class="panel-node-header">
                         <div class="header-field">
@@ -59,7 +63,9 @@
                             />
                         </div>
                     </div>
+                </app-lockable-field>
 
+                <div class="fill lock-inset">
                     <!-- Tabs row -->
                     <div class="tabs-row">
                         <div class="tabs-row__left">
@@ -76,317 +82,365 @@
                             <button
                                 class="tab-link"
                                 [class.tab-link--active]="activeTab() === 'precomputation'"
+                                [class.tab-link--locked]="lockedByOther('precomputation')"
+                                [attr.title]="
+                                    lockedByOther('precomputation')
+                                        ? 'Editing by ' +
+                                          (lockedByOther('precomputation')?.display_name || 'another user')
+                                        : null
+                                "
                                 (click)="setActiveTab('precomputation')"
                                 type="button"
                             >
+                                @if (lockedByOther('precomputation')) {
+                                    <i class="ti ti-lock tab-link__lock-icon"></i>
+                                }
                                 Pre-computation
                             </button>
                             <span class="tab-separator">/</span>
                             <button
                                 class="tab-link"
                                 [class.tab-link--active]="activeTab() === 'postcomputation'"
+                                [class.tab-link--locked]="lockedByOther('postcomputation')"
+                                [attr.title]="
+                                    lockedByOther('postcomputation')
+                                        ? 'Editing by ' +
+                                          (lockedByOther('postcomputation')?.display_name || 'another user')
+                                        : null
+                                "
                                 (click)="setActiveTab('postcomputation')"
                                 type="button"
                             >
+                                @if (lockedByOther('postcomputation')) {
+                                    <i class="ti ti-lock tab-link__lock-icon"></i>
+                                }
                                 Post-computation
                             </button>
                             <span class="tab-separator">/</span>
                             <button
                                 class="tab-link"
                                 [class.tab-link--active]="activeTab() === 'prompts'"
+                                [class.tab-link--locked]="lockedByOther('prompts')"
+                                [attr.title]="
+                                    lockedByOther('prompts')
+                                        ? 'Editing by ' + (lockedByOther('prompts')?.display_name || 'another user')
+                                        : null
+                                "
                                 (click)="setActiveTab('prompts')"
                                 type="button"
                             >
+                                @if (lockedByOther('prompts')) {
+                                    <i class="ti ti-lock tab-link__lock-icon"></i>
+                                }
                                 Prompt library
                             </button>
                         </div>
                     </div>
-                </div>
 
-                <!-- Decision Table Tab -->
-                @if (activeTab() === 'table') {
-                    <div class="grid-section">
-                        <app-classification-decision-table-grid
-                            [conditionGroups]="conditionGroups()"
-                            [activeColor]="activeColor"
-                            [currentNodeId]="node().id"
-                            [storageNodeId]="gridStorageId()"
-                            [prompts]="prompts()"
-                            [defaultLlmId]="form.value.default_llm_config || null"
-                            [llmConfigs]="llmConfigOptions()"
-                            [preInputMapKeys]="inputMapVariableNames()"
-                            [domainKeys]="domainKeys()"
-                            (conditionGroupsChange)="onConditionGroupsChange($event)"
-                            (promptChange)="updatePrompt($event.promptId, $event.field, $event.value)"
-                            (promptAdd)="onPromptAdd($event.id, $event.config)"
-                            (openPromptLibrary)="onOpenPromptLibrary($event)"
-                        />
-                    </div>
-                }
-
-                <!-- Pre-computation Tab -->
-                @if (activeTab() === 'precomputation') {
-                    <div class="computation-section">
-                        <div
-                            #preSidebarColumn
-                            class="computation-sidebar"
-                            [style.flex-basis.px]="sidebarWidth.width()"
-                        >
-                            <ng-container [formGroup]="preInputForm">
-                                <div class="cdt-input-map-wrapper">
-                                    <app-input-map [activeColor]="activeColor"></app-input-map>
-                                </div>
-                            </ng-container>
-                            <app-node-secrets-field
-                                [activeColor]="activeColor"
-                                [value]="preSelectedSecretIds()"
-                                tooltipText="Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
-                                panelWidth="346px"
-                                (valueChange)="onPreSecretsChange($event)"
-                            />
-                            <app-custom-input
-                                label="Output Variable Path"
-                                tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
-                                formControlName="pre_output_variable_path"
-                                placeholder="Enter output variable path (leave empty for null)"
-                                [activeColor]="activeColor"
-                            ></app-custom-input>
-                            <app-custom-input
-                                label="Libraries"
-                                tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                                formControlName="pre_libraries"
-                                placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                                [activeColor]="activeColor"
-                            ></app-custom-input>
-                        </div>
-                        <app-column-resize-divider
-                            ariaLabel="Resize inputs and code columns"
-                            [column]="preSidebarColumn"
-                            [opposite]="preCodeColumn"
-                            [(width)]="sidebarWidth.width"
-                            [defaultWidth]="sidebarWidth.defaultWidth"
-                        />
-                        <div
-                            #preCodeColumn
-                            class="code-editor-section"
-                        >
-                            <app-code-editor
-                                [pythonCode]="preCode"
-                                [secretNames]="preSecretNames()"
-                                [inputMapKeys]="preInputMapKeys()"
-                                (pythonCodeChange)="onPreCodeChange($event)"
-                            ></app-code-editor>
-                        </div>
-                    </div>
-                }
-
-                <!-- Post-computation Tab -->
-                @if (activeTab() === 'postcomputation') {
-                    <div class="computation-section">
-                        <div
-                            #postSidebarColumn
-                            class="computation-sidebar"
-                            [style.flex-basis.px]="sidebarWidth.width()"
-                        >
-                            <ng-container [formGroup]="postInputForm">
-                                <div class="cdt-input-map-wrapper">
-                                    <app-input-map [activeColor]="activeColor"></app-input-map>
-                                </div>
-                            </ng-container>
-                            <app-node-secrets-field
-                                [activeColor]="activeColor"
-                                [value]="postSelectedSecretIds()"
-                                tooltipText="Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
-                                panelWidth="346px"
-                                (valueChange)="onPostSecretsChange($event)"
-                            />
-                            <app-custom-input
-                                label="Output Variable Path"
-                                tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
-                                formControlName="post_output_variable_path"
-                                placeholder="Enter output variable path (leave empty for null)"
-                                [activeColor]="activeColor"
-                            ></app-custom-input>
-                            <app-custom-input
-                                label="Libraries"
-                                tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                                formControlName="post_libraries"
-                                placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                                [activeColor]="activeColor"
-                            ></app-custom-input>
-                        </div>
-                        <app-column-resize-divider
-                            ariaLabel="Resize inputs and code columns"
-                            [column]="postSidebarColumn"
-                            [opposite]="postCodeColumn"
-                            [(width)]="sidebarWidth.width"
-                            [defaultWidth]="sidebarWidth.defaultWidth"
-                        />
-                        <div
-                            #postCodeColumn
-                            class="code-editor-section"
-                        >
-                            <app-code-editor
-                                [pythonCode]="postCode"
-                                [secretNames]="postSecretNames()"
-                                [inputMapKeys]="postInputMapKeys()"
-                                (pythonCodeChange)="onPostCodeChange($event)"
-                            ></app-code-editor>
-                        </div>
-                    </div>
-                }
-
-                <!-- Prompt Library Tab -->
-                @if (activeTab() === 'prompts') {
-                    <div class="prompts-section">
-                        <div class="prompt-section-header">
-                            <span class="prompt-section-title">
-                                Prompt Library
-                                <app-help-tooltip text="Define reusable prompts referenced in decision table rules." />
-                            </span>
-                            <button
-                                type="button"
-                                class="add-prompt-header-btn"
-                                (click)="addPrompt()"
+                    <div [attr.inert]="canEdit() ? null : ''">
+                        <!-- Decision Table Tab -->
+                        @if (activeTab() === 'table') {
+                            <app-lockable-field
+                                class="fill lock-inset"
+                                fieldId="condition_groups"
+                                [nodeId]="node().id"
                             >
-                                <i class="ti ti-plus"></i> Add Prompt
-                            </button>
-                        </div>
+                                <div class="grid-section">
+                                    <app-classification-decision-table-grid
+                                        [conditionGroups]="conditionGroups()"
+                                        [activeColor]="activeColor"
+                                        [currentNodeId]="node().id"
+                                        [storageNodeId]="gridStorageId()"
+                                        [prompts]="prompts()"
+                                        [defaultLlmId]="form.value.default_llm_config || null"
+                                        [llmConfigs]="llmConfigOptions()"
+                                        [preInputMapKeys]="inputMapVariableNames()"
+                                        [domainKeys]="domainKeys()"
+                                        (conditionGroupsChange)="onConditionGroupsChange($event)"
+                                        (promptChange)="updatePrompt($event.promptId, $event.field, $event.value)"
+                                        (promptAdd)="onPromptAdd($event.id, $event.config)"
+                                        (openPromptLibrary)="onOpenPromptLibrary($event)"
+                                    />
+                                </div>
+                            </app-lockable-field>
+                        }
 
-                        <!-- Prompt List -->
-                        <div class="prompts-list">
-                            @if (promptEntries().length === 0) {
-                                <p class="empty-state">No prompts defined yet. Add a prompt above to get started.</p>
-                            } @else {
-                                @for (prompt of promptEntries(); track prompt.id) {
-                                    <div
-                                        class="prompt-card"
-                                        [class.expanded]="editingPromptId() === prompt.id"
-                                    >
-                                        <div
-                                            class="prompt-card-header"
-                                            (click)="toggleEditPrompt(prompt.id)"
-                                        >
-                                            <div class="prompt-card-title">
-                                                <app-svg-icon
-                                                    class="prompt-card-title__chevron"
-                                                    [class.prompt-card-title__chevron--expanded]="
-                                                        editingPromptId() === prompt.id
-                                                    "
-                                                    icon="play"
-                                                    size="8px"
-                                                ></app-svg-icon>
-                                                <span class="prompt-id">{{ prompt.id }}</span>
-                                                @if (prompt.result_variable) {
-                                                    <span class="result-badge">{{ prompt.result_variable }}</span>
-                                                }
-                                            </div>
-                                            <div class="prompt-card-actions">
-                                                <button
-                                                    type="button"
-                                                    class="icon-btn"
-                                                    title="Delete prompt"
-                                                    (click)="deletePrompt(prompt.id); $event.stopPropagation()"
-                                                >
-                                                    <app-svg-icon
-                                                        class="prompt-card-actions__trash"
-                                                        icon="trash"
-                                                        size="14px"
-                                                    ></app-svg-icon>
-                                                </button>
-                                            </div>
+                        <!-- Pre-computation Tab -->
+                        @if (activeTab() === 'precomputation') {
+                            <div class="computation-section">
+                                <div
+                                    #preSidebarColumn
+                                    class="computation-sidebar"
+                                    [style.flex-basis.px]="sidebarWidth.width()"
+                                >
+                                    <ng-container [formGroup]="preInputForm">
+                                        <div class="cdt-input-map-wrapper">
+                                            <app-input-map [activeColor]="activeColor"></app-input-map>
                                         </div>
+                                    </ng-container>
+                                    <app-node-secrets-field
+                                        [activeColor]="activeColor"
+                                        [value]="preSelectedSecretIds()"
+                                        tooltipText="Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                        panelWidth="346px"
+                                        (valueChange)="onPreSecretsChange($event)"
+                                    />
+                                    <app-custom-input
+                                        label="Output Variable Path"
+                                        tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
+                                        formControlName="pre_output_variable_path"
+                                        placeholder="Enter output variable path (leave empty for null)"
+                                        [activeColor]="activeColor"
+                                    ></app-custom-input>
+                                    <app-custom-input
+                                        label="Libraries"
+                                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
+                                        formControlName="pre_libraries"
+                                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
+                                        [activeColor]="activeColor"
+                                    ></app-custom-input>
+                                </div>
+                                <app-column-resize-divider
+                                    ariaLabel="Resize inputs and code columns"
+                                    [column]="preSidebarColumn"
+                                    [opposite]="preCodeColumn"
+                                    [(width)]="sidebarWidth.width"
+                                    [defaultWidth]="sidebarWidth.defaultWidth"
+                                />
+                                <div
+                                    #preCodeColumn
+                                    class="code-editor-section"
+                                >
+                                    <app-code-editor
+                                        [pythonCode]="preCode"
+                                        [secretNames]="preSecretNames()"
+                                        [inputMapKeys]="preInputMapKeys()"
+                                        (pythonCodeChange)="onPreCodeChange($event)"
+                                    ></app-code-editor>
+                                </div>
+                            </div>
+                        }
 
-                                        @if (editingPromptId() === prompt.id) {
-                                            <div class="prompt-card-body">
-                                                <div class="prompt-field">
-                                                    <label class="field-label"
-                                                        >Name <span class="required-star">*</span></label
-                                                    >
-                                                    <input
-                                                        type="text"
-                                                        class="field-input"
-                                                        [ngModel]="pendingPromptName()"
-                                                        [ngModelOptions]="{ standalone: true }"
-                                                        (ngModelChange)="pendingPromptName.set($event)"
-                                                        (blur)="commitPromptRename(prompt.id)"
-                                                        (keydown.enter)="commitPromptRename(prompt.id)"
-                                                        placeholder="Enter prompt name..."
-                                                    />
-                                                </div>
+                        <!-- Post-computation Tab -->
+                        @if (activeTab() === 'postcomputation') {
+                            <div class="computation-section">
+                                <div
+                                    #postSidebarColumn
+                                    class="computation-sidebar"
+                                    [style.flex-basis.px]="sidebarWidth.width()"
+                                >
+                                    <ng-container [formGroup]="postInputForm">
+                                        <div class="cdt-input-map-wrapper">
+                                            <app-input-map [activeColor]="activeColor"></app-input-map>
+                                        </div>
+                                    </ng-container>
+                                    <app-node-secrets-field
+                                        [activeColor]="activeColor"
+                                        [value]="postSelectedSecretIds()"
+                                        tooltipText="Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                        panelWidth="346px"
+                                        (valueChange)="onPostSecretsChange($event)"
+                                    />
+                                    <app-custom-input
+                                        label="Output Variable Path"
+                                        tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
+                                        formControlName="post_output_variable_path"
+                                        placeholder="Enter output variable path (leave empty for null)"
+                                        [activeColor]="activeColor"
+                                    ></app-custom-input>
+                                    <app-custom-input
+                                        label="Libraries"
+                                        tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
+                                        formControlName="post_libraries"
+                                        placeholder="Enter libraries (e.g., requests, pandas, numpy)"
+                                        [activeColor]="activeColor"
+                                    ></app-custom-input>
+                                </div>
+                                <app-column-resize-divider
+                                    ariaLabel="Resize inputs and code columns"
+                                    [column]="postSidebarColumn"
+                                    [opposite]="postCodeColumn"
+                                    [(width)]="sidebarWidth.width"
+                                    [defaultWidth]="sidebarWidth.defaultWidth"
+                                />
+                                <div
+                                    #postCodeColumn
+                                    class="code-editor-section"
+                                >
+                                    <app-code-editor
+                                        [pythonCode]="postCode"
+                                        [secretNames]="postSecretNames()"
+                                        [inputMapKeys]="postInputMapKeys()"
+                                        (pythonCodeChange)="onPostCodeChange($event)"
+                                    ></app-code-editor>
+                                </div>
+                            </div>
+                        }
 
-                                                <div class="prompt-field">
-                                                    <label class="field-label"
-                                                        >LLM Override <span class="required-star">*</span></label
-                                                    >
-                                                    <app-llm-model-selector
-                                                        [ngModel]="getLlmIdAsNumber(prompt.llm_config)"
-                                                        [ngModelOptions]="{ standalone: true }"
-                                                        (modelSelected)="onPromptLlmChange(prompt.id, $event)"
-                                                        placeholder="Inherit default LLM"
-                                                    ></app-llm-model-selector>
-                                                </div>
+                        <!-- Prompt Library Tab -->
+                        @if (activeTab() === 'prompts') {
+                            <div class="prompts-section">
+                                <div class="prompt-section-header">
+                                    <span class="prompt-section-title">
+                                        Prompt Library
+                                        <app-help-tooltip
+                                            text="Define reusable prompts referenced in decision table rules."
+                                        />
+                                    </span>
+                                    <button
+                                        type="button"
+                                        class="add-prompt-header-btn"
+                                        (click)="addPrompt()"
+                                    >
+                                        <i class="ti ti-plus"></i> Add Prompt
+                                    </button>
+                                </div>
 
-                                                <div class="prompt-field">
-                                                    <label class="field-label">Result Variable</label>
-                                                    <input
-                                                        type="text"
-                                                        class="field-input"
-                                                        [ngModel]="prompt.result_variable"
-                                                        [ngModelOptions]="{ standalone: true }"
-                                                        (ngModelChange)="
-                                                            updatePrompt(prompt.id, 'result_variable', $event)
-                                                        "
-                                                        placeholder="e.g. classification"
-                                                    />
-                                                </div>
-
-                                                <div class="prompt-field">
-                                                    <label class="field-label">Prompt Text</label>
-                                                    <div class="prompt-textarea-wrapper">
-                                                        <div
-                                                            class="prompt-highlight-overlay"
-                                                            aria-hidden="true"
-                                                            [innerHTML]="getHighlightedPromptText(prompt.prompt_text)"
-                                                        ></div>
-                                                        <textarea
-                                                            class="prompt-textarea prompt-textarea--transparent"
-                                                            rows="8"
-                                                            [ngModel]="prompt.prompt_text"
-                                                            [ngModelOptions]="{ standalone: true }"
-                                                            (ngModelChange)="onPromptTextChange(prompt.id, $event)"
-                                                            placeholder="Enter prompt template. Use curly braces for variable interpolation."
-                                                        ></textarea>
+                                <!-- Prompt List -->
+                                <div class="prompts-list">
+                                    @if (promptEntries().length === 0) {
+                                        <p class="empty-state">
+                                            No prompts defined yet. Add a prompt above to get started.
+                                        </p>
+                                    } @else {
+                                        @for (prompt of promptEntries(); track prompt.id) {
+                                            <div
+                                                class="prompt-card"
+                                                [class.expanded]="editingPromptId() === prompt.id"
+                                            >
+                                                <div
+                                                    class="prompt-card-header"
+                                                    (click)="toggleEditPrompt(prompt.id)"
+                                                >
+                                                    <div class="prompt-card-title">
+                                                        <app-svg-icon
+                                                            class="prompt-card-title__chevron"
+                                                            [class.prompt-card-title__chevron--expanded]="
+                                                                editingPromptId() === prompt.id
+                                                            "
+                                                            icon="play"
+                                                            size="8px"
+                                                        ></app-svg-icon>
+                                                        <span class="prompt-id">{{ prompt.id }}</span>
+                                                        @if (prompt.result_variable) {
+                                                            <span class="result-badge">{{
+                                                                prompt.result_variable
+                                                            }}</span>
+                                                        }
+                                                    </div>
+                                                    <div class="prompt-card-actions">
+                                                        <button
+                                                            type="button"
+                                                            class="icon-btn"
+                                                            title="Delete prompt"
+                                                            (click)="deletePrompt(prompt.id); $event.stopPropagation()"
+                                                        >
+                                                            <app-svg-icon
+                                                                class="prompt-card-actions__trash"
+                                                                icon="trash"
+                                                                size="14px"
+                                                            ></app-svg-icon>
+                                                        </button>
                                                     </div>
                                                 </div>
 
-                                                <div class="prompt-field">
-                                                    <label class="field-label">Output Schema (JSON)</label>
-                                                    <textarea
-                                                        class="schema-textarea"
-                                                        rows="4"
-                                                        [ngModel]="prompt.output_schema"
-                                                        [ngModelOptions]="{ standalone: true }"
-                                                        (ngModelChange)="
-                                                            updatePrompt(prompt.id, 'output_schema', $event)
-                                                        "
-                                                        placeholder='{"route_label": "string", "confidence": 0.0}'
-                                                    ></textarea>
-                                                </div>
+                                                @if (editingPromptId() === prompt.id) {
+                                                    <div class="prompt-card-body">
+                                                        <div class="prompt-field">
+                                                            <label class="field-label"
+                                                                >Name <span class="required-star">*</span></label
+                                                            >
+                                                            <input
+                                                                type="text"
+                                                                class="field-input"
+                                                                [ngModel]="pendingPromptName()"
+                                                                [ngModelOptions]="{ standalone: true }"
+                                                                (ngModelChange)="pendingPromptName.set($event)"
+                                                                (blur)="commitPromptRename(prompt.id)"
+                                                                (keydown.enter)="commitPromptRename(prompt.id)"
+                                                                placeholder="Enter prompt name..."
+                                                            />
+                                                        </div>
+
+                                                        <div class="prompt-field">
+                                                            <label class="field-label"
+                                                                >LLM Override
+                                                                <span class="required-star">*</span></label
+                                                            >
+                                                            <app-llm-model-selector
+                                                                [ngModel]="getLlmIdAsNumber(prompt.llm_config)"
+                                                                [ngModelOptions]="{ standalone: true }"
+                                                                (modelSelected)="onPromptLlmChange(prompt.id, $event)"
+                                                                placeholder="Inherit default LLM"
+                                                            ></app-llm-model-selector>
+                                                        </div>
+
+                                                        <div class="prompt-field">
+                                                            <label class="field-label">Result Variable</label>
+                                                            <input
+                                                                type="text"
+                                                                class="field-input"
+                                                                [ngModel]="prompt.result_variable"
+                                                                [ngModelOptions]="{ standalone: true }"
+                                                                (ngModelChange)="
+                                                                    updatePrompt(prompt.id, 'result_variable', $event)
+                                                                "
+                                                                placeholder="e.g. classification"
+                                                            />
+                                                        </div>
+
+                                                        <div class="prompt-field">
+                                                            <label class="field-label">Prompt Text</label>
+                                                            <div class="prompt-textarea-wrapper">
+                                                                <div
+                                                                    class="prompt-highlight-overlay"
+                                                                    aria-hidden="true"
+                                                                    [innerHTML]="
+                                                                        getHighlightedPromptText(prompt.prompt_text)
+                                                                    "
+                                                                ></div>
+                                                                <textarea
+                                                                    class="prompt-textarea prompt-textarea--transparent"
+                                                                    rows="8"
+                                                                    [ngModel]="prompt.prompt_text"
+                                                                    [ngModelOptions]="{ standalone: true }"
+                                                                    (ngModelChange)="
+                                                                        onPromptTextChange(prompt.id, $event)
+                                                                    "
+                                                                    placeholder="Enter prompt template. Use curly braces for variable interpolation."
+                                                                ></textarea>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="prompt-field">
+                                                            <label class="field-label">Output Schema (JSON)</label>
+                                                            <textarea
+                                                                class="schema-textarea"
+                                                                rows="4"
+                                                                [ngModel]="prompt.output_schema"
+                                                                [ngModelOptions]="{ standalone: true }"
+                                                                (ngModelChange)="
+                                                                    updatePrompt(prompt.id, 'output_schema', $event)
+                                                                "
+                                                                placeholder='{"route_label": "string", "confidence": 0.0}'
+                                                            ></textarea>
+                                                        </div>
+                                                    </div>
+                                                }
                                             </div>
                                         }
-                                    </div>
-                                }
-                            }
-                        </div>
+                                    }
+                                </div>
 
-                        <div class="prompt-info">
-                            <strong>Execution order:</strong> Expression is evaluated first. If true (or empty), the
-                            prompt runs. The LLM result is stored in <code>result_variable</code> and is then available
-                            in the Manipulation code.
-                        </div>
+                                <div class="prompt-info">
+                                    <strong>Execution order:</strong> Expression is evaluated first. If true (or empty),
+                                    the prompt runs. The LLM result is stored in <code>result_variable</code> and is
+                                    then available in the Manipulation code.
+                                </div>
+                            </div>
+                        }
                     </div>
-                }
+                </div>
             </form>
         }
     </div>

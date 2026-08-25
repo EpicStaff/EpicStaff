@@ -24,21 +24,10 @@ import { GetLlmConfigRequest } from '@shared/models';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { LlmConfigStorageService, SecretDeclarationIndexService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
-import {
-    catchError,
-    defaultIfEmpty,
-    EMPTY,
-    filter,
-    finalize,
-    forkJoin,
-    map,
-    Observable,
-    of,
-    switchMap,
-    take,
-    tap,
-} from 'rxjs';
+import { catchError, EMPTY, filter, finalize, forkJoin, map, Observable, of, switchMap, take, tap, timer } from 'rxjs';
 import { GraphCollaborationWsService } from 'src/app/features/flows/services/graph-collaboration.ws.service';
+import { buildNodeBackendPayload } from 'src/app/features/flows/services/graph-collaboration.ws.service';
+import { mergeNodeEntry } from 'src/app/visual-programming/utils/save/partial-node-broadcast';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
@@ -73,6 +62,7 @@ import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/
 import { SpinnerComponent } from '../../../../shared/components/spinner/spinner.component';
 import { UnsavedChangesDialogService } from '../../../../shared/components/unsaved-changes-dialog/unsaved-changes-dialog.service';
 import { NodeType } from '../../../../visual-programming/core/enums/node-type';
+import { ConditionGroup } from '../../../../visual-programming/core/models/decision-table.model';
 import { FlowModel } from '../../../../visual-programming/core/models/flow.model';
 import {
     AgentNodeModel,
@@ -80,10 +70,12 @@ import {
     ScheduleTriggerNodeModel,
     TaskNodeModel,
 } from '../../../../visual-programming/core/models/node.model';
+import { CustomPortId } from '../../../../visual-programming/core/models/port.model';
 import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/flow-graph.component';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
 import { SidePanelService } from '../../../../visual-programming/services/side-panel.service';
 import { UndoRedoService } from '../../../../visual-programming/services/undo-redo.service';
+import { createFlowConnection } from '../../../../visual-programming/utils/connection.factory';
 import {
     createStartNode,
     hasStartNode,
@@ -91,6 +83,8 @@ import {
     normalizeFlowPorts,
 } from '../../../../visual-programming/utils/load';
 import { rewriteLegacyOnceScheduleName } from '../../../../visual-programming/utils/load/nodes/schedule-trigger-node.mapper';
+import { mapWsNodePayloadToModel } from '../../../../visual-programming/utils/load/ws-node-payload-to-model';
+import { getInputPortRole, getOutputPortRole } from '../../../../visual-programming/utils/node-port-roles';
 import {
     buildBulkSavePayload,
     buildCdtSavedBaseline,
@@ -131,6 +125,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly wsService = inject(GraphCollaborationWsService);
     private readonly profileService = inject(ProfileService);
     private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
+    /** @deprecated used only by the deprecated manual-save path (saveCurrentState). */
     private readonly injector = inject(Injector);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
@@ -141,13 +136,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly graphState = signal<GraphDto | null>(null);
     private readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
     private readonly savedFlowState = signal<FlowModel>({ nodes: [], connections: [] });
+    private pendingReconnectResync = false;
     protected readonly collaborationEditors = this.wsService.editors;
     public readonly loadedFlowState = computed<FlowModel>(() => {
         const graph = this.graphState();
         if (!graph) return { nodes: [], connections: [] };
 
         let flowModel = mapGraphDtoToFlowModel(graph);
-        flowModel = this.addStartNodeIfNeeded(flowModel);
+        flowModel = this.addStartNodeIfNeeded(flowModel, graph.id);
         const validated = this.validateSubgraphNodes(flowModel, this.availableFlowLights());
         return validated.flowModel;
     });
@@ -155,10 +151,18 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public readonly hasUnsavedChangesSignal = computed<boolean>(() => {
         return JSON.stringify(this.currentFlowState()) !== JSON.stringify(this.savedFlowState());
     });
+    /** @deprecated the "saved by" banner was removed in EST-3020; nothing sets or renders it. */
+    public readonly savedByBanner = signal<string | null>(null);
 
+    /** @deprecated set only by the deprecated manual REST save path (saveFlowState). */
     public isSaving = signal(false);
     public isRunning = signal(false);
     public restoreWarnings = signal<RestoreWarning[]>([]);
+
+    private readonly canEditOverride = signal<boolean | null>(null);
+    public readonly canEditFlow = computed<boolean>(
+        () => this.canEditOverride() ?? this.permissionsService.can(ResourceCode.Flows, ActionCode.Update)
+    );
 
     public isPanelOpen = signal(false);
     public isPanelCollapsed = signal(true);
@@ -240,8 +244,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (!isFinite(graphId)) return;
             if (graphId === this.lastFetchedGraphId) return;
             this.lastFetchedGraphId = graphId;
-            this.undoRedoService.setUndoStack([]);
-            this.undoRedoService.setRedoStack([]);
+            this.undoRedoService.clear();
             const warnings = this.createGraphWarningService.readPending();
             if (warnings.length) this.restoreWarnings.set(warnings);
             this.fetchGraph(graphId);
@@ -254,16 +257,253 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         this.sidePanelService.reloadRequested$
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.refreshCurrentFlow());
+
         this.wsService.graphSaved$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
-            const currentId = this.profileService.currentUserSignal()?.id;
-            if (event.saved_by.user_id === currentId) return;
+            this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
 
-            const savedBy = event.saved_by.display_name ?? `User ${event.saved_by.user_id}`;
-            this.toastService.info(`Graph was saved by ${savedBy}`, 4000, 'bottom-right');
+            const tempIdMap = event.temp_id_map;
+            if (tempIdMap && Object.keys(tempIdMap).length > 0) {
+                const updates = this.flowService
+                    .nodes()
+                    .filter((n) => tempIdMap[n.id] != null)
+                    .map((n) => ({ ...n, backendId: tempIdMap[n.id] }));
+                if (updates.length > 0) {
+                    this.flowService.updateNodesInBatch(updates as NodeModel[]);
+                }
 
-            if (!this.hasUnsavedChangesSignal()) {
-                this.graphState.update((state) => (state ? { ...state, save_version: event.new_save_version } : state));
+                this.flowService.applyConnectionIdMap(tempIdMap, event.graph_id);
+                // Remap first: this assigns freshly-created pks into the undo/redo
+                // stacks. Invalidation (below) must run after — reversed, a pk that
+                // was just legitimately assigned by this same flush could be wrongly
+                // cleared again.
+                this.undoRedoService.remapTempIds(tempIdMap);
             }
+
+            const deletedIds = event.deleted_ids;
+            if (deletedIds && Object.keys(deletedIds).length > 0) {
+                const deletedConnectionIds = new Set<number>();
+                const deletedNodeIds = new Set<number>();
+                for (const [key, ids] of Object.entries(deletedIds)) {
+                    // Node pks and edge pks are drawn from independent BigAutoField
+                    // sequences, so they can collide numerically. Misclassifying a
+                    // deleted id into the wrong set is worse than a missed
+                    // invalidation: it can null the `data` of a still-live entity
+                    // whose id happens to match, causing it to re-enter the backend
+                    // as a create and orphan its real row. An unrecognized key is
+                    // therefore skipped entirely rather than defaulted to either
+                    // set — a stale pk surviving in the undo stack is the strictly
+                    // safer failure mode.
+                    let targetSet: Set<number> | null = null;
+                    if (key === 'edge_ids' || key === 'conditional_edge_ids') {
+                        targetSet = deletedConnectionIds;
+                    } else if (key.endsWith('_node_ids')) {
+                        targetSet = deletedNodeIds;
+                    }
+                    if (!targetSet) continue;
+                    for (const id of ids) targetSet.add(id);
+                }
+                if (deletedNodeIds.size > 0 || deletedConnectionIds.size > 0) {
+                    this.undoRedoService.invalidateDeletedIds(deletedNodeIds, deletedConnectionIds);
+                }
+            }
+
+            this.savedFlowState.set(cloneFlowState(this.currentFlowState()));
+        });
+
+        this.wsService.saveFailed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+            this.toastService.error(`Auto-save failed: ${event.reason}`, 5000, 'bottom-right');
+        });
+
+        this.wsService.editRightsChanged$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            this.canEditOverride.set(msg.can_edit);
+        });
+
+        this.wsService.opRejected$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            if (msg.reason === 'precondition_failed' || msg.reason === 'stale_id_recreate') return;
+            const text =
+                msg.reason === 'target_not_found'
+                    ? 'This node was deleted by other user. Your changes not applied'
+                    : `Changes not applied (${msg.reason})`;
+            this.toastService.error(text, 5000, 'bottom-right');
+        });
+
+        this.wsService.graphState$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const isReconnectResync = this.pendingReconnectResync;
+            this.pendingReconnectResync = false;
+
+            const currentUserId = this.profileService.currentUserSignal()?.id;
+            if (msg.restored_by && msg.restored_by.user_id === currentUserId) {
+                if (msg.new_save_version != null) {
+                    const newSaveVersion = msg.new_save_version;
+                    this.graphState.update((state) => (state ? { ...state, save_version: newSaveVersion } : state));
+                }
+                return;
+            }
+
+            let flowModel = mapGraphDtoToFlowModel(msg.flow);
+            flowModel = this.addStartNodeIfNeeded(flowModel, msg.flow.id);
+            const normalizedFlow = normalizeFlowPorts(flowModel);
+            if (isReconnectResync && !msg.restored_by) {
+                this.flowGraphComponent?.resyncAfterReconnect(normalizedFlow, this.savedFlowState());
+                this.toastService.info('Reconnected — synced with latest');
+            } else {
+                this.flowService.setFlow(normalizedFlow);
+            }
+
+            const startNode = normalizedFlow.nodes.find((n) => n.type === NodeType.START && n.backendId == null);
+            if (startNode) {
+                this.wsService.sendNodeCreated(startNode, msg.flow.id, normalizedFlow.nodes);
+            }
+
+            if (msg.restored_by) {
+                this.undoRedoService.clear();
+                const restoredBy = msg.restored_by.display_name ?? `User ${msg.restored_by.user_id}`;
+                const versionName = msg.version_name ?? 'a previous version';
+                this.toastService.info(`Flow restored to ${versionName} by ${restoredBy}`);
+            }
+
+            this.graphState.set({
+                ...msg.flow,
+                save_version: msg.new_save_version ?? msg.flow.save_version,
+            });
+        });
+
+        this.wsService.reconnected$
+            .pipe(
+                tap(() => (this.pendingReconnectResync = true)),
+                switchMap(() => timer(10000)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => (this.pendingReconnectResync = false));
+
+        this.wsService.nodeCreated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const node = mapWsNodePayloadToModel(msg.node as Record<string, unknown>, msg.list_key);
+            if (!node) return;
+
+            const exists = this.flowService.nodes().some((n) => n.id === node.id);
+            if (exists) {
+                this.flowService.updateNode(node);
+            } else {
+                this.flowService.addNode(node);
+            }
+            this.applyRemoteTableRouting(node.id, msg.node as Record<string, unknown>, msg.list_key);
+        });
+
+        this.wsService.nodeUpdated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const p = msg.node as Record<string, unknown>;
+            const existing =
+                p['temp_id'] != null
+                    ? this.flowService.nodes().find((n) => n.id === p['temp_id'])
+                    : typeof p['id'] === 'number'
+                      ? this.flowService.nodes().find((n) => n.backendId === p['id'])
+                      : undefined;
+
+            if (msg.changed_fields && msg.changed_fields.length > 0) {
+                if (!existing) return;
+                const existingPayload = buildNodeBackendPayload(
+                    existing,
+                    0,
+                    this.flowService.nodes(),
+                    this.flowService.connections()
+                );
+                if (!existingPayload) return;
+                const mergedPayload = mergeNodeEntry(existingPayload, p);
+                const merged = mapWsNodePayloadToModel(mergedPayload, msg.list_key);
+                if (!merged) return;
+                this.flowService.updateNode({ ...merged, id: existing.id });
+                this.applyRemoteTableRouting(existing.id, mergedPayload, msg.list_key);
+                return;
+            }
+
+            const updated = mapWsNodePayloadToModel(p, msg.list_key);
+            if (!updated) return;
+
+            if (existing) {
+                this.flowService.updateNode({ ...updated, id: existing.id });
+                this.applyRemoteTableRouting(existing.id, p, msg.list_key);
+            }
+        });
+
+        this.wsService.nodesDeleted$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const fNodeIds = msg.refs
+                .map((ref) => {
+                    if (ref.id != null) {
+                        return this.flowService.nodes().find((n) => n.backendId === ref.id)?.id ?? null;
+                    }
+                    return ref.temp_id ?? null;
+                })
+                .filter((id): id is string => id !== null);
+            if (fNodeIds.length > 0) {
+                this.flowService.deleteSelections({ fNodeIds, fConnectionIds: [] });
+                this.closeDialogsForDeletedNodes(new Set(fNodeIds));
+            }
+        });
+
+        this.wsService.connectionCreated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const p = msg.connection as Record<string, unknown>;
+            const nodes = this.flowService.nodes();
+            const sourceNode =
+                p['start_node_id'] != null
+                    ? nodes.find((n) => n.backendId === p['start_node_id'])
+                    : nodes.find((n) => n.id === p['start_temp_id']);
+            const targetNode =
+                p['end_node_id'] != null
+                    ? nodes.find((n) => n.backendId === p['end_node_id'])
+                    : nodes.find((n) => n.id === p['end_temp_id']);
+            if (!sourceNode || !targetNode) {
+                console.warn('[WS] connection_created: cannot resolve nodes', p);
+                return;
+            }
+            const sourcePortId: CustomPortId = `${sourceNode.id}_${getOutputPortRole(sourceNode.type)}`;
+            const targetPortId: CustomPortId = `${targetNode.id}_${getInputPortRole(targetNode.type)}`;
+            const conn = createFlowConnection(sourceNode.id, targetNode.id, sourcePortId, targetPortId);
+            const connId = (p['temp_id'] as string | undefined) ?? String(p['id']);
+            const data =
+                typeof p['id'] === 'number'
+                    ? {
+                          id: p['id'] as number,
+                          start_node_id: (p['start_node_id'] as number) ?? 0,
+                          end_node_id: (p['end_node_id'] as number) ?? 0,
+                          graph: 0,
+                          metadata: (p['metadata'] as Record<string, unknown>) ?? {},
+                      }
+                    : null;
+            this.flowService.addConnection({
+                ...conn,
+                id: connId,
+                data,
+                waypoints: p['waypoints'] as typeof conn.waypoints,
+            });
+        });
+
+        this.wsService.connectionDeleted$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            let fId: string | undefined;
+            if (msg.connection_id != null) {
+                fId = this.flowService.connections().find((c) => c.data?.id === msg.connection_id)?.id;
+            } else if (msg.temp_id != null) {
+                fId = this.flowService.connections().find((c) => c.id === msg.temp_id)?.id;
+            }
+            if (fId) this.flowService.removeConnection(fId);
+        });
+
+        this.wsService.connectionsDeleted$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const fIds = msg.refs
+                .map((ref) => {
+                    if (ref.id != null) {
+                        return this.flowService.connections().find((c) => c.data?.id === ref.id)?.id ?? null;
+                    }
+                    return ref.temp_id ?? null;
+                })
+                .filter((id): id is string => id !== null);
+            if (fIds.length > 0) this.flowService.removeConnectionsInBatch(fIds);
+        });
+
+        this.wsService.connectionWaypointsUpdated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((msg) => {
+            const fId =
+                typeof msg.connection_id === 'number'
+                    ? this.flowService.connections().find((c) => c.data?.id === msg.connection_id)?.id
+                    : this.flowService.connections().find((c) => c.id === msg.connection_id)?.id;
+            if (fId) this.flowService.updateConnectionWaypoints(fId, msg.waypoints);
         });
     }
 
@@ -405,10 +645,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .subscribe();
     }
 
+    /** @deprecated Manual save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     public onHeaderSave(): void {
         this.flowGraphComponent?.emitSave();
     }
 
+    /** @deprecated Manual save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     public onGraphSave(flowState: FlowModel): void {
         if (!this.graph?.id || this.isSaving()) return;
 
@@ -537,7 +779,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
-    private saveFlowState(flowState: FlowModel, showSuccessToast: boolean): Observable<void> {
+    /** @deprecated Manual REST save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
+    private saveFlowState(flowState: FlowModel, showSuccessToast: boolean, retried = false): Observable<void> {
         if (!this.graph?.id) return EMPTY;
         if (this.getBlockingNodeValidationIssues(flowState).length > 0) {
             return EMPTY;
@@ -587,6 +830,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }),
             map(() => void 0),
             catchError((err: HttpErrorResponse) => {
+                if (err.status === 409 && !retried && err.error?.current_version != null) {
+                    this.graphState.update((state) =>
+                        state ? { ...state, save_version: err.error.current_version } : state
+                    );
+                    return this.saveFlowState(flowState, showSuccessToast, true);
+                }
                 if (err.status === 409) {
                     this.toastService.warning(
                         'This graph was modified by another user. Please refresh to see the latest changes.'
@@ -642,15 +891,14 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (this.sidePanelService.savingNodeId() === node.id) return;
 
         this.sidePanelService.markNodeSaving(node.id);
-        this.saveNodeToBackend(node)
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                finalize(() => this.sidePanelService.clearNodeSaving())
-            )
-            .subscribe();
+        this.flowService.updateNode(node);
+        this.wsService.sendNodeUpdated(node, this.graph.id, this.flowService.nodes(), this.flowService.connections());
+        this.toastService.success('Node saved');
+        setTimeout(() => this.sidePanelService.clearNodeSaving());
     }
 
-    private saveNodeToBackend(node: NodeModel): Observable<void> {
+    /** @deprecated Manual REST save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
+    private saveNodeToBackend(node: NodeModel, retried = false): Observable<void> {
         if (!this.graph?.id) return EMPTY;
         const graphId = this.graph.id;
 
@@ -718,6 +966,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                     }),
                     map(() => void 0),
                     catchError((err: HttpErrorResponse) => {
+                        if (err.status === 409 && !retried && err.error?.current_version != null) {
+                            this.graphState.update((state) =>
+                                state ? { ...state, save_version: err.error.current_version } : state
+                            );
+                            return this.saveNodeToBackend(node, true);
+                        }
                         if (err.status === 409) {
                             this.toastService.warning(
                                 'This graph was modified by another user. Please refresh to see the latest changes.'
@@ -732,6 +986,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         );
     }
 
+    /** @deprecated Manual REST save removed in EST-3020 (the run endpoint flushes the live snapshot itself). Kept for potential rollback; no call sites. */
     private saveGraphForRun(): Observable<void> {
         if (!this.hasUnsavedChanges()) return of(void 0);
         if (this.isSaving()) return EMPTY;
@@ -739,6 +994,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         return this.saveFlowState(this.currentFlowState(), false);
     }
 
+    /** @deprecated Manual REST save removed in EST-3020 (WS autosave persists everything). Kept for potential rollback; no call sites. */
     public saveCurrentState(): Observable<void> {
         if (!this.hasUnsavedChanges()) return of(void 0);
         return toObservable(this.isSaving, { injector: this.injector }).pipe(
@@ -753,11 +1009,16 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
         this.isRunning.set(true);
 
-        const saveFirst$: Observable<void> = this.saveGraphForRun();
+        const committedOpenPanel = this.flowGraphComponent?.commitOpenPanelToFlow() ?? false;
 
-        saveFirst$
+        const startNode = this.currentFlowState().nodes.find((n) => n.type === NodeType.START);
+        const variables =
+            (startNode?.data as { initialState?: Record<string, unknown> } | undefined)?.initialState ??
+            this.graph.start_node_list[0]?.variables;
+
+        timer(committedOpenPanel ? 300 : 0)
             .pipe(
-                switchMap(() => this.runGraphService.runGraph(this.graph.id, this.graph.start_node_list[0].variables)),
+                switchMap(() => this.runGraphService.runGraph(this.graph.id, variables)),
                 takeUntilDestroyed(this.destroyRef),
                 tap((response: { session_id?: number }) => {
                     this.currentSessionId = response.session_id?.toString() ?? null;
@@ -836,7 +1097,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     @HostListener('window:beforeunload', ['$event'])
     public handleBeforeUnload(event: BeforeUnloadEvent): string | void {
-        if (this.hasUnsavedChanges()) {
+        if (this.wsService.connectionStatus() !== 'connected' && this.hasUnsavedChanges()) {
             event.preventDefault();
             return (event.returnValue = '');
         }
@@ -846,7 +1107,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public handleCtrlS(event: KeyboardEvent): void {
         if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
             event.preventDefault();
-            this.onHeaderSave();
         }
     }
 
@@ -856,26 +1116,26 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public canDeactivate(): boolean | Observable<boolean> {
         if (this.isDeactivating) return true;
+        if (this.wsService.connectionStatus() === 'connected') return true;
         if (!this.permissionsService.can(ResourceCode.Flows, ActionCode.Update)) return true;
         if (!this.hasUnsavedChanges()) return true;
 
         this.isDeactivating = true;
         return this.unsavedChangesDialog
-            .confirmUnsavedChanges(() =>
-                this.saveFlowState(this.currentFlowState(), false).pipe(
-                    map(() => true),
-                    defaultIfEmpty(false),
-                    catchError(() => of(false))
-                )
-            )
+            .confirm({
+                title: 'Connection lost',
+                message:
+                    'Real-time sync is disconnected, so your latest changes could not be saved. ' +
+                    'Leaving now will discard them.',
+                saveText: 'Leave anyway',
+                cancelText: 'Stay',
+                type: 'warning',
+            })
             .pipe(
-                tap((result) => {
+                tap(() => {
                     this.isDeactivating = false;
-                    if (result === 'dont-save') {
-                        this.savedFlowState.set(cloneFlowState(this.currentFlowState()));
-                    }
                 }),
-                map((result) => result === 'save' || result === 'dont-save')
+                map((result) => result === 'save')
             );
     }
 
@@ -961,14 +1221,83 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public ngOnDestroy(): void {
+        this.cleanupCdtGridState(this.currentFlowState());
         this.unsavedChangesRegistry.unregister(this);
         this.runSessionSSEService.stopStream();
         this.wsService.disconnect();
     }
 
-    private addStartNodeIfNeeded(flowModel: FlowModel): FlowModel {
+    /**
+     * Routing of decision/classification tables lives inside the node entity —
+     * remote node_created/node_updated carry the refs as *_node_id (persisted
+     * target) or *_temp_id (the target's canvas id). Resolve them onto this
+     * canvas and rebuild the table's outgoing connections so co-editors see
+     * routing changes live.
+     */
+    private closeDialogsForDeletedNodes(deletedNodeIds: Set<string>): void {
+        for (const ref of [...this.dialog.openDialogs]) {
+            const data = ref.config?.data as { nodeId?: string; node?: { id?: string } } | undefined;
+            const nodeId = data?.nodeId ?? data?.node?.id;
+            if (nodeId && deletedNodeIds.has(nodeId)) {
+                ref.close();
+            }
+        }
+    }
+
+    private applyRemoteTableRouting(canvasNodeId: string, payload: Record<string, unknown>, listKey: string): void {
+        if (listKey !== 'decision_table_node_list' && listKey !== 'classification_decision_table_node_list') return;
+        const nodes = this.flowService.nodes();
+        const node = nodes.find((n) => n.id === canvasNodeId);
+        const table = (node?.data as { table?: Record<string, unknown> } | undefined)?.table;
+        if (!node || !table) return;
+
+        const toCanvasId = (idVal: unknown, tempVal: unknown): string | null => {
+            if (typeof tempVal === 'string' && tempVal) return tempVal;
+            if (typeof idVal === 'number') return nodes.find((n) => n.backendId === idVal)?.id ?? null;
+            return null;
+        };
+
+        const rawGroups = (payload['condition_groups'] as Record<string, unknown>[] | undefined) ?? [];
+        const existingGroups = (table['condition_groups'] as Record<string, unknown>[] | undefined) ?? [];
+        // Groups arrive in the same order they were mapped into the node data.
+        const updatedGroups = existingGroups.map((group, index) => {
+            const raw = rawGroups[index];
+            if (!raw) return group;
+            return {
+                ...group,
+                next_node: toCanvasId(raw['next_node_id'], raw['next_node_temp_id']),
+                prompt_id:
+                    (raw['prompt_key'] as string | null | undefined) ??
+                    (group['prompt_id'] as string | null | undefined) ??
+                    null,
+            };
+        });
+        const defaultNext = toCanvasId(payload['default_next_node_id'], payload['default_next_node_temp_id']);
+        const errorNext = toCanvasId(payload['next_error_node_id'], payload['next_error_node_temp_id']);
+
+        this.flowService.updateNode({
+            ...node,
+            data: {
+                ...(node.data as Record<string, unknown>),
+                table: {
+                    ...table,
+                    condition_groups: updatedGroups,
+                    default_next_node: defaultNext,
+                    next_error_node: errorNext,
+                },
+            },
+        } as NodeModel);
+        this.flowService.resetDecisionTableConnections(
+            canvasNodeId,
+            updatedGroups as unknown as ConditionGroup[],
+            defaultNext,
+            errorNext
+        );
+    }
+
+    private addStartNodeIfNeeded(flowModel: FlowModel, graphId?: number): FlowModel {
         if (hasStartNode(flowModel)) return flowModel;
-        return { ...flowModel, nodes: [createStartNode(), ...flowModel.nodes] };
+        return { ...flowModel, nodes: [createStartNode(graphId), ...flowModel.nodes] };
     }
 
     private validateSubgraphNodes(
@@ -1163,8 +1492,6 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             data: {
                 graphId: this.graph.id,
                 graphSaveVersion: () => this.graphState()?.save_version,
-                hasUnsavedChanges: () => this.hasUnsavedChanges(),
-                saveCurrentState: () => this.saveCurrentState(),
             },
         });
 
@@ -1175,8 +1502,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             )
             .subscribe((response) => {
                 this.restoreWarnings.set(response.warnings);
-                this.undoRedoService.setUndoStack([]);
-                this.undoRedoService.setRedoStack([]);
+                this.undoRedoService.clear();
                 this.secretDeclarationIndexService.invalidate();
                 this.refreshCurrentFlow();
             });
@@ -1204,66 +1530,34 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     public onSaveVersion(): void {
         if (!this.graph.id) return;
 
-        const openVersionDialog = () => {
-            const dialogRef = this.dialog.open<SaveVersionDialogResult>(SaveVersionDialogComponent, {
-                width: '560px',
-                data: {},
-            });
+        const dialogRef = this.dialog.open<SaveVersionDialogResult>(SaveVersionDialogComponent, {
+            width: '560px',
+            data: {},
+        });
 
-            dialogRef.closed
-                .pipe(
-                    takeUntilDestroyed(this.destroyRef),
-                    filter((result): result is SaveVersionDialogResult => !!result),
-                    switchMap((result) =>
-                        this.flowApiService
-                            .saveGraphVersion({
-                                graph_id: this.graph.id,
-                                name: result.name,
-                                description: result.description,
-                            })
-                            .pipe(
-                                tap(() => {
-                                    this.toastService.success(`Version '${result.name}' saved`);
-                                    this.warnIfCdtMissingLlmConfig(this.loadedFlowState());
-                                }),
-                                catchError(() => {
-                                    this.toastService.error('Failed to save version');
-                                    return EMPTY;
-                                })
-                            )
-                    )
-                )
-                .subscribe();
-        };
-
-        if (!this.hasUnsavedChanges()) {
-            openVersionDialog();
-            return;
-        }
-
-        this.unsavedChangesDialog
-            .confirm({
-                title: 'Your flow has unsaved changes',
-                message:
-                    'Your flow has unsaved changes. <strong>Save</strong> the flow first to include them in the version, or <strong>continue</strong> to version the last saved state.',
-                saveText: 'Save',
-                dontSaveText: 'Continue',
-                cancelText: 'Cancel',
-                type: 'warning',
-                showDontSave: true,
-            })
+        dialogRef.closed
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                switchMap((result) => {
-                    if (result === 'save') {
-                        return this.saveFlowState(this.currentFlowState(), false).pipe(map(() => void 0));
-                    }
-                    if (result === 'dont-save') {
-                        return of(void 0);
-                    }
-                    return EMPTY;
-                })
+                filter((result): result is SaveVersionDialogResult => !!result),
+                switchMap((result) =>
+                    this.flowApiService
+                        .saveGraphVersion({
+                            graph_id: this.graph.id,
+                            name: result.name,
+                            description: result.description,
+                        })
+                        .pipe(
+                            tap(() => {
+                                this.toastService.success(`Version '${result.name}' saved`);
+                                this.warnIfCdtMissingLlmConfig(this.loadedFlowState());
+                            }),
+                            catchError(() => {
+                                this.toastService.error('Failed to save version');
+                                return EMPTY;
+                            })
+                        )
+                )
             )
-            .subscribe(() => openVersionDialog());
+            .subscribe();
     }
 }

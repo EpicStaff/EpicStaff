@@ -21,6 +21,7 @@ from tables.services.storage_service.dataclasses import (
 )
 from tables.services.storage_service.db_sync import StorageFileSync
 
+from tables.graph_collab.notifications import GraphEditNotifier
 from tables.models import OrganizationUser, StorageFile
 
 
@@ -149,6 +150,7 @@ class StorageManager:
         )
         relative_path = self._strip_org_prefix(org_id, result.path)
         StorageFileSync.on_upload(org_id, relative_path, size=result.size)
+        GraphEditNotifier.notify_org_files_changed(org_id)
         return UploadResult(path=relative_path, size=result.size)
 
     def download(self, org_id: int, path: str) -> bytes:
@@ -163,10 +165,12 @@ class StorageManager:
     def delete(self, org_id: int, path: str) -> None:
         self._backend.delete(self._build_storage_key(org_id, path))
         StorageFileSync.on_delete(org_id, path)
+        GraphEditNotifier.notify_org_files_changed(org_id)
 
     def mkdir(self, org_id: int, path: str) -> None:
         self._backend.mkdir(self._build_storage_key(org_id, path))
         StorageFileSync.on_mkdir(org_id, path)
+        GraphEditNotifier.notify_org_files_changed(org_id)
 
     def move(self, org_id: int, source_path: str, destination_path: str) -> None:
         actual_key = self._backend.move(
@@ -175,6 +179,7 @@ class StorageManager:
         )
         actual_path = self._strip_org_prefix(org_id, actual_key)
         StorageFileSync.on_move(org_id, source_path, actual_path)
+        GraphEditNotifier.notify_org_files_changed(org_id)
 
     def rename(self, org_id: int, source_path: str, destination_path: str) -> None:
         destination_clean = destination_path.rstrip("/")
@@ -191,6 +196,7 @@ class StorageManager:
         # rename never dedupes — the guard above confirmed this exact path was
         # free, so destination_path IS the actual path (unlike move).
         StorageFileSync.on_move(org_id, source_path, destination_path)
+        GraphEditNotifier.notify_org_files_changed(org_id)
 
     def copy(self, org_id: int, source_path: str, destination_path: str) -> None:
         actual_keys = self._backend.copy(
@@ -199,6 +205,7 @@ class StorageManager:
         )
         actual_paths = [self._strip_org_prefix(org_id, k) for k in actual_keys]
         StorageFileSync.on_copy(org_id, actual_paths)
+        GraphEditNotifier.notify_org_files_changed(org_id)
 
     def info(self, org_id: int, path: str) -> FileInfo | FolderInfo:
         clean_path = path.rstrip("/")
@@ -332,6 +339,7 @@ class StorageManager:
             for p in extracted:
                 StorageFileSync.on_upload(org_id, p)
 
+            GraphEditNotifier.notify_org_files_changed(org_id)
             return ArchiveUploadResult(type="archive", extracted=extracted)
 
         destination = (
@@ -342,6 +350,7 @@ class StorageManager:
         )
         relative_path = self._strip_org_prefix(org_id, result.path)
         StorageFileSync.on_upload(org_id, relative_path, size=result.size)
+        GraphEditNotifier.notify_org_files_changed(org_id)
         return FileUploadResult(type="file", path=relative_path, size=result.size)
 
     def list_tree(
@@ -518,6 +527,9 @@ class StorageManager:
         )
         actual_dst_paths = [self._strip_org_prefix(dst_org_id, k) for k in actual_keys]
         StorageFileSync.on_copy(dst_org_id, actual_dst_paths)
+        # The source tree is untouched by a copy — only the destination org
+        # needs to refresh its storage-browser dialogs.
+        GraphEditNotifier.notify_org_files_changed(dst_org_id)
 
     def move_cross_org(
         self,
@@ -539,3 +551,6 @@ class StorageManager:
         StorageFileSync.on_move_cross_org(
             src_org_id, src_path, dst_org_id, actual_dst_path
         )
+        # Both org trees changed — the source lost the file, the destination gained it.
+        GraphEditNotifier.notify_org_files_changed(src_org_id)
+        GraphEditNotifier.notify_org_files_changed(dst_org_id)

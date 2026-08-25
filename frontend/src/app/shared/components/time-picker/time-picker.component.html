@@ -55,6 +55,7 @@
     <div
         class="time-picker__dropdown"
         [style.--active-color]="activeColor()"
+        (mousedown)="$event.preventDefault()"
     >
         <div class="time-picker__slots">
             @for (slot of filteredSlots(); track slot) {

@@ -100,6 +100,26 @@ class OrganizationManagementService:
         self._assert_can_deactivate()
         org.is_active = False
         org.save(update_fields=["is_active", "updated_at"])
+
+        # Anyone with an already-open WS graph-editing session in this org
+        # keeps editing until they reload unless we proactively re-check
+        # their permission now. Notify every member so their live sessions
+        # disconnect (mirrors UserManagementService.revoke_superadmin, just
+        # inverted: many users, one org, instead of one user, many orgs).
+        from tables.graph_collab.notifications import GraphEditNotifier
+
+        member_user_ids = list(
+            OrganizationUser.objects.filter(org_id=org_id).values_list(
+                "user_id", flat=True
+            )
+        )
+        for member_user_id in member_user_ids:
+            transaction.on_commit(
+                lambda uid=member_user_id: GraphEditNotifier.notify_permission_changed(
+                    user_id=uid, org_id=org_id
+                )
+            )
+
         return self._get_organization_with_member_count(org.pk)
 
     @transaction.atomic

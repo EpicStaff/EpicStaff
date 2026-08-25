@@ -16,6 +16,7 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { UndoRedoService } from '../../../services/undo-redo.service';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { DecisionTableGridComponent } from './decision-table-grid/decision-table-grid.component';
 
 @Component({
@@ -26,6 +27,7 @@ import { DecisionTableGridComponent } from './decision-table-grid/decision-table
         CustomInputComponent,
         CommonModule,
         DecisionTableGridComponent,
+        LockableFieldComponent,
         MatTooltipModule,
         SelectComponent,
         HelpTooltipComponent,
@@ -57,6 +59,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
                     node.type !== NodeType.START &&
                     node.type !== NodeType.WEBHOOK_TRIGGER &&
                     node.type !== NodeType.TELEGRAM_TRIGGER &&
+                    node.type !== NodeType.SCHEDULE_TRIGGER &&
                     node.id !== currentNodeId
             )
             .map((node) => ({
@@ -182,12 +185,12 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
                 // Build from the CURRENT panel state (not this.node(), the committed flow-state node)
                 // so uncommitted edits — e.g. a condition just added in the open panel — are included
                 // in the conversion. Otherwise converting without closing/saving first drops them.
+                const flowBeforeConversion = this.flowService.getFlowState();
                 const dtNode = this.createUpdatedNode();
                 const { node: cdtNode, portIdMap } = convertDecisionTableToCdt(dtNode);
 
-                // Strategy (a): clear selection first so the DT panel unmounts and
-                // captureCurrentNodeState() cannot write a stale DT node back into
-                // flow state when emitSave() calls commitSidePanelToFlow().
+                // Clear selection first so the DT panel unmounts and cannot
+                // write a stale DT node back into flow state.
                 this.sidePanelService.clearSelection();
 
                 this.flowService.replaceNodePreservingEdges(dtNode.id, cdtNode, {
@@ -213,7 +216,7 @@ export class DecisionTableNodePanelComponent extends BaseSidePanel<DecisionTable
                 this.undoRedoService.clear();
 
                 this.sidePanelService.setSelectedNodeId(cdtNode.id);
-                this.sidePanelService.requestFullSave();
+                this.sidePanelService.requestFullSave(flowBeforeConversion);
             });
     }
 

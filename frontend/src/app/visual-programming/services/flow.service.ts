@@ -695,7 +695,43 @@ export class FlowService {
             return false;
         });
     }
-    public deleteSelections(selections: { fNodeIds: string[]; fConnectionIds: string[] }): void {
+
+    public applyConnectionIdMap(tempIdMap: Record<string, number>, graphId: number): void {
+        this.flowSignal.update((flow: FlowModel) => {
+            let changed = false;
+            const nodeBackendId = (nodeId: string): number =>
+                flow.nodes.find((n) => n.id === nodeId)?.backendId ?? tempIdMap[nodeId] ?? 0;
+            const connections = flow.connections.map((conn) => {
+                if (conn.data?.id != null) return conn;
+                const backendId = tempIdMap[conn.id];
+                if (backendId == null) return conn;
+                changed = true;
+                return {
+                    ...conn,
+                    data: {
+                        id: backendId,
+                        start_node_id: nodeBackendId(conn.sourceNodeId),
+                        end_node_id: nodeBackendId(conn.targetNodeId),
+                        graph: graphId,
+                        metadata: { waypoints: conn.waypoints ?? [] },
+                    },
+                };
+            });
+            return changed ? { ...flow, connections } : flow;
+        });
+    }
+
+    public deleteSelections(selections: { fNodeIds: string[]; fConnectionIds: string[] }): {
+        removedNodes: NodeModel[];
+        removedConnections: ConnectionModel[];
+    } {
+        // Everything actually removed, including cascade (orphaned connections,
+        // auto-deleted EDGE nodes) — callers broadcast these over WS so the
+        // backend snapshot never keeps edges referencing deleted nodes.
+        const result: { removedNodes: NodeModel[]; removedConnections: ConnectionModel[] } = {
+            removedNodes: [],
+            removedConnections: [],
+        };
         this.flowSignal.update((flow: FlowModel) => {
             const nodeIdsToRemove = new Set(selections.fNodeIds);
             const connectionIdsToRemove = new Set<string>();
@@ -738,6 +774,9 @@ export class FlowService {
 
                 return true; // keep connection
             });
+
+            result.removedNodes = flow.nodes.filter((node) => nodeIdsToRemove.has(node.id));
+            result.removedConnections = removedConnections;
 
             const decisionTableUpdates = new Map<string, { table: DecisionTableNode; ports: ViewPort[] }>();
 
@@ -846,6 +885,7 @@ export class FlowService {
                 connections: updatedConnections,
             };
         });
+        return result;
     }
 
     /**

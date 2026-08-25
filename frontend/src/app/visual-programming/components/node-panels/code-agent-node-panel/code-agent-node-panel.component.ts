@@ -22,6 +22,7 @@ import { CodeAgentNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { NodeStorageSectionComponent } from '../../node-storage-section/node-storage-section.component';
 import {
     createInputMapFromPairs,
@@ -42,6 +43,9 @@ import { DEFAULT_OUTPUT_SCHEMA } from './default-output-schema';
         CodeEditorComponent,
         CommonModule,
         JsonEditorComponent,
+        CustomInputComponent,
+        JsonEditorComponent,
+        LockableFieldComponent,
         MatTooltipModule,
         SelectComponent,
         LlmModelSelectorComponent,

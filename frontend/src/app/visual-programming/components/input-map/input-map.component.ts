@@ -2,9 +2,11 @@ import { Overlay, OverlayModule, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
 import {
+    ChangeDetectorRef,
     Component,
     computed,
     DestroyRef,
+    effect,
     inject,
     Input,
     OnChanges,
@@ -13,6 +15,7 @@ import {
     Output,
     signal,
     SimpleChanges,
+    untracked,
     ViewContainerRef,
 } from '@angular/core';
 import { EventEmitter } from '@angular/core';
@@ -97,7 +100,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                         placeholder="Function Argument Name"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
-                                        (keydown.enter)="onEnterKey($event, i)"
+                                        (keydown.enter)="onEnterKey($event)"
                                     />
                                 </div>
                                 <div class="equals-sign">=</div>
@@ -108,7 +111,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                                         placeholder="Domain Variable Name"
                                         [style.--active-color]="activeColor"
                                         autocomplete="off"
-                                        (keydown.enter)="onEnterKey($event, i)"
+                                        (keydown.enter)="onEnterKey($event)"
                                         (focus)="onValueFocus(i, $event)"
                                         (input)="onValueInput(i, $event)"
                                     />
@@ -186,12 +189,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 >
                     <i class="ti ti-plus"></i> Add Input
                 </button>
-                <div
-                    class="test-input-dirty-warning"
-                    [class.visible]="testInputDirty"
-                >
-                    <div class="test-input-dirty-warning__inner">Click "Save node" to save test variables.</div>
-                </div>
                 <div class="test-mode-actions">
                     <button
                         type="button"
@@ -203,7 +200,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     <button
                         type="button"
                         class="btn-secondary"
-                        [disabled]="fillLoading() || !pythonNodeId || !hasSuccessfulSession()"
+                        [disabled]="fillLoading() || !hasSuccessfulSession()"
                         [matTooltip]="getButtonTooltip()"
                         matTooltipPosition="above"
                         (click)="onFillVariables()"
@@ -213,7 +210,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                     <button
                         type="button"
                         class="btn-primary"
-                        [disabled]="testRunning || !canRunTest() || !pythonNodeId"
+                        [disabled]="testRunning || !canRunTest()"
                         [matTooltip]="getRunTestButtonTooltip()"
                         matTooltipPosition="above"
                         (click)="onRunTest()"
@@ -424,47 +421,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
                 margin-top: 8px;
             }
 
-            .test-input-dirty-warning {
-                display: grid;
-                grid-template-rows: 0fr;
-                transition: grid-template-rows 0.15s cubic-bezier(0.22, 1, 0.36, 1);
-
-                &.visible {
-                    grid-template-rows: 1fr;
-
-                    .test-input-dirty-warning__inner {
-                        transform: translateY(0);
-                        opacity: 1;
-                    }
-                }
-
-                &__inner {
-                    display: flex;
-                    align-items: center;
-                    overflow: hidden;
-                    min-height: 0;
-                    font-size: 0.75rem;
-                    border-radius: 5px;
-                    border-left: 3px solid #efd616;
-                    background-color: rgba(239, 214, 22, 0.08);
-                    color: #efd616;
-                    padding: 0.25rem 0.5rem;
-                    transform: translateY(-100%);
-                    opacity: 0;
-                    transition:
-                        transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-                        opacity 0.25s ease;
-                }
-
-                .save-node-svg {
-                    color: var(--accent-color);
-                    background: var(--color-nodes-sidepanel-bg);
-                    border: none;
-                    padding: 0.25rem;
-                    border-radius: 4px;
-                    margin: 0 3px;
-                }
-            }
         `,
     ],
 })
@@ -476,9 +432,10 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     @Input() graphId: number | null = null;
     @Input() nodeName: string | null = null;
     @Input() testRunning: boolean = false;
-    @Input() testInputDirty: boolean = false;
     @Output() testModeChange = new EventEmitter<boolean>();
     @Output() runTest = new EventEmitter<Record<string, string>>();
+
+    private readonly cdr = inject(ChangeDetectorRef);
 
     fillLoading = signal(false);
     fillNoDataWarning = signal(false);
@@ -517,6 +474,13 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         private fb: FormBuilder,
         private sidePanelService: SidePanelService
     ) {
+        effect(() => {
+            this.sidePanelService.remoteMergeTick();
+            untracked(() => {
+                this.reconcileAfterRemoteMerge();
+                this.cdr.markForCheck();
+            });
+        });
         toObservable(this.runSessionSSEService.status)
             .pipe(
                 filter((status) => status === GraphSessionStatus.ENDED),
@@ -585,7 +549,7 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         }
     }
 
-    onEnterKey(event: Event, currentIndex: number) {
+    onEnterKey(event: Event) {
         const keyboardEvent = event as KeyboardEvent;
         keyboardEvent.preventDefault();
 
@@ -594,16 +558,6 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         this.addPair();
-
-        setTimeout(() => {
-            const newIndex = currentIndex + 1;
-            const newPairElement = document.querySelector(
-                `[formGroupName="${newIndex}"] input[formControlName="key"]`
-            ) as HTMLInputElement;
-            if (newPairElement) {
-                newPairElement.focus();
-            }
-        }, 0);
     }
 
     onTestModeToggle(value: boolean): void {
@@ -718,11 +672,23 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
 
     removeTestVariable(index: number): void {
         const removed = this.testPairs.at(index);
+        const removedKey = ((removed.value.key as string) ?? '').trim();
         this.testKeySubs.get(removed)?.unsubscribe();
         this.testKeySubs.delete(removed);
         this.lastKnownTestKeys.delete(removed);
         this.testPairs.removeAt(index);
         this.testPairs.markAsDirty();
+        if (removedKey) {
+            const inputIdx = this.findInputPairIndexByKey(removedKey);
+            if (inputIdx !== -1) {
+                const inputCtrl = this.pairs.at(inputIdx);
+                this.keySubs.get(inputCtrl)?.unsubscribe();
+                this.keySubs.delete(inputCtrl);
+                this.lastKnownKeys.delete(inputCtrl);
+                this.pairs.removeAt(inputIdx);
+                this.pairs.markAsDirty();
+            }
+        }
     }
 
     private syncTestKeysToNormalMode(): boolean {
@@ -796,6 +762,30 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         }
 
         return changed;
+    }
+
+    private reconcileAfterRemoteMerge(): void {
+        if (!this.pairs || !this.testPairs) return;
+
+        const inputKeys = this.pairs.controls
+            .map((c) => ((c.value.key as string) ?? '').trim())
+            .filter((k) => k !== '');
+
+        for (let i = this.testPairs.length - 1; i >= 0; i--) {
+            const key = ((this.testPairs.at(i).value.key as string) ?? '').trim();
+            if (key !== '' && !inputKeys.includes(key)) {
+                this.testPairs.removeAt(i, { emitEvent: false });
+            }
+        }
+
+        for (const key of inputKeys) {
+            if (this.findTestPairIndexByKey(key) === -1) {
+                this.testPairs.push(this.fb.group({ key: [key], value: [''] }), { emitEvent: false });
+            }
+        }
+
+        this.attachKeyMirroringToAllPairs();
+        this.attachKeyMirroringToAllTestPairs();
     }
 
     private attachKeyMirroringToAllPairs(): void {
@@ -1090,9 +1080,6 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
         if (this.fillLoading()) {
             return 'Loading variables...';
         }
-        if (!this.pythonNodeId) {
-            return 'Save the graph first to enable this feature';
-        }
         if (!this.hasSuccessfulSession()) {
             return 'Fill out the Input list and complete a successful session to access Input Variables (available after entering the first test values).';
         }
@@ -1102,9 +1089,6 @@ export class InputMapComponent implements OnInit, OnChanges, OnDestroy {
     getRunTestButtonTooltip(): string {
         if (this.testRunning) {
             return 'Test is already running...';
-        }
-        if (!this.pythonNodeId) {
-            return 'Click Save in the top panel to save the graph before running a test';
         }
         if (!this.canRunTest()) {
             return 'Fill out all test input variables before running the test';

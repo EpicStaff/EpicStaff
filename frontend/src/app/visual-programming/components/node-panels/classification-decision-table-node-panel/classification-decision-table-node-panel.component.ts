@@ -18,9 +18,10 @@ import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
 import { Subject } from 'rxjs';
-import { debounceTime } from 'rxjs/operators';
+import { debounceTime, takeUntil } from 'rxjs/operators';
 
 import { ImportExportService } from '../../../../core/services/import-export.service';
+import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications/toast.service';
 import {
     ActionDropdownButtonComponent,
@@ -49,11 +50,14 @@ import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { FlowService } from '../../../services/flow.service';
 import { SidePanelService } from '../../../services/side-panel.service';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { NodeSecretsFieldComponent } from '../../node-secrets-field/node-secrets-field.component';
 import { CdtExportImportService } from './cdt-export-import.service';
 import { ClassificationDecisionTableGridComponent } from './classification-decision-table-grid/classification-decision-table-grid.component';
 
 type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
+
+const LOCKABLE_TABS: ReadonlySet<TabType> = new Set(['precomputation', 'postcomputation', 'prompts']);
 
 @Component({
     selector: 'app-classification-decision-table-node-panel',
@@ -70,6 +74,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
         AppSvgIconComponent,
         ActionDropdownButtonComponent,
         SelectComponent,
+        LockableFieldComponent,
         NodeSecretsFieldComponent,
         ColumnResizeDividerComponent,
     ],
@@ -80,6 +85,7 @@ type TabType = 'table' | 'precomputation' | 'postcomputation' | 'prompts';
 export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel<ClassificationDecisionTableNodeModel> {
     public override readonly isExpanded = input<boolean>(true);
     public readonly graphId = input<number | null>(null);
+    public readonly canEdit = input<boolean>(true);
     public readonly exportButtonTemplate = viewChild<TemplateRef<unknown>>('exportButtonTpl');
 
     private flowService = inject(FlowService);
@@ -100,6 +106,10 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
     private sanitizer = inject(DomSanitizer);
 
     public activeTab = signal<TabType>('table');
+    private lastFormNodeId: string | null = null;
+    private readonly profileService = inject(ProfileService);
+    private lockedTab: { nodeId: string; tab: TabType } | null = null;
+    private pendingTabSwitchTimer: ReturnType<typeof setTimeout> | null = null;
 
     protected readonly sidebarWidth = createColumnWidthState('cdt-computation', 350);
 
@@ -112,11 +122,16 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
     public preCode: string = '';
     public postCode: string = '';
+    private initialPreCode: string = '';
+    private initialPostCode: string = '';
+    private initialConditionGroupsSignature: string = '';
+    private initialPromptsSignature: string = '';
     public readonly preSelectedSecretIds = signal<number[]>([]);
     public readonly postSelectedSecretIds = signal<number[]>([]);
     public readonly preSecretNames = computed(() => this.namesFor(this.preSelectedSecretIds()));
     public readonly postSecretNames = computed(() => this.namesFor(this.postSelectedSecretIds()));
     private readonly codeChange$ = new Subject<void>();
+    private readonly reinitDestroy$ = new Subject<void>();
     private sidePanelService = inject(SidePanelService);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly importExportService = inject(ImportExportService);
@@ -210,6 +225,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.sidePanelService.triggerAutosave());
         this.fullLlmConfigService.getFullLLMConfigs().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        this.destroyRef.onDestroy(() => this.setLockedTab(null));
 
         effect(() => {
             const graphId = this.graphId();
@@ -286,6 +302,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
                     node.type !== NodeType.START &&
                     node.type !== NodeType.WEBHOOK_TRIGGER &&
                     node.type !== NodeType.TELEGRAM_TRIGGER &&
+                    node.type !== NodeType.SCHEDULE_TRIGGER &&
                     node.id !== currentNodeId
             )
             .map((node) => ({
@@ -341,18 +358,18 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             output_variable_path: tableData.post_output_variable_path,
         };
 
-        this.preCode = preComp.code || '';
-        this.postCode = postComp.code || '';
+        const preCodeValue = preComp.code || '';
+        const postCodeValue = postComp.code || '';
         this.preSelectedSecretIds.set(preComp.secret_ids ?? []);
         this.postSelectedSecretIds.set(postComp.secret_ids ?? []);
 
         const form = this.fb.group({
             node_name: [node.node_name, this.createNodeNameValidators()],
-            pre_computation_code: [this.preCode],
+            pre_computation_code: [preCodeValue],
             pre_input_map: this.fb.array([] as FormGroup[]),
             pre_output_variable_path: [preComp.output_variable_path || ''],
             pre_libraries: [preComp.libraries?.join(', ') || ''],
-            post_computation_code: [this.postCode],
+            post_computation_code: [postCodeValue],
             post_input_map: this.fb.array([] as FormGroup[]),
             post_output_variable_path: [postComp.output_variable_path || ''],
             post_libraries: [postComp.libraries?.join(', ') || ''],
@@ -363,6 +380,34 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         this.initializeInputMapArray(form, 'pre_input_map', preComp.input_map || {});
         this.initializeInputMapArray(form, 'post_input_map', postComp.input_map || {});
+
+        if (this.lastFormNodeId !== node.id) {
+            this.activeTab.set('table');
+            this.lastFormNodeId = node.id;
+        }
+
+        return form;
+    }
+
+    protected override onFormReinitialized(): void {
+        this.setLockedTab(null);
+        this.reinitDestroy$.next();
+
+        const form = this.form;
+        this.preCode = form.get('pre_computation_code')?.value || '';
+        this.postCode = form.get('post_computation_code')?.value || '';
+        this.initialPreCode = this.preCode;
+        this.initialPostCode = this.postCode;
+
+        const node = this.node();
+        const tableData: ClassificationDecisionTableData =
+            (node.data as { table?: ClassificationDecisionTableData }).table ?? this.getDefaultTableData();
+        const groupsCopy = this.cloneConditionGroups(tableData.condition_groups || []);
+        const promptsCopy = { ...(tableData.prompts || {}) };
+        this.conditionGroups.set(groupsCopy);
+        this.prompts.set(promptsCopy);
+        this.initialConditionGroupsSignature = JSON.stringify(groupsCopy);
+        this.initialPromptsSignature = JSON.stringify(promptsCopy);
 
         // Build sub-forms for InputMapComponent.
         // InputMapComponent uses ControlContainer to find its parent FormGroup and then
@@ -384,36 +429,67 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
 
         // Sync sub-form input_map → canonical array on main form whenever user edits.
         (this.preInputForm.get('input_map') as FormArray).valueChanges
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .pipe(takeUntil(this.reinitDestroy$), takeUntilDestroyed(this.destroyRef))
             .subscribe((pairs: { key: string; value: string }[]) => {
                 this.syncSubFormToMainArray(form, 'pre_input_map', pairs);
                 this.preInputMapVersion.update((v) => v + 1);
+                this.notifyExternalChange();
                 this.codeChange$.next();
             });
 
         (this.postInputForm.get('input_map') as FormArray).valueChanges
-            .pipe(takeUntilDestroyed(this.destroyRef))
+            .pipe(takeUntil(this.reinitDestroy$), takeUntilDestroyed(this.destroyRef))
             .subscribe((pairs: { key: string; value: string }[]) => {
                 this.syncSubFormToMainArray(form, 'post_input_map', pairs);
                 this.postInputMapVersion.update((v) => v + 1);
+                this.notifyExternalChange();
                 this.codeChange$.next();
             });
 
         ['pre_output_variable_path', 'pre_libraries', 'post_output_variable_path', 'post_libraries'].forEach(
             (controlName) => {
                 form.get(controlName)!
-                    .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
-                    .subscribe(() => this.codeChange$.next());
+                    .valueChanges.pipe(takeUntil(this.reinitDestroy$), takeUntilDestroyed(this.destroyRef))
+                    .subscribe(() => {
+                        this.notifyExternalChange();
+                        this.codeChange$.next();
+                    });
             }
         );
+    }
 
-        const groupsCopy = this.cloneConditionGroups(tableData.condition_groups || []);
-        this.conditionGroups.set(groupsCopy);
-        this.prompts.set({ ...(tableData.prompts || {}) });
+    protected override onRemoteFormMerged(): void {
+        const remotePreCode = this.form.get('pre_computation_code')?.value || '';
+        if (this.preCode === this.initialPreCode) {
+            this.preCode = remotePreCode;
+        }
+        this.initialPreCode = remotePreCode;
 
-        this.activeTab.set('table');
+        const remotePostCode = this.form.get('post_computation_code')?.value || '';
+        if (this.postCode === this.initialPostCode) {
+            this.postCode = remotePostCode;
+        }
+        this.initialPostCode = remotePostCode;
 
-        return form;
+        const node = this.node();
+        const tableData: ClassificationDecisionTableData =
+            (node.data as { table?: ClassificationDecisionTableData }).table ?? this.getDefaultTableData();
+
+        const remoteGroups = this.cloneConditionGroups(tableData.condition_groups || []);
+        const remoteGroupsSignature = JSON.stringify(remoteGroups);
+        const localGroupsSignature = untracked(() => JSON.stringify(this.conditionGroups()));
+        if (localGroupsSignature === this.initialConditionGroupsSignature) {
+            this.conditionGroups.set(remoteGroups);
+        }
+        this.initialConditionGroupsSignature = remoteGroupsSignature;
+
+        const remotePrompts = { ...(tableData.prompts || {}) };
+        const remotePromptsSignature = JSON.stringify(remotePrompts);
+        const localPromptsSignature = untracked(() => JSON.stringify(this.prompts()));
+        if (localPromptsSignature === this.initialPromptsSignature) {
+            this.prompts.set(remotePrompts);
+        }
+        this.initialPromptsSignature = remotePromptsSignature;
     }
 
     createUpdatedNode(): ClassificationDecisionTableNodeModel {
@@ -481,8 +557,75 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         };
     }
 
+    private tabFieldId(tab: TabType): string {
+        return `cdt_tab_${tab}`;
+    }
+
+    public lockedByOther(tab: TabType) {
+        if (!LOCKABLE_TABS.has(tab)) return null;
+        const lock = this.wsService.lockedNodeFields().get(this.node().id)?.get(this.tabFieldId(tab)) ?? null;
+        if (!lock || lock.user_id === this.profileService.currentUserSignal()?.id) return null;
+        return lock;
+    }
+
+    private setLockedTab(tab: TabType | null): void {
+        if (this.pendingTabSwitchTimer !== null) {
+            clearTimeout(this.pendingTabSwitchTimer);
+            this.pendingTabSwitchTimer = null;
+        }
+        if (this.lockedTab) {
+            this.wsService.sendNodeUnlocked(this.lockedTab.nodeId, this.tabFieldId(this.lockedTab.tab));
+            this.lockedTab = null;
+        }
+        if (tab && LOCKABLE_TABS.has(tab)) {
+            const nodeId = this.node().id;
+            this.wsService.sendNodeLocked(nodeId, this.tabFieldId(tab));
+            this.lockedTab = { nodeId, tab };
+        }
+    }
+
     public setActiveTab(tab: TabType): void {
-        this.activeTab.set(tab);
+        // activeTab() only flips once a deferred switch (below) actually runs, so while one is
+        // pending this can still equal the tab being left. Bail out only when there's nothing
+        // in flight — otherwise a quick click back to the original tab would silently leave the
+        // stale switch scheduled and lock the wrong tab once it fires.
+        if (tab === this.activeTab() && this.pendingTabSwitchTimer === null) return;
+
+        const lock = this.lockedByOther(tab);
+        if (lock) {
+            this.toastService.warning(
+                `${lock.display_name || 'Another user'} is editing this tab`,
+                3000,
+                'bottom-right'
+            );
+            return;
+        }
+
+        if (LOCKABLE_TABS.has(tab) && !this.wsService.isConnected()) {
+            this.toastService.warning('Connecting to server, please wait…', 3000, 'bottom-right');
+            return;
+        }
+
+        const applySwitch = () => {
+            this.setLockedTab(tab);
+            this.activeTab.set(tab);
+            if (tab === 'precomputation' || tab === 'postcomputation') {
+                this.seedSubFormInputMap(this.preInputForm, this.form.get('pre_input_map') as FormArray);
+                this.seedSubFormInputMap(this.postInputForm, this.form.get('post_input_map') as FormArray);
+                this.preInputMapVersion.update((v) => v + 1);
+            }
+        };
+
+        if (LOCKABLE_TABS.has(this.activeTab())) {
+            this.sidePanelService.triggerAutosave();
+            if (this.pendingTabSwitchTimer !== null) {
+                clearTimeout(this.pendingTabSwitchTimer);
+            }
+            this.pendingTabSwitchTimer = setTimeout(applySwitch, 0);
+            return;
+        }
+
+        applySwitch();
     }
 
     public onOpenPromptLibrary(event: { action: 'create' } | { action: 'edit'; promptId: string }): void {
@@ -512,7 +655,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             prompt_text: '',
             llm_config: null,
             output_schema: null,
-            result_variable: '',
+            result_variable: 'prompt_result',
             variable_mappings: {},
         };
         this.prompts.update((p) => ({ ...p, [newId]: newConfig }));
@@ -574,7 +717,7 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
         if (this.editingPromptId() === id) {
             this.editingPromptId.set(null);
         }
-        this.flowService.updateNode(this.createUpdatedNode());
+        this.sidePanelService.triggerAutosave();
     }
 
     public toggleEditPrompt(id: string): void {

@@ -1,4 +1,4 @@
-import { generateUuid } from '@shared/utils';
+import { stableNodeId } from '../../stable-node-id';
 
 import { GetTelegramTriggerNodeRequest } from '../../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
 import { NodeType } from '../../../core/enums/node-type';
@@ -8,7 +8,7 @@ import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-fl
 export function mapTelegramTriggerNodeToModel(tn: GetTelegramTriggerNodeRequest): TelegramTriggerNodeModel {
     const ui = mapNodeDtoMetadataToFlowNodeMetadata(tn.metadata, NodeType.TELEGRAM_TRIGGER);
     return {
-        id: generateUuid(),
+        id: stableNodeId(NodeType.TELEGRAM_TRIGGER, tn.id),
         backendId: tn.id,
         type: NodeType.TELEGRAM_TRIGGER,
         node_name: tn.node_name,

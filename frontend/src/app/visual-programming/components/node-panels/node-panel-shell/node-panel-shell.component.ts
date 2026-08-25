@@ -57,23 +57,6 @@ import { SidePanelService } from '../../../services/side-panel.service';
                                 [ngTemplateOutlet]="panelInstanceSig()!.exportButtonTemplate!()!"
                             ></ng-container>
                         }
-                        @if (showSaveButton()) {
-                            <button
-                                class="save-btn"
-                                [class.save-btn--icon-only]="!isExpanded()"
-                                type="button"
-                                matTooltip="Save local node changes"
-                                matTooltipPosition="below"
-                                [disabled]="panelInstanceSig()?.form?.invalid || panelInstanceSig()?.isSaving()"
-                                (click)="onHeaderSaveClick()"
-                            >
-                                <app-svg-icon
-                                    icon="floppy"
-                                    size="1.25rem"
-                                ></app-svg-icon>
-                                <span class="btn-label">Save</span>
-                            </button>
-                        }
                         @if (shouldShowExpandButton()) {
                             <button
                                 class="expand-btn"
@@ -103,7 +86,10 @@ import { SidePanelService } from '../../../services/side-panel.service';
                     </div>
                 </header>
 
-                <main>
+                <main
+                    [class.readonly]="!canEdit()"
+                    [attr.inert]="canEdit() || selfGatesReadonly() ? null : ''"
+                >
                     <ng-container
                         [ngComponentOutlet]="panelComponent()"
                         [ngComponentOutletInputs]="componentInputs()"
@@ -119,6 +105,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 export class NodePanelShellComponent {
     public readonly node = input<NodeModel | null>(null);
     public readonly currentFlowId = input<number | null>(null);
+    public readonly canEdit = input<boolean>(true);
     public readonly save = output<NodeModel>();
     public readonly autosave = output<NodeModel>();
 
@@ -156,8 +143,17 @@ export class NodePanelShellComponent {
             isExpanded: this.isExpanded(),
             graphId: this.currentFlowId(),
             ...(node?.type === 'subgraph' ? { currentFlowId: this.currentFlowId() } : {}),
+            // Only panels that declare a `canEdit` input should receive it — NgComponentOutlet
+            // throws NG0303 for any component without a matching declared input.
+            ...(node?.type === 'classification-decision-table' ? { canEdit: this.canEdit() } : {}),
         };
     });
+
+    // Panels whose own template puts non-mutating navigation (e.g. tab switching)
+    // alongside editable content — inert can't be selectively un-set on a
+    // descendant, so these self-gate their content via their own `canEdit` input
+    // instead of relying on the blanket <main> inert below.
+    protected readonly selfGatesReadonly = computed(() => this.node()?.type === 'classification-decision-table');
 
     protected readonly isShaking = signal(false);
     protected readonly isExpanded = signal(false);
@@ -174,27 +170,28 @@ export class NodePanelShellComponent {
         onSaveClick?: () => void;
         exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
     } | null>(null);
+    /** @deprecated the panel-header Save button was removed in EST-3020; no template usage remains. */
     protected readonly showSaveButton = computed(() => {
         const panel = this.panelInstanceSig();
         return (panel?.isDirty?.() ?? false) && !!panel?.onSaveClick;
     });
     private previousNodeId: string | null = null;
     private isUpdatingNode = false;
-    private isAutosaving = false;
+    private lastAutosaveSeq = 0;
 
     constructor(
         private sidePanelService: SidePanelService,
         private toastService: ToastService
     ) {
         effect(() => {
-            const trigger = this.sidePanelService.autosaveTrigger();
-            if (trigger && this.panelInstance && !this.isAutosaving) {
-                this.isAutosaving = true;
+            // autosaveTrigger is a monotonic counter: react to each increment
+            // (a field blur, toggle, etc.) exactly once and commit + broadcast
+            // the panel state via performAutosave.
+            const seq = this.sidePanelService.autosaveTrigger();
+            if (seq === this.lastAutosaveSeq) return;
+            this.lastAutosaveSeq = seq;
+            if (this.panelInstance && !this.isUpdatingNode) {
                 this.performAutosave();
-                setTimeout(() => {
-                    this.sidePanelService.clearAutosaveTrigger();
-                    this.isAutosaving = false;
-                }, 100);
             }
         });
 
@@ -214,8 +211,7 @@ export class NodePanelShellComponent {
                     this.previousNodeId &&
                     this.previousNodeId !== node.id &&
                     this.panelInstance &&
-                    !this.isUpdatingNode &&
-                    !this.isAutosaving
+                    !this.isUpdatingNode
                 ) {
                     this.isUpdatingNode = true;
                     this.performAutosave();
@@ -246,7 +242,6 @@ export class NodePanelShellComponent {
                 this.panelInstanceSig.set(null);
                 this.previousNodeId = null;
                 this.isUpdatingNode = false;
-                this.isAutosaving = false;
             }
         });
 
@@ -259,6 +254,7 @@ export class NodePanelShellComponent {
         });
     }
 
+    /** @deprecated the panel-header Save button was removed in EST-3020; no template usage remains. */
     protected onHeaderSaveClick(): void {
         this.panelInstanceSig()?.onSaveClick?.();
     }
@@ -340,6 +336,7 @@ export class NodePanelShellComponent {
         }
     }
 
+    /** @deprecated used only by the deprecated flow-graph emitSave(); no call sites. */
     public hasPanelInstance(): boolean {
         return this.panelInstance !== null;
     }

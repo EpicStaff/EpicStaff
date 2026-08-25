@@ -61,6 +61,7 @@ class NodeTypeConfig:
     model_class: type  # Django model class, e.g. CrewNode
     serializer_class: type  # bulk serializer class, e.g. CrewNodeBulkSerializer
     saveable_factory: NodeSaveableFactory = field(default=None)
+    is_singleton: bool = False  # True for at-most-one-per-graph node types (Start/End)
 
     def __post_init__(self):
         if self.saveable_factory is None:
@@ -80,7 +81,11 @@ NODE_TYPE_REGISTRY — single source of truth for all node types
 
 To add a new node type:
   1. Add one BulkSerializer class in graph_bulk_save_serializers.py.
-  2. Add one NodeTypeConfig line here.
+  2. Add one NodeTypeConfig line here. If the type is at-most-one-per-graph
+     (like StartNode/EndNode), set is_singleton=True — this flag is what
+     tables.graph_collab.constants derives _SINGLETON_LIST_KEYS from, which
+     graph_state_service.py and snapshot_normalize.py both rely on for
+     singleton-aware handling.
   Everything else (service loop, serializer fields, deletions, temp_id
   scan) updates automatically.
 """
@@ -121,12 +126,14 @@ NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
         "start_node_ids",
         StartNode,
         StartNodeBulkSerializer,
+        is_singleton=True,
     ),
     NodeTypeConfig(
         "end_node_list",
         "end_node_ids",
         EndNode,
         EndNodeBulkSerializer,
+        is_singleton=True,
     ),
     NodeTypeConfig(
         "subgraph_node_list",

@@ -32,10 +32,16 @@
                 />
                 <label>Activate checkbox near variable to save its value</label>
             </div>
-            <app-telegram-fields-table
-                [searchTerm]="searchTerm()"
-                [(tableItems)]="tableItems"
-            />
+            <app-lockable-field
+                class="fill"
+                fieldId="fields"
+                [nodeId]="nodeId"
+            >
+                <app-telegram-fields-table
+                    [searchTerm]="searchTerm()"
+                    [(tableItems)]="tableItems"
+                />
+            </app-lockable-field>
         </div>
 
         <div class="main__mock-data-section">

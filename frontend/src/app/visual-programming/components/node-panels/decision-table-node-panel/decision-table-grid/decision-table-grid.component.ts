@@ -9,6 +9,7 @@ import {
     OnInit,
     output,
     signal,
+    untracked,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AgGridModule } from 'ag-grid-angular';
@@ -69,6 +70,7 @@ export class DecisionTableGridComponent implements OnInit {
                     node.type !== NodeType.START &&
                     node.type !== NodeType.WEBHOOK_TRIGGER &&
                     node.type !== NodeType.TELEGRAM_TRIGGER &&
+                    node.type !== NodeType.SCHEDULE_TRIGGER &&
                     node.id !== currentId
             )
             .map((node) => ({
@@ -104,10 +106,22 @@ export class DecisionTableGridComponent implements OnInit {
                 }
             }
         });
+
+        effect(() => {
+            const incoming = this.conditionGroups();
+            const current = untracked(() => this.rowData());
+            if (this.serializeGroupsForCompare(incoming) === this.serializeGroupsForCompare(current)) {
+                return;
+            }
+            untracked(() => this.buildRowDataFromInput(incoming));
+        });
     }
 
     ngOnInit(): void {
-        const groups = this.conditionGroups();
+        this.buildRowDataFromInput(this.conditionGroups());
+    }
+
+    private buildRowDataFromInput(groups: ConditionGroup[]): void {
         const nodes = this.flowService.nodes();
         const connections = this.flowService.connections();
         const currentNodeId = this.currentNodeId();
@@ -156,6 +170,25 @@ export class DecisionTableGridComponent implements OnInit {
                 });
             this.rowData.set(normalizedGroups);
         }
+
+        if (this.gridApi) {
+            this.gridApi.setGridOption('rowData', this.rowData());
+        }
+    }
+
+    private serializeGroupsForCompare(groups: ConditionGroup[]): string {
+        return JSON.stringify(
+            [...(groups ?? [])]
+                .sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
+                .map((g) => ({
+                    group_name: g.group_name?.trim() ?? null,
+                    group_type: g.group_type ?? null,
+                    expression: g.expression ?? null,
+                    manipulation: g.manipulation ?? null,
+                    next_node: g.next_node ?? null,
+                    conditions: g.conditions ?? [],
+                }))
+        );
     }
 
     private createEmptyGroup(index?: number): ConditionGroup {

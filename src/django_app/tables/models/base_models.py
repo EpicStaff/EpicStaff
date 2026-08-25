@@ -206,15 +206,24 @@ class ContentHashMixin(models.Model):
         data_string = json.dumps(data, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(data_string).hexdigest()
 
+    def assert_content_hash(self, expected_hash: str) -> None:
+        """
+        Compare `expected_hash` against the row currently persisted in the
+        database (re-fetched by pk, not the in-memory instance, which may
+        already carry mutations that would poison the comparison) and raise
+        ContentHashConflictError on mismatch.
+        """
+        from tables.exceptions import ContentHashConflictError
+
+        current = self.__class__.objects.get(pk=self.pk)
+        if current.content_hash != expected_hash:
+            raise ContentHashConflictError()
+
     def save(self, *args, **kwargs):
         if not self._state.adding:
             expected_hash = getattr(self, "_expected_hash", None)
             if expected_hash is not None:
-                current = self.__class__.objects.get(pk=self.pk)
-                if current.content_hash != expected_hash:
-                    from tables.exceptions import ContentHashConflictError
-
-                    raise ContentHashConflictError()
+                self.assert_content_hash(expected_hash)
         super().save(*args, **kwargs)
 
 

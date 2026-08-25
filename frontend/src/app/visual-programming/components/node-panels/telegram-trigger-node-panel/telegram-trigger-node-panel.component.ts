@@ -22,12 +22,14 @@ import {
     DisplayedTelegramField,
     TelegramTriggerNodeField,
 } from '../../../../pages/flows-page/components/flow-visual-programming/models/telegram-trigger.model';
+import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { TELEGRAM_TRIGGER_FIELDS } from '../../../core/constants/telegram-trigger-fields';
 import { TelegramTriggerNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 import { TelegramTriggerEditingDialogComponent } from '../../telegram-trigger-editing-dialog/telegram-trigger-editing-dialog.component';
 import { WEBHOOK_NAME_PATTERN } from '../webhook-trigger-node-panel/webhook-trigger-node-panel.component';
 import { WebhookStatus } from './webhook-status.model';
@@ -45,6 +47,7 @@ import { WebhookStatus } from './webhook-status.model';
         MATERIAL_FORMS,
         JsonEditorComponent,
         SelectComponent,
+        LockableFieldComponent,
         ValidationErrorsComponent,
         HintMessageComponent,
         ColumnResizeDividerComponent,
@@ -59,6 +62,7 @@ export class TelegramTriggerNodePanelComponent
 
     private dialog = inject(Dialog);
     private toastService = inject(ToastService);
+    private profileService = inject(ProfileService);
     private ngrokStorageService = inject(NgrokConfigStorageService);
     private secretsStorageService = inject(SecretsStorageService);
 
@@ -215,18 +219,31 @@ export class TelegramTriggerNodePanelComponent
     }
 
     onEditing(): void {
-        this.form.value.fields;
+        const nodeId = this.node().id;
+        const lock = this.wsService.lockedNodeFields().get(nodeId)?.get('editing');
+        if (lock && lock.user_id !== this.profileService.currentUserSignal()?.id) {
+            this.toastService.warning(
+                `Fields are being edited by ${lock.display_name ?? 'another user'}`,
+                4000,
+                'bottom-right'
+            );
+            return;
+        }
+
+        this.wsService.sendNodeLocked(nodeId, 'editing');
+
         const dialog = this.dialog.open(TelegramTriggerEditingDialogComponent, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',
             autoFocus: true,
             disableClose: true,
-            data: this.selectedFields(),
+            data: { selectedFields: this.selectedFields(), nodeId },
         });
 
         dialog.closed
             .pipe(
                 tap((selectedFields) => {
+                    this.wsService.sendNodeUnlocked(nodeId, 'editing');
                     if (!selectedFields) return;
 
                     const fields = selectedFields as TelegramTriggerNodeField[];

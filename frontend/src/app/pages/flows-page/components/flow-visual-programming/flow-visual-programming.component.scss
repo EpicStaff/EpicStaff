@@ -134,3 +134,25 @@ app-flow-messages-panel {
     // Intercept every pointer interaction so no edit can start while saving.
     pointer-events: all;
 }
+
+.saved-by-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #1e3a5f;
+    border-bottom: 1px solid #2d5a8e;
+    color: #93c5fd;
+    font-size: 13px;
+
+    .dismiss-btn {
+        margin-left: auto;
+        background: none;
+        border: none;
+        color: inherit;
+        cursor: pointer;
+        padding: 2px 4px;
+        opacity: 0.7;
+        &:hover { opacity: 1; }
+    }
+}

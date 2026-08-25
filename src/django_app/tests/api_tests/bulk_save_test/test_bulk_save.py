@@ -5,11 +5,14 @@ from rest_framework import status
 from tables.models.graph_models import (
     Condition,
     ConditionGroup,
+    ConditionalEdge,
     CrewNode,
     DecisionTableNode,
     Edge,
+    EndNode,
     Graph,
     PythonNode,
+    StartNode,
 )
 from tests.fixtures import *  # noqa: F401,F403
 
@@ -167,6 +170,42 @@ def test_delete_crew_node(auth_client, graph, crew_node):
     response = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_200_OK, response.content
+    assert not CrewNode.objects.filter(id=crew_node.id).exists()
+
+
+@pytest.mark.django_db
+def test_delete_already_absent_node_id_is_idempotent_not_an_error(
+    auth_client, graph, crew_node, regular_user
+):
+    """
+    EST-3020 regression: deleting an id that is already gone from the DB
+    (e.g. a CrewNode row cascade-deleted by removing its Crew before the
+    autosave flush caught up) must NOT fail the whole flush. Deletion intent
+    is satisfied when the row is already absent — this is what makes the
+    accumulated ``deleted`` set idempotent.
+
+    Mixes one already-gone id with one real id in the same request to prove
+    the real deletion still executes despite the stale sibling id.
+
+    Uses force_authenticate (like the graph_collab suite) instead of relying
+    on the JWT bearer header: tests.settings clears
+    DEFAULT_AUTHENTICATION_CLASSES, so the header is never processed and
+    request.user would otherwise stay AnonymousUser, crashing the
+    post-save notify_graph_saved broadcast (a pre-existing, unrelated issue).
+    """
+    auth_client.force_authenticate(user=regular_user)
+
+    already_gone_id = crew_node.id + 999999
+    assert not CrewNode.objects.filter(id=already_gone_id).exists()
+
+    payload = {
+        "save_version": graph.save_version,
+        "deleted": {"crew_node_ids": [already_gone_id, crew_node.id]},
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert "errors" not in response.data
     assert not CrewNode.objects.filter(id=crew_node.id).exists()
 
 
@@ -457,8 +496,71 @@ def test_delete_node_from_different_graph(auth_client, graph, python_code):
     }
     response = auth_client.post(_save_url(graph.id), payload, format="json")
 
-    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert "errors" in response.data
+    # Deletes are graph-scoped: an id that doesn't belong to the graph being
+    # saved is treated as an idempotent no-op, not an error, so the request
+    # succeeds (200) and the other graph's node is left untouched.
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert PythonNode.objects.filter(id=other_node.id).exists()
+    assert PythonNode.objects.get(id=other_node.id).graph_id == other_graph.id
+
+
+@pytest.mark.django_db
+def test_delete_edge_from_different_graph_is_ignored(
+    auth_client, graph, python_code, crew
+):
+    other_graph = Graph.objects.create(name="other_graph", org=graph.org)
+    other_python_node = PythonNode.objects.create(
+        graph=other_graph, python_code=python_code
+    )
+    other_crew_node = CrewNode.objects.create(graph=other_graph, crew=crew)
+    other_edge = Edge.objects.create(
+        graph=other_graph,
+        start_node_id=other_python_node.id,
+        end_node_id=other_crew_node.id,
+    )
+
+    payload = {
+        "save_version": graph.save_version,
+        "deleted": {"edge_ids": [other_edge.id]},
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    # Deletes are graph-scoped: an id that doesn't belong to the graph being
+    # saved is treated as an idempotent no-op, not an error, so the request
+    # succeeds (200) and the other graph's edge is left untouched.
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert Edge.objects.filter(id=other_edge.id).exists()
+    assert Edge.objects.get(id=other_edge.id).graph_id == other_graph.id
+
+
+@pytest.mark.django_db
+def test_delete_conditional_edge_from_different_graph_is_ignored(
+    auth_client, graph, python_code, crew
+):
+    other_graph = Graph.objects.create(name="other_graph", org=graph.org)
+    other_crew_node = CrewNode.objects.create(graph=other_graph, crew=crew)
+    other_conditional_edge = ConditionalEdge.objects.create(
+        graph=other_graph,
+        source_node_id=other_crew_node.id,
+        python_code=python_code,
+        input_map={},
+    )
+
+    payload = {
+        "save_version": graph.save_version,
+        "deleted": {"conditional_edge_ids": [other_conditional_edge.id]},
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    # Deletes are graph-scoped: an id that doesn't belong to the graph being
+    # saved is treated as an idempotent no-op, not an error, so the request
+    # succeeds (200) and the other graph's conditional edge is left untouched.
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert ConditionalEdge.objects.filter(id=other_conditional_edge.id).exists()
+    assert (
+        ConditionalEdge.objects.get(id=other_conditional_edge.id).graph_id
+        == other_graph.id
+    )
 
 
 @pytest.mark.django_db
@@ -570,3 +672,129 @@ def test_save_flow_conflict_rolls_back_bulk_save(auth_client, graph):
 
     assert response.status_code == status.HTTP_409_CONFLICT, response.content
     assert PythonNode.objects.filter(graph=graph).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# EST-3020 3B: natural-key create guards — reject a duplicate create against
+# an existing unique row with a clean BulkSaveValidationError (400), instead
+# of a raw IntegrityError (500) inside the atomic flush.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_create_start_node_when_one_already_exists_returns_validation_error(
+    auth_client, graph
+):
+    """A start_node_list create (id=None) while the graph already has a
+    StartNode must be rejected with a clean 400, not an IntegrityError."""
+    StartNode.objects.create(graph=graph, variables={})
+
+    payload = {
+        "save_version": graph.save_version,
+        "start_node_list": [
+            {"graph": graph.id, "variables": {}},
+        ],
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert "start_node_list" in response.data["errors"]
+    # Only the pre-existing row must remain — no partial write from the atomic flush.
+    assert StartNode.objects.filter(graph=graph).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_end_node_when_one_already_exists_returns_validation_error(
+    auth_client, graph
+):
+    """A end_node_list create (id=None) while the graph already has an
+    EndNode must be rejected with a clean 400, not an IntegrityError."""
+    EndNode.objects.create(graph=graph, output_map={})
+
+    payload = {
+        "save_version": graph.save_version,
+        "end_node_list": [
+            {"graph": graph.id, "output_map": {}},
+        ],
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert "end_node_list" in response.data["errors"]
+    assert EndNode.objects.filter(graph=graph).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_two_start_nodes_in_same_payload_returns_validation_error(
+    auth_client, graph
+):
+    """Two start_node_list creates in the same request (no existing DB row)
+    must also be rejected — the second create collides with the first
+    within the same payload, not just against the DB."""
+    payload = {
+        "save_version": graph.save_version,
+        "start_node_list": [
+            {"graph": graph.id, "variables": {}},
+            {"graph": graph.id, "variables": {}},
+        ],
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert "start_node_list" in response.data["errors"]
+    assert StartNode.objects.filter(graph=graph).count() == 0
+
+
+@pytest.mark.django_db
+def test_create_duplicate_edge_same_start_end_returns_validation_error(
+    auth_client, graph, python_node, crew_node, edge
+):
+    """A create (id=None) for an edge with the same (graph, start, end) as an
+    existing edge must be rejected with a clean 400 — unique_graph_edge."""
+    payload = {
+        "save_version": graph.save_version,
+        "edge_list": [
+            {
+                "graph": graph.id,
+                "start_node_id": python_node.id,
+                "end_node_id": crew_node.id,
+            }
+        ],
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert "edge_list" in response.data["errors"]
+    assert Edge.objects.filter(graph=graph).count() == 1
+
+
+@pytest.mark.django_db
+def test_create_duplicate_conditional_edge_same_source_returns_validation_error(
+    auth_client, graph, crew_node, python_code
+):
+    """A create (id=None) for a conditional edge with the same (graph, source)
+    as an existing one must be rejected with a clean 400 —
+    unique_graph_conditional_edge_source."""
+    ConditionalEdge.objects.create(
+        graph=graph,
+        source_node_id=crew_node.id,
+        python_code=python_code,
+        input_map={},
+    )
+
+    payload = {
+        "save_version": graph.save_version,
+        "conditional_edge_list": [
+            {
+                "graph": graph.id,
+                "source_node_id": crew_node.id,
+                "input_map": {},
+                "python_code": _PYTHON_CODE_DATA,
+            }
+        ],
+    }
+    response = auth_client.post(_save_url(graph.id), payload, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert "conditional_edge_list" in response.data["errors"]
+    assert ConditionalEdge.objects.filter(graph=graph).count() == 1

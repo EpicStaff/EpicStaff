@@ -17,135 +17,187 @@
                             class="form-fields"
                             [style.flex-basis.px]="leftColumnWidth.width()"
                         >
-                            <app-custom-input
-                                label="Node Name"
-                                tooltipText="Unique identifier for this Code Agent node within the flow."
-                                formControlName="node_name"
-                                placeholder="Enter node name"
-                                [activeColor]="activeColor"
-                                [errorMessage]="getNodeNameErrorMessage()"
-                            ></app-custom-input>
+                            <app-lockable-field
+                                fieldId="node_name"
+                                [nodeId]="node().id"
+                            >
+                                <app-custom-input
+                                    label="Node Name"
+                                    tooltipText="Unique identifier for this Code Agent node within the flow."
+                                    formControlName="node_name"
+                                    placeholder="Enter node name"
+                                    [activeColor]="activeColor"
+                                    [errorMessage]="getNodeNameErrorMessage()"
+                                ></app-custom-input>
+                            </app-lockable-field>
 
-                            <div class="input-map">
-                                <app-input-map [activeColor]="activeColor"></app-input-map>
-                            </div>
+                            <app-lockable-field
+                                fieldId="input_map"
+                                [nodeId]="node().id"
+                            >
+                                <div class="input-map">
+                                    <app-input-map [activeColor]="activeColor"></app-input-map>
+                                </div>
+                            </app-lockable-field>
 
-                            <app-custom-input
-                                label="Output Variable Path"
-                                tooltipText="Path where the Code Agent output will be stored in flow variables."
-                                formControlName="output_variable_path"
-                                placeholder="e.g. code_reply"
-                                [activeColor]="activeColor"
-                            ></app-custom-input>
+                            <app-lockable-field
+                                fieldId="output_variable_path"
+                                [nodeId]="node().id"
+                            >
+                                <app-custom-input
+                                    label="Output Variable Path"
+                                    tooltipText="Path where the Code Agent output will be stored in flow variables."
+                                    formControlName="output_variable_path"
+                                    placeholder="e.g. code_reply"
+                                    [activeColor]="activeColor"
+                                ></app-custom-input>
+                            </app-lockable-field>
 
-                            <app-select
-                                label="Agent Mode"
-                                formControlName="agent_mode"
-                                [items]="agentModeItems"
-                                placeholder="Select mode"
-                            />
+                            <app-lockable-field
+                                fieldId="agent_mode"
+                                [nodeId]="node().id"
+                            >
+                                <app-select
+                                    label="Agent Mode"
+                                    formControlName="agent_mode"
+                                    [items]="agentModeItems"
+                                    placeholder="Select mode"
+                                />
+                            </app-lockable-field>
 
-                            <div class="llm-selector-container">
-                                <label>LLM Config</label>
+                            <app-lockable-field
+                                fieldId="llm_config"
+                                [nodeId]="node().id"
+                            >
                                 <app-llm-model-selector
                                     [placeholder]="'LLM Config'"
                                     formControlName="llm_config"
                                 />
-                            </div>
+                            </app-lockable-field>
 
-                            <app-custom-input
-                                label="Session ID"
-                                tooltipText="Variable path for the OpenCode session ID (e.g. variables.chat_id). Each unique value gets its own session with its own system prompt."
-                                formControlName="session_id"
-                                placeholder="e.g. variables.chat_id"
-                                [activeColor]="activeColor"
-                            ></app-custom-input>
-
-                            <app-custom-input
-                                label="System Prompt"
-                                tooltipText="System prompt sent to the Code Agent before the user message."
-                                formControlName="system_prompt"
-                                placeholder="Enter system prompt"
-                                [activeColor]="activeColor"
-                            ></app-custom-input>
-
-                            <div class="timeout-section">
-                                <span class="section-label">Timeouts</span>
-                                <div class="timeout-grid">
-                                    <app-custom-input
-                                        label="Poll (ms)"
-                                        formControlName="polling_interval_ms"
-                                        [activeColor]="activeColor"
-                                    ></app-custom-input>
-                                    <app-custom-input
-                                        label="Chunk Timeout (s)"
-                                        formControlName="chunk_timeout_s"
-                                        [activeColor]="activeColor"
-                                    ></app-custom-input>
-                                    <app-custom-input
-                                        label="Inactivity (s)"
-                                        formControlName="inactivity_timeout_s"
-                                        [activeColor]="activeColor"
-                                    ></app-custom-input>
-                                    <app-custom-input
-                                        label="Max Wait (s)"
-                                        formControlName="max_wait_s"
-                                        [activeColor]="activeColor"
-                                    ></app-custom-input>
-                                </div>
-                            </div>
-
-                            <app-node-storage-section
-                                [useStorage]="useStorage()"
-                                (onToggleChange)="onStorageToggle($event)"
-                                (onInsertCode)="insertStorageCode($event)"
-                                (onRemoveCode)="removeStorageCode($event)"
-                            ></app-node-storage-section>
-
-                            <div
-                                class="stream-config-section"
-                                formGroupName="stream_config"
+                            <app-lockable-field
+                                fieldId="session_id"
+                                [nodeId]="node().id"
                             >
-                                <span class="section-label">Streaming to EpicChat</span>
-                                <div class="checkbox-list">
-                                    <label class="checkbox-item">
-                                        <input
-                                            type="checkbox"
-                                            formControlName="reasoning"
-                                        />
-                                        <span>Reasoning</span>
-                                    </label>
-                                    <label class="checkbox-item">
-                                        <input
-                                            type="checkbox"
-                                            formControlName="tool_calls"
-                                        />
-                                        <span>Tool calls</span>
-                                    </label>
-                                    <label class="checkbox-item">
-                                        <input
-                                            type="checkbox"
-                                            formControlName="tool_results"
-                                        />
-                                        <span>Tool results</span>
-                                    </label>
-                                    <label class="checkbox-item">
-                                        <input
-                                            type="checkbox"
-                                            formControlName="final_reply"
-                                        />
-                                        <span>Final reply</span>
-                                    </label>
-                                </div>
-                            </div>
+                                <app-custom-input
+                                    label="Session ID"
+                                    tooltipText="Variable path for the OpenCode session ID (e.g. variables.chat_id). Each unique value gets its own session with its own system prompt."
+                                    formControlName="session_id"
+                                    placeholder="e.g. variables.chat_id"
+                                    [activeColor]="activeColor"
+                                ></app-custom-input>
+                            </app-lockable-field>
 
-                            <app-custom-input
-                                label="Libraries"
-                                tooltipText="Python libraries for event hook callbacks (comma-separated)."
-                                formControlName="libraries"
-                                placeholder="e.g. requests, httpx"
-                                [activeColor]="activeColor"
-                            ></app-custom-input>
+                            <app-lockable-field
+                                fieldId="system_prompt"
+                                [nodeId]="node().id"
+                            >
+                                <app-custom-input
+                                    label="System Prompt"
+                                    tooltipText="System prompt sent to the Code Agent before the user message."
+                                    formControlName="system_prompt"
+                                    placeholder="Enter system prompt"
+                                    [activeColor]="activeColor"
+                                ></app-custom-input>
+                            </app-lockable-field>
+
+                            <app-lockable-field
+                                fieldId="timeout_config"
+                                [nodeId]="node().id"
+                            >
+                                <div class="timeout-section">
+                                    <span class="section-label">Timeouts</span>
+                                    <div class="timeout-grid">
+                                        <app-custom-input
+                                            label="Poll (ms)"
+                                            formControlName="polling_interval_ms"
+                                            [activeColor]="activeColor"
+                                        ></app-custom-input>
+                                        <app-custom-input
+                                            label="Chunk Timeout (s)"
+                                            formControlName="chunk_timeout_s"
+                                            [activeColor]="activeColor"
+                                        ></app-custom-input>
+                                        <app-custom-input
+                                            label="Inactivity (s)"
+                                            formControlName="inactivity_timeout_s"
+                                            [activeColor]="activeColor"
+                                        ></app-custom-input>
+                                        <app-custom-input
+                                            label="Max Wait (s)"
+                                            formControlName="max_wait_s"
+                                            [activeColor]="activeColor"
+                                        ></app-custom-input>
+                                    </div>
+                                </div>
+                            </app-lockable-field>
+
+                            <app-lockable-field
+                                fieldId="use_storage"
+                                [nodeId]="node().id"
+                            >
+                                <app-node-storage-section
+                                    [useStorage]="useStorage()"
+                                    (onToggleChange)="onStorageToggle($event)"
+                                    (onInsertCode)="insertStorageCode($event)"
+                                    (onRemoveCode)="removeStorageCode($event)"
+                                ></app-node-storage-section>
+                            </app-lockable-field>
+
+                            <app-lockable-field
+                                fieldId="stream_config"
+                                [nodeId]="node().id"
+                            >
+                                <div
+                                    class="stream-config-section"
+                                    formGroupName="stream_config"
+                                >
+                                    <span class="section-label">Streaming to EpicChat</span>
+                                    <div class="checkbox-list">
+                                        <label class="checkbox-item">
+                                            <input
+                                                type="checkbox"
+                                                formControlName="reasoning"
+                                            />
+                                            <span>Reasoning</span>
+                                        </label>
+                                        <label class="checkbox-item">
+                                            <input
+                                                type="checkbox"
+                                                formControlName="tool_calls"
+                                            />
+                                            <span>Tool calls</span>
+                                        </label>
+                                        <label class="checkbox-item">
+                                            <input
+                                                type="checkbox"
+                                                formControlName="tool_results"
+                                            />
+                                            <span>Tool results</span>
+                                        </label>
+                                        <label class="checkbox-item">
+                                            <input
+                                                type="checkbox"
+                                                formControlName="final_reply"
+                                            />
+                                            <span>Final reply</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </app-lockable-field>
+
+                            <app-lockable-field
+                                fieldId="libraries"
+                                [nodeId]="node().id"
+                            >
+                                <app-custom-input
+                                    label="Libraries"
+                                    tooltipText="Python libraries for event hook callbacks (comma-separated)."
+                                    formControlName="libraries"
+                                    placeholder="e.g. requests, httpx"
+                                    [activeColor]="activeColor"
+                                ></app-custom-input>
+                            </app-lockable-field>
                         </div>
 
                         <app-column-resize-divider
@@ -209,23 +261,35 @@
                             <div class="editor-tab-content">
                                 @switch (activeEditorTab()) {
                                     @case ('hooks') {
-                                        <app-code-editor
-                                            class="code-editor-section"
-                                            [pythonCode]="streamHandlerCode"
-                                            (pythonCodeChange)="onStreamHandlerCodeChange($event)"
-                                            (errorChange)="onCodeErrorChange($event)"
-                                        ></app-code-editor>
+                                        <app-lockable-field
+                                            class="fill"
+                                            fieldId="stream_handler_code"
+                                            [nodeId]="node().id"
+                                        >
+                                            <app-code-editor
+                                                class="code-editor-section"
+                                                [pythonCode]="streamHandlerCode"
+                                                (pythonCodeChange)="onStreamHandlerCodeChange($event)"
+                                                (errorChange)="onCodeErrorChange($event)"
+                                            ></app-code-editor>
+                                        </app-lockable-field>
                                     }
                                     @case ('schema') {
-                                        <div class="schema-editor-container">
-                                            <app-json-editor
-                                                [jsonData]="outputSchemaText"
-                                                (jsonChange)="onSchemaEditorChange($event)"
-                                                (validationChange)="onSchemaValidChange($event)"
-                                                [fullHeight]="true"
-                                                [showHeader]="false"
-                                            ></app-json-editor>
-                                        </div>
+                                        <app-lockable-field
+                                            class="fill"
+                                            fieldId="output_schema"
+                                            [nodeId]="node().id"
+                                        >
+                                            <div class="schema-editor-container">
+                                                <app-json-editor
+                                                    [jsonData]="outputSchemaText"
+                                                    (jsonChange)="onSchemaEditorChange($event)"
+                                                    (validationChange)="onSchemaValidChange($event)"
+                                                    [fullHeight]="true"
+                                                    [showHeader]="false"
+                                                ></app-json-editor>
+                                            </div>
+                                        </app-lockable-field>
                                     }
                                 }
                             </div>
@@ -234,99 +298,141 @@
                 </div>
             } @else {
                 <div class="form-layout collapsed">
-                    <app-custom-input
-                        label="Node Name"
-                        tooltipText="Unique identifier for this Code Agent node within the flow."
-                        formControlName="node_name"
-                        placeholder="Enter node name"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getNodeNameErrorMessage()"
-                    ></app-custom-input>
+                    <app-lockable-field
+                        fieldId="node_name"
+                        [nodeId]="node().id"
+                    >
+                        <app-custom-input
+                            label="Node Name"
+                            tooltipText="Unique identifier for this Code Agent node within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                            [errorMessage]="getNodeNameErrorMessage()"
+                        ></app-custom-input>
+                    </app-lockable-field>
 
-                    <div class="input-map">
-                        <app-input-map [activeColor]="activeColor"></app-input-map>
-                    </div>
+                    <app-lockable-field
+                        fieldId="input_map"
+                        [nodeId]="node().id"
+                    >
+                        <div class="input-map">
+                            <app-input-map [activeColor]="activeColor"></app-input-map>
+                        </div>
+                    </app-lockable-field>
 
-                    <app-custom-input
-                        label="Output Variable Path"
-                        formControlName="output_variable_path"
-                        placeholder="e.g. code_reply"
-                        [activeColor]="activeColor"
-                    ></app-custom-input>
+                    <app-lockable-field
+                        fieldId="output_variable_path"
+                        [nodeId]="node().id"
+                    >
+                        <app-custom-input
+                            label="Output Variable Path"
+                            formControlName="output_variable_path"
+                            placeholder="e.g. code_reply"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                    </app-lockable-field>
 
-                    <app-select
-                        label="Agent Mode"
-                        formControlName="agent_mode"
-                        [items]="agentModeItems"
-                        placeholder="Select mode"
-                    />
+                    <app-lockable-field
+                        fieldId="agent_mode"
+                        [nodeId]="node().id"
+                    >
+                        <app-select
+                            label="Agent Mode"
+                            formControlName="agent_mode"
+                            [items]="agentModeItems"
+                            placeholder="Select mode"
+                        />
+                    </app-lockable-field>
 
-                    <div class="llm-selector-container">
-                        <label>LLM Config</label>
+                    <app-lockable-field
+                        fieldId="llm_config"
+                        [nodeId]="node().id"
+                    >
                         <app-llm-model-selector
                             [placeholder]="'LLM Config'"
                             formControlName="llm_config"
                         />
-                    </div>
+                    </app-lockable-field>
 
-                    <app-custom-input
-                        label="Session ID"
-                        tooltipText="Variable path for the OpenCode session ID."
-                        formControlName="session_id"
-                        placeholder="e.g. variables.chat_id"
-                        [activeColor]="activeColor"
-                    ></app-custom-input>
-
-                    <app-custom-input
-                        label="System Prompt"
-                        formControlName="system_prompt"
-                        placeholder="Enter system prompt"
-                        [activeColor]="activeColor"
-                    ></app-custom-input>
-
-                    <app-node-storage-section
-                        [useStorage]="useStorage()"
-                        (onToggleChange)="onStorageToggle($event)"
-                        (onInsertCode)="insertStorageCode($event)"
-                        (onRemoveCode)="removeStorageCode($event)"
-                    ></app-node-storage-section>
-
-                    <div
-                        class="stream-config-section"
-                        formGroupName="stream_config"
+                    <app-lockable-field
+                        fieldId="session_id"
+                        [nodeId]="node().id"
                     >
-                        <span class="section-label">Streaming to EpicChat</span>
-                        <div class="checkbox-list">
-                            <label class="checkbox-item">
-                                <input
-                                    type="checkbox"
-                                    formControlName="reasoning"
-                                />
-                                <span>Reasoning</span>
-                            </label>
-                            <label class="checkbox-item">
-                                <input
-                                    type="checkbox"
-                                    formControlName="tool_calls"
-                                />
-                                <span>Tool calls</span>
-                            </label>
-                            <label class="checkbox-item">
-                                <input
-                                    type="checkbox"
-                                    formControlName="tool_results"
-                                />
-                                <span>Tool results</span>
-                            </label>
-                            <label class="checkbox-item">
-                                <input
-                                    type="checkbox"
-                                    formControlName="final_reply"
-                                />
-                                <span>Final reply</span>
-                            </label>
+                        <app-custom-input
+                            label="Session ID"
+                            tooltipText="Variable path for the OpenCode session ID."
+                            formControlName="session_id"
+                            placeholder="e.g. variables.chat_id"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                    </app-lockable-field>
+
+                    <app-lockable-field
+                        fieldId="system_prompt"
+                        [nodeId]="node().id"
+                    >
+                        <app-custom-input
+                            label="System Prompt"
+                            formControlName="system_prompt"
+                            placeholder="Enter system prompt"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+                    </app-lockable-field>
+
+                    <app-lockable-field
+                        fieldId="use_storage"
+                        [nodeId]="node().id"
+                    >
+                        <app-node-storage-section
+                            [useStorage]="useStorage()"
+                            (onToggleChange)="onStorageToggle($event)"
+                            (onInsertCode)="insertStorageCode($event)"
+                            (onRemoveCode)="removeStorageCode($event)"
+                        ></app-node-storage-section>
+                    </app-lockable-field>
+
+                    <app-lockable-field
+                        fieldId="stream_config"
+                        [nodeId]="node().id"
+                    >
+                        <div
+                            class="stream-config-section"
+                            formGroupName="stream_config"
+                        >
+                            <span class="section-label">Streaming to EpicChat</span>
+                            <div class="checkbox-list">
+                                <label class="checkbox-item">
+                                    <input
+                                        type="checkbox"
+                                        formControlName="reasoning"
+                                    />
+                                    <span>Reasoning</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input
+                                        type="checkbox"
+                                        formControlName="tool_calls"
+                                    />
+                                    <span>Tool calls</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input
+                                        type="checkbox"
+                                        formControlName="tool_results"
+                                    />
+                                    <span>Tool results</span>
+                                </label>
+                                <label class="checkbox-item">
+                                    <input
+                                        type="checkbox"
+                                        formControlName="final_reply"
+                                    />
+                                    <span>Final reply</span>
+                                </label>
+                            </div>
                         </div>
-                    </div>
+                    </app-lockable-field>
                 </div>
             }
         </form>

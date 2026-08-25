@@ -8,6 +8,7 @@ import { CodeEditorComponent } from '../../../../user-settings-page/tools/custom
 import { EdgeNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
 import { InputMapComponent } from '../../input-map/input-map.component';
+import { LockableFieldComponent } from '../../lockable-field/lockable-field.component';
 
 interface InputMapPair {
     key: string;
@@ -23,6 +24,7 @@ interface InputMapPair {
         InputMapComponent,
         CodeEditorComponent,
         CommonModule,
+        LockableFieldComponent,
         MatTooltipModule,
     ],
     template: `
@@ -34,18 +36,28 @@ interface InputMapPair {
                 >
                     @if (!isExpanded() || isFormFieldsVisible()) {
                         <!-- Input Map Key-Value Pairs -->
-                        <div class="input-map">
-                            <app-input-map [activeColor]="activeColor"></app-input-map>
-                        </div>
+                        <app-lockable-field
+                            fieldId="input_map"
+                            [nodeId]="node().id"
+                        >
+                            <div class="input-map">
+                                <app-input-map [activeColor]="activeColor"></app-input-map>
+                            </div>
+                        </app-lockable-field>
 
                         <!-- Libraries Input -->
-                        <app-custom-input
-                            label="Libraries"
-                            tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
-                            formControlName="libraries"
-                            placeholder="Enter libraries (e.g., requests, pandas, numpy)"
-                            [activeColor]="activeColor"
-                        ></app-custom-input>
+                        <app-lockable-field
+                            fieldId="libraries"
+                            [nodeId]="node().id"
+                        >
+                            <app-custom-input
+                                label="Libraries"
+                                tooltipText="Python libraries required by this code (comma-separated). For example: requests, pandas, numpy"
+                                formControlName="libraries"
+                                placeholder="Enter libraries (e.g., requests, pandas, numpy)"
+                                [activeColor]="activeColor"
+                            ></app-custom-input>
+                        </app-lockable-field>
                     }
 
                     <!-- Code Editor Section with Toggle Button -->
@@ -77,26 +89,36 @@ interface InputMapPair {
                                     />
                                 </svg>
                             </button>
-                            <div
-                                class="code-editor-section"
-                                [class.fields-hidden]="!isFormFieldsVisible()"
+                            <app-lockable-field
+                                fieldId="python_code"
+                                [nodeId]="node().id"
                             >
+                                <div
+                                    class="code-editor-section"
+                                    [class.fields-hidden]="!isFormFieldsVisible()"
+                                >
+                                    <app-code-editor
+                                        [pythonCode]="pythonCode"
+                                        (pythonCodeChange)="onPythonCodeChange($event)"
+                                        (errorChange)="onCodeErrorChange($event)"
+                                    ></app-code-editor>
+                                </div>
+                            </app-lockable-field>
+                        </div>
+                    } @else {
+                        <!-- Code Editor Section without Toggle Button (collapsed mode) -->
+                        <app-lockable-field
+                            fieldId="python_code"
+                            [nodeId]="node().id"
+                        >
+                            <div class="code-editor-section">
                                 <app-code-editor
                                     [pythonCode]="pythonCode"
                                     (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onCodeErrorChange($event)"
                                 ></app-code-editor>
                             </div>
-                        </div>
-                    } @else {
-                        <!-- Code Editor Section without Toggle Button (collapsed mode) -->
-                        <div class="code-editor-section">
-                            <app-code-editor
-                                [pythonCode]="pythonCode"
-                                (pythonCodeChange)="onPythonCodeChange($event)"
-                                (errorChange)="onCodeErrorChange($event)"
-                            ></app-code-editor>
-                        </div>
+                        </app-lockable-field>
                     }
                 </form>
             </div>

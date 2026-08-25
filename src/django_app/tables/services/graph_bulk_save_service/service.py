@@ -31,6 +31,7 @@ from tables.services.graph_bulk_save_service.saveables import (
     _EdgeSaveable,
     _NodeSaveable,
 )
+from utils.logger import logger
 
 
 class GraphBulkSaveService:
@@ -48,6 +49,11 @@ class GraphBulkSaveService:
     # node/edge serializer's context so org-scoped fields can resolve the active
     # org. Defaults to None so a helper called without save() denies (fail-safe).
     _request = None
+    # Explicit org id, set per-invocation in save() for non-request write paths
+    # (e.g. WS autosave flush) that source it from a trusted server-side value
+    # (graph.org_id) rather than a request. Threaded into every node/edge
+    # serializer's context alongside _request. Defaults to None (fail-safe).
+    _org_id = None
 
     @staticmethod
     def _resolve_organization() -> Organization | None:
@@ -74,11 +80,15 @@ class GraphBulkSaveService:
         )
 
     @transaction.atomic
-    def save(self, graph: Graph, validated_input: dict, request=None) -> Graph:
-        # Thread the request so node/edge serializers can org-scope their FK
-        # fields (e.g. CrewNode.crew_id, SubGraphNode.subgraph). Without it those
-        # fields deny all pks rather than falling back to an unfiltered queryset.
+    def save(
+        self, graph: Graph, validated_input: dict, request=None, org_id=None
+    ) -> tuple["Graph", dict[str, int]]:
+        # Thread the request (and/or an explicit org_id for non-request write
+        # paths) so node/edge serializers can org-scope their FK fields (e.g.
+        # CrewNode.crew_id, SubGraphNode.subgraph). Without either, those fields
+        # deny all pks rather than falling back to an unfiltered queryset.
         self._request = request
+        self._org_id = org_id
         expected_save_version = validated_input["save_version"]
         deleted_data = validated_input.get("deleted", {})
         all_errors: dict = {}
@@ -87,6 +97,7 @@ class GraphBulkSaveService:
         self._serializer_context = {
             "organization": self._resolve_organization(),
             "request": self._request,
+            "org_id": self._org_id,
         }
 
         payload_temp_ids: set[str] = self._collect_payload_temp_ids(validated_input)
@@ -106,8 +117,12 @@ class GraphBulkSaveService:
             incoming = validated_input.get(config.list_key, [])
             if not incoming:
                 continue
+            # Exclude ids pending deletion so Pass 1 validation sees the state Pass 2 will produce.
+            pending_delete_ids = set(deleted_data.get(config.delete_key) or [])
             db_map = {
-                obj.id: obj for obj in config.model_class.objects.filter(graph=graph)
+                obj.id: obj
+                for obj in config.model_class.objects.filter(graph=graph)
+                if obj.id not in pending_delete_ids
             }
             result = self._validate_node_list(
                 graph, incoming, config, db_map, payload_temp_ids
@@ -172,14 +187,14 @@ class GraphBulkSaveService:
             raise BulkSaveValidationError(all_errors)
 
         # Pass 2: atomic write
-        self._execute_writes(
+        temp_id_map = self._execute_writes(
             graph,
             deleted_data,
             node_saveables,
             edge_saveables,
             expected_save_version,
         )
-        return graph
+        return graph, temp_id_map
 
     def _validate_node_list(
         self,
@@ -191,6 +206,7 @@ class GraphBulkSaveService:
     ) -> NodeListValidationResult:
         """Validate all items in one node list."""
         result = NodeListValidationResult()
+        singleton_create_seen = False
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
@@ -198,6 +214,16 @@ class GraphBulkSaveService:
             temp_id = str(item_data.pop("temp_id", None) or "")  # wire-only, strip now
 
             if item_id is None:
+                if config.is_singleton and (db_map or singleton_create_seen):
+                    result.errors.append(
+                        {
+                            "index": index,
+                            "errors": f"Only one {config.list_key} entry allowed per graph",
+                        }
+                    )
+                    continue
+                if config.is_singleton:
+                    singleton_create_seen = True
                 item_data.pop("id", None)
                 build = self._build_saveable(config, item_data, index, payload_temp_ids)
             else:
@@ -287,10 +313,17 @@ class GraphBulkSaveService:
         result = EdgeListValidationResult()
 
         db_map = {obj.id: obj for obj in model_class.objects.filter(graph=graph)}
+        existing_endpoint_pairs = set(
+            model_class.objects.filter(graph=graph).values_list(
+                "start_node_id", "end_node_id"
+            )
+        )
+        payload_endpoint_pairs_seen: set[tuple[int, int]] = set()
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
             item_id = item_data.get("id")
+            temp_id = str(item_data.pop("temp_id", None) or "")  # wire-only, strip now
 
             start_parsed = self._parse_node_ref(
                 item_data, "start_node_id", "start_temp_id", payload_temp_ids, index
@@ -310,13 +343,43 @@ class GraphBulkSaveService:
                 result.real_node_ids.add(end_parsed.ref.value)
 
             if item_id is None:
+                is_resolved_pair = (
+                    start_parsed.ref
+                    and end_parsed.ref
+                    and not start_parsed.ref.is_temp
+                    and not end_parsed.ref.is_temp
+                )
+                if is_resolved_pair:
+                    endpoint_pair = (start_parsed.ref.value, end_parsed.ref.value)
+                    if (
+                        endpoint_pair in existing_endpoint_pairs
+                        or endpoint_pair in payload_endpoint_pairs_seen
+                    ):
+                        result.errors.append(
+                            {
+                                "index": index,
+                                "errors": (
+                                    f"An edge between nodes {endpoint_pair[0]} and "
+                                    f"{endpoint_pair[1]} already exists in this graph"
+                                ),
+                            }
+                        )
+                        continue
+                    payload_endpoint_pairs_seen.add(endpoint_pair)
+
                 item_data.pop("id", None)
                 s = serializer_class(data=item_data, context=self._serializer_context)
                 if not s.is_valid():
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
                 result.saveables.append(
-                    _EdgeSaveable(s, start_parsed.ref, end_parsed.ref, instance=None)
+                    _EdgeSaveable(
+                        s,
+                        start_parsed.ref,
+                        end_parsed.ref,
+                        instance=None,
+                        temp_id=temp_id or None,
+                    )
                 )
             else:
                 db_instance = db_map.get(item_id)
@@ -338,7 +401,11 @@ class GraphBulkSaveService:
                     continue
                 result.saveables.append(
                     _EdgeSaveable(
-                        s, start_parsed.ref, end_parsed.ref, instance=db_instance
+                        s,
+                        start_parsed.ref,
+                        end_parsed.ref,
+                        instance=db_instance,
+                        temp_id=temp_id or None,
                     )
                 )
 
@@ -354,10 +421,17 @@ class GraphBulkSaveService:
         result = EdgeListValidationResult()
 
         db_map = {obj.id: obj for obj in ConditionalEdge.objects.filter(graph=graph)}
+        existing_source_ids = set(
+            ConditionalEdge.objects.filter(graph=graph).values_list(
+                "source_node_id", flat=True
+            )
+        )
+        payload_source_ids_seen: set[int] = set()
 
         for index, item_data in enumerate(incoming_list):
             item_data = dict(item_data)
             item_id = item_data.get("id")
+            temp_id = str(item_data.pop("temp_id", None) or "")  # wire-only, strip now
 
             source_parsed = self._parse_node_ref(
                 item_data, "source_node_id", "source_temp_id", payload_temp_ids, index
@@ -370,6 +444,25 @@ class GraphBulkSaveService:
                 result.real_node_ids.add(source_parsed.ref.value)
 
             if item_id is None:
+                is_resolved_source = source_parsed.ref and not source_parsed.ref.is_temp
+                if is_resolved_source:
+                    source_id = source_parsed.ref.value
+                    if (
+                        source_id in existing_source_ids
+                        or source_id in payload_source_ids_seen
+                    ):
+                        result.errors.append(
+                            {
+                                "index": index,
+                                "errors": (
+                                    f"A conditional edge from node {source_id} "
+                                    "already exists in this graph"
+                                ),
+                            }
+                        )
+                        continue
+                    payload_source_ids_seen.add(source_id)
+
                 item_data.pop("id", None)
                 s = ConditionalEdgeBulkSerializer(
                     data=item_data, context=self._serializer_context
@@ -378,7 +471,9 @@ class GraphBulkSaveService:
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
                 result.saveables.append(
-                    _ConditionalEdgeSaveable(s, source_parsed.ref, instance=None)
+                    _ConditionalEdgeSaveable(
+                        s, source_parsed.ref, instance=None, temp_id=temp_id or None
+                    )
                 )
             else:
                 db_instance = db_map.get(item_id)
@@ -399,7 +494,12 @@ class GraphBulkSaveService:
                     result.errors.append({"index": index, "errors": s.errors})
                     continue
                 result.saveables.append(
-                    _ConditionalEdgeSaveable(s, source_parsed.ref, instance=db_instance)
+                    _ConditionalEdgeSaveable(
+                        s,
+                        source_parsed.ref,
+                        instance=db_instance,
+                        temp_id=temp_id or None,
+                    )
                 )
 
         return result
@@ -451,7 +551,7 @@ class GraphBulkSaveService:
         return ParsedNodeRef(ref=NodeRef(is_temp=False, value=node_id))
 
     def _validate_deletions(self, graph: Graph, deleted_data: dict) -> list[str]:
-        """Verify all IDs in deleted dict belong to this graph. Returns error strings."""
+        """Check deletion ids in ``deleted_data`` against the DB. Never raises."""
         errors = []
         # edges first, then nodes — matches deletion order
         for config in [*EDGE_DELETE_CONFIGS, *NODE_TYPE_REGISTRY]:
@@ -465,8 +565,12 @@ class GraphBulkSaveService:
             )
             invalid_ids = set(ids) - found_ids
             if invalid_ids:
-                errors.append(
-                    f"{config.delete_key}: IDs {sorted(invalid_ids)} not found in graph {graph.id}"
+                logger.debug(
+                    "{}: IDs {} already absent from graph {} — deletion intent "
+                    "already satisfied, skipping",
+                    config.delete_key,
+                    sorted(invalid_ids),
+                    graph.id,
                 )
         return errors
 
@@ -513,8 +617,14 @@ class GraphBulkSaveService:
         node_saveables: list[_NodeSaveable],
         edge_saveables: list,
         expected_save_version: int,
-    ):
-        """Atomically delete, then save nodes, then save edges."""
+    ) -> dict[str, int]:
+        """Atomically delete, then save nodes, then save edges.
+
+        Returns the temp_id_map built during writes: maps each frontend temp uuid
+        string to the new DB integer id assigned on insert. Covers node temp_ids
+        (registered by _NodeSaveable) as well as edge and conditional-edge temp_ids
+        (registered by _EdgeSaveable / _ConditionalEdgeSaveable), all in one flat map.
+        """
 
         # check if graph was changed meanwhile editing
         Graph.increment_version_if_current(pk=graph.pk, expected=expected_save_version)
@@ -530,6 +640,8 @@ class GraphBulkSaveService:
         # Edges second — temp refs resolved from the complete map.
         for es in edge_saveables:
             es.resolve_and_save(temp_id_map)
+
+        return temp_id_map
 
     def _execute_deletions(self, graph: Graph, deleted_data: dict):
         """Delete all requested entities in edges-before-nodes order."""

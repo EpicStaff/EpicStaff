@@ -167,9 +167,9 @@ class TestRename:
 
 class TestMove:
     def test_move_dispatches_to_cross_org_when_org_ids_differ(
-        self, auth_client, mock_manager
+        self, superadmin_auth_client, mock_manager
     ):
-        resp = auth_client.post(
+        resp = superadmin_auth_client.post(
             "/api/storage/move/",
             {
                 "from_path": "a.txt",
@@ -200,9 +200,9 @@ class TestMove:
 
 class TestCopy:
     def test_copy_dispatches_to_cross_org_when_org_ids_differ(
-        self, auth_client, mock_manager
+        self, superadmin_auth_client, mock_manager
     ):
-        resp = auth_client.post(
+        resp = superadmin_auth_client.post(
             "/api/storage/copy/",
             {
                 "from_path": "a.txt",
@@ -252,9 +252,9 @@ class TestMkdir:
 
 class TestAddToGraph:
     def test_add_to_graph_creates_link_and_appends_slash_for_folders(
-        self, auth_client, mock_manager
+        self, auth_client, mock_manager, default_org
     ):
-        graph = Graph.objects.create(name="test-graph")
+        graph = Graph.objects.create(name="test-graph", org=default_org)
         mock_manager.info.return_value = FolderInfo(
             id=1, name="docs", path="docs/", modified="2024-01-01T00:00:00Z"
         )
@@ -279,7 +279,7 @@ class TestRemoveFromGraph:
         auth_client.get("/api/storage/list/", {"path": ""})
 
         org = Organization.objects.get(name="Default Organization")
-        graph = Graph.objects.create(name="test-graph")
+        graph = Graph.objects.create(name="test-graph", org=org)
         storage_file = StorageFile.objects.create(
             org=org, path="file.txt", name="file.txt"
         )
@@ -304,7 +304,7 @@ class TestGraphFiles:
         auth_client.get("/api/storage/list/", {"path": ""})
 
         org = Organization.objects.get(name="Default Organization")
-        graph = Graph.objects.create(name="test-graph")
+        graph = Graph.objects.create(name="test-graph", org=org)
         storage_file = StorageFile.objects.create(
             org=org, path="attached.txt", name="attached.txt"
         )

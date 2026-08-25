@@ -54,6 +54,7 @@
         class="date-picker__dropdown"
         [style.width.px]="dropdownWidth()"
         [style.--active-color]="activeColor()"
+        (mousedown)="$event.preventDefault()"
     >
         <div class="date-picker__calendar">
             <!-- Header -->

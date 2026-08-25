@@ -29,23 +29,6 @@
                         size="16px"
                     />
                 </button>
-                @if (hasUnsavedChanges) {
-                    <span
-                        class="unsaved-indicator"
-                        matTooltip="Unsaved changes"
-                        matTooltipPosition="below"
-                        [appCollapseOnOverflow]="true"
-                        collapseOnOverflowTarget=".unsaved-text"
-                        collapseOnOverflowClass="unsaved-indicator--icon-only"
-                        collapseOnOverflowRequireSelector="app-svg-icon"
-                    >
-                        <app-svg-icon
-                            icon="circle"
-                            size="10px"
-                        />
-                        <span class="unsaved-text">Unsaved changes</span>
-                    </span>
-                }
             </div>
         </h2>
     </div>
@@ -120,46 +103,24 @@
         </button>
 
         <ng-container *appHasPermission="[ResourceCode.Flows, ActionCode.Update]">
-            <div
+            <button
                 #saveSplitOrigin="cdkOverlayOrigin"
                 cdkOverlayOrigin
-                class="save-split-btn"
-                [class.disabled]="isSaving || isRunning"
+                class="versions-button"
                 [appCollapseOnOverflow]="true"
                 collapseOnOverflowTarget=".btn-label"
-                collapseOnOverflowClass="save-split-btn--icon-only"
+                collapseOnOverflowClass="btn--icon-only"
                 collapseOnOverflowRequireSelector="app-svg-icon"
+                matTooltip="Versions"
+                matTooltipPosition="below"
+                (click)="toggleSaveDropdown($event)"
             >
-                <button
-                    class="save-split-btn__main"
-                    [disabled]="isSaving || isRunning"
-                    matTooltip="Save"
-                    matTooltipPosition="below"
-                    (click)="onSave()"
-                >
-                    @if (isSaving) {
-                        <app-spinner2 [size]="16"></app-spinner2>
-                    } @else {
-                        <app-svg-icon
-                            icon="floppy"
-                            size="1.25rem"
-                        />
-                    }
-                    <span class="btn-label">Save</span>
-                </button>
-                <button
-                    class="save-split-btn__chevron"
-                    [disabled]="isSaving || isRunning"
-                    matTooltip="Save options"
-                    matTooltipPosition="below"
-                    (click)="toggleSaveDropdown($event)"
-                >
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="1rem"
-                    />
-                </button>
-            </div>
+                <app-svg-icon
+                    icon="floppy"
+                    size="1.25rem"
+                />
+                <span class="btn-label">Versions</span>
+            </button>
             <ng-template
                 cdkConnectedOverlay
                 [cdkConnectedOverlayOrigin]="saveSplitOrigin"
@@ -177,7 +138,6 @@
                 (detach)="closeSaveDropdown()"
             >
                 <app-save-dropdown
-                    (save)="onSave(); closeSaveDropdown()"
                     (saveVersion)="saveVersion.emit(); closeSaveDropdown()"
                     (viewVersionHistory)="viewVersionHistory.emit(); closeSaveDropdown()"
                 />
@@ -189,7 +149,7 @@
             collapseOnOverflowTarget=".btn-label"
             collapseOnOverflowClass="btn--icon-only"
             collapseOnOverflowRequireSelector="app-svg-icon"
-            [disabled]="isSaving || isRunning"
+            [disabled]="isRunning"
             matTooltip="Run"
             matTooltipPosition="below"
             (click)="onRun()"

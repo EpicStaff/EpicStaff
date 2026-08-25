@@ -324,6 +324,15 @@ class UserManagementService:
         }
         created = [memberships_by_user_id[uid] for uid in created_user_ids]
         updated = [memberships_by_user_id[uid] for uid in updated_user_ids]
+
+        from tables.graph_collab.notifications import GraphEditNotifier
+
+        for processed_user_id in created_user_ids + updated_user_ids:
+            transaction.on_commit(
+                lambda uid=processed_user_id: GraphEditNotifier.notify_permission_changed(
+                    user_id=uid, org_id=org_id
+                )
+            )
         return created, updated
 
     # ---- update ----
@@ -370,6 +379,13 @@ class UserManagementService:
             o=membership.org.name,
             r=new_role.name,
         )
+        from tables.graph_collab.notifications import GraphEditNotifier
+
+        transaction.on_commit(
+            lambda: GraphEditNotifier.notify_permission_changed(
+                user_id=membership.user_id, org_id=org_id
+            )
+        )
         return membership
 
     # ---- delete ----
@@ -392,6 +408,7 @@ class UserManagementService:
                 org_id=org_id, excluding_user_id=user_id
             )
 
+        target_user_id = membership.user_id
         target_email = membership.user.email
         org_name = membership.org.name
         membership.delete()
@@ -401,6 +418,14 @@ class UserManagementService:
             a=getattr(actor, "email", "system"),
             t=target_email,
             o=org_name,
+        )
+
+        from tables.graph_collab.notifications import GraphEditNotifier
+
+        transaction.on_commit(
+            lambda: GraphEditNotifier.notify_permission_changed(
+                user_id=target_user_id, org_id=org_id
+            )
         )
 
     # ---- superadmin flag ----
@@ -453,6 +478,22 @@ class UserManagementService:
             a=getattr(actor, "email", "system"),
             t=target.email,
         )
+
+        # Global flag — the user could have live collab sessions in any org
+        # they belong to, not just one. Notify each membership's org.
+        from tables.graph_collab.notifications import GraphEditNotifier
+
+        member_org_ids = list(
+            OrganizationUser.objects.filter(user=target).values_list(
+                "org_id", flat=True
+            )
+        )
+        for member_org_id in member_org_ids:
+            transaction.on_commit(
+                lambda oid=member_org_id: GraphEditNotifier.notify_permission_changed(
+                    user_id=target.pk, org_id=oid
+                )
+            )
         return target
 
     # ---- internal helpers ----

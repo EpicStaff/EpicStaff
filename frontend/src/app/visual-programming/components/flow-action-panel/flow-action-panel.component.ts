@@ -13,7 +13,8 @@ import { UndoRedoService } from '../../services/undo-redo.service';
     styleUrls: ['./flow-action-panel.component.scss'],
 })
 export class FlowActionPanelComponent {
-    readonly undoRedoPerformed = output<void>();
+    readonly undo = output<void>();
+    readonly redo = output<void>();
 
     readonly actionIcons = [
         { icon: 'arrow-back-up', tooltip: 'Undo', action: 'undo' },
@@ -33,14 +34,14 @@ export class FlowActionPanelComponent {
 
     handleAction(actionType: string): void {
         switch (actionType) {
-            case 'undo':
-                this.undoRedoService.onUndo();
-                this.undoRedoPerformed.emit();
+            case 'undo': {
+                this.undo.emit();
                 break;
-            case 'redo':
-                this.undoRedoService.onRedo();
-                this.undoRedoPerformed.emit();
+            }
+            case 'redo': {
+                this.redo.emit();
                 break;
+            }
             default:
                 console.warn('Action not implemented:', actionType);
                 break;

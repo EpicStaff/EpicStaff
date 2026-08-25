@@ -240,6 +240,37 @@
         }
     }
 
+    &.remote-selected {
+        .interactive-node-body {
+            border-color: var(--remote-selection-color) !important;
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--remote-selection-color) 30%, transparent);
+        }
+    }
+
+    &.is-locked {
+        .interactive-node-body {
+            border-color: var(--lock-color) !important;
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--lock-color) 25%, transparent);
+        }
+    }
+
+    .lock-badge {
+        position: absolute;
+        top: -24px;
+        left: 0;
+        background: var(--lock-color, #888);
+        color: white;
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        pointer-events: none;
+        z-index: 5;
+    }
+
     &.f-selected {
         .node-name-label {
             opacity: 1;
