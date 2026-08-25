@@ -1,0 +1,49 @@
+<div class="sidebar">
+    <div class="sidebar-header">
+        <span class="sidebar-title">Sessions</span>
+        <button
+            class="sidebar-btn"
+            title="New session"
+            (click)="newSession()"
+        >
+            <app-svg-icon
+                icon="plus"
+                size="0.9rem"
+            />
+        </button>
+    </div>
+
+    <div class="sessions-list">
+        @for (session of sessions(); track trackById($index, session); let i = $index) {
+            <div
+                class="session-row"
+                [class.session-row--active]="currentConversationId() === session.id"
+                (click)="selectSession(session.id)"
+            >
+                <div class="session-row__body">
+                    <span class="session-row__title">{{ sessionTitle(session, i) }}</span>
+                    <div class="session-row__meta">
+                        <span class="session-row__date">{{ formatDate(session.last_message_at) }}</span>
+                        @if (session.message_count > 0) {
+                            <span class="session-row__count">{{ session.message_count }}</span>
+                        }
+                    </div>
+                </div>
+                <button
+                    class="session-row__delete delete-btn"
+                    title="Delete session"
+                    (click)="deleteSession($event, session.id)"
+                >
+                    <app-svg-icon
+                        icon="trash"
+                        size="0.8rem"
+                    />
+                </button>
+            </div>
+        }
+
+        @if (sessions().length === 0) {
+            <div class="sessions-empty">No sessions yet</div>
+        }
+    </div>
+</div>

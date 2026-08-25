@@ -349,6 +349,7 @@
 .top-left-actions__column {
     display: flex;
     flex-direction: column;
+    gap: 6px;
 }
 
 .shortcuts-wrapper {
@@ -375,7 +376,6 @@
         border 0.15s;
     outline: none;
     height: 36px;
-    margin-bottom: 1rem;
 
     &:hover,
     &:focus {

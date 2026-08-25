@@ -1,0 +1,445 @@
+<div class="panel-container">
+    <div class="panel-content">
+        <form
+            [formGroup]="form"
+            class="form-container"
+        >
+            @if (isExpanded()) {
+                <div class="form-layout expanded">
+                    <div class="form-fields">
+                        <app-custom-input
+                            label="Node Name"
+                            [required]="true"
+                            tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
+                            formControlName="node_name"
+                            placeholder="Enter node name"
+                            [activeColor]="activeColor"
+                            [errorMessage]="getNodeNameErrorMessage()"
+                        ></app-custom-input>
+
+                        <div class="field">
+                            <div class="field__label-row">
+                                <label class="field__label">Agent<span class="required">*</span></label>
+                                <app-help-tooltip
+                                    text="The agent that will execute this task."
+                                    position="right"
+                                    size="18px"
+                                />
+                            </div>
+                            <app-select-dropdown
+                                mode="list"
+                                selectionMode="single"
+                                searchPlaceholder="Search agent..."
+                                emptyText="No agents available"
+                                [items]="agentItems()"
+                                [selected]="selectedAgentValue()"
+                                (selectionChange)="onAgentSelectionChange($event)"
+                            >
+                                <button
+                                    type="button"
+                                    appSelectDropdownTrigger
+                                    class="dropdown-trigger"
+                                    [class.dropdown-trigger--invalid]="agentInvalid()"
+                                >
+                                    <span
+                                        class="dropdown-trigger__label"
+                                        [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                    >
+                                        {{ selectedAgentName() || 'Select agent' }}
+                                    </span>
+                                    <app-svg-icon
+                                        icon="chevron-down-filled"
+                                        size="8px"
+                                    />
+                                </button>
+                            </app-select-dropdown>
+                            <app-validation-errors [control]="form.get('agent_definition')!" />
+                        </div>
+
+                        <div class="field">
+                            <div class="field__label-row">
+                                <label class="field__label">Surface (Group of Permissions)</label>
+                                <app-help-tooltip
+                                    text="Assign one or more surfaces (permission groups) this task's agent can use while executing."
+                                    position="right"
+                                    size="18px"
+                                />
+                            </div>
+                            <div class="surface-row">
+                                <app-multi-select
+                                    class="surface-row__select"
+                                    color="white"
+                                    [grouped]="true"
+                                    [label]="surfaceSummaryLabel()"
+                                    searchPlaceholder="Search item..."
+                                    emptyText="No surfaces available"
+                                    checkboxPosition="left"
+                                    [items]="surfaceMultiSelectItems()"
+                                    [selectedValues]="surfaceSelectedValues()"
+                                    (selectionChange)="onSurfacesChange($event)"
+                                    [groupIcons]="surfaceGroupIcons"
+                                    [groupActionIcon]="surfaceGroupActionIcon()"
+                                    (groupAction)="onCreateLocalSurface()"
+                                    (itemAction)="onEditLocalSurface()"
+                                    [showGroupCounts]="true"
+                                    [uppercaseGroupLabels]="false"
+                                    [showClearFilter]="true"
+                                    saveLabel="Save"
+                                ></app-multi-select>
+                                <button
+                                    type="button"
+                                    class="view-summary-btn"
+                                    title="View combined surface summary"
+                                    (click)="onViewSummary()"
+                                >
+                                    <app-svg-icon
+                                        icon="sum"
+                                        size="12px"
+                                    />
+                                    View Summary
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="input-map">
+                            <app-input-map [activeColor]="activeColor"></app-input-map>
+                        </div>
+
+                        <app-custom-input
+                            label="Output Variable Path"
+                            tooltipText="Path where the Task node output will be stored in flow variables."
+                            formControlName="output_variable_path"
+                            placeholder="e.g. task_reply"
+                            [activeColor]="activeColor"
+                        ></app-custom-input>
+
+                        <div class="field field--row">
+                            <div class="field__label-row">
+                                <label class="field__label">Remember output</label>
+                                <app-help-tooltip
+                                    text="When enabled, this task's output is remembered for the run and passed as context to task nodes that run later in the same session."
+                                    position="right"
+                                    size="18px"
+                                />
+                            </div>
+                            <app-toggle-switch formControlName="remember_output" />
+                        </div>
+
+                        @if (mainView() === 'instructions') {
+                            <div class="output-schema-section">
+                                <button
+                                    type="button"
+                                    class="output-schema-toggle"
+                                    (click)="toggleOutputSchema()"
+                                >
+                                    <app-svg-icon
+                                        class="output-schema-toggle__chevron"
+                                        [class.output-schema-toggle__chevron--open]="outputSchemaExpanded()"
+                                        icon="chevron-down-filled"
+                                        size="8px"
+                                    />
+                                    <span>Output Schema</span>
+                                </button>
+                                @if (outputSchemaExpanded()) {
+                                    <app-json-editor
+                                        [jsonData]="outputSchemaText"
+                                        (jsonChange)="onSchemaEditorChange($event)"
+                                        (validationChange)="onSchemaValidChange($event)"
+                                        [showHeader]="true"
+                                        [allowCopy]="true"
+                                        [allowExpand]="true"
+                                        (expand)="toggleMainView()"
+                                        [editorHeight]="220"
+                                    ></app-json-editor>
+                                    @if (outputSchemaError) {
+                                        <div class="task-error">{{ outputSchemaError }}</div>
+                                    }
+                                }
+                            </div>
+                        } @else {
+                            <div class="editor-block">
+                                <div class="editor-block__header">
+                                    <app-tooltip
+                                        class="editor-block__title"
+                                        label="Instructions"
+                                        [required]="true"
+                                        tooltipText="Instructions given to the agent describing what this task should accomplish."
+                                    ></app-tooltip>
+                                    <div class="editor-block__actions">
+                                        <app-svg-icon
+                                            class="editor-block__action"
+                                            icon="copy"
+                                            size="1rem"
+                                            title="Copy"
+                                            (click)="copyInstructions()"
+                                        />
+                                        <app-svg-icon
+                                            class="editor-block__action"
+                                            icon="editor-expand"
+                                            size="0.85rem"
+                                            title="Expand"
+                                            (click)="toggleMainView()"
+                                        />
+                                    </div>
+                                </div>
+                                <app-variable-highlight-textarea
+                                    class="editor-block__textarea"
+                                    formControlName="instructions"
+                                    placeholder="Enter task instructions..."
+                                    [rows]="8"
+                                    [invalid]="instructionsInvalid()"
+                                    [variables]="inputMapKeys()"
+                                ></app-variable-highlight-textarea>
+                                <app-validation-errors [control]="form.get('instructions')!" />
+                            </div>
+                        }
+                    </div>
+
+                    <div class="main-editor-pane">
+                        @if (mainView() === 'instructions') {
+                            <div class="main-editor-pane__header">
+                                <span class="main-editor-pane__title">
+                                    <app-svg-icon
+                                        class="main-editor-pane__title-icon"
+                                        icon="file-empty-state"
+                                        size="1.2rem"
+                                    />
+                                    Instructions
+                                </span>
+                                <div class="main-editor-pane__actions">
+                                    <app-instructions-view-toggle
+                                        [view]="instructionsView()"
+                                        (viewChange)="setInstructionsView($event)"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="icon-button"
+                                        title="Copy"
+                                        (click)="copyInstructions()"
+                                    >
+                                        <app-svg-icon
+                                            icon="copy"
+                                            size="0.9rem"
+                                        />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="icon-button"
+                                        title="Collapse"
+                                        (click)="toggleMainView()"
+                                    >
+                                        <app-svg-icon
+                                            icon="editor-expand"
+                                            size="0.85rem"
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="main-editor-pane__body">
+                                @if (instructionsView() === 'preview') {
+                                    <markdown
+                                        class="markdown-content markdown-content--pane"
+                                        [data]="instructionsValue()"
+                                    ></markdown>
+                                } @else {
+                                    <app-variable-highlight-textarea
+                                        class="main-editor-pane__textarea"
+                                        formControlName="instructions"
+                                        placeholder="Enter task instructions..."
+                                        [rows]="20"
+                                        [invalid]="instructionsInvalid()"
+                                        [variables]="inputMapKeys()"
+                                    ></app-variable-highlight-textarea>
+                                }
+                                @if (instructionsInvalid()) {
+                                    <app-validation-errors
+                                        class="main-editor-pane__validation"
+                                        [control]="form.get('instructions')!"
+                                    />
+                                }
+                            </div>
+                        } @else {
+                            <app-json-editor
+                                [jsonData]="outputSchemaText"
+                                (jsonChange)="onSchemaEditorChange($event)"
+                                (validationChange)="onSchemaValidChange($event)"
+                                [showHeader]="true"
+                                [allowCopy]="true"
+                                [allowExpand]="true"
+                                (expand)="toggleMainView()"
+                                [fullHeight]="true"
+                                [exampleHint]="outputSchemaExampleHint"
+                            ></app-json-editor>
+                            @if (outputSchemaError) {
+                                <div class="task-error">{{ outputSchemaError }}</div>
+                            }
+                        }
+                    </div>
+                </div>
+            } @else {
+                <div class="form-layout collapsed">
+                    <app-custom-input
+                        label="Node Name"
+                        [required]="true"
+                        tooltipText="The unique identifier used to reference this Task node. This name must be unique within the flow."
+                        formControlName="node_name"
+                        placeholder="Enter node name"
+                        [activeColor]="activeColor"
+                        [errorMessage]="getNodeNameErrorMessage()"
+                    ></app-custom-input>
+
+                    <div class="field">
+                        <div class="field__label-row">
+                            <label class="field__label">Agent<span class="required">*</span></label>
+                            <app-help-tooltip
+                                text="The agent that will execute this task."
+                                position="right"
+                                size="18px"
+                            />
+                        </div>
+                        <app-select-dropdown
+                            mode="list"
+                            selectionMode="single"
+                            searchPlaceholder="Search agent..."
+                            emptyText="No agents available"
+                            [items]="agentItems()"
+                            [selected]="selectedAgentValue()"
+                            (selectionChange)="onAgentSelectionChange($event)"
+                        >
+                            <button
+                                type="button"
+                                appSelectDropdownTrigger
+                                class="dropdown-trigger"
+                                [class.dropdown-trigger--invalid]="agentInvalid()"
+                            >
+                                <span
+                                    class="dropdown-trigger__label"
+                                    [class.dropdown-trigger__label--placeholder]="!selectedAgentName()"
+                                >
+                                    {{ selectedAgentName() || 'Select agent' }}
+                                </span>
+                                <app-svg-icon
+                                    icon="chevron-down-filled"
+                                    size="8px"
+                                />
+                            </button>
+                        </app-select-dropdown>
+                        <app-validation-errors [control]="form.get('agent_definition')!" />
+                    </div>
+
+                    <div class="field">
+                        <div class="field__label-row">
+                            <label class="field__label">Surface (Group of Permissions)</label>
+                            <app-help-tooltip
+                                text="Assign one or more surfaces (permission groups) this task's agent can use while executing."
+                                position="right"
+                                size="18px"
+                            />
+                        </div>
+                        <div class="surface-row">
+                            <app-multi-select
+                                class="surface-row__select"
+                                color="white"
+                                [grouped]="true"
+                                [label]="surfaceSummaryLabel()"
+                                searchPlaceholder="Search item..."
+                                emptyText="No surfaces available"
+                                checkboxPosition="left"
+                                [items]="surfaceMultiSelectItems()"
+                                [selectedValues]="surfaceSelectedValues()"
+                                (selectionChange)="onSurfacesChange($event)"
+                                [groupIcons]="surfaceGroupIcons"
+                                [groupActionIcon]="surfaceGroupActionIcon()"
+                                (groupAction)="onCreateLocalSurface()"
+                                (itemAction)="onEditLocalSurface()"
+                                [showGroupCounts]="true"
+                                [uppercaseGroupLabels]="false"
+                                [showClearFilter]="true"
+                                saveLabel="Save"
+                            ></app-multi-select>
+                            <button
+                                type="button"
+                                class="view-summary-btn"
+                                title="View combined surface summary"
+                                (click)="onViewSummary()"
+                            >
+                                <app-svg-icon
+                                    icon="sum"
+                                    size="12px"
+                                />
+                                View Summary
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="input-map">
+                        <app-input-map [activeColor]="activeColor"></app-input-map>
+                    </div>
+
+                    <app-custom-input
+                        label="Output Variable Path"
+                        tooltipText="Path where the Task node output will be stored in flow variables."
+                        formControlName="output_variable_path"
+                        placeholder="e.g. task_reply"
+                        [activeColor]="activeColor"
+                    ></app-custom-input>
+
+                    <div class="field field--row">
+                        <div class="field__label-row">
+                            <label class="field__label">Remember output</label>
+                            <app-help-tooltip
+                                text="When enabled, this task's output is remembered for the run and passed as context to task nodes that run later in the same session."
+                                position="right"
+                                size="18px"
+                            />
+                        </div>
+                        <app-toggle-switch formControlName="remember_output" />
+                    </div>
+
+                    <app-variable-highlight-textarea
+                        label="Instructions"
+                        [required]="true"
+                        tooltipText="Instructions given to the agent describing what this task should accomplish."
+                        formControlName="instructions"
+                        placeholder="Enter task instructions..."
+                        [rows]="5"
+                        [invalid]="instructionsInvalid()"
+                        [variables]="inputMapKeys()"
+                    ></app-variable-highlight-textarea>
+                    <app-validation-errors [control]="form.get('instructions')!" />
+
+                    <div class="output-schema-section">
+                        <button
+                            type="button"
+                            class="output-schema-toggle"
+                            (click)="toggleOutputSchema()"
+                        >
+                            <app-svg-icon
+                                class="output-schema-toggle__chevron"
+                                [class.output-schema-toggle__chevron--open]="outputSchemaExpanded()"
+                                icon="chevron-down-filled"
+                                size="8px"
+                            />
+                            <span>Output Schema</span>
+                        </button>
+                        @if (outputSchemaExpanded()) {
+                            <app-json-editor
+                                [jsonData]="outputSchemaText"
+                                (jsonChange)="onSchemaEditorChange($event)"
+                                (validationChange)="onSchemaValidChange($event)"
+                                [editorHeight]="220"
+                                [showHeader]="true"
+                                [allowCopy]="true"
+                                [allowExpand]="true"
+                                (expand)="expandPanel()"
+                            ></app-json-editor>
+                            @if (outputSchemaError) {
+                                <div class="task-error">{{ outputSchemaError }}</div>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        </form>
+    </div>
+</div>

@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { StorageItem } from '../../models/storage.models';
@@ -34,11 +35,12 @@ export interface FolderNode {
     hasChildren: boolean;
     children: FolderNode[];
     isLoaded: boolean;
+    isEmpty: boolean;
 }
 
 @Component({
     selector: 'app-copy-to-dialog',
-    imports: [FormsModule, AppSvgIconComponent],
+    imports: [FormsModule, AppSvgIconComponent, MatTooltipModule],
     templateUrl: './copy-to-dialog.component.html',
     styleUrls: ['./copy-to-dialog.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -152,6 +154,7 @@ export class CopyToDialogComponent {
                                 hasChildren: !i.is_empty,
                                 children: [],
                                 isLoaded: false,
+                                isEmpty: i.is_empty ?? false,
                             })
                         );
 

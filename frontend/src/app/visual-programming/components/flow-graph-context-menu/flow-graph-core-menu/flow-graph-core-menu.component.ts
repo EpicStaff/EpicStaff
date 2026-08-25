@@ -138,6 +138,12 @@ export class FlowGraphCoreMenuComponent {
             color: NODE_COLORS[NodeType.TABLE],
         },
         {
+            label: 'Classification Decision Table',
+            type: NodeType.CLASSIFICATION_TABLE,
+            icon: NODE_ICONS[NodeType.CLASSIFICATION_TABLE],
+            color: NODE_COLORS[NodeType.CLASSIFICATION_TABLE],
+        },
+        {
             label: 'Webhook Trigger',
             type: NodeType.WEBHOOK_TRIGGER,
             icon: NODE_ICONS[NodeType.WEBHOOK_TRIGGER],
@@ -160,6 +166,18 @@ export class FlowGraphCoreMenuComponent {
             type: NodeType.CODE_AGENT,
             icon: NODE_ICONS[NodeType.CODE_AGENT],
             color: NODE_COLORS[NodeType.CODE_AGENT],
+        },
+        {
+            label: 'Task Node',
+            type: NodeType.TASK,
+            icon: NODE_ICONS[NodeType.TASK],
+            color: NODE_COLORS[NodeType.TASK],
+        },
+        {
+            label: 'Agent Node',
+            type: NodeType.AGENT,
+            icon: NODE_ICONS[NodeType.AGENT],
+            color: NODE_COLORS[NodeType.AGENT],
         },
     ];
 
@@ -227,13 +245,32 @@ export class FlowGraphCoreMenuComponent {
         } else if (type === NodeType.TELEGRAM_TRIGGER) {
             data = {
                 webhook_trigger: null,
-                telegram_bot_api_key: '',
+                telegram_bot_api_key_secret_id: null,
                 fields: [],
             };
         } else if (type === NodeType.SCHEDULE_TRIGGER) {
             data = null;
         } else if (type === NodeType.END) {
             data = null;
+        } else if (type === NodeType.TASK) {
+            data = {
+                name: 'Task Node',
+                instructions: '',
+                output_schema: {},
+                output_schema_invalid: false,
+                remember_output: false,
+                agent_definition: null,
+                surface_list: [],
+                inline_surface: null,
+            };
+        } else if (type === NodeType.AGENT) {
+            data = {
+                name: 'Agent Node',
+                agent_definition: null,
+                surface_list: [],
+                inline_surface: null,
+                tasks: [],
+            };
         }
 
         this.nodeSelected.emit({ type, data });

@@ -512,7 +512,7 @@ export class CodeAgentStreamMessageComponent implements OnInit, OnChanges {
 
         for (const msg of this.allMessages) {
             if (!msg.message_data) continue;
-            if (msg.message_data.message_type !== 'code_agent_stream') continue;
+            if (msg.message_data.message_type !== MessageType.CODE_AGENT_STREAM) continue;
             if (msg.name !== nodeName) continue;
 
             const data = msg.message_data as CodeAgentStreamMessageData;

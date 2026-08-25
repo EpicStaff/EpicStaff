@@ -7,16 +7,19 @@ import { NODE_TYPE_PREFIXES } from '../enums/node-type-prefixes';
  * @param data Optional node data (may contain name for PROJECT)
  * @param nodeNumber The sequential badge number assigned to this node
  */
-export function generateNodeDisplayName(type: NodeType, data: unknown, nodeNumber: number): string {
+export function generateNodeDisplayName(type: NodeType, data: unknown, nodeNumber?: number): string {
     if (type === NodeType.END) {
         return '__end_node__';
     }
+    if (type === NodeType.START) {
+        return 'Start';
+    }
     if (type === NodeType.PROJECT) {
         const projectName = (data as { name?: string } | null)?.name || 'My Project';
-        return `${projectName} #${nodeNumber}`;
+        return nodeNumber != null ? `${projectName} #${nodeNumber}` : projectName;
     }
     const prefix = NODE_TYPE_PREFIXES[type] || 'Node';
-    return `${prefix} #${nodeNumber}`;
+    return nodeNumber != null ? `${prefix} #${nodeNumber}` : prefix;
 }
 
 /**

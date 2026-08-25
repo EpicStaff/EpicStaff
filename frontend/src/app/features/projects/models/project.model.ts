@@ -10,7 +10,6 @@ export interface GetProjectRequest {
 
     tasks: number[];
     agents: number[];
-    tags: number[];
 
     memory: boolean | null;
     config: Record<string, unknown> | null;
@@ -36,7 +35,6 @@ export interface CreateProjectRequest {
 
     tasks?: number[];
     agents?: number[];
-    tags?: number[];
     memory: boolean | null;
     config?: Record<string, unknown> | null;
     max_rpm?: number | null;
@@ -60,7 +58,6 @@ export interface UpdateProjectRequest {
     process: ProjectProcess;
     tasks?: number[];
     agents?: number[];
-    tags?: number[];
     memory: boolean | null;
     config?: Record<string, unknown> | null;
     max_rpm?: number | null;

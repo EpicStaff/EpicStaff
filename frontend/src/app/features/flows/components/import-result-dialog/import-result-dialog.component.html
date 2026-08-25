@@ -79,6 +79,8 @@
                     (click)="scrollSummary(-1)"
                     [class.hidden]="!canScrollLeft()"
                     aria-label="Scroll left"
+                    matTooltip="Scroll left"
+                    matTooltipPosition="above"
                 >
                     <app-icon
                         icon="ui/chevron-up"
@@ -128,6 +130,8 @@
                     (click)="scrollSummary(1)"
                     [class.hidden]="!canScrollRight()"
                     aria-label="Scroll right"
+                    matTooltip="Scroll right"
+                    matTooltipPosition="above"
                 >
                     <app-icon
                         icon="ui/chevron-down"
@@ -230,6 +234,8 @@
                                                                 $event.stopPropagation()
                                                             "
                                                             [attr.aria-label]="'View ' + item.name"
+                                                            matTooltip="Open"
+                                                            matTooltipPosition="above"
                                                         >
                                                             <app-icon
                                                                 icon="ui/arrow-right"

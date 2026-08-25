@@ -10,6 +10,7 @@ import {
     ViewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 
 import { UpdateNaiveRagDocumentDtoRequest } from '../../models/naive-rag-document.model';
@@ -22,7 +23,13 @@ import { DocumentConfigComponent } from './document-config/document-config.compo
     selector: 'app-edit-file-parameters-dialog',
     templateUrl: './edit-file-parameters-dialog.component.html',
     styleUrls: ['./edit-file-parameters-dialog.component.scss'],
-    imports: [AppSvgIconComponent, DocumentConfigComponent, DocumentChunksSectionComponent, ButtonComponent],
+    imports: [
+        AppSvgIconComponent,
+        DocumentConfigComponent,
+        DocumentChunksSectionComponent,
+        ButtonComponent,
+        MatTooltipModule,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class EditFileParametersDialogComponent implements AfterViewInit {

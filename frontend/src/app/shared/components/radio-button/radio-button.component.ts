@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, signal } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -37,7 +37,6 @@ export class RadioButtonComponent implements ControlValueAccessor {
     disabled = input(false);
 
     value = model<unknown | null>(null);
-    valueChange = output<unknown>();
 
     private _disabled = signal(false);
     isDisabled = computed(() => this.disabled() || this._disabled());
@@ -74,6 +73,5 @@ export class RadioButtonComponent implements ControlValueAccessor {
         this.value.set(option.value);
         this.onChange(option.value);
         this.onTouched();
-        this.valueChange.emit(option.value);
     }
 }

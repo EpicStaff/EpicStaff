@@ -39,6 +39,17 @@
         }
     }
 
+    &__form-textarea {
+        height: auto;
+        min-height: 2.5rem;
+        max-height: 128px;
+        padding: 0.625rem 1rem;
+        line-height: 1.4;
+        resize: none;
+        overflow-y: hidden;
+        font-family: inherit;
+    }
+
     &__form-field {
         display: flex;
         flex-wrap: wrap;

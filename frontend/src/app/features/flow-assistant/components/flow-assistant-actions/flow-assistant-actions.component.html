@@ -1,0 +1,23 @@
+@if (actions().length > 0) {
+    <div class="actions-row">
+        @for (action of actions(); track $index) {
+            @if (action.type === 'button') {
+                <button
+                    class="action-btn"
+                    (click)="executed.emit(action)"
+                >
+                    {{ action.text }}
+                </button>
+            } @else if (action.type === 'link') {
+                <a
+                    class="action-link"
+                    href="#"
+                    (click)="executed.emit(action); $event.preventDefault()"
+                >
+                    {{ action.text }}
+                </a>
+            }
+            <!-- prompt-type items are rendered in the panel's input footer, not here -->
+        }
+    </div>
+}

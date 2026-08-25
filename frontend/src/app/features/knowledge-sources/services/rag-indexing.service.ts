@@ -3,12 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { ConfigService } from '../../../services/config';
-import {
-    StartIndexingDtoRequest,
-    StartIndexingDtoResponse,
-    StopIndexingDtoRequest,
-    StopIndexingDtoResponse,
-} from '../models/base-rag.model';
+import { StartIndexingDtoRequest, StartIndexingDtoResponse, StopIndexingDtoRequest } from '../models/base-rag.model';
 
 @Injectable({ providedIn: 'root' })
 export class RagIndexingService {
@@ -19,7 +14,9 @@ export class RagIndexingService {
         return this.http.post<StartIndexingDtoResponse>(`${this.configService.apiUrl}process-rag-indexing/`, dto);
     }
 
-    stopIndexing(dto: StopIndexingDtoRequest): Observable<StopIndexingDtoResponse> {
-        return this.http.post<StopIndexingDtoResponse>(`${this.configService.apiUrl}process-rag-indexing/cancel/`, dto);
+    stopIndexing(dto: StopIndexingDtoRequest): Observable<void> {
+        return this.http.delete<void>(
+            `${this.configService.apiUrl}process-rag-indexing/${dto.rag_type}/${dto.rag_id}/cancel/`
+        );
     }
 }

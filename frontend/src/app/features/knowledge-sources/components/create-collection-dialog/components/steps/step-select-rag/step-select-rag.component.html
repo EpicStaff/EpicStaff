@@ -56,10 +56,9 @@
                     tooltipClass="dialog__label-tooltip"
                 />
 
-                <app-select
-                    class="select-rag__config-select"
-                    [items]="llmModels()"
-                    [(selectedValue)]="selectedLLM"
+                <app-llm-model-selector
+                    [placeholder]="'Select LLM config'"
+                    [(ngModel)]="selectedLLM"
                 />
             </div>
         }

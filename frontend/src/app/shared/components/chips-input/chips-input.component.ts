@@ -7,6 +7,7 @@ import {
     ReactiveFormsModule,
     ValidationErrors,
 } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { ValidationErrorsComponent } from '../app-validation-errors/validation-errors.component';
@@ -26,6 +27,7 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
         ValidationErrorsComponent,
         AppSvgIconComponent,
         CheckboxComponent,
+        MatTooltipModule,
     ],
     providers: [
         {
@@ -46,6 +48,8 @@ export class ChipsInputComponent implements ControlValueAccessor {
     maxItemLength = input<number | null>(null);
     showSeparatorToggle = input(false);
     separatorLabel = input('Split by comma');
+    addButtonTooltip = input('Add');
+    readOnly = input<boolean>(false);
 
     private onChange: (value: string[]) => void = () => {};
     private onTouched: () => void = () => {};
@@ -110,7 +114,7 @@ export class ChipsInputComponent implements ControlValueAccessor {
 
     onAdd() {
         const raw = this.inputControl.value?.trim();
-        if (!raw || this.isDisabled || this.inputControl.invalid) return;
+        if (!raw || this.isDisabled || this.readOnly() || this.inputControl.invalid) return;
 
         const items = this.separatorEnabled()
             ? raw
@@ -133,7 +137,7 @@ export class ChipsInputComponent implements ControlValueAccessor {
     }
 
     onRemove(index: number) {
-        if (this.isDisabled) return;
+        if (this.isDisabled || this.readOnly()) return;
 
         const next = this.value().filter((_, i) => i !== index);
         this.updateValue(next);

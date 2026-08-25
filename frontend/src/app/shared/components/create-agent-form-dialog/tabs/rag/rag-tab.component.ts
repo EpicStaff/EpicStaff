@@ -180,6 +180,10 @@ export class RagTabComponent implements OnInit {
     loadingKnowledgeSources = input<boolean>(false);
     loadingRags = input<boolean>(false);
     llmConfigId = input<number | null>(null);
+    // When embedded in a host that already has its own collection/rag-kind
+    // picker (e.g. the Surface knowledge-advanced panel), hide this tab's own
+    // "Select Knowledge Source"/"Select Agent Rags" UI so the two don't duplicate.
+    hideSourceSelectors = input<boolean>(false);
 
     selectedRagType = signal<'naive' | 'graph' | null>(null);
     activeGraphMethodSignal = signal<GraphSearchMethod | null>(null);
@@ -229,9 +233,12 @@ export class RagTabComponent implements OnInit {
         return safe != null ? `Above recommended budget (${safe.toLocaleString()} tokens).` : '';
     });
 
+    // Paired with [min]="100" on every field that binds this message (the anchor
+    // field and its "Data Max Tokens" siblings) — isOutOfRange() in app-input-number
+    // fires this for either bound, so the text must describe both, not just the max.
     tokenErrorMsg = computed<string>(() => {
         const ctx = this.effectiveLlmContextWindow();
-        return ctx != null ? `Exceeds this LLM's context window (${ctx.toLocaleString()} tokens).` : '';
+        return ctx != null ? `Must be between 100 and ${ctx.toLocaleString()} tokens.` : '';
     });
 
     // Cache the LLM's context window per llm_config_id — this is a true LLM-level

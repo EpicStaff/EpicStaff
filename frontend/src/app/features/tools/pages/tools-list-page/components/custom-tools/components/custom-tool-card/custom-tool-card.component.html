@@ -23,17 +23,25 @@
     <div class="tool-footer">
         <app-button
             type="ghost"
+            *appHasPermission="[ResourceCode.Tools, [ActionCode.Update, ActionCode.Read]]"
             (click)="onConfigure()"
             >Configure</app-button
         >
         <div class="footer-actions">
-            <app-toggle-switch
-                [checked]="enabled"
-                (checkedChange)="onToggle($event)"
-            ></app-toggle-switch>
+            <span
+                [matTooltip]="enabled ? 'Disable tool' : 'Enable tool'"
+                matTooltipPosition="above"
+            >
+                <app-toggle-switch
+                    [checked]="enabled"
+                    (checkedChange)="onToggle($event)"
+                ></app-toggle-switch>
+            </span>
             <button
                 class="star-btn"
                 aria-label="Favorite"
+                matTooltip="Add to favorites"
+                matTooltipPosition="above"
                 (click)="onStar()"
                 [class.active]="starred"
             >
@@ -43,8 +51,11 @@
                 />
             </button>
             <button
+                *appHasPermission="[ResourceCode.Tools, ActionCode.Delete]"
                 class="delete-btn"
                 aria-label="Delete tool"
+                matTooltip="Delete tool"
+                matTooltipPosition="above"
                 (click)="onDelete()"
             >
                 <app-svg-icon

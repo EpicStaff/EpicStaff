@@ -189,11 +189,10 @@ import { RealtimeUtils } from "./utils.js";
 export class RealtimeClient extends RealtimeEventHandler {
   /**
    * Create a new RealtimeClient instance
-   * @param {{url?: string, apiKey?: string, dangerouslyAllowAPIKeyInBrowser?: boolean, debug?: boolean}} [settings]
+   * @param {{url?: string, apiKey?: string, dangerouslyAllowAPIKeyInBrowser?: boolean, debug?: boolean, connectionKey?: string}} [settings]
    */
-  constructor({ url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug } = {}) {
+  constructor({ url, apiKey, dangerouslyAllowAPIKeyInBrowser, debug, connectionKey } = {}) {
     super();
-    console.log("RealtimeClient constructor", url);
 
     this.defaultSessionConfig = {
       modalities: ["text", "audio"],
@@ -225,6 +224,7 @@ export class RealtimeClient extends RealtimeEventHandler {
       apiKey,
       dangerouslyAllowAPIKeyInBrowser,
       debug,
+      connectionKey,
     });
 
     this.conversation = new RealtimeConversation();
@@ -237,7 +237,6 @@ export class RealtimeClient extends RealtimeEventHandler {
    * @returns {true}
    */
   _resetConfig() {
-    console.log("realtime", JSON.stringify(this.realtime));
     this.sessionCreated = false;
     this.tools = {};
     this.sessionConfig = JSON.parse(JSON.stringify(this.defaultSessionConfig));

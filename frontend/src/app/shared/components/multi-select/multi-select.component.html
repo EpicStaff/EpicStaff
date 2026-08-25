@@ -4,6 +4,8 @@
     <div
         #triggerBtn
         class="multi-select__btn"
+        [class.multi-select__btn--disabled]="disabled()"
+        [attr.aria-disabled]="disabled() || null"
         (click)="toggle()"
     >
         {{ label() }}
@@ -26,7 +28,11 @@
 }
 
 <ng-template #dropdownTemplate>
-    <div class="multi-select__dropdown">
+    <div
+        class="multi-select__dropdown"
+        [style.--ms-width]="panelWidth()"
+        [style.--ms-height]="panelHeight()"
+    >
         @if (showSearch()) {
             <input
                 class="multi-select__search"
@@ -40,9 +46,48 @@
         <div class="multi-select__list">
             @for (group of groupedFiltered(); track group.group ?? 'default') {
                 @if (group.group) {
-                    <label class="multi-select__group-label">
-                        {{ group.group }}
-                    </label>
+                    <div class="multi-select__group-header">
+                        <label
+                            class="multi-select__group-label"
+                            [class.multi-select__group-label--natural]="!uppercaseGroupLabels()"
+                        >
+                            @if (groupIcons()[group.group]) {
+                                @if (isTablerIcon(groupIcons()[group.group])) {
+                                    <i
+                                        class="multi-select__group-icon"
+                                        [class]="groupIcons()[group.group]"
+                                    ></i>
+                                } @else {
+                                    <app-svg-icon
+                                        class="multi-select__group-icon"
+                                        size="1.125rem"
+                                        [icon]="groupIcons()[group.group]"
+                                    />
+                                }
+                            }
+                            {{ group.group }}
+                            @if (showGroupCounts() && (groupCounts().get(group.group)?.total ?? 0) > 0) {
+                                <span class="multi-select__group-count">
+                                    {{ groupCounts().get(group.group)?.selected ?? 0 }}/{{
+                                        groupCounts().get(group.group)?.total ?? 0
+                                    }}
+                                </span>
+                            }
+                        </label>
+
+                        @if (groupActionIcon()[group.group]) {
+                            <button
+                                type="button"
+                                class="multi-select__group-action"
+                                (click)="onGroupAction($event, group.group)"
+                            >
+                                <app-svg-icon
+                                    size="1.25rem"
+                                    [icon]="groupActionIcon()[group.group]"
+                                />
+                            </button>
+                        }
+                    </div>
                 }
 
                 @for (item of group.items; track item.name) {
@@ -51,6 +96,7 @@
                         [class.multi-select__item--selected]="isChecked(item.value)"
                         [class.multi-select__item--checkbox-left]="checkboxPosition() === 'left'"
                         [class.multi-select__item--checkbox-white]="color() === 'white'"
+                        [class.multi-select__item--has-action]="!!item.trailingActionIcon"
                         (click)="toggleValue(item.value)"
                     >
                         @if (checkboxPosition() === 'left') {
@@ -59,8 +105,12 @@
                                 [checked]="isChecked(item.value)"
                             />
                         }
-                        <span class="multi-select__item-label">
-                            {{ item.name }}
+                        <span class="multi-select__item-text">
+                            <span
+                                class="multi-select__item-name"
+                                [title]="item.name"
+                                >{{ item.name }}</span
+                            >
                             @if (item.tip) {
                                 <span class="multi-select__item-tip">
                                     {{ item.tip }}
@@ -73,27 +123,58 @@
                                 [checked]="isChecked(item.value)"
                             />
                         }
+                        @if (item.trailingActionIcon) {
+                            <button
+                                type="button"
+                                class="multi-select__item-action"
+                                (click)="onItemAction($event, item.value)"
+                            >
+                                <app-svg-icon
+                                    size="1rem"
+                                    [icon]="item.trailingActionIcon"
+                                />
+                            </button>
+                        }
                     </div>
                 }
+            }
+
+            @if (!hasResults()) {
+                <p class="multi-select__empty">{{ emptyText() }}</p>
             }
         </div>
 
         <div class="multi-select__footer">
-            <app-button
-                mod="default"
-                type="outline-primary"
-                (click)="cancel()"
-            >
-                Cancel
-            </app-button>
+            @if (showClearFilter()) {
+                <app-button
+                    class="multi-select__footer-btn"
+                    mod="default"
+                    type="outline-primary"
+                    (click)="clearFilter()"
+                >
+                    Clear Filter
+                </app-button>
+            }
 
-            <app-button
-                mod="default"
-                type="primary"
-                (click)="save()"
-            >
-                Save Selection
-            </app-button>
+            <div class="multi-select__footer-actions">
+                <app-button
+                    class="multi-select__footer-btn"
+                    mod="default"
+                    type="outline-primary"
+                    (click)="cancel()"
+                >
+                    Cancel
+                </app-button>
+
+                <app-button
+                    class="multi-select__footer-btn"
+                    mod="default"
+                    type="primary"
+                    (click)="save()"
+                >
+                    {{ saveLabel() }}
+                </app-button>
+            </div>
         </div>
     </div>
 </ng-template>

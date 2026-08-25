@@ -73,7 +73,8 @@
                         type="button"
                         class="cancel-btn-icon"
                         (click)="cancelAdd()"
-                        title="Cancel"
+                        matTooltip="Cancel"
+                        matTooltipPosition="above"
                     >
                         <app-svg-icon
                             icon="x"
@@ -84,7 +85,8 @@
                         type="button"
                         class="confirm-btn"
                         (click)="confirmAdd()"
-                        title="Confirm"
+                        matTooltip="Confirm"
+                        matTooltipPosition="above"
                     >
                         <app-svg-icon
                             icon="check"
@@ -113,7 +115,8 @@
                             class="toggle-btn"
                             (click)="$event.stopPropagation(); toggleExpand(item.node.id)"
                             [style.visibility]="item.node.children.length > 0 ? 'visible' : 'hidden'"
-                            title="{{ isExpanded(item.node.id) ? 'Collapse' : 'Expand' }}"
+                            [matTooltip]="isExpanded(item.node.id) ? 'Collapse' : 'Expand'"
+                            matTooltipPosition="above"
                         >
                             <app-svg-icon
                                 icon="expand"
@@ -134,7 +137,8 @@
                             type="button"
                             class="add-child-btn"
                             (click)="$event.stopPropagation(); startAddChild(item.node.id)"
-                            title="Add sublabel"
+                            matTooltip="Add sublabel"
+                            matTooltipPosition="above"
                         >
                             <app-svg-icon
                                 icon="plus"

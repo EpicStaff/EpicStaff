@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, forwardRef, input, signal } from '@angular/core';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { JsonEditorComponent } from '../json-editor/json-editor.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -11,7 +12,7 @@ interface KeyValueItem {
 
 @Component({
     selector: 'app-key-value-list',
-    imports: [TooltipComponent, FormsModule, JsonEditorComponent],
+    imports: [TooltipComponent, FormsModule, JsonEditorComponent, MatTooltipModule],
     templateUrl: './key-value-list.component.html',
     styleUrls: ['./key-value-list.component.scss'],
     providers: [

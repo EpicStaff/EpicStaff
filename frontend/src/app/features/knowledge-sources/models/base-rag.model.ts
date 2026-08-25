@@ -55,9 +55,3 @@ export interface StartIndexingDtoResponse {
     accepted_config_ids: number[] | null;
     skipped_completed_config_ids: number[];
 }
-
-export interface StopIndexingDtoResponse {
-    detail: string;
-    rag_id: number;
-    rag_type: RagType;
-}

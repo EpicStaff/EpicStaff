@@ -1,10 +1,32 @@
 .collections-sidebar {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
     height: 100%;
     padding: 24px;
     container-type: inline-size;
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        margin-bottom: 12px;
+    }
+
+    &__header-label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--color-ks-text);
+    }
+
+    &__header-count {
+        color: var(--color-text-secondary);
+        font-weight: 400;
+    }
 
     &__items {
         display: flex;
@@ -25,6 +47,7 @@
         margin: 0.5rem 0 1rem 0;
         font-size: 1.125rem;
         color: var(--color-ks-text);
+        text-align: center;
     }
 }
 
@@ -32,16 +55,4 @@
     flex: 0 1 auto;
     min-width: 0;
     max-width: 45%;
-}
-
-@container (max-width: 200px) {
-    .collections-sidebar__actions {
-        flex-wrap: wrap;
-        height: auto;
-    }
-
-    .collections-sidebar__select {
-        flex: 1 1 100%;
-        width: 100%;
-    }
 }

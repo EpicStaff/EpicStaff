@@ -1,31 +1,46 @@
+import { Dialog } from '@angular/cdk/dialog';
+import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
+import { ComponentType } from '@angular/cdk/portal';
 import { CommonModule } from '@angular/common';
 import {
     ChangeDetectionStrategy,
-    ChangeDetectorRef,
     Component,
+    computed,
     DestroyRef,
+    ElementRef,
     EventEmitter,
     forwardRef,
     inject,
     Input,
-    OnChanges,
+    input,
     OnDestroy,
     OnInit,
     Output,
-    SimpleChanges,
+    signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
-import { DropdownManagerService, FullLLMConfig } from '@shared/services';
+import {
+    DropdownManagerService,
+    FullLLMConfig,
+    FullLLMConfigService,
+    FullRealtimeConfig,
+    FullRealtimeConfigService,
+} from '@shared/services';
 import { getProviderIconPath } from '@shared/utils';
+import { finalize, Observable } from 'rxjs';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
+import { LlmModelConfigDialogComponent, VoiceModelConfigDialogComponent } from '../llm-dialogs';
 import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component';
+
+export type ModelSelectorKind = 'llm' | 'realtime';
+type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
 
 @Component({
     selector: 'app-llm-model-selector',
     standalone: true,
-    imports: [CommonModule, FormsModule, AppSvgIconComponent, LlmModelItemComponent],
+    imports: [CommonModule, FormsModule, OverlayModule, AppSvgIconComponent, LlmModelItemComponent],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -36,43 +51,40 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
     template: `
         <div class="llm-selector-container">
             <div
+                #trigger="cdkOverlayOrigin"
+                cdkOverlayOrigin
                 class="selected-model"
-                [class.placeholder]="!selectedConfig"
-                [class.loading]="loading"
-                (click)="!loading && toggleDropdown($event)"
+                [class.placeholder]="!selectedConfig()"
+                [class.loading]="isLoading"
+                (click)="!isLoading && toggleDropdown($event)"
             >
-                <div
-                    *ngIf="loading"
-                    class="loading-spinner"
-                ></div>
-                <div
-                    *ngIf="selectedConfig && !loading; else placeholderTemplate"
-                    class="model-info"
-                >
-                    <app-svg-icon
-                        [icon]="getProviderIcon(selectedConfig)"
-                        size="20px"
-                        [ariaLabel]="selectedConfig.providerDetails?.name || ''"
-                        class="provider-icon"
-                    />
-                    <div class="model-text">
-                        <span class="model-name">{{ selectedConfig.modelDetails?.name || 'Unknown Model' }}</span>
-                        <span
-                            *ngIf="selectedConfig.custom_name"
-                            class="custom-name"
-                        >
-                            ({{ selectedConfig.custom_name }})
-                        </span>
+                @if (isLoading) {
+                    <div class="loading-spinner"></div>
+                }
+                @if (selectedConfig() && !isLoading) {
+                    <div class="model-info">
+                        <app-svg-icon
+                            [icon]="getProviderIcon(selectedConfig()!)"
+                            size="20px"
+                            [ariaLabel]="selectedConfig()!.providerDetails?.name || ''"
+                            class="provider-icon"
+                        />
+                        <div class="model-text">
+                            <span class="model-name">{{
+                                selectedConfig()!.modelDetails?.name || 'Unknown Model'
+                            }}</span>
+                            @if (selectedConfig()!.custom_name) {
+                                <span class="custom-name"> ({{ selectedConfig()!.custom_name }}) </span>
+                            }
+                        </div>
                     </div>
-                </div>
-                <ng-template #placeholderTemplate>
-                    <div
-                        *ngIf="!loading"
-                        class="placeholder-text"
-                    >
-                        {{ placeholder }}
-                    </div>
-                </ng-template>
+                } @else {
+                    @if (!isLoading) {
+                        <div class="placeholder-text">
+                            {{ placeholder }}
+                        </div>
+                    }
+                }
                 <div class="dropdown-icon">
                     <svg
                         width="16"
@@ -92,51 +104,61 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
                 </div>
             </div>
 
-            <!-- Dropdown Menu -->
-            <div
-                class="dropdown-menu"
-                [class.dropdown-top]="dropdownPosition === 'top'"
-                *ngIf="isDropdownOpen"
+            <!-- Dropdown Menu (rendered in an overlay so no parent overflow clips it) -->
+            <ng-template
+                cdkConnectedOverlay
+                [cdkConnectedOverlayOrigin]="trigger"
+                [cdkConnectedOverlayOpen]="isDropdownOpen()"
+                [cdkConnectedOverlayWidth]="triggerWidth()"
+                [cdkConnectedOverlayPositions]="overlayPositions"
+                [cdkConnectedOverlayFlexibleDimensions]="true"
+                (overlayOutsideClick)="onOverlayOutsideClick($event)"
+                (detach)="closeDropdown()"
             >
-                <!-- Search Input -->
-                <div class="search-container">
-                    <input
-                        type="text"
-                        [(ngModel)]="searchTerm"
-                        placeholder="Search models..."
-                        (click)="$event.stopPropagation()"
-                        (input)="filterConfigs()"
-                    />
-                </div>
-
-                <!-- Models List -->
-                <div class="models-list">
-                    @if (selectedConfig && !searchTerm) {
-                        <div
-                            class="deselect-option"
-                            (click)="deselectConfig()"
+                <div class="dropdown-menu">
+                    <!-- Search Input -->
+                    <div class="search-container">
+                        <input
+                            type="text"
+                            [ngModel]="searchTerm()"
+                            (ngModelChange)="searchTerm.set($event)"
+                            placeholder="Search models..."
+                            (click)="$event.stopPropagation()"
+                        />
+                        <button
+                            class="create-btn"
+                            (click)="onCreateLlm()"
                         >
-                            <i class="ti ti-x"></i>
-                            <span>Clear</span>
-                        </div>
-                    }
-                    <div
-                        *ngIf="filteredConfigs.length === 0"
-                        class="no-results"
-                    >
-                        No matching models found
+                            {{ createButtonLabel() }}
+                        </button>
                     </div>
 
-                    @for (config of filteredConfigs; track config.id) {
-                        <app-llm-model-item
-                            [config]="config"
-                            [isSelected]="selectedConfigId === config.id"
-                            (selected)="selectConfig($event)"
-                        >
-                        </app-llm-model-item>
-                    }
+                    <!-- Models List -->
+                    <div class="models-list">
+                        @if (selectedConfig() && !searchTerm()) {
+                            <div
+                                class="deselect-option"
+                                (click)="deselectConfig()"
+                            >
+                                <i class="ti ti-x"></i>
+                                <span>Clear</span>
+                            </div>
+                        }
+                        @if (filteredConfigs().length === 0) {
+                            <div class="no-results">No matching models found</div>
+                        }
+
+                        @for (config of filteredConfigs(); track config.id) {
+                            <app-llm-model-item
+                                [config]="config"
+                                [isSelected]="selectedConfigId() === config.id"
+                                (selected)="selectConfig($event)"
+                            >
+                            </app-llm-model-item>
+                        }
+                    </div>
                 </div>
-            </div>
+            </ng-template>
         </div>
     `,
     styles: [
@@ -241,33 +263,20 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
             }
 
             .dropdown-menu {
-                position: absolute;
-                top: calc(100% + 4px);
-                left: 0;
                 width: 100%;
                 background-color: var(--color-modals-background);
                 border: 1px solid var(--color-divider-subtle);
                 border-radius: 6px;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                z-index: 1000;
                 max-height: 300px;
                 display: flex;
                 flex-direction: column;
                 overflow: hidden;
             }
 
-            .dropdown-menu.dropdown-top {
-                top: auto;
-                bottom: calc(100% + 4px);
-                flex-direction: column-reverse;
-            }
-
-            .dropdown-menu.dropdown-top .search-container {
-                border-bottom: none;
-                border-top: 1px solid var(--color-divider-subtle);
-            }
-
             .search-container {
+                display: flex;
+                gap: 8px;
                 padding: 6px 8px;
                 border-bottom: 1px solid var(--color-divider-subtle);
             }
@@ -285,6 +294,22 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
 
             .search-container input:focus {
                 border-color: var(--accent-color);
+            }
+
+            .search-container button {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                background: #685fff;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 0.4rem 0.85rem;
+                font-size: 0.82rem;
+                font-weight: 500;
+                cursor: pointer;
+                white-space: nowrap;
+                transition: background 0.2s ease;
             }
 
             .models-list {
@@ -325,59 +350,107 @@ import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, ControlValueAccessor {
+export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValueAccessor {
     @Input() placeholder: string = 'Select LLM model';
-    @Input() llmConfigs: FullLLMConfig[] = [];
     @Input() loading: boolean = false;
+
+    // Which pool of model configs to offer. Defaults to 'llm' so every existing
+    // consumer keeps its current behaviour unchanged.
+    readonly kind = input<ModelSelectorKind>('llm');
 
     @Output() modelSelected = new EventEmitter<number>();
 
-    public isDropdownOpen = false;
-    public searchTerm = '';
-    public selectedConfigId: number | null = null;
-    public selectedConfig: FullLLMConfig | null = null;
-    public filteredConfigs: FullLLMConfig[] = [];
-    public dropdownPosition: 'bottom' | 'top' = 'top';
-    private dropdownId: string;
+    private readonly fullLLMConfigService = inject(FullLLMConfigService);
+    private readonly fullRealtimeConfigService = inject(FullRealtimeConfigService);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly dropdownManager = inject(DropdownManagerService);
+    private readonly dialog = inject(Dialog);
+    private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+
+    public readonly searchTerm = signal('');
+    public readonly selectedConfigId = signal<number | null>(null);
+    public readonly isDropdownOpen = signal(false);
+    public readonly triggerWidth = signal(0);
+    // Self-managed spinner during the selector's own initial pool load, OR'd with the
+    // external `loading` input so consumers don't need to load the data just to drive it.
+    private readonly configsLoading = signal(false);
+
+    get isLoading(): boolean {
+        return this.loading || this.configsLoading();
+    }
+
+    public readonly configs = computed<SelectorConfig[]>(() =>
+        this.kind() === 'realtime'
+            ? this.fullRealtimeConfigService.fullRealtimeConfigs()
+            : this.fullLLMConfigService.fullLLMConfigs()
+    );
+
+    public readonly createButtonLabel = computed<string>(() =>
+        this.kind() === 'realtime' ? 'Create Realtime Model' : 'Create LLM Model'
+    );
+
+    public readonly selectedConfig = computed<SelectorConfig | null>(() => {
+        const id = this.selectedConfigId();
+        if (id == null) return null;
+        return this.configs().find((c) => c.id === id) ?? null;
+    });
+
+    public readonly filteredConfigs = computed<SelectorConfig[]>(() => {
+        const term = this.searchTerm().trim().toLowerCase();
+        const configs = this.configs();
+        if (!term) return [...configs];
+        return configs.filter((config) => {
+            const modelName = config.modelDetails?.name?.toLowerCase() || '';
+            const customName = config.custom_name?.toLowerCase() || '';
+            const providerName = config.providerDetails?.name?.toLowerCase() || '';
+            return modelName.includes(term) || customName.includes(term) || providerName.includes(term);
+        });
+    });
+
+    // Prefer opening below the trigger; flip above when there isn't room.
+    readonly overlayPositions: ConnectedPosition[] = [
+        { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+        { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+    ];
+
+    private readonly dropdownId: string;
 
     // ControlValueAccessor implementation
     private onChange: (value: number | null) => void = () => {};
     private onTouched: () => void = () => {};
-    private destroyRef = inject(DestroyRef);
 
-    constructor(
-        private cdr: ChangeDetectorRef,
-        private dropdownManager: DropdownManagerService
-    ) {
+    constructor() {
         // Generate unique ID for this dropdown instance
         this.dropdownId = `llm-selector-${Math.random().toString(36).substr(2, 9)}`;
     }
 
     ngOnInit(): void {
-        this.filteredConfigs = [...this.llmConfigs];
-        this.updateSelectedConfig();
+        // Load the pool matching this selector's kind. Both loaders are idempotent
+        // (they hydrate root storage signals), so repeated instances are cheap.
+        const load$: Observable<unknown> =
+            this.kind() === 'realtime'
+                ? this.fullRealtimeConfigService.getFullRealtimeConfigs()
+                : this.fullLLMConfigService.getFullLLMConfigs();
+        this.configsLoading.set(true);
+        load$
+            .pipe(
+                finalize(() => this.configsLoading.set(false)),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
 
         // Subscribe to dropdown manager to close this dropdown when another opens
         this.dropdownManager.activeDropdown$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((activeId) => {
-            if (activeId !== this.dropdownId && this.isDropdownOpen) {
+            if (activeId !== this.dropdownId && this.isDropdownOpen()) {
                 this.closeDropdown();
             }
         });
     }
 
-    ngOnChanges(changes: SimpleChanges): void {
-        if (changes['llmConfigs'] && this.llmConfigs) {
-            this.filteredConfigs = [...this.llmConfigs];
-            this.updateSelectedConfig();
-            this.cdr.markForCheck();
-        }
-    }
-
     ngOnDestroy(): void {
-        document.removeEventListener('click', this.closeDropdownOnClickOutside);
-        if (this.isDropdownOpen) {
+        if (this.isDropdownOpen()) {
             this.dropdownManager.closeDropdown(this.dropdownId);
-            this.isDropdownOpen = false;
+            this.isDropdownOpen.set(false);
         }
     }
 
@@ -386,7 +459,7 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, 
             event.stopPropagation();
         }
 
-        if (this.isDropdownOpen) {
+        if (this.isDropdownOpen()) {
             this.closeDropdown();
         } else {
             this.openDropdown();
@@ -394,98 +467,64 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, 
     }
 
     private openDropdown(): void {
-        this.isDropdownOpen = true;
-        this.filterConfigs();
-        this.checkDropdownPosition();
+        const container = this.elementRef.nativeElement.querySelector<HTMLElement>('.llm-selector-container');
+        this.triggerWidth.set(container?.getBoundingClientRect().width ?? 0);
+
+        this.isDropdownOpen.set(true);
 
         // Notify dropdown manager that this dropdown is now active
         this.dropdownManager.openDropdown(this.dropdownId);
-
-        // Add a one-time click listener to close when clicking outside
-        setTimeout(() => {
-            document.addEventListener('click', this.closeDropdownOnClickOutside);
-        }, 100);
-
-        this.cdr.markForCheck();
     }
 
-    closeDropdownOnClickOutside = (event: MouseEvent): void => {
-        const target = event.target as HTMLElement;
-        const selectorEl = document.querySelector('.llm-selector-container');
-
-        if (selectorEl && !selectorEl.contains(target)) {
-            this.closeDropdown();
-            document.removeEventListener('click', this.closeDropdownOnClickOutside);
-        }
-    };
+    onOverlayOutsideClick(event: MouseEvent): void {
+        const container = this.elementRef.nativeElement.querySelector('.llm-selector-container');
+        if (container && container.contains(event.target as Node)) return;
+        this.closeDropdown();
+    }
 
     closeDropdown(): void {
-        this.isDropdownOpen = false;
-        document.removeEventListener('click', this.closeDropdownOnClickOutside);
+        if (!this.isDropdownOpen()) return;
+        this.isDropdownOpen.set(false);
 
         // Notify dropdown manager that this dropdown is now closed
         this.dropdownManager.closeDropdown(this.dropdownId);
-
-        this.cdr.markForCheck();
-    }
-
-    filterConfigs(): void {
-        if (!this.searchTerm.trim()) {
-            this.filteredConfigs = [...this.llmConfigs];
-        } else {
-            const searchTermLower = this.searchTerm.toLowerCase();
-            this.filteredConfigs = this.llmConfigs.filter((config) => {
-                const modelName = config.modelDetails?.name?.toLowerCase() || '';
-                const customName = config.custom_name?.toLowerCase() || '';
-                const providerName = config.providerDetails?.name?.toLowerCase() || '';
-
-                return (
-                    modelName.includes(searchTermLower) ||
-                    customName.includes(searchTermLower) ||
-                    providerName.includes(searchTermLower)
-                );
-            });
-        }
-        this.cdr.markForCheck();
     }
 
     deselectConfig(): void {
-        this.selectedConfigId = null;
-        this.selectedConfig = null;
+        this.selectedConfigId.set(null);
         this.onChange(null);
         this.onTouched();
         this.modelSelected.emit(undefined);
         this.closeDropdown();
     }
 
-    selectConfig(config: FullLLMConfig): void {
-        this.selectedConfigId = config.id;
-        this.selectedConfig = config;
+    selectConfig(config: SelectorConfig): void {
+        this.selectedConfigId.set(config.id);
         this.onChange(config.id);
         this.onTouched();
         this.modelSelected.emit(config.id);
         this.closeDropdown();
-        document.removeEventListener('click', this.closeDropdownOnClickOutside);
     }
 
-    getProviderIcon(config: FullLLMConfig): string {
+    getProviderIcon(config: SelectorConfig): string {
         if (!config || !config.providerDetails?.name) {
             return 'provider-default';
         }
         return getProviderIconPath(config.providerDetails.name);
     }
 
+    onCreateLlm(): void {
+        const component: ComponentType<unknown> =
+            this.kind() === 'realtime' ? VoiceModelConfigDialogComponent : LlmModelConfigDialogComponent;
+        this.dialog.open(component, {
+            height: '90vh',
+            width: '600px',
+        });
+    }
+
     // ControlValueAccessor implementation
     writeValue(value: number | null): void {
-        this.selectedConfigId = value;
-
-        if (value !== null && this.llmConfigs.length > 0) {
-            this.selectedConfig = this.llmConfigs.find((config) => config.id === value) || null;
-        } else {
-            this.selectedConfig = null;
-        }
-
-        this.cdr.markForCheck();
+        this.selectedConfigId.set(value);
     }
 
     registerOnChange(fn: (value: number | null) => void): void {
@@ -498,37 +537,5 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, OnChanges, 
 
     setDisabledState(isDisabled: boolean): void {
         void isDisabled;
-    }
-
-    // Add this helper method to update the selected config
-    private updateSelectedConfig(): void {
-        if (this.selectedConfigId && this.llmConfigs.length > 0) {
-            this.selectedConfig = this.llmConfigs.find((config) => config.id === this.selectedConfigId) || null;
-
-            this.cdr.markForCheck();
-        }
-    }
-
-    // Check available space and position dropdown accordingly
-    private checkDropdownPosition(): void {
-        setTimeout(() => {
-            const container = document.querySelector('.llm-selector-container') as HTMLElement;
-            if (!container) return;
-
-            const rect = container.getBoundingClientRect();
-            const viewportHeight = window.innerHeight;
-            const dropdownHeight = 300; // max-height from CSS
-            const spaceBelow = viewportHeight - rect.bottom;
-            const spaceAbove = rect.top;
-
-            // If there's not enough space below but enough space above, position on top
-            if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
-                this.dropdownPosition = 'top';
-            } else {
-                this.dropdownPosition = 'bottom';
-            }
-
-            this.cdr.markForCheck();
-        }, 0);
     }
 }

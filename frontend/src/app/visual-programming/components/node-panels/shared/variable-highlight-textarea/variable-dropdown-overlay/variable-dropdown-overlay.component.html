@@ -1,0 +1,20 @@
+<div
+    class="vdo-list"
+    role="listbox"
+    (mousedown)="onListMouseDown($event)"
+>
+    @for (item of items(); track item; let i = $index) {
+        <div
+            class="vdo-item"
+            role="option"
+            [class.vdo-item--active]="i === activeIndex()"
+            (mouseenter)="onMouseEnter(i)"
+            (mousedown)="onListMouseDown($event)"
+            (click)="onItemClick(item)"
+        >
+            {{ item }}
+        </div>
+    } @empty {
+        <div class="vdo-empty">No matching variables</div>
+    }
+</div>

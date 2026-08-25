@@ -591,7 +591,13 @@ class NaiveRagChunkViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet):
 class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView):
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST)
     def post(self, request, naive_rag_id: int, document_config_id: int):
-        self.get_in_active_org_or_404(NaiveRag, naive_rag_id, _NAIVE_RAG_ORG_PATH)
+        # Validate the config exists in the active org (404) + verb gate.
+        config = self.get_in_active_org_or_404(
+            NaiveRagDocumentConfig,
+            document_config_id,
+            _DOC_CONFIG_ORG_PATH,
+            naive_rag_id=naive_rag_id,
+        )
         assert_org_permission(
             request.user,
             self.get_active_org_id(),
@@ -600,19 +606,6 @@ class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView)
         )
         serializer = ChunkingConfigSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        try:
-            config = NaiveRagDocumentConfig.objects.get(
-                naive_rag_document_id=document_config_id,
-                naive_rag_id=naive_rag_id,
-            )
-        except NaiveRagDocumentConfig.DoesNotExist:
-            return Response(
-                {
-                    "error": f"DocumentConfig {document_config_id} not found "
-                    f"for NaiveRag {naive_rag_id}"
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
 
         validated = serializer.validated_data
         chunking_config = ChunkingConfig(
@@ -685,31 +678,24 @@ class NaiveRagChunkPreviewView(OrgScopedServiceViewSetMixin, APIView):
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET)
     def get(self, request, naive_rag_id: int, document_config_id: int):
-        self.get_in_active_org_or_404(NaiveRag, naive_rag_id, _NAIVE_RAG_ORG_PATH)
+        # Validate the config exists in the active org (404) + verb gate.
+        config = (
+            NaiveRagDocumentConfig.objects.filter(
+                pk=document_config_id,
+                naive_rag_id=naive_rag_id,
+                **{_DOC_CONFIG_ORG_PATH: self.get_active_org_id()},
+            )
+            .annotate(total_preview_chunks=Count("preview_chunks"))
+            .first()
+        )
+        if config is None:
+            raise Http404()
         assert_org_permission(
             request.user,
             self.get_active_org_id(),
             ResourceType.KNOWLEDGE_SOURCES,
             Permission.READ,
         )
-        # Validate document config exists and belongs to naive_rag
-        try:
-            config = (
-                NaiveRagDocumentConfig.objects
-                .annotate(total_preview_chunks=Count("preview_chunks"))
-                .get(
-                    naive_rag_document_id=document_config_id,
-                    naive_rag_id=naive_rag_id,
-                )
-            )  # fmt: off
-        except NaiveRagDocumentConfig.DoesNotExist:
-            return Response(
-                {
-                    "error": f"DocumentConfig {document_config_id} not found "
-                    f"for NaiveRag {naive_rag_id}"
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
 
         try:
             limit = min(

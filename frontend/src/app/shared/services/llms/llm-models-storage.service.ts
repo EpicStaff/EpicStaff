@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { CreateLlmModelRequest, LLMModel } from '@shared/models';
-import { catchError, Observable, of, tap, throwError } from 'rxjs';
+import { catchError, finalize, map, Observable, of, shareReplay, tap, throwError } from 'rxjs';
 
 import { StorageService } from '../app-storage.service';
 import { LLMModelsService } from './llm-models.service';
@@ -14,6 +14,9 @@ export class LlmModelsStorageService implements StorageService {
     private modelsSignal = signal<LLMModel[]>([]);
     private loadedProviderIds = signal<Set<number>>(new Set());
     private allModelsLoadedSignal = signal<boolean>(false);
+    // Shared in-flight "all models" request so concurrent callers (e.g. agent-detail +
+    // its embedded llm-model-selector) reuse one HTTP instead of each firing their own.
+    private allModelsRequest$?: Observable<LLMModel[]>;
 
     public readonly models = this.modelsSignal.asReadonly();
     public readonly isAllModelsLoaded = this.allModelsLoadedSignal.asReadonly();
@@ -30,31 +33,33 @@ export class LlmModelsStorageService implements StorageService {
     });
 
     getModels(providerId?: number, isVisible?: boolean, forceRefresh = false): Observable<LLMModel[]> {
+        const applyVisible = (models: LLMModel[]) =>
+            isVisible === undefined ? models : models.filter((m) => m.is_visible === isVisible);
+
         if (!forceRefresh) {
             if (providerId !== undefined && this.loadedProviderIds().has(providerId)) {
-                let cached = this.modelsSignal().filter((m) => m.llm_provider === providerId);
-                if (isVisible !== undefined) {
-                    cached = cached.filter((m) => m.is_visible === isVisible);
-                }
-                return of(cached);
+                return of(applyVisible(this.modelsSignal().filter((m) => m.llm_provider === providerId)));
             }
             if (this.allModelsLoadedSignal()) {
-                let cached = this.modelsSignal();
-                if (isVisible !== undefined) {
-                    cached = cached.filter((m) => m.is_visible === isVisible);
-                }
-                return of(cached);
+                return of(applyVisible(this.modelsSignal()));
             }
         }
 
+        // All-models path: share one in-flight request across concurrent callers, then
+        // filter per caller. Provider-scoped requests keep their existing per-call behaviour.
+        if (providerId === undefined) {
+            if (forceRefresh || !this.allModelsRequest$) {
+                this.allModelsRequest$ = this.llmModelsService.getLLMModels(undefined, undefined).pipe(
+                    tap((models) => this.setAllModels(models)),
+                    finalize(() => (this.allModelsRequest$ = undefined)),
+                    shareReplay(1)
+                );
+            }
+            return this.allModelsRequest$.pipe(map(applyVisible));
+        }
+
         return this.llmModelsService.getLLMModels(providerId, isVisible).pipe(
-            tap((models) => {
-                if (providerId !== undefined) {
-                    this.setModelsForProvider(providerId, models);
-                } else {
-                    this.setAllModels(models);
-                }
-            }),
+            tap((models) => this.setModelsForProvider(providerId, models)),
             catchError((err) => throwError(() => err))
         );
     }

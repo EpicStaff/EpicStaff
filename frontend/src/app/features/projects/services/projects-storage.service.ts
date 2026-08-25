@@ -1,6 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { StorageService } from '@shared/services';
-import { catchError, delay, map, Observable, of, tap } from 'rxjs';
+import { catchError, delay, Observable, of, tap, throwError } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
 import { SearchFilterChange } from '../../../shared/components/filters-list/filters-list.component';
@@ -35,10 +35,6 @@ export class ProjectsStorageService implements StorageService {
             // Filter by search term
             if (filter.searchTerm) {
                 filtered = filtered.filter((p) => p.name.toLowerCase().includes(filter.searchTerm.toLowerCase()));
-            }
-            // Filter by selected tags
-            if (filter.selectedTagIds && filter.selectedTagIds.length > 0) {
-                filtered = filtered.filter((p) => filter.selectedTagIds!.some((tagId) => p.tags.includes(tagId)));
             }
         }
         // Always sort by id descending
@@ -83,17 +79,8 @@ export class ProjectsStorageService implements StorageService {
             return;
         }
 
-        // Compare searchTerm and selectedTagIds
-        const searchTermChanged = currentFilter.searchTerm !== filter.searchTerm;
-        const tagsChanged =
-            (!currentFilter.selectedTagIds && filter.selectedTagIds) ||
-            (currentFilter.selectedTagIds && !filter.selectedTagIds) ||
-            (currentFilter.selectedTagIds &&
-                filter.selectedTagIds &&
-                JSON.stringify(currentFilter.selectedTagIds.sort()) !== JSON.stringify(filter.selectedTagIds.sort()));
-
         // Only update if there's a change
-        if (searchTermChanged || tagsChanged) {
+        if (currentFilter.searchTerm !== filter.searchTerm) {
             this.filterSignal.set(filter);
         }
     }
@@ -125,17 +112,8 @@ export class ProjectsStorageService implements StorageService {
         if (this.templatesLoaded() && !forceRefresh) {
             return of(this.templatesSignal());
         }
-        return of([]).pipe(
+        return of([] as GetProjectRequest[]).pipe(
             delay(500),
-            map((templates) =>
-                templates.map(
-                    (template: GetProjectRequest) =>
-                        ({
-                            ...template,
-                            tags: template.tags ? [] : [], // Convert string[] to number[] (empty for templates)
-                        }) as GetProjectRequest
-                )
-            ),
             tap((templates) => {
                 this.setTemplates(templates);
             }),
@@ -150,7 +128,7 @@ export class ProjectsStorageService implements StorageService {
             return of(cachedProject);
         }
 
-        return this.projectsApiService.getProjectById(id).pipe(catchError(() => of(undefined)));
+        return this.projectsApiService.getProjectById(id).pipe(catchError((err) => throwError(() => err)));
     }
 
     // --- Data Manipulation Methods (CRUD Operations) ---

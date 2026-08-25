@@ -1,13 +1,24 @@
 <div class="collections-sidebar">
-    @if (!collections().length) {
-        <p class="collections-sidebar__empty">No collections yet</p>
+    <div class="collections-sidebar__header">
+        <span class="collections-sidebar__header-label"
+            >Collections
+            <span class="collections-sidebar__header-count">
+                {{ collections().length }}
+            </span>
+        </span>
 
         <app-button
-            type="outline-primary"
+            *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
+            [type]="collections().length ? 'primary' : 'outline-primary'"
+            [leftIcon]="'plus'"
             (click)="onCreateCollection.emit()"
         >
-            + Create Collection
+            Add
         </app-button>
+    </div>
+
+    @if (!collections().length) {
+        <p class="collections-sidebar__empty">No collections yet</p>
     } @else {
         <app-select
             [placeholder]="'Rag type'"

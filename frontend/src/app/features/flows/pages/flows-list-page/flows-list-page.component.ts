@@ -14,7 +14,23 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
+import {
+    AppStorageService,
+    EmbeddingConfigStorageService,
+    EmbeddingModelsStorageService,
+    LlmConfigStorageService,
+    LlmModelsStorageService,
+    LlmProvidersStorageService,
+    RealtimeConfigStorageService,
+    RealtimeModelsStorageService,
+    StorageService,
+    TranscriptionConfigStorageService,
+    TranscriptionModelsStorageService,
+} from '@shared/services';
 import { forkJoin, Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged, take } from 'rxjs/operators';
 
@@ -81,6 +97,8 @@ type ImportFileData = Record<string, ImportFileEntity[]>;
         ImportFlowOptionsPopoverComponent,
         OverlayModule,
         FlowsFilterMenuComponent,
+        HasPermissionDirective,
+        MatTooltipModule,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -103,6 +121,18 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     private labelsStorage = inject(LabelsStorageService);
     private importFlowSettings = inject(ImportFlowSettingsService);
     private destroyRef = inject(DestroyRef);
+    private appStorage = inject(AppStorageService);
+
+    private readonly storageInvalidationMap: Record<string, StorageService[]> = {
+        LLMModel: [inject(LlmModelsStorageService), inject(LlmProvidersStorageService)],
+        LLMConfig: [inject(LlmConfigStorageService)],
+        EmbeddingModel: [inject(EmbeddingModelsStorageService), inject(LlmProvidersStorageService)],
+        EmbeddingConfig: [inject(EmbeddingConfigStorageService)],
+        RealtimeModel: [inject(RealtimeModelsStorageService), inject(LlmProvidersStorageService)],
+        RealtimeConfig: [inject(RealtimeConfigStorageService)],
+        RealtimeTranscriptionModel: [inject(TranscriptionModelsStorageService), inject(LlmProvidersStorageService)],
+        RealtimeTranscriptionConfig: [inject(TranscriptionConfigStorageService)],
+    };
 
     public importOptionsOpen = signal(false);
 
@@ -370,6 +400,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
                             data: { importResult: enriched },
                         });
 
+                        this.invalidateStorages(result);
                         this.labelsStorage.setActiveLabelFilter('all');
                         this.flowStorageService.getFlows(true).subscribe(() => {});
                         this.labelsStorage.loadLabels(true).subscribe(() => {});
@@ -385,6 +416,14 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
             });
         };
         input.click();
+    }
+
+    private invalidateStorages(result: ImportResult): void {
+        const storagesToInvalidate = Object.entries(this.storageInvalidationMap)
+            .filter(([entityType]) => (result[entityType]?.total ?? 0) > 0)
+            .flatMap(([, storages]) => storages);
+
+        this.appStorage.invalidate(storagesToInvalidate);
     }
 
     // Per entity type: which field in the file serves as the display name
@@ -481,4 +520,7 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
     public navigateToSessions() {
         this.router.navigate(['/sessions']);
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

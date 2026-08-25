@@ -1,4 +1,7 @@
-<app-drag-drop-area (filesDropped)="filesUploaded.emit($event)">
+<app-drag-drop-area
+    [permissionResource]="ResourceCode.KnowledgeSources"
+    (filesDropped)="filesUploaded.emit($event)"
+>
     <div class="list">
         <div class="list__title">
             <span

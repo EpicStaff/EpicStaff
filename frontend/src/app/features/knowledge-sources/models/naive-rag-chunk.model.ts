@@ -44,12 +44,6 @@ export interface NaiveRagChunkingResponse {
     elapsed_time: number;
 }
 
-export interface CancelNaiveNaiveRagChunkingResponse {
-    detail: string;
-    naive_rag_id: number;
-    document_config_id: number;
-}
-
 export interface GetNaiveRagDocumentChunksResponse {
     naive_rag_id: number;
     document_config_id: number;

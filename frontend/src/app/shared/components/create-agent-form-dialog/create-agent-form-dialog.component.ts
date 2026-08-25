@@ -201,7 +201,6 @@ export class CreateAgentFormComponent implements OnInit {
 
             allow_delegation: [editMode ? agent?.allow_delegation : true],
             memory: [editMode ? agent?.memory : false],
-            configured_tools: [editMode ? agent?.configured_tools : []],
             python_code_tools: [editMode ? agent?.python_code_tools : []],
             mcp_tools: [editMode ? agent?.mcp_tools : []],
         });
@@ -259,11 +258,10 @@ export class CreateAgentFormComponent implements OnInit {
         this.isSubmitting.set(true);
 
         const formData = this.agentForm.value;
-        const configuredToolIds = formData.configured_tools ?? [];
         const pythonToolIds = formData.python_code_tools ?? [];
         const mcpToolIds = formData.mcp_tools ?? [];
 
-        const toolIds = buildToolIdsArray(configuredToolIds, pythonToolIds, mcpToolIds) as ToolUniqueName[];
+        const toolIds = buildToolIdsArray(pythonToolIds, mcpToolIds) as ToolUniqueName[];
 
         // search_configs may hold controls disabled by rag-tab logic (e.g. Global's
         // dynamic_community_selection dependents) — .value would drop them, so read
@@ -287,7 +285,6 @@ export class CreateAgentFormComponent implements OnInit {
             fcm_llm_config: formData.fcm_llm_config,
             knowledge_collection: formData.knowledge_collection,
             rag: formData.rag,
-            configured_tools: configuredToolIds,
             python_code_tools: pythonToolIds,
             mcp_tools: mcpToolIds,
             tool_ids: toolIds,

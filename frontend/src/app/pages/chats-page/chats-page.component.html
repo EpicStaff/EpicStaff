@@ -1,27 +1,49 @@
-<div class="chats">
-    <app-page-header
-        headerTitle="Chats"
-        [showCreate]="false"
-        [showFavoriteToggle]="false"
-        [showSearch]="false"
-        [showFilter]="false"
-        [showSort]="false"
-    ></app-page-header>
+<div class="chats-page">
+    <div class="sticky-header">
+        <header class="header">
+            <div
+                class="header-titles"
+                appHideInlineSubtitleOnOverflow
+            >
+                <h1 class="title">
+                    Chats
+                    <span class="subtitle-inline"> Talk to agents with a realtime voice model configured. </span>
+                </h1>
+            </div>
+        </header>
+        <nav class="tabs">
+            <div class="tabs-left">
+                <app-tab-button
+                    [active]="activeTab() === 'staff'"
+                    (action)="onTabChange('staff')"
+                >
+                    Staff
+                </app-tab-button>
+                <app-tab-button
+                    [active]="activeTab() === 'definition'"
+                    (action)="onTabChange('definition')"
+                >
+                    Agents
+                </app-tab-button>
+            </div>
+        </nav>
+    </div>
 
-    <main class="chats__body">
-        <ng-container *ngIf="isLoading()">
-            <div class="chats__loading-container">
+    <main class="body">
+        @if (isLoading()) {
+            <div class="chats-page__loading">
                 <app-spinner
                     [text]="'Loading chats...'"
                     [accentColor]="'#6562f5'"
                     [isOverlay]="false"
                 ></app-spinner>
             </div>
-        </ng-container>
-
-        <ng-container *ngIf="!isLoading()">
-            <app-chats-sidebar [agents]="agentsList()"></app-chats-sidebar>
+        } @else {
+            <app-chats-sidebar
+                [agents]="visibleAgents()"
+                (agentUpdated)="onAgentUpdated($event)"
+            ></app-chats-sidebar>
             <app-chats-content></app-chats-content>
-        </ng-container>
+        }
     </main>
 </div>

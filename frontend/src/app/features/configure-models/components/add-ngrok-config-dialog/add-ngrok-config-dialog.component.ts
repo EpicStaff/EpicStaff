@@ -1,5 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgIf } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -12,6 +13,7 @@ import {
 } from '@shared/components';
 import { CreateNgrokConfigRequest, GetNgrokConfigResponse } from '@shared/models';
 import { NgrokConfigStorageService } from '@shared/services';
+import { extractHttpErrorMessage } from '@shared/utils';
 
 @Component({
     selector: 'app-create-ngrok-config-dialog',
@@ -96,10 +98,8 @@ export class AddNgrokConfigDialogComponent implements OnInit {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => this.dialogRef.close(),
-                error: (err) => {
-                    this.errorMessage.set(
-                        this.extractErrorMessage(err, 'Failed to create configuration. Please try again.')
-                    );
+                error: (err: HttpErrorResponse) => {
+                    this.errorMessage.set(extractHttpErrorMessage(err));
                     this.isSubmitting.set(false);
                 },
             });
@@ -111,42 +111,11 @@ export class AddNgrokConfigDialogComponent implements OnInit {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => this.dialogRef.close(),
-                error: (err) => {
-                    this.errorMessage.set(
-                        this.extractErrorMessage(err, 'Failed to update configuration. Please try again.')
-                    );
+                error: (err: HttpErrorResponse) => {
+                    this.errorMessage.set(extractHttpErrorMessage(err));
                     this.isSubmitting.set(false);
                 },
             });
-    }
-
-    private extractErrorMessage(err: unknown, fallback: string): string {
-        const error = (err as { error?: { message?: unknown } } | null)?.error;
-        const raw = error?.message;
-
-        if (typeof raw === 'string') {
-            const matches = [...raw.matchAll(/string=(['"])(.*?)\1/g)].map((m) => m[2]);
-            if (matches.length) {
-                return matches.join(' ');
-            }
-            return raw;
-        }
-
-        if (raw && typeof raw === 'object') {
-            const parts: string[] = [];
-            for (const value of Object.values(raw as Record<string, unknown>)) {
-                if (Array.isArray(value)) {
-                    parts.push(...value.map(String));
-                } else if (value != null) {
-                    parts.push(String(value));
-                }
-            }
-            if (parts.length) {
-                return parts.join(' ');
-            }
-        }
-
-        return fallback;
     }
 
     onCancel(): void {

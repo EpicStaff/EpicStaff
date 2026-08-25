@@ -18,6 +18,7 @@
                         type="text"
                         class="llm-library__search-input"
                         placeholder="Search configurations..."
+                        autocomplete="off"
                         [value]="searchQuery()"
                         (input)="onSearchChange($any($event.target).value)"
                     />
@@ -32,6 +33,7 @@
                 </div>
 
                 <button
+                    *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
                     type="button"
                     class="llm-library__add-btn"
                     (click)="onAddModel()"

@@ -14,60 +14,10 @@
                 </h1>
             </div>
         </div>
-        <nav class="overview-tabs">
-            <ng-container *appHasPermission="['organizations', 'read']">
-                <a
-                    routerLink="main"
-                    routerLinkActive="active"
-                    class="overview-tab"
-                >
-                    <app-svg-icon
-                        size="18px"
-                        icon="home"
-                    />
-                    Main
-                </a>
-                <span class="tab-divider">/</span>
-                <a
-                    routerLink="organizations"
-                    routerLinkActive="active"
-                    class="overview-tab"
-                >
-                    <app-svg-icon
-                        size="18px"
-                        icon="buildings"
-                    />
-                    Organizations
-                </a>
-                <span class="tab-divider">/</span>
-            </ng-container>
-            <a
-                *appHasPermission="['users', 'read']"
-                routerLink="users"
-                routerLinkActive="active"
-                class="overview-tab"
-            >
-                <app-svg-icon
-                    size="18px"
-                    icon="profile"
-                />
-                Users
-            </a>
-            <ng-container *appHasPermission="['roles', 'read']">
-                <span class="tab-divider">/</span>
-                <a
-                    routerLink="roles"
-                    routerLinkActive="active"
-                    class="overview-tab"
-                >
-                    <app-svg-icon
-                        size="18px"
-                        icon="briefcase"
-                    />
-                    Roles
-                </a>
-            </ng-container>
-        </nav>
+        <app-route-tabs
+            class="overview-tabs"
+            [tabs]="tabs"
+        />
     </div>
     <div class="overview-content">
         <router-outlet></router-outlet>

@@ -42,15 +42,37 @@ export class MultiSelectComponent implements OnInit {
     items = input<SelectItem[]>([]);
     selectedValues = model<unknown[]>([]);
     selectionChange = output<unknown[]>();
+    /** Emits the group name when a group header's trailing action button (see groupActionIcon) is clicked. */
+    groupAction = output<string>();
+    /** Emits item.value when an item's trailing action button (see SelectItem.trailingActionIcon) is clicked. */
+    itemAction = output<unknown>();
 
     grouped = input<boolean>(false);
     showSearch = input<boolean>(true);
     checkboxPosition = input<'left' | 'right'>('right');
     color = input<'primary' | 'white'>('primary');
+    disabled = input<boolean>(false);
+    panelWidth = input<string>('338px');
+    panelHeight = input<string>('475px');
+    emptyText = input<string>('No items available');
 
     /** When true the default trigger button is not rendered.
      *  Use openAt(element) to open the dropdown anchored to an external element. */
     hideTrigger = input<boolean>(false);
+
+    /** Maps a group name to an app-svg-icon id, rendered before the group label. */
+    groupIcons = input<Record<string, string>>({});
+    /** Show a "selected/total" count after each group label. */
+    showGroupCounts = input<boolean>(false);
+    /** When false, group labels render in natural case instead of uppercase. */
+    uppercaseGroupLabels = input<boolean>(true);
+    /** Maps a group name to an app-svg-icon id, rendered as a trailing action button on that group's header row.
+     *  Groups present here are "pinned": their header is always rendered, even when they have zero items. */
+    groupActionIcon = input<Record<string, string>>({});
+    /** Show a "Clear Filter" button in the footer that deselects all items without saving. */
+    showClearFilter = input<boolean>(false);
+    /** Text of the primary (save) button. */
+    saveLabel = input<string>('Save Selection');
 
     isOpen = signal(false);
     search = signal('');
@@ -59,8 +81,11 @@ export class MultiSelectComponent implements OnInit {
 
     groupedFiltered = computed<GroupedItems[]>(() => {
         const search = this.search().toLowerCase();
+        const selected = this.tempSelected();
 
-        const filteredItems = this.items().filter((i) => i.name.toLowerCase().includes(search));
+        const filteredItems = this.items()
+            .filter((i) => i.name.toLowerCase().includes(search))
+            .sort((a, b) => Number(selected.includes(b.value)) - Number(selected.includes(a.value)));
 
         // Grouping disabled
         if (!this.grouped()) {
@@ -85,10 +110,43 @@ export class MultiSelectComponent implements OnInit {
             map.get(group)!.push(item);
         }
 
-        return Array.from(map.entries()).map(([group, items]) => ({
-            group,
-            items,
-        }));
+        // Pinned/action groups always render their header, even with zero items, and come first.
+        const pinnedGroups = Object.keys(this.groupActionIcon());
+        const result: GroupedItems[] = [];
+
+        for (const group of pinnedGroups) {
+            result.push({ group, items: map.get(group) ?? [] });
+            map.delete(group);
+        }
+
+        for (const [group, items] of map.entries()) {
+            result.push({ group, items });
+        }
+
+        return result;
+    });
+
+    readonly hasResults = computed(() => this.groupedFiltered().some((g) => g.items.length > 0));
+
+    readonly groupCounts = computed<Map<string, { selected: number; total: number }>>(() => {
+        const map = new Map<string, { selected: number; total: number }>();
+        const selected = this.tempSelected();
+
+        for (const item of this.items()) {
+            const group = item.group ?? 'Other';
+
+            if (!map.has(group)) {
+                map.set(group, { selected: 0, total: 0 });
+            }
+
+            const entry = map.get(group)!;
+            entry.total += 1;
+            if (selected.includes(item.value)) {
+                entry.selected += 1;
+            }
+        }
+
+        return map;
     });
 
     @ViewChild('triggerBtn') triggerBtn?: ElementRef<HTMLElement>;
@@ -106,10 +164,12 @@ export class MultiSelectComponent implements OnInit {
     }
 
     toggle() {
+        if (this.disabled()) return;
         this.isOpen() ? this.close() : this.openDropdown();
     }
 
     openDropdown(): void {
+        if (this.disabled()) return;
         const el = this.projectedTriggerEl() ?? this.triggerBtn?.nativeElement;
         if (el) this.openAt(el);
     }
@@ -119,6 +179,7 @@ export class MultiSelectComponent implements OnInit {
     }
 
     openAt(originElement: HTMLElement, seedValues?: unknown[]): void {
+        if (this.disabled()) return;
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
             .withPositions([
@@ -171,6 +232,11 @@ export class MultiSelectComponent implements OnInit {
         return this.tempSelected().includes(value);
     }
 
+    /** Distinguishes a Tabler font-icon class (e.g. "ti ti-robot") from an app-svg-icon id. */
+    isTablerIcon(icon: string): boolean {
+        return icon.startsWith('ti ') || icon.startsWith('ti-');
+    }
+
     toggleValue(value: unknown) {
         const arr = [...this.tempSelected()];
         const i = arr.indexOf(value);
@@ -179,9 +245,23 @@ export class MultiSelectComponent implements OnInit {
         this.tempSelected.set(arr);
     }
 
+    onGroupAction(event: Event, group: string): void {
+        event.stopPropagation();
+        this.groupAction.emit(group);
+    }
+
+    onItemAction(event: Event, value: unknown): void {
+        event.stopPropagation();
+        this.itemAction.emit(value);
+    }
+
     cancel() {
         this.tempSelected.set([...this.selectedValues()]);
         this.close();
+    }
+
+    clearFilter() {
+        this.tempSelected.set([]);
     }
 
     save() {

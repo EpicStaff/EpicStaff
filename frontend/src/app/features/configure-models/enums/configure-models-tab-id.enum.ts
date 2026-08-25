@@ -4,4 +4,5 @@ export enum ConfigureModelsTabId {
     LLM_LIBRARY = 'llm_library',
     NGROK_CONFIG = 'ng_config',
     VOICE_SETTINGS = 'voice_settings',
+    SECRETS = 'secrets',
 }

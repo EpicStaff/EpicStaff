@@ -36,41 +36,17 @@ interface StatusOption {
             >
                 <span class="selected-icons">
                     @if (selectedValues().length === 0) {
-                        <app-svg-icon
-                            class="status-icon"
-                            [icon]="options[0].icon"
-                            size="16px"
-                        ></app-svg-icon>
-                        {{ options[0].label }}
+                        Status
                     } @else if (selectedValues().length === 1) {
-                        <app-svg-icon
-                            class="status-icon"
-                            [icon]="selectedOptions()[0].icon"
-                            size="16px"
-                            [style.color]="selectedOptions()[0].color"
-                        ></app-svg-icon>
                         {{ selectedOptions()[0].label }}
                     } @else {
-                        <span class="icon-multi">
-                            @for (opt of selectedOptions(); track opt.value) {
-                                <app-svg-icon
-                                    class="status-icon"
-                                    [icon]="opt.icon"
-                                    size="16px"
-                                    [style.color]="opt.color"
-                                ></app-svg-icon>
-                            }
-                        </span>
                         Mixed ({{ selectedValues().length }})
                     }
                 </span>
-                <span class="dropdown-arrow-wrapper">
-                    <app-svg-icon
-                        icon="chevron-down"
-                        size="16px"
-                        class="dropdown-arrow"
-                    ></app-svg-icon>
-                </span>
+                <app-svg-icon
+                    icon="menu"
+                    size="16px"
+                ></app-svg-icon>
             </button>
 
             @if (open) {
@@ -106,7 +82,7 @@ export class FlowSessionStatusFilterDropdownComponent {
     public open = false;
 
     public options: StatusOption[] = [
-        { value: 'all', label: 'All', color: '#b0b8c1', icon: 'list-numbers' },
+        { value: 'all', label: 'All', color: '#b0b8c1', icon: 'menu' },
         {
             value: GraphSessionStatus.RUNNING,
             label: 'Running',

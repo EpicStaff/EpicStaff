@@ -1,4 +1,4 @@
-import { NgComponentOutlet } from '@angular/common';
+import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -8,10 +8,12 @@ import {
     output,
     Signal,
     signal,
+    TemplateRef,
     viewChild,
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
+import { ToastService } from '../../../../services/notifications';
 import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { ShortcutListenerDirective } from '../../../core/directives/shortcut-listener.directive';
 import { PANEL_COMPONENT_MAP } from '../../../core/enums/node-panel.map';
@@ -23,7 +25,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
 @Component({
     standalone: true,
     selector: 'app-node-panel-shell',
-    imports: [NgComponentOutlet, AppSvgIconComponent, MatTooltipModule],
+    imports: [NgComponentOutlet, NgTemplateOutlet, AppSvgIconComponent, MatTooltipModule],
     hostDirectives: [
         {
             directive: ShortcutListenerDirective,
@@ -50,6 +52,11 @@ import { SidePanelService } from '../../../services/side-panel.service';
                         <span class="title">{{ nodeNameToDisplay() }}</span>
                     </div>
                     <div class="header-actions">
+                        @if (panelInstanceSig()?.exportButtonTemplate?.()) {
+                            <ng-container
+                                [ngTemplateOutlet]="panelInstanceSig()!.exportButtonTemplate!()!"
+                            ></ng-container>
+                        }
                         @if (showSaveButton()) {
                             <button
                                 class="save-btn"
@@ -57,7 +64,7 @@ import { SidePanelService } from '../../../services/side-panel.service';
                                 type="button"
                                 matTooltip="Save local node changes"
                                 matTooltipPosition="below"
-                                [disabled]="panelInstanceSig()?.form?.invalid || panelInstanceSig()?.isSaving?.()"
+                                [disabled]="panelInstanceSig()?.form?.invalid || panelInstanceSig()?.isSaving()"
                                 (click)="onHeaderSaveClick()"
                             >
                                 <app-svg-icon
@@ -71,6 +78,8 @@ import { SidePanelService } from '../../../services/side-panel.service';
                             <button
                                 class="expand-btn"
                                 aria-label="Toggle panel size"
+                                [matTooltip]="isExpanded() ? 'Minimize panel' : 'Expand panel'"
+                                matTooltipPosition="below"
                                 (click)="toggleExpanded()"
                             >
                                 <app-svg-icon
@@ -84,6 +93,8 @@ import { SidePanelService } from '../../../services/side-panel.service';
                             <button
                                 class="close-btn"
                                 aria-label="Close dialog"
+                                matTooltip="Close"
+                                matTooltipPosition="below"
                                 (click)="onCloseClick()"
                             >
                                 <app-svg-icon icon="x"></app-svg-icon>
@@ -128,7 +139,12 @@ export class NodePanelShellComponent {
 
     public readonly shouldShowExpandButton = computed(() => {
         const node = this.node();
-        return node && node.type !== 'table' && node.type !== NodeType.SCHEDULE_TRIGGER;
+        return (
+            node &&
+            node.type !== 'table' &&
+            node.type !== NodeType.SCHEDULE_TRIGGER &&
+            node.type !== 'classification-decision-table'
+        );
     });
 
     protected readonly outlet = viewChild(NgComponentOutlet);
@@ -145,12 +161,18 @@ export class NodePanelShellComponent {
 
     protected readonly isShaking = signal(false);
     protected readonly isExpanded = signal(false);
-    private panelInstance: (NodePanel & { onSaveSilently?: () => NodeModel | null }) | null = null;
+    private panelInstance:
+        | (NodePanel & {
+              onSaveSilently?: () => NodeModel | null;
+              captureForValidation?: () => NodeModel | null;
+          })
+        | null = null;
     protected readonly panelInstanceSig = signal<{
         isDirty?: Signal<boolean>;
         isSaving?: Signal<boolean>;
         form?: { invalid: boolean };
         onSaveClick?: () => void;
+        exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
     } | null>(null);
     protected readonly showSaveButton = computed(() => {
         const panel = this.panelInstanceSig();
@@ -160,7 +182,10 @@ export class NodePanelShellComponent {
     private isUpdatingNode = false;
     private isAutosaving = false;
 
-    constructor(private sidePanelService: SidePanelService) {
+    constructor(
+        private sidePanelService: SidePanelService,
+        private toastService: ToastService
+    ) {
         effect(() => {
             const trigger = this.sidePanelService.autosaveTrigger();
             if (trigger && this.panelInstance && !this.isAutosaving) {
@@ -181,7 +206,7 @@ export class NodePanelShellComponent {
                 }
 
                 // Auto-expand for decision table nodes
-                if (node.type === 'table') {
+                if (node.type === 'table' || node.type === 'classification-decision-table') {
                     this.isExpanded.set(true);
                 }
 
@@ -208,6 +233,7 @@ export class NodePanelShellComponent {
                                 isSaving?: Signal<boolean>;
                                 form?: { invalid: boolean };
                                 onSaveClick?: () => void;
+                                exportButtonTemplate?: () => TemplateRef<unknown> | undefined;
                             }
                         );
                         this.previousNodeId = node.id;
@@ -276,6 +302,7 @@ export class NodePanelShellComponent {
                 this.save.emit(updatedNode);
                 return;
             }
+            this.toastService.error("Changes weren't saved — this node has invalid fields.");
         }
         this.sidePanelService.clearSelection();
     }
@@ -315,5 +342,26 @@ export class NodePanelShellComponent {
 
     public hasPanelInstance(): boolean {
         return this.panelInstance !== null;
+    }
+
+    /**
+     * Captures the open panel's current node state for a flow-wide save, even when the
+     * panel's own form is invalid. Prefers `captureForValidation()` (which always returns the
+     * in-progress node and marks fields touched so invalid ones highlight) over
+     * `captureCurrentNodeState()` (which can return `null` and hide the edit entirely from a
+     * flow-wide save when the form is invalid).
+     */
+    public captureCurrentNodeStateForSave(): NodeModel | null {
+        if (!this.panelInstance) {
+            return null;
+        }
+        if (typeof this.panelInstance.captureForValidation === 'function') {
+            try {
+                return this.panelInstance.captureForValidation();
+            } catch (error) {
+                console.error('Failed to capture node panel state for validation', error);
+            }
+        }
+        return this.captureCurrentNodeState();
     }
 }

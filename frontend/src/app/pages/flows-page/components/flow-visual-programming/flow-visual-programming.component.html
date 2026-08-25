@@ -2,7 +2,7 @@
     <app-flow-header
         [graphName]="graph.name"
         [graphId]="graph.id"
-        [isEpicChatEnabled]="isEpicChatEnabled"
+        [isAssistantOpen]="flowAssistantService.isOpen()"
         [graph]="graph"
         [isSaving]="isSaving()"
         [isRunning]="isRunning()"
@@ -13,8 +13,9 @@
         (viewSessions)="handleViewSessions()"
         (run)="handleRunFlow()"
         (getCurl)="handleGetCurl()"
-        (connectChat)="connectToEpicChat()"
+        (toggleAssistant)="onToggleAssistant()"
         (flowEdited)="onFlowEdited($event)"
+        [editors]="collaborationEditors()"
     ></app-flow-header>
 
     <div class="body">
@@ -36,8 +37,13 @@
             [currentFlowId]="graph.id"
             [flowName]="graph.name"
             [initialNodeId]="initialNodeId"
+            [initialNodeExpand]="initialNodeExpand"
+            [isSaving]="isSaving()"
+            [hasUnsavedChanges]="hasUnsavedChanges()"
             (save)="onGraphSave($event)"
             (openShortcuts)="openShortcutsModal($event)"
+            (requestReload)="refreshCurrentFlow()"
+            (importComplete)="handlePartialImportComplete()"
         ></app-flow-graph>
         <app-shortcuts-modal
             [open]="isShortcutsOpen()"
@@ -58,6 +64,8 @@
                     class="collapse-toggle"
                     (mousedown)="$event.stopPropagation()"
                     (click)="togglePanelCollapsed()"
+                    [matTooltip]="isPanelCollapsed() ? 'Open sessions panel' : 'Close sessions panel'"
+                    matTooltipPosition="left"
                 >
                     <span class="collapse-toggle__icon">
                         <app-svg-icon
@@ -77,7 +85,16 @@
                 ></app-flow-messages-panel>
             }
         }
+        @if (isSaving()) {
+            <div
+                class="saving-lock-overlay"
+                title="Saving… editing is locked until the save completes"
+            ></div>
+        }
     </div>
+    @if (flowAssistantService.isOpen()) {
+        <app-flow-assistant-panel />
+    }
 } @else {
     <app-spinner
         [text]="'Loading flow...'"

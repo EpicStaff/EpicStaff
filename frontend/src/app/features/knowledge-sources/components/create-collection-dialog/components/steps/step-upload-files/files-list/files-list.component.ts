@@ -19,6 +19,7 @@ import {
     ListComponent,
     ListRowComponent,
 } from '@shared/components';
+import { ResourceCode } from '@shared/models';
 import { filter, switchMap } from 'rxjs';
 
 import { FileSizePipe } from '../../../../../../../../shared/pipes/file-size.pipe';
@@ -81,4 +82,6 @@ export class FilesListComponent {
                 this.documents.update((docs) => docs.filter((d) => d.document_id !== document_id));
             });
     }
+
+    protected readonly ResourceCode = ResourceCode;
 }

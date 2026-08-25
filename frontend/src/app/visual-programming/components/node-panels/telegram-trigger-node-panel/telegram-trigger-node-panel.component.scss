@@ -32,15 +32,19 @@
 
 .form-container--expanded {
     .form-layout {
-        flex-wrap: wrap;
-        gap: 1rem;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        gap: 0;
     }
     .form-data {
+        @include mixins.resizable-column(550px);
         overflow: auto;
+        min-height: 0;
         padding-right: 1rem;
-        width: 550px;
     }
     .code-editor-section {
+        flex: 1;
+        min-width: 0;
         height: 100%;
         min-height: 0;
     }

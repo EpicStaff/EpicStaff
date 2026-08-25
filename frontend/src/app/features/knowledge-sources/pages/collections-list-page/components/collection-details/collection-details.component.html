@@ -35,9 +35,12 @@
                 <app-validation-errors [control]="collectionName" />
             </div>
             <app-svg-icon
+                *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Delete]"
                 icon="trash"
                 class="details__action details__action--large"
                 size="1.5rem"
+                matTooltip="Delete collection"
+                matTooltipPosition="left"
                 (click)="onCollectionDelete()"
             />
         </div>
@@ -46,6 +49,7 @@
             <app-drag-drop-area
                 (filesDropped)="onFilesDropped($event)"
                 [allowedTypes]="FILE_TYPES"
+                [permissionResource]="ResourceCode.KnowledgeSources"
                 class="details__main-wrapper"
             >
                 <div class="details__main-content">
@@ -95,7 +99,12 @@
                                         (click)="openCopyFilesDialog()"
                                     />
 
-                                    <label (click)="fileInput.click()">
+                                    <label
+                                        *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
+                                        matTooltip="Add file"
+                                        matTooltipPosition="above"
+                                        (click)="fileInput.click()"
+                                    >
                                         <app-svg-icon
                                             icon="plus"
                                             class="details__action details__action--medium"
@@ -126,6 +135,8 @@
             <app-collection-details-info
                 [collection]="fullCollection()!"
                 [documents]="documents()"
+                [saveFailedTick]="descriptionSaveFailedTick()"
+                (descriptionSave)="onDescriptionSave($event)"
             />
         </section>
     }

@@ -1,0 +1,65 @@
+@if (collections().length === 0) {
+    <p class="advanced__empty">Select at least one collection to configure retrieval settings.</p>
+} @else {
+    <div class="advanced">
+        <div class="advanced__tabs">
+            @for (c of collections(); track c.id; let last = $last) {
+                <app-tab-button
+                    mod="sm"
+                    class="advanced__tab"
+                    appTooltipOnOverflow=".tab-btn__label"
+                    [active]="c.id === activeCollectionId()"
+                    [matTooltip]="c.name"
+                    matTooltipPosition="above"
+                    matTooltipClass="custom-tooltip"
+                    (click)="selectCollection(c.id)"
+                >
+                    {{ c.name }}
+                </app-tab-button>
+                @if (!last) {
+                    <div class="advanced__tabs-divider">/</div>
+                }
+            }
+        </div>
+
+        @if (form(); as fg) {
+            <div
+                class="advanced__body"
+                [formGroup]="fg"
+            >
+                @if (noRagsAvailable()) {
+                    <p class="advanced__na">No RAG has been built for this collection yet.</p>
+                } @else {
+                    <div class="form-group">
+                        <app-select
+                            formControlName="rag"
+                            label="RAG"
+                            tooltipText="Choose the retrieval method used for this collection on this surface. Only RAGs built for this collection are listed."
+                            placeholder="Select RAG"
+                            [items]="ragItems()"
+                            [loading]="ragsLoading()"
+                        />
+                    </div>
+                }
+
+                @if (currentMethodNotPersisted()) {
+                    <p class="advanced__na">
+                        This search type isn't saved for agents yet — the fields below still work for previewing, but
+                        nothing will persist until backend support for it is added.
+                    </p>
+                }
+
+                @for (rtf of ragTabFormList(); track rtf) {
+                    <app-rag-tab
+                        [form]="rtf"
+                        [hideSourceSelectors]="true"
+                        [allKnowledgeSources]="[]"
+                        [agentRags]="[]"
+                        [searchConfigs]="ragTabSearchConfigs()"
+                        [llmConfigId]="llmConfigId()"
+                    />
+                }
+            </div>
+        }
+    </div>
+}

@@ -1,0 +1,161 @@
+:host {
+    display: block;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    padding-right: 0.5rem;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    border-radius: 4px;
+    user-select: none;
+    position: relative;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    &--selected {
+        background-color: color-mix(in srgb, var(--accent-color) 18%, transparent);
+
+        .row__label,
+        .row__icon,
+        .row__chevron {
+            color: var(--accent-color);
+        }
+    }
+
+    &--drop-target {
+        box-shadow: inset 0 0 0 1px var(--accent-color);
+    }
+
+    &__chevron-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 16px;
+        height: 16px;
+        margin: -4px;
+        padding: 4px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: inherit;
+    }
+
+    &__chevron {
+        flex-shrink: 0;
+        color: inherit;
+        transition: transform 0.15s ease;
+
+        &--rotated {
+            transform: rotate(-90deg);
+        }
+    }
+
+    &__chevron-spacer {
+        display: inline-block;
+        width: 8px;
+        flex-shrink: 0;
+    }
+
+    &__icon {
+        flex-shrink: 0;
+
+        &--surface {
+            color: var(--color-text-primary);
+        }
+
+        &--group {
+            color: var(--color-text-primary);
+        }
+
+        &--agent {
+            color: var(--color-text-primary);
+        }
+    }
+
+    &__label {
+        font-size: 0.875rem;
+        font-weight: 400;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        flex: 1 1 auto;
+        color: var(--color-text-primary);
+
+        &--surface {
+            color: var(--color-text-primary);
+            flex: 0 1 auto;
+        }
+    }
+
+    // 2.25rem clears the single 28px .row__hover-btn plus its 0.5rem right offset.
+    &--surface:hover &__label,
+    &--agent:hover &__label {
+        padding-right: 2.25rem;
+    }
+
+    &--surface:hover &__shared {
+        margin-right: 2.25rem;
+    }
+
+    &__shared {
+        flex-shrink: 0;
+        font-size: 0.875rem;
+        font-weight: 400;
+        color: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
+    }
+
+    &__empty {
+        flex-shrink: 0;
+        font-size: 0.875rem;
+        font-weight: 400;
+        color: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
+    }
+
+    &__hover-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        position: absolute;
+        right: 0.5rem;
+        top: 50%;
+        transform: translateY(-50%);
+        flex-shrink: 0;
+        z-index: 2;
+        visibility: hidden;
+
+        &--visible {
+            visibility: visible;
+        }
+    }
+
+    &__hover-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: color-mix(in srgb, var(--color-text-primary) 60%, transparent);
+        border-radius: 4px;
+
+        &:hover {
+            color: var(--color-text-primary);
+        }
+    }
+}
+
+.children {
+    display: flex;
+    flex-direction: column;
+}

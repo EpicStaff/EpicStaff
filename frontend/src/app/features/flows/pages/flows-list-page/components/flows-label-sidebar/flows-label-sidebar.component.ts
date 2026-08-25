@@ -6,18 +6,20 @@ import {
     Component,
     computed,
     ElementRef,
+    HostBinding,
     inject,
     OnInit,
     output,
     signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { AppSvgIconComponent, ConfirmationDialogComponent, DialogResult } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ResizableSidebarDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
+import { SidebarWidthService } from '@shared/services';
 
-import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import {
-    ConfirmationDialogComponent,
-    DialogResult,
-} from '../../../../../../shared/components/cofirm-dialog/confirmation-dialog.component';
 import { LabelColorPickerComponent } from '../../../../components/label-color-picker/label-color-picker.component';
 import { getLabelColorOption, LabelColor, LabelDto } from '../../../../models/label.model';
 import { FlowsStorageService } from '../../../../services/flows-storage.service';
@@ -28,9 +30,20 @@ interface FlatLabelNode {
     depth: number;
 }
 
+const SIDEBAR_STORAGE_KEY = 'flows';
+
 @Component({
     selector: 'app-flows-label-sidebar',
-    imports: [CommonModule, FormsModule, DialogModule, AppSvgIconComponent, LabelColorPickerComponent],
+    imports: [
+        CommonModule,
+        FormsModule,
+        DialogModule,
+        AppSvgIconComponent,
+        LabelColorPickerComponent,
+        MatTooltipModule,
+        HasPermissionDirective,
+        ResizableSidebarDirective,
+    ],
     templateUrl: './flows-label-sidebar.component.html',
     styleUrls: ['./flows-label-sidebar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -42,6 +55,19 @@ export class FlowsLabelSidebarComponent implements OnInit {
     private readonly flowsStorageService = inject(FlowsStorageService);
     private readonly dialog = inject(Dialog);
     private readonly el = inject(ElementRef);
+    private readonly sidebarWidthService = inject(SidebarWidthService);
+
+    protected readonly sidebarStorageKey = SIDEBAR_STORAGE_KEY;
+    protected readonly sidebarWidth = this.sidebarWidthService.getWidth(SIDEBAR_STORAGE_KEY);
+
+    @HostBinding('style.width.px')
+    get hostWidth(): number {
+        return this.sidebarWidth();
+    }
+
+    protected get hostElement(): HTMLElement {
+        return this.el.nativeElement;
+    }
 
     // Expose from storage
     readonly labelTree = this.labelsStorage.labelTree;
@@ -275,7 +301,6 @@ export class FlowsLabelSidebarComponent implements OnInit {
 
     getLabelIconColor(node: LabelTreeNode): string {
         const color = node.metadata?.color;
-        if (!color || color === LabelColor.Default) return '';
         return getLabelColorOption(color).circleBg;
     }
 
@@ -307,4 +332,7 @@ export class FlowsLabelSidebarComponent implements OnInit {
         }
         return 'Failed to save label. Please try again.';
     }
+
+    protected readonly ActionCode = ActionCode;
+    protected readonly ResourceCode = ResourceCode;
 }
