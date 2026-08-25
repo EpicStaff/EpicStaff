@@ -160,13 +160,6 @@ always available regardless of the mode, is `manage.py create_superadmin`.
 See [auth_endpoints.md](auth_endpoints.md) and
 [first_setup_operations.md](first_setup_operations.md).
 
-HTTP first-setup (`POST /api/auth/first-setup/`) is itself gated by
-`settings.FIRST_SETUP_MODE` (default `cli_only`): it returns `403
-first_setup_disabled` unless the mode is `open`. The other creation path,
-always available regardless of the mode, is `manage.py create_superadmin`.
-See [auth_endpoints.md](auth_endpoints.md) and
-[first_setup_operations.md](first_setup_operations.md).
-
 ---
 
 ## 4. Org context layer
