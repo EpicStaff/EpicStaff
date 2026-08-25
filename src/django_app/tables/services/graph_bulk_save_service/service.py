@@ -81,7 +81,12 @@ class GraphBulkSaveService:
 
     @transaction.atomic
     def save(
-        self, graph: Graph, validated_input: dict, request=None, org_id=None
+        self,
+        graph: Graph,
+        validated_input: dict,
+        request=None,
+        org_id=None,
+        preauthorized_fields=None,
     ) -> tuple["Graph", dict[str, int]]:
         # Thread the request (and/or an explicit org_id for non-request write
         # paths) so node/edge serializers can org-scope their FK fields (e.g.
@@ -98,6 +103,7 @@ class GraphBulkSaveService:
             "organization": self._resolve_organization(),
             "request": self._request,
             "org_id": self._org_id,
+            "preauthorized_fields": preauthorized_fields,
         }
 
         payload_temp_ids: set[str] = self._collect_payload_temp_ids(validated_input)

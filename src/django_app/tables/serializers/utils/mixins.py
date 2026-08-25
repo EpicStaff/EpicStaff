@@ -338,13 +338,22 @@ class WebhookCreationMixin:
         # superadmins may not assign it via a webhook-trigger node either — drop
         # it so a caller can't bind an arbitrary config by id.
         #
+        # The WS collaborative-autosave flush has no request (it's a background
+        # writer that may run after every editor has disconnected) and so cannot
+        # make this authorization decision itself. For that path, authorization
+        # already happened at WS ingress — apply_op pins the field to its
+        # currently-stored value for non-superadmins before it ever reaches the
+        # live snapshot — so the flush declares "ngrok_webhook_config" as
+        # preauthorized and this check is skipped for it.
+        #
         # TODO: TECH DEBT (per-org ngrok): NgrokWebhookConfig has no `org` column, so
         # this is a superadmin gate rather than org scoping. To make webhook
         # tunnels per-organization, add an `org` FK to NgrokWebhookConfig, scope
         # it, and replace this gate with OrgScopedPrimaryKeyRelatedField.
         request = self.context.get("request")
         is_superadmin = getattr(getattr(request, "user", None), "is_superadmin", False)
-        if not is_superadmin:
+        preauthorized = self.context.get("preauthorized_fields") or frozenset()
+        if "ngrok_webhook_config" not in preauthorized and not is_superadmin:
             ngrok_conf = None
 
         return WebhookTrigger.objects.get_or_create(

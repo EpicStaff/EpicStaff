@@ -147,8 +147,15 @@ def _do_db_flush(graph_id: int, snapshot: dict):
         return _DbFlushResult.SKIP, "validation_error"
 
     try:
+        # ngrok_webhook_config is preauthorized here — apply_op already pinned
+        # it to its currently-stored value for non-superadmins before it ever
+        # entered the live snapshot (see graph_state_service._pin_privileged_fields),
+        # so this request-less background writer doesn't need to re-authorize it.
         graph, temp_id_map = GraphBulkSaveService().save(
-            graph, serializer.validated_data, org_id=graph.org_id
+            graph,
+            serializer.validated_data,
+            org_id=graph.org_id,
+            preauthorized_fields=frozenset({"ngrok_webhook_config"}),
         )
     except BulkSaveValidationError as exc:
         logger.warning(

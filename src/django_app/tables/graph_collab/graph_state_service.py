@@ -26,6 +26,7 @@ from tables.graph_collab.constants import (
     _LIST_KEY_TO_DELETE_KEY,
     _EDGE_NODE_REF_FIELDS,
     _DECISION_TABLE_LIST_KEYS,
+    PRIVILEGED_NESTED_FIELDS,
 )
 from tables.services.redis_service import RedisService
 from utils.logger import logger
@@ -128,6 +129,58 @@ def _resolve_edge_endpoints(
             entry[real_field] = real_id
             entry.pop(temp_field, None)
     return entry
+
+
+def _pin_privileged_fields(
+    existing: dict | None, incoming: dict, list_key: str, is_superadmin: bool
+) -> list[str]:
+    """Force superadmin-only nested fields in *incoming* back to their
+    currently-stored, authorized value for non-superadmins. Mutates
+    *incoming* in place. Returns the names of fields that were overwritten
+    because they differed from the authorized value.
+
+    A resend of the current, unchanged value is intentionally NOT logged —
+    resize / auto-arrange / reconnect-resync legitimately resend the current
+    value unchanged on the legacy upsert path, so logging those would be
+    pure noise at the call sites that consume this function's return value.
+
+    When *incoming* carries the nested object but omits the field entirely,
+    the authorized value is inserted (not reported) — merge_entry
+    whole-key-replaces the nested object, so an overlay like
+    {"path": "x"} would otherwise silently drop the existing config.
+    """
+    if is_superadmin:
+        return []
+
+    nested_fields = PRIVILEGED_NESTED_FIELDS.get(list_key)
+    if not nested_fields:
+        return []
+
+    pinned: list[str] = []
+    for nested_key, field_names in nested_fields.items():
+        if nested_key not in incoming:
+            continue
+
+        nested_incoming = incoming[nested_key]
+        if not isinstance(nested_incoming, dict):
+            # e.g. webhook_trigger: None — no nested object is being written,
+            # so there is nothing to pin.
+            continue
+
+        nested_existing = (existing or {}).get(nested_key) or {}
+
+        for field_name in field_names:
+            authorized_value = (
+                nested_existing.get(field_name) if existing is not None else None
+            )
+            if field_name in nested_incoming:
+                if nested_incoming[field_name] != authorized_value:
+                    nested_incoming[field_name] = authorized_value
+                    pinned.append(field_name)
+            else:
+                nested_incoming[field_name] = authorized_value
+
+    return pinned
 
 
 class GraphLiveStateService:
@@ -540,7 +593,12 @@ class GraphLiveStateService:
             return True
 
     async def _apply_node_upsert(
-        self, snapshot: dict, deleted: dict, message, graph_id: int
+        self,
+        snapshot: dict,
+        deleted: dict,
+        message,
+        graph_id: int,
+        is_superadmin: bool = False,
     ) -> OpResult | None:
         """Handle NodeCreatedMessage and legacy NodeUpdatedMessage (changed_fields
         is None) — wholesale-replace upsert semantics: normalize_op_entry,
@@ -550,8 +608,13 @@ class GraphLiveStateService:
         Returns None for an unknown list_key (mirrors the old bare `return` —
         apply_op's caller treats a None result as "relay, but nothing changed").
 
-        NOTE: this legacy branch is permanent — sendNodePositionDuringDrag
-        always uses this shape and will never migrate to changed_fields.
+        NOTE: this legacy no-changed_fields path is still very much in use.
+        Current callers include: note-node
+        edit, node resize, auto-arrange (fires once per node — a full-upsert
+        storm), start-node initial-state edit, broadcastFlowDiff's
+        updated-nodes loop (reconnect-resync + Decision→Classification
+        conversion), decision/classification table routing broadcast, and
+        the python-node panel manual Save.
         """
         # Resolve a bare temp_id to its real id BEFORE the stale-id-recreate
         # guard below runs on message.node["id"] — this is what lets that
@@ -596,6 +659,38 @@ class GraphLiveStateService:
 
         entries: list[dict] = snapshot.setdefault(list_key, [])
         new_entry = copy.copy(message.node)
+
+        # Locate the pre-existing entry (pre-mutation) so a non-superadmin's
+        # privileged nested fields get pinned to what's currently stored,
+        # not to whatever this upsert is about to write.
+        existing_entry = next(
+            (
+                entry
+                for entry in entries
+                if _match_entry(entry, new_entry.get("id"), new_entry.get("temp_id"))
+            ),
+            None,
+        )
+        # new_entry is a SHALLOW copy of message.node, so this in-place pin also
+        # mutates message.node — that's load-bearing: consumers.py::_handle_relay
+        # relays message.model_dump() to peers, so peers get the pinned value too.
+        # Switching to copy.deepcopy would silently break that (peers would get
+        # the unauthorized value while the snapshot holds the pinned one).
+        pinned_fields = _pin_privileged_fields(
+            existing_entry, new_entry, list_key, is_superadmin
+        )
+        if pinned_fields:
+            # Otherwise-invisible server-side correction — log it. This is
+            # the same class of bug (a silent authorization override) that
+            # was hard to diagnose precisely because nothing surfaced it.
+            logger.info(
+                "Pinned privileged field(s) {} on graph {} list_key {} "
+                "(non-superadmin upsert reset to authorized value)",
+                pinned_fields,
+                graph_id,
+                list_key,
+            )
+
         if list_key in _SINGLETON_LIST_KEYS:
             _collapse_singleton_entry(entries, new_entry, list_key)
         else:
@@ -618,7 +713,12 @@ class GraphLiveStateService:
         return APPLIED_OK
 
     async def _apply_node_merge(
-        self, snapshot: dict, deleted: dict, message, graph_id: int
+        self,
+        snapshot: dict,
+        deleted: dict,
+        message,
+        graph_id: int,
+        is_superadmin: bool = False,
     ) -> OpResult:
         """Merge-only handling for a NodeUpdatedMessage carrying changed_fields
         (EST-3020). Never creates a new entry and never resurrects a deleted
@@ -705,10 +805,35 @@ class GraphLiveStateService:
                     details={"mismatched_fields": wire_mismatched},
                 )
 
+        # Pinning happens after the CAS check above — a pin must never mask
+        # a legitimate precondition_failed rejection.
+        # overlay's nested-field values (e.g. "webhook_trigger") are the SAME
+        # dict objects as message.node's, since overlay/filtered are shallow
+        # copies. Pinning in place therefore also mutates message.node, which
+        # consumers.py::_handle_relay relays as-is — that's how peers receive
+        # the pinned value. copy.deepcopy anywhere in that chain would
+        # silently make peers get the unauthorized value instead.
+        pinned_fields = _pin_privileged_fields(
+            entries[target_index], overlay, list_key, is_superadmin
+        )
+        if pinned_fields:
+            # Otherwise-invisible server-side correction — log it. This is
+            # the same class of bug (a silent authorization override) that
+            # was hard to diagnose precisely because nothing surfaced it.
+            logger.info(
+                "Pinned privileged field(s) {} on graph {} list_key {} "
+                "(non-superadmin merge reset to authorized value)",
+                pinned_fields,
+                graph_id,
+                list_key,
+            )
+
         entries[target_index] = merge_entry(entries[target_index], overlay)
         return APPLIED_OK
 
-    async def apply_op(self, graph_id: int, message) -> OpResult | None:
+    async def apply_op(
+        self, graph_id: int, message, *, is_superadmin: bool = False
+    ) -> OpResult | None:
         """Mutate the stored superset snapshot according to *message*.
 
         If no snapshot exists yet (race between seed and op), the op is dropped
@@ -716,6 +841,11 @@ class GraphLiveStateService:
 
         All mutation for a given graph_id is serialised with an asyncio.Lock to
         prevent lost-update races in the single async worker.
+
+        is_superadmin gates privileged nested fields (see
+        PRIVILEGED_NESTED_FIELDS / _pin_privileged_fields) — defaults to False
+        so existing positional call sites keep the pre-fix, most restrictive
+        behavior rather than silently trusting an unspecified caller.
         """
         # TODO implement a Strategy pattern instead of long if-else
         async with self._get_lock(graph_id):
@@ -741,12 +871,12 @@ class GraphLiveStateService:
                 and message.changed_fields is None
             ):
                 result = await self._apply_node_upsert(
-                    snapshot, deleted, message, graph_id
+                    snapshot, deleted, message, graph_id, is_superadmin=is_superadmin
                 )
 
             elif isinstance(message, NodeUpdatedMessage):
                 result = await self._apply_node_merge(
-                    snapshot, deleted, message, graph_id
+                    snapshot, deleted, message, graph_id, is_superadmin=is_superadmin
                 )
 
             elif isinstance(message, NodesDeletedMessage):

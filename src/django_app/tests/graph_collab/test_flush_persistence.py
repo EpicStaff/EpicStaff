@@ -8,7 +8,11 @@ from asgiref.sync import sync_to_async
 
 from tables.graph_collab.flush_service import FlushStatus
 from tables.graph_collab.graph_state_service import graph_state_service
-from tables.graph_collab.protocol import EditorInfo, NodeUpdatedMessage
+from tables.graph_collab.protocol import (
+    EditorInfo,
+    NodeCreatedMessage,
+    NodeUpdatedMessage,
+)
 from tests.graph_collab.conftest import PYTHON_CODE_DATA, count_nodes, first_node
 
 
@@ -384,3 +388,70 @@ async def test_flush_start_node_null_persistent_variables_crashes_with_none_get(
         "Null persistent_variables in initialState should be treated as empty "
         "and the flush should succeed."
     )
+
+
+# ---------------------------------------------------------------------------
+# Regression: superadmin-set ngrok_webhook_config must survive the WS flush
+# ---------------------------------------------------------------------------
+
+
+@sync_to_async
+def _create_ngrok_config():
+    from tables.models.webhook_models import NgrokWebhookConfig
+
+    return NgrokWebhookConfig.objects.create(
+        name="test-ngrok-config",
+        auth_token="test-auth-token",
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_superadmin_ngrok_webhook_config_survives_ws_flush(
+    graph, base_snapshot, flush_service, editor
+):
+    """The reported bug: a superadmin sets ngrok_webhook_config on a
+    webhook-trigger node via the WS collaborative flow; the value must land
+    in the DB after the autosave flush, not get silently nulled."""
+    ngrok_config = await _create_ngrok_config()
+
+    await graph_state_service.seed(
+        graph.id, base_snapshot(save_version=graph.save_version)
+    )
+
+    node_payload = {
+        "temp_id": "aaaabbbb-5555-0000-0000-000000000005",
+        "graph": graph.id,
+        "node_name": "Webhook-Superadmin",
+        "metadata": {},
+        "python_code": {
+            "code": "def main(): return {}",
+            "entrypoint": "main",
+            "libraries": [],
+            "global_kwargs": {},
+        },
+        "webhook_trigger": {
+            "path": "superadmin-path",
+            "ngrok_webhook_config": ngrok_config.id,
+        },
+    }
+    msg = NodeCreatedMessage(
+        node=node_payload, list_key="webhook_trigger_node_list", editor=editor
+    )
+    result = await graph_state_service.apply_op(graph.id, msg, is_superadmin=True)
+    assert result.details is None, "superadmin write must not be pinned"
+
+    outcome = await flush_service.flush(graph.id)
+    assert outcome.status is FlushStatus.SAVED, (
+        f"Expected SAVED but got {outcome.status!r} "
+        f"(failure_reason={outcome.failure_reason!r})."
+    )
+
+    node = await first_node("webhook_trigger_node_list", graph.id)
+    assert node is not None
+
+    @sync_to_async
+    def _get_ngrok_config_id(webhook_trigger_node):
+        return webhook_trigger_node.webhook_trigger.ngrok_webhook_config_id
+
+    assert await _get_ngrok_config_id(node) == ngrok_config.id

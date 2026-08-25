@@ -120,3 +120,15 @@ _DECISION_TABLE_LIST_KEYS: tuple[str, ...] = (
 _SINGLETON_LIST_KEYS: frozenset[str] = frozenset(
     config.list_key for config in NODE_TYPE_REGISTRY if config.is_singleton
 )
+
+# (list_key, nested object key) -> superadmin-only fields inside that object.
+# apply_op pins these to their currently-stored value for non-superadmins
+# before any snapshot mutation — see _pin_privileged_fields.
+PRIVILEGED_NESTED_FIELDS: dict[str, dict[str, frozenset[str]]] = {
+    "webhook_trigger_node_list": {
+        "webhook_trigger": frozenset({"ngrok_webhook_config"})
+    },
+    "telegram_trigger_node_list": {
+        "webhook_trigger": frozenset({"ngrok_webhook_config"})
+    },
+}

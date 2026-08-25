@@ -143,6 +143,12 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
         # below. Cache the single bit that matters so per-message handlers (and
         # the permission-recheck backstop) don't re-resolve on every message.
         self._can_edit = effective.can(ResourceType.FLOWS, Permission.UPDATE)
+        # Cached alongside _can_edit for the same reason — apply_op needs it
+        # on every relayed op to authorize privileged nested fields (e.g.
+        # ngrok_webhook_config) without re-resolving permissions per message.
+        # Read from the resolved EffectivePermissions — the single place the
+        # superadmin bypass is decided — never from User.is_superadmin directly.
+        self._is_superadmin = effective.is_superadmin
 
         self.org_id = org_id
         self.group = graph_group_name(self.graph_id)
@@ -489,7 +495,9 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                 )
                 return
 
-            result = await graph_state_service.apply_op(self.graph_id, message)
+            result = await graph_state_service.apply_op(
+                self.graph_id, message, is_superadmin=self._is_superadmin
+            )
             if result is not None and not result.relay:
                 await self.send_json(
                     OpRejectedMessage(
@@ -647,6 +655,7 @@ class GraphEditConsumer(AsyncJsonWebsocketConsumer):
                 EditRightsChangedMessage(can_edit=new_can_edit).model_dump()
             )
         self._can_edit = new_can_edit
+        self._is_superadmin = effective.is_superadmin
 
     @staticmethod
     def _get_user_by_id(user_id: int):
