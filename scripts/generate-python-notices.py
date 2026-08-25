@@ -54,7 +54,6 @@ SERVICES = [
     "src/realtime",
     "src/sandbox",
     "src/webhook",
-    "src/tool",
     "src/voice_app",
 ]
 
@@ -514,7 +513,7 @@ def build_markdown(
     lines.append(
         "This section lists third-party Python packages bundled into EpicStaff backend microservices "
         "(`src/django_app`, `src/crew`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, "
-        "`src/webhook`, `src/tool`, `src/voice_app`). Dev / test dependencies are excluded. "
+        "`src/webhook`, `src/voice_app`). Dev / test dependencies are excluded. "
         "Packages present in multiple services are deduplicated by `name + version`."
     )
     lines.append("")

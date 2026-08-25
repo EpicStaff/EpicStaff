@@ -30,7 +30,7 @@ env:
   REGISTRY: ghcr.io
   OWNER: epicstaff
   COMPOSE_FILE: src/docker-compose.yaml
-  EXCLUDE_SERVICES: tool,redis-monitor
+  EXCLUDE_SERVICES: redis-monitor
 
 concurrency:
   group: build-and-push-${{ github.event_name }}-${{ inputs.tag || github.ref }}
