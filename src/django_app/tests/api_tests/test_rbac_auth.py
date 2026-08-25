@@ -8,9 +8,12 @@ Integration tests for the Story 2 auth surface:
 - Refresh rotation + blacklist
 - Logout (including refresh-token ownership check)
 - Login throttle (composite IP|email, 5/min)
+- Password-reset tokens: stored hashed, raw value only in the email
+- Refresh delivered as an HttpOnly cookie, never in a response body
 - SSE ticket issue/consume single-use + expired + atomic
 """
 
+import re
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -38,7 +41,12 @@ from tables.models.rbac_models import (
 )
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.services.rbac.reset_user_service import ResetUserService
-from tables.services.rbac.sse_ticket_service import SseTicketService
+from tables.services.rbac.ticket_service import sse_ticket_service
+from tables.services.rbac.utils.refresh_cookie import REFRESH_COOKIE_NAME
+from tables.services.rbac.utils.password_reset_token_repository import (
+    PasswordResetTokenRepository,
+    hash_token,
+)
 from tables.services.rbac.utils.superadmin_bootstrap import SuperadminBootstrap
 
 LOCMEM_EMAIL = "django.core.mail.backends.locmem.EmailBackend"
@@ -65,7 +73,10 @@ def test_first_setup_flow_is_idempotent(api_client):
     payload = r.json()
     assert payload["user"]["email"] == "boss@example.com"
     assert payload["user"]["is_superadmin"] is True
-    assert "access" in payload and "refresh" in payload
+    # The refresh token is delivered as an HttpOnly cookie, never in the body.
+    assert "access" in payload
+    assert "refresh" not in payload
+    assert REFRESH_COOKIE_NAME in r.cookies
 
     r = api_client.get(url)
     assert r.json() == {"needs_setup": False, "setup_mode": "open"}
@@ -82,7 +93,7 @@ def test_first_setup_flow_is_idempotent(api_client):
 
 
 @pytest.mark.django_db
-def test_login_valid_credentials_returns_tokens(api_client, regular_user):
+def test_login_returns_access_and_sets_refresh_cookie(api_client, regular_user):
     r = api_client.post(
         reverse("login"),
         data={"email": regular_user.email, "password": "UserStrongPass123!"},
@@ -90,7 +101,13 @@ def test_login_valid_credentials_returns_tokens(api_client, regular_user):
     )
     assert r.status_code == 200
     body = r.json()
-    assert "access" in body and "refresh" in body
+    assert "access" in body
+    # Refresh is an HttpOnly cookie so JavaScript cannot read it; keeping it
+    # out of the body is the point of that design.
+    assert "refresh" not in body
+    cookie = r.cookies[REFRESH_COOKIE_NAME]
+    assert cookie.value
+    assert cookie["httponly"]
 
 
 @pytest.mark.django_db
@@ -132,45 +149,41 @@ def test_refresh_rotation_invalidates_old_refresh(api_client, regular_user):
         data={"email": regular_user.email, "password": "UserStrongPass123!"},
         format="json",
     )
-    old_refresh = r.json()["refresh"]
+    old_refresh = r.cookies[REFRESH_COOKIE_NAME].value
 
-    r1 = api_client.post(
-        reverse("refresh"), data={"refresh": old_refresh}, format="json"
-    )
+    # The test client carries the cookie forward, so no body is needed.
+    r1 = api_client.post(reverse("refresh"))
     assert r1.status_code == 200
-    new_refresh = r1.json()["refresh"]
+    new_refresh = r1.cookies[REFRESH_COOKIE_NAME].value
     assert new_refresh != old_refresh
 
-    r2 = api_client.post(
-        reverse("refresh"), data={"refresh": old_refresh}, format="json"
-    )
+    # Put the rotated-away token back to prove replaying it is rejected.
+    api_client.cookies[REFRESH_COOKIE_NAME] = old_refresh
+    r2 = api_client.post(reverse("refresh"))
     assert r2.status_code == 401
 
 
 @pytest.mark.django_db
 def test_logout_blacklists_refresh_token(api_client, regular_user, jwt_tokens):
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
+    # Logout reads the refresh from the cookie; a body would be ignored, which
+    # would make this test pass without blacklisting anything.
+    api_client.cookies[REFRESH_COOKIE_NAME] = jwt_tokens["refresh"]
 
-    r = api_client.post(
-        reverse("logout"),
-        data={"refresh": jwt_tokens["refresh"]},
-        format="json",
-    )
+    r = api_client.post(reverse("logout"))
     assert r.status_code == status.HTTP_205_RESET_CONTENT
 
     api_client.credentials()
-    r2 = api_client.post(
-        reverse("refresh"), data={"refresh": jwt_tokens["refresh"]}, format="json"
-    )
+    api_client.cookies[REFRESH_COOKIE_NAME] = jwt_tokens["refresh"]
+    r2 = api_client.post(reverse("refresh"))
     assert r2.status_code == 401
 
 
 @pytest.mark.django_db
 def test_logout_rejects_malformed_refresh(api_client, jwt_tokens):
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
-    r = api_client.post(
-        reverse("logout"), data={"refresh": "not-a-real-token"}, format="json"
-    )
+    api_client.cookies[REFRESH_COOKIE_NAME] = "not-a-real-token"
+    r = api_client.post(reverse("logout"))
     assert r.status_code == 400
     assert r.json()["code"] == "invalid_or_expired_refresh"
 
@@ -214,6 +227,10 @@ def test_login_throttle_is_per_email(api_client, regular_user):
     )
     # Different email -> different bucket -> not throttled (would be 401 instead)
     assert r.status_code != 429
+
+
+# The per-IP throttles on token-refresh and password-reset-confirm live in
+# tests/api_tests/test_auth_throttles.py.
 
 
 # ---------------- SSE ticket ----------------
@@ -264,17 +281,15 @@ def test_logout_rejects_refresh_owned_by_another_user(
     other_refresh = str(RefreshToken.for_user(other))
 
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {jwt_tokens['access']}")
-    r = api_client.post(
-        reverse("logout"), data={"refresh": other_refresh}, format="json"
-    )
+    api_client.cookies[REFRESH_COOKIE_NAME] = other_refresh
+    r = api_client.post(reverse("logout"))
     assert r.status_code == 400
     assert r.json()["code"] == "invalid_or_expired_refresh"
 
     # The other user's refresh token must still work afterwards.
     api_client.credentials()
-    r2 = api_client.post(
-        reverse("refresh"), data={"refresh": other_refresh}, format="json"
-    )
+    api_client.cookies[REFRESH_COOKIE_NAME] = other_refresh
+    r2 = api_client.post(reverse("refresh"))
     assert r2.status_code == 200
 
 
@@ -483,12 +498,17 @@ def test_password_reset_request_known_user_creates_token_and_sends_email(
     body = r.json()
     assert body["smtp_configured"] is True
     assert body["detail"]
-    tokens = PasswordResetToken.objects.filter(user=regular_user, is_used=False)
+    tokens = PasswordResetToken.objects.filter(user=regular_user)
     assert tokens.count() == 1
     assert len(mail.outbox) == 1
     msg = mail.outbox[0]
     assert regular_user.email in msg.to
-    assert str(tokens.first().token) in msg.body
+    # The raw token exists only in this email — the row stores its hash. Pull
+    # it back out of the link and prove the database holds a verifier, not the
+    # secret itself.
+    match = re.search(r"token=([A-Za-z0-9_\-]+)", msg.body)
+    assert match is not None
+    assert hash_token(match.group(1)) == tokens.first().token_hash
 
 
 @pytest.mark.django_db
@@ -575,10 +595,10 @@ def test_password_reset_request_invalidates_prior_tokens_for_same_user(
         data={"email": regular_user.email},
         format="json",
     )
-    rows = PasswordResetToken.objects.filter(user=regular_user).order_by("created_at")
-    assert rows.count() == 2
-    assert rows.first().is_used is True
-    assert rows.last().is_used is False
+    # Requesting again deletes the earlier grant rather than flagging it, so
+    # exactly one row survives and it is the newest.
+    rows = PasswordResetToken.objects.filter(user=regular_user)
+    assert rows.count() == 1
 
 
 @pytest.mark.django_db
@@ -628,24 +648,30 @@ def test_password_reset_request_throttle_is_per_email(api_client, regular_user):
 # ---------------- Password recovery: confirm ----------------
 
 
-def _issue_token(user) -> PasswordResetToken:
-    return PasswordResetToken.objects.create(user=user)
+def _issue_token(user) -> tuple[PasswordResetToken, str]:
+    """Create a reset grant and return `(row, raw_token)`.
+
+    Goes through the repository rather than `objects.create` so the test
+    exercises the real generation path — only the hash is stored, and the raw
+    value is available exactly once, here.
+    """
+    return PasswordResetTokenRepository().create_for_user(user)
 
 
 @pytest.mark.django_db
 def test_password_reset_confirm_happy_path(api_client, regular_user, jwt_tokens):
-    token = _issue_token(regular_user)
+    token, raw_token = _issue_token(regular_user)
     r = api_client.post(
         reverse("password_reset_confirm"),
-        data={"token": str(token.token), "new_password": "BrandNewPass123!"},
+        data={"token": raw_token, "new_password": "BrandNewPass123!"},
         format="json",
     )
     assert r.status_code == 200
     regular_user.refresh_from_db()
     assert regular_user.check_password("BrandNewPass123!")
     assert not regular_user.check_password("UserStrongPass123!")
-    token.refresh_from_db()
-    assert token.is_used is True
+    # Consuming deletes the grant, so single-use holds because the row is gone.
+    assert not PasswordResetToken.objects.filter(pk=token.pk).exists()
     # Outstanding refresh token from `jwt_tokens` fixture must now be blacklisted.
     assert OutstandingToken.objects.filter(user=regular_user).exists()
     assert (
@@ -670,12 +696,13 @@ def test_password_reset_confirm_unknown_token_returns_opaque_400(api_client):
 
 @pytest.mark.django_db
 def test_password_reset_confirm_used_token_returns_opaque_400(api_client, regular_user):
-    token = _issue_token(regular_user)
-    token.is_used = True
-    token.save(update_fields=["is_used"])
+    """A spent grant is a deleted row, so replaying it is the same lookup miss
+    as an unknown token - and gets the same generic answer."""
+    token, raw_token = _issue_token(regular_user)
+    token.delete()
     r = api_client.post(
         reverse("password_reset_confirm"),
-        data={"token": str(token.token), "new_password": "BrandNewPass123!"},
+        data={"token": raw_token, "new_password": "BrandNewPass123!"},
         format="json",
     )
     assert r.status_code == 400
@@ -686,14 +713,14 @@ def test_password_reset_confirm_used_token_returns_opaque_400(api_client, regula
 def test_password_reset_confirm_expired_token_returns_opaque_400(
     api_client, regular_user
 ):
-    token = _issue_token(regular_user)
+    token, raw_token = _issue_token(regular_user)
     PasswordResetToken.objects.filter(pk=token.pk).update(
         created_at=timezone.now()
         - timedelta(seconds=settings.PASSWORD_RESET_TOKEN_TTL + 60)
     )
     r = api_client.post(
         reverse("password_reset_confirm"),
-        data={"token": str(token.token), "new_password": "BrandNewPass123!"},
+        data={"token": raw_token, "new_password": "BrandNewPass123!"},
         format="json",
     )
     assert r.status_code == 400
@@ -704,25 +731,39 @@ def test_password_reset_confirm_expired_token_returns_opaque_400(
 def test_password_reset_confirm_weak_password_does_not_consume_token(
     api_client, regular_user
 ):
-    token = _issue_token(regular_user)
+    token, raw_token = _issue_token(regular_user)
     r = api_client.post(
         reverse("password_reset_confirm"),
-        data={"token": str(token.token), "new_password": "12345"},
+        data={"token": raw_token, "new_password": "12345"},
         format="json",
     )
     assert r.status_code == 400
     assert any(e["field"] == "new_password" for e in r.json()["errors"])
-    token.refresh_from_db()
-    assert token.is_used is False
+    # A rejected password must leave the grant spendable.
+    assert PasswordResetToken.objects.filter(pk=token.pk).exists()
     regular_user.refresh_from_db()
     assert regular_user.check_password("UserStrongPass123!")
 
 
 @pytest.mark.django_db
-def test_password_reset_confirm_rejects_non_uuid_token(api_client):
+def test_password_reset_confirm_garbage_token_returns_opaque_400(api_client):
+    """The token is an opaque string, so there is no format to reject up
+    front — a malformed value is indistinguishable from an unknown one and
+    yields the same generic error, revealing nothing about token validity."""
     r = api_client.post(
         reverse("password_reset_confirm"),
-        data={"token": "not-a-uuid", "new_password": "BrandNewPass123!"},
+        data={"token": "not-a-real-token", "new_password": "BrandNewPass123!"},
+        format="json",
+    )
+    assert r.status_code == 400
+    assert r.json()["code"] == OPAQUE_RESET_CODE
+
+
+@pytest.mark.django_db
+def test_password_reset_confirm_blank_token_is_a_field_error(api_client):
+    r = api_client.post(
+        reverse("password_reset_confirm"),
+        data={"token": "", "new_password": "BrandNewPass123!"},
         format="json",
     )
     assert r.status_code == 400
@@ -753,16 +794,16 @@ def test_password_reset_confirm_redacts_new_password_in_errors(api_client):
 
 @pytest.mark.django_db
 def test_password_reset_confirm_token_is_single_use(api_client, regular_user):
-    token = _issue_token(regular_user)
+    _token, raw_token = _issue_token(regular_user)
     first = api_client.post(
         reverse("password_reset_confirm"),
-        data={"token": str(token.token), "new_password": "BrandNewPass123!"},
+        data={"token": raw_token, "new_password": "BrandNewPass123!"},
         format="json",
     )
     assert first.status_code == 200
     second = api_client.post(
         reverse("password_reset_confirm"),
-        data={"token": str(token.token), "new_password": "AnotherPass456!"},
+        data={"token": raw_token, "new_password": "AnotherPass456!"},
         format="json",
     )
     assert second.status_code == 400
@@ -998,10 +1039,10 @@ class TestPasswordResetConfirmAlphabet:
 
     @pytest.mark.parametrize("password", _BAD_PASSWORDS)
     def test_rejects(self, api_client, regular_user, password):
-        token = _issue_token(regular_user)
+        _token, raw_token = _issue_token(regular_user)
         r = api_client.post(
             reverse("password_reset_confirm"),
-            data={"token": str(token.token), "new_password": password},
+            data={"token": raw_token, "new_password": password},
             format="json",
         )
         _assert_password_rejected(r)
