@@ -178,6 +178,11 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # One reverse proxy (nginx) sits in front of Django. Without this, DRF
+    # keys throttles on the whole X-Forwarded-For chain, whose left-hand side
+    # the client controls - so any throttle could be bypassed by varying the
+    # header. With 1, only the entry nginx itself appended is used.
+    "NUM_PROXIES": 1,
     "DEFAULT_THROTTLE_RATES": {
         "login": os.getenv("LOGIN_THROTTLE_RATE", "5/min"),
         "password_reset_request": os.getenv(
