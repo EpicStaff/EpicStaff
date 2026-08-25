@@ -16,6 +16,7 @@ from tables.graph_collab.protocol import (
     GraphStateMessage,
     NodesDeletedMessage,
     NodeUnlockedMessage,
+    NodeUpdatedMessage,
     PresenceStateUpdatedMessage,
 )
 
@@ -311,6 +312,47 @@ async def anotify_graph_saved(
         await layer.group_send(graph_group_name(graph_id), message)
     except Exception as exc:
         logger.error("Failed to async broadcast to graph {} group: {}", graph_id, exc)
+
+
+async def anotify_node_updated_system(
+    graph_id: int,
+    list_key: str,
+    node: dict,
+    changed_fields: list[str],
+) -> None:
+    """Broadcast a merge-style ``node_updated`` attributed to ``_SYSTEM_EDITOR``
+    from an async context (the global autosave loop) — used when a node's
+    outward FK/M2M ref (LLMConfig, subgraph, ngrok config, Secret,
+    AgentDefinition, Surface) is nulled after its target was deleted or moved
+    to another org out-of-band. See GraphLiveStateService.null_external_refs.
+
+    ``changed_fields`` must be non-empty — a node_updated with no
+    changed_fields is treated by the frontend as a *complete* node DTO and
+    overwrites the canvas node instead of merging, which would clobber every
+    other field on it.
+    """
+    layer = get_channel_layer()
+    if layer is None:
+        logger.warning(
+            "Channel layer is not configured — skipping node_updated broadcast "
+            "for graph {}",
+            graph_id,
+        )
+        return
+    message = NodeUpdatedMessage(
+        node=node,
+        list_key=list_key,
+        editor=_SYSTEM_EDITOR,
+        changed_fields=changed_fields,
+    ).model_dump()
+    try:
+        await layer.group_send(graph_group_name(graph_id), message)
+    except Exception as exc:
+        logger.error(
+            "Failed to async broadcast node_updated to graph {} group: {}",
+            graph_id,
+            exc,
+        )
 
 
 async def anotify_save_failed(

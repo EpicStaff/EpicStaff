@@ -20,7 +20,7 @@ FlushOutcome.status is always one of:
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from asgiref.sync import sync_to_async
@@ -33,7 +33,9 @@ from tables.exceptions import (
 
 from tables.graph_collab.constants import _ALL_LIST_KEYS
 
+from tables.graph_collab.external_refs import DeadRef
 from tables.graph_collab.graph_state_service import graph_state_service
+from tables.graph_collab.notifications import anotify_node_updated_system
 from tables.graph_collab.snapshot_normalize import (
     inject_bulk_save_fields,
     reconcile_against_db,
@@ -104,19 +106,34 @@ class _DbFlushResult(enum.Enum):
     VERSION_CONFLICT = "version_conflict"
 
 
-def _do_db_flush(graph_id: int, snapshot: dict):
+@dataclass(frozen=True)
+class _DbFlushOutcome:
+    """Everything ``_do_db_flush`` needs to report back to the async ``flush()``.
+
+    ``kind`` is ``None`` on success — ``new_save_version``/``temp_id_map`` are
+    then set. Otherwise ``kind`` is one of ``_DbFlushResult`` and (for SKIP)
+    ``reason`` carries the failure category.
+
+    ``dead_external_refs`` is populated whenever ``reconcile_against_db`` found
+    stale outward FK/M2M refs (see external_refs.py), independent of ``kind`` —
+    even a flush that otherwise fails or hits a version conflict already nulled
+    those refs in the payload, and the caller must mirror that into the live
+    Redis snapshot regardless, since the underlying DB column is already NULL.
+    """
+
+    kind: _DbFlushResult | None = None
+    new_save_version: int | None = None
+    temp_id_map: dict[str, int] | None = None
+    reason: str | None = None
+    dead_external_refs: list[DeadRef] = field(default_factory=list)
+
+
+def _do_db_flush(graph_id: int, snapshot: dict) -> _DbFlushOutcome:
     """Synchronous DB work: validate snapshot and persist via GraphBulkSaveService.
 
-    Returns ``(new_save_version: int, temp_id_map: dict)`` on success, or one of
-    the module-level sentinels (possibly paired with a reason string) when the
-    flush should be skipped:
-      ``(_SKIP, reason)``       — persistent error (validation, BulkSave, DB error).
-      ``_VERSION_CONFLICT``     — transient conflict; next tick will retry.
-      ``_GRAPH_NOT_FOUND``      — graph row no longer exists in the DB.
-
     All expected failure modes are caught here and converted to logged
-    warnings + the appropriate sentinel.  Only genuinely unexpected errors
-    are allowed to propagate.
+    warnings + the appropriate ``_DbFlushOutcome``. Only genuinely unexpected
+    errors are allowed to propagate.
     """
     from tables.models import Graph
 
@@ -126,16 +143,18 @@ def _do_db_flush(graph_id: int, snapshot: dict):
         logger.warning(
             "GraphFlushService: graph {} not found during flush — skipping", graph_id
         )
-        return _DbFlushResult.GRAPH_NOT_FOUND
+        return _DbFlushOutcome(kind=_DbFlushResult.GRAPH_NOT_FOUND)
 
     payload = inject_bulk_save_fields(snapshot, graph_id=graph_id)
     # Server is the authority on save_version — use the DB value so we never
     # self-conflict against a version we just wrote.
     payload["save_version"] = graph.save_version
 
-    # Self-heal drift: drop payload refs to node rows already gone from the DB
-    #  Payload-only — the retained Redis snapshot itself is left untouched.
-    payload = reconcile_against_db(payload, graph=graph)
+    # Self-heal drift: drop payload refs to node rows already gone from the DB,
+    # and null outward FK/M2M refs whose target was deleted or moved to another
+    # org. Payload-only here — the retained Redis snapshot itself is mirrored
+    # by the caller via dead_external_refs, regardless of this flush's outcome.
+    payload, dead_external_refs = reconcile_against_db(payload, graph=graph)
 
     serializer = GraphBulkSaveInputSerializer(data=payload)
     if not serializer.is_valid():
@@ -144,7 +163,11 @@ def _do_db_flush(graph_id: int, snapshot: dict):
             graph_id,
             serializer.errors,
         )
-        return _DbFlushResult.SKIP, "validation_error"
+        return _DbFlushOutcome(
+            kind=_DbFlushResult.SKIP,
+            reason="validation_error",
+            dead_external_refs=dead_external_refs,
+        )
 
     try:
         # ngrok_webhook_config is preauthorized here — apply_op already pinned
@@ -163,7 +186,11 @@ def _do_db_flush(graph_id: int, snapshot: dict):
             graph_id,
             exc.errors,
         )
-        return _DbFlushResult.SKIP, "bulk_save_validation"
+        return _DbFlushOutcome(
+            kind=_DbFlushResult.SKIP,
+            reason="bulk_save_validation",
+            dead_external_refs=dead_external_refs,
+        )
     except GraphSaveVersionConflictError as exc:
         logger.warning(
             "GraphFlushService: GraphSaveVersionConflictError for graph {} — "
@@ -171,7 +198,9 @@ def _do_db_flush(graph_id: int, snapshot: dict):
             graph_id,
             exc,
         )
-        return _DbFlushResult.VERSION_CONFLICT
+        return _DbFlushOutcome(
+            kind=_DbFlushResult.VERSION_CONFLICT, dead_external_refs=dead_external_refs
+        )
     except ContentHashConflictError as exc:
         logger.warning(
             "GraphFlushService: ContentHashConflictError for graph {} — "
@@ -179,10 +208,16 @@ def _do_db_flush(graph_id: int, snapshot: dict):
             graph_id,
             exc,
         )
-        return _DbFlushResult.VERSION_CONFLICT
+        return _DbFlushOutcome(
+            kind=_DbFlushResult.VERSION_CONFLICT, dead_external_refs=dead_external_refs
+        )
 
     graph.refresh_from_db(fields=["save_version"])
-    return graph.save_version, temp_id_map
+    return _DbFlushOutcome(
+        new_save_version=graph.save_version,
+        temp_id_map=temp_id_map,
+        dead_external_refs=dead_external_refs,
+    )
 
 
 _async_do_db_flush = sync_to_async(_do_db_flush)
@@ -255,9 +290,27 @@ class GraphFlushService:
                 if tid is not None:
                     flushed_temp_id_to_list_key[str(tid)] = list_key
 
-        db_result = await _async_do_db_flush(graph_id, snapshot)
+        db_outcome = await _async_do_db_flush(graph_id, snapshot)
 
-        if db_result is _DbFlushResult.GRAPH_NOT_FOUND:
+        # Mirror any nulled outward FK/M2M refs into the live snapshot and
+        # notify connected editors — unconditionally, regardless of this
+        # flush's overall outcome below. The underlying DB column is already
+        # NULL (SET_NULL fired at delete time), so this is factually true no
+        # matter how the rest of the flush resolves, and skipping it would
+        # leave the retained snapshot poisoned for the next attempt.
+        if db_outcome.dead_external_refs:
+            broadcasts = await graph_state_service.null_external_refs(
+                graph_id, db_outcome.dead_external_refs
+            )
+            for broadcast in broadcasts:
+                await anotify_node_updated_system(
+                    graph_id,
+                    broadcast["list_key"],
+                    broadcast["node"],
+                    broadcast["changed_fields"],
+                )
+
+        if db_outcome.kind is _DbFlushResult.GRAPH_NOT_FOUND:
             # Graph no longer exists — clear the stale snapshot and treat as
             # nothing-to-flush (not a data-loss failure).
             await graph_state_service.clear(graph_id)
@@ -267,7 +320,7 @@ class GraphFlushService:
             )
             return FlushOutcome(status=FlushStatus.NOTHING_TO_FLUSH)
 
-        if db_result is _DbFlushResult.VERSION_CONFLICT:
+        if db_outcome.kind is _DbFlushResult.VERSION_CONFLICT:
             # Transient conflict — a concurrent REST save won; next tick retries.
             # No broadcast to clients; this self-corrects.
             logger.warning(
@@ -278,17 +331,21 @@ class GraphFlushService:
                 status=FlushStatus.FAILED, failure_reason="version_conflict"
             )
 
-        if isinstance(db_result, tuple) and db_result[0] is _DbFlushResult.SKIP:
+        if db_outcome.kind is _DbFlushResult.SKIP:
             # Persistent error (validation or BulkSave) — retain snapshot.
-            _, reason = db_result
             logger.error(
                 "GraphFlushService: flush FAILED ({}) for graph {} — snapshot retained for recovery",
-                reason,
+                db_outcome.reason,
                 graph_id,
             )
-            return FlushOutcome(status=FlushStatus.FAILED, failure_reason=reason)
+            return FlushOutcome(
+                status=FlushStatus.FAILED, failure_reason=db_outcome.reason
+            )
 
-        new_save_version, temp_id_map = db_result
+        new_save_version, temp_id_map = (
+            db_outcome.new_save_version,
+            db_outcome.temp_id_map,
+        )
         await graph_state_service.apply_id_remap(
             graph_id,
             temp_id_map,

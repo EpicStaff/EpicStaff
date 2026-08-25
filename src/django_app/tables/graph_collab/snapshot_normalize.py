@@ -16,6 +16,7 @@ from tables.graph_collab.constants import (
     _ALL_LIST_KEYS,
     _DECISION_TABLE_LIST_KEYS,
 )
+from tables.graph_collab.external_refs import DeadRef, find_dead_external_refs
 
 
 def inject_bulk_save_fields(snapshot: dict, graph_id: int) -> dict:
@@ -71,13 +72,16 @@ def inject_bulk_save_fields(snapshot: dict, graph_id: int) -> dict:
     return snapshot
 
 
-def reconcile_against_db(payload: dict, graph) -> dict:
+def reconcile_against_db(payload: dict, graph) -> tuple[dict, list[DeadRef]]:
     """Prune *payload* of references to node rows already gone from the DB.
 
     Mutates and returns *payload* in place (the caller already owns a
     deep-copied dict from ``inject_bulk_save_fields``, so a second copy here
     would be wasted work). Never mutates the live Redis snapshot — that is a
-    separate object owned by the caller.
+    separate object owned by the caller; the returned ``list[DeadRef]`` lets
+    the caller (flush_service) mirror the same nulling into the live snapshot
+    and notify connected editors, since payload-only nulling would leave the
+    snapshot poisoned for the next flush.
 
     Never silently drops without logging — every prune is summarised via
     ``logger.info`` so recovery from drift is auditable.
@@ -168,19 +172,33 @@ def reconcile_against_db(payload: dict, graph) -> dict:
 
     nulled_routing_refs = _null_dangling_routing_refs(payload, surviving_node_ids)
 
-    if pruned_nodes or pruned_edges or nulled_routing_refs or collapsed_singletons:
+    # External (non-graph) FK/M2M refs — LLMConfig, subgraph Graph, secrets,
+    # ngrok config, AgentDefinition, Surface — whose target was deleted or
+    # moved to another org out-of-band. Unlike the pruning above, the node row
+    # itself survives; only the stale ref gets nulled. See external_refs.py.
+    dead_external_refs = find_dead_external_refs(payload, graph)
+
+    if (
+        pruned_nodes
+        or pruned_edges
+        or nulled_routing_refs
+        or collapsed_singletons
+        or dead_external_refs
+    ):
         graph_id = getattr(graph, "id", graph)
         logger.info(
             "reconcile_against_db: pruned stale refs for graph {} — "
-            "nodes={}, edges={}, nulled_routing_refs={}, collapsed_singletons={}",
+            "nodes={}, edges={}, nulled_routing_refs={}, collapsed_singletons={}, "
+            "nulled_external_refs={}",
             graph_id,
             pruned_nodes,
             pruned_edges,
             nulled_routing_refs,
             collapsed_singletons,
+            len(dead_external_refs),
         )
 
-    return payload
+    return payload, dead_external_refs
 
 
 def _collapse_singleton_lists(payload: dict) -> dict[str, int]:

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import copy
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 
@@ -8,6 +9,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 
 from tables.graph_collab.entry_merge import find_mismatched_keys, merge_entry
+from tables.graph_collab.external_refs import DeadRef, null_ref_in_entry
 from tables.graph_collab.protocol import (
     ConnectionCreatedMessage,
     ConnectionDeletedMessage,
@@ -591,6 +593,91 @@ class GraphLiveStateService:
                 graph_id,
             )
             return True
+
+    async def null_external_refs(
+        self, graph_id: int, dead_refs: list[DeadRef]
+    ) -> list[dict]:
+        """Mirror find_dead_external_refs' payload-side nulling into the live
+        Redis snapshot, scoped to exactly the touched nodes/fields.
+
+        Payload-only nulling (done during flush validation) is not enough: the
+        retained snapshot would stay poisoned with the same stale pk and the
+        next autosave flush would hit the identical validation failure again —
+        see apply_scheduler_deactivation's docstring above for the same
+        failure shape with a different trigger.
+
+        Only touches the snapshot when a live collaborative session actually
+        exists for *graph_id*; the common case (nobody connected, DB is sole
+        authority) is a no-op. Idempotent — re-nulling an already-null field is
+        a no-op via null_ref_in_entry.
+
+        Returns one broadcast-ready dict per touched node —
+        ``{"list_key", "node", "changed_fields"}`` — so the caller can push a
+        merge-style ``node_updated`` to connected editors. ``node`` always
+        carries the whole (already-nulled) value of every top-level field in
+        ``changed_fields``, since nested refs (e.g. webhook_trigger) must be
+        sent as their whole containing object — the frontend merges by
+        top-level key.
+        """
+        if not dead_refs:
+            return []
+
+        refs_by_node: dict[tuple[str, int], list[DeadRef]] = defaultdict(list)
+        for ref in dead_refs:
+            refs_by_node[(ref.list_key, ref.node_id)].append(ref)
+
+        broadcasts: list[dict] = []
+        async with self._get_lock(graph_id):
+            snapshot = await self.get_snapshot(graph_id)
+            if snapshot is None:
+                logger.debug(
+                    "null_external_refs: no live snapshot for graph {} — skipping",
+                    graph_id,
+                )
+                return []
+
+            mutated = False
+            for (list_key, node_id), refs in refs_by_node.items():
+                entries: list[dict] = snapshot.get(list_key, [])
+                entry = next((e for e in entries if e.get("id") == node_id), None)
+                if entry is None:
+                    logger.debug(
+                        "null_external_refs: node {} not found in {} for graph "
+                        "{} — skipping (already reconciled or removed)",
+                        node_id,
+                        list_key,
+                        graph_id,
+                    )
+                    continue
+
+                top_level_fields: set[str] = set()
+                for ref in refs:
+                    null_ref_in_entry(entry, ref.ref_field, ref.old_pk)
+                    top_level_fields.add(ref.top_level_field)
+                mutated = True
+
+                node_overlay: dict = {"id": node_id}
+                for field_name in top_level_fields:
+                    node_overlay[field_name] = entry.get(field_name)
+                broadcasts.append(
+                    {
+                        "list_key": list_key,
+                        "node": node_overlay,
+                        "changed_fields": sorted(top_level_fields),
+                    }
+                )
+
+            if mutated:
+                await self.seed(graph_id, snapshot)
+                logger.debug(
+                    "null_external_refs: nulled {} dead ref(s) across {} node(s) "
+                    "in live snapshot for graph {}",
+                    len(dead_refs),
+                    len(broadcasts),
+                    graph_id,
+                )
+
+        return broadcasts
 
     async def _apply_node_upsert(
         self,
