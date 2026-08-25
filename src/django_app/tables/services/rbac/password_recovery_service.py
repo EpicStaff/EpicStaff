@@ -1,5 +1,4 @@
 from typing import Optional
-from uuid import UUID
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -65,21 +64,21 @@ class PasswordRecoveryService:
         if user is not None:
             with transaction.atomic():
                 self._token_repo.invalidate_all_for_user(user)
-                token_row = self._token_repo.create_for_user(user)
+                _token_row, raw_token = self._token_repo.create_for_user(user)
             # Email dispatch is outside the transaction so a slow/blocked
             # SMTP server cannot hold a DB row lock. The sender swallows
             # its own failures — the HTTP response stays uniform.
-            self._email_sender.send(user, token_row.token)
+            self._email_sender.send(user, raw_token)
         return {"smtp_configured": smtp_configured}
 
-    def confirm_reset(self, token_uuid: UUID, new_password: str) -> None:
-        token_row = self._token_repo.get_active_by_uuid(token_uuid)
+    def confirm_reset(self, raw_token: str, new_password: str) -> None:
+        token_row = self._token_repo.get_active_by_raw_token(raw_token)
         if token_row is None:
             raise InvalidOrExpiredTokenError()
         user = token_row.user
         with transaction.atomic():
             self._password_writer.set(user, new_password)
-            self._token_repo.mark_used(token_row)
+            self._token_repo.consume(token_row)
         self._session_invalidator.blacklist_all_for_user(user)
 
     # ---- admin flow ----
