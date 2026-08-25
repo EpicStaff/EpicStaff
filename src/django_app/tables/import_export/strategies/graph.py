@@ -5,7 +5,7 @@ from typing import Optional
 
 from tables.models import (
     Graph,
-    Crew, 
+    Crew,
     GraphOrganization,
 )
 from agents.models import (
@@ -156,7 +156,12 @@ class GraphStrategy(EntityImportExportStrategy):
         imported_uuid = import_data.pop("uuid", None)
         if preserve_uuids and imported_uuid:
             if replace_existing:
-                Graph.objects.filter(uuid=imported_uuid).delete()
+                # Queryset .delete() bypasses Model.delete() entirely (Django never
+                # calls instance delete() for queryset-level deletes), so it always
+                # hard-deletes regardless of settings.SOFT_DELETE. Delete per-instance
+                # instead so SoftDeleteMixin.delete() (and thus DeleteService) fires.
+                for existing_graph in Graph.objects.filter(uuid=imported_uuid):
+                    existing_graph.delete()
             else:
                 Graph.objects.filter(uuid=imported_uuid).update(uuid=uuid.uuid4())
             import_data["uuid"] = imported_uuid

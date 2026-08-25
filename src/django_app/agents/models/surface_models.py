@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.db import models
 
-from tables.models.base_models import TimestampMixin
+from tables.models.base_models import SoftDeleteFields, TimestampMixin
 
 
 class ToolMode(models.TextChoices):
@@ -71,7 +71,7 @@ class BaseSurfacePythonTool(models.Model):
         abstract = True
 
 
-class SurfacePythonTool(BaseSurfacePythonTool):
+class SurfacePythonTool(BaseSurfacePythonTool, SoftDeleteFields):
     surface = models.ForeignKey(
         Surface,
         on_delete=models.CASCADE,
@@ -187,7 +187,7 @@ class BaseSurfaceKnowledge(models.Model):
         abstract = True
 
 
-class SurfaceKnowledge(BaseSurfaceKnowledge):
+class SurfaceKnowledge(BaseSurfaceKnowledge, SoftDeleteFields):
     surface = models.ForeignKey(
         Surface,
         on_delete=models.CASCADE,
@@ -222,7 +222,7 @@ class BaseSurfaceNaiveSearchConfig(models.Model):
         abstract = True
 
 
-class SurfaceNaiveSearchConfig(BaseSurfaceNaiveSearchConfig):
+class SurfaceNaiveSearchConfig(BaseSurfaceNaiveSearchConfig, SoftDeleteFields):
     surface_knowledge = models.OneToOneField(
         SurfaceKnowledge,
         on_delete=models.CASCADE,
@@ -251,7 +251,9 @@ class BaseSurfaceGraphBasicSearchConfig(models.Model):
         abstract = True
 
 
-class SurfaceGraphBasicSearchConfig(BaseSurfaceGraphBasicSearchConfig):
+class SurfaceGraphBasicSearchConfig(
+    BaseSurfaceGraphBasicSearchConfig, SoftDeleteFields
+):
     surface_knowledge = models.OneToOneField(
         SurfaceKnowledge,
         on_delete=models.CASCADE,
@@ -296,7 +298,9 @@ class BaseSurfaceGraphLocalSearchConfig(models.Model):
         abstract = True
 
 
-class SurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig):
+class SurfaceGraphLocalSearchConfig(
+    BaseSurfaceGraphLocalSearchConfig, SoftDeleteFields
+):
     surface_knowledge = models.OneToOneField(
         SurfaceKnowledge,
         on_delete=models.CASCADE,
@@ -305,7 +309,7 @@ class SurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig):
     )
 
 
-class InlineSurface(TimestampMixin, models.Model):
+class InlineSurface(TimestampMixin, SoftDeleteFields, models.Model):
     task_node = models.OneToOneField(
         "tables.TaskNode",
         on_delete=models.CASCADE,
@@ -322,7 +326,7 @@ class InlineSurface(TimestampMixin, models.Model):
         pass
 
 
-class InlineSurfacePythonTool(BaseSurfacePythonTool):
+class InlineSurfacePythonTool(BaseSurfacePythonTool, SoftDeleteFields):
     inline_surface = models.ForeignKey(
         InlineSurface,
         on_delete=models.CASCADE,
@@ -339,7 +343,7 @@ class InlineSurfacePythonTool(BaseSurfacePythonTool):
         ]
 
 
-class InlineSurfaceMcpTool(BaseSurfaceMcpTool):
+class InlineSurfaceMcpTool(BaseSurfaceMcpTool, SoftDeleteFields):
     inline_surface = models.ForeignKey(
         InlineSurface,
         on_delete=models.CASCADE,
@@ -356,7 +360,7 @@ class InlineSurfaceMcpTool(BaseSurfaceMcpTool):
         ]
 
 
-class InlineSurfaceStorageItem(BaseSurfaceStorageItem):
+class InlineSurfaceStorageItem(BaseSurfaceStorageItem, SoftDeleteFields):
     inline_surface = models.ForeignKey(
         InlineSurface,
         on_delete=models.CASCADE,
@@ -379,7 +383,7 @@ class InlineSurfaceStorageItem(BaseSurfaceStorageItem):
         ]
 
 
-class InlineSurfaceKnowledge(BaseSurfaceKnowledge):
+class InlineSurfaceKnowledge(BaseSurfaceKnowledge, SoftDeleteFields):
     inline_surface = models.ForeignKey(
         InlineSurface,
         on_delete=models.CASCADE,
@@ -396,7 +400,7 @@ class InlineSurfaceKnowledge(BaseSurfaceKnowledge):
         ]
 
 
-class InlineSurfaceNaiveSearchConfig(BaseSurfaceNaiveSearchConfig):
+class InlineSurfaceNaiveSearchConfig(BaseSurfaceNaiveSearchConfig, SoftDeleteFields):
     surface_knowledge = models.OneToOneField(
         InlineSurfaceKnowledge,
         on_delete=models.CASCADE,
@@ -405,7 +409,9 @@ class InlineSurfaceNaiveSearchConfig(BaseSurfaceNaiveSearchConfig):
     )
 
 
-class InlineSurfaceGraphBasicSearchConfig(BaseSurfaceGraphBasicSearchConfig):
+class InlineSurfaceGraphBasicSearchConfig(
+    BaseSurfaceGraphBasicSearchConfig, SoftDeleteFields
+):
     surface_knowledge = models.OneToOneField(
         InlineSurfaceKnowledge,
         on_delete=models.CASCADE,
@@ -414,7 +420,9 @@ class InlineSurfaceGraphBasicSearchConfig(BaseSurfaceGraphBasicSearchConfig):
     )
 
 
-class InlineSurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig):
+class InlineSurfaceGraphLocalSearchConfig(
+    BaseSurfaceGraphLocalSearchConfig, SoftDeleteFields
+):
     surface_knowledge = models.OneToOneField(
         InlineSurfaceKnowledge,
         on_delete=models.CASCADE,
@@ -423,7 +431,7 @@ class InlineSurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig):
     )
 
 
-class AgentInlineSurface(TimestampMixin, models.Model):
+class AgentInlineSurface(TimestampMixin, SoftDeleteFields, models.Model):
     agent_node = models.OneToOneField(
         "tables.AgentNode",
         on_delete=models.CASCADE,
@@ -440,7 +448,7 @@ class AgentInlineSurface(TimestampMixin, models.Model):
         pass
 
 
-class AgentInlineSurfacePythonTool(BaseSurfacePythonTool):
+class AgentInlineSurfacePythonTool(BaseSurfacePythonTool, SoftDeleteFields):
     agent_inline_surface = models.ForeignKey(
         AgentInlineSurface,
         on_delete=models.CASCADE,
@@ -457,7 +465,7 @@ class AgentInlineSurfacePythonTool(BaseSurfacePythonTool):
         ]
 
 
-class AgentInlineSurfaceMcpTool(BaseSurfaceMcpTool):
+class AgentInlineSurfaceMcpTool(BaseSurfaceMcpTool, SoftDeleteFields):
     agent_inline_surface = models.ForeignKey(
         AgentInlineSurface,
         on_delete=models.CASCADE,
@@ -474,7 +482,7 @@ class AgentInlineSurfaceMcpTool(BaseSurfaceMcpTool):
         ]
 
 
-class AgentInlineSurfaceStorageItem(BaseSurfaceStorageItem):
+class AgentInlineSurfaceStorageItem(BaseSurfaceStorageItem, SoftDeleteFields):
     agent_inline_surface = models.ForeignKey(
         AgentInlineSurface,
         on_delete=models.CASCADE,
@@ -497,7 +505,7 @@ class AgentInlineSurfaceStorageItem(BaseSurfaceStorageItem):
         ]
 
 
-class AgentInlineSurfaceKnowledge(BaseSurfaceKnowledge):
+class AgentInlineSurfaceKnowledge(BaseSurfaceKnowledge, SoftDeleteFields):
     agent_inline_surface = models.ForeignKey(
         AgentInlineSurface,
         on_delete=models.CASCADE,
@@ -514,7 +522,9 @@ class AgentInlineSurfaceKnowledge(BaseSurfaceKnowledge):
         ]
 
 
-class AgentInlineSurfaceNaiveSearchConfig(BaseSurfaceNaiveSearchConfig):
+class AgentInlineSurfaceNaiveSearchConfig(
+    BaseSurfaceNaiveSearchConfig, SoftDeleteFields
+):
     surface_knowledge = models.OneToOneField(
         AgentInlineSurfaceKnowledge,
         on_delete=models.CASCADE,
@@ -523,7 +533,9 @@ class AgentInlineSurfaceNaiveSearchConfig(BaseSurfaceNaiveSearchConfig):
     )
 
 
-class AgentInlineSurfaceGraphBasicSearchConfig(BaseSurfaceGraphBasicSearchConfig):
+class AgentInlineSurfaceGraphBasicSearchConfig(
+    BaseSurfaceGraphBasicSearchConfig, SoftDeleteFields
+):
     surface_knowledge = models.OneToOneField(
         AgentInlineSurfaceKnowledge,
         on_delete=models.CASCADE,
@@ -532,7 +544,9 @@ class AgentInlineSurfaceGraphBasicSearchConfig(BaseSurfaceGraphBasicSearchConfig
     )
 
 
-class AgentInlineSurfaceGraphLocalSearchConfig(BaseSurfaceGraphLocalSearchConfig):
+class AgentInlineSurfaceGraphLocalSearchConfig(
+    BaseSurfaceGraphLocalSearchConfig, SoftDeleteFields
+):
     surface_knowledge = models.OneToOneField(
         AgentInlineSurfaceKnowledge,
         on_delete=models.CASCADE,

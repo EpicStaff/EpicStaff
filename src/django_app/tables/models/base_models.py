@@ -130,43 +130,59 @@ class CrewSessionMessage(BaseSessionMessage):
         abstract = True
 
 
-class SoftDeleteMixin(models.Model):
-    deleted_at = models.DateTimeField(
-        null=True,
-        blank=True,
-        default=None,
-        editable=False,
-    )
-    is_active = models.BooleanField(default=True)
+class ActiveManager(models.Manager):
+    """
+    Manager for models that using SoftDeleteFields.
+    Filters the active records
+    """
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .filter(is_soft_deleted=False, soft_deleted_at__isnull=True)
+        )
+
+
+class SoftDeleteFields(models.Model):
+    """
+    Only the fields required for soft deletion. No delete() override —
+    a direct .delete() on a model that only has this mixin (no SoftDeleteMixin)
+    performs a normal, unconditional Django hard delete.
+    """
+
+    is_soft_deleted = models.BooleanField(default=False, db_index=True)
+    soft_deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        abstract = True
+
+
+class SoftDeleteMixin(SoftDeleteFields):
+    """
+    Full soft-delete support: delete() delegates to DeleteService, which
+    cascades through reverse relations. For the 4 soft-delete roots
+    (Graph, GraphVersion, SourceCollection, PythonCodeTool).
+    """
 
     class Meta:
         abstract = True
 
     def delete(self, using=None, keep_parents=False):
-        if not settings.SOFT_DELETE:
-            super().delete(using=using, keep_parents=keep_parents)
-            return
-        self.is_active = False
-        self.deleted_at = timezone.now()
-        self.save(update_fields=["is_active", "deleted_at"])
+        if settings.SOFT_DELETE:
+            return self.soft_delete(using)
+        return self.hard_delete(using, keep_parents)
 
-    def hard_delete(self):
-        super().delete()
+    def soft_delete(self, using=None):
+        from tables.services.soft_delete import DeleteService
 
-    def restore(self):
-        self.is_active = True
-        self.deleted_at = None
-        self.save(update_fields=["is_active", "deleted_at"])
+        return DeleteService.delete(self, using=using)
 
-
-class ActiveManager(models.Manager):
-    """
-    Manager for models that using SoftDeleteMixin.
-    Filters the active records
-    """
-
-    def get_queryset(self):
-        return super().get_queryset().filter(is_active=True, deleted_at__isnull=True)
+    def hard_delete(self, using=None, keep_parents=False):
+        return super().delete(using=using, keep_parents=keep_parents)
 
 
 class TimestampMixin(models.Model):

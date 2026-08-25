@@ -2,7 +2,12 @@ from datetime import datetime
 
 from django.db import models
 
-from tables.models.base_models import ActiveManager, ContentHashMixin, SoftDeleteMixin
+from tables.models.base_models import (
+    ActiveManager,
+    ContentHashMixin,
+    SoftDeleteFields,
+    SoftDeleteMixin,
+)
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
@@ -33,13 +38,13 @@ class PythonCodeTool(OrgScopedModel, SoftDeleteMixin, models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["org", "name"],
-                condition=models.Q(is_active=True),
+                condition=models.Q(is_soft_deleted=False),
                 name="unique_pythoncodetool_name_per_org",
             ),
         ]
 
 
-class PythonCodeToolConfig(OrgScopedModel, models.Model):
+class PythonCodeToolConfig(OrgScopedModel, SoftDeleteFields, models.Model):
     name = models.CharField(blank=False, null=False, max_length=255)
     tool = models.ForeignKey("PythonCodeTool", on_delete=models.CASCADE)
     configuration = models.JSONField(default=dict)

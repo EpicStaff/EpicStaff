@@ -2,7 +2,7 @@ from django.db import models
 
 from loguru import logger
 
-from tables.models.base_models import ActiveManager, SoftDeleteMixin
+from tables.models.base_models import ActiveManager, SoftDeleteFields, SoftDeleteMixin
 from tables.models.rbac_models.org_scoped import OrgScopedModel
 
 
@@ -61,7 +61,7 @@ class SourceCollection(OrgScopedModel, SoftDeleteMixin, models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["org", "collection_name"],
-                condition=models.Q(is_active=True),
+                condition=models.Q(is_soft_deleted=False),
                 name="unique_collection_name_per_org",
             )
         ]
@@ -119,7 +119,7 @@ class DocumentContent(models.Model):
         return f"Content {self.content_id}"
 
 
-class DocumentMetadata(models.Model):
+class DocumentMetadata(SoftDeleteFields, models.Model):
     """
     Model to store file metadata records
     """
@@ -182,7 +182,7 @@ class DocumentMetadata(models.Model):
         return f"{self.file_name}"
 
 
-class BaseRagType(models.Model):
+class BaseRagType(SoftDeleteFields, models.Model):
     """
     Purpose: Common interface for all RAG implementations
 

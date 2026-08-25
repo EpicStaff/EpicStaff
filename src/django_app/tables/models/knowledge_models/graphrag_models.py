@@ -2,13 +2,14 @@ from django.db import models
 from ..crew_models import Task
 
 
+from ..base_models import SoftDeleteFields
 from ..embedding_models import EmbeddingConfig
 from ..llm_models import LLMConfig
 from .collection_models import BaseRagType, DocumentMetadata
 from ..crew_models import Agent
 
 
-class GraphRag(models.Model):
+class GraphRag(SoftDeleteFields, models.Model):
     class GraphRagStatus(models.TextChoices):
         """
         Status of GraphRag
@@ -74,7 +75,7 @@ class GraphRag(models.Model):
         pass
 
 
-class AgentGraphRag(models.Model):
+class AgentGraphRag(SoftDeleteFields, models.Model):
     """
     Link table connecting Agents to GraphRag implementations.
 
@@ -125,7 +126,7 @@ class AgentGraphRag(models.Model):
         return [error for error in errors if error.id != "fields.W342"]
 
 
-class GraphRagDocument(models.Model):
+class GraphRagDocument(SoftDeleteFields, models.Model):
     """
     Link table connecting GraphRag to specific documents.
 

@@ -394,7 +394,8 @@ class TestCollectionSoftDelete:
 
     def test_delete_collection_default_soft_deletes(self, auth_client):
         """SOFT_DELETE=True (default): DELETE hides the collection from `objects`
-        but keeps it in `all_objects` with `is_active=False` and `deleted_at` set."""
+        but keeps it in `all_objects` with `is_soft_deleted=True` and
+        `soft_deleted_at` set."""
         collection = self._create_collection(auth_client, "Soft Delete Me")
         collection_id = collection["collection_id"]
 
@@ -410,8 +411,8 @@ class TestCollectionSoftDelete:
         assert not SourceCollection.objects.filter(collection_id=collection_id).exists()
         assert SourceCollection.all_objects.filter(collection_id=collection_id).exists()
         deleted = SourceCollection.all_objects.get(collection_id=collection_id)
-        assert deleted.is_active is False
-        assert deleted.deleted_at is not None
+        assert deleted.is_soft_deleted is True
+        assert deleted.soft_deleted_at is not None
 
     @override_settings(SOFT_DELETE=False)
     def test_delete_collection_hard_deletes_when_soft_delete_disabled(
@@ -495,7 +496,8 @@ class TestCollectionBulkDeleteSoftDelete:
         self, auth_client
     ):
         """SOFT_DELETE=True (default): bulk-delete soft-deletes every collection
-        in one `.update()` call and leaves associated documents untouched."""
+        via a per-instance `.delete()` loop (so `DeleteService` runs for each
+        one) and leaves associated documents untouched."""
         from tables.models import DocumentContent, DocumentMetadata
 
         first = self._create_collection(auth_client, "Bulk Soft 1")
@@ -528,8 +530,8 @@ class TestCollectionBulkDeleteSoftDelete:
                 collection_id=collection_id
             ).exists()
             deleted = SourceCollection.all_objects.get(collection_id=collection_id)
-            assert deleted.is_active is False
-            assert deleted.deleted_at is not None
+            assert deleted.is_soft_deleted is True
+            assert deleted.soft_deleted_at is not None
 
         assert DocumentContent.objects.filter(id=content.id).exists()
         assert DocumentMetadata.objects.filter(

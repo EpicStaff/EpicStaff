@@ -1,7 +1,6 @@
 from typing import Dict, Any, Optional, List
 from django.conf import settings
 from django.db import transaction, models
-from django.utils import timezone
 from loguru import logger
 
 from tables.models import SourceCollection, DocumentMetadata, DocumentContent
@@ -232,13 +231,14 @@ class CollectionManagementService:
         ]
 
         if settings.SOFT_DELETE:
-            # Soft delete keeps documents/content intact for restoration. Using a
-            # single queryset .update() bypasses Model.save()/signals, so if
-            # SoftDeleteMixin.delete() or SourceCollection.save() ever gain side
-            # effects (cascades, signals, audit logging), this must be updated too.
-            deleted_count = collections.update(
-                is_active=False, deleted_at=timezone.now()
-            )
+            # Soft delete keeps documents/content intact for restoration. Deleting
+            # per-instance (rather than a queryset .update()) routes each collection
+            # through SoftDeleteMixin.delete() -> DeleteService, so the cascade
+            # mechanism actually fires for every collection's dependents.
+            deleted_count = 0
+            for collection in collections:
+                collection.delete()
+                deleted_count += 1
 
             logger.info(f"Bulk soft-deleted {deleted_count} collections")
 

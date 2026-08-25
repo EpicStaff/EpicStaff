@@ -14,6 +14,7 @@ from tables.models.base_models import (
     BaseGraphEntity,
     TimestampMixin,
     ContentHashMixin,
+    SoftDeleteFields,
     SoftDeleteMixin,
 )
 from tables.models.label_models import Label
@@ -92,7 +93,7 @@ class Graph(OrgScopedModel, TimestampMixin, SoftDeleteMixin):
         constraints = [
             models.UniqueConstraint(
                 fields=["org", "name"],
-                condition=models.Q(is_active=True),
+                condition=models.Q(is_soft_deleted=False),
                 name="unique_graph_name_per_org",
             ),
         ]
@@ -118,7 +119,7 @@ class BaseNode(BaseGraphEntity, BaseGlobalNode):
         super().save(*args, **kwargs)
 
 
-class CrewNode(BaseNode):
+class CrewNode(BaseNode, SoftDeleteFields):
     """
     DEPRECATED: CrewNode is deprecated. Use AgentNode or TaskNode instead.
     New flows must not create CrewNodes; this model exists only for backward
@@ -132,7 +133,7 @@ class CrewNode(BaseNode):
     stream_config = models.JSONField(default=dict, blank=True)
 
 
-class PythonNode(BaseNode):
+class PythonNode(BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="python_node_list"
     )
@@ -169,19 +170,19 @@ class PythonNode(BaseNode):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class FileExtractorNode(BaseNode):
+class FileExtractorNode(BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="file_extractor_node_list"
     )
 
 
-class AudioTranscriptionNode(BaseNode):
+class AudioTranscriptionNode(BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="audio_transcription_node_list"
     )
 
 
-class EndNode(BaseGraphEntity, BaseGlobalNode):
+class EndNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     # TODO: can be OneToOne field
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="end_node"
@@ -210,7 +211,7 @@ class EndNode(BaseGraphEntity, BaseGlobalNode):
         super().save(*args, **kwargs)
 
 
-class SubGraphNode(BaseNode):
+class SubGraphNode(BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="subgraph_node_list"
     )
@@ -222,7 +223,7 @@ class SubGraphNode(BaseNode):
     )
 
 
-class CodeAgentNode(BaseNode):
+class CodeAgentNode(BaseNode, SoftDeleteFields):
     """
     DEPRECATED: CodeAgentNode is deprecated. Use AgentNode or TaskNode instead.
     New flows must not create CodeAgentNodes; this model exists only for backward
@@ -251,7 +252,7 @@ class CodeAgentNode(BaseNode):
     use_storage = models.BooleanField(default=False)
 
 
-class Edge(BaseGraphEntity, models.Model):
+class Edge(BaseGraphEntity, SoftDeleteFields, models.Model):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="edge_list"
     )
@@ -281,7 +282,7 @@ class Edge(BaseGraphEntity, models.Model):
             raise ObjectDoesNotExist(f"End node with ID {self.end_node_id} not found.")
 
 
-class ConditionalEdge(BaseGraphEntity, BaseGlobalNode):
+class ConditionalEdge(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="conditional_edge_list"
     )
@@ -345,7 +346,7 @@ class GraphSessionMessage(models.Model):
         ]
 
 
-class StartNode(BaseGraphEntity, BaseGlobalNode):
+class StartNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="start_node_list"
     )
@@ -361,7 +362,7 @@ class StartNode(BaseGraphEntity, BaseGlobalNode):
         ]
 
 
-class DecisionTableNode(BaseGraphEntity, BaseGlobalNode):
+class DecisionTableNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="decision_table_node_list"
     )
@@ -404,7 +405,7 @@ class DecisionTableNode(BaseGraphEntity, BaseGlobalNode):
                 )
 
 
-class ConditionGroup(ContentHashMixin, models.Model):
+class ConditionGroup(ContentHashMixin, SoftDeleteFields, models.Model):
     decision_table_node = models.ForeignKey(
         "DecisionTableNode", on_delete=models.CASCADE, related_name="condition_groups"
     )
@@ -453,7 +454,7 @@ class ConditionGroup(ContentHashMixin, models.Model):
                 )
 
 
-class Condition(ContentHashMixin, models.Model):
+class Condition(ContentHashMixin, SoftDeleteFields, models.Model):
     condition_group = models.ForeignKey(
         "ConditionGroup", on_delete=models.CASCADE, related_name="conditions"
     )
@@ -495,7 +496,7 @@ class BasePersistentEntity(models.Model):
         abstract = True
 
 
-class GraphOrganization(BasePersistentEntity):
+class GraphOrganization(BasePersistentEntity, SoftDeleteFields):
     # Org is derived from graph.org (a flow has exactly one owning org), so this
     # row is a 1:1 extension of Graph holding org-level persistent variables.
     # TODO refactor to use user_variable for persistent variables
@@ -513,7 +514,7 @@ class GraphOrganization(BasePersistentEntity):
         ]
 
 
-class GraphOrganizationUser(BasePersistentEntity):
+class GraphOrganizationUser(BasePersistentEntity, SoftDeleteFields):
     # FK points at RBAC OrganizationUser (User x Org membership), so per-user
     # persistent state is scoped per-org as well
     # TODO refactor to use user_variable for persistent variables
@@ -532,7 +533,7 @@ class GraphOrganizationUser(BasePersistentEntity):
         ]
 
 
-class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode):
+class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     node_name = models.CharField(max_length=255, blank=False)
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="webhook_trigger_node_list"
@@ -572,7 +573,7 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode):
+class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     node_name = models.CharField(max_length=255, blank=False)
     telegram_bot_api_key_secret = models.ForeignKey(
         "Secret",
@@ -605,7 +606,7 @@ class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class TelegramTriggerNodeField(ContentHashMixin, models.Model):
+class TelegramTriggerNodeField(ContentHashMixin, SoftDeleteFields, models.Model):
     telegram_trigger_node = models.ForeignKey(
         TelegramTriggerNode, on_delete=models.CASCADE, related_name="fields"
     )
@@ -622,7 +623,7 @@ class TelegramTriggerNodeField(ContentHashMixin, models.Model):
         ]
 
 
-class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode):
+class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     class RunMode(models.TextChoices):
         ONCE = "once", "Once"
         REPEAT = "repeat", "Repeat"
@@ -684,7 +685,9 @@ class ScheduleTriggerNode(BaseGraphEntity, BaseGlobalNode):
         return hashlib.sha256(data_string).hexdigest()
 
 
-class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode):
+class ClassificationDecisionTableNode(
+    BaseGraphEntity, BaseGlobalNode, SoftDeleteFields
+):
     graph = models.ForeignKey(
         "Graph",
         on_delete=models.CASCADE,
@@ -754,7 +757,7 @@ class ClassificationDecisionTableNode(BaseGraphEntity, BaseGlobalNode):
         ]
 
 
-class ClassificationDecisionTablePrompt(TimestampMixin, models.Model):
+class ClassificationDecisionTablePrompt(TimestampMixin, SoftDeleteFields, models.Model):
     cdt_node = models.ForeignKey(
         "ClassificationDecisionTableNode",
         on_delete=models.CASCADE,
@@ -777,7 +780,7 @@ class ClassificationDecisionTablePrompt(TimestampMixin, models.Model):
         unique_together = ("cdt_node", "prompt_key")
 
 
-class ClassificationConditionGroup(BaseGraphEntity, models.Model):
+class ClassificationConditionGroup(BaseGraphEntity, SoftDeleteFields, models.Model):
     classification_decision_table_node = models.ForeignKey(
         "ClassificationDecisionTableNode",
         on_delete=models.CASCADE,
@@ -825,7 +828,7 @@ class ClassificationConditionGroup(BaseGraphEntity, models.Model):
                 )
 
 
-class GraphNote(BaseGraphEntity, BaseGlobalNode):
+class GraphNote(BaseGraphEntity, BaseGlobalNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="graph_note_list"
     )
@@ -918,7 +921,7 @@ class StorageFile(models.Model):
         ]
 
 
-class GraphStorageFile(models.Model):
+class GraphStorageFile(SoftDeleteFields, models.Model):
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="storage_files"
     )
@@ -953,7 +956,7 @@ class SessionStorageFile(models.Model):
         ]
 
 
-class TaskNode(BaseNode):
+class TaskNode(BaseNode, SoftDeleteFields):
     graph = models.ForeignKey(
         "Graph",
         on_delete=models.CASCADE,
@@ -991,7 +994,7 @@ class TaskNode(BaseNode):
     )
 
 
-class AgentNode(BaseNode):
+class AgentNode(BaseNode, SoftDeleteFields):
     """Node representing an agent that executes an ordered list of sub-tasks (AgentNodeTask) with shared surfaces."""
 
     graph = models.ForeignKey(
@@ -1017,7 +1020,7 @@ class AgentNode(BaseNode):
     )
 
 
-class AgentNodeTask(TimestampMixin):
+class AgentNodeTask(TimestampMixin, SoftDeleteFields):
     """Child sub-task of an AgentNode; not a graph node — executes sequentially within the parent node."""
 
     agent_node = models.ForeignKey(

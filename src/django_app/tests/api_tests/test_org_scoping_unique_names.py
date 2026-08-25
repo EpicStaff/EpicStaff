@@ -145,7 +145,7 @@ def test_python_code_tool_delete_soft_delete_default_leaves_row_in_all_objects(
     client_a, org_a
 ):
     """SOFT_DELETE=True (default): DELETE hides the tool from `objects` but keeps
-    it in `all_objects` with `is_active=False` and `deleted_at` set."""
+    it in `all_objects` with `is_soft_deleted=True` and `soft_deleted_at` set."""
     tool = _make_tool(org=org_a, built_in=False, name="to-delete")
 
     resp = client_a.delete(f"/api/python-code-tool/{tool.id}/")
@@ -154,8 +154,8 @@ def test_python_code_tool_delete_soft_delete_default_leaves_row_in_all_objects(
     assert not PythonCodeTool.objects.filter(id=tool.id).exists()
     assert PythonCodeTool.all_objects.filter(id=tool.id).exists()
     deleted_tool = PythonCodeTool.all_objects.get(id=tool.id)
-    assert deleted_tool.is_active is False
-    assert deleted_tool.deleted_at is not None
+    assert deleted_tool.is_soft_deleted is True
+    assert deleted_tool.soft_deleted_at is not None
 
 
 @pytest.mark.django_db
@@ -182,8 +182,8 @@ def test_python_code_tool_builtin_cannot_be_deleted_with_soft_delete_enabled(cli
 
     assert resp.status_code == 400
     untouched = PythonCodeTool.all_objects.get(id=builtin_tool.id)
-    assert untouched.is_active is True
-    assert untouched.deleted_at is None
+    assert untouched.is_soft_deleted is False
+    assert untouched.soft_deleted_at is None
 
 
 @pytest.mark.django_db

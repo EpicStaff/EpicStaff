@@ -1,7 +1,9 @@
 from django.db import models
 
+from tables.models.base_models import SoftDeleteFields
 
-class FlowAssistant(models.Model):
+
+class FlowAssistant(SoftDeleteFields, models.Model):
     graph = models.OneToOneField(
         "Graph",
         on_delete=models.CASCADE,
@@ -23,7 +25,7 @@ class FlowAssistant(models.Model):
         return f"FlowAssistant(graph_id={self.graph_id})"
 
 
-class FlowAssistantConversation(models.Model):
+class FlowAssistantConversation(SoftDeleteFields, models.Model):
     flow_assistant = models.ForeignKey(
         FlowAssistant,
         on_delete=models.CASCADE,
@@ -90,7 +92,7 @@ class FlowAssistantConversation(models.Model):
         return result
 
 
-class FlowAssistantMessage(models.Model):
+class FlowAssistantMessage(SoftDeleteFields, models.Model):
     ROLE_SYSTEM = "system"
     ROLE_USER = "user"
     ROLE_ASSISTANT = "assistant"
