@@ -142,7 +142,9 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
         language: Optional[str] = None,
     ) -> str:
         voice = voice or "21m00Tcm4TlvDq8ikWAM"  # default to Rachel if empty/None
-        logger.info(f"EL Provisioner: get_or_create_agent | voice_id={voice!r} | llm={llm_model!r} | language={language!r}")
+        logger.info(
+            f"EL Provisioner: get_or_create_agent | voice_id={voice!r} | llm={llm_model!r} | language={language!r}"
+        )
         cache_key = self._cache_key(
             api_key, instructions, voice, rt_tools, llm_model, language
         )
@@ -196,6 +198,10 @@ class ElevenLabsAgentProvisioner(metaclass=SingletonMeta):
                     headers=headers,
                     json=agent_payload,
                 )
+                if not res.is_success:
+                    logger.error(
+                        f"EL Provisioner: POST agent create failed ({res.status_code}): {res.text}"
+                    )
                 res.raise_for_status()
                 agent_id = res.json()["agent_id"]
 

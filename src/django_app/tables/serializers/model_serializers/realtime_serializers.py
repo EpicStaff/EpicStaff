@@ -49,6 +49,10 @@ class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
     agent_definition = OrganizationScopedPrimaryKeyRelatedField(
         queryset=AgentDefinition.objects.all()
     )
+    # ElevenLabs uses a free-form voice id the frontend clears to '' when the
+    # user hasn't entered one yet -- must accept blank, same as
+    # RealtimeAgentWriteSerializer's identical override below.
+    voice = serializers.CharField(allow_blank=True, default="alloy")
     openai_config = OrgScopedPrimaryKeyRelatedField(
         queryset=OpenAIRealtimeConfig.objects.all(), required=False, allow_null=True
     )

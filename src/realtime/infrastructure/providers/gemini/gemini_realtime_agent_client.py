@@ -278,10 +278,14 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
         return await self.client_event_handler.handle_event(data=message)
 
     async def send_conversation_item_to_server(self, text: str) -> None:
-        """Send a user text message to Gemini (used in LISTEN wake-word mode)."""
+        """Send a user text message to Gemini (used in LISTEN wake-word mode and
+        the frontend's typed-message path, see GeminiClientEventHandler)."""
         if self._session is None:
             logger.warning("Gemini: session is closed, dropping text message")
             return
+        # Audio turns get this from input transcription (server_event_handler);
+        # a typed turn has no audio, so record it here for reconnect context.
+        self._conversation_history.append({"role": "user", "text": text})
         await self._session.send_client_content(
             turns=types.Content(
                 role="user",

@@ -250,6 +250,29 @@ class ElevenLabsServerEventHandler:
         self._current_user_item_id = None
         self._current_output_index = 0
 
+    async def emit_user_text_item(self, text: str) -> None:
+        """Echo a frontend-typed message back as the user's chat bubble.
+
+        Unlike spoken input (transcribed server-side and delivered via
+        `_handle_user_transcript`), ElevenLabs never echoes back text we
+        inject via `user_message` -- there is nothing to transcribe. We
+        already know the exact text, so synthesize the same
+        `conversation.item.created` the frontend expects, immediately,
+        instead of leaving the bubble stuck on a null transcript.
+        """
+        self._current_user_item_id = f"msg_user_{uuid.uuid4().hex[:10]}"
+        await self._send_to_client(
+            {
+                "type": "conversation.item.created",
+                "item": {
+                    "id": self._current_user_item_id,
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": text}],
+                },
+            }
+        )
+
     async def _handle_user_transcript(self, data: Dict[str, Any]) -> None:
         user_transcription_event = data.get("user_transcription_event", {})
         text = user_transcription_event.get("user_transcript", "")

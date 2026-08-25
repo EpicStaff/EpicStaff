@@ -264,6 +264,31 @@ class GeminiServerEventHandler:
         self._current_transcript = ""
         self._discarding_audio = False  # Clean turn end — ready for next response
 
+    async def emit_user_text_item(self, text: str) -> None:
+        """Echo a frontend-typed message back as the user's chat bubble.
+
+        Unlike spoken input (transcribed server-side via Gemini's own
+        input_audio_transcription and delivered through
+        `_handle_input_transcription`), a text turn we send via
+        send_client_content produces no transcription event -- there is
+        nothing to transcribe. We already know the exact text, so
+        synthesize the same `conversation.item.created` the frontend
+        expects, immediately, instead of leaving the bubble stuck on a
+        null transcript.
+        """
+        self._current_user_item_id = f"msg_user_{uuid.uuid4().hex[:10]}"
+        await self._send_to_client(
+            {
+                "type": "conversation.item.created",
+                "item": {
+                    "id": self._current_user_item_id,
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": text}],
+                },
+            }
+        )
+
     async def _handle_input_transcription(self, text: str) -> None:
         # Save user turn to history for context injection on reconnect.
         self.client._conversation_history.append({"role": "user", "text": text})
