@@ -317,18 +317,13 @@ class DocumentManagementService:
             NaiveRag.objects.filter(naive_rag_configs__document=document).distinct()
         )
 
-        graph_links = GraphRagDocument.objects.filter(document=document).select_related(
-            "graph_rag"
-        )
+        graph_links = GraphRagDocument.objects.filter(document=document).select_related("graph_rag")
         affected_graph_rags: dict[int, tuple] = {}
         for link in graph_links:
             rag = link.graph_rag
             completed = link.status == GraphRagDocument.Status.COMPLETED
             existing = affected_graph_rags.get(rag.graph_rag_id)
-            affected_graph_rags[rag.graph_rag_id] = (
-                rag,
-                (existing[1] if existing else False) or completed,
-            )
+            affected_graph_rags[rag.graph_rag_id] = (rag, (existing[1] if existing else False) or completed)
 
         document.delete()
 
@@ -404,18 +399,13 @@ class DocumentManagementService:
             ).distinct()
         )
 
-        graph_links = GraphRagDocument.objects.filter(
-            document_id__in=found_ids
-        ).select_related("graph_rag")
+        graph_links = GraphRagDocument.objects.filter(document_id__in=found_ids).select_related("graph_rag")
         affected_graph_rags: dict[int, tuple] = {}
         for link in graph_links:
             rag = link.graph_rag
             completed = link.status == GraphRagDocument.Status.COMPLETED
             existing = affected_graph_rags.get(rag.graph_rag_id)
-            affected_graph_rags[rag.graph_rag_id] = (
-                rag,
-                (existing[1] if existing else False) or completed,
-            )
+            affected_graph_rags[rag.graph_rag_id] = (rag, (existing[1] if existing else False) or completed)
 
         # Delete all documents
         _, details = documents.delete()

@@ -1,8 +1,6 @@
 from application.commands import RunSearch
 from application.orchestrators.searching.strategies import naive_search
-from application.orchestrators.searching.strategies.naive_search import (
-    NaiveSearchOrchestrator,
-)
+from application.orchestrators.searching.strategies.naive_search import NaiveSearchOrchestrator
 from application.results import SearchResult
 from domain.enums import EmbedderProviderEnum
 from domain.models import (
@@ -15,12 +13,7 @@ from domain.models import (
 class FakeNaiveRagRepo:
     """In-memory repo for the search flow."""
 
-    def __init__(
-        self,
-        *,
-        embedding_config: EmbeddingConfig | None,
-        found_chunks: list[FoundChunk],
-    ):
+    def __init__(self, *, embedding_config: EmbeddingConfig | None, found_chunks: list[FoundChunk]):
         self._embedding_config = embedding_config
         self._found_chunks = found_chunks
         self.search_calls: list[dict] = []
@@ -99,14 +92,10 @@ async def test_search_success_returns_response_with_found_chunks(monkeypatch):
         FoundChunk(order=0, similarity=0.91, text="first hit", source="doc-a"),
         FoundChunk(order=1, similarity=0.84, text="second hit", source="doc-b"),
     ]
-    repo = FakeNaiveRagRepo(
-        embedding_config=_EMBEDDING_CONFIG, found_chunks=found_chunks
-    )
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=found_chunks)
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2, 0.3])
-    monkeypatch.setattr(
-        naive_search, "build_embedder", lambda provider, api_key, config: embedder
-    )
+    monkeypatch.setattr(naive_search, "build_embedder", lambda provider, api_key, config: embedder)
 
     command = _make_command(query="find me")
 
@@ -129,9 +118,7 @@ async def test_search_success_returns_empty_response_when_no_chunks_match(monkey
     repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
     uow = FakeUoW(repo)
     embedder = FakeEmbedder(vector=[0.1, 0.2, 0.3])
-    monkeypatch.setattr(
-        naive_search, "build_embedder", lambda provider, api_key, config: embedder
-    )
+    monkeypatch.setattr(naive_search, "build_embedder", lambda provider, api_key, config: embedder)
 
     command = _make_command(query="no matches here")
 

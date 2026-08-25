@@ -143,14 +143,8 @@ class KnowledgeSearchService:
 
         request = SearchRequest(rag_id=rag_id, query=query, search_config=search_config)
 
-        resolved_embedder_key = (
-            rag_embedder_api_key
-            if rag_embedder_api_key is not None
-            else self.rag_embedder_api_key
-        )
-        resolved_llm_key = (
-            rag_llm_api_key if rag_llm_api_key is not None else self.rag_llm_api_key
-        )
+        resolved_embedder_key = rag_embedder_api_key if rag_embedder_api_key is not None else self.rag_embedder_api_key
+        resolved_llm_key = rag_llm_api_key if rag_llm_api_key is not None else self.rag_llm_api_key
 
         try:
             with KnowledgeClient() as client:
@@ -169,16 +163,11 @@ class KnowledgeSearchService:
             ) from e
 
         logger.info(
-            "Knowledge search completed rag_id=%s sender=%s query=%r",
-            rag_id,
-            sender,
-            query,
+            "Knowledge search completed rag_id=%s sender=%s query=%r", rag_id, sender, query
         )
 
         if self.writer is not None:
-            self._add_knowledges_to_graph_message(
-                request, result, knowledge_collection_id
-            )
+            self._add_knowledges_to_graph_message(request, result, knowledge_collection_id)
 
         if isinstance(result, str):
             return [result]

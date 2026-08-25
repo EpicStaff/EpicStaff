@@ -1,11 +1,9 @@
 import zoneinfo
 from datetime import datetime, timezone as _datetime_timezone
 
-from django.conf import settings
 from loguru import logger
 from rest_framework import serializers
 
-from src.shared.schedule.trigger_strategies import interval_seconds
 from tables.exceptions import ScheduleTriggerValidationError
 from tables.models.graph_models import ScheduleTriggerNode
 
@@ -321,31 +319,10 @@ class ScheduleTriggerValidator:
             raise ScheduleTriggerValidationError(
                 {"every": 'Must be >= 1 for run_mode="repeat".'}
             )
-        unit = attrs.get("unit")
-        if unit is None:
+        if attrs.get("unit") is None:
             raise ScheduleTriggerValidationError(
                 {"unit": 'Required for run_mode="repeat".'}
             )
-        ScheduleTriggerValidator._validate_minimum_interval(every=every, unit=unit)
-
-    @staticmethod
-    def _validate_minimum_interval(*, every: int, unit: str) -> None:
-        """Reject repeat schedules that would fire faster than the configured floor."""
-        floor = settings.SCHEDULE_MIN_INTERVAL_SECONDS
-        if floor <= 0:
-            return
-        seconds = interval_seconds(unit=unit, every=every)
-        # An unrecognised unit is DRF's ChoiceField to reject, not ours.
-        if seconds is None or seconds >= floor:
-            return
-        raise ScheduleTriggerValidationError(
-            {
-                "every": (
-                    f"Repeat interval must be at least {floor} seconds; "
-                    f'every={every} with unit="{unit}" fires every {seconds}s.'
-                )
-            }
-        )
 
     def _validate_end_type(self, attrs: dict) -> None:
         end_type = attrs.get("end_type")

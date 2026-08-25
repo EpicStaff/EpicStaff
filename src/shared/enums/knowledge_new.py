@@ -19,7 +19,6 @@ class GraphSearchMethodEnum(StrEnum):
     GLOBAL = "global"
     DRIFT = "drift"
 
-
 class DocumentStatusEnum(StrEnum):
     NEW = "new"
     PROCESSING = "processing"
@@ -30,6 +29,7 @@ class DocumentStatusEnum(StrEnum):
     WARNING = "warning"  # deprecated
     FAILED = "failed"
     OUTDATED = "outdated"
+
 
 
 class ChunkStrategyEnum(StrEnum):

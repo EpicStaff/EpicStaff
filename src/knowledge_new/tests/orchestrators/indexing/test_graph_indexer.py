@@ -6,15 +6,9 @@ import pandas
 import pytest
 from application.commands import RunIndex
 from application.orchestrators.indexing.strategies import graph_indexer
-from application.orchestrators.indexing.strategies.graph_indexer import (
-    GraphIndexOrchestrator,
-)
+from application.orchestrators.indexing.strategies.graph_indexer import GraphIndexOrchestrator
 from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
-from domain.errors import (
-    DocumentNotFoundError,
-    GraphRagConfigNotFoundError,
-    RagNotFoundError,
-)
+from domain.errors import DocumentNotFoundError, GraphRagConfigNotFoundError, RagNotFoundError
 from domain.models import Rag
 from graphrag_input import TextDocument
 
@@ -52,9 +46,7 @@ def _completed_rag(rag_id: int = 1) -> Rag:
     return Rag(id=rag_id, status=IndexStatusEnum.COMPLETED, indexing_document_ids=set())
 
 
-def _text_document(
-    doc_id: int, *, status: str = "new", text: str = "hello world"
-) -> TextDocument:
+def _text_document(doc_id: int, *, status: str = "new", text: str = "hello world") -> TextDocument:
     """Construct a real TextDocument as the repository does, with a controllable status field."""
     return TextDocument(
         id=str(doc_id),
@@ -106,15 +98,11 @@ class FakeGraphRagRepo:
             raise self._get_rag_raises
         return self._rag
 
-    async def get_config(
-        self, rag_id: int, slot: SlotEnum | None = None
-    ) -> object | None:
+    async def get_config(self, rag_id: int, slot: SlotEnum | None = None) -> object | None:
         self.get_config_calls.append((rag_id, slot))
         return self._config
 
-    async def get_documents(
-        self, rag_id: int, ids: frozenset[int]
-    ) -> list[TextDocument]:
+    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[TextDocument]:
         if self._get_documents_raises is not None:
             raise self._get_documents_raises
         return [d for d in self._documents if int(d.id) in ids]
@@ -143,19 +131,13 @@ class FakeGraphRagRepo:
             self._document_statuses[doc_id] = status
 
     async def has_completed_document(self, rag_id: int) -> bool:
-        return any(
-            s == DocumentStatusEnum.COMPLETED for s in self._document_statuses.values()
-        )
+        return any(s == DocumentStatusEnum.COMPLETED for s in self._document_statuses.values())
 
     async def has_failed_document(self, rag_id: int) -> bool:
-        return any(
-            s == DocumentStatusEnum.FAILED for s in self._document_statuses.values()
-        )
+        return any(s == DocumentStatusEnum.FAILED for s in self._document_statuses.values())
 
     async def has_outdated_document(self, rag_id: int) -> bool:
-        return any(
-            s == DocumentStatusEnum.OUTDATED for s in self._document_statuses.values()
-        )
+        return any(s == DocumentStatusEnum.OUTDATED for s in self._document_statuses.values())
 
 
 class FakeUoW:
@@ -185,9 +167,7 @@ class FakeUoW:
                 raise exc
 
 
-async def test_index_success_full_flow_marks_documents_indexed_and_rag_completed(
-    monkeypatch,
-):
+async def test_index_success_full_flow_marks_documents_indexed_and_rag_completed(monkeypatch):
     rag = _new_rag()
     document = _text_document(7)
     config = _make_config()
@@ -205,10 +185,7 @@ async def test_index_success_full_flow_marks_documents_indexed_and_rag_completed
     request = _make_request(frozenset({7}))
     await GraphIndexOrchestrator(uow).execute(request)
 
-    assert repo.rag_status_log == [
-        IndexStatusEnum.PROCESSING,
-        IndexStatusEnum.COMPLETED,
-    ]
+    assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.COMPLETED]
     assert repo.status_updates == [(frozenset({7}), DocumentStatusEnum.COMPLETED)]
     assert rag.indexing_document_ids == set()
     assert len(build_index_called) == 1
@@ -417,10 +394,7 @@ async def test_cancellation_marks_rag_cancelled(monkeypatch, cancel_scenario: st
 
     await GraphIndexOrchestrator(uow).execute(request)
 
-    assert repo.rag_status_log == [
-        IndexStatusEnum.PROCESSING,
-        IndexStatusEnum.CANCELLED,
-    ]
+    assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.CANCELLED]
     assert repo.status_updates == []
 
     if cancel_scenario == "during_build_index":
@@ -526,9 +500,7 @@ def _make_slot_monkeypatches(monkeypatch):
     storage_configs_called: list[_StorageConfigSentinel] = []
     storages_created: list[_FakeStorage] = []
 
-    def fake_create_storage_config(
-        *, rag_id: int, subdir: str
-    ) -> _StorageConfigSentinel:
+    def fake_create_storage_config(*, rag_id: int, subdir: str) -> _StorageConfigSentinel:
         sentinel = _StorageConfigSentinel(subdir=subdir)
         storage_configs_called.append(sentinel)
         return sentinel
@@ -538,9 +510,7 @@ def _make_slot_monkeypatches(monkeypatch):
         storages_created.append(storage)
         return storage
 
-    monkeypatch.setattr(
-        graph_indexer, "create_storage_config", fake_create_storage_config
-    )
+    monkeypatch.setattr(graph_indexer, "create_storage_config", fake_create_storage_config)
     monkeypatch.setattr(graph_indexer, "create_storage", fake_create_storage)
 
     return storage_configs_called, storages_created
@@ -561,9 +531,7 @@ def _make_full_reindex_setup(*, rag_slot: SlotEnum = SlotEnum.A):
     config = _make_config()
     completed_doc = _text_document(10, status="completed")
     extra_doc = _text_document(20, status="new")
-    repo = FakeGraphRagRepo(
-        rag=rag, config=config, documents=[completed_doc, extra_doc]
-    )
+    repo = FakeGraphRagRepo(rag=rag, config=config, documents=[completed_doc, extra_doc])
     uow = FakeUoW(repo)
     request = _make_request(frozenset({10}))
 
@@ -594,9 +562,7 @@ async def test_full_reindex_requests_config_for_target_slot(monkeypatch):
 
 async def test_full_reindex_success_promotes_slot(monkeypatch):
     rag, config, repo, uow, request = _make_full_reindex_setup(rag_slot=SlotEnum.A)
-    _make_slot_monkeypatches(
-        monkeypatch
-    )  # prevent real MinIO calls in _clear_slot_storage
+    _make_slot_monkeypatches(monkeypatch)  # prevent real MinIO calls in _clear_slot_storage
 
     async def fake_build_index(**kwargs):
         return [_result("extract_graph")]
