@@ -317,6 +317,11 @@ from tables.swagger_schemas.twilio_schemas import (
     TWILIO_CHANNEL_PHONE_NUMBERS_GET,
     REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET,
 )
+from tables.swagger_schemas.webhook_schemas import (
+    WEBHOOK_TRIGGER_NODE_CREATE,
+    WEBHOOK_TRIGGER_NODE_UPDATE,
+    WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE,
+)
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.models.rbac_models.rbac_enums import ResourceType
 from tables.services.rbac.org_context_service import OrgContextService
@@ -2349,6 +2354,11 @@ class GraphOrganizationUserViewSet(
     serializer_class = GraphOrganizationUserSerializer
 
 
+@extend_schema_view(
+    create=extend_schema(**WEBHOOK_TRIGGER_NODE_CREATE),
+    update=extend_schema(**WEBHOOK_TRIGGER_NODE_UPDATE),
+    partial_update=extend_schema(**WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE),
+)
 class WebhookTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
     IdempotentNodeCreateMixin,
