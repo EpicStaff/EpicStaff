@@ -3,7 +3,6 @@ import { Router } from '@angular/router';
 import { UnsavedChangesRegistry } from 'src/app/core/services/unsaved-changes-registry.service';
 import { FlowsApiService } from 'src/app/features/flows/services/flows-api.service';
 import { ConfigService } from 'src/app/services/config/config.service';
-import { environment } from 'src/environments/environment';
 
 import {
     EP_CHAT_COMMANDS,
@@ -169,8 +168,7 @@ export class EpicChatService {
     }
 
     public reconnectAgents(): void {
-        // const flowUrl = `${window.location.origin}/api`;
-        const flowUrl = this.normalizeApiUrl(environment.apiUrl);
+        const flowUrl = this.normalizeApiUrl(this.configService.apiUrl);
         this.flowsApiService.getEpicChatEnabledFlows().subscribe({
             next: (flows) => {
                 const payload: EpicChatSyncAgentsPayload = {

@@ -178,8 +178,8 @@ class AgentResolver:
             else:
                 raise AgentServiceError(
                     f"agent_id={agent.id}: tool prefix '{prefix}' (ref='{ref}') "
-                    "is not supported in the agent service yet "
-                    "(configured-tool and proxy-tool are crew-only)"
+                    "is not supported in the agent service "
+                    "(supported prefixes: python-code-tool, mcp-tool)"
                 )
 
         for ref in agent.collection_refs:
