@@ -125,7 +125,6 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     startRowError = signal<string>('');
     endRowError = signal<string>('');
     timezoneError = signal<string>('');
-    intervalError = signal<string>('');
 
     minRepeatEvery = computed(() => (this.repeatUnit() === 'seconds' ? MIN_INTERVAL_SECONDS : 1));
 
@@ -186,6 +185,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     startDateTimeDirty = signal(false);
     endDateTimeDirty = signal(false);
     scheduleDirty = signal(false);
+    intervalDirty = signal(false);
 
     public override readonly isDirty = computed(() => {
         this.dirtyCheckTick();
@@ -220,9 +220,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
             }
         }
 
-        const intervalErr = this.computeIntervalError();
-        this.intervalError.set(intervalErr);
-        if (intervalErr) return null;
+        if (this.intervalDirty() && this.hasIntervalError()) return null;
 
         const hasConfiguredDateTime = !!(
             (this.form.get('start_date')!.value ?? '') &&
@@ -256,9 +254,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
             }
         }
 
-        const intervalErr = this.computeIntervalError();
-        this.intervalError.set(intervalErr);
-        if (intervalErr) return null;
+        if (this.intervalDirty() && this.hasIntervalError()) return null;
 
         const hasConfiguredDateTime = !!(
             (this.form.get('start_date')!.value ?? '') &&
@@ -277,10 +273,13 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
      * like the task node panel can report their own invalid state via a flow-wide toast
      * instead of a hard client-side abort) — but this panel's schedule/timezone checks aren't
      * reactive-form controls, so they need to run and surface their own inline errors, and a
-     * save with bad schedule data must never reach the backend. Delegating to
-     * `onSaveSilently()` (which does exactly that: sets `submitted`/`startRowError`/
-     * `endRowError`/`timezoneError` and returns `null` on failure) restores the exact
-     * pre-existing behavior for this panel.
+     * save with bad schedule data the user just entered must never reach the backend.
+     * Delegating to `onSaveSilently()` (which does exactly that: sets `submitted`/
+     * `startRowError`/`endRowError`/`timezoneError` and returns `null` on failure) restores
+     * the exact pre-existing behavior for this panel. Note: a pre-existing legacy interval
+     * below the floor that the user never touched (`intervalDirty()` false) is intentionally
+     * exempt from this check — see `intervalDirty` — so it can still reach the backend, which
+     * enforces the floor unconditionally and rejects it there.
      */
     public override captureForValidation(): ScheduleTriggerNodeModel | null {
         return this.onSaveSilently();
@@ -295,10 +294,10 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         this.startRowError.set('');
         this.endRowError.set('');
         this.timezoneError.set('');
-        this.intervalError.set('');
         this.startDateTimeDirty.set(false);
         this.endDateTimeDirty.set(false);
         this.scheduleDirty.set(false);
+        this.intervalDirty.set(false);
 
         const data = this.node().data;
 
@@ -338,7 +337,10 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
 
         fg.get('run_mode')!
             .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((v) => this.runMode.set(v ?? 'once'));
+            .subscribe((v) => {
+                this.runMode.set(v ?? 'once');
+                this.intervalDirty.set(true);
+            });
 
         fg.get('end_mode')!
             .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
@@ -353,12 +355,12 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
                 if ((everyCtrl.value ?? 0) < min) {
                     everyCtrl.setValue(min);
                 }
-                this.intervalError.set('');
+                this.intervalDirty.set(true);
             });
 
         fg.get('repeat_every')!
             .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe(() => this.intervalError.set(''));
+            .subscribe(() => this.intervalDirty.set(true));
 
         fg.get('start_date')!
             .valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
@@ -482,16 +484,13 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
     }
 
-    private computeIntervalError(): string {
-        if (!this.showRepeatFields()) return '';
+    /** The number stepper already surfaces the "Minimum value is X" message inline. */
+    private hasIntervalError(): boolean {
+        if (!this.showRepeatFields()) return false;
 
         const every = this.form.get('repeat_every')!.value;
         const min = this.minRepeatEvery();
-        if (every != null && every >= min) return '';
-
-        return this.repeatUnit() === 'seconds'
-            ? `Interval must be at least ${MIN_INTERVAL_SECONDS} seconds.`
-            : `Interval must be at least ${min}.`;
+        return every == null || every < min;
     }
 
     private computeStartError(dateVal: string | null, timeVal: string | null): string {
