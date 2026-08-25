@@ -1,4 +1,5 @@
 import { NodeModel } from '../../core/models/node.model';
+import { mapAgentNodeToModel } from './nodes/agent-node.mapper';
 import { mapAudioToTextNodeToModel } from './nodes/audio-to-text-node.mapper';
 import { mapClassificationDecisionTableNodeToModel } from './nodes/classification-decision-table-node.mapper';
 import { mapCodeAgentNodeToModel } from './nodes/code-agent-node.mapper';
@@ -12,6 +13,7 @@ import { mapPythonNodeToModel } from './nodes/python-node.mapper';
 import { mapScheduleTriggerNodeToModel } from './nodes/schedule-trigger-node.mapper';
 import { mapStartNodeToModel } from './nodes/start-node.mapper';
 import { mapSubGraphNodeToModel } from './nodes/subgraph-node.mapper';
+import { mapTaskNodeToModel } from './nodes/task-node.mapper';
 import { mapTelegramTriggerNodeToModel } from './nodes/telegram-trigger-node.mapper';
 import { mapWebhookTriggerNodeToModel } from './nodes/webhook-trigger-node.mapper';
 
@@ -42,6 +44,12 @@ export function mapWsNodePayloadToModel(payload: Record<string, unknown>, listKe
             break;
         case 'crew_node_list':
             model = mapCrewNodeToModel(dto);
+            break;
+        case 'task_node_list':
+            model = mapTaskNodeToModel(dto);
+            break;
+        case 'agent_node_list':
+            model = mapAgentNodeToModel(dto);
             break;
         case 'file_extractor_node_list':
             model = mapFileExtractorNodeToModel(dto);

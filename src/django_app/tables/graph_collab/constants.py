@@ -82,6 +82,8 @@ _EDGE_ENDPOINT_TEMP_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
 # edge_ids / conditional_edge_ids.
 _LIST_KEY_TO_DELETE_KEY: dict[str, str] = {
     "crew_node_list": "crew_node_ids",
+    "task_node_list": "task_node_ids",
+    "agent_node_list": "agent_node_ids",
     "python_node_list": "python_node_ids",
     "file_extractor_node_list": "file_extractor_node_ids",
     "audio_transcription_node_list": "audio_transcription_node_ids",

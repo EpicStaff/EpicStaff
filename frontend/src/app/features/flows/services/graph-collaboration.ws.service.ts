@@ -11,6 +11,7 @@ import { ConfigService } from '../../../services/config/config.service';
 import { ConnectionModel } from '../../../visual-programming/core/models/connection.model';
 import { NodeModel } from '../../../visual-programming/core/models/node.model';
 import {
+    AgentNodeModel,
     AudioToTextNodeModel,
     ClassificationDecisionTableNodeModel,
     CodeAgentNodeModel,
@@ -23,12 +24,13 @@ import {
     ScheduleTriggerNodeModel,
     StartNodeModel,
     SubGraphNodeModel,
+    TaskNodeModel,
     TelegramTriggerNodeModel,
     WebhookTriggerNodeModel,
 } from '../../../visual-programming/core/models/node.model';
 import { FlowService } from '../../../visual-programming/services/flow.service';
 import { toNodeMetadata } from '../../../visual-programming/utils/save/metadata';
-import { buildCdtNodePayload } from '../../../visual-programming/utils/save/payload';
+import { buildAgentTasksPayload, buildCdtNodePayload } from '../../../visual-programming/utils/save/payload';
 import { stableNodeId } from '../../../visual-programming/utils/stable-node-id';
 import { GraphDto } from '../models/graph.model';
 
@@ -166,7 +168,9 @@ type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnect
 export function nodeTypeToListKey(type: NodeType): string | null {
     switch (type) {
         case NodeType.AGENT:
+            return 'agent_node_list';
         case NodeType.TASK:
+            return 'task_node_list';
         case NodeType.PROJECT:
             return 'crew_node_list';
         case NodeType.PYTHON:
@@ -248,8 +252,40 @@ export function buildNodeBackendPayload(
             };
         }
 
-        case NodeType.AGENT:
-        case NodeType.TASK:
+        case NodeType.TASK: {
+            const tn = node as TaskNodeModel;
+            return {
+                ...idField,
+                node_name: tn.node_name,
+                graph: graphId,
+                instructions: tn.data.instructions,
+                output_schema: tn.data.output_schema ?? {},
+                remember_output: tn.data.remember_output ?? false,
+                agent_definition: tn.data.agent_definition ?? null,
+                input_map: tn.input_map || {},
+                output_variable_path: tn.output_variable_path || null,
+                surface_list: tn.data.surface_list ?? [],
+                inline_surface: tn.data.inline_surface ?? null,
+                metadata: meta,
+            };
+        }
+
+        case NodeType.AGENT: {
+            const an = node as AgentNodeModel;
+            return {
+                ...idField,
+                node_name: an.node_name,
+                graph: graphId,
+                agent_definition: an.data.agent_definition ?? null,
+                input_map: an.input_map || {},
+                output_variable_path: an.output_variable_path || null,
+                surface_list: an.data.surface_list ?? [],
+                inline_surface: an.data.inline_surface ?? null,
+                tasks: buildAgentTasksPayload(an.data.tasks ?? []),
+                metadata: meta,
+            };
+        }
+
         case NodeType.PROJECT: {
             const cn = node as {
                 node_name: string;

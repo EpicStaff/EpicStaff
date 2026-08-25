@@ -269,7 +269,7 @@ export function buildCdtNodePayload(
     } satisfies CreateClassificationDecisionTableNodeRequest & Record<string, unknown>;
 }
 
-function buildAgentTasksPayload(tasks: AgentNodeTaskUi[]): AgentNodeTaskWrite[] {
+export function buildAgentTasksPayload(tasks: AgentNodeTaskUi[]): AgentNodeTaskWrite[] {
     const idByTempId = new Map<string, number>();
     for (const sibling of tasks ?? []) {
         if (sibling.tempId && sibling.id != null) idByTempId.set(sibling.tempId, sibling.id);
