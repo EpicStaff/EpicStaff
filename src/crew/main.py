@@ -14,15 +14,13 @@ from utils.logger import logger
 
 if "--debug" in sys.argv:
     logger.info("RUNNING IN DEBUG MODE")
-    load_dotenv(find_dotenv("debug.env"), override=True)
+    load_dotenv(find_dotenv(".debug.env"), override=True)
 else:
     load_dotenv(find_dotenv(".env"))
 
 
 async def main():
     # Load configuration from environment variables
-    manager_host = os.environ.get("MANAGER_HOST", "127.0.0.1")
-    manager_port = int(os.environ.get("MANAGER_PORT", "8001"))
     redis_host = os.environ.get("REDIS_HOST", "127.0.0.1")
     redis_port = int(os.environ.get("REDIS_PORT", 6379))
     redis_password = os.environ.get("REDIS_PASSWORD")
@@ -52,8 +50,6 @@ async def main():
     )
     mcp_tool_factory = CrewaiMcpToolFactory()
     crew_parser_service = CrewParserService(
-        manager_host=manager_host,
-        manager_port=manager_port,
         redis_service=redis_service,
         python_code_executor_service=python_code_executor_service,
         mcp_tool_factory=mcp_tool_factory,

@@ -324,3 +324,18 @@ class ApiKeyLimitExceededError(CustomAPIExeption):
         "Revoke or delete an existing key first."
     )
     default_code = "api_key_limit_exceeded"
+
+
+class FirstSetupDisabledError(CustomAPIExeption):
+    """Raised by FirstSetupView when settings.FIRST_SETUP_MODE is not
+    `open`. The HTTP endpoint is anonymous, so on an internet-exposed
+    deployment it would otherwise be claimable by whoever reaches it
+    first; the superadmin comes from `manage.py create_superadmin`
+    instead."""
+
+    status_code = 403
+    default_detail = (
+        "HTTP first-setup is disabled on this deployment. Create the first "
+        "superadmin with `python manage.py create_superadmin`."
+    )
+    default_code = "first_setup_disabled"

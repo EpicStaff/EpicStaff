@@ -103,23 +103,6 @@ def test_filter_snapshot_drops_conditional_edge_from_skipped_node(
     assert "Conditional edge" in edge_dropped_warnings[0]["reason"]
 
 
-def test_filter_snapshot_nulls_fk_for_code_agent_node(manager, code_agent_node_dict):
-    # code_agent_node_dict has llm_config; llm_config is missing → FK nulled, not skipped
-    snapshot = {
-        "nodes": [code_agent_node_dict],
-        "edge_list": [],
-        "conditional_edge_list": [],
-    }
-    missing = {EntityType.LLM_CONFIG.value: [code_agent_node_dict["llm_config"]]}
-
-    filtered, warnings = manager.filter_snapshot(snapshot, missing)
-
-    assert len(filtered["nodes"]) == 1
-    assert filtered["nodes"][0]["llm_config"] is None
-    fk_nulled_warnings = [w for w in warnings if w["type"] == "fk_nulled"]
-    assert len(fk_nulled_warnings) == 1
-
-
 def test_filter_snapshot_no_warnings_when_all_deps_present(manager, crew_node_dict):
     snapshot = {"nodes": [crew_node_dict], "edge_list": [], "conditional_edge_list": []}
     missing = {}
@@ -652,6 +635,31 @@ def test_restore_does_not_raise_integrity_error_for_classification_decision_tabl
     assert graph.classification_decision_table_node_list.count() == 1
     restored = graph.classification_decision_table_node_list.first()
     assert restored.node_name == "classifier_node"
+
+
+@pytest.mark.django_db
+def test_restore_does_not_reject_blank_pre_python_code(manager, graph):
+    """
+    Restore must not raise a validation error for a blank pre/post-processing code block.
+
+    Before the fix, PythonCodeImportSerializer required "code" to be non-blank,
+    so a ClassificationDecisionTableNode whose pre_python_code.code was ""
+    (a normal, saveable state in the editor) failed to restore.
+    """
+    from tables.models import ClassificationDecisionTableNode, PythonCode
+
+    pre_python_code = PythonCode.objects.create(code="")
+    ClassificationDecisionTableNode.objects.create(
+        graph=graph,
+        node_name="classifier_node",
+        pre_python_code=pre_python_code,
+    )
+    snapshot = manager.create_snapshot(graph)
+
+    manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
+
+    restored = graph.classification_decision_table_node_list.first()
+    assert restored.pre_python_code.code == ""
 
 
 @pytest.mark.django_db

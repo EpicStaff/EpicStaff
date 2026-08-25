@@ -5,7 +5,7 @@ from typing import Optional
 
 from tables.models import (
     Graph,
-    Crew, 
+    Crew,
     GraphOrganization,
 )
 from agents.models import (
@@ -67,9 +67,7 @@ class GraphStrategy(EntityImportExportStrategy):
         deps[EntityType.GRAPH] = set(
             instance.subgraph_node_list.values_list("subgraph_id", flat=True)
         )
-        deps[EntityType.LLM_CONFIG] = set(
-            instance.code_agent_node_list.values_list("llm_config_id", flat=True)
-        )
+        deps[EntityType.LLM_CONFIG] = set()
         deps[EntityType.LABEL] = set(instance.labels.values_list("id", flat=True))
         deps[EntityType.LLM_CONFIG] |= set(
             instance.classification_decision_table_node_list.values_list(

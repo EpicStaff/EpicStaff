@@ -21,7 +21,6 @@ from tables.views.model_view_sets import (
     PythonNodeViewSet,
     FileExtractorNodeViewSet,
     AudioTranscriptionNodeViewSet,
-    CodeAgentNodeViewSet,
     StartNodeModelViewSet,
     RealtimeConfigModelViewSet,
     RealtimeSessionItemViewSet,
@@ -52,6 +51,7 @@ from tables.views.model_view_sets import (
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
     LabelViewSet,
+    SecretViewSet,
     ScheduleTriggerNodeViewSet,
 )
 
@@ -103,7 +103,6 @@ from tables.views.storage_views import StorageAPIView
 from tables.views.sse_views import (
     RunSessionSSEView,
     RunSessionSSEViewSwagger,
-    FilteredRunSessionSSEView,
 )
 from tables.views.flow_assistant_views import (
     FlowAssistantAuditView,
@@ -156,8 +155,6 @@ router.register(r"audio-transcription-nodes", AudioTranscriptionNodeViewSet)
 router.register(r"startnodes", StartNodeModelViewSet)
 router.register(r"endnodes", EndNodeModelViewSet)
 router.register(r"subgraph-nodes", SubGraphNodeModelViewSet)
-# DEPRECATED: code-agent-nodes route is deprecated. Use agentnodes/tasknodes instead.
-router.register(r"code-agent-nodes", CodeAgentNodeViewSet)
 router.register(r"tasknodes", TaskNodeViewSet)
 router.register(r"agentnodes", AgentNodeViewSet)
 router.register(r"agentnodetasks", AgentNodeTaskViewSet)
@@ -197,6 +194,7 @@ router.register(r"ngrok-config", NgrokWebhookConfigViewSet)
 router.register(r"schedule-trigger-nodes", ScheduleTriggerNodeViewSet)
 
 router.register(r"labels", LabelViewSet)
+router.register(r"secrets", SecretViewSet)
 router.register(r"storage", StorageAPIView, basename="storage")
 
 admin_router = DefaultRouter()
@@ -267,11 +265,6 @@ urlpatterns = [
         "run-session/subscribe/<int:session_id>/",
         RunSessionSSEView.as_view(),
         name="run-session-subscribe",
-    ),
-    path(
-        "run-session/subscribe/<int:session_id>/filtered/",
-        FilteredRunSessionSSEView.as_view(),
-        name="run-session-subscribe-filtered",
     ),
     path(
         "run-session/subscribe/<int:session_id>/swagger/",

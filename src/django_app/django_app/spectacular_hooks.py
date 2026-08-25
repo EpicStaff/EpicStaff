@@ -19,7 +19,6 @@ TAG_MAP = [
     ("api/agent-definitions", "Agent Definitions"),
     ("api/surfaces", "Surfaces"),
     ("api/agent-tags", "Agent Tags"),
-    ("api/code-agent-nodes", "Code Agent Nodes"),
     ("api/agents", "Agents"),
     # Crews
     ("api/crew-tags", "Crew Tags"),
@@ -90,6 +89,7 @@ TAG_MAP = [
     ("api/organizations", "Organizations"),
     # Config / Defaults
     ("api/labels", "Labels"),
+    ("api/secrets", "Secrets"),
     ("api/storage", "Storage"),
     ("api/default-", "Defaults"),
     ("api/environment", "Environment"),
@@ -104,7 +104,6 @@ TAGS_ORDER = [
     "Agent Definitions",
     "Surfaces",
     "Agent Tags",
-    "Code Agent Nodes",
     "Crews",
     "Crew Tags",
     "Tasks",
@@ -174,6 +173,7 @@ TAGS_ORDER = [
     "Admin: Organizations",
     "Admin: Users",
     "Labels",
+    "Secrets",
     "Storage",
     "Defaults",
     "Environment",

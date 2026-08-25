@@ -128,7 +128,10 @@ function toCrewComparable(node: ProjectNodeModel): unknown {
 function toPythonComparable(node: PythonNodeModel): unknown {
     return {
         node_name: node.node_name,
-        python_code: node.data,
+        // secret_ids order is incidental (which secret record happened to resolve first), not a
+        // real difference — sort it so two independent reconstructions of the same set don't
+        // register as a change.
+        python_code: { ...node.data, secret_ids: [...(node.data.secret_ids || [])].sort() },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         stream_config: node.stream_config ?? {},
@@ -229,7 +232,10 @@ function toSubgraphComparable(node: SubGraphNodeModel): unknown {
 function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
     return {
         node_name: node.node_name,
-        python_code: node.data.python_code,
+        python_code: {
+            ...node.data.python_code,
+            secret_ids: [...(node.data.python_code.secret_ids || [])].sort(),
+        },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
         webhook_trigger_path: '',
@@ -241,7 +247,7 @@ function toWebhookComparable(node: WebhookTriggerNodeModel): unknown {
 function toTelegramComparable(node: TelegramTriggerNodeModel): unknown {
     return {
         node_name: node.node_name,
-        telegram_bot_api_key: node.data.telegram_bot_api_key,
+        telegram_bot_api_key_secret_id: node.data.telegram_bot_api_key_secret_id,
         webhook_trigger: node.data.webhook_trigger,
         fields: node.data.fields,
         metadata: toNodeMetadata(node),
@@ -343,6 +349,8 @@ function toCdtComparable(node: ClassificationDecisionTableNodeModel, allNodes: N
             tableData?.post_computation?.output_variable_path || tableData?.post_output_variable_path || null,
         pre_libraries: tableData?.pre_computation?.libraries || [],
         post_libraries: tableData?.post_computation?.libraries || [],
+        pre_secret_ids: [...(tableData?.pre_computation?.secret_ids || [])].sort(),
+        post_secret_ids: [...(tableData?.post_computation?.secret_ids || [])].sort(),
         metadata: toNodeMetadata(node),
     };
 }

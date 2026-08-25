@@ -286,7 +286,6 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 message_data={
                     "message_type": "graph_end",
                     "end_node_result": end_node_result,
-                    "sse_visible": True,
                 },
             )
             graph_end_message_data = asdict(graph_end_data)
@@ -325,7 +324,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
         try:
             channel = message["channel"]
             data = message["data"]
-            logger.debug(f"Get message from {channel}: {data}")
+            logger.debug("Get message from {}", channel)
 
             if channel == self.session_schema_channel:
                 await self._handle_session_start(data)

@@ -18,8 +18,6 @@ class TestCrewParserService:
             user_callback_mock,
         ) = crew_callback_factory
         crew_parser_service = CrewParserService(
-            manager_host="127.0.0.1",
-            manager_port=8001,
             redis_service=mock_redis_service,
             python_code_executor_service=python_code_executor_service,
             knowledge_search_service=knowledge_search_service,

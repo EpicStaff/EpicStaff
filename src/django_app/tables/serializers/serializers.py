@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from tables.models.mcp_models import McpTool
-from tables.models.crew_models import ToolConfig
 from tables.models.python_models import PythonCodeTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models import PythonCode
@@ -29,7 +28,9 @@ class RunSessionSerializer(serializers.Serializer):
     # SessionManagerService.create_session_data) rather than a new typed
     # SessionData field. Omitted/None (default) means "no limit" -- inert
     # for every existing caller.
-    token_budget = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    token_budget = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
@@ -84,7 +85,6 @@ class BaseToolSerializer(serializers.Serializer):
         from tables.serializers.model_serializers import (
             PythonCodeToolSerializer,
             McpToolSerializer,
-            ToolConfigSerializer,
             PythonCodeToolConfigSerializer,
         )
 
@@ -92,9 +92,6 @@ class BaseToolSerializer(serializers.Serializer):
         if isinstance(instance, PythonCodeTool):
             repr["unique_name"] = f"python-code-tool:{instance.pk}"
             repr["data"] = PythonCodeToolSerializer(instance).data
-        elif isinstance(instance, ToolConfig):
-            repr["unique_name"] = f"configured-tool:{instance.pk}"
-            repr["data"] = ToolConfigSerializer(instance).data
         elif isinstance(instance, McpTool):
             repr["unique_name"] = f"mcp-tool:{instance.pk}"
             repr["data"] = McpToolSerializer(instance).data
@@ -168,9 +165,6 @@ class GraphNodesPartialExportSerializer(serializers.Serializer):
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
     graph_note_list = serializers.ListField(
-        child=serializers.IntegerField(min_value=1), required=False, default=list
-    )
-    code_agent_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
     schedule_trigger_node_list = serializers.ListField(

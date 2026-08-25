@@ -13,7 +13,6 @@ from .basic_node_serializers import (
     AgentNodeSerializer,
     AgentNodeTaskSerializer,
     AudioTranscriptionNodeSerializer,
-    CodeAgentNodeSerializer,
     CrewNodeSerializer,
     EdgeSerializer,
     FileExtractorNodeSerializer,

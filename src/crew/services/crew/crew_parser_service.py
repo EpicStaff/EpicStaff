@@ -33,8 +33,6 @@ from services.crew.tool_factories import PythonCodeToolFactory
 class CrewParserService(metaclass=SingletonMeta):
     def __init__(
         self,
-        manager_host: str,
-        manager_port: int,
         redis_service: RedisService,
         python_code_executor_service: RunPythonCodeService,
         mcp_tool_factory: CrewaiMcpToolFactory,
@@ -89,6 +87,7 @@ class CrewParserService(metaclass=SingletonMeta):
             agent_id=agent_data.id,
             execution_order=execution_order,
             stream_writer=stream_writer,
+            rag_embedder_api_key=agent_data.rag_embedder_api_key,
         )
         agent_config = {
             "role": agent_data.role,
@@ -243,6 +242,7 @@ class CrewParserService(metaclass=SingletonMeta):
                     agent_knowledge_collection_id=agent_data.knowledge_collection_id,
                     rag_type_id=agent_data.rag_type_id,
                     rag_search_config=rag_search_config,
+                    rag_embedder_api_key=agent_data.rag_embedder_api_key,
                     stop_event=stop_event,
                 ),
                 inputs=inputs,

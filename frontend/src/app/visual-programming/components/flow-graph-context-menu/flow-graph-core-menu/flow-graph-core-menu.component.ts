@@ -239,7 +239,7 @@ export class FlowGraphCoreMenuComponent {
         } else if (type === NodeType.TELEGRAM_TRIGGER) {
             data = {
                 webhook_trigger: null,
-                telegram_bot_api_key: '',
+                telegram_bot_api_key_secret_id: null,
                 fields: [],
             };
         } else if (type === NodeType.SCHEDULE_TRIGGER) {

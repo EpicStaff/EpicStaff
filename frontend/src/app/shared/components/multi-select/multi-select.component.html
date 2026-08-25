@@ -28,7 +28,11 @@
 }
 
 <ng-template #dropdownTemplate>
-    <div class="multi-select__dropdown">
+    <div
+        class="multi-select__dropdown"
+        [style.--ms-width]="panelWidth()"
+        [style.--ms-height]="panelHeight()"
+    >
         @if (showSearch()) {
             <input
                 class="multi-select__search"
@@ -101,8 +105,12 @@
                                 [checked]="isChecked(item.value)"
                             />
                         }
-                        <span>
-                            {{ item.name }}
+                        <span class="multi-select__item-text">
+                            <span
+                                class="multi-select__item-name"
+                                [title]="item.name"
+                                >{{ item.name }}</span
+                            >
                             @if (item.tip) {
                                 <span class="multi-select__item-tip">
                                     {{ item.tip }}

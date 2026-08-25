@@ -137,6 +137,13 @@
                                     <app-input-map [activeColor]="activeColor"></app-input-map>
                                 </div>
                             </ng-container>
+                            <app-node-secrets-field
+                                [activeColor]="activeColor"
+                                [value]="preSelectedSecretIds()"
+                                tooltipText="Secrets this pre-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                panelWidth="346px"
+                                (valueChange)="onPreSecretsChange($event)"
+                            />
                             <app-custom-input
                                 label="Output Variable Path"
                                 tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
@@ -165,6 +172,8 @@
                         >
                             <app-code-editor
                                 [pythonCode]="preCode"
+                                [secretNames]="preSecretNames()"
+                                [inputMapKeys]="preInputMapKeys()"
                                 (pythonCodeChange)="onPreCodeChange($event)"
                             ></app-code-editor>
                         </div>
@@ -184,6 +193,13 @@
                                     <app-input-map [activeColor]="activeColor"></app-input-map>
                                 </div>
                             </ng-container>
+                            <app-node-secrets-field
+                                [activeColor]="activeColor"
+                                [value]="postSelectedSecretIds()"
+                                tooltipText="Secrets this post-computation code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                                panelWidth="346px"
+                                (valueChange)="onPostSecretsChange($event)"
+                            />
                             <app-custom-input
                                 label="Output Variable Path"
                                 tooltipText="The path where the output of this code will be stored in your flow variables. Leave empty if you don't need to store the output."
@@ -212,6 +228,8 @@
                         >
                             <app-code-editor
                                 [pythonCode]="postCode"
+                                [secretNames]="postSecretNames()"
+                                [inputMapKeys]="postInputMapKeys()"
                                 (pythonCodeChange)="onPostCodeChange($event)"
                             ></app-code-editor>
                         </div>
