@@ -69,6 +69,60 @@
                         placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                         [activeColor]="activeColor"
                     ></app-custom-input>
+
+                    <div class="webhook-auth-field">
+                        <app-toggle-switch
+                            [checked]="webhookAuthEnabled()"
+                            (checkedChange)="onWebhookAuthToggle($event)"
+                            label="Webhook Auth"
+                            tooltipText="Requires a valid HMAC-SHA256 signature on every request: send it in the X-Webhook-Signature header, with the timestamp used to sign it in the X-Webhook-Timestamp header."
+                            ariaLabel="Enable webhook authentication"
+                        ></app-toggle-switch>
+
+                        @if (webhookAuthEnabled()) {
+                            @if (webhookAuthDetails(); as auth) {
+                                <div class="webhook-url-display">
+                                    <span
+                                        class="webhook-url-text"
+                                        [style.color]="activeColor"
+                                    >
+                                        {{ secretDisplayValue() }}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        class="icon-btn"
+                                        (click)="toggleSecretVisibility()"
+                                        [disabled]="!auth.signing_secret"
+                                        [attr.aria-label]="
+                                            secretMasked() ? 'Show signing secret' : 'Hide signing secret'
+                                        "
+                                    >
+                                        <app-svg-icon
+                                            [icon]="secretMasked() ? 'eye' : 'eye-off'"
+                                            size="14px"
+                                        />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="copy-button"
+                                        (click)="copySigningSecret()"
+                                        [disabled]="!auth.signing_secret"
+                                        aria-label="Copy signing secret"
+                                    >
+                                        <span
+                                            class="copy-icon"
+                                            aria-hidden="true"
+                                        ></span>
+                                        <span>{{ secretCopied() ? 'Copied' : 'Copy' }}</span>
+                                    </button>
+                                </div>
+                            } @else {
+                                <p class="webhook-auth-pending">
+                                    The signing secret will be generated the next time this flow is saved.
+                                </p>
+                            }
+                        }
+                    </div>
                 </div>
                 @if (isExpanded()) {
                     @if (!isCodeEditorFullWidth()) {

@@ -1,5 +1,6 @@
 import { CreatePythonCodeRequest, GetPythonCodeRequest } from '../../../../../features/tools/models/python-code.model';
 import {
+    WebhookNodeAuthModel,
     WebhookTriggerModel,
     WebhookTriggerWrite,
 } from '../../../../../visual-programming/core/models/webhook-trigger.model';
@@ -14,6 +15,7 @@ export interface GetWebhookTriggerNodeRequest {
     webhook_trigger_path: string;
     metadata: Record<string, unknown>;
     webhook_trigger: WebhookTriggerModel | null;
+    webhook_node_auth: WebhookNodeAuthModel | null;
 }
 
 export interface CreateWebhookTriggerNodeRequest {
@@ -25,4 +27,6 @@ export interface CreateWebhookTriggerNodeRequest {
     webhook_trigger_path: string;
     metadata?: Record<string, unknown>;
     webhook_trigger: WebhookTriggerWrite | null;
+    // Only `enabled` is client-writable — see `WebhookNodeAuthInputSerializer` (Django).
+    webhook_node_auth?: { enabled: boolean };
 }

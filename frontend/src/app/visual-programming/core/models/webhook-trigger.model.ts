@@ -23,3 +23,17 @@ export interface WebhookTriggerModel {
 
 // Write payload accepted by the node serializers: int PK or nested object.
 export type WebhookTriggerWrite = number | WebhookTriggerModel;
+
+export type WebhookAuthScheme = 'static_header' | 'hmac_sha256';
+
+// `scheme`/`header_name`/`timestamp_header_name`/`tolerance_seconds`/`signing_secret` are
+// server-generated (see `WebhookTriggerService.ensure_webhook_auth`) and only ever present
+// once the backend has created this node's auth row — absent for a node not yet saved.
+export interface WebhookNodeAuthModel {
+    enabled: boolean;
+    scheme?: WebhookAuthScheme;
+    header_name?: string;
+    timestamp_header_name?: string;
+    tolerance_seconds?: number;
+    signing_secret?: string | null;
+}
