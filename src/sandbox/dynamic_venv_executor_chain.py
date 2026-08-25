@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
+import pwd
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
@@ -12,6 +13,34 @@ from src.shared.models import CodeResultData
 from services.storage_credential_manager import StorageCredentialManager
 from utils.environment import build_base_env
 from utils.logger import logger
+
+try:
+    _SANDBOX_PW = pwd.getpwnam("sandboxuser")
+    SANDBOX_UID: int = _SANDBOX_PW.pw_uid
+    SANDBOX_GID: int = _SANDBOX_PW.pw_gid
+except KeyError:
+    SANDBOX_UID = 1000
+    SANDBOX_GID = 1000
+
+
+def _can_drop_privileges() -> bool:
+    """Return True only when the current process is root."""
+    return os.geteuid() == 0
+
+
+if not _can_drop_privileges():
+    logger.warning(
+        "Sandbox is running as non-root (uid={}); subprocess privilege drop is DISABLED. "
+        "This is expected in local dev/CI but a security risk in production.",
+        os.geteuid(),
+    )
+
+
+def _privilege_drop_kwargs() -> dict[str, object]:
+    """Subprocess kwargs to run a child as sandboxuser, or empty when non-root."""
+    if not _can_drop_privileges():
+        return {}
+    return {"user": SANDBOX_UID, "group": SANDBOX_GID, "extra_groups": []}
 
 
 class Handler(ABC):
@@ -325,12 +354,14 @@ except Exception:
         if (secrets := context.get("secrets")) is not None:
             env["EPICSTAFF_SECRETS"] = json.dumps(secrets)
 
+        drop_kwargs = _privilege_drop_kwargs()
         process = await asyncio.create_subprocess_exec(
             str(python_executable),
             str(temp_code_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            **drop_kwargs,
         )
         stdout, stderr = await process.communicate()
         stderr = stderr.decode("utf-8", errors="replace")
@@ -424,6 +455,25 @@ class DynamicVenvExecutorChain:
         os.makedirs(self.base_venv_path, exist_ok=True)
         home_path = output_path / "home"
         os.makedirs(home_path, exist_ok=True)
+
+        if _can_drop_privileges():
+            """Allow sandboxuser write access to the pre-execution dirs it writes output.txt and 
+            HOME state into.
+            """
+            try:
+                os.chown(output_path, SANDBOX_UID, SANDBOX_GID)
+                os.chown(home_path, SANDBOX_UID, SANDBOX_GID)
+            except OSError as chown_error:
+                logger.error(
+                    "Failed to chown execution dirs (EPERM?): {}",
+                    chown_error,
+                )
+                return CodeResultData(
+                    execution_id=execution_id,
+                    stderr=f"Security setup failed: could not chown execution dirs: {chown_error}",
+                    stdout="",
+                    returncode=1,
+                )
 
         context = {
             "base_venv_path": self.base_venv_path,
