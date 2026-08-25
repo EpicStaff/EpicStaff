@@ -6,6 +6,8 @@ from rest_framework import status
 
 from tables.models.rbac_models import Organization
 from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgent
+from tables.models.secret_models import Secret
+from tables.services.secrets import secret_encryption
 from tests.fixtures import *
 
 
@@ -20,11 +22,15 @@ def _make_realtime_agent(agent, org):
     separate from the shared `wikipedia_agent_with_configured_realtime`
     fixture so these org/API-key tests can control the agent's org
     independently)."""
+    api_key_secret = Secret(org=org, name="test-openai-init-realtime-api-key")
+    secret_encryption.encrypt(text="sk-test-key").write_to(api_key_secret)
+    api_key_secret.save()
+
     config = OpenAIRealtimeConfig.objects.create(
         custom_name="test-openai",
         org=org,
         model_name="gpt-4o-realtime-preview",
-        api_key="sk-test-key",
+        api_key_secret=api_key_secret,
     )
     return RealtimeAgent.objects.create(agent=agent, openai_config=config)
 

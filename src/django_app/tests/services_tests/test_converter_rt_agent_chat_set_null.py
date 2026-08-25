@@ -20,7 +20,9 @@ from tables.models.realtime_models import (
     RealtimeAgent,
     RealtimeAgentChat,
 )
+from tables.models.secret_models import Secret
 from tables.services.converter_service import ConverterService
+from tables.services.secrets import secret_encryption
 from tests.fixtures import *  # noqa: F401,F403 — wikipedia_agent, default_org, etc.
 
 
@@ -29,17 +31,25 @@ def converter() -> ConverterService:
     return ConverterService()
 
 
+def _api_key_secret(org, name: str, text: str = "sk-test-key") -> Secret:
+    secret = Secret(org=org, name=name)
+    secret_encryption.encrypt(text=text).write_to(secret)
+    secret.save()
+    return secret
+
+
 @pytest.mark.django_db
 def test_convert_rt_agent_chat_to_pydantic_succeeds_on_fresh_data(
     converter, wikipedia_agent, default_org
 ):
     """Baseline: a normal, freshly created chat with its provider config
     intact converts without raising and carries the real model/key through."""
+    api_key_secret = _api_key_secret(default_org, "openai-cfg-api-key")
     config = OpenAIRealtimeConfig.objects.create(
         custom_name="openai-cfg",
         org=default_org,
         model_name="gpt-4o-realtime-preview",
-        api_key="sk-test-key",
+        api_key_secret=api_key_secret,
     )
     rt_agent = RealtimeAgent.objects.create(agent=wikipedia_agent, openai_config=config)
     chat = RealtimeAgentChat.objects.create(
@@ -50,7 +60,7 @@ def test_convert_rt_agent_chat_to_pydantic_succeeds_on_fresh_data(
 
     assert data.rt_provider == "openai"
     assert data.rt_model_name == "gpt-4o-realtime-preview"
-    assert data.rt_api_key == "sk-test-key"
+    assert data.rt_api_key_secret_id == api_key_secret.pk
 
 
 @pytest.mark.django_db
@@ -66,7 +76,7 @@ def test_convert_rt_agent_chat_to_pydantic_raises_clear_error_when_config_set_nu
         custom_name="openai-cfg-to-delete",
         org=default_org,
         model_name="gpt-4o-realtime-preview",
-        api_key="sk-test-key",
+        api_key_secret=_api_key_secret(default_org, "openai-cfg-to-delete-api-key"),
     )
     rt_agent = RealtimeAgent.objects.create(agent=wikipedia_agent, openai_config=config)
     chat = RealtimeAgentChat.objects.create(

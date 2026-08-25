@@ -24,7 +24,6 @@ from tables.serializers.org_scoped_fields import (
     OrganizationScopedPrimaryKeyRelatedField,
     OrgScopedPrimaryKeyRelatedField,
 )
-from tables.serializers.utils.secret_fields import SecretCharField
 from tables.services.secrets import secret_resolver
 
 
@@ -130,30 +129,76 @@ class RealtimeAgentChatSerializer(serializers.ModelSerializer):
 
 
 class OpenAIRealtimeConfigSerializer(serializers.ModelSerializer):
-    api_key = SecretCharField()
-    transcription_api_key = SecretCharField()
+    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="api_key_secret",
+        required=False,
+        allow_null=True,
+    )
+    transcription_api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="transcription_api_key_secret",
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = OpenAIRealtimeConfig
-        fields = "__all__"
+        fields = [
+            "id",
+            "custom_name",
+            "api_key_secret_id",
+            "model_name",
+            "transcription_model_name",
+            "transcription_api_key_secret_id",
+            "voice_recognition_prompt",
+            "org",
+            "created_by",
+        ]
         read_only_fields = ["org", "created_by"]
 
 
 class ElevenLabsRealtimeConfigSerializer(serializers.ModelSerializer):
-    api_key = SecretCharField()
+    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="api_key_secret",
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = ElevenLabsRealtimeConfig
-        fields = "__all__"
+        fields = [
+            "id",
+            "custom_name",
+            "api_key_secret_id",
+            "model_name",
+            "language",
+            "org",
+            "created_by",
+        ]
         read_only_fields = ["org", "created_by"]
 
 
 class GeminiRealtimeConfigSerializer(serializers.ModelSerializer):
-    api_key = SecretCharField()
+    api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="api_key_secret",
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = GeminiRealtimeConfig
-        fields = "__all__"
+        fields = [
+            "id",
+            "custom_name",
+            "api_key_secret_id",
+            "model_name",
+            "voice_recognition_prompt",
+            "org",
+            "created_by",
+        ]
         read_only_fields = ["org", "created_by"]
 
 

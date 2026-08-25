@@ -462,12 +462,22 @@ def realtime_transcription_config(realtime_transcription_model, default_org):
 
 @pytest.fixture
 def openai_realtime_provider_config(default_org):
+    api_key_secret = Secret(org=default_org, name="test-openai-realtime-api-key")
+    secret_encryption.encrypt(text="test").write_to(api_key_secret)
+    api_key_secret.save()
+
+    transcription_api_key_secret = Secret(
+        org=default_org, name="test-openai-realtime-transcription-api-key"
+    )
+    secret_encryption.encrypt(text="test").write_to(transcription_api_key_secret)
+    transcription_api_key_secret.save()
+
     return OpenAIRealtimeConfig.objects.create(
         custom_name="test_openai_realtime_config",
-        api_key="test",
+        api_key_secret=api_key_secret,
         model_name="gpt-realtime-1.5",
         transcription_model_name="whisper-1",
-        transcription_api_key="test",
+        transcription_api_key_secret=transcription_api_key_secret,
         org=default_org,
     )
 

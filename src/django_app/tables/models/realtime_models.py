@@ -23,12 +23,24 @@ class OpenAIRealtimeConfig(OrgScopedModel, models.Model):
         db_table = "openai_realtime_config"
 
     custom_name = models.CharField(max_length=250)
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="openai_realtime_configs",
+    )
     model_name = models.CharField(max_length=250, default="gpt-realtime-1.5")
     transcription_model_name = models.CharField(
         max_length=250, default="whisper-1", null=True, blank=True
     )
-    transcription_api_key = models.TextField(null=True, blank=True)
+    transcription_api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="openai_realtime_transcription_configs",
+    )
     voice_recognition_prompt = models.TextField(null=True, blank=True)
 
     def __str__(self):
@@ -41,7 +53,13 @@ class ElevenLabsRealtimeConfig(OrgScopedModel, models.Model):
         db_table = "elevenlabs_realtime_config"
 
     custom_name = models.CharField(max_length=250)
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="elevenlabs_realtime_configs",
+    )
     model_name = models.CharField(max_length=250, default="eleven_turbo_v2_5")
     language = models.CharField(
         max_length=10,
@@ -60,7 +78,13 @@ class GeminiRealtimeConfig(OrgScopedModel, models.Model):
         db_table = "gemini_realtime_config"
 
     custom_name = models.CharField(max_length=250)
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="gemini_realtime_configs",
+    )
     model_name = models.CharField(
         max_length=250, default="gemini-3.1-flash-live-preview"
     )

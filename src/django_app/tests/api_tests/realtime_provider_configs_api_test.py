@@ -6,6 +6,8 @@ Follows the org_a/org_b + client_member pattern from
 test_org_scoping_global_runtime.py.
 """
 
+import itertools
+
 import pytest
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -20,6 +22,17 @@ from tables.models.realtime_models import (
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 from tables.models.webhook_models import RealtimeChannel
+from tables.services.secrets import secret_resolver, secret_service
+
+_secret_name_counter = itertools.count()
+
+
+def _make_secret(org, text):
+    return secret_service.create(
+        text=text,
+        org=org,
+        name=f"realtime-provider-test-secret-{next(_secret_name_counter)}",
+    )
 
 
 @pytest.fixture
@@ -133,14 +146,13 @@ def test_provider_config_update_cross_org_rejected(
 
 
 # ---------------------------------------------------------------------------
-# EST-1869 — api_key / transcription_api_key must never be echoed in
-# plaintext on read (GET detail, GET list, or nested under
-# RealtimeAgentReadSerializer.openai_config on GET /api/agents/), matching
-# the SecretCharField convention already used for
-# RealtimeConfigSerializer/RealtimeTranscriptionConfigSerializer
-# (llm_serializers.py). The secret must still be write-through: a fresh
-# value on create/update persists to the model, and re-submitting the
-# masked value on update preserves the original secret.
+# EST-1869 follow-up — api_key / transcription_api_key are no longer raw
+# plaintext fields; each config references an existing org-scoped `Secret`
+# by id (api_key_secret_id / transcription_api_key_secret_id), matching
+# TwilioChannel.auth_token_secret_id exactly. The plaintext itself never
+# appears in a request or response body — only the Secret's pk does — and
+# an OrgScopedPrimaryKeyRelatedField means a Secret from another org is
+# simply invisible (rejected as "does not exist"), never leaked or reused.
 # ---------------------------------------------------------------------------
 
 SECRET_FIELD_CASES = [
@@ -148,113 +160,116 @@ SECRET_FIELD_CASES = [
         "openairealtimeconfig",
         OpenAIRealtimeConfig,
         {"custom_name": "openai-cfg"},
-        "api_key",
-        id="openai-api_key",
+        "api_key_secret_id",
+        "api_key_secret",
+        id="openai-api_key_secret_id",
     ),
     pytest.param(
         "openairealtimeconfig",
         OpenAIRealtimeConfig,
         {"custom_name": "openai-cfg"},
-        "transcription_api_key",
-        id="openai-transcription_api_key",
+        "transcription_api_key_secret_id",
+        "transcription_api_key_secret",
+        id="openai-transcription_api_key_secret_id",
     ),
     pytest.param(
         "elevenlabsrealtimeconfig",
         ElevenLabsRealtimeConfig,
         {"custom_name": "elevenlabs-cfg"},
-        "api_key",
-        id="elevenlabs-api_key",
+        "api_key_secret_id",
+        "api_key_secret",
+        id="elevenlabs-api_key_secret_id",
     ),
     pytest.param(
         "geminirealtimeconfig",
         GeminiRealtimeConfig,
         {"custom_name": "gemini-cfg"},
-        "api_key",
-        id="gemini-api_key",
+        "api_key_secret_id",
+        "api_key_secret",
+        id="gemini-api_key_secret_id",
     ),
 ]
 
-RAW_SECRET = "sk-supersecretvalue1234"
-
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("basename, model, payload, secret_field", SECRET_FIELD_CASES)
-def test_provider_config_retrieve_masks_secret_field(
-    auth_client, default_org, basename, model, payload, secret_field
+@pytest.mark.parametrize(
+    "basename, model, payload, secret_field, fk_field", SECRET_FIELD_CASES
+)
+def test_provider_config_create_accepts_own_org_secret_id(
+    auth_client, default_org, basename, model, payload, secret_field, fk_field
 ):
-    instance = model.objects.create(
-        org=default_org, **payload, **{secret_field: RAW_SECRET}
-    )
-    url = reverse(f"{basename}-detail", args=[instance.pk])
-    resp = auth_client.get(url)
-    assert resp.status_code == 200
-    returned = resp.data[secret_field]
-    assert returned != RAW_SECRET
-    assert RAW_SECRET not in returned
-    assert returned.endswith(RAW_SECRET[-4:])
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("basename, model, payload, secret_field", SECRET_FIELD_CASES)
-def test_provider_config_list_masks_secret_field(
-    auth_client, default_org, basename, model, payload, secret_field
-):
-    model.objects.create(org=default_org, **payload, **{secret_field: RAW_SECRET})
-    url = reverse(f"{basename}-list")
-    resp = auth_client.get(url)
-    assert resp.status_code == 200
-    for row in resp.data["results"]:
-        assert row[secret_field] != RAW_SECRET
-        assert RAW_SECRET not in row[secret_field]
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("basename, model, payload, secret_field", SECRET_FIELD_CASES)
-def test_provider_config_create_accepts_raw_secret_but_masks_response(
-    auth_client, default_org, basename, model, payload, secret_field
-):
+    secret = _make_secret(default_org, "sk-supersecretvalue1234")
     url = reverse(f"{basename}-list")
     resp = auth_client.post(
-        url, {**payload, secret_field: RAW_SECRET}, format="json"
+        url, {**payload, secret_field: secret.id}, format="json"
     )
     assert resp.status_code == 201, resp.data
-    assert resp.data[secret_field] != RAW_SECRET
+    assert resp.data[secret_field] == secret.id
 
     instance = model.objects.get(pk=resp.data["id"])
-    assert getattr(instance, secret_field) == RAW_SECRET
+    assert getattr(instance, f"{fk_field}_id") == secret.id
+    assert (
+        secret_resolver.resolve(secret_id=secret.id, org_id=default_org.id)
+        == "sk-supersecretvalue1234"
+    )
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("basename, model, payload, secret_field", SECRET_FIELD_CASES)
-def test_provider_config_update_with_masked_value_preserves_secret(
-    auth_client, default_org, basename, model, payload, secret_field
+@pytest.mark.parametrize(
+    "basename, model, payload, secret_field, fk_field", SECRET_FIELD_CASES
+)
+def test_provider_config_create_rejects_cross_org_secret_id(
+    auth_client, default_org, org_b, basename, model, payload, secret_field, fk_field
 ):
-    instance = model.objects.create(
-        org=default_org, **payload, **{secret_field: RAW_SECRET}
+    cross_org_secret = _make_secret(org_b, "org-b-secret")
+    url = reverse(f"{basename}-list")
+    resp = auth_client.post(
+        url, {**payload, secret_field: cross_org_secret.id}, format="json"
     )
-    url = reverse(f"{basename}-detail", args=[instance.pk])
+    assert resp.status_code == 400, resp.data
+    assert "does not exist" in str(resp.data).lower()
 
-    masked_value = auth_client.get(url).data[secret_field]
-    resp = auth_client.patch(url, {secret_field: masked_value}, format="json")
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "basename, model, payload, secret_field, fk_field", SECRET_FIELD_CASES
+)
+def test_provider_config_update_repoints_to_new_secret(
+    auth_client, default_org, basename, model, payload, secret_field, fk_field
+):
+    old_secret = _make_secret(default_org, "old-secret")
+    instance = model.objects.create(
+        org=default_org, **payload, **{fk_field: old_secret}
+    )
+    new_secret = _make_secret(default_org, "new-secret")
+
+    url = reverse(f"{basename}-detail", args=[instance.pk])
+    resp = auth_client.patch(url, {secret_field: new_secret.id}, format="json")
     assert resp.status_code == 200, resp.data
 
     instance.refresh_from_db()
-    assert getattr(instance, secret_field) == RAW_SECRET
+    assert getattr(instance, f"{fk_field}_id") == new_secret.id
+    assert (
+        secret_resolver.resolve(secret_id=new_secret.id, org_id=default_org.id)
+        == "new-secret"
+    )
 
 
 @pytest.mark.django_db
-def test_agent_list_nested_realtime_config_masks_secret_fields(
+def test_agent_list_nested_realtime_config_exposes_secret_id_only(
     auth_client, default_org
 ):
     """GET /api/agents/ nests RealtimeAgentReadSerializer.openai_config
     (AgentReadSerializer), which in turn nests OpenAIRealtimeConfigSerializer.
-    Confirm the mask applies through that nesting too, not just on the
-    dedicated openai-realtime-configs/ endpoint."""
+    Confirm only the Secret pk flows through that nesting too, not just on
+    the dedicated openai-realtime-configs/ endpoint."""
+    api_key_secret = _make_secret(default_org, "sk-supersecretvalue1234")
+    transcription_secret = _make_secret(default_org, "sk-transcriptsecret")
     config = OpenAIRealtimeConfig.objects.create(
         org=default_org,
         custom_name="agent-nested-cfg",
-        api_key=RAW_SECRET,
-        transcription_api_key=RAW_SECRET,
+        api_key_secret=api_key_secret,
+        transcription_api_key_secret=transcription_secret,
     )
     agent = Agent.objects.create(role="r", goal="g", backstory="b", org=default_org)
     RealtimeAgent.objects.create(agent=agent, openai_config=config)
@@ -264,10 +279,8 @@ def test_agent_list_nested_realtime_config_masks_secret_fields(
 
     row = next(r for r in resp.data["results"] if r["id"] == agent.id)
     nested_config = row["realtime_agent"]["openai_config"]
-    assert nested_config["api_key"] != RAW_SECRET
-    assert nested_config["transcription_api_key"] != RAW_SECRET
-    assert RAW_SECRET not in nested_config["api_key"]
-    assert RAW_SECRET not in nested_config["transcription_api_key"]
+    assert nested_config["api_key_secret_id"] == api_key_secret.id
+    assert nested_config["transcription_api_key_secret_id"] == transcription_secret.id
 
 
 # ---------------------------------------------------------------------------

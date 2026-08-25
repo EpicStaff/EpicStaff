@@ -547,36 +547,41 @@ class ConverterService(metaclass=SingletonMeta):
 
         # Resolve provider-specific fields from the active config FK snapshot
         rt_model_name = None
-        rt_api_key = None
+        rt_api_key_secret_id = None
         rt_provider = None
         transcript_model_name = None
-        transcript_api_key = None
+        transcript_api_key_secret_id = None
 
         if rt_agent_chat.openai_config_id is not None:
             cfg: OpenAIRealtimeConfig = rt_agent_chat.openai_config
             rt_provider = "openai"
             rt_model_name = cfg.model_name
-            rt_api_key = cfg.api_key
+            rt_api_key_secret_id = cfg.api_key_secret_id
             transcript_model_name = cfg.transcription_model_name
-            transcript_api_key = cfg.transcription_api_key
+            transcript_api_key_secret_id = cfg.transcription_api_key_secret_id
         elif rt_agent_chat.elevenlabs_config_id is not None:
             cfg: ElevenLabsRealtimeConfig = rt_agent_chat.elevenlabs_config
             rt_provider = "elevenlabs"
             rt_model_name = cfg.model_name
-            rt_api_key = cfg.api_key
+            rt_api_key_secret_id = cfg.api_key_secret_id
         elif rt_agent_chat.gemini_config_id is not None:
             cfg: GeminiRealtimeConfig = rt_agent_chat.gemini_config
             rt_provider = "gemini"
             rt_model_name = cfg.model_name
-            rt_api_key = cfg.api_key
+            rt_api_key_secret_id = cfg.api_key_secret_id
 
-        if rt_provider is None or rt_model_name is None or rt_api_key is None:
+        if (
+            rt_provider is None
+            or rt_model_name is None
+            or rt_api_key_secret_id is None
+        ):
             raise ValidationError(
                 f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
                 "provider config (openai_config, elevenlabs_config, and "
-                "gemini_config are all null on this session snapshot) — "
-                "cannot build realtime session data. The referenced provider "
-                "config was likely deleted after this chat was created."
+                "gemini_config are all null on this session snapshot, or the "
+                "active config has no api_key_secret assigned) — cannot build "
+                "realtime session data. The referenced provider config was "
+                "likely deleted after this chat was created."
             )
 
         rt_agent_chat_data = RealtimeAgentChatData(
@@ -593,9 +598,9 @@ class ConverterService(metaclass=SingletonMeta):
             memory=agent.memory,
             tools=self._get_agent_base_tools(agent=agent),
             rt_model_name=rt_model_name,
-            rt_api_key=rt_api_key,
+            rt_api_key_secret_id=rt_api_key_secret_id,
             transcript_model_name=transcript_model_name,
-            transcript_api_key=transcript_api_key,
+            transcript_api_key_secret_id=transcript_api_key_secret_id,
             temperature=agent.default_temperature,
             connection_key=rt_agent_chat.connection_key,
             wake_word=rt_agent_chat.wake_word,
@@ -619,36 +624,41 @@ class ConverterService(metaclass=SingletonMeta):
 
         # Resolve provider-specific fields from the active config FK snapshot
         rt_model_name = None
-        rt_api_key = None
+        rt_api_key_secret_id = None
         rt_provider = None
         transcript_model_name = None
-        transcript_api_key = None
+        transcript_api_key_secret_id = None
 
         if rt_agent_chat.openai_config_id is not None:
             cfg: OpenAIRealtimeConfig = rt_agent_chat.openai_config
             rt_provider = "openai"
             rt_model_name = cfg.model_name
-            rt_api_key = cfg.api_key
+            rt_api_key_secret_id = cfg.api_key_secret_id
             transcript_model_name = cfg.transcription_model_name
-            transcript_api_key = cfg.transcription_api_key
+            transcript_api_key_secret_id = cfg.transcription_api_key_secret_id
         elif rt_agent_chat.elevenlabs_config_id is not None:
             cfg: ElevenLabsRealtimeConfig = rt_agent_chat.elevenlabs_config
             rt_provider = "elevenlabs"
             rt_model_name = cfg.model_name
-            rt_api_key = cfg.api_key
+            rt_api_key_secret_id = cfg.api_key_secret_id
         elif rt_agent_chat.gemini_config_id is not None:
             cfg: GeminiRealtimeConfig = rt_agent_chat.gemini_config
             rt_provider = "gemini"
             rt_model_name = cfg.model_name
-            rt_api_key = cfg.api_key
+            rt_api_key_secret_id = cfg.api_key_secret_id
 
-        if rt_provider is None or rt_model_name is None or rt_api_key is None:
+        if (
+            rt_provider is None
+            or rt_model_name is None
+            or rt_api_key_secret_id is None
+        ):
             raise ValidationError(
                 f"RealtimeAgentChat ID {rt_agent_chat.pk} has no resolvable "
                 "provider config (openai_config, elevenlabs_config, and "
-                "gemini_config are all null on this session snapshot) — "
-                "cannot build realtime session data. The referenced provider "
-                "config was likely deleted after this chat was created."
+                "gemini_config are all null on this session snapshot, or the "
+                "active config has no api_key_secret assigned) — cannot build "
+                "realtime session data. The referenced provider config was "
+                "likely deleted after this chat was created."
             )
 
         rt_agent_chat_data = RealtimeAgentChatData(
@@ -665,9 +675,9 @@ class ConverterService(metaclass=SingletonMeta):
             memory=False,
             tools=surface_resolution.tools,
             rt_model_name=rt_model_name,
-            rt_api_key=rt_api_key,
+            rt_api_key_secret_id=rt_api_key_secret_id,
             transcript_model_name=transcript_model_name,
-            transcript_api_key=transcript_api_key,
+            transcript_api_key_secret_id=transcript_api_key_secret_id,
             temperature=ad.default_temperature,
             connection_key=rt_agent_chat.connection_key,
             wake_word=rt_agent_chat.wake_word,
