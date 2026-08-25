@@ -23,13 +23,17 @@ from crewai.utilities.exceptions.context_window_exceeding_exception import (
 )
 from crewai.utilities.logger import Logger
 from crewai.utilities.training_handler import CrewTrainingHandler
+from prompt_escape import escape_react_markers
+
 from loguru import logger
+
 
 
 @dataclass
 class ToolResult:
     result: Any
     result_as_answer: bool
+    tool_name: Optional[str] = None
 
 
 KNOWLEDGE_KEYWORD = "\n\nRELEVANT KNOWLEDGES:\n"
@@ -258,7 +262,12 @@ class CrewAgentExecutor(CrewAgentExecutorMixin):
         # if self.step_callback:
         #     self.step_callback(tool_result)
 
-        formatted_answer.text += f"\nObservation: {tool_result.result}"
+        escaped_result = escape_react_markers(tool_result.result)
+        if tool_result.tool_name:
+            observation_text = f"[Source: tool:{tool_result.tool_name}] {escaped_result}"
+        else:
+            observation_text = escaped_result
+        formatted_answer.text += f"\nObservation: {observation_text}"
         formatted_answer.result = tool_result.result
 
         if tool_result.result_as_answer:
@@ -387,7 +396,9 @@ class CrewAgentExecutor(CrewAgentExecutorMixin):
                 tool = self.tool_name_to_tool_map.get(tool_calling.tool_name)
                 if tool:
                     return ToolResult(
-                        result=tool_result, result_as_answer=tool.result_as_answer
+                        result=tool_result,
+                        result_as_answer=tool.result_as_answer,
+                        tool_name=tool.name,
                     )
             else:
                 tool_result = self._i18n.errors("wrong_tool_name").format(

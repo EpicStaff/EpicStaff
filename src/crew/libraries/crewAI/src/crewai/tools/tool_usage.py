@@ -296,26 +296,31 @@ class ToolUsage:
             )
 
     def _select_tool(self, tool_name: str) -> Any:
-        order_tools = sorted(
-            self.tools,
-            key=lambda tool: SequenceMatcher(
-                None, tool.name.lower().strip(), tool_name.lower().strip()
-            ).ratio(),
-            reverse=True,
-        )
-        for tool in order_tools:
-            if (
-                tool.name.lower().strip() == tool_name.lower().strip()
-                or SequenceMatcher(
-                    None, tool.name.lower().strip(), tool_name.lower().strip()
-                ).ratio()
-                > 0.85
-            ):
+        normalized_target = tool_name.lower().strip().replace("_", " ")
+        for tool in self.tools:
+            if tool.name.lower().strip().replace("_", " ") == normalized_target:
                 return tool
         self.task.increment_tools_errors()
         if tool_name and tool_name != "":
+            hint = ""
+            if self.tools:
+                closest_tool = max(
+                    self.tools,
+                    key=lambda tool: SequenceMatcher(
+                        None,
+                        tool.name.lower().strip().replace("_", " "),
+                        normalized_target,
+                    ).ratio(),
+                )
+                closest_ratio = SequenceMatcher(
+                    None,
+                    closest_tool.name.lower().strip().replace("_", " "),
+                    normalized_target,
+                ).ratio()
+                if 0.6 < closest_ratio < 1.0:
+                    hint = f" Did you mean '{closest_tool.name}'?"
             raise Exception(
-                f"Action '{tool_name}' don't exist, these are the only available Actions:\n{self.tools_description}"
+                f"Action '{tool_name}' don't exist, these are the only available Actions:\n{self.tools_description}{hint}"
             )
         else:
             raise Exception(

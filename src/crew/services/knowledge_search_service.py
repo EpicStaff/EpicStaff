@@ -184,7 +184,10 @@ class KnowledgeSearchService:
                         knowledge_results=knowledge_callback_receiver.results,
                         token_usage=knowledge_callback_receiver.token_usage,
                     )
-                return knowledge_callback_receiver.results.results
+                return [
+                    f"[Source: {chunk.chunk_source}] {chunk.chunk_text}"
+                    for chunk in knowledge_callback_receiver.results.chunks
+                ]
 
             if stop_event is not None:
                 stop_event.check_stop()

@@ -32,12 +32,14 @@ from crewai.utilities.training_handler import CrewTrainingHandler
 from crewai.prompts.knowledge_query_generation_prompt import (
     KNOWLEDGE_QUERY_GENERATION_PROMPT,
 )
+from prompt_escape import escape_react_markers
 from textwrap import dedent
 from contextlib import contextmanager
 
 agentops = None
 
 from loguru import logger
+
 
 try:
     import agentops  # type: ignore # Name "agentops" is already defined
@@ -194,7 +196,10 @@ class Agent(BaseAgent):
         self.set_cache_handler(self.cache_handler)
 
     def _extract_knowledges(self, knowledge_snippets: list) -> str:
-        snippet = "\n_______\n".join(knowledge_snippets)
+        escaped_snippets = [
+            escape_react_markers(snippet) for snippet in knowledge_snippets
+        ]
+        snippet = "\n_______\n".join(escaped_snippets)
         return snippet
 
     def execute_task(

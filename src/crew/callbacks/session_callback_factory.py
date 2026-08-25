@@ -22,13 +22,14 @@ from models.graph_models import (
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.redis_service import RedisService, SyncPubsubSubscriber
 from services.knowledge_search_service import KnowledgeSearchService
+from prompt_escape import escape_react_markers
 
 
 SESSION_STATUS_CHANNEL = os.environ.get(
     "SESSION_STATUS_CHANNEL", "sessions:session_status"
 )
 
-# Typed findings channel (EST-3285 5.3): src/shared/tools/report_findings_tool/main.py
+# src/shared/tools/report_findings_tool/main.py
 # returns a dict carrying this marker key when it successfully reports findings.
 # The tool's return value goes to CrewAI as a JSON string (result_data is always
 # json.dumps(...) of whatever the sandboxed main() returns), so we recognize it
@@ -342,7 +343,10 @@ class CrewCallbackFactory:
         )
 
     def _extract_knowledges(self, knowledge_snippets: list) -> str:
-        snippet = "\n\n".join(knowledge_snippets)
+        escaped_snippets = [
+            escape_react_markers(snippet) for snippet in knowledge_snippets
+        ]
+        snippet = "\n\n".join(escaped_snippets)
         return f'{KNOWLEDGE_KEYWORD} \n\n"{snippet}"' if knowledge_snippets else ""
 
     def get_wait_for_user_callback(
