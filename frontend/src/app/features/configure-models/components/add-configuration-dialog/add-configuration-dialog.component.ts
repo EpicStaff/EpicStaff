@@ -1,20 +1,24 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgIf } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     ButtonComponent,
     CustomInputComponent,
     HelpTooltipComponent,
+    HintMessageComponent,
     IconButtonComponent,
     InputNumberComponent,
     JsonEditorFormFieldComponent,
     KeyValueListComponent,
+    SelectComponent,
+    SelectItem,
     SliderWithStepperComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { LLMModel, LLMProvider, ModelTypes } from '@shared/models';
+import { SecretsStorageService } from '@shared/services';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -38,6 +42,8 @@ export type ConfigTab = 'llm' | 'realtime';
         HelpTooltipComponent,
         ButtonComponent,
         CustomInputComponent,
+        SelectComponent,
+        HintMessageComponent,
         ValidationErrorsComponent,
         KeyValueListComponent,
         SliderWithStepperComponent,
@@ -55,6 +61,7 @@ export class AddConfigurationDialogComponent implements OnInit {
     private readonly elevenLabsStorage = inject(ElevenLabsRealtimeConfigStorageService);
     private readonly geminiStorage = inject(GeminiRealtimeConfigStorageService);
     private readonly toast = inject(ToastService);
+    private readonly secretsStorageService = inject(SecretsStorageService);
     readonly dialogRef = inject(DialogRef);
     readonly data = inject<{ initialTab?: ConfigTab }>(DIALOG_DATA, { optional: true });
 
@@ -73,30 +80,43 @@ export class AddConfigurationDialogComponent implements OnInit {
 
     openaiForm = this.fb.nonNullable.group({
         custom_name: ['', Validators.required],
-        api_key: [''],
+        api_key_secret_id: [null as number | null],
         model_name: ['gpt-realtime-1.5', Validators.required],
         transcription_model_name: ['whisper-1'],
-        transcription_api_key: [''],
+        transcription_api_key_secret_id: [null as number | null],
         voice_recognition_prompt: [''],
     });
 
     elevenLabsForm = this.fb.nonNullable.group({
         custom_name: ['', Validators.required],
-        api_key: [''],
+        api_key_secret_id: [null as number | null],
         model_name: ['eleven_turbo_v2_5', Validators.required],
         language: [''],
     });
 
     geminiForm = this.fb.nonNullable.group({
         custom_name: ['', Validators.required],
-        api_key: [''],
+        api_key_secret_id: [null as number | null],
         model_name: ['gemini-3.1-flash-live-preview', Validators.required],
         voice_recognition_prompt: [''],
     });
 
     protected readonly ModelTypes = ModelTypes;
 
+    secretItems = computed<SelectItem[]>(() =>
+        this.secretsStorageService.secrets().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.secretsStorageService.maskTail(secret.tail),
+        }))
+    );
+
     ngOnInit(): void {
+        this.secretsStorageService
+            .getSecrets()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({ error: () => {} });
+
         this.llmForm = this.fb.group({
             custom_name: ['', [Validators.required]],
             api_key: [''],

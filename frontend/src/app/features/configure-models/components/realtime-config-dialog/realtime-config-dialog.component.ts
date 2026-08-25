@@ -1,14 +1,18 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgIf } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import {
     ButtonComponent,
     CustomInputComponent,
     HelpTooltipComponent,
+    HintMessageComponent,
+    SelectComponent,
+    SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { SecretsStorageService } from '@shared/services';
 import { catchError, EMPTY, Observable, tap } from 'rxjs';
 
 import { ElevenLabsRealtimeConfig } from '../../../../shared/models/realtime-voice/elevenlabs-realtime-config.model';
@@ -33,19 +37,22 @@ export interface RealtimeConfigDialogData {
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
+        SelectComponent,
         ButtonComponent,
         ValidationErrorsComponent,
         HelpTooltipComponent,
+        HintMessageComponent,
         NgIf,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RealtimeConfigDialogComponent {
+export class RealtimeConfigDialogComponent implements OnInit {
     private readonly fb = inject(FormBuilder);
     private readonly dialogRef = inject(DialogRef);
     private readonly openaiStorage = inject(OpenAIRealtimeConfigStorageService);
     private readonly elevenLabsStorage = inject(ElevenLabsRealtimeConfigStorageService);
     private readonly geminiStorage = inject(GeminiRealtimeConfigStorageService);
+    private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly destroyRef = inject(DestroyRef);
     readonly data = inject<RealtimeConfigDialogData>(DIALOG_DATA);
 
@@ -59,12 +66,23 @@ export class RealtimeConfigDialogComponent {
         { key: 'gemini', label: 'Gemini' },
     ];
 
+    secretItems = computed<SelectItem[]>(() =>
+        this.secretsStorageService.secrets().map((secret) => ({
+            name: secret.name,
+            value: secret.id,
+            tip: this.secretsStorageService.maskTail(secret.tail),
+        }))
+    );
+
     openaiForm = this.fb.nonNullable.group({
         custom_name: [
             (this.data.provider === 'openai' ? (this.data.config as OpenAIRealtimeConfig)?.custom_name : null) ?? '',
             Validators.required,
         ],
-        api_key: [(this.data.provider === 'openai' ? (this.data.config as OpenAIRealtimeConfig)?.api_key : null) ?? ''],
+        api_key_secret_id: [
+            (this.data.provider === 'openai' ? (this.data.config as OpenAIRealtimeConfig)?.api_key_secret_id : null) ??
+                null,
+        ],
         model_name: [
             (this.data.provider === 'openai' ? (this.data.config as OpenAIRealtimeConfig)?.model_name : null) ??
                 'gpt-realtime-1.5',
@@ -75,10 +93,10 @@ export class RealtimeConfigDialogComponent {
                 ? (this.data.config as OpenAIRealtimeConfig)?.transcription_model_name
                 : null) ?? 'whisper-1',
         ],
-        transcription_api_key: [
+        transcription_api_key_secret_id: [
             (this.data.provider === 'openai'
-                ? (this.data.config as OpenAIRealtimeConfig)?.transcription_api_key
-                : null) ?? '',
+                ? (this.data.config as OpenAIRealtimeConfig)?.transcription_api_key_secret_id
+                : null) ?? null,
         ],
         voice_recognition_prompt: [
             (this.data.provider === 'openai'
@@ -94,9 +112,10 @@ export class RealtimeConfigDialogComponent {
                 : null) ?? '',
             Validators.required,
         ],
-        api_key: [
-            (this.data.provider === 'elevenlabs' ? (this.data.config as ElevenLabsRealtimeConfig)?.api_key : null) ??
-                '',
+        api_key_secret_id: [
+            (this.data.provider === 'elevenlabs'
+                ? (this.data.config as ElevenLabsRealtimeConfig)?.api_key_secret_id
+                : null) ?? null,
         ],
         model_name: [
             (this.data.provider === 'elevenlabs' ? (this.data.config as ElevenLabsRealtimeConfig)?.model_name : null) ??
@@ -114,7 +133,10 @@ export class RealtimeConfigDialogComponent {
             (this.data.provider === 'gemini' ? (this.data.config as GeminiRealtimeConfig)?.custom_name : null) ?? '',
             Validators.required,
         ],
-        api_key: [(this.data.provider === 'gemini' ? (this.data.config as GeminiRealtimeConfig)?.api_key : null) ?? ''],
+        api_key_secret_id: [
+            (this.data.provider === 'gemini' ? (this.data.config as GeminiRealtimeConfig)?.api_key_secret_id : null) ??
+                null,
+        ],
         model_name: [
             (this.data.provider === 'gemini' ? (this.data.config as GeminiRealtimeConfig)?.model_name : null) ??
                 'gemini-3.1-flash-live-preview',
@@ -135,6 +157,13 @@ export class RealtimeConfigDialogComponent {
                 this.onSubmit();
             }
         });
+
+    ngOnInit(): void {
+        this.secretsStorageService
+            .getSecrets()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({ error: () => {} });
+    }
 
     selectProvider(provider: RealtimeProvider): void {
         if (this.data.action === 'update') return;

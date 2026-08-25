@@ -50,13 +50,21 @@
                 <app-validation-errors [control]="openaiForm.get('custom_name')!" />
             </div>
             <div>
-                <app-custom-input
-                    type="password"
+                <app-select
+                    formControlName="api_key_secret_id"
                     label="API Key"
-                    formControlName="api_key"
-                    placeholder="sk-..."
+                    variant="boxed"
                     tooltipText="OpenAI API key (leave blank to use default)"
+                    placeholder="Select a secret"
+                    [items]="secretItems()"
+                    [showSearch]="true"
+                    searchPlaceholder="Search a secret..."
                 />
+                @if (!openaiForm.get('api_key_secret_id')?.value) {
+                    <app-hint-message>
+                        Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                    </app-hint-message>
+                }
             </div>
             <div>
                 <app-custom-input
@@ -77,13 +85,21 @@
                 />
             </div>
             <div>
-                <app-custom-input
-                    type="password"
+                <app-select
+                    formControlName="transcription_api_key_secret_id"
                     label="Transcription API Key"
-                    formControlName="transcription_api_key"
-                    placeholder="sk-..."
+                    variant="boxed"
                     tooltipText="Separate API key for transcription (optional)"
+                    placeholder="Select a secret"
+                    [items]="secretItems()"
+                    [showSearch]="true"
+                    searchPlaceholder="Search a secret..."
                 />
+                @if (!openaiForm.get('transcription_api_key_secret_id')?.value) {
+                    <app-hint-message>
+                        Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                    </app-hint-message>
+                }
             </div>
             <div>
                 <app-custom-input
@@ -118,13 +134,21 @@
                 <app-validation-errors [control]="elevenLabsForm.get('custom_name')!" />
             </div>
             <div>
-                <app-custom-input
-                    type="password"
+                <app-select
+                    formControlName="api_key_secret_id"
                     label="API Key"
-                    formControlName="api_key"
-                    placeholder="e.g. your-elevenlabs-api-key"
+                    variant="boxed"
                     tooltipText="ElevenLabs API key"
+                    placeholder="Select a secret"
+                    [items]="secretItems()"
+                    [showSearch]="true"
+                    searchPlaceholder="Search a secret..."
                 />
+                @if (!elevenLabsForm.get('api_key_secret_id')?.value) {
+                    <app-hint-message>
+                        Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                    </app-hint-message>
+                }
             </div>
             <div>
                 <app-custom-input
@@ -169,13 +193,21 @@
                 <app-validation-errors [control]="geminiForm.get('custom_name')!" />
             </div>
             <div>
-                <app-custom-input
-                    type="password"
+                <app-select
+                    formControlName="api_key_secret_id"
                     label="API Key"
-                    formControlName="api_key"
-                    placeholder="e.g. your-gemini-api-key"
+                    variant="boxed"
                     tooltipText="Google Gemini API key"
+                    placeholder="Select a secret"
+                    [items]="secretItems()"
+                    [showSearch]="true"
+                    searchPlaceholder="Search a secret..."
                 />
+                @if (!geminiForm.get('api_key_secret_id')?.value) {
+                    <app-hint-message>
+                        Choose an existing secret. To add a new one, go to the <strong>Secrets tab</strong>.
+                    </app-hint-message>
+                }
             </div>
             <div>
                 <app-custom-input

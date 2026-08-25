@@ -1,19 +1,19 @@
 export interface OpenAIRealtimeConfig {
     id: number;
     custom_name: string;
-    api_key: string | null;
+    api_key_secret_id: number | null;
     model_name: string;
     transcription_model_name: string | null;
-    transcription_api_key: string | null;
+    transcription_api_key_secret_id: number | null;
     voice_recognition_prompt: string | null;
 }
 
 export interface CreateOpenAIRealtimeConfigRequest {
     custom_name: string;
-    api_key?: string | null;
+    api_key_secret_id?: number | null;
     model_name?: string;
     transcription_model_name?: string | null;
-    transcription_api_key?: string | null;
+    transcription_api_key_secret_id?: number | null;
     voice_recognition_prompt?: string | null;
 }
 
