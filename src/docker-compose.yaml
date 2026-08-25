@@ -275,6 +275,21 @@ services:
     tty: true
     stdin_open: true
     mem_limit: "2g"
+    # Security hardening: drop all Linux capabilities except those the root
+    # parent process needs. pip/venv run as root (they install internal local
+    # packages from root-owned /app/src/shared/* source dirs where egg-info is
+    # written in-place — sandboxuser cannot write there). Only the final
+    # code-execution subprocess is dropped to sandboxuser.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID  # setuid/setgid before spawning the user-code child.
+      - SETGID
+      - CHOWN  # chown per-exec output and home dirs to sandboxuser.
+      - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
+      - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
     depends_on:
       redis:
         condition: service_healthy
