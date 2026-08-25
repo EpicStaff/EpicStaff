@@ -2,6 +2,8 @@ import sys
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Dict, Any
 
+from src.shared.cors import resolve_cors_allowed_origins
+
 IS_DEBUG = "--debug" in sys.argv
 
 config_dict: Dict[str, Any] = {"env_file_encoding": "utf-8", "extra": "ignore"}
@@ -38,14 +40,15 @@ class Settings(BaseSettings):
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
-        # Same fallback as django_app/realtime: trust FRONTEND_BASE_URL (dev-server
-        # topology) and http(s)://DOMAIN_NAME (docker-compose/nginx topology) by
-        # default; CORS_ALLOWED_ORIGINS overrides both when explicitly set.
-        domain_name = self.DOMAIN_NAME.strip().strip('"')
-        raw = self.CORS_ALLOWED_ORIGINS or ",".join(
-            [self.FRONTEND_BASE_URL, f"http://{domain_name}", f"https://{domain_name}"]
+        # Same fallback as django_app/realtime, in src/shared/cors.py: trust
+        # FRONTEND_BASE_URL (dev-server topology) and http(s)://DOMAIN_NAME
+        # (docker-compose/nginx topology) by default; CORS_ALLOWED_ORIGINS
+        # overrides both when explicitly set.
+        return resolve_cors_allowed_origins(
+            frontend_base_url=self.FRONTEND_BASE_URL,
+            domain_name=self.DOMAIN_NAME,
+            explicit=self.CORS_ALLOWED_ORIGINS,
         )
-        return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
     model_config = SettingsConfigDict(**config_dict)
 

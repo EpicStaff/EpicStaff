@@ -3,6 +3,8 @@ import sys
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.shared.cors import resolve_cors_allowed_origins
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -55,14 +57,14 @@ class Settings(BaseSettings):
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
-        # The docker-compose stack fronts the frontend with nginx on DOMAIN_NAME
-        # (src/docker-compose.yaml's epicstaff-nginx service), a different origin
-        # than FRONTEND_BASE_URL's dev-server default — trust both by default.
-        domain_name = self.DOMAIN_NAME.strip().strip('"')
-        raw = self.CORS_ALLOWED_ORIGINS or ",".join(
-            [self.FRONTEND_BASE_URL, f"http://{domain_name}", f"https://{domain_name}"]
+        # See src/shared/cors.py for the fallback logic shared with
+        # django_app/webhook (trust FRONTEND_BASE_URL and http(s)://DOMAIN_NAME
+        # by default; CORS_ALLOWED_ORIGINS overrides both when set).
+        return resolve_cors_allowed_origins(
+            frontend_base_url=self.FRONTEND_BASE_URL,
+            domain_name=self.DOMAIN_NAME,
+            explicit=self.CORS_ALLOWED_ORIGINS,
         )
-        return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
     @property
     def INIT_API_URL(self) -> str:
