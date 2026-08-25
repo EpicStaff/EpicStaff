@@ -120,7 +120,7 @@ class PasswordResetRequestResponseSerializer(serializers.Serializer):
 class PasswordResetConfirmSerializer(serializers.Serializer):
     # Schema-only: real validation in
     # `AuthValidationService.validate_password_reset_confirm`.
-    token = serializers.UUIDField()
+    token = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True)
 
 

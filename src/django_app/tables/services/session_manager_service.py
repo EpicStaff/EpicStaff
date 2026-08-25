@@ -64,6 +64,11 @@ from utils.singleton_meta import SingletonMeta
 
 
 class SessionManagerService(metaclass=SingletonMeta):
+    LIVE_SESSION_STATUSES = (
+        Session.SessionStatus.PENDING,
+        Session.SessionStatus.RUN,
+    )
+
     def __init__(
         self,
         redis_service: RedisService,
@@ -79,6 +84,13 @@ class SessionManagerService(metaclass=SingletonMeta):
 
     def get_session(self, session_id: int) -> Session:
         return Session.objects.get(id=session_id)
+
+    def count_live_sessions(self, *, org_id: int) -> int:
+        """Count how many of an org's sessions are currently occupying execution capacity."""
+        return Session.objects.filter(
+            graph__org_id=org_id,
+            status__in=self.LIVE_SESSION_STATUSES,
+        ).count()
 
     def stop_session(self, session_id: int) -> int:
         return self.redis_service.publish_stop_session(session_id=session_id)
