@@ -221,6 +221,7 @@ class GraphRAGStrategy(BaseRAGStrategy):
         query: str,
         collection_id: int,
         rag_search_config: GraphRagSearchConfig,
+        credentials: RagCredentials | None = None,
     ) -> dict:
         """
         Search using GraphRAG. Dispatches to basic or local search
@@ -235,6 +236,12 @@ class GraphRAGStrategy(BaseRAGStrategy):
             query: Search query
             collection_id: Collection ID (for response)
             rag_search_config: Search configuration with search_method
+            credentials: Unused here -- the embedder/llm key is baked into the
+                persisted GraphRagConfig at indexing time (see
+                process_rag_indexing). Accepted only so this method matches
+                the BaseRAGStrategy.search(**kwargs) contract every caller
+                (e.g. CollectionProcessorService.search) invokes uniformly
+                across strategies.
 
         Returns:
             Dict with search results
