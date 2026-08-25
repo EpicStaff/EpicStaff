@@ -9,7 +9,10 @@ from graphrag.config.models.graph_rag_config import GraphRagConfig
 
 from rag.base_rag_strategy import BaseRAGStrategy
 from rag.graph_rag.graph_rag_file_manager import GraphRagFileManager
-from rag.graph_rag.graph_rag_config_builder import GraphRagConfigBuilder
+from rag.graph_rag.graph_rag_config_builder import (
+    GraphRagConfigBuilder,
+    DEFAULT_EMBEDDING_MODEL_ID,
+)
 from rag.graph_rag.exceptions import GraphRAGUnavailableError
 from services.credential_mapper import RagCredentials, apply_credential
 from src.shared.models import (
@@ -221,6 +224,7 @@ class GraphRAGStrategy(BaseRAGStrategy):
         query: str,
         collection_id: int,
         rag_search_config: GraphRagSearchConfig,
+        credentials: RagCredentials | None = None,
     ) -> dict:
         """
         Search using GraphRAG. Dispatches to basic or local search
@@ -260,6 +264,12 @@ class GraphRAGStrategy(BaseRAGStrategy):
             # Step 2: Load persisted config from file (no DB calls)
             root_folder = self.file_manager.get_root_folder_path(graph_rag_id)
             graphrag_config = self.file_manager.load_config(root_folder)
+
+            embedder_api_key = (credentials or RagCredentials()).embedder_api_key
+            if embedder_api_key:
+                graphrag_config.models[
+                    DEFAULT_EMBEDDING_MODEL_ID
+                ].api_key = embedder_api_key
 
             # Step 3: Apply search params from Redis message
             if search_method == "local":
