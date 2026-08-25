@@ -119,15 +119,29 @@ class WebhookNodeAuth(models.Model):
         null=True,
         help_text="Plaintext or symmetrically encrypted secret required to compute HMAC signatures.",
     )
-    registered_webhook_trigger_id = models.PositiveBigIntegerField(
+    registered_webhook_url = models.CharField(
+        max_length=500,
         null=True,
         blank=True,
         help_text=(
-            "The WebhookTrigger id this credential's outbound setWebhook call "
+            "The full callback URL this credential's outbound setWebhook call "
             "(Telegram only) last targeted. Lets a resync detect a genuine "
-            "path/tunnel change vs. an unrelated node resave, so ordinary "
-            "resaves don't re-hit Telegram's setWebhook endpoint and rotate "
-            "the secret needlessly."
+            "tunnel URL change -- even one where the underlying WebhookTrigger "
+            "row is unchanged (e.g. the tunnel's domain rotated) -- vs. an "
+            "unrelated node resave, so ordinary resaves don't re-hit "
+            "Telegram's setWebhook endpoint and rotate the secret needlessly."
+        ),
+    )
+    registered_bot_api_key_secret_id = models.PositiveBigIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "The Secret id of the `telegram_bot_api_key` this credential's "
+            "outbound setWebhook call (Telegram only) last targeted. Lets a "
+            "resync detect the node being repointed at a different Telegram "
+            "bot even when the URL/tunnel is unchanged, so the new bot still "
+            "gets a real setWebhook call instead of being skipped as "
+            "'already registered'."
         ),
     )
 

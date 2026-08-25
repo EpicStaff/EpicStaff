@@ -71,9 +71,14 @@ class TelegramTriggerService(metaclass=SingletonMeta):
     ) -> dict | None:
         """Register (or resync) this node's Telegram webhook.
 
-        `force=False` skips the outbound `setWebhook` call when
-        a valid registration already exists for the
-        SAME `webhook_trigger` (path/tunnel).
+        `force=False` skips the outbound `setWebhook` call when a valid
+        registration already exists for BOTH the SAME resolved callback URL
+        AND the SAME bot API key -- compared by their actual values, not by
+        `webhook_trigger` id, since the same `WebhookTrigger` row can
+        resolve to a different tunnel URL over time (e.g. its domain
+        changes), and the same node can be repointed at a different
+        Telegram bot while the trigger/tunnel stays put. Either change must
+        still trigger a real resync.
         """
         if telegram_trigger_instance.telegram_bot_api_key_secret_id is None:
             logger.warning(
@@ -126,7 +131,9 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             and node_auth is not None
             and node_auth.enabled
             and bool(node_auth.secret_hash)
-            and node_auth.registered_webhook_trigger_id == webhook_trigger.pk
+            and node_auth.registered_webhook_url == telegram_webhook_url
+            and node_auth.registered_bot_api_key_secret_id
+            == telegram_trigger_instance.telegram_bot_api_key_secret_id
         )
         if already_registered:
             logger.info(
@@ -174,8 +181,17 @@ class TelegramTriggerService(metaclass=SingletonMeta):
             )
 
         node_auth.secret_hash = make_password(raw_secret_token)
-        node_auth.registered_webhook_trigger_id = webhook_trigger.pk
-        node_auth.save(update_fields=["secret_hash", "registered_webhook_trigger_id"])
+        node_auth.registered_webhook_url = telegram_webhook_url
+        node_auth.registered_bot_api_key_secret_id = (
+            telegram_trigger_instance.telegram_bot_api_key_secret_id
+        )
+        node_auth.save(
+            update_fields=[
+                "secret_hash",
+                "registered_webhook_url",
+                "registered_bot_api_key_secret_id",
+            ]
+        )
 
         return result
 
