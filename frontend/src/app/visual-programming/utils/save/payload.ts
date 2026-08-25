@@ -195,8 +195,8 @@ function buildCdtNodePayload(
     const defaultRef = resolveNodeRef(defaultTargetUuid, allNodes, idMap);
     const errorRef = resolveNodeRef(errorTargetUuid, allNodes, idMap);
 
-    const preSecretIds = preComp.secret_ids || [];
-    const postSecretIds = postComp.secret_ids || [];
+    const preSecretIds = preComp?.secret_ids || [];
+    const postSecretIds = postComp?.secret_ids || [];
 
     return {
         graph: graphId,
