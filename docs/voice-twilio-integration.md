@@ -94,7 +94,7 @@ Django
 
 3. **Ensure an ngrok config exists** — with a `domain` (or a running tunnel that provides a `live_url`). Required for Twilio calls to reach the realtime service.
 
-4. **Add a channel** — in the Voice & Channel Settings section click Add Channel: set a name, `channel_type = twilio`, assign the `realtime_agent`, and enter Twilio credentials (`account_sid`, `auth_token`, `phone_number`, `ngrok_config`). The server generates the `token`.
+4. **Add a channel** — in the Voice & Channel Settings section click Add Channel: set a name, `channel_type = twilio`, assign the `realtime_agent`, and enter Twilio credentials (`account_sid`, `auth_token_secret_id` referencing a `Secret`, `phone_number`, `webhook_trigger`). The server generates the `token`.
 
 5. **Configure the webhook** — the dialog calls `POST /twilio/configure-webhook/` on save, which sets the Twilio number's `VoiceUrl` to `{tunnel}/voice/{token}`. Can also be set manually in the Twilio console.
 
@@ -126,18 +126,18 @@ Model files:
 |---|---|---|
 | `channel` | OneToOneField → `RealtimeChannel` | **Primary key** (`primary_key=True`). `CASCADE`, `related_name="twilio"` |
 | `account_sid` | CharField(255) | Twilio account SID |
-| `auth_token` | CharField(255) | Used for Twilio request signature validation |
+| `auth_token_secret` | FK → `Secret` | `SET_NULL` nullable. Twilio auth token is no longer stored as plaintext — it's resolved through `Secret` at the point of use (e.g. to validate `X-Twilio-Signature`) |
 | `phone_number` | CharField(50) | nullable, `unique=True`, E.164 format e.g. `+15551234567` |
-| `ngrok_config` | FK → `NgrokWebhookConfig` | `SET_NULL` nullable |
+| `webhook_trigger` | FK → `WebhookTrigger` | `SET_NULL` nullable. Replaces the old direct `ngrok_config` FK — the tunnel (ngrok or localhost) now hangs off the shared `WebhookTrigger`, the same model backing generic/Telegram webhook triggers |
 
-`voice_stream_url` is **not** a database field — the frontend computes it as `wss://{ngrok_domain}/voice/{channel.token}/stream` from the channel's ngrok live URL.
+`voice_stream_url` is **not** a database field — the frontend computes it as `wss://{ngrok_domain}/voice/{channel.token}/stream` from the ngrok config nested under `channel.twilio.webhook_trigger`.
 
 ### `NgrokWebhookConfig`
 
 | Field | Notes |
 |---|---|
 | `name` | unique |
-| `auth_token` | ngrok dashboard token, unique |
+| `auth_token_secret` | FK → `Secret`, `SET_NULL` nullable — the ngrok dashboard token is no longer a plaintext field |
 | `domain` | nullable; static public domain |
 | `region` | `us` / `eu` / `ap`, default `eu` |
 
@@ -216,7 +216,7 @@ Full `ModelViewSet`. Permission: `IsAuthenticatedOrApiKey`. Queryset: `RealtimeC
 
 Filterable: `realtime_agent`, `channel_type`, `is_active`, `token`. The `?token=` filter is how the FastAPI service resolves a channel.
 
-Read serializer expands `twilio` inline, which further expands `ngrok_config` to `{id, domain, live_url}`.
+Read serializer expands `twilio` inline, which further expands `webhook_trigger` to its nested `WebhookTrigger` representation — `{id, path, provider_type, ngrok_config, localhost_config, live_url}` (see `WebhookTriggerNestedSerializer`).
 
 Example response item:
 ```json
@@ -230,9 +230,16 @@ Example response item:
   "twilio": {
     "channel": 12,
     "account_sid": "AC...",
-    "auth_token": "...",
+    "auth_token_secret_id": 7,
     "phone_number": "+15551234567",
-    "ngrok_config": { "id": 3, "domain": "example.ngrok.app", "live_url": "https://example.ngrok.app" }
+    "webhook_trigger": {
+      "id": 5,
+      "path": "myvoicebot123",
+      "provider_type": "ngrok",
+      "ngrok_config": { "name": "prod", "auth_token_secret_id": 9, "domain": "example.ngrok.app", "region": "eu" },
+      "localhost_config": null,
+      "live_url": "https://example.ngrok.app/webhooks/myvoicebot123"
+    }
   }
 }
 ```
@@ -249,10 +256,19 @@ Full `ModelViewSet`. PK is `channel` (the `RealtimeChannel` id).
 
 Request body:
 ```json
-{ "channel": 12, "account_sid": "AC...", "auth_token": "...", "phone_number": "+15551234567", "ngrok_config": 3 }
+{ "channel": 12, "account_sid": "AC...", "auth_token_secret_id": 7, "phone_number": "+15551234567", "webhook_trigger": 5 }
 ```
 
-Note: the write serializer expects `ngrok_config` as an id; the expanded read variant on `RealtimeChannel` returns an object. Detail routes are keyed by `channel` id, e.g. `PATCH /twilio-channels/12/`.
+`auth_token_secret_id` (source `auth_token_secret`) points at a pre-existing
+`Secret` holding the plaintext Twilio auth token — the token itself is never
+accepted or returned as plaintext through this endpoint. Note: the write
+serializer (`TwilioChannelSerializer`) expects `webhook_trigger` as a plain
+id; the expanded read variant (`_TwilioChannelReadSerializer`, used on
+`RealtimeChannel`'s nested `twilio`) returns the full nested
+`WebhookTrigger` object shown above (including its `live_url` and nested
+`ngrok_config`/`localhost_config`, which still only expose the ngrok token
+as an `auth_token_secret_id`, never resolved). Detail routes are keyed by
+`channel` id, e.g. `PATCH /twilio-channels/12/`.
 
 ---
 
@@ -289,9 +305,9 @@ Sets the Twilio number's `VoiceUrl` to point to the channel's voice webhook.
 ```
 
 Flow:
-1. Look up `RealtimeChannel` by `token` (404 if not found).
-2. Read the channel's Twilio credentials (400 if `account_sid` / `auth_token` missing).
-3. Resolve ngrok tunnel URL via `WebhookTriggerService().get_tunnel_url(ngrok)`, fallback to `https://{ngrok.domain}` (400 if neither available).
+1. Look up `RealtimeChannel` by `token` (404 if not found, or if it doesn't belong to the active org).
+2. Read the channel's Twilio credentials — 400 if `account_sid` is missing or `auth_token_secret_id` is `None`; the plaintext auth token is resolved on demand via `secret_resolver.resolve(...)`.
+3. Resolve the tunnel URL via `WebhookTriggerService().get_tunnel_url_for_trigger(webhook_trigger)` (provider-agnostic: works for ngrok or localhost), falling back to `webhook_trigger.get_active_config().get_webhook_url()` (400 if neither is available). `webhook_trigger` here is `TwilioChannel.webhook_trigger`, the same `WebhookTrigger` model backing generic/Telegram triggers — not a direct ngrok FK.
 4. Compute `webhook_url = "{tunnel}/voice/{channel_token}"` and POST to Twilio `IncomingPhoneNumbers/{phone_sid}.json` with `VoiceUrl` + `VoiceMethod=POST`.
 
 **Response:** `{ "webhook_url": "..." }`.
@@ -330,23 +346,41 @@ On startup: starts `redis_listener()` and `voice_settings_invalidation_listener(
 
 Called by Twilio on an inbound call.
 
-**Security:** Requests are validated using Twilio's `X-Twilio-Signature` header and the stored `auth_token`. Invalid signature → `403`. No auth token stored → validation skipped with a warning. URL for validation is reconstructed from `x-forwarded-proto` and `x-forwarded-host` headers.
+**Security:** Requests are validated using Twilio's `X-Twilio-Signature` header and the auth token resolved from `TwilioChannel.auth_token_secret`. Invalid signature → `403`. No auth token configured → validation skipped with a warning. URL for validation is reconstructed from `x-forwarded-proto` and `x-forwarded-host` headers.
 
 Flow:
 1. `get_channel_config(token)` fetches `GET /realtime-channels/?token={token}` from Django (60s cache). No `realtime_agent` in the result → `404`.
 2. Computes the MediaStream WS URL from `ngrok.live_url` → `ngrok.domain` → `settings.VOICE_STREAM_URL` (in that order). Missing all → `503`.
-3. Returns TwiML:
+3. Mints a single-use `stream_token` (`StreamTokenRepository.mint(bound_key=channel_token)`) and returns TwiML embedding it in a nested `<Parameter>`:
    ```xml
    <?xml version="1.0" encoding="UTF-8"?>
-   <Response><Connect><Stream url="{voice_stream_url}" /></Connect></Response>
+   <Response>
+     <Connect>
+       <Stream url="{voice_stream_url}">
+         <Parameter name="stream_token" value="{stream_token}" />
+       </Stream>
+     </Connect>
+   </Response>
    ```
+   (The token is also appended as a `?stream_token=...` query param on the `<Stream url="...">` itself, but that is a harmless, best-effort fallback only — confirmed in production that Twilio does not forward `<Stream>` URL query parameters to the actual Media Stream WebSocket connection.)
+
+### Media Stream WS auth: `stream_token` (`StreamTokenRepository`)
+
+Twilio's Media Stream WebSocket leg carries none of Twilio's verifiable request headers (no `X-Twilio-Signature`), so — unlike the TwiML webhook above — the stream endpoint itself has no way to authenticate the caller from headers alone. This is closed with a short-lived, single-use token instead:
+
+- **Minted** by the paired, signature-validated TwiML webhook handler (`_twilio_voice_webhook`) right before it builds the TwiML response, bound to the channel token (`stream_bound_key`).
+- **TTL**: `STREAM_TOKEN_TTL_SECONDS` (`src/realtime/core/config.py`, default `120` seconds).
+- **Delivered** to the WS leg via the nested `<Parameter name="stream_token" value="...">` element — Twilio surfaces this inside the first `start` event's `customParameters`, which is why it can only be read *after* the WebSocket handshake, not used to gate `.accept()` itself. A `?stream_token=...` query string is honored only as a fallback (e.g. for direct test tooling), since Twilio does not reliably forward it.
+- **Validated** in `_voice_stream_handler` immediately after accepting the socket and reading the first `start` message — `StreamTokenRepository.consume(token, bound_key=channel_token)` atomically checks and invalidates it (single-use, whether or not it's valid) before any Django (`init-realtime`), provider, or audio work happens. Missing/invalid/expired/already-used token → the socket is closed without ever reaching a live media bridge.
+
+This closes what was previously an unauthenticated WebSocket route: before this token existed, any caller who guessed or observed a `channel_token` could open the Media Stream WS directly with no Twilio-side proof of origin.
 
 ### `WebSocket /voice/{channel_token}/stream` — Twilio MediaStream bridge
 
 Twilio opens this WebSocket immediately after the TwiML response.
 
 1. Resolve `(agent_id, channel)` from token; close if no agent.
-2. Accept the WebSocket, read the first Twilio frames (`connected` → `start`) to capture `streamSid` before main processing.
+2. Accept the WebSocket, read the first Twilio frames (`connected` → `start`) to capture `streamSid`, then validate `stream_token` as described above — closing the connection here if it's missing, invalid, expired, or already used.
 3. **POST `/init-realtime/`** with `{ "agent_id", "config": { "input_audio_format": "g711_ulaw", "output_audio_format": "g711_ulaw" } }` → receives `connection_key`.
 4. **Poll `ConnectionRepository`** up to 20× at 0.1s (≈2s) for the `RealtimeAgentChatData` delivered via Redis. Close WS if it never arrives.
 5. Instantiate `VoiceCallService` and call `execute()`.
@@ -485,9 +519,10 @@ Note: the current channel write path relies on the **60s TTL** expiry unless a t
 | Symptom | Likely cause |
 |---|---|
 | Call returns 404 at `/voice/{token}` | Channel has no `realtime_agent` assigned, or token is wrong. Check `GET /realtime-channels/?token=...` |
-| 403 Invalid Twilio signature | `auth_token` on `TwilioChannel` doesn't match the Twilio account; or the URL reconstructed from `x-forwarded-proto` / `x-forwarded-host` differs from what Twilio signed. Verify the proxy forwards those headers and the `VoiceUrl` in Twilio matches exactly |
+| 403 Invalid Twilio signature | The `Secret` referenced by `TwilioChannel.auth_token_secret` doesn't match the Twilio account's actual auth token; or the URL reconstructed from `x-forwarded-proto` / `x-forwarded-host` differs from what Twilio signed. Verify the proxy forwards those headers and the `VoiceUrl` in Twilio matches exactly |
 | 503 "No voice stream URL configured" | No ngrok `live_url` / `domain` and no `VOICE_STREAM_URL` fallback. Start the tunnel or set a domain on the ngrok config |
 | Stream connects then drops after ~2s | `VoiceCallService` polled `ConnectionRepository` and never found the snapshot. Check that `redis_listener` is running (`redis_listener: connected to Redis` on startup), and that `init-realtime` succeeded. The agent must have a provider config |
+| Stream WS closes immediately after `start` | `stream_token` missing/invalid/expired/already consumed. TTL is only `STREAM_TOKEN_TTL_SECONDS` (120s default) — a long delay between the TwiML response and Twilio opening the Media Stream WS, or a retried/duplicated call to the TwiML webhook, can exhaust it before the stream connects |
 | `init-realtime` returns 400 | `RealtimeAgent` has no `active_provider_config`, or `agent_id` is invalid |
 | Garbled phone audio | `input_audio_format` / `output_audio_format` not `g711_ulaw` on the Twilio path. The stream handler forces these via the `init-realtime` `config` override |
 | Stale channel after edit | Per-channel cache has 60s TTL. Restart the service, wait it out, or publish the channel token on `voice_settings:invalidate` to evict that single entry |
