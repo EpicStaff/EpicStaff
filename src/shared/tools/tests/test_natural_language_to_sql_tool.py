@@ -61,6 +61,7 @@ class TestNaturalLanguageToSQLToolReadOnlyPostgres:
             "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY"
         )
         fake_cursor.close.assert_called_once()
+        fake_connection.commit.assert_called_once()
 
 
 class TestNaturalLanguageToSQLToolReadOnlyMySQL:
@@ -100,6 +101,7 @@ class TestNaturalLanguageToSQLToolReadOnlyMySQL:
 
         fake_cursor.execute.assert_called_once_with("SET SESSION TRANSACTION READ ONLY")
         fake_cursor.close.assert_called_once()
+        fake_connection.commit.assert_called_once()
 
 
 class TestNaturalLanguageToSQLToolUnsupportedDialect:

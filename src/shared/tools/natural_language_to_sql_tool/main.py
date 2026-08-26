@@ -32,6 +32,7 @@ class NaturalLanguageToSQLTool:
                 cursor = dbapi_connection.cursor()
                 cursor.execute(statement)
                 cursor.close()
+                dbapi_connection.commit()
 
         return engine
 
