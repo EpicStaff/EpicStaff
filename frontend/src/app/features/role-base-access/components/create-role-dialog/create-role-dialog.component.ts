@@ -208,7 +208,7 @@ export class CreateRoleDialogComponent implements OnInit {
         });
     }
 
-    onPermissionToggle(event: { resourceType: string; action: string }): void {
+    onPermissionToggle(event: { resourceType: ResourceCode; action: ActionCode }): void {
         const key = `${event.resourceType}:${event.action}`;
         if (this.disabledPermissions().has(key)) return;
         this.selectedPermissions.update((set) => {
@@ -236,33 +236,65 @@ export class CreateRoleDialogComponent implements OnInit {
         this.selectedPermissions.set(new Set());
     }
 
-    onGroupSelectAll(groupKey: string): void {
+    onResourceToggle(event: { resourceCode: ResourceCode; select: boolean }): void {
+        const catalog = this.catalog();
+        if (!catalog) return;
+        const resource = catalog.resource_types.find((rt) => rt.code === event.resourceCode);
+        if (!resource) return;
+        const disabled = this.disabledPermissions();
+        this.selectedPermissions.update((set) => {
+            const next = new Set(set);
+            for (const action of resource.applicable_actions) {
+                const key = `${resource.code}:${action}`;
+                if (disabled.has(key)) continue;
+                event.select ? next.add(key) : next.delete(key);
+            }
+            return next;
+        });
+    }
+
+    onGroupToggle(event: { groupKey: string; select: boolean }): void {
         const catalog = this.catalog();
         if (!catalog) return;
         const disabled = this.disabledPermissions();
-        const resources = catalog.resource_types.filter((rt) => rt.group === groupKey);
+        const resources = catalog.resource_types.filter((rt) => rt.group === event.groupKey);
         this.selectedPermissions.update((set) => {
             const next = new Set(set);
             for (const rt of resources) {
                 for (const action of rt.applicable_actions) {
                     const key = `${rt.code}:${action}`;
-                    if (!disabled.has(key)) next.add(key);
+                    if (disabled.has(key)) continue;
+                    event.select ? next.add(key) : next.delete(key);
                 }
             }
             return next;
         });
     }
 
-    onGroupClear(groupKey: string): void {
+    onGroupActionToggle(event: { groupKey: string; actionCode: ActionCode; select: boolean }): void {
         const catalog = this.catalog();
         if (!catalog) return;
-        const resources = catalog.resource_types.filter((rt) => rt.group === groupKey);
+        const disabled = this.disabledPermissions();
+        const resources = catalog.resource_types.filter((rt) => rt.group === event.groupKey);
         this.selectedPermissions.update((set) => {
             const next = new Set(set);
             for (const rt of resources) {
-                for (const action of rt.applicable_actions) {
-                    next.delete(`${rt.code}:${action}`);
-                }
+                if (!rt.applicable_actions.includes(event.actionCode)) continue;
+                const key = `${rt.code}:${event.actionCode}`;
+                if (disabled.has(key)) continue;
+                event.select ? next.add(key) : next.delete(key);
+            }
+            return next;
+        });
+    }
+
+    onEnableRecommendedForResource(event: { resourceCode: ResourceCode; keys: string[] }): void {
+        const disabled = this.disabledPermissions();
+        this.selectedPermissions.update((set) => {
+            const next = new Set(set);
+            for (const key of event.keys) {
+                if (disabled.has(key)) continue;
+                next.add(key);
             }
             return next;
         });

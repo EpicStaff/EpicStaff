@@ -36,7 +36,7 @@ export interface CatalogAction {
 }
 
 export interface CatalogResourceType {
-    code: string;
+    code: ResourceCode;
     label: string;
     group: string;
     description: string;

@@ -70,10 +70,12 @@
                 [selectedPermissions]="selectedPermissions()"
                 [disabledPermissions]="disabledPermissions()"
                 (permissionToggle)="onPermissionToggle($event)"
+                (resourceToggle)="onResourceToggle($event)"
+                (groupToggle)="onGroupToggle($event)"
+                (groupActionToggle)="onGroupActionToggle($event)"
                 (selectAllClick)="onSelectAll()"
                 (clearAllClick)="onClearAll()"
-                (groupSelectAllClick)="onGroupSelectAll($event)"
-                (groupClearClick)="onGroupClear($event)"
+                (enableRecommendedForResource)="onEnableRecommendedForResource($event)"
             />
         }
     </div>

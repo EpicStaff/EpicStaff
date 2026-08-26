@@ -62,6 +62,10 @@
         gap: 10px;
         border-left: 1px solid var(--color-divider-subtle);
     }
+
+    .select-col {
+        height: 100%;
+    }
 }
 
 .group {
@@ -111,11 +115,11 @@
             border-radius: 4px;
         }
 
-        .group-actions {
+        .group-header__select {
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-left: auto;
+            justify-content: center;
+            flex-shrink: 0;
         }
     }
 }
@@ -149,6 +153,11 @@
         border-bottom: none;
     }
 
+    &.bulk {
+        height: 28px;
+        background: var(--color-ks-background);
+    }
+
     .resource-info {
         line-height: 100%;
         display: flex;
@@ -158,6 +167,12 @@
         .resource-name {
             font-size: 14px;
             color: var(--color-text-primary);
+
+            &.bulk {
+                font-size: 10px;
+                font-weight: 500;
+                color: var(--text-secondary-60);
+            }
         }
 
         .resource-desc {
@@ -173,6 +188,35 @@
     align-items: center;
     justify-content: center;
     border-left: 1px solid var(--color-divider-subtle);
+
+    .recommended ::ng-deep input[type='checkbox'] {
+        border: 1px solid var(--yellow);
+    }
+}
+
+.related-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--yellow);
+    background: var(--transparent-yellow-8);
+    border-left: 2px solid var(--yellow);
+
+    .icon {
+        flex-shrink: 0;
+    }
+
+    .text {
+        flex: 1;
+        min-width: 0;
+
+        .missing-permission {
+            color: var(--color-text-primary);
+            font-weight: 500;
+        }
+    }
 }
 
 .empty-cell {
