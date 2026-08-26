@@ -2,8 +2,6 @@ import sys
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, Dict, Any
 
-from src.shared.cors import resolve_cors_allowed_origins
-
 IS_DEBUG = "--debug" in sys.argv
 
 config_dict: Dict[str, Any] = {"env_file_encoding": "utf-8", "extra": "ignore"}
@@ -34,21 +32,11 @@ class Settings(BaseSettings):
     NGROK_TARGET_PORT: int = 80
 
     # --- CORS ---
-    FRONTEND_BASE_URL: str = "http://localhost:4200"
-    DOMAIN_NAME: str = "localhost"
     CORS_ALLOWED_ORIGINS: str = ""
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
-        # Same fallback as django_app/realtime, in src/shared/cors.py: trust
-        # FRONTEND_BASE_URL (dev-server topology) and http(s)://DOMAIN_NAME
-        # (docker-compose/nginx topology) by default; CORS_ALLOWED_ORIGINS
-        # overrides both when explicitly set.
-        return resolve_cors_allowed_origins(
-            frontend_base_url=self.FRONTEND_BASE_URL,
-            domain_name=self.DOMAIN_NAME,
-            explicit=self.CORS_ALLOWED_ORIGINS,
-        )
+        return [origin.strip() for origin in self.CORS_ALLOWED_ORIGINS.split(",") if origin.strip()]
 
     model_config = SettingsConfigDict(**config_dict)
 

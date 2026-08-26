@@ -20,7 +20,6 @@ from django.core.exceptions import ImproperlyConfigured
 from dotenv import find_dotenv, load_dotenv
 from loguru import logger
 
-from src.shared.cors import resolve_cors_allowed_origins
 from tables.services.rbac.first_setup_mode import FirstSetupMode
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -188,17 +187,18 @@ REST_FRAMEWORK = {
     },
 }
 
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:4200").rstrip("/")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL").rstrip("/")
 
-# The docker-compose stack fronts the frontend with nginx on DOMAIN_NAME
-# (src/docker-compose.yaml's epicstaff-nginx service), which is a different
-# origin than FRONTEND_BASE_URL's dev-server default — trust both by default.
-# See src/shared/cors.py for the fallback logic shared with realtime/webhook.
-CORS_ALLOWED_ORIGINS = resolve_cors_allowed_origins(
-    frontend_base_url=FRONTEND_BASE_URL,
-    domain_name=os.getenv("DOMAIN_NAME", "localhost"),
-    explicit=os.getenv("CORS_ALLOWED_ORIGINS", ""),
-)
+_cors_allowed_origins_raw = (os.getenv("CORS_ALLOWED_ORIGINS") or "").strip()
+if not _cors_allowed_origins_raw:
+    raise ImproperlyConfigured(
+        "CORS_ALLOWED_ORIGINS is not set. Set it to your trusted browser "
+        "origin(s), comma-separated (e.g. https://app.example.com), and pass "
+        "it to the django_app container — see docs/setup/cors.md."
+    )
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() for origin in _cors_allowed_origins_raw.split(",") if origin.strip()
+]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = (*default_headers, "x-organization-id")
 

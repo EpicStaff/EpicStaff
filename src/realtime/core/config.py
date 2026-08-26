@@ -3,8 +3,6 @@ import sys
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.shared.cors import resolve_cors_allowed_origins
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -51,20 +49,15 @@ class Settings(BaseSettings):
     DJANGO_PORT: int = 8000
 
     # --- CORS ---
-    FRONTEND_BASE_URL: str = "http://localhost:4200"
-    DOMAIN_NAME: str = "localhost"
     CORS_ALLOWED_ORIGINS: str = ""
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
-        # See src/shared/cors.py for the fallback logic shared with
-        # django_app/webhook (trust FRONTEND_BASE_URL and http(s)://DOMAIN_NAME
-        # by default; CORS_ALLOWED_ORIGINS overrides both when set).
-        return resolve_cors_allowed_origins(
-            frontend_base_url=self.FRONTEND_BASE_URL,
-            domain_name=self.DOMAIN_NAME,
-            explicit=self.CORS_ALLOWED_ORIGINS,
-        )
+        return [
+            origin.strip()
+            for origin in self.CORS_ALLOWED_ORIGINS.split(",")
+            if origin.strip()
+        ]
 
     @property
     def INIT_API_URL(self) -> str:
