@@ -13,6 +13,7 @@
             <div class="header-actions">
                 @if (activeTabBtn(); as btn) {
                     <app-button
+                        *appHasPermission="[ResourceCode.Files, ActionCode.Create]"
                         type="primary"
                         class="btn-primary create-btn"
                         [leftIcon]="'plus'"

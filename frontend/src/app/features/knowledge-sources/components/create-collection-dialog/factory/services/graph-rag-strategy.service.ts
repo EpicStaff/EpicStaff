@@ -35,7 +35,7 @@ export class GraphRagStrategy implements RagCreationStrategy {
         const processing = this.collectionsStorage.processingConfigIds();
         return this.documentsStorage
             .documents()
-            .some((d) => processing.has(d.graph_rag_document_id) && d.status !== 'indexed' && d.status !== 'failed');
+            .some((d) => processing.has(d.graph_rag_document_id) && d.status !== 'completed' && d.status !== 'failed');
     });
 
     constructor(
@@ -108,7 +108,6 @@ export class GraphRagStrategy implements RagCreationStrategy {
             .stopIndexing({
                 rag_id: ragId,
                 rag_type: 'graph',
-                document_config_ids: this.indexingConfigIds,
             })
             .pipe(
                 tap(() => {

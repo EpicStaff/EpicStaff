@@ -141,6 +141,9 @@
             <app-blob-preview
                 [blob]="previewBlob()"
                 [fileName]="item()!.name"
+                [size]="item()!.size"
+                [showDownload]="canDownload"
+                (downloadClick)="onDownload()"
             />
         }
     </div>

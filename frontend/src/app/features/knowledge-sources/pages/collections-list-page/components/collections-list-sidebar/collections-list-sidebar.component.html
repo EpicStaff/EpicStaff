@@ -21,6 +21,7 @@
         <p class="collections-sidebar__empty">No collections yet</p>
     } @else {
         <app-select
+            class="rag-select"
             [placeholder]="'Rag type'"
             [items]="ragTypeItems"
             [(selectedValue)]="selectedRagType"
@@ -31,7 +32,7 @@
                     class="collections-sidebar__item"
                     [collection]="collection"
                     [selected]="selectedCollectionId() === collection.collection_id"
-                    (click)="selectedCollectionId.set(collection.collection_id)"
+                    (click)="selectCollection(collection.collection_id)"
                 />
             }
         </div>

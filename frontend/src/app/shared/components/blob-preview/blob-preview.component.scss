@@ -300,4 +300,9 @@
         font-weight: 500;
         color: var(--color-text-primary);
     }
+
+    &__unsupported-size {
+        margin: 0;
+        font-size: 0.85rem;
+    }
 }

@@ -183,17 +183,14 @@ export class MultiSelectComponent implements OnInit {
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
             .withPositions([
-                // Preferred: below, left-aligned with trigger
+                // Below, left-aligned with trigger
                 { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
-                // Below, right-aligned with trigger (when right edge would clip)
+                // Below, right-aligned with trigger (when right edge would clip) — always below,
+                // never flips above, so the panel doesn't jump on top of the trigger/other controls.
                 { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
-                // Above, left-aligned (when bottom would clip)
-                { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
-                // Above, right-aligned (corner)
-                { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
             ])
             .withPush(false)
-            .withFlexibleDimensions(false)
+            .withFlexibleDimensions(true)
             .withViewportMargin(8);
 
         if (this.overlayRef) {

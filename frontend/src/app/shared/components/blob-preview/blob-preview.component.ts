@@ -1,10 +1,23 @@
-import { JsonPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
-import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser';
-import * as mammoth from 'mammoth';
-import * as XLSX from 'xlsx';
+import { DecimalPipe, JsonPipe } from '@angular/common';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    effect,
+    ElementRef,
+    inject,
+    input,
+    output,
+    signal,
+    viewChild,
+} from '@angular/core';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { renderAsync } from 'docx-preview';
+import * as Papa from 'papaparse';
+import type { Sheet as ExcelSheet } from 'read-excel-file/browser';
+import readXlsxFile from 'read-excel-file/browser';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
+import { ButtonComponent } from '../buttons/button/button.component';
 
 type PreviewType = 'text' | 'json' | 'pdf' | 'image' | 'sheet' | 'docx' | 'unsupported';
 
@@ -19,12 +32,15 @@ interface SheetData {
     selector: 'app-blob-preview',
     templateUrl: './blob-preview.component.html',
     styleUrls: ['./blob-preview.component.scss'],
-    imports: [JsonPipe, AppSvgIconComponent],
+    imports: [DecimalPipe, JsonPipe, AppSvgIconComponent, ButtonComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BlobPreviewComponent {
     blob = input<Blob | null>(null);
     fileName = input<string>('');
+    size = input<number | null | undefined>(null);
+    showDownload = input<boolean>(false);
+    downloadClick = output<void>();
 
     private sanitizer = inject(DomSanitizer);
 
@@ -34,7 +50,8 @@ export class BlobPreviewComponent {
     pdfUrl = signal<SafeResourceUrl | null>(null);
     imageUrl = signal<string | null>(null);
     sheetData = signal<SheetData | null>(null);
-    docxHtml = signal<SafeHtml | null>(null);
+    docxBlob = signal<Blob | null>(null);
+    docxContainer = viewChild<ElementRef<HTMLDivElement>>('docxContainer');
     isLoading = signal<boolean>(false);
     previewError = signal<string | null>(null);
     csvDelimiter = signal<string>('auto');
@@ -49,12 +66,19 @@ export class BlobPreviewComponent {
 
     private currentBlobUrl: string | null = null;
     private currentCsvText: string | null = null;
-    private currentWorkbook: XLSX.WorkBook | null = null;
+    private currentSheets: ExcelSheet[] | null = null;
     private processVersion = 0;
 
     constructor() {
         effect(() => {
             this.processBlob(this.blob(), this.fileName());
+        });
+        effect(() => {
+            const blob = this.docxBlob();
+            const container = this.docxContainer();
+            if (blob && container) {
+                this.renderDocx(blob, container.nativeElement);
+            }
         });
     }
 
@@ -74,8 +98,11 @@ export class BlobPreviewComponent {
     }
 
     onSheetChange(sheetName: string): void {
-        if (!this.currentWorkbook) return;
-        this.sheetData.set(this.parseSheet(this.currentWorkbook, sheetName));
+        if (!this.currentSheets) return;
+        const sheet = this.currentSheets.find((s) => s.sheet === sheetName);
+        if (!sheet) return;
+        const sheetNames = this.currentSheets.map((s) => s.sheet);
+        this.sheetData.set(this.rowsToSheetData(sheetNames, sheetName, sheet.data));
     }
 
     onDelimiterChange(delimiter: string): void {
@@ -93,8 +120,8 @@ export class BlobPreviewComponent {
         this.pdfUrl.set(null);
         this.imageUrl.set(null);
         this.sheetData.set(null);
-        this.docxHtml.set(null);
-        this.currentWorkbook = null;
+        this.docxBlob.set(null);
+        this.currentSheets = null;
         this.currentCsvText = null;
         this.csvDelimiter.set('auto');
         this.previewError.set(null);
@@ -153,43 +180,29 @@ export class BlobPreviewComponent {
                 break;
             }
             case 'docx':
-                blob.arrayBuffer()
-                    .then((buf) => {
-                        if (!guard()) return null;
-                        return mammoth.convertToHtml({ arrayBuffer: buf });
-                    })
-                    .then((result) => {
-                        if (!result || !guard()) return;
-                        this.docxHtml.set(this.sanitizer.bypassSecurityTrustHtml(result.value));
-                        this.isLoading.set(false);
-                    })
-                    .catch(() => {
-                        if (!guard()) return;
-                        this.previewError.set('Failed to render DOCX file');
-                        this.isLoading.set(false);
-                    });
+                this.docxBlob.set(blob);
+                this.isLoading.set(false);
                 break;
             case 'sheet':
                 if (this.isCsv) {
                     blob.text().then((text) => {
                         if (!guard()) return;
-                        try {
-                            this.currentCsvText = text;
-                            this.sheetData.set(this.parseCsv(text, this.csvDelimiter()));
-                        } catch {
-                            this.previewError.set('Failed to parse CSV file');
-                        }
+                        this.currentCsvText = text;
+                        this.sheetData.set(this.parseCsv(text, this.csvDelimiter()));
                         this.isLoading.set(false);
                     });
                 } else {
-                    blob.arrayBuffer().then((buf) => {
+                    blob.arrayBuffer().then(async (buf) => {
                         if (!guard()) return;
                         try {
-                            const wb = XLSX.read(buf, { type: 'array' });
-                            this.currentWorkbook = wb;
-                            this.sheetData.set(this.parseSheet(wb, wb.SheetNames[0]));
+                            const sheets = await readXlsxFile(buf);
+                            if (!guard()) return;
+                            this.currentSheets = sheets;
+                            const sheetNames = sheets.map((s) => s.sheet);
+                            const firstSheet = sheets[0];
+                            this.sheetData.set(this.rowsToSheetData(sheetNames, firstSheet.sheet, firstSheet.data));
                         } catch {
-                            this.previewError.set('Failed to parse spreadsheet file');
+                            this.previewError.set('Failed to parse spreadsheet');
                         }
                         this.isLoading.set(false);
                     });
@@ -199,17 +212,48 @@ export class BlobPreviewComponent {
     }
 
     private parseCsv(text: string, delimiter: string): SheetData {
-        const opts: XLSX.ParsingOptions = delimiter === 'auto' ? {} : { FS: delimiter };
-        const wb = XLSX.read(text, { type: 'string', ...opts });
-        return this.parseSheet(wb, wb.SheetNames[0]);
-    }
-
-    private parseSheet(wb: XLSX.WorkBook, sheetName: string): SheetData {
-        const ws = wb.Sheets[sheetName];
-        const rows: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as string[][];
+        const config: Papa.ParseConfig = {
+            header: false,
+            skipEmptyLines: true,
+        };
+        if (delimiter !== 'auto') {
+            config.delimiter = delimiter;
+        }
+        const result = Papa.parse<string[]>(text, config);
+        const rows = result.data as string[][];
         const headers = rows.length > 0 ? rows[0].map(String) : [];
         const dataRows = rows.slice(1).map((r) => headers.map((_, i) => String(r[i] ?? '')));
-        return { sheetNames: wb.SheetNames, activeSheet: sheetName, headers, rows: dataRows };
+        return { sheetNames: ['Sheet1'], activeSheet: 'Sheet1', headers, rows: dataRows };
+    }
+
+    private rowsToSheetData(
+        sheetNames: string[],
+        activeSheet: string,
+        data: (string | number | boolean | typeof Date | null)[][]
+    ): SheetData {
+        const rows = data.map((row) => row.map((cell) => String(cell ?? '')));
+        const headers = rows.length > 0 ? rows[0] : [];
+        const dataRows = rows.slice(1).map((r) => headers.map((_, i) => r[i] ?? ''));
+        return { sheetNames, activeSheet, headers, rows: dataRows };
+    }
+
+    private async renderDocx(blob: Blob, container: HTMLElement): Promise<void> {
+        container.innerHTML = '';
+        // .docx is a ZIP archive — verify the "PK\x03\x04" magic before rendering
+        // so we can surface a clean error for misnamed/corrupt files.
+        const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+        const isZip = head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04;
+        if (!isZip) {
+            this.previewError.set('File is not a valid .docx document');
+            return;
+        }
+        try {
+            // renderAltChunks=false: altChunk embeds raw HTML from the .docx
+            // into an iframe srcdoc in the same origin — a known XSS vector.
+            await renderAsync(blob, container, undefined, { renderAltChunks: false });
+        } catch {
+            this.previewError.set('Failed to render document preview');
+        }
     }
 
     private resolvePreviewType(ext: string): PreviewType {
@@ -218,7 +262,7 @@ export class BlobPreviewComponent {
         if (ext === 'json') return 'json';
         if (ext === 'pdf') return 'pdf';
         if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'image';
-        if (['xlsx', 'xls', 'xlsm', 'ods', 'csv'].includes(ext)) return 'sheet';
+        if (['xlsx', 'xlsm', 'csv'].includes(ext)) return 'sheet';
         if (ext === 'docx') return 'docx';
         return 'unsupported';
     }

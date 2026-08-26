@@ -34,6 +34,7 @@ import { AppTableCellDirective } from './table-cell.directive';
         SelectTriggerDirective,
         AppSvgIconComponent,
         MatTooltip,
+        MultiSelectTriggerDirective,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

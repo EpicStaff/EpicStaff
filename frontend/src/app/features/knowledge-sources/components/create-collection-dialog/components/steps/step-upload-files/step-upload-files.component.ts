@@ -20,7 +20,7 @@ import {
     BlobPreviewComponent,
     FileUploaderComponent,
     HelpTooltipComponent,
-    ValidationErrorsComponent,
+    ValidationErrorsComponent
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
@@ -80,7 +80,7 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
     collectionName: FormControl = new FormControl('', [
         Validators.required,
         notWhitespaceValidator(),
-        Validators.maxLength(255),
+        Validators.maxLength(255)
     ]);
     description: FormControl = new FormControl('', [Validators.maxLength(250)]);
     private readonly descriptionTa = viewChild<ElementRef<HTMLTextAreaElement>>('descriptionTa');
@@ -171,7 +171,7 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
         this.collectionName?.valueChanges
             .pipe(
                 takeUntilDestroyed(this.destroyRef),
-                debounceTime(400),
+                debounceTime(600),
                 distinctUntilChanged(),
                 filter(() => this.collectionName.valid),
                 switchMap((collection_name: string) => {

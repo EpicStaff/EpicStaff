@@ -40,13 +40,12 @@ export abstract class RagConfigurationDialogComponent {
                     this.ragIndexingService.stopIndexing({
                         rag_id: this.data.ragId,
                         rag_type: this.data.ragType,
-                        document_config_ids: documentConfigIds,
                     })
                 )
             )
             .subscribe({
                 next: () => {
-                    this.toast.success('Indexing stop triggered');
+                    this.toast.success('Indexing stop requested');
                     this.pollingService.discardTrackedProcessingIds(documentConfigIds ?? []);
                 },
                 error: () => this.toast.error('Indexing stop failed'),

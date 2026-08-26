@@ -2,7 +2,6 @@ import { Dialog } from '@angular/cdk/dialog';
 import { ComponentType } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/components';
 import { filter, switchMap } from 'rxjs/operators';
 
@@ -22,7 +21,7 @@ import { RagDeleteRegistryService } from '../../../../../services/rag-delete-reg
     selector: 'app-collection-details-rags',
     templateUrl: 'collection-rags.component.html',
     styleUrls: ['./collection-rags.component.scss'],
-    imports: [AppSvgIconComponent, MatTooltipModule],
+    imports: [AppSvgIconComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CollectionRagsComponent {

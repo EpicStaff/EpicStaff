@@ -257,7 +257,7 @@
                     }
                     @for (error of d.errors | keyvalue; track error.key) {
                         <label class="table__row-message table__row-message--danger">
-                            Update failed: {{ error.value?.reason }}
+                            Action failed: {{ error.value?.reason }}
                         </label>
                     }
                     @if (hasPending(d.naive_rag_document_id)) {

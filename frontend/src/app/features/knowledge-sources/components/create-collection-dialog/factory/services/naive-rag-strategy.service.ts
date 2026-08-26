@@ -16,14 +16,7 @@ import { RagCreationStrategy } from '../interfaces/rag-creation-strategy.interfa
     providedIn: 'root',
 })
 export class NaiveRagStrategy implements RagCreationStrategy {
-    // A signal (not a plain field) so that computed()s reading it — directly, or
-    // indirectly via `naiveRag` below — correctly become dirty when a rag is replaced,
-    // even on a run where they short-circuited on a different signal and never read
-    // this one. Mirrors GraphRagStrategy's already-correct `graphRagSignal`.
     private naiveRagSignal = signal<CreateNaiveRag | null>(null);
-    private get naiveRag(): CreateNaiveRag {
-        return this.naiveRagSignal()!;
-    }
     private _canIndex: WritableSignal<boolean> = signal(false);
     readonly canIndex: Signal<boolean> = this._canIndex.asReadonly();
 
@@ -63,7 +56,8 @@ export class NaiveRagStrategy implements RagCreationStrategy {
     }
 
     startIndexing(data?: { configIds: number[]; pendingDeleteIds?: number[] }): Observable<boolean> {
-        const naiveRagId = this.naiveRag.naive_rag_id;
+        const naiveRagId = this.naiveRagSignal()?.naive_rag_id;
+        if (!naiveRagId) return of(false);
         const configIds =
             data?.configIds ?? this.documentsStorageService.documents().map((d) => d.naive_rag_document_id);
 
@@ -91,7 +85,8 @@ export class NaiveRagStrategy implements RagCreationStrategy {
     }
 
     stopIndexing() {
-        const naiveRagId = this.naiveRag.naive_rag_id;
+        const naiveRagId = this.naiveRagSignal()?.naive_rag_id;
+        if (!naiveRagId) return of(false);
         const processing = this.collectionsStorage.processingConfigIds();
         const configIds = this.documentsStorageService
             .documents()
@@ -102,11 +97,10 @@ export class NaiveRagStrategy implements RagCreationStrategy {
             .stopIndexing({
                 rag_id: naiveRagId,
                 rag_type: 'naive',
-                document_config_ids: configIds,
             })
             .pipe(
                 tap(() => {
-                    this.toastService.success('Indexing stop triggered');
+                    this.toastService.success('Indexing stop requested');
                     this.pollingService.discardTrackedProcessingIds(configIds);
                 }),
                 map(() => true)
@@ -122,8 +116,8 @@ export class NaiveRagStrategy implements RagCreationStrategy {
     }
 
     getConfigurationInputs(): Record<string, unknown> {
-        const { naive_rag_id, collection_id } = this.naiveRag;
-
-        return { naiveRagId: naive_rag_id, collectionId: collection_id, canIndexChange: this._canIndex };
+        const rag = this.naiveRagSignal();
+        if (!rag) return {};
+        return { naiveRagId: rag.naive_rag_id, collectionId: rag.collection_id, canIndexChange: this._canIndex };
     }
 }

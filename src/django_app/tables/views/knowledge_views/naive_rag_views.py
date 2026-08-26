@@ -696,6 +696,24 @@ class NaiveRagChunkPreviewView(OrgScopedServiceViewSetMixin, APIView):
             ResourceType.KNOWLEDGE_SOURCES,
             Permission.READ,
         )
+        # Validate document config exists and belongs to naive_rag
+        try:
+            config = (
+                NaiveRagDocumentConfig.objects
+                .annotate(total_preview_chunks=Count("preview_chunks"))
+                .get(
+                    naive_rag_document_id=document_config_id,
+                    naive_rag_id=naive_rag_id,
+                )
+            )  # fmt: off
+        except NaiveRagDocumentConfig.DoesNotExist:
+            return Response(
+                {
+                    "error": f"DocumentConfig {document_config_id} not found "
+                    f"for NaiveRag {naive_rag_id}"
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         try:
             limit = min(

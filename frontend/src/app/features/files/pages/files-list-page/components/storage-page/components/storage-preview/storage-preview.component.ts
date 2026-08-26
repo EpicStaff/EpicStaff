@@ -4,6 +4,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
+import { PermissionsService } from '../../../../../../../../services/auth/permissions.service';
 import { AppSvgIconComponent } from '../../../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { BlobPreviewComponent } from '../../../../../../../../shared/components/blob-preview/blob-preview.component';
 import { ButtonComponent } from '../../../../../../../../shared/components/buttons/button/button.component';
@@ -29,6 +30,7 @@ export class StoragePreviewComponent {
 
     private destroyRef = inject(DestroyRef);
     private storageApiService = inject(StorageApiService);
+    private permissionsService = inject(PermissionsService);
 
     previewBlob = signal<Blob | null>(null);
     isLoadingPreview = signal<boolean>(false);
@@ -53,10 +55,14 @@ export class StoragePreviewComponent {
         return !!item && item.type === 'file';
     }
 
+    get canDownload(): boolean {
+        return this.permissionsService.can(ResourceCode.Files, ActionCode.Download);
+    }
+
     onDownload(): void {
         const item = this.item();
         if (item) {
-            this.contextAction.emit({ action: 'download', item });
+            this.storageApiService.download(item.path);
         }
     }
 

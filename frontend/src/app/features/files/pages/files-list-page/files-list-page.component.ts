@@ -3,6 +3,8 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject } from
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map, startWith } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 
@@ -31,6 +33,7 @@ import { StorageApiService } from '../../services/storage-api.service';
         FormsModule,
         AppSvgIconComponent,
         HideInlineSubtitleOnOverflowDirective,
+        HasPermissionDirective,
     ],
     templateUrl: './files-list-page.component.html',
     styleUrls: ['./files-list-page.component.scss'],
@@ -98,6 +101,7 @@ export class FilesListPageComponent {
             .subscribe({
                 next: ({ collection_id }) => {
                     if (!collection_id) return;
+                    this.collectionsStorageService.setSelectedCollectionId(collection_id);
                     this.openCreateCollectionModal(collection_id);
                 },
                 error: () => this.toastService.error('Failed to create collection'),
@@ -121,4 +125,7 @@ export class FilesListPageComponent {
                 error: () => this.toastService.error('Failed to get collection data'),
             });
     }
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 }

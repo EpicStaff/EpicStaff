@@ -114,7 +114,7 @@ export class DocumentChunksSectionComponent implements OnDestroy {
             .stopChunking(this.naiveRagId(), documentId)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: () => this.toast.success('Chunking stopped'),
+                next: () => this.toast.success('Chunking cancellation requested'),
                 error: () => this.toast.error('Chunking stop failed'),
             });
     }

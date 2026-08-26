@@ -44,7 +44,6 @@ export interface StartIndexingDtoRequest {
 export interface StopIndexingDtoRequest {
     rag_id: number;
     rag_type: RagType;
-    document_config_ids?: number[];
 }
 
 export interface StartIndexingDtoResponse {
