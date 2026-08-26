@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -2136,6 +2137,11 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if not _TWILIO_ACCOUNT_SID_RE.fullmatch(sid):
+            return Response(
+                {"error": "Invalid account_sid"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
         # 3. Resolve the token and fetch numbers
         auth_token = secret_resolver.resolve(
             secret_id=auth_token_secret_id,
@@ -2936,6 +2942,10 @@ def _twilio_request(
         return json.loads(resp.read().decode())
 
 
+_TWILIO_PHONE_SID_RE = re.compile(r"^PN[0-9a-fA-F]{32}$")
+_TWILIO_ACCOUNT_SID_RE = re.compile(r"^AC[0-9a-fA-F]{32}$")
+
+
 def _twilio_phone_numbers_response(account_sid: str, auth_token: str) -> Response:
     """Call Twilio's IncomingPhoneNumbers API and shape the response.
 
@@ -2958,7 +2968,11 @@ def _twilio_phone_numbers_response(account_sid: str, auth_token: str) -> Respons
         ]
         return Response({"results": numbers})
     except urllib.error.HTTPError as e:
-        return Response({"error": e.read().decode(), "status": e.code}, status=400)
+        body = e.read().decode()
+        logger.error(f"twilio phone-numbers: Twilio HTTP error {e.code}: {body}")
+        return Response(
+            {"error": "Failed to retrieve phone numbers from Twilio"}, status=400
+        )
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
@@ -2979,6 +2993,10 @@ class TwilioPhoneNumbersView(generics.GenericAPIView):
                     "error": "X-Twilio-Account-Sid and X-Twilio-Auth-Token headers are required"
                 },
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not _TWILIO_ACCOUNT_SID_RE.fullmatch(account_sid):
+            return Response(
+                {"error": "Invalid account_sid"}, status=status.HTTP_400_BAD_REQUEST
             )
         return _twilio_phone_numbers_response(account_sid, auth_token)
 
@@ -3009,6 +3027,12 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
             return Response(
                 {"error": "phone_sid and channel_token are required"},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not _TWILIO_PHONE_SID_RE.fullmatch(phone_sid):
+            logger.warning(f"configure-webhook: invalid phone_sid={phone_sid}")
+            return Response(
+                {"error": "Invalid phone_sid"}, status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
@@ -3043,6 +3067,13 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
             )
 
         account_sid = twilio.account_sid
+        if not _TWILIO_ACCOUNT_SID_RE.fullmatch(account_sid):
+            logger.warning(
+                f"configure-webhook: invalid account_sid for channel {channel.id}"
+            )
+            return Response(
+                {"error": "Invalid account_sid"}, status=status.HTTP_400_BAD_REQUEST
+            )
         auth_token = secret_resolver.resolve(
             secret_id=twilio.auth_token_secret_id,
             org_id=channel.org_id,
@@ -3107,7 +3138,9 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
         except urllib.error.HTTPError as e:
             body = e.read().decode()
             logger.error(f"configure-webhook: Twilio HTTP error {e.code}: {body}")
-            return Response({"error": body}, status=e.code)
+            return Response(
+                {"error": "Failed to configure Twilio webhook"}, status=e.code
+            )
         except Exception as e:
             logger.exception("configure-webhook: unexpected error")
             return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)

@@ -60,14 +60,15 @@ def _make_twilio_channel(realtime_channel, org=None, **kwargs):
         kwargs["auth_token_secret"] = _make_secret(
             org or realtime_channel.org, "auth_test"
         )
+    account_sid = kwargs.pop("account_sid", "AC_test")
     return TwilioChannel.objects.create(
         channel=realtime_channel,
-        account_sid="AC_test",
+        account_sid=account_sid,
         **kwargs,
     )
 
 
-def _make_webhook_trigger_with_ngrok(org, path="test-voice"):
+def _make_webhook_trigger_with_ngrok(org, path="test-voice", domain=None):
     # WebhookTrigger is now org-owned (EST-3491) — every direct ORM .create()
     # must pass `org`, same as the API path stamps it via the active org.
     trigger = WebhookTrigger.objects.create(
@@ -78,6 +79,7 @@ def _make_webhook_trigger_with_ngrok(org, path="test-voice"):
         name="test-ngrok",
         auth_token_secret=_make_secret(org, "tok"),
         region=NgrokWebhookConfig.Region.EU,
+        domain=domain,
     )
     return trigger
 
@@ -191,12 +193,20 @@ class TestTwilioChannelWebhookTrigger:
         """configure-webhook must 400 when the trigger uses the localhost provider."""
         rc = _make_realtime_channel(db, default_org)
         trigger = _make_webhook_trigger_with_localhost(default_org, path="cfg-localhost")
-        _make_twilio_channel(rc, default_org, webhook_trigger=trigger)
+        _make_twilio_channel(
+            rc,
+            default_org,
+            webhook_trigger=trigger,
+            account_sid="AC" + "0" * 32,
+        )
 
         url = reverse("twilio-configure-webhook")
         response = auth_client.post(
             url,
-            {"phone_sid": "PN_test", "channel_token": str(rc.token)},
+            {
+                "phone_sid": "PN" + "0" * 32,
+                "channel_token": str(rc.token),
+            },
             format="json",
         )
         assert response.status_code == 400, response.json()
@@ -677,3 +687,158 @@ class TestTwilioChannelPhoneNumbersAction:
 
         assert response.status_code == 200, response.json()
         assert "auth_test" not in response.content.decode()
+
+
+@pytest.mark.django_db
+class TestTwilioChannelPhoneNumbersSidValidation:
+    """EST-3871: `TwilioChannelViewSet.phone_numbers` reads `sid` straight
+    from a query param and passes it into `_twilio_phone_numbers_response`
+    (the same shared helper `TwilioPhoneNumbersView.get` calls) without any
+    format check — it needs the identical `_TWILIO_ACCOUNT_SID_RE` guard.
+
+    NOTE: this action is registered `detail=False` (list-level), so its real
+    URL is `/api/twilio-channels/phone-numbers/` with no `<pk>` segment —
+    unlike the sibling tests above in `TestTwilioChannelPhoneNumbersAction`,
+    which pass `args=[tc.channel_id]` to `reverse()` and are consequently
+    reversing to a bogus URL (a pre-existing, unrelated routing bug: the
+    channel_id lands in the DRF format-suffix, e.g.
+    `/api/twilio-channels/phone-numbers.25`, and 500s before the view body
+    ever runs). Reversing with no args here hits the actual, correctly
+    routed action, so it validates the new SID check without depending on
+    that pre-existing bug being fixed.
+    """
+
+    def test_rejects_invalid_sid_query_param(self, auth_client, db, default_org):
+        url = reverse("twiliochannel-phone-numbers")
+        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+            response = auth_client.get(
+                url, {"sid": "not-a-valid-sid", "auth_token_secret_id": "1"}
+            )
+
+        assert response.status_code == 400, response.json()
+        assert response.json() == {"error": "Invalid account_sid"}
+        mocked.assert_not_called()
+
+
+@pytest.mark.django_db
+class TestTwilioConfigureWebhookInputValidation:
+    """EST-3871: TwilioConfigureWebhookView must reject malformed SIDs before
+    ever interpolating them into a Twilio REST URL, and must never reflect a
+    raw upstream Twilio error body back to the caller."""
+
+    def test_rejects_invalid_phone_sid_format(self, auth_client, db, default_org):
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="cfg-invalid-sid")
+        _make_twilio_channel(
+            rc,
+            default_org,
+            webhook_trigger=trigger,
+            account_sid="AC" + "0" * 32,
+        )
+
+        url = reverse("twilio-configure-webhook")
+        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+            response = auth_client.post(
+                url,
+                {"phone_sid": "PN_not_a_valid_sid", "channel_token": str(rc.token)},
+                format="json",
+            )
+
+        assert response.status_code == 400, response.json()
+        assert response.json() == {"error": "Invalid phone_sid"}
+        mocked.assert_not_called()
+
+    def test_rejects_invalid_account_sid_on_stored_credential(
+        self, auth_client, db, default_org
+    ):
+        """Defense in depth: even though account_sid isn't client-supplied
+        here, a malformed value stored on the channel must still be rejected
+        before it flows into the Twilio REST URL."""
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(
+            default_org, path="cfg-invalid-account-sid"
+        )
+        _make_twilio_channel(
+            rc, default_org, webhook_trigger=trigger, account_sid="AC_not_valid"
+        )
+
+        url = reverse("twilio-configure-webhook")
+        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+            response = auth_client.post(
+                url,
+                {"phone_sid": "PN" + "0" * 32, "channel_token": str(rc.token)},
+                format="json",
+            )
+
+        assert response.status_code == 400, response.json()
+        assert response.json() == {"error": "Invalid account_sid"}
+        mocked.assert_not_called()
+
+    def test_twilio_http_error_returns_generic_sanitized_body(
+        self, auth_client, db, default_org
+    ):
+        """A raw upstream Twilio error body (which can contain account
+        details) must never be reflected verbatim to the caller."""
+        import urllib.error
+
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(
+            default_org,
+            path="cfg-twilio-http-error",
+            domain="cfg-error.example.ngrok.io",
+        )
+        _make_twilio_channel(
+            rc,
+            default_org,
+            webhook_trigger=trigger,
+            account_sid="AC" + "0" * 32,
+        )
+
+        raw_twilio_body = (
+            '{"code": 20404, "message": "The requested resource '
+            '/Accounts/ACxxxx/IncomingPhoneNumbers/PNxxxx.json was not found"}'
+        )
+        http_error = urllib.error.HTTPError(
+            url="https://api.twilio.com/2010-04-01/Accounts/ACxxxx/IncomingPhoneNumbers/PNxxxx.json",
+            code=404,
+            msg="Not Found",
+            hdrs=None,
+            fp=mock.mock_open(read_data=raw_twilio_body.encode())(),
+        )
+
+        url = reverse("twilio-configure-webhook")
+        with mock.patch(
+            "tables.views.model_view_sets._twilio_request", side_effect=http_error
+        ):
+            response = auth_client.post(
+                url,
+                {"phone_sid": "PN" + "0" * 32, "channel_token": str(rc.token)},
+                format="json",
+            )
+
+        assert response.status_code == 404, response.json()
+        assert response.json() == {"error": "Failed to configure Twilio webhook"}
+        body_text = response.content.decode()
+        assert "20404" not in body_text
+        assert "ACxxxx" not in body_text
+
+
+@pytest.mark.django_db
+class TestTwilioPhoneNumbersHeaderValidation:
+    """EST-3871: superadmin-only endpoint, but the raw `X-Twilio-Account-Sid`
+    header still flows into the Twilio REST URL, so it must be validated too."""
+
+    def test_rejects_invalid_account_sid_header_format(
+        self, superadmin_client, db
+    ):
+        url = reverse("twilio-phone-numbers")
+        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+            response = superadmin_client.get(
+                url,
+                HTTP_X_TWILIO_ACCOUNT_SID="not-a-valid-sid",
+                HTTP_X_TWILIO_AUTH_TOKEN="some-token",
+            )
+
+        assert response.status_code == 400, response.json()
+        assert response.json() == {"error": "Invalid account_sid"}
+        mocked.assert_not_called()
