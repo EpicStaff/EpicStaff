@@ -9,9 +9,11 @@ from tables.constants.knowledge_constants import (
     MAX_FILE_SIZE,
     ALLOWED_FILE_TYPES,
 )
+from tables.constants.upload_limits import default_upload_limits
 from tables.exceptions import (
     DocumentUploadException,
     FileSizeExceededException,
+    TotalUploadSizeExceededException,
     InvalidFileTypeException,
     CollectionNotFoundException,
     NoFilesProvidedException,
@@ -78,15 +80,19 @@ class DocumentManagementService:
         Raises:
             NoFilesProvidedException: If no files provided
             FileSizeExceededException: If any file exceeds size limit
+            TotalUploadSizeExceededException: If the batch exceeds the total limit
             InvalidFileTypeException: If any file has invalid type
         """
         if not uploaded_files:
             raise NoFilesProvidedException()
 
+        max_total_bytes = default_upload_limits().max_total_bytes
         validated_files = []
         errors = []
+        total_bytes = 0
 
         for idx, uploaded_file in enumerate(uploaded_files):
+            total_bytes += uploaded_file.size
             try:
                 validated_data = DocumentManagementService.validate_file(uploaded_file)
                 validated_files.append(
@@ -97,9 +103,23 @@ class DocumentManagementService:
                     {"index": idx, "file_name": uploaded_file.name, "error": str(e)}
                 )
 
+        if total_bytes > max_total_bytes:
+            errors.append(
+                {
+                    "index": None,
+                    "file_name": None,
+                    "error": str(
+                        TotalUploadSizeExceededException(total_bytes, max_total_bytes)
+                    ),
+                }
+            )
+
         # If there are any validation errors, raise exception with all errors
         if errors:
-            error_messages = [f"[{e['index']}] {e['error']}" for e in errors]
+            error_messages = [
+                f"[{e['index']}] {e['error']}" if e["index"] is not None else e["error"]
+                for e in errors
+            ]
             raise DocumentUploadException(("\n".join(error_messages)))
 
         return validated_files

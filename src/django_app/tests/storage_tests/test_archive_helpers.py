@@ -4,6 +4,8 @@ from io import BytesIO
 
 import pytest
 
+from tables.services.storage_service.archive_limits import ArchiveExtractionGuard
+
 
 @pytest.fixture
 def backend(fake_backend):
@@ -120,3 +122,76 @@ class TestIterArchiveEntries:
         entries = list(backend._iter_archive_entries(sample_zip))
         names = [name for name, _ in entries]
         assert "sub/world.txt" in names
+
+
+class TestIterArchiveEntriesLimits:
+    """_iter_archive_entries must refuse to buffer an archive past its budget."""
+
+    def _guard(self, *, max_entries=1_000, max_total_bytes=10_000_000):
+        return ArchiveExtractionGuard(
+            max_entries=max_entries, max_total_bytes=max_total_bytes
+        )
+
+    def test_rejects_zip_past_the_entry_cap(self, backend):
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for i in range(10):
+                zf.writestr(f"f{i}.txt", "tiny")
+        buf.seek(0)
+
+        with pytest.raises(ValueError, match="entries"):
+            list(backend._iter_archive_entries(buf, guard=self._guard(max_entries=5)))
+
+    def test_rejects_zip_past_the_byte_budget(self, backend):
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("zeros.bin", b"\0" * 500_000)
+        buf.seek(0)
+
+        with pytest.raises(ValueError, match="bytes"):
+            list(
+                backend._iter_archive_entries(
+                    buf, guard=self._guard(max_total_bytes=1_000)
+                )
+            )
+
+    def test_rejects_tar_past_the_byte_budget(self, backend):
+        buf = BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+            payload = b"\0" * 500_000
+            info = tarfile.TarInfo("zeros.bin")
+            info.size = len(payload)
+            tf.addfile(info, BytesIO(payload))
+        buf.seek(0)
+
+        with pytest.raises(ValueError, match="bytes"):
+            list(
+                backend._iter_archive_entries(
+                    buf, guard=self._guard(max_total_bytes=1_000)
+                )
+            )
+
+    def test_byte_budget_spans_all_entries_not_each_one(self, backend):
+        """Three 400-byte members are each legal under a 1000-byte total."""
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for i in range(3):
+                zf.writestr(f"f{i}.txt", "x" * 400)
+        buf.seek(0)
+
+        with pytest.raises(ValueError, match="bytes"):
+            list(
+                backend._iter_archive_entries(
+                    buf, guard=self._guard(max_total_bytes=1_000)
+                )
+            )
+
+    def test_allows_an_archive_inside_its_budget(self, backend, sample_zip):
+        entries = list(backend._iter_archive_entries(sample_zip, guard=self._guard()))
+
+        assert len(entries) == 2
+
+    def test_applies_a_default_guard_when_none_is_injected(self, backend, sample_zip):
+        entries = list(backend._iter_archive_entries(sample_zip))
+
+        assert len(entries) == 2
