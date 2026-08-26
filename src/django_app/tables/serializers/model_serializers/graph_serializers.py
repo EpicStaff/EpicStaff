@@ -28,6 +28,7 @@ from tables.serializers.model_serializers.tag_serializers import GraphTagSeriali
 from tables.models.graph_models import (
     Graph,
     GraphNote,
+    GraphOrganization,
     GraphOrganizationUser,
     GraphSessionMessage,
 )
@@ -114,6 +115,16 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
             "messages_count_by_subgraph": messages_count_by_subgraph,
         }
         return data
+
+
+class GraphOrganizationSerializer(serializers.ModelSerializer):
+    # Read-only: org is derived from graph.org and the row is created
+    # alongside its graph (see GraphViewSet.perform_create), so this
+    # serializer only ever needs to expose the current state.
+    class Meta:
+        model = GraphOrganization
+        fields = ["id", "graph", "persistent_variables", "user_variables"]
+        read_only_fields = ["id", "graph", "persistent_variables", "user_variables"]
 
 
 class GraphOrganizationUserSerializer(serializers.ModelSerializer):

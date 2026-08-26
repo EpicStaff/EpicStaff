@@ -12,7 +12,9 @@ from tables.models import (
 )
 from tables.models.label_models import Label
 from tables.models.rbac_models import Organization
+from tables.models.realtime_models import OpenAIRealtimeConfig
 from tables.import_export.enums import EntityType
+from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.schemas import ImportSettings
@@ -143,9 +145,97 @@ class TestHybridCrossOrg:
 
 
 @pytest.mark.django_db
+class TestProviderRealtimeConfigCrossOrg:
+    """EST-3629/3630 follow-up: OpenAIRealtimeConfig (and its Eleven/Gemini
+    siblings, same base strategy) now own `org` NOT NULL — create_entity must
+    stamp it, and find_existing/uniqueness must not leak across orgs."""
+
+    def test_create_entity_stamps_active_org(self, default_org):
+        strategy = entity_registry.get_strategy(EntityType.OPENAI_REALTIME_CONFIG)
+        data = {"custom_name": "openai-cfg", "model_name": "gpt-realtime-1.5"}
+
+        created = strategy.create_entity(data, None, org_id=default_org.id)
+
+        assert created.org_id == default_org.id
+
+    def test_find_existing_is_org_scoped(self, default_org, org_b):
+        cfg = OpenAIRealtimeConfig.objects.create(
+            org=default_org, custom_name="shared-cfg", model_name="gpt-realtime-1.5"
+        )
+        strategy = entity_registry.get_strategy(EntityType.OPENAI_REALTIME_CONFIG)
+        data = {"custom_name": "shared-cfg", "model_name": "gpt-realtime-1.5"}
+
+        assert strategy.find_existing(data, None, org_id=org_b.id) is None
+        assert strategy.find_existing(data, None, org_id=default_org.id) == cfg
+
+    def test_created_in_active_org_not_reused_cross_org(self, default_org, org_b):
+        OpenAIRealtimeConfig.objects.create(
+            org=default_org, custom_name="shared-cfg", model_name="gpt-realtime-1.5"
+        )
+        existing = OpenAIRealtimeConfig.objects.get(custom_name="shared-cfg")
+        strategy = entity_registry.get_strategy(EntityType.OPENAI_REALTIME_CONFIG)
+        export_data = {
+            "main_entity": EntityType.OPENAI_REALTIME_CONFIG,
+            EntityType.OPENAI_REALTIME_CONFIG: [
+                strategy.export_entity(existing)
+            ],
+        }
+
+        id_mapper, _ = _import(export_data, org_b.id)
+
+        created = id_mapper.get_created_ids(EntityType.OPENAI_REALTIME_CONFIG)
+        assert created, "config must be created in org_b, not reused from default_org"
+        assert OpenAIRealtimeConfig.objects.get(id=created[0]).org_id == org_b.id
+
+    def test_unique_name_check_is_org_scoped(self, default_org):
+        OpenAIRealtimeConfig.objects.create(
+            org=default_org, custom_name="dup-cfg", model_name="gpt-realtime-1.5"
+        )
+        strategy = entity_registry.get_strategy(EntityType.OPENAI_REALTIME_CONFIG)
+        data = {"custom_name": "dup-cfg", "model_name": "gpt-realtime-1.5"}
+
+        created = strategy.create_entity(data, None, org_id=default_org.id)
+
+        # Same-org duplicate name must be disambiguated, not collide.
+        assert created.custom_name != "dup-cfg"
+
+    def test_agent_strategy_does_not_attach_cross_org_openai_config(
+        self, default_org, org_b
+    ):
+        """Defense-in-depth: _create_realtime_agent must reject an
+        openai_config resolved (via the IDMapper) to a row that does not
+        belong to the target org, even though the mapper should already only
+        ever hold org-scoped ids."""
+        cross_org_config = OpenAIRealtimeConfig.objects.create(
+            org=org_b, custom_name="cross-org-cfg", model_name="gpt-realtime-1.5"
+        )
+        agent = Agent.objects.create(
+            role="r", goal="g", backstory="b", org=default_org
+        )
+        agent_strategy = entity_registry.get_strategy(EntityType.AGENT)
+
+        mapper = IDMapper()
+        mapper.map(
+            EntityType.OPENAI_REALTIME_CONFIG,
+            cross_org_config.id,
+            cross_org_config.id,
+            was_created=False,
+        )
+
+        rt_agent = agent_strategy._create_realtime_agent(
+            agent,
+            {"openai_config": cross_org_config.id},
+            mapper,
+            org_id=default_org.id,
+        )
+
+        assert rt_agent.openai_config_id is None
+
+
+@pytest.mark.django_db
 class TestWebhookAndGraphCrossOrg:
     def test_webhook_find_existing_is_org_scoped(self, default_org, org_b):
-        wt = WebhookTrigger.objects.create(path="shared-path")
+        wt = WebhookTrigger.objects.create(path="shared-path", org=default_org)
         graph = Graph.objects.create(name="src flow", org=default_org)
         code = PythonCode.objects.create(
             code="def main(): ...", entrypoint="main", libraries=""

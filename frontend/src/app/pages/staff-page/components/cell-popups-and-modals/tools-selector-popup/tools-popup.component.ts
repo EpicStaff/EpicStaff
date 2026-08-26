@@ -64,10 +64,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     @Output() public cancel = new EventEmitter<void>();
     @Output() public childDialogOpenChange = new EventEmitter<boolean>();
 
-    public menuItems: { type: 'custom' | 'mcp'; label: string }[] = [
-        { type: 'custom', label: 'Custom Tools' },
-        { type: 'mcp', label: 'MCP Tools' },
-    ];
     public selectedMenu: 'custom' | 'mcp' = 'custom';
     public searchTerm = '';
     public loading = true;
@@ -86,12 +82,10 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
         private readonly _pythonCodeToolService: PythonCodeToolService,
         private readonly _cdr: ChangeDetectorRef,
         private readonly cdkDialog: Dialog,
-        private readonly mcpToolsService: McpToolsService,
-        private readonly cdr: ChangeDetectorRef
+        private readonly mcpToolsService: McpToolsService
     ) {}
 
     public ngOnInit(): void {
-        console.log('ToolsPopupComponent initialized.');
         this.loadToolsData();
     }
 
@@ -112,13 +106,11 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     }
 
     public ngOnDestroy(): void {
-        console.log('ToolsPopupComponent destroyed.');
         this._destroyed$.next();
         this._destroyed$.complete();
     }
 
     public loadToolsData(): void {
-        console.log('Loading tools data...');
         this.loading = true;
         forkJoin({
             pythonTools: this._pythonCodeToolService.getPythonCodeTools(),
@@ -127,9 +119,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
             .pipe(takeUntil(this._destroyed$))
             .subscribe({
                 next: ({ pythonTools, mcpTools }) => {
-                    console.log('Python tools data received:', pythonTools);
-                    console.log('MCP tools data received:', mcpTools);
-
                     this.pythonTools = this._sortPythonToolsBySelection(pythonTools);
                     this.mcpTools = this._sortMcpToolsBySelection(mcpTools);
 
@@ -137,8 +126,7 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
                     this.loading = false;
                     this._cdr.markForCheck();
                 },
-                error: (err) => {
-                    console.error('Error loading tools data:', err);
+                error: () => {
                     this.loading = false;
                     this._cdr.markForCheck();
                 },
@@ -214,12 +202,6 @@ export class ToolsPopupComponent implements OnInit, OnChanges, OnDestroy, AfterV
     }
 
     public toggleToolType(type: 'custom' | 'mcp'): void {
-        this.selectedMenu = type;
-        this.showPythonTools = type === 'custom';
-        this._cdr.markForCheck();
-    }
-
-    public onSelectMenu(type: 'custom' | 'mcp'): void {
         this.selectedMenu = type;
         this.showPythonTools = type === 'custom';
         this._cdr.markForCheck();

@@ -125,7 +125,17 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
         return result
 
 
+# ---------------------------------------------------------------------------
+# DEPRECATED: generic realtime model registry
+# These tables are kept for backward compatibility with quickstart,
+# import/export, and management commands, but are no longer used by the
+# realtime agent flow. New agents use OpenAIRealtimeConfig,
+# ElevenLabsRealtimeConfig, or GeminiRealtimeConfig from realtime_models.py.
+# ---------------------------------------------------------------------------
+
 class RealtimeModel(OrgScopedModel, models.Model):
+    """DEPRECATED: use provider-specific config models in realtime_models.py."""
+
     name = models.CharField(
         max_length=250, default="gpt-4o-mini-realtime-preview-2024-12-17"
     )
@@ -136,6 +146,8 @@ class RealtimeModel(OrgScopedModel, models.Model):
 
 
 class RealtimeConfig(OrgScopedModel, models.Model):
+    """DEPRECATED: use OpenAIRealtimeConfig / ElevenLabsRealtimeConfig / GeminiRealtimeConfig."""
+
     custom_name = models.CharField(max_length=250)
     realtime_model = models.ForeignKey("RealtimeModel", on_delete=models.CASCADE)
     api_key_secret = models.ForeignKey(
@@ -151,6 +163,8 @@ class RealtimeConfig(OrgScopedModel, models.Model):
 
 
 class RealtimeTranscriptionModel(OrgScopedModel, models.Model):
+    """DEPRECATED: transcription model is now a field inside OpenAIRealtimeConfig."""
+
     name = models.CharField(max_length=250, default="whisper-1")
     provider = models.ForeignKey(
         "Provider", on_delete=models.CASCADE, null=True, default=None
@@ -159,6 +173,8 @@ class RealtimeTranscriptionModel(OrgScopedModel, models.Model):
 
 
 class RealtimeTranscriptionConfig(OrgScopedModel, models.Model):
+    """DEPRECATED: transcription config is now embedded in OpenAIRealtimeConfig."""
+
     custom_name = models.CharField(max_length=250)
     realtime_transcription_model = models.ForeignKey(
         "RealtimeTranscriptionModel", on_delete=models.CASCADE

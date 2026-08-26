@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     REALTIME_URL: str = "http://realtime:8050"
     NGROK_TARGET_HOST: str = "epicstaff-nginx"
     NGROK_TARGET_PORT: int = 80
+    LOCALHOST_TARGET_HOST: str = "localhost"
+    LOCALHOST_TARGET_PORT: int = 8009
 
     model_config = SettingsConfigDict(**config_dict)
 

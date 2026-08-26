@@ -68,11 +68,10 @@ class AgentCopyService(BaseCopyService):
                 agent=new_agent,
                 wake_word=realtime_agent.wake_word,
                 stop_prompt=realtime_agent.stop_prompt,
-                language=realtime_agent.language,
-                voice_recognition_prompt=realtime_agent.voice_recognition_prompt,
                 voice=realtime_agent.voice,
-                realtime_config=realtime_agent.realtime_config,
-                realtime_transcription_config=realtime_agent.realtime_transcription_config,
+                openai_config=realtime_agent.openai_config,
+                elevenlabs_config=realtime_agent.elevenlabs_config,
+                gemini_config=realtime_agent.gemini_config,
             )
         except RealtimeAgent.DoesNotExist:
             pass
