@@ -9,6 +9,7 @@ from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.models.rbac_models.role import RolePermission
+from tables.services.secrets import secret_service
 
 
 # ---- fixtures ----
@@ -94,11 +95,14 @@ def mcp_tool_a(org_a, tool_label_a):
 
 @pytest.fixture
 def mcp_tool_with_auth_a(org_a, tool_label_a):
+    secret = secret_service.create(
+        text="Bearer sk-super-secret-token", org=org_a, name="MCP_AUTH_SECRET_A"
+    )
     tool = McpTool.objects.create(
         name="McpToolWithAuthA",
         transport="https://example.com/mcp-secret",
         tool_name="do_secret_thing",
-        auth="Bearer sk-super-secret-token",
+        auth_secret=secret,
         org=org_a,
     )
     tool.labels.add(tool_label_a)
@@ -185,7 +189,7 @@ def test_mcptool_import_after_export_does_not_carry_over_auth(
         .exclude(id=mcp_tool_with_auth_a.id)
         .latest("id")
     )
-    assert new_tool.auth is None
+    assert new_tool.auth_secret_id is None
     assert new_tool.transport == mcp_tool_with_auth_a.transport
 
 

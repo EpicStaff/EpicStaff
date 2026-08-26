@@ -63,7 +63,8 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         backgroundColor: NODE_COLORS[NodeType.NOTE],
     }),
     [NodeType.WEBHOOK_TRIGGER]: () => ({
-        webhook_trigger: 0,
+        webhook_trigger: null,
+        webhook_node_auth: null,
         python_code: {
             name: 'Webhook trigger Node',
             libraries: [],
@@ -72,7 +73,7 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         },
     }),
     [NodeType.TELEGRAM_TRIGGER]: () => ({
-        telegram_bot_api_key: '',
+        telegram_bot_api_key_secret_id: null,
         fields: [],
     }),
     [NodeType.SCHEDULE_TRIGGER]: (): ScheduleTriggerNodeData => {

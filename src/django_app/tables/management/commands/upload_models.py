@@ -249,4 +249,3 @@ def upload_default_realtime_agent_config():
 def upload_default_crew_config():
     DefaultCrewConfig.objects.all().delete()
     DefaultCrewConfig.objects.create(id=1)
-

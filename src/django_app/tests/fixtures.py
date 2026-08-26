@@ -9,7 +9,7 @@ from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
 from tables.models.python_models import PythonCodeToolConfig
-from tables.models.realtime_models import RealtimeAgent
+from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgent
 from tables.models.llm_models import (
     RealtimeConfig,
     RealtimeModel,
@@ -42,7 +42,9 @@ from tables.models import (
     PythonCode,
     RealtimeAgent,
     Organization,
+    Secret,
 )
+from tables.services.secrets import secret_encryption
 
 from tests.helpers import data_to_json_file
 
@@ -288,12 +290,21 @@ def openai_realtime_model(openai_provider):
     return realtime_model
 
 
+def _make_secret(org, name, text):
+    secret = Secret(org=org, name=name)
+    secret_encryption.encrypt(text=text).write_to(secret)
+    secret.save()
+    return secret
+
+
 @pytest.fixture
 def openai_realtime_model_config(openai_realtime_model, default_org):
     # Create and return the `RealtimeModelConfig` instance
     config = RealtimeConfig.objects.create(
         custom_name="test",
-        api_key="test",
+        api_key_secret=_make_secret(
+            default_org, "openai-realtime-model-config-key", "test"
+        ),
         realtime_model=openai_realtime_model,
         org=default_org,
     )
@@ -312,19 +323,42 @@ def realtime_transcription_config(realtime_transcription_model, default_org):
     return RealtimeTranscriptionConfig.objects.create(
         custom_name="test_realtime_transcription_config",
         realtime_transcription_model=realtime_transcription_model,
-        api_key="mock key",
+        api_key_secret=_make_secret(
+            default_org, "realtime-transcription-config-key", "mock key"
+        ),
+        org=default_org,
+    )
+
+
+@pytest.fixture
+def openai_realtime_provider_config(default_org):
+    api_key_secret = Secret(org=default_org, name="test-openai-realtime-api-key")
+    secret_encryption.encrypt(text="test").write_to(api_key_secret)
+    api_key_secret.save()
+
+    transcription_api_key_secret = Secret(
+        org=default_org, name="test-openai-realtime-transcription-api-key"
+    )
+    secret_encryption.encrypt(text="test").write_to(transcription_api_key_secret)
+    transcription_api_key_secret.save()
+
+    return OpenAIRealtimeConfig.objects.create(
+        custom_name="test_openai_realtime_config",
+        api_key_secret=api_key_secret,
+        model_name="gpt-realtime-1.5",
+        transcription_model_name="whisper-1",
+        transcription_api_key_secret=transcription_api_key_secret,
         org=default_org,
     )
 
 
 @pytest.fixture
 def wikipedia_agent_with_configured_realtime(
-    wikipedia_agent, openai_realtime_model_config, realtime_transcription_config
+    wikipedia_agent, openai_realtime_provider_config
 ):
     RealtimeAgent.objects.create(
         agent=wikipedia_agent,
-        realtime_config=openai_realtime_model_config,
-        realtime_transcription_config=realtime_transcription_config,
+        openai_config=openai_realtime_provider_config,
     )
 
     return wikipedia_agent

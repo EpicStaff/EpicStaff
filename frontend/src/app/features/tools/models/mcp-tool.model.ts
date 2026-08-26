@@ -5,7 +5,7 @@ export interface GetMcpToolRequest {
     transport: string;
     tool_name: string;
     timeout?: number;
-    auth?: string | null;
+    auth_secret_id?: number | null;
     init_timeout?: number;
     org: number;
     created_by: number;
@@ -18,7 +18,7 @@ export interface CreateMcpToolRequest {
     transport: string;
     tool_name: string;
     timeout?: number;
-    auth?: string | null;
+    auth_secret_id?: number | null;
     init_timeout?: number;
 }
 
@@ -28,6 +28,6 @@ export interface UpdateMcpToolRequest {
     transport?: string;
     tool_name?: string;
     timeout?: number;
-    auth?: string | null;
+    auth_secret_id?: number | null;
     init_timeout?: number;
 }

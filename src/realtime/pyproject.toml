@@ -10,7 +10,7 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.12"
-fastapi = "0.109.2"
+fastapi = "0.115.6"
 uvicorn = {extras = ["standard"], version = "0.27.1"}
 websockets = "13.1"
 python-multipart = "0.0.6"

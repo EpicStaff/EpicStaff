@@ -18,7 +18,6 @@ export interface ChatAgentVM {
     id: number;
     title: string;
     realtimeConfigId: number | null;
-    transcriptionConfigId: number | null;
     modelName: string | null;
     customName: string | null;
 }
@@ -26,22 +25,18 @@ export interface ChatAgentVM {
 // Payload for POST /init-realtime/. The backend requires exactly one of the two ids.
 export type InitRealtimePayload = { agent_id: number } | { agent_definition_id: number };
 
-export function chatAgentId(a: ChatAgent): number {
-    return a.agent.id;
-}
-
 export function chatAgentTitle(a: ChatAgent): string {
     return a.kind === 'staff' ? a.agent.role : a.agent.name;
 }
 
 export function chatAgentRealtimeConfigId(a: ChatAgent): number | null {
-    return a.kind === 'staff' ? (a.agent.realtime_agent?.realtime_config ?? null) : a.realtime.realtime_config;
-}
-
-export function chatAgentTranscriptionConfigId(a: ChatAgent): number | null {
-    return a.kind === 'staff'
-        ? (a.agent.realtime_agent?.realtime_transcription_config ?? null)
-        : a.realtime.realtime_transcription_config;
+    if (a.kind === 'staff') {
+        const rt = a.agent.realtime_agent;
+        const slot = rt?.openai_config ?? rt?.elevenlabs_config ?? rt?.gemini_config;
+        if (slot == null) return null;
+        return typeof slot === 'number' ? slot : slot.id;
+    }
+    return a.realtime.openai_config ?? a.realtime.elevenlabs_config ?? a.realtime.gemini_config ?? null;
 }
 
 export function toInitRealtimePayload(a: ChatAgent): InitRealtimePayload {

@@ -55,7 +55,7 @@ def test_run_merges_org_variables_into_session(org_client, default_org, monkeypa
     svc = SessionManagerService()
     monkeypatch.setattr(svc, "create_session_data", lambda session: _FakeSessionData())
     monkeypatch.setattr(
-        svc.redis_service, "publish_session_data", lambda session_data: 2
+        svc.redis_service, "publish_session_data", lambda session_data, org_id: 2
     )
 
     resp = org_client.post(

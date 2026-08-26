@@ -62,11 +62,14 @@ export class SelectComponent implements ControlValueAccessor {
     invalid = input<boolean>(false);
     disabled = input<boolean>(false);
     hideTrigger = input<boolean>(false);
+    panelClass = input<string | string[]>('');
     variant = input<SelectVariant>('default');
     showSearch = input<boolean>(false);
     searchPlaceholder = input<string>('Search...');
 
     changed = output<unknown>();
+    opened = output<void>();
+
     selectedValue = model<unknown | null>(null);
 
     open = signal(false);
@@ -109,9 +112,11 @@ export class SelectComponent implements ControlValueAccessor {
         this.openAt(this.triggerBtn.nativeElement);
     }
 
-    /** Opens the dropdown anchored to `originElement`. Useful with `hideTrigger` + a projected trigger. */
+    /** Opens the dropdown anchored to originElement. Useful with hideTrigger + a projected trigger. */
     openAt(originElement: HTMLElement, minWidth = 160) {
         if (this.isDisabled()) return;
+        this.opened.emit();
+        this.search.set('');
 
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
@@ -134,6 +139,7 @@ export class SelectComponent implements ControlValueAccessor {
             scrollStrategy: this.overlay.scrollStrategies.reposition(),
             hasBackdrop: true,
             backdropClass: 'transparent-backdrop',
+            panelClass: this.panelClass() || undefined,
             minWidth: Math.max(originElement.offsetWidth || 0, minWidth),
         });
 

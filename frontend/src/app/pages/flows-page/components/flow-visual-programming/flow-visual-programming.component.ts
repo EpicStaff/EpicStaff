@@ -22,7 +22,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
 import { GetLlmConfigRequest } from '@shared/models';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { LlmConfigStorageService } from '@shared/services';
+import { LlmConfigStorageService, SecretDeclarationIndexService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
 import {
     catchError,
@@ -99,8 +99,10 @@ import {
     cloneFlowState,
     getConnectionDiff,
     getNodeDiff,
+    mergeSecretIdsFromSaved,
     patchCdtPromptBackendIds,
     patchFlowStateWithBackendIds,
+    restoreFlowSecretIds,
 } from '../../../../visual-programming/utils/save';
 import { isValidOutputSchema } from '../../../../visual-programming/utils/validation/output-schema.validator';
 import { FlowHeaderComponent } from './components/header/flow-header.component';
@@ -128,11 +130,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly destroyRef = inject(DestroyRef);
     private readonly wsService = inject(GraphCollaborationWsService);
     private readonly profileService = inject(ProfileService);
+    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly injector = inject(Injector);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public readonly isEpicChatEnabled: boolean;
     public initialNodeId: string | null = null;
+    public initialNodeExpand = true;
     public isLoaded = signal(false);
     private readonly graphState = signal<GraphDto | null>(null);
     private readonly availableFlowLights = signal<GetGraphLightRequest[]>([]);
@@ -206,7 +210,29 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         });
 
         effect(() => {
-            this.initialNodeId = this.routeQueryParamMap().get('nodeId');
+            const params = this.routeQueryParamMap();
+            const nodeId = params.get('nodeId');
+            if (nodeId) {
+                this.initialNodeId = nodeId;
+                this.initialNodeExpand = true;
+                return;
+            }
+
+            // Callers that only know a node by name (e.g. the Secret Usage dialog, whose backend
+            // response has no node id) use nodeName/nodeType instead — resolve it against the
+            // loaded graph once available. nodeType disambiguates same-named nodes of different types.
+            // This path only selects the node (small panel) rather than expanding it.
+            const nodeName = params.get('nodeName');
+            if (!nodeName) {
+                this.initialNodeId = null;
+                return;
+            }
+            const nodeType = params.get('nodeType');
+            const match = this.currentFlowState().nodes.find(
+                (n) => n.node_name === nodeName && (!nodeType || n.type === nodeType)
+            );
+            this.initialNodeId = match?.id ?? null;
+            this.initialNodeExpand = false;
         });
 
         effect(() => {
@@ -513,58 +539,51 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     private saveFlowState(flowState: FlowModel, showSuccessToast: boolean): Observable<void> {
         if (!this.graph?.id) return EMPTY;
-
         if (this.getBlockingNodeValidationIssues(flowState).length > 0) {
             return EMPTY;
         }
-
-        const previous = this.loadedFlowState();
-        const flowToSave = clearStaleIds(previous, flowState);
-        const nodeDiff = getNodeDiff(previous, flowToSave);
-        const idMap = buildUuidToBackendIdMap(flowToSave.nodes);
-        const connectionDiff = getConnectionDiff(previous, flowToSave, idMap);
-        const payload = buildBulkSavePayload(
-            this.graph.id,
-            nodeDiff,
-            connectionDiff,
-            flowToSave,
-            idMap,
-            this.graphState()!.save_version
-        );
+        const graphId = this.graph.id;
 
         this.isSaving.set(true);
 
-        return this.flowApiService.bulkSaveGraph(this.graph.id, payload).pipe(
-            switchMap((graph) =>
-                this.flowApiService.getGraphsLight().pipe(
-                    map((flows) => ({ graph, flows })),
-                    catchError(() => of({ graph, flows: [] as GetGraphLightRequest[] }))
-                )
-            ),
-            tap(({ graph, flows }) => {
-                this.graphState.set(graph);
-                this.availableFlowLights.set(flows);
-                let patchedFlow = patchFlowStateWithBackendIds(flowState, previous, nodeDiff, graph);
-                patchedFlow = patchCdtPromptBackendIds(patchedFlow, graph);
+        return this.secretDeclarationIndexService.getIndex().pipe(
+            take(1),
+            switchMap((index) => {
+                // Defensive: restoreSecretDeclarations (fired once at load) may still be
+                // in flight — re-apply it here so a save that races ahead of it doesn't fall
+                // back to the write-only-blind baseline. A no-op once savedFlowState is already
+                // correct, since restoreFlowSecretIds skips fields that are already defined.
+                this.savedFlowState.set(
+                    cloneFlowState(
+                        restoreFlowSecretIds(this.savedFlowState(), graphId, index, this.secretDeclarationIndexService)
+                    )
+                );
 
-                this.flowService.setFlow(patchedFlow);
-                // Sync isActive from the save response: patchFlowStateWithBackendIds only assigns
-                // backend IDs and does not propagate other backend-authoritative fields like is_active.
-                for (const dto of graph.schedule_trigger_node_list ?? []) {
-                    const node = patchedFlow.nodes.find(
-                        (n): n is ScheduleTriggerNodeModel =>
-                            n.type === NodeType.SCHEDULE_TRIGGER && (n as ScheduleTriggerNodeModel).backendId === dto.id
-                    );
-                    if (node && node.data.isActive !== dto.is_active) {
-                        this.flowService.updateNode({ ...node, data: { ...node.data, isActive: dto.is_active } });
-                    }
-                }
-                this.savedFlowState.set(cloneFlowState(buildCdtSavedBaseline(patchedFlow, graph)));
-                this.sidePanelService.notifyGraphSaved();
-                if (showSuccessToast) {
-                    this.toastService.success('Graph saved successfully');
-                    this.warnIfCdtMissingLlmConfig(patchedFlow);
-                }
+                const previous = this.loadedFlowState();
+                const flowToSave = clearStaleIds(previous, flowState);
+                const nodeDiff = getNodeDiff(mergeSecretIdsFromSaved(previous, this.savedFlowState()), flowToSave);
+                const idMap = buildUuidToBackendIdMap(flowToSave.nodes);
+                const connectionDiff = getConnectionDiff(previous, flowToSave, idMap);
+                const payload = buildBulkSavePayload(
+                    graphId,
+                    nodeDiff,
+                    connectionDiff,
+                    flowToSave,
+                    idMap,
+                    this.graphState()!.save_version
+                );
+
+                return this.flowApiService.bulkSaveGraph(graphId, payload).pipe(
+                    switchMap((graph) =>
+                        this.flowApiService.getGraphsLight().pipe(
+                            map((flows) => ({ graph, flows })),
+                            catchError(() => of({ graph, flows: [] as GetGraphLightRequest[] }))
+                        )
+                    ),
+                    tap(({ graph, flows }) =>
+                        this.onFlowSaved(graph, flows, flowState, previous, nodeDiff, showSuccessToast)
+                    )
+                );
             }),
             map(() => void 0),
             catchError((err: HttpErrorResponse) => {
@@ -584,6 +603,40 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         );
     }
 
+    private onFlowSaved(
+        graph: GraphDto,
+        flows: GetGraphLightRequest[],
+        flowState: FlowModel,
+        previous: FlowModel,
+        nodeDiff: ReturnType<typeof getNodeDiff>,
+        showSuccessToast: boolean
+    ): void {
+        this.graphState.set(graph);
+        this.availableFlowLights.set(flows);
+        let patchedFlow = patchFlowStateWithBackendIds(flowState, previous, nodeDiff, graph);
+        patchedFlow = patchCdtPromptBackendIds(patchedFlow, graph);
+
+        this.flowService.setFlow(patchedFlow);
+        // Sync isActive from the save response: patchFlowStateWithBackendIds only assigns
+        // backend IDs and does not propagate other backend-authoritative fields like is_active.
+        for (const dto of graph.schedule_trigger_node_list ?? []) {
+            const node = patchedFlow.nodes.find(
+                (n): n is ScheduleTriggerNodeModel =>
+                    n.type === NodeType.SCHEDULE_TRIGGER && (n as ScheduleTriggerNodeModel).backendId === dto.id
+            );
+            if (node && node.data.isActive !== dto.is_active) {
+                this.flowService.updateNode({ ...node, data: { ...node.data, isActive: dto.is_active } });
+            }
+        }
+        this.savedFlowState.set(cloneFlowState(buildCdtSavedBaseline(patchedFlow, graph)));
+        this.sidePanelService.notifyGraphSaved();
+        this.secretDeclarationIndexService.invalidate();
+        if (showSuccessToast) {
+            this.toastService.success('Graph saved successfully');
+            this.warnIfCdtMissingLlmConfig(patchedFlow);
+        }
+    }
+
     private handleNodeSaveRequest(node: NodeModel): void {
         if (!this.graph?.id) return;
         if (this.sidePanelService.savingNodeId() === node.id) return;
@@ -599,60 +652,82 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     private saveNodeToBackend(node: NodeModel): Observable<void> {
         if (!this.graph?.id) return EMPTY;
+        const graphId = this.graph.id;
 
         this.flowService.updateNode(node);
 
-        const previous = this.loadedFlowState();
-        const previousForDiff: FlowModel = {
-            nodes: node.backendId != null ? previous.nodes.filter((n) => n.backendId === node.backendId) : [],
-            connections: [],
-        };
-        const singleNodeFlow: FlowModel = { nodes: [node], connections: [] };
-        const nodeDiff = getNodeDiff(previousForDiff, singleNodeFlow);
-        const connectionDiff = { toCreate: [], toUpdate: [], toDelete: [] };
-        const idMap = buildUuidToBackendIdMap([node]);
-        const payload = buildBulkSavePayload(
-            this.graph.id,
-            nodeDiff,
-            connectionDiff,
-            singleNodeFlow,
-            idMap,
-            this.graphState()!.save_version
-        );
-
-        return this.flowApiService.bulkSaveGraph(this.graph.id, payload).pipe(
-            tap((responseGraph) => {
-                this.graphState.set(responseGraph);
-                const patchedFlow = patchFlowStateWithBackendIds(
-                    this.currentFlowState(),
-                    previous,
-                    nodeDiff,
-                    responseGraph
+        return this.secretDeclarationIndexService.getIndex().pipe(
+            take(1),
+            switchMap((index) => {
+                // Defensive: same reasoning as saveFlowState — re-apply the flow-level restore
+                // in case it's still in flight, so this save's diff never sees a write-only-blind
+                // baseline for secret_ids.
+                this.savedFlowState.set(
+                    cloneFlowState(
+                        restoreFlowSecretIds(this.savedFlowState(), graphId, index, this.secretDeclarationIndexService)
+                    )
                 );
-                this.flowService.setFlow(patchedFlow);
 
-                const savedNode = patchedFlow.nodes.find((n) => n.id === node.id);
-                if (savedNode) {
-                    const prev = this.savedFlowState();
-                    const exists = prev.nodes.some((n) => n.id === node.id);
-                    const nextNodes = exists
-                        ? prev.nodes.map((n) => (n.id === node.id ? savedNode : n))
-                        : [...prev.nodes, savedNode];
-                    this.savedFlowState.set(cloneFlowState({ nodes: nextNodes, connections: prev.connections }));
-                }
+                const previous = this.loadedFlowState();
+                const previousMerged = mergeSecretIdsFromSaved(previous, this.savedFlowState());
+                const previousForDiff: FlowModel = {
+                    nodes:
+                        node.backendId != null
+                            ? previousMerged.nodes.filter((n) => n.backendId === node.backendId)
+                            : [],
+                    connections: [],
+                };
+                const singleNodeFlow: FlowModel = { nodes: [node], connections: [] };
+                const nodeDiff = getNodeDiff(previousForDiff, singleNodeFlow);
+                const connectionDiff = { toCreate: [], toUpdate: [], toDelete: [] };
+                const idMap = buildUuidToBackendIdMap([node]);
+                const payload = buildBulkSavePayload(
+                    graphId,
+                    nodeDiff,
+                    connectionDiff,
+                    singleNodeFlow,
+                    idMap,
+                    this.graphState()!.save_version
+                );
 
-                this.toastService.success('Node saved');
-            }),
-            map(() => void 0),
-            catchError((err: HttpErrorResponse) => {
-                if (err.status === 409) {
-                    this.toastService.warning(
-                        'This graph was modified by another user. Please refresh to see the latest changes.'
-                    );
-                } else {
-                    this.toastService.error(`Failed to save node: ${extractHttpErrorMessage(err)}`);
-                }
-                return EMPTY;
+                return this.flowApiService.bulkSaveGraph(graphId, payload).pipe(
+                    tap((responseGraph) => {
+                        this.graphState.set(responseGraph);
+                        const patchedFlow = patchFlowStateWithBackendIds(
+                            this.currentFlowState(),
+                            previous,
+                            nodeDiff,
+                            responseGraph
+                        );
+                        this.flowService.setFlow(patchedFlow);
+
+                        const savedNode = patchedFlow.nodes.find((n) => n.id === node.id);
+                        if (savedNode) {
+                            const prev = this.savedFlowState();
+                            const exists = prev.nodes.some((n) => n.id === node.id);
+                            const nextNodes = exists
+                                ? prev.nodes.map((n) => (n.id === node.id ? savedNode : n))
+                                : [...prev.nodes, savedNode];
+                            this.savedFlowState.set(
+                                cloneFlowState({ nodes: nextNodes, connections: prev.connections })
+                            );
+                        }
+
+                        this.secretDeclarationIndexService.invalidate();
+                        this.toastService.success('Node saved');
+                    }),
+                    map(() => void 0),
+                    catchError((err: HttpErrorResponse) => {
+                        if (err.status === 409) {
+                            this.toastService.warning(
+                                'This graph was modified by another user. Please refresh to see the latest changes.'
+                            );
+                        } else {
+                            this.toastService.error(`Failed to save node: ${extractHttpErrorMessage(err)}`);
+                        }
+                        return EMPTY;
+                    })
+                );
             })
         );
     }
@@ -939,6 +1014,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             }),
         };
         this.flowService.setFlow(rewrittenFlow);
+        this.restoreSecretDeclarations(graph.id);
 
         this.isLoaded.set(true);
 
@@ -973,6 +1049,28 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         // Fetch agent definitions fresh on every flow-page load so agent/task node
         // "missing LLM" warnings reflect edits made on other pages (e.g. the agents page).
         this.agentDefinitionsApiService.refreshDefinitions().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+    }
+
+    private restoreSecretDeclarations(graphId: number): void {
+        this.secretDeclarationIndexService
+            .getIndex()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe((index) => {
+                const restoredLive = restoreFlowSecretIds(
+                    this.currentFlowState(),
+                    graphId,
+                    index,
+                    this.secretDeclarationIndexService
+                );
+                this.flowService.setFlow(restoredLive);
+                const restoredSaved = restoreFlowSecretIds(
+                    this.savedFlowState(),
+                    graphId,
+                    index,
+                    this.secretDeclarationIndexService
+                );
+                this.savedFlowState.set(cloneFlowState(restoredSaved));
+            });
     }
 
     private countBlockedSubgraphNodes(flowModel: FlowModel): number {
@@ -1079,6 +1177,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 this.restoreWarnings.set(response.warnings);
                 this.undoRedoService.setUndoStack([]);
                 this.undoRedoService.setRedoStack([]);
+                this.secretDeclarationIndexService.invalidate();
                 this.refreshCurrentFlow();
             });
     }

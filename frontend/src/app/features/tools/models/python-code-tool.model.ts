@@ -64,6 +64,7 @@ export interface CreatePythonCodeBody {
     entrypoint: string;
     libraries: string[];
     global_kwargs: Record<string, unknown>;
+    secret_ids?: number[];
 }
 
 /**
@@ -71,8 +72,6 @@ export interface CreatePythonCodeBody {
  *
  * The backend dropped `args_schema` in favor of a free-form `variables` JSON
  * list; see migration `0170_pythoncodetool_variables_drop_args_schema.py`.
- * The legacy {@link CreatePythonCodeToolRequest} type is preserved so the
- * existing `CustomToolDialogComponent` keeps compiling until it is retired.
  */
 export interface CreatePythonCodeToolPayload {
     name: string;

@@ -32,6 +32,38 @@ server {
     ${SSL_ENABLE} ssl_protocols TLSv1.2 TLSv1.3;
     ${SSL_ENABLE} ssl_ciphers HIGH:!aNULL:!MD5;
 
+    # Force TLS when SSL_ENABLE is on. This block serves both :80 and :443, so
+    # the redirect is scoped by $scheme instead of a second server block -- a
+    # second block on :80 would collide with the listen directive above.
+    # If a load balancer terminates TLS in front of nginx, leave SSL_ENABLE off
+    # here: $scheme would always be http and this would redirect in a loop.
+    ${SSL_ENABLE} if ($scheme = http) { return 301 https://$host$request_uri; }
+
+    # ---- Security response headers --------------------------------------
+    # WARNING: nginx inherits add_header into a location only if that location
+    # declares no add_header of its own. Adding one to any location below
+    # silently drops every header here for that route -- repeat them there if
+    # a route ever needs its own.
+    #
+    # Django's XFrameOptionsMiddleware already sends X-Frame-Options: DENY on
+    # proxied responses. Hide it so nginx is the single source of truth and
+    # browsers never receive two conflicting values.
+    proxy_hide_header X-Frame-Options;
+
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
+
+    # Report-only: the SPA is built from a separate repository, so this policy
+    # has not been verified against it. Violations surface in the browser
+    # console; there is no report collector in this stack. Promote to
+    # Content-Security-Policy once the console is clean.
+    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' ws: wss:; frame-ancestors 'self'; base-uri 'self'" always;
+
+    ${SSL_ENABLE} add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    # ---------------------------------------------------------------------
+
     location / {
         proxy_pass http://frontend_server;
         proxy_http_version 1.1;
@@ -91,13 +123,18 @@ server {
         proxy_set_header X-Forwarded-Host $host;
     }
 
-    location = /voice {
+    location ^~ /voice/ {
         proxy_pass http://realtime_server;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
         proxy_set_header X-Forwarded-Host $host;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 
     location /voice/stream {
@@ -108,7 +145,8 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        proxy_set_header X-Forwarded-Host $host;
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
     }

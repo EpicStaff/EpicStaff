@@ -26,7 +26,7 @@ class McpToolCopyService(BaseCopyService):
             transport=tool.transport,
             tool_name=tool.tool_name,
             timeout=tool.timeout,
-            auth=tool.auth,
+            auth_secret=tool.auth_secret,
             init_timeout=tool.init_timeout,
         )
         new_tool.labels.set(

@@ -16,6 +16,7 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { SecretDeclarationIndexService, SecretsStorageService } from '@shared/services';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { EMPTY } from 'rxjs';
 import { catchError, finalize, tap } from 'rxjs/operators';
@@ -36,6 +37,7 @@ import { CustomInputComponent } from '../../../../shared/components/form-input/f
 import { HelpTooltipComponent } from '../../../../shared/components/help-tooltip/help-tooltip.component';
 import { JsonEditorComponent, JsonError } from '../../../../shared/components/json-editor/json-editor.component';
 import { TextareaComponent } from '../../../../shared/components/textarea/textarea.component';
+import { NodeSecretsFieldComponent } from '../../../../visual-programming/components/node-secrets-field/node-secrets-field.component';
 import { CodeEditorComponent } from '../code-editor/code-editor.component';
 import {
     DrillStep,
@@ -103,6 +105,7 @@ const VARIABLES_SCHEMA_TOOLTIP =
         ToggleSwitchComponent,
         ParametersTableViewComponent,
         HasPermissionDirective,
+        NodeSecretsFieldComponent,
     ],
     templateUrl: './create-custom-tool-dialog.component.html',
     styleUrls: ['./create-custom-tool-dialog.component.scss'],
@@ -116,6 +119,8 @@ export class CreateCustomToolDialogComponent {
     private readonly toast = inject(ToastService);
     private readonly confirmDialog = inject(ConfirmationDialogService);
     private readonly toolsEvents = inject(ToolsEventsService);
+    private readonly secretsStorageService = inject(SecretsStorageService);
+    private readonly secretDeclarationIndexService = inject(SecretDeclarationIndexService);
     private readonly dialogData = inject<CreateCustomToolDialogData | null>(DIALOG_DATA, { optional: true });
 
     /** Rebound to the forked copy once a built-in tool is saved, so later saves update that copy. */
@@ -168,11 +173,20 @@ export class CreateCustomToolDialogComponent {
 
     public readonly tableVariables = signal<ToolVariable[]>([]);
     public readonly tableDrillStack = signal<DrillStep[]>([]);
+    public readonly selectedSecretIds = signal<number[]>([]);
+    public readonly secretNames = computed(() => {
+        const selected = new Set(this.selectedSecretIds());
+        return this.secretsStorageService
+            .secrets()
+            .filter((secret) => selected.has(secret.id))
+            .map((secret) => secret.name);
+    });
 
     public readonly activeEditor = signal<ActiveEditor>(ActiveEditor.Python);
     public readonly pythonSectionExpanded = signal(false);
     public readonly jsonSectionExpanded = signal(false);
     public readonly parametersTableMode = signal(true);
+    public readonly parametersSwitchOn = signal(true);
     public readonly isJsonValid = signal(true);
     public readonly jsonIssues = signal<JsonError[]>([]);
     public readonly lastValidJson = signal('');
@@ -202,6 +216,27 @@ export class CreateCustomToolDialogComponent {
         const initialJson = this.form.controls.variablesJson.value;
         if (isToolJsonSchemaValid(initialJson)) {
             this.lastValidJson.set(initialJson);
+        }
+
+        const editingToolOnInit = this.selectedTool();
+        if (editingToolOnInit) {
+            const toolName = editingToolOnInit.name;
+            this.secretDeclarationIndexService
+                .getIndex()
+                .pipe(takeUntilDestroyed(this.destroyRef))
+                .subscribe((index) => {
+                    const declared = this.secretDeclarationIndexService.lookupTool(index, toolName);
+                    if (declared.length) {
+                        this.selectedSecretIds.set(declared);
+                        // Patch only the secretIds field of the ORIGINAL baseline — recomputing
+                        // the whole snapshot here would bake in any edit the user made to name/
+                        // description/code while this request was in flight as if it were
+                        // already "clean", silently suppressing the unsaved-changes warning.
+                        const baseline = JSON.parse(this.initialSnapshot) as Record<string, unknown>;
+                        baseline['secretIds'] = [...declared].sort();
+                        this.initialSnapshot = JSON.stringify(baseline);
+                    }
+                });
         }
 
         this.dialogRef.disableClose = true;
@@ -246,6 +281,8 @@ export class CreateCustomToolDialogComponent {
     }
 
     public setParametersTableMode(enabled: boolean): void {
+        this.parametersSwitchOn.set(enabled);
+
         if (this.parametersTableMode() === enabled) {
             return;
         }
@@ -268,7 +305,9 @@ export class CreateCustomToolDialogComponent {
                         if (result === false) {
                             this.applyEnableTableMode([]);
                             this.tableImportWasInvalid = true;
+                            return;
                         }
+                        this.revertParametersSwitch();
                     });
                 return;
             }
@@ -294,7 +333,9 @@ export class CreateCustomToolDialogComponent {
                 .subscribe((result) => {
                     if (result === false) {
                         this.applyDisableTableMode();
+                        return;
                     }
+                    this.revertParametersSwitch();
                 });
             return;
         }
@@ -302,8 +343,13 @@ export class CreateCustomToolDialogComponent {
         this.applyDisableTableMode();
     }
 
+    private revertParametersSwitch(): void {
+        this.parametersSwitchOn.set(this.parametersTableMode());
+    }
+
     private applyDisableTableMode(): void {
         this.parametersTableMode.set(false);
+        this.parametersSwitchOn.set(false);
         if (!this.isBuiltIn()) {
             this.form.controls.variablesJson.setValue(
                 JSON.stringify(serializeVariables(this.tableVariables()), null, 2)
@@ -322,6 +368,7 @@ export class CreateCustomToolDialogComponent {
     private applyEnableTableMode(variables: ToolVariable[]): void {
         this.tableVariables.set(variables);
         this.parametersTableMode.set(true);
+        this.parametersSwitchOn.set(true);
         this.jsonSectionExpanded.set(false);
         this.jsonIssues.set([]);
         if (this.activeEditor() === ActiveEditor.Json) {
@@ -384,6 +431,10 @@ export class CreateCustomToolDialogComponent {
 
     public onDrillStackChange(stack: DrillStep[]): void {
         this.tableDrillStack.set(stack);
+    }
+
+    public onSecretsChange(values: number[]): void {
+        this.selectedSecretIds.set(values);
     }
 
     public closeEditorPane(): void {
@@ -518,6 +569,7 @@ export class CreateCustomToolDialogComponent {
         request$
             .pipe(
                 tap((result) => {
+                    this.secretDeclarationIndexService.invalidate();
                     if (action === 'fork') {
                         this.adoptForkedCopy(result);
                         return;
@@ -576,6 +628,7 @@ export class CreateCustomToolDialogComponent {
             libraries: [...libraries].sort(),
             useStorage,
             variables: this.snapshotVariables(),
+            secretIds: [...this.selectedSecretIds()].sort(),
         });
     }
 
@@ -612,7 +665,7 @@ export class CreateCustomToolDialogComponent {
 
     private buildPayload(): CreatePythonCodeToolPayload {
         const source = this.selectedTool();
-        return toCreatePayload(this.form.getRawValue(), {
+        return toCreatePayload(this.form.getRawValue(), this.selectedSecretIds(), {
             entrypoint: source?.python_code?.entrypoint,
         });
     }

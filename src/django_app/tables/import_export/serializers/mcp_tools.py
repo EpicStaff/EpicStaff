@@ -17,4 +17,4 @@ class McpToolImportSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = McpTool
-        exclude = ["labels", "created_by"]
+        exclude = ["labels", "created_by", "auth_secret"]

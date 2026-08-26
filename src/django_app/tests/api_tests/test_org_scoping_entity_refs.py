@@ -276,9 +276,12 @@ def test_init_realtime_same_org_agent_allowed(client_a, org_a):
     agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org_a)
     with patch(
         "tables.views.views.realtime_service.init_realtime", return_value="conn-1"
-    ):
+    ) as init:
         resp = client_a.post(
             "/api/init-realtime/", {"agent_id": agent.id}, format="json"
         )
     assert resp.status_code == 201, resp.data
     assert resp.data["connection_key"] == "conn-1"
+    # The active org must reach the service: it is what binds decryption to the
+    # org the caller was authorized for.
+    assert init.call_args.kwargs["org_id"] == org_a.id

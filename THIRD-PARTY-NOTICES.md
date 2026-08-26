@@ -17524,7 +17524,7 @@ Identified from `// node_modules/<pkg>/` bundler comments and `@license` banners
 
 ## Backend (Python)
 
-This section lists third-party Python packages bundled into EpicStaff backend microservices (`src/django_app`, `src/crew`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, `src/webhook`, `src/tool`, `src/voice_app`). Dev / test dependencies are excluded. Packages present in multiple services are deduplicated by `name + version`.
+This section lists third-party Python packages bundled into EpicStaff backend microservices (`src/django_app`, `src/crew`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, `src/webhook`, `src/voice_app`). Dev / test dependencies are excluded. Packages present in multiple services are deduplicated by `name + version`.
 
 ### Python license summary
 
@@ -62666,7 +62666,7 @@ The generator script lives at `frontend/scripts/generate-third-party-notices.mjs
 
 ### Backend (Python)
 
-Whenever any backend service's `pyproject.toml` `main` dependency group changes (additions, version bumps, removals in any of `src/django_app`, `src/crew`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, `src/webhook`, `src/tool`, `src/voice_app`), regenerate the backend section of this file.
+Whenever any backend service's `pyproject.toml` `main` dependency group changes (additions, version bumps, removals in any of `src/django_app`, `src/crew`, `src/manager`, `src/knowledge`, `src/realtime`, `src/sandbox`, `src/webhook`, `src/voice_app`), regenerate the backend section of this file.
 
 From the repository root, in PowerShell:
 

@@ -35,7 +35,16 @@ Base URL in examples: `http://localhost:8000`.
 | DELETE | `/api/api-keys/{id}/` | Bearer JWT + SECRETS:DELETE | Hard-delete a member's API key |
 | POST | `/api/api-keys/{id}/revoke/` | Bearer JWT + SECRETS:UPDATE | Revoke a member's API key |
 
-**Login/Swagger-token throttle:** `LOGIN_THROTTLE_RATE` env (default `5/min`), bucketed per `<ip>|<email>`. 6th attempt inside the window returns `429` with `Retry-After`.
+**Throttles.** Every anonymous credential-adjacent endpoint is rate limited; exceeding a bucket returns `429` with `Retry-After`.
+
+| Endpoint | Bucket | Env var | Default |
+|---|---|---|---|
+| `/api/auth/login/`, `/api/auth/swagger-token/` | `<ip>\|<email>` | `LOGIN_THROTTLE_RATE` | `5/min` |
+| `/api/auth/password-reset/request/` | `<ip>\|<email>` | `PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` |
+| `/api/auth/password-reset/confirm/` | `<ip>` | `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` |
+| `/api/auth/refresh/` | `<ip>` | `TOKEN_REFRESH_THROTTLE_RATE` | `30/min` |
+
+The last two key on IP alone: neither request carries an identifier to compose with — the refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the token being guessed, so bucketing by it would give an attacker a fresh allowance per attempt.
 
 **Refresh tokens rotate on every use** (`ROTATE_REFRESH_TOKENS=True`). The old refresh is blacklisted — replaying it returns `401`.
 
@@ -121,6 +130,18 @@ payload shapes of every header-required endpoint.
 
 ## First-time setup
 
+Which path may create the first superadmin is controlled by
+`FIRST_SETUP_MODE`. See [first_setup_operations.md](first_setup_operations.md)
+for the full operator runbook (why the gate exists and the `manage.py
+create_superadmin` workflow).
+
+| Env var | Default | Notes |
+|---|---|---|
+| `FIRST_SETUP_MODE` | `cli_only` | `cli_only` refuses `POST /api/auth/first-setup/` with `403 first_setup_disabled`; only `manage.py create_superadmin` can create the first superadmin. `open` allows the HTTP endpoint too. Local development (`.dev.env`) ships `open`. |
+| `LOGIN_THROTTLE_RATE` | `5/min` | Rate for `POST /api/auth/login/` and `/api/auth/swagger-token/`, bucketed per `<ip>\|<email>`. |
+| `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Rate for `POST /api/auth/password-reset/confirm/`, bucketed per IP. |
+| `TOKEN_REFRESH_THROTTLE_RATE` | `30/min` | Rate for `POST /api/auth/refresh/`, bucketed per IP. |
+
 ### GET `/api/auth/first-setup/`
 
 - **Auth:** none.
@@ -128,16 +149,19 @@ payload shapes of every header-required endpoint.
   render the setup screen or the login screen.
 - **Response 200:**
   ```json
-  { "needs_setup": true }
+  { "needs_setup": true, "setup_mode": "cli_only" }
   ```
-- `needs_setup` is `true` iff no `User` row exists in the database.
+- `needs_setup` is `true` only when no `User` row exists **and**
+  `FIRST_SETUP_MODE` is `open`. Under `cli_only` it is always `false`, even
+  before any user exists, so the frontend never offers a setup form it
+  cannot submit. `setup_mode` echoes the current `FIRST_SETUP_MODE` value.
 
 ### POST `/api/auth/first-setup/`
 
-- **Auth:** none.
+- **Auth:** none, but refused unless `FIRST_SETUP_MODE=open` (see Errors).
 - **Purpose:** bootstrap the very first Superadmin, their default
   Organization, and an `OrganizationUser` membership with the built-in
-  Org Admin role. Also returns JWT tokens so the frontend can drop the user
+  Superadmin role. Also returns JWT tokens so the frontend can drop the user
   straight into the workspace without a second login call.
 - **Request body:**
   ```json
@@ -151,7 +175,7 @@ payload shapes of every header-required endpoint.
     not-too-common, not-all-numeric, not-too-similar-to-email).
   - Organization name is **not** taken from the request body; it comes from
     the `DEFAULT_ORGANIZATION_NAME` setting (env-driven, default
-    `"Default Organization"`). Any `organization_name` / `display_name`
+    `"Organization"`). Any `organization_name` / `display_name`
     fields passed in the body are silently ignored.
 - **Response 201:**
   ```json
@@ -164,7 +188,7 @@ payload shapes of every header-required endpoint.
     },
     "organization": {
       "id": 1,
-      "name": "Default Organization",
+      "name": "Organization",
       "is_active": true
     },
     "access":  "<jwt-access>",
@@ -186,46 +210,14 @@ payload shapes of every header-required endpoint.
       ]
     }
     ```
+  - `403` — `code: first_setup_disabled` when `FIRST_SETUP_MODE` is not
+    `open` (the default, `cli_only`). Use `manage.py create_superadmin`
+    instead — see [first_setup_operations.md](first_setup_operations.md).
   - `409` — `{"detail": "Setup has already been completed"}` when any user
     already exists.
 
 Setup runs inside `transaction.atomic()` — user + org + membership are created
 atomically or not at all.
-
-### Bootstrapping via `entrypoint.sh` (optional, off by default)
-
-For CI, staging, or local dev you can have the container bootstrap the first
-superadmin automatically instead of going through the UI. This is **off by
-default** to avoid conflicts with the `/first-setup/` endpoint (if both
-paths ran, the endpoint would then return 409).
-
-Enable by setting in the service environment:
-
-| Env var | Required | Example | Notes |
-|---|---|---|---|
-| `DJANGO_AUTO_CREATE_ADMIN` | yes | `True` | Accepts only `True`, `true`, `False`, `false`. Anything else → entrypoint aborts (`exit 1`). |
-| `DJANGO_ADMIN_EMAIL` | when flag is `True` | `admin@acme.com` | |
-| `DJANGO_ADMIN_PASSWORD` | when flag is `True` | `StrongPass123!` | Used exactly as given. The entrypoint **never generates** or rewrites it. |
-| `DEFAULT_ORGANIZATION_NAME` | optional | `Acme Inc` | Name for the default Organization. Falls back to `"Default Organization"` when unset. Read from `settings.DEFAULT_ORGANIZATION_NAME` — applies to both the HTTP endpoint and the entrypoint bootstrap. |
-
-`docker-compose.yaml` forwards these vars into the `django_app` container
-already. Compose does not pass arbitrary `.env` entries into services — only
-what's explicitly listed under `environment:` — so if you add new RBAC env
-vars, wire them there too.
-
-When enabled, `entrypoint.sh` calls `FirstSetupService.setup(...)` — the
-exact same code path as the endpoint — so the resulting state (User +
-Organization + OrganizationUser(Org Admin)) is identical.
-
-Behavior matrix:
-
-| Condition | Action |
-|---|---|
-| Flag is `False` / `false` | Info log, skip. Create the admin via `POST /api/auth/first-setup/`. |
-| Flag is any other non-`True`/`true` value | `exit 1` with an error naming the bad value. |
-| Flag is `True`/`true` and any required var is empty | ERROR log naming each missing var, skip bootstrap, point to `POST /api/auth/first-setup/`. Container continues to start. |
-| Flag is `True`/`true`, all vars present, **no user exists** | Run `FirstSetupService.setup(...)`. |
-| Flag is `True`/`true`, all vars present, **user already exists** | Info log "Superadmin already exists — skipping bootstrap". |
 
 ### System API key (`DJANGO_API_KEY`)
 
@@ -511,10 +503,7 @@ Two entry points, same semantics, different callers.
   ```
 - **Response 201:**
   ```json
-  {
-    "access":  "<jwt-access>",
-    "refresh": "<jwt-refresh>"
-  }
+  { "access": "<jwt-access>" }
   ```
 - **Errors:** `400` on validation failures, `403` if the caller is not a
   superadmin.
@@ -638,6 +627,7 @@ curl -s http://localhost:8000/api/graphs/ -H "Authorization: Bearer $ACCESS" | j
 | `/api/auth/introspect/` response | `{active, user_id, username, scopes}` | `{active, user_id, email, scopes}` |
 | `/api/auth/api-key/validate/` response | `{active, name, prefix, scopes}` | `{active, name, prefix, owner_user_id}` (no `scopes`) |
 | `/api/auth/reset-user/` request | `{username, password, email?}` | `{email, password}` |
+| `/api/auth/reset-user/` response | `{access, refresh, api_key}` (the `api_key` field crashed with `NameError` before it could be returned) | `{access}` only |
 | `/admin/` | Django admin UI | **Removed** |
 
 ---

@@ -38,5 +38,4 @@ export const PANEL_COMPONENT_MAP: Record<string, Type<NodePanel<NodeModel>>> = {
     [NodeType.CODE_AGENT]: asNodePanelComponent(CodeAgentNodePanelComponent),
     [NodeType.TASK]: asNodePanelComponent(TaskNodePanelComponent),
     [NodeType.AGENT]: asNodePanelComponent(AgentNodePanelComponent),
-    // start: StartNodePanelComponent,
 };
