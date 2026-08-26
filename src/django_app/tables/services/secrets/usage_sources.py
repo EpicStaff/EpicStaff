@@ -11,6 +11,10 @@ from tables.models import (
     RealtimeTranscriptionConfig,
 )
 from tables.models.graph_models import ConditionalEdge, TelegramTriggerNode
+from tables.models.webhook_models import (
+    NgrokWebhookConfig,
+    TwilioChannel,
+)
 from tables.serializers.org_scoped_fields import org_visible_queryset
 
 # Shared with the declaration validator so the two features cannot drift on which
@@ -25,9 +29,15 @@ from utils.graph_utils import resolve_node_names
 CATEGORY_FLOWS = "flows"
 CATEGORY_TOOLS = "tools"
 CATEGORY_LLM_CONFIGS = "llm_configs"
+CATEGORY_CHANNELS = "channels"
 
 #: Fixed emission order for `categories` in the detail payload.
-CATEGORY_ORDER = (CATEGORY_FLOWS, CATEGORY_TOOLS, CATEGORY_LLM_CONFIGS)
+CATEGORY_ORDER = (
+    CATEGORY_FLOWS,
+    CATEGORY_TOOLS,
+    CATEGORY_LLM_CONFIGS,
+    CATEGORY_CHANNELS,
+)
 
 #: Telegram is an FK site rather than a Python-code site, so it lives here rather
 #: than in python_code_sites.
@@ -39,8 +49,10 @@ RESOURCE_TYPE_REALTIME_CONFIG = "realtime_config"
 RESOURCE_TYPE_REALTIME_TRANSCRIPTION_CONFIG = "realtime_transcription_config"
 RESOURCE_TYPE_MCP_TOOL = "mcp_tool"
 RESOURCE_TYPE_PYTHON_CODE_TOOL = "python_code_tool"
+RESOURCE_TYPE_TWILIO_CHANNEL = "twilio_channel"
+RESOURCE_TYPE_NGROK_WEBHOOK_CONFIG = "ngrok_webhook_config"
 
-# The three column shapes the twelve sources fall into. Sources sharing a shape share
+# The three column shapes the sources fall into. Sources sharing a shape share
 # a column list, so the detail path unions each group as-is instead of padding every
 # branch out to one common shape with typed NULLs.
 SHAPE_NAMED = "named"
@@ -93,6 +105,23 @@ class UsageSource:
     """A RESOURCE_TYPE_* value identifying which model a named resource is, so two
     models of one category cannot merge on a shared name. None for flows, which are
     keyed by graph rather than by name."""
+    extra_filter: dict | None = None
+    """Additional `.filter(**extra_filter)` applied in `_scoped()`, alongside the
+    org/secret filtering every source already gets. `None` (the default) is a
+    no-op -- every existing entry omits this and behaves exactly as before.
+    Needed when one model's secret FK is shared by more than one conceptual
+    site and each site's `UsageSource` entry must exclude the rows the other
+    entry already covers (e.g. `WebhookNodeAuth`, which attaches via one of two
+    nullable node FKs -- the Telegram entry excludes rows where the webhook FK
+    is set, and vice versa)."""
+    graph_path: str = "graph"
+    """ORM path from `model` to its owning `Graph`, for flow (SHAPE_NODE/
+    SHAPE_EDGE) sources only. Defaults to `"graph"`, which is correct for every
+    existing flow-node model (the FK is direct) -- every existing entry omits
+    this and behaves exactly as before. Overridden by sources whose model
+    reaches `Graph` only through a nested relation (e.g. `WebhookNodeAuth`,
+    which has no `graph` field of its own -- only
+    `telegram_trigger_node__graph` / `webhook_trigger_node__graph`)."""
 
     def count_pairs(self, *, org_id: int, secret_ids: set[int]):
         """(secret_id, resource_key) as a queryset, for the union in counts()."""
@@ -127,19 +156,26 @@ class UsageSource:
         )
 
     def node_rows(self, *, org_id: int, secret_ids: set[int]):
-        """(secret_id, node_type, graph_id, graph_name, node_name, code_field)."""
+        """(secret_id, node_type, graph_id, graph_name, node_name, code_field).
+
+        `graph_id` is passed straight through (no Cast) so it stays a real
+        int, matching every existing caller (`hits_from_node_rows` etc.) that
+        assigns it to `UsageHit.resource_id: int | None`.
+        """
         return (
             self._scoped(org_id=org_id, secret_ids=secret_ids)
             .annotate(
                 usage_node_type=Value(self.node_type, output_field=TextField()),
-                usage_graph_name=Cast("graph__name", output_field=TextField()),
+                usage_graph_name=Cast(
+                    f"{self.graph_path}__name", output_field=TextField()
+                ),
                 usage_node_name=Cast(self.name_field, output_field=TextField()),
                 usage_code_field=Value(self.code_field, output_field=TextField()),
             )
             .values_list(
                 self.secret_path,
                 "usage_node_type",
-                "graph_id",
+                f"{self.graph_path}_id",
                 "usage_graph_name",
                 "usage_node_name",
                 "usage_code_field",
@@ -148,7 +184,7 @@ class UsageSource:
 
     def edge_rows(self, *, org_id: int, secret_ids: set[int]):
         """(secret_id, node_type, graph_id, graph_name, source_node_id, edge_id,
-        code_field)."""
+        code_field). `graph_id` un-Cast, same reasoning as `node_rows`."""
         return (
             self._scoped(org_id=org_id, secret_ids=secret_ids)
             .annotate(
@@ -158,8 +194,8 @@ class UsageSource:
             .values_list(
                 self.secret_path,
                 "usage_node_type",
-                "graph_id",
-                "graph__name",
+                f"{self.graph_path}_id",
+                f"{self.graph_path}__name",
                 "source_node_id",
                 "id",
                 "usage_code_field",
@@ -173,16 +209,19 @@ class UsageSource:
             if self.org_path is not None
             else org_visible_queryset(model=self.model, org_id=org_id)
         )
+        rows = rows.filter(**{f"{self.secret_path}__in": secret_ids})
+        if self.extra_filter:
+            rows = rows.filter(**self.extra_filter)
         # order_by() cleared because a combined (UNION) query rejects ordered
         # operands, and count_pairs() feeds exactly that.
-        return rows.filter(**{f"{self.secret_path}__in": secret_ids}).order_by()
+        return rows.order_by()
 
     def _key_expression(self):
         """The text expression whose distinct values ARE the resources counted."""
         if self.category == CATEGORY_FLOWS:
             return Concat(
                 Value(f"{CATEGORY_FLOWS}:"),
-                Cast("graph_id", output_field=TextField()),
+                Cast(f"{self.graph_path}_id", output_field=TextField()),
                 output_field=TextField(),
             )
         return Concat(
@@ -350,6 +389,31 @@ USAGE_SOURCES: tuple[UsageSource, ...] = (
         name_field="node_name",
         node_type=NODE_TYPE_TELEGRAM_TRIGGER,
     ),
+    UsageSource(
+        model=TwilioChannel,
+        secret_path="auth_token_secret_id",
+        category=CATEGORY_CHANNELS,
+        org_path="channel__org_id",
+        name_field="channel__name",
+        resource_type=RESOURCE_TYPE_TWILIO_CHANNEL,
+    ),
+    UsageSource(
+        model=NgrokWebhookConfig,
+        secret_path="auth_token_secret_id",
+        category=CATEGORY_CHANNELS,
+        org_path="trigger__org_id",
+        name_field="name",
+        resource_type=RESOURCE_TYPE_NGROK_WEBHOOK_CONFIG,
+    ),
+    # NOTE: WebhookNodeAuth is intentionally NOT registered here. It stores its
+    # auth secret directly on the row (`secret_hash` for static_header,
+    # `signing_secret` for hmac_sha256) rather than referencing a `Secret` row
+    # via FK, so there is nothing for the Secret-deletion-usage registry to
+    # check -- deleting a `Secret` can never affect a `WebhookNodeAuth` row.
+    # An earlier, abandoned design used a `Secret` FK (`secret_id`) here; two
+    # stale entries referencing that removed field used to live in this tuple
+    # and crashed every usage-check query with
+    # `FieldError: Cannot resolve keyword 'secret_id' into field`.
     # --- declaration-declared: PythonCode.secrets IS the allow-list ---
     *(_from_python_code_site(site=site) for site in PYTHON_CODE_SITES),
 )

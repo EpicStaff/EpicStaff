@@ -12,7 +12,6 @@ export * from './llms/llm-library-model.interface';
 export * from './llms/llm-library-provider-group.interface';
 export * from './llms/llm-provider.model';
 export * from './llms/transcription-config.model';
-export * from './ngrok/ngrok-config.model';
 export * from './realtime-voice/realtime-llm-config.model';
 export * from './realtime-voice/realtime-model.model';
 export * from './realtime-voice/voice-settings.model';

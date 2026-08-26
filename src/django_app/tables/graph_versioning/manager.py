@@ -372,11 +372,13 @@ class GraphVersioningManager:
                 model.objects.filter(id__in=ids).values_list("id", flat=True)
             )
 
-            # set as missing webhook triggers without ngrok config
+            # set as missing webhook triggers without any tunnel config
+            # (provider_type=None means no NgrokWebhookConfig or LocalhostWebhookConfig attached)
             if entity_type_value == EntityType.WEBHOOK_TRIGGER.value:
                 unconfigured_ids = set(
                     WebhookTrigger.objects.filter(
-                        id__in=existing_ids, ngrok_webhook_config__isnull=True
+                        id__in=existing_ids,
+                        provider_type__isnull=True,
                     ).values_list("id", flat=True)
                 )
                 existing_ids -= unconfigured_ids

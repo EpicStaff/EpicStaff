@@ -15,14 +15,9 @@ import {
     viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import {
-    AppSvgIconComponent,
-    ButtonComponent,
-    LlmModelConfigDialogComponent,
-    VoiceModelConfigDialogComponent,
-} from '@shared/components';
-import { FullLLMConfig, FullLLMConfigService, FullRealtimeConfig, FullRealtimeConfigService } from '@shared/services';
-import { forkJoin, Subject } from 'rxjs';
+import { AppSvgIconComponent, ButtonComponent, LlmModelConfigDialogComponent } from '@shared/components';
+import { FullLLMConfig, FullLLMConfigService } from '@shared/services';
+import { Subject } from 'rxjs';
 import { finalize, takeUntil } from 'rxjs/operators';
 
 import { MergedConfig } from '../../../../../features/staff/services/full-agent.service';
@@ -44,29 +39,19 @@ export class LLMPopupComponent implements OnInit, OnDestroy, AfterViewInit {
     private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
     private readonly fullLLMConfigService = inject(FullLLMConfigService);
-    private readonly fullRealtimeConfigService = inject(FullRealtimeConfigService);
     private readonly dialog = inject(Dialog);
 
     public readonly searchTerm = signal<string>('');
-    public readonly activeTab = signal<'llm' | 'realtime'>('llm');
     public readonly loading = signal<boolean>(true);
 
     public readonly llmConfigs = this.fullLLMConfigService.fullLLMConfigs;
-    public readonly realtimeConfigs = this.fullRealtimeConfigService.fullRealtimeConfigs;
 
     public readonly selectedLLMId = signal<number | null>(null);
-    public readonly selectedRealtimeId = signal<number | null>(null);
 
     public readonly selectedLLM = computed<FullLLMConfig | null>(() => {
         const id = this.selectedLLMId();
         if (id == null) return null;
         return this.llmConfigs().find((c) => c.id === id) ?? null;
-    });
-
-    public readonly selectedRealtime = computed<FullRealtimeConfig | null>(() => {
-        const id = this.selectedRealtimeId();
-        if (id == null) return null;
-        return this.realtimeConfigs().find((c) => c.id === id) ?? null;
     });
 
     public readonly filteredLLMs = computed<MergedConfig[]>(() => {
@@ -85,39 +70,17 @@ export class LLMPopupComponent implements OnInit, OnDestroy, AfterViewInit {
         );
     });
 
-    public readonly filteredRealtimeModels = computed<MergedConfig[]>(() => {
-        const configs: MergedConfig[] = this.realtimeConfigs().map((config) => ({
-            id: config.id,
-            custom_name: config.custom_name,
-            model_name: config.modelDetails?.name || 'Unknown Model',
-            type: 'realtime',
-            provider_id: config.modelDetails?.provider,
-            provider_name: config.providerDetails?.name || 'Unknown Provider',
-        }));
-        const term = this.searchTerm().toLowerCase();
-        if (!term) return configs;
-        return configs.filter(
-            (c) => c.model_name.toLowerCase().includes(term) || (c.custom_name ?? '').toLowerCase().includes(term)
-        );
-    });
-
     private readonly destroyed$ = new Subject<void>();
 
     constructor() {
         effect(() => {
             const cell = this.cellValue();
             const llmConfigs = this.llmConfigs();
-            const realtimeConfigs = this.realtimeConfigs();
             if (!cell || cell.length === 0) return;
 
             const llmMatch = cell.find((c) => c.type === 'llm');
             if (llmMatch && llmConfigs.some((c) => c.id === llmMatch.id)) {
                 this.selectedLLMId.set(llmMatch.id);
-            }
-
-            const realtimeMatch = cell.find((c) => c.type === 'realtime');
-            if (realtimeMatch && realtimeConfigs.some((c) => c.id === realtimeMatch.id)) {
-                this.selectedRealtimeId.set(realtimeMatch.id);
             }
         });
     }
@@ -138,10 +101,8 @@ export class LLMPopupComponent implements OnInit, OnDestroy, AfterViewInit {
     private loadConfigs(): void {
         this.loading.set(true);
 
-        forkJoin({
-            llmConfigs: this.fullLLMConfigService.getFullLLMConfigs(),
-            realtimeConfigs: this.fullRealtimeConfigService.getFullRealtimeConfigs(),
-        })
+        this.fullLLMConfigService
+            .getFullLLMConfigs()
             .pipe(
                 takeUntil(this.destroyed$),
                 finalize(() => this.loading.set(false))
@@ -149,16 +110,8 @@ export class LLMPopupComponent implements OnInit, OnDestroy, AfterViewInit {
             .subscribe();
     }
 
-    public setActiveTab(tab: 'llm' | 'realtime'): void {
-        this.activeTab.set(tab);
-    }
-
     public onSelectLLM(item: MergedConfig): void {
         this.selectedLLMId.update((current) => (current === item.id ? null : item.id));
-    }
-
-    public onSelectRealtime(item: MergedConfig): void {
-        this.selectedRealtimeId.update((current) => (current === item.id ? null : item.id));
     }
 
     public onSave(): void {
@@ -176,18 +129,6 @@ export class LLMPopupComponent implements OnInit, OnDestroy, AfterViewInit {
             });
         }
 
-        const rt = this.selectedRealtime();
-        if (rt) {
-            selectedConfigs.push({
-                id: rt.id,
-                custom_name: rt.custom_name,
-                model_name: rt.modelDetails?.name || 'Unknown Model',
-                type: 'realtime',
-                provider_id: rt.modelDetails?.provider,
-                provider_name: rt.providerDetails?.name || 'Unknown Provider',
-            });
-        }
-
         this.configsSelected.emit(selectedConfigs);
     }
 
@@ -197,13 +138,6 @@ export class LLMPopupComponent implements OnInit, OnDestroy, AfterViewInit {
 
     public onCreateLlmModel(): void {
         this.dialog.open(LlmModelConfigDialogComponent, {
-            height: '90vh',
-            width: '600px',
-        });
-    }
-
-    public onCreateRealtimeModel(): void {
-        this.dialog.open(VoiceModelConfigDialogComponent, {
             height: '90vh',
             width: '600px',
         });

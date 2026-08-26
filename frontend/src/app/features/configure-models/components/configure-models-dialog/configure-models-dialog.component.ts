@@ -10,10 +10,10 @@ import { ConfigureModelsTabId } from '../../enums/configure-models-tab-id.enum';
 import { ConfigureModelsTab } from '../../interfaces/configure-models-tab.interface';
 import { DefaultLlmsSectionComponent } from '../default-llms-section/default-llms-section.component';
 import { LlmLibrarySectionComponent } from '../llm-library-section/llm-library-section.component';
-import { AppNgrokSectionComponent } from '../ngrok-config-section/ngrok-config-section.component';
 import { QuickstartSectionComponent } from '../quickstart-section/quickstart-section.component';
 import { SecretsSectionComponent } from '../secrets-section/secrets-section.component';
 import { VoiceSettingsSectionComponent } from '../voice-settings-section/voice-settings-section.component';
+import { WebhookTriggersSectionComponent } from '../webhook-triggers-section/webhook-triggers-section.component';
 
 @Component({
     selector: 'app-configure-models-dialog',
@@ -22,7 +22,7 @@ import { VoiceSettingsSectionComponent } from '../voice-settings-section/voice-s
         DefaultLlmsSectionComponent,
         QuickstartSectionComponent,
         LlmLibrarySectionComponent,
-        AppNgrokSectionComponent,
+        WebhookTriggersSectionComponent,
         VoiceSettingsSectionComponent,
         SecretsSectionComponent,
         AppSvgIconComponent,
@@ -57,9 +57,9 @@ export class ConfigureModelsDialogComponent implements OnInit {
             isPermitted: this.permissionService.can(ResourceCode.LlmConfigs, ActionCode.Read),
         },
         {
-            id: ConfigureModelsTabId.NGROK_CONFIG,
-            label: 'Ngrok Configuration',
-            iconClass: 'ti ti-cloud',
+            id: ConfigureModelsTabId.WEBHOOK_TRIGGERS,
+            label: 'Webhook Triggers',
+            iconClass: 'ti ti-webhook',
             isPermitted: this.permissionService.isSuperadmin,
         },
         {

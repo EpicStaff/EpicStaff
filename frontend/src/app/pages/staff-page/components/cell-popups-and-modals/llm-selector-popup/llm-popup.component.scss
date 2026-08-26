@@ -115,7 +115,7 @@ $transition-default: all 0.2s ease;
 
     .menu-header {
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-end;
         padding: 0;
         margin-bottom: 8px;
         border-bottom: 1px solid $border-color;

@@ -12,7 +12,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.first_setup_mode import FirstSetupMode
 from tables.services.rbac.permissions import IsSuperadmin
-from tables.models.rbac_models import ApiKey
+from tables.models.rbac_models import ApiKey, OrganizationUser
+from django.contrib.auth import get_user_model
 from tables.serializers.rbac_serializers import (
     AdminPasswordResetSerializer,
     LoginSerializer,
@@ -221,12 +222,24 @@ class TokenIntrospectView(APIView):
         except TokenError:
             return Response({"active": False}, status=status.HTTP_200_OK)
 
+        user_id = access.get("user_id")
+        org_ids = list(
+            OrganizationUser.objects.filter(user_id=user_id).values_list(
+                "org_id", flat=True
+            )
+        )
+        is_superadmin = (
+            get_user_model().objects.filter(pk=user_id, is_superadmin=True).exists()
+        )
+
         return Response(
             {
                 "active": True,
-                "user_id": access.get("user_id"),
+                "user_id": user_id,
                 "email": access.get("email"),
                 "scopes": access.get("scopes", []),
+                "org_ids": org_ids,
+                "is_superadmin": is_superadmin,
             },
             status=status.HTTP_200_OK,
         )

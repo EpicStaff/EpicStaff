@@ -4,15 +4,15 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import {
-    AppSvgIconComponent,
-    ButtonComponent,
-    CustomInputComponent,
-    TextareaComponent,
-    ValidationErrorsComponent,
-} from '@shared/components';
+import { Secret } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
 import { extractHttpErrorMessage } from '@shared/utils';
+
+import { AppSvgIconComponent } from '../../../../shared/components/app-svg-icon/app-svg-icon.component';
+import { ValidationErrorsComponent } from '../../../../shared/components/app-validation-errors/validation-errors.component';
+import { ButtonComponent } from '../../../../shared/components/buttons/button/button.component';
+import { CustomInputComponent } from '../../../../shared/components/form-input/form-input.component';
+import { TextareaComponent } from '../../../../shared/components/textarea/textarea.component';
 
 @Component({
     selector: 'app-add-secret-dialog',
@@ -31,7 +31,7 @@ import { extractHttpErrorMessage } from '@shared/utils';
 })
 export class AddSecretDialogComponent {
     private readonly fb = inject(FormBuilder);
-    private readonly dialogRef = inject(DialogRef<void>);
+    private readonly dialogRef = inject(DialogRef<Secret | null>);
     private readonly secretsStorageService = inject(SecretsStorageService);
     private readonly destroyRef = inject(DestroyRef);
 
@@ -47,7 +47,7 @@ export class AddSecretDialogComponent {
     public readonly errorMessage = signal<string | null>(null);
 
     public onCancel(): void {
-        this.dialogRef.close();
+        this.dialogRef.close(null);
     }
 
     public onSubmit(): void {
@@ -63,9 +63,9 @@ export class AddSecretDialogComponent {
             .createSecret(this.form.value)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: () => {
+                next: (secret) => {
                     this.isSubmitting.set(false);
-                    this.dialogRef.close();
+                    this.dialogRef.close(secret);
                 },
                 error: (err: HttpErrorResponse) => {
                     this.isSubmitting.set(false);

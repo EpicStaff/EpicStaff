@@ -1137,9 +1137,9 @@ class TestPasswordResetRequestThrottleNonString:
         body = r.json()
         email_errors = [e for e in body["errors"] if e["field"] == "email"]
         assert email_errors
-        assert any(
-            "must be a string" in e["reason"].lower() for e in email_errors
-        ), body
+        assert any("must be a string" in e["reason"].lower() for e in email_errors), (
+            body
+        )
 
 
 # ---------------- Default-org: single-default constraint ----------------
