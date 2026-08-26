@@ -3036,9 +3036,19 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
             )
 
         try:
+            token = uuid.UUID(str(channel_token))
+        except (ValueError, AttributeError, TypeError):
+            logger.warning(
+                f"configure-webhook: malformed channel_token={channel_token}"
+            )
+            return Response(
+                {"error": "Channel not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
             channel = RealtimeChannel.objects.select_related(
                 "twilio__webhook_trigger__ngrok", "twilio__webhook_trigger__localhost"
-            ).get(token=channel_token)
+            ).get(token=token)
         except RealtimeChannel.DoesNotExist:
             logger.warning(
                 f"configure-webhook: channel not found for token={channel_token}"

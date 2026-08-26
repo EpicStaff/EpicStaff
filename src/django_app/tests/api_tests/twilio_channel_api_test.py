@@ -774,6 +774,26 @@ class TestTwilioConfigureWebhookInputValidation:
         assert response.json() == {"error": "Invalid account_sid"}
         mocked.assert_not_called()
 
+    def test_rejects_malformed_channel_token(self, auth_client, db, default_org):
+        """A non-UUID channel_token must 404 like an unknown token, not 500.
+
+        RealtimeChannel.token is a UUIDField, so `.get(token=channel_token)`
+        with a client-supplied string that isn't a well-formed UUID raises
+        django.core.exceptions.ValidationError before Django can even
+        evaluate DoesNotExist — that exception type must be normalized to
+        the same 404 as a genuinely missing token."""
+        url = reverse("twilio-configure-webhook")
+        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+            response = auth_client.post(
+                url,
+                {"phone_sid": "PN" + "0" * 32, "channel_token": "qwe"},
+                format="json",
+            )
+
+        assert response.status_code == 404, response.json()
+        assert response.json() == {"error": "Channel not found"}
+        mocked.assert_not_called()
+
     def test_twilio_http_error_returns_generic_sanitized_body(
         self, auth_client, db, default_org
     ):
