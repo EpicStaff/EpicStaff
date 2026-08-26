@@ -362,7 +362,9 @@ def test_wipe_graph_children_removes_crew_nodes(manager, graph, crew):
 
 
 @pytest.mark.django_db
-def test_wipe_graph_children_deletes_orphan_python_codes(manager, graph):
+def test_wipe_graph_children_deletes_orphan_python_codes(
+    manager, graph, django_capture_on_commit_callbacks
+):
     from tables.models import PythonCode, PythonNode
 
     code = PythonCode.objects.create(
@@ -373,21 +375,23 @@ def test_wipe_graph_children_deletes_orphan_python_codes(manager, graph):
     )
     PythonNode.objects.create(graph=graph, python_code=code)
 
-    manager._wipe_graph_children(graph)
+    with django_capture_on_commit_callbacks(execute=True):
+        manager._wipe_graph_children(graph)
 
     assert not PythonCode.objects.filter(id=code.id).exists()
 
 
 @pytest.mark.django_db
 def test_wipe_graph_children_keeps_shared_python_codes(
-    manager, graph, python_code, python_code_tool
+    manager, graph, python_code, python_code_tool, django_capture_on_commit_callbacks
 ):
     from tables.models import PythonNode
 
     # python_code_tool already references python_code (shared)
     node = PythonNode.objects.create(graph=graph, python_code=python_code)
 
-    manager._wipe_graph_children(graph)
+    with django_capture_on_commit_callbacks(execute=True):
+        manager._wipe_graph_children(graph)
 
     # PythonNode must be gone
     assert not PythonNode.objects.filter(id=node.id).exists()
@@ -395,6 +399,32 @@ def test_wipe_graph_children_keeps_shared_python_codes(
     from tables.models import PythonCode
 
     assert PythonCode.objects.filter(id=python_code.id).exists()
+
+
+@pytest.mark.django_db
+def test_wipe_graph_children_deletes_orphan_python_codes_from_cdt_node(
+    manager, graph, django_capture_on_commit_callbacks
+):
+    """CDT pre/post python_code columns are the gap the manual cleanup block
+    in _wipe_graph_children missed (it only collected PythonNode /
+    ConditionalEdge / WebhookTriggerNode ids). The generic post_delete signal
+    on ClassificationDecisionTableNode must cover both columns instead."""
+    from tables.models import ClassificationDecisionTableNode, PythonCode
+
+    pre_code = PythonCode.objects.create(code="def main(): return 1")
+    post_code = PythonCode.objects.create(code="def main(): return 2")
+    ClassificationDecisionTableNode.objects.create(
+        graph=graph,
+        node_name="cdt_wipe_test",
+        pre_python_code=pre_code,
+        post_python_code=post_code,
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        manager._wipe_graph_children(graph)
+
+    assert not PythonCode.objects.filter(id=pre_code.id).exists()
+    assert not PythonCode.objects.filter(id=post_code.id).exists()
 
 
 @pytest.mark.django_db

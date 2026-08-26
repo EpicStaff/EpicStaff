@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from django.db import transaction
-from loguru import logger
 
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.models.graph_models import (
@@ -38,7 +37,7 @@ from tables.services.persistent_variables_service import (
 from tables.services.classification_decision_table_node_children import (
     sync_classification_decision_table_children,
 )
-from tables.services.python_code_cleanup import delete_python_code
+from tables.services.python_code_cleanup_service import PythonCodeCleanupService
 
 
 class ConditionalEdgeSerializer(
@@ -299,6 +298,7 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
 
         return node
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         condition_groups_data = validated_data.pop("condition_groups", None)
         prompt_configs_data = validated_data.pop("prompt_configs", None)
@@ -348,13 +348,7 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
 
-        delete_python_code(detached_python_code_ids)
-        if detached_python_code_ids:
-            logger.debug(
-                "Detached and cleaned up PythonCode {ids} from CDT node {node_id}",
-                ids=sorted(detached_python_code_ids),
-                node_id=instance.id,
-            )
+        PythonCodeCleanupService.delete_orphaned(detached_python_code_ids)
 
         sync_classification_decision_table_children(
             instance,
