@@ -182,6 +182,14 @@
                         [width]="34"
                         [height]="18"
                     />
+
+                    @if (iconByShape[item.shape]; as glyph) {
+                        <app-svg-icon
+                            [icon]="glyph.name"
+                            [width]="glyph.width"
+                            [height]="glyph.height"
+                        />
+                    }
                 </span>
                 {{ item.label }}
             </span>

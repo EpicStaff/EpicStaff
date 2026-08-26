@@ -203,10 +203,23 @@
     align-items: center;
 }
 
+// A legend entry is a miniature of the block it names: the same outline, with
+// the same icon inside it. The outline is absolutely positioned by the shape
+// component, so the icon is the only thing in flow and the centring lands on it.
 .cdt-tree__legend-glyph {
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 34px;
     height: 18px;
+
+    // The icons are sized for a full canvas block, which is several times this
+    // tall. Scaling keeps each one's own proportions — the sprite is not square,
+    // so passing one size for both axes would squash half of them.
+    app-svg-icon {
+        transform: scale(0.62);
+    }
 }
 
 // ---------------------------------------------------------------------------

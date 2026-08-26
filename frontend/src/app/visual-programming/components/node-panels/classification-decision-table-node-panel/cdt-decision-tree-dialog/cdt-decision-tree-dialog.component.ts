@@ -19,7 +19,12 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
 import { filterByQuery } from '../cdt-search-filter.util';
 import { OverlayMenuController } from '../classification-decision-table-grid/shared/overlay-menu.util';
 import { buildCdtDecisionTree } from './cdt-decision-tree.builder';
-import { CDT_TREE_EDGE_OFFSET, CDT_TREE_FIT_PADDING, CDT_TREE_LEGEND } from './cdt-decision-tree.constants';
+import {
+    CDT_TREE_EDGE_OFFSET,
+    CDT_TREE_FIT_PADDING,
+    CDT_TREE_LEGEND,
+    ICON_BY_SHAPE,
+} from './cdt-decision-tree.constants';
 import { layoutCdtDecisionTree } from './cdt-decision-tree.layout';
 import { CdtDecisionTreeInput, CdtTreeDetail, CdtTreeEdge, CdtTreePositionedBlock } from './cdt-decision-tree.model';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-block/cdt-decision-tree-block.component';
@@ -64,6 +69,14 @@ export class CdtDecisionTreeDialogComponent {
     protected readonly layout = layoutCdtDecisionTree(buildCdtDecisionTree(this.data));
 
     protected readonly legend = CDT_TREE_LEGEND;
+
+    /**
+     * The same icons the canvas blocks carry, so a legend entry is the block it
+     * names rather than only its outline. Exposed as the map rather than through
+     * a method so the template reads a property instead of calling on every pass.
+     */
+    protected readonly iconByShape = ICON_BY_SHAPE;
+
     protected readonly eMarkerType = EFMarkerType;
 
     /**
