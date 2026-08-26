@@ -13,7 +13,18 @@ from tests.graph_collab.conftest import (
     _create_start_node,
     _drain_connect,
     _make_communicator,
+    _model_for,
 )
+
+
+@sync_to_async
+def _content_hash_for(list_key: str, node_id: int) -> str:
+    """Fetch a node's DB-computed content_hash from a fresh, synchronous
+    query. Needed instead of a plain `get_node(...).content_hash` because
+    ContentHashMixin.generate_hash() reads forward FK fields, which lazily
+    queries the DB the first time they're accessed — content_hash must be
+    computed inside the same sync_to_async call that loads the row."""
+    return _model_for(list_key).objects.get(pk=node_id).content_hash
 
 
 # ---------------------------------------------------------------------------
@@ -313,9 +324,9 @@ async def test_flush_collapses_duplicate_start_node_entries_preferring_real_id(
     assert count == 1, "Duplicate start node entry was persisted instead of collapsed."
 
     surviving = await sync_to_async(StartNode.objects.get)(graph_id=graph.id)
-    assert surviving.id == start_node.id, (
-        "The persisted (real-id) start node entry must survive the collapse."
-    )
+    assert (
+        surviving.id == start_node.id
+    ), "The persisted (real-id) start node entry must survive the collapse."
     assert surviving.variables == snap["start_node_list"][0]["variables"]
 
 
@@ -825,3 +836,459 @@ async def test_flush_strips_cross_org_llm_config_and_logs_warning(
     assert await sync_to_async(
         LLMConfig.objects.filter(id=other_org_llm_config.id, org=other_org).exists
     )()
+
+
+# ---------------------------------------------------------------------------
+# null_external_refs must also refresh the touched node's cached
+# content_hash in the live snapshot — otherwise the pre-delete hash stays
+# armed as `_expected_hash` and every subsequent flush hits a false
+# ContentHashConflictError forever, even though the ref itself was already
+# correctly nulled. Only list_keys whose model participates in content_hash
+# (the FK/O2O lives directly on `_meta.fields`, not a nested row or an M2M)
+# can actually arm this — see the four cases below.
+#
+# For each: seed the snapshot via seed_from_db so the entry carries the REAL
+# pre-delete content_hash (not a hand-typed stand-in), delete the referenced
+# entity out-of-band (fires SET_NULL immediately, moving the DB row's real
+# hash), then flush. The first flush is expected to hit
+# ContentHashConflictError (the payload built from the still-stale snapshot),
+# but the second flush — built from the snapshot null_external_refs already
+# refreshed — must succeed.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_second_flush_succeeds_after_dead_subgraph_ref_refreshes_content_hash(
+    graph, flush_service
+):
+    """SubGraphNode.subgraph deleted out-of-band must have the live
+    snapshot's cached content_hash refreshed alongside the nulled ref, or the
+    autosave loop wedges forever on ContentHashConflictError."""
+    from tables.models import Graph
+    from tables.models.graph_models import SubGraphNode
+
+    subgraph = await sync_to_async(Graph.objects.create)(
+        name="dead-subgraph-for-hash-refresh", org=graph.org
+    )
+    node = await sync_to_async(SubGraphNode.objects.create)(
+        graph=graph, node_name="Subgraph-Hash-1", subgraph=subgraph
+    )
+
+    seeded = await graph_state_service.seed_from_db(graph.id)
+    assert seeded is True
+
+    await sync_to_async(subgraph.delete)()
+
+    first = await flush_service.flush(graph.id)
+    assert first.status is FlushStatus.FAILED
+    assert first.failure_reason == "version_conflict", (
+        "The first flush is expected to hit ContentHashConflictError — the "
+        "payload built from the pre-refresh snapshot still carries the stale "
+        f"hash. Got {first.failure_reason!r} instead."
+    )
+
+    second = await flush_service.flush(graph.id)
+    assert second.status is FlushStatus.SAVED, (
+        f"Expected SAVED but got {second.status!r} "
+        f"(failure_reason={second.failure_reason!r}). "
+        "null_external_refs did not refresh the live snapshot's content_hash."
+    )
+
+    real_content_hash = await _content_hash_for("subgraph_node_list", node.id)
+    snapshot = await graph_state_service.get_snapshot(graph.id)
+    entry = snapshot["subgraph_node_list"][0]
+    assert entry["subgraph"] is None
+    assert entry["content_hash"] == real_content_hash
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_second_flush_succeeds_after_dead_telegram_secret_ref_refreshes_content_hash(
+    graph, flush_service
+):
+    """TelegramTriggerNode.telegram_bot_api_key_secret_id deleted out-of-band
+    must have the live snapshot's cached content_hash refreshed alongside the
+    nulled ref."""
+    from tables.models.graph_models import TelegramTriggerNode
+    from tables.models.secret_models import Secret
+
+    secret = await sync_to_async(Secret.objects.create)(
+        org=graph.org, name="dead-telegram-secret-for-hash-refresh", value="ciphertext"
+    )
+    node = await sync_to_async(TelegramTriggerNode.objects.create)(
+        graph=graph,
+        node_name="Telegram-Hash-1",
+        telegram_bot_api_key_secret=secret,
+    )
+
+    seeded = await graph_state_service.seed_from_db(graph.id)
+    assert seeded is True
+
+    await sync_to_async(secret.delete)()
+
+    first = await flush_service.flush(graph.id)
+    assert first.status is FlushStatus.FAILED
+    assert first.failure_reason == "version_conflict", (
+        f"Expected the first flush to hit ContentHashConflictError, got "
+        f"{first.failure_reason!r}."
+    )
+
+    second = await flush_service.flush(graph.id)
+    assert second.status is FlushStatus.SAVED, (
+        f"Expected SAVED but got {second.status!r} "
+        f"(failure_reason={second.failure_reason!r}). "
+        "null_external_refs did not refresh the live snapshot's content_hash."
+    )
+
+    real_content_hash = await _content_hash_for("telegram_trigger_node_list", node.id)
+    snapshot = await graph_state_service.get_snapshot(graph.id)
+    entry = snapshot["telegram_trigger_node_list"][0]
+    assert entry["telegram_bot_api_key_secret_id"] is None
+    assert entry["content_hash"] == real_content_hash
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_second_flush_succeeds_after_dead_task_agent_definition_ref_refreshes_content_hash(
+    graph, flush_service
+):
+    """TaskNode.agent_definition deleted out-of-band must have the live
+    snapshot's cached content_hash refreshed alongside the nulled ref."""
+    from agents.models.agent_models import AgentDefinition
+    from tables.models.graph_models import TaskNode
+
+    agent_definition = await sync_to_async(AgentDefinition.objects.create)(
+        organization=graph.org,
+        name="dead-agent-def-for-hash-refresh",
+        instructions="do things",
+    )
+    node = await sync_to_async(TaskNode.objects.create)(
+        graph=graph, node_name="Task-Hash-1", agent_definition=agent_definition
+    )
+
+    seeded = await graph_state_service.seed_from_db(graph.id)
+    assert seeded is True
+
+    await sync_to_async(agent_definition.delete)()
+
+    first = await flush_service.flush(graph.id)
+    assert first.status is FlushStatus.FAILED
+    assert first.failure_reason == "version_conflict", (
+        f"Expected the first flush to hit ContentHashConflictError, got "
+        f"{first.failure_reason!r}."
+    )
+
+    second = await flush_service.flush(graph.id)
+    assert second.status is FlushStatus.SAVED, (
+        f"Expected SAVED but got {second.status!r} "
+        f"(failure_reason={second.failure_reason!r}). "
+        "null_external_refs did not refresh the live snapshot's content_hash."
+    )
+
+    real_content_hash = await _content_hash_for("task_node_list", node.id)
+    snapshot = await graph_state_service.get_snapshot(graph.id)
+    entry = snapshot["task_node_list"][0]
+    assert entry["agent_definition"] is None
+    assert entry["content_hash"] == real_content_hash
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_second_flush_succeeds_after_dead_agent_agent_definition_ref_refreshes_content_hash(
+    graph, flush_service
+):
+    """AgentNode.agent_definition deleted out-of-band must have the live
+    snapshot's cached content_hash refreshed alongside the nulled ref."""
+    from agents.models.agent_models import AgentDefinition
+    from tables.models.graph_models import AgentNode
+
+    agent_definition = await sync_to_async(AgentDefinition.objects.create)(
+        organization=graph.org,
+        name="dead-agent-def-for-agent-node-hash-refresh",
+        instructions="do things",
+    )
+    node = await sync_to_async(AgentNode.objects.create)(
+        graph=graph, node_name="Agent-Hash-1", agent_definition=agent_definition
+    )
+
+    seeded = await graph_state_service.seed_from_db(graph.id)
+    assert seeded is True
+
+    await sync_to_async(agent_definition.delete)()
+
+    first = await flush_service.flush(graph.id)
+    assert first.status is FlushStatus.FAILED
+    assert first.failure_reason == "version_conflict", (
+        f"Expected the first flush to hit ContentHashConflictError, got "
+        f"{first.failure_reason!r}."
+    )
+
+    second = await flush_service.flush(graph.id)
+    assert second.status is FlushStatus.SAVED, (
+        f"Expected SAVED but got {second.status!r} "
+        f"(failure_reason={second.failure_reason!r}). "
+        "null_external_refs did not refresh the live snapshot's content_hash."
+    )
+
+    real_content_hash = await _content_hash_for("agent_node_list", node.id)
+    snapshot = await graph_state_service.get_snapshot(graph.id)
+    entry = snapshot["agent_node_list"][0]
+    assert entry["agent_definition"] is None
+    assert entry["content_hash"] == real_content_hash
+
+
+# ---------------------------------------------------------------------------
+# Fields that must NOT arm CAS: agent_node_list.surface_list is an M2M
+# (excluded from ContentHashMixin.generate_hash's `self._meta.fields` scan),
+# and the nested webhook_trigger.ngrok_webhook_config only affects the
+# WebhookTrigger row — TelegramTriggerNode's own hash is computed over
+# webhook_trigger_id, which is unchanged by that nested delete. Neither
+# out-of-band delete should ever cause a ContentHashConflictError, and the
+# refresh call must not fabricate a content_hash key where the snapshot entry
+# never carried one (both built by hand here, mirroring the FE's
+# node_created payload shape rather than a DB reseed).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_flush_succeeds_first_try_after_dead_surface_ref(
+    graph, base_snapshot, flush_service
+):
+    """Deleting a Surface referenced via AgentNode.surface_list (M2M) must not
+    arm CAS — the flush must succeed on the FIRST attempt, unlike the scalar
+    ref cases above which need a second attempt to recover."""
+    from agents.models.surface_models import Surface
+    from tables.models.graph_models import AgentNode
+
+    live_surface = await sync_to_async(Surface.objects.create)(
+        organization=graph.org, name="live-surface-hash-guard", owner_agent=None
+    )
+    dead_surface = await sync_to_async(Surface.objects.create)(
+        organization=graph.org, name="dead-surface-hash-guard", owner_agent=None
+    )
+    node = await sync_to_async(AgentNode.objects.create)(
+        graph=graph, node_name="Agent-Hash-Guard"
+    )
+    await sync_to_async(node.surface_list.set)([live_surface, dead_surface])
+    dead_surface_id = dead_surface.id
+    live_surface_id = live_surface.id
+    await sync_to_async(dead_surface.delete)()
+
+    snap = base_snapshot(
+        save_version=graph.save_version,
+        agent_node_list=[
+            {
+                "id": node.id,
+                "graph": graph.id,
+                "node_name": "Agent-Hash-Guard",
+                "surface_list": [live_surface_id, dead_surface_id],
+            }
+        ],
+    )
+    await graph_state_service.seed(graph.id, snap)
+
+    outcome = await flush_service.flush(graph.id)
+
+    assert outcome.status is FlushStatus.SAVED, (
+        f"Expected SAVED on the first attempt but got {outcome.status!r} "
+        f"(failure_reason={outcome.failure_reason!r}). A dead M2M ref must "
+        "never arm CAS."
+    )
+
+    snapshot = await graph_state_service.get_snapshot(graph.id)
+    entry = snapshot["agent_node_list"][0]
+    assert entry["surface_list"] == [live_surface_id]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_flush_succeeds_first_try_after_dead_ngrok_ref(
+    graph, base_snapshot, flush_service
+):
+    """Deleting the NgrokWebhookConfig nested under webhook_trigger must not
+    arm CAS — TelegramTriggerNode's own content_hash is computed over
+    webhook_trigger_id, not the nested ngrok row, so the flush must succeed
+    on the FIRST attempt, unlike the scalar ref cases above."""
+    from tables.models.graph_models import TelegramTriggerNode
+    from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
+
+    ngrok_config = await sync_to_async(NgrokWebhookConfig.objects.create)(
+        name="dead-ngrok-hash-guard", auth_token="dead-ngrok-hash-guard-token"
+    )
+    webhook_trigger = await sync_to_async(WebhookTrigger.objects.create)(
+        path="dead-ngrok-hash-guard-path", ngrok_webhook_config=ngrok_config
+    )
+    node = await sync_to_async(TelegramTriggerNode.objects.create)(
+        graph=graph, node_name="Telegram-Hash-Guard", webhook_trigger=webhook_trigger
+    )
+    await sync_to_async(ngrok_config.delete)()
+
+    snap = base_snapshot(
+        save_version=graph.save_version,
+        telegram_trigger_node_list=[
+            {
+                "id": node.id,
+                "graph": graph.id,
+                "node_name": "Telegram-Hash-Guard",
+                "webhook_trigger": {
+                    "path": webhook_trigger.path,
+                    "ngrok_webhook_config": ngrok_config.id,
+                },
+                "fields": [],
+            }
+        ],
+    )
+    await graph_state_service.seed(graph.id, snap)
+
+    outcome = await flush_service.flush(graph.id)
+
+    assert outcome.status is FlushStatus.SAVED, (
+        f"Expected SAVED on the first attempt but got {outcome.status!r} "
+        f"(failure_reason={outcome.failure_reason!r}). A dead nested ngrok "
+        "ref must never arm CAS on the containing node."
+    )
+
+    snapshot = await graph_state_service.get_snapshot(graph.id)
+    entry = snapshot["telegram_trigger_node_list"][0]
+    assert entry["webhook_trigger"]["ngrok_webhook_config"] is None
+
+
+# ---------------------------------------------------------------------------
+# White-box: null_external_refs itself must never fabricate a content_hash
+# key for a snapshot entry that never carried one — regardless of whether the
+# ref that got nulled would have armed CAS. This is exercised directly
+# against null_external_refs (bypassing the full flush pipeline) because a
+# SAVED flush always separately runs apply_id_remap's
+# _refresh_flushed_content_hashes, which itself unconditionally ADDS
+# content_hash to any entry missing it (see test_content_hash_refresh.py) —
+# going through a full successful flush would conflate that pre-existing
+# behavior with null_external_refs's own guard.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_null_external_refs_does_not_fabricate_content_hash_for_surface_list(
+    graph, base_snapshot
+):
+    """surface_list is an M2M, excluded from ContentHashMixin.generate_hash's
+    `_meta.fields` scan — null_external_refs's content_hash refresh must
+    still respect the `"content_hash" in entry` guard and not invent the key."""
+    from agents.models.surface_models import Surface
+    from tables.graph_collab.external_refs import DeadRef
+    from tables.models.graph_models import AgentNode
+    from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
+
+    dead_surface = await sync_to_async(Surface.objects.create)(
+        organization=graph.org, name="dead-surface-null-refs", owner_agent=None
+    )
+    node = await sync_to_async(AgentNode.objects.create)(
+        graph=graph, node_name="Agent-Null-Refs"
+    )
+    dead_surface_id = dead_surface.id
+
+    snap = base_snapshot(
+        save_version=graph.save_version,
+        agent_node_list=[
+            {
+                "id": node.id,
+                "graph": graph.id,
+                "node_name": "Agent-Null-Refs",
+                "surface_list": [dead_surface_id],
+            }
+        ],
+    )
+    await graph_state_service.seed(graph.id, snap)
+
+    ref_field = next(
+        f
+        for config in NODE_TYPE_REGISTRY
+        if config.list_key == "agent_node_list"
+        for f in config.external_ref_fields
+        if f.top_level_field == "surface_list"
+    )
+    dead_ref = DeadRef(
+        "agent_node_list", node.id, ref_field, dead_surface_id, "deleted"
+    )
+
+    broadcasts = await graph_state_service.null_external_refs(graph.id, [dead_ref])
+
+    assert len(broadcasts) == 1
+    assert "content_hash" not in broadcasts[0]["node"]
+
+    snapshot = await graph_state_service.get_snapshot(graph.id)
+    entry = snapshot["agent_node_list"][0]
+    assert entry["surface_list"] == []
+    assert "content_hash" not in entry, (
+        "The entry never carried a content_hash key — null_external_refs "
+        "must not fabricate one."
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+async def test_null_external_refs_does_not_fabricate_content_hash_for_nested_ngrok(
+    graph, base_snapshot
+):
+    """TelegramTriggerNode's content_hash is computed over webhook_trigger_id,
+    not the nested ngrok row — null_external_refs's content_hash refresh
+    must still respect the `"content_hash" in entry` guard and not invent
+    the key when nulling the nested ngrok_webhook_config ref."""
+    from tables.graph_collab.external_refs import DeadRef
+    from tables.models.graph_models import TelegramTriggerNode
+    from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
+    from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
+
+    ngrok_config = await sync_to_async(NgrokWebhookConfig.objects.create)(
+        name="dead-ngrok-null-refs", auth_token="dead-ngrok-null-refs-token"
+    )
+    webhook_trigger = await sync_to_async(WebhookTrigger.objects.create)(
+        path="dead-ngrok-null-refs-path", ngrok_webhook_config=ngrok_config
+    )
+    node = await sync_to_async(TelegramTriggerNode.objects.create)(
+        graph=graph, node_name="Telegram-Null-Refs", webhook_trigger=webhook_trigger
+    )
+    dead_ngrok_id = ngrok_config.id
+
+    snap = base_snapshot(
+        save_version=graph.save_version,
+        telegram_trigger_node_list=[
+            {
+                "id": node.id,
+                "graph": graph.id,
+                "node_name": "Telegram-Null-Refs",
+                "webhook_trigger": {
+                    "path": webhook_trigger.path,
+                    "ngrok_webhook_config": dead_ngrok_id,
+                },
+                "fields": [],
+            }
+        ],
+    )
+    await graph_state_service.seed(graph.id, snap)
+
+    ref_field = next(
+        f
+        for config in NODE_TYPE_REGISTRY
+        if config.list_key == "telegram_trigger_node_list"
+        for f in config.external_ref_fields
+        if f.top_level_field == "webhook_trigger"
+    )
+    dead_ref = DeadRef(
+        "telegram_trigger_node_list", node.id, ref_field, dead_ngrok_id, "deleted"
+    )
+
+    broadcasts = await graph_state_service.null_external_refs(graph.id, [dead_ref])
+
+    assert len(broadcasts) == 1
+    assert "content_hash" not in broadcasts[0]["node"]
+
+    snapshot = await graph_state_service.get_snapshot(graph.id)
+    entry = snapshot["telegram_trigger_node_list"][0]
+    assert entry["webhook_trigger"]["ngrok_webhook_config"] is None
+    assert "content_hash" not in entry, (
+        "The entry never carried a content_hash key — null_external_refs "
+        "must not fabricate one."
+    )

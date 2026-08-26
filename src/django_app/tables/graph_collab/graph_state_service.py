@@ -654,6 +654,12 @@ class GraphLiveStateService:
                 for ref in refs:
                     null_ref_in_entry(entry, ref.ref_field, ref.old_pk)
                     top_level_fields.add(ref.top_level_field)
+
+                if "content_hash" in entry:
+                    refreshed_hash = await _refresh_node_content_hash(list_key, node_id)
+                    if refreshed_hash is not None:
+                        entry["content_hash"] = refreshed_hash
+
                 mutated = True
 
                 node_overlay: dict = {"id": node_id}
@@ -1280,6 +1286,37 @@ def _refresh_flushed_content_hashes(snapshot: dict) -> None:
                     nested_instance, ContentHashMixin
                 ):
                     nested_entry["content_hash"] = nested_instance.content_hash
+
+
+@sync_to_async
+def _refresh_node_content_hash(list_key: str, node_id: int) -> str | None:
+    """Return the current DB-computed content_hash for the node identified by
+    (list_key, node_id), or None if list_key isn't registered, the row no
+    longer exists, or its model doesn't expose content_hash.
+
+    Generalized sibling of ``_refresh_schedule_node_content_hash`` — resolves
+    the model class from ``NODE_TYPE_REGISTRY`` instead of hardcoding
+    ``ScheduleTriggerNode``, since ``null_external_refs`` can touch any node
+    type carrying a dangling outward FK, not just schedule triggers.
+    """
+    from tables.models.base_models import ContentHashMixin
+    from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
+
+    model_by_list_key: dict[str, type] = {
+        config.list_key: config.model_class for config in NODE_TYPE_REGISTRY
+    }
+    model_class = model_by_list_key.get(list_key)
+    if model_class is None:
+        return None
+
+    try:
+        node = model_class.objects.get(pk=node_id)
+    except model_class.DoesNotExist:
+        return None
+
+    if not isinstance(node, ContentHashMixin):
+        return None
+    return node.content_hash
 
 
 @sync_to_async
