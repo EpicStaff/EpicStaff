@@ -24,7 +24,9 @@ from .ai_providers import (
     LLMData,
     EmbedderData,
     BaseTunnelConfigData,
+    WebhookNodeAuthData,
     NgrokConfigData,
+    LocalhostConfigData,
     WebhookConfigData,
 )
 from .graph_nodes import (
@@ -105,6 +107,7 @@ from .sessions import (
     SessionData,
     GraphSessionMessageData,
     StopSessionMessage,
+    UNAUTHENTICATED_FALLBACK_PRINCIPAL,
     WebhookEventData,
     ScheduleEventData,
     StorageMutation,
@@ -171,7 +174,9 @@ __all__ = [
     "LLMData",
     "EmbedderData",
     "BaseTunnelConfigData",
+    "WebhookNodeAuthData",
     "NgrokConfigData",
+    "LocalhostConfigData",
     "WebhookConfigData",
     # graph_nodes
     "CrewNodeData",
@@ -247,6 +252,7 @@ __all__ = [
     "SessionData",
     "GraphSessionMessageData",
     "StopSessionMessage",
+    "UNAUTHENTICATED_FALLBACK_PRINCIPAL",
     "WebhookEventData",
     "ScheduleEventData",
     "StorageMutation",

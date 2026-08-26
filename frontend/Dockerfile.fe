@@ -7,14 +7,14 @@ WORKDIR /app
 
 COPY package*.json ./
 COPY patches ./patches
-RUN npm install --force || npm install --force && npm cache clean --force
+RUN npm ci && npm cache clean --force
 
 # ─── Stage: development ───────────────────────────────────────────────────────
 FROM deps AS development
 
 EXPOSE 4200
 
-CMD ["sh", "-c", "npm install --force && npm run start -- --host 0.0.0.0 --poll=1000"]
+CMD ["sh", "-c", "npm ci && npm run start -- --host 0.0.0.0 --poll=1000"]
 
 # ─── Stage: build ─────────────────────────────────────────────────────────────
 FROM deps AS build

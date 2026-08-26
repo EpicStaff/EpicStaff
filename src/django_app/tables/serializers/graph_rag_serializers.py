@@ -452,6 +452,7 @@ class GraphSearchConfigInputSerializer(serializers.Serializer):
     search_method = serializers.ChoiceField(
         choices=["basic", "local", "global", "drift"],
         required=False,
+        allow_null=True,
         help_text="Active search method",
     )
     basic = GraphBasicSearchConfigInputSerializer(

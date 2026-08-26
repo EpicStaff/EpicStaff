@@ -1,6 +1,7 @@
-from src.shared.models import BaseTunnelConfigData, NgrokConfigData
-from .base import AbstractTunnelProvider
-from .ngrok_tunnel import NgrokTunnel
+from src.shared.models import BaseTunnelConfigData, NgrokConfigData, LocalhostConfigData
+from .tunnels.base import AbstractTunnelProvider
+from .tunnels.ngrok_tunnel import NgrokTunnel
+from .tunnels.localhost_tunnel import LocalhostTunnel
 from app.core.settings import settings
 
 
@@ -22,6 +23,12 @@ def get_provider(config: BaseTunnelConfigData) -> AbstractTunnelProvider:
             domain=config.domain,
             region=config.region,
             reconnect_timeout=settings.WEBHOOK_TUNNEL_RECONNECT_TIMEOUT,
+        )
+    elif isinstance(config, LocalhostConfigData):
+        return LocalhostTunnel(
+            port=settings.LOCALHOST_TARGET_PORT,
+            host=settings.LOCALHOST_TARGET_HOST,
+            domain=config.domain,
         )
     else:
         raise ProviderNotFoundException(f"No tunnel provider for type {type(config)}")

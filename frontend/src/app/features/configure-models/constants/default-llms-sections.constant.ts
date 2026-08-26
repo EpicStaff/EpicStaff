@@ -27,25 +27,6 @@ export const DEFAULT_LLMS_SECTIONS: DefaultLlmsSection[] = [
                 icon: 'func-calling',
                 configType: ModelTypes.LLM,
             },
-            {
-                id: 'voice-llm',
-                field: 'voice_llm_config',
-                title: 'Voice LLM',
-                description: 'Voice LLM enables real-time spoken interaction by generating immediate voice responses.',
-                selectLabel: 'Select LLM from Library',
-                icon: 'voice',
-                configType: ModelTypes.REALTIME,
-            },
-            {
-                id: 'transcription-llm',
-                field: 'transcription_llm_config',
-                title: 'Transcription LLM',
-                description:
-                    'Transcription LLM converts spoken language into accurate written text for further processing.',
-                selectLabel: 'Select LLM from Library',
-                icon: 'transcription',
-                configType: ModelTypes.TRANSCRIPTION,
-            },
         ],
     },
     {

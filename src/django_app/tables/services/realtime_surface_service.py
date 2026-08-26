@@ -35,6 +35,7 @@ class RealtimeAgentSurfaceResolution:
     knowledge_collection_id: int | None
     rag_type_id: str | None
     rag_search_config: RagSearchConfig | None
+    rag_embedder_api_key_secret_id: int | None = None
 
 
 class RealtimeSurfaceService:
@@ -55,6 +56,7 @@ class RealtimeSurfaceService:
             knowledge_collection_id,
             rag_type_id,
             rag_search_config,
+            rag_embedder_api_key_secret_id,
         ) = self._resolve_knowledge(combined_surface["knowledge"])
 
         return RealtimeAgentSurfaceResolution(
@@ -62,6 +64,7 @@ class RealtimeSurfaceService:
             knowledge_collection_id=knowledge_collection_id,
             rag_type_id=rag_type_id,
             rag_search_config=rag_search_config,
+            rag_embedder_api_key_secret_id=rag_embedder_api_key_secret_id,
         )
 
     def _build_combined_surface(self, agent_definition: AgentDefinition) -> dict:
@@ -111,9 +114,9 @@ class RealtimeSurfaceService:
 
     def _resolve_knowledge(
         self, knowledge_entries: list[dict]
-    ) -> tuple[int | None, str | None, RagSearchConfig | None]:
+    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None]:
         if not knowledge_entries:
-            return None, None, None
+            return None, None, None, None
 
         if len(knowledge_entries) > 1:
             logger.warning(
@@ -138,11 +141,11 @@ class RealtimeSurfaceService:
         logger.warning(
             "Collection {} has no usable RAG search config, skipping.", collection_id
         )
-        return None, None, None
+        return None, None, None, None
 
     def _resolve_naive_rag(
         self, collection_id: int, naive_config: dict
-    ) -> tuple[int | None, str | None, RagSearchConfig | None]:
+    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None]:
         naive_rag = RagLookupService.latest_rag(
             NaiveRag, collection_id, pk_field="naive_rag_id"
         )
@@ -153,18 +156,21 @@ class RealtimeSurfaceService:
             logger.warning(
                 "No completed NaiveRag for collection {}, skipping.", collection_id
             )
-            return None, None, None
+            return None, None, None, None
 
         rag_type_id = f"naive:{naive_rag.naive_rag_id}"
         rag_search_config = NaiveRagSearchConfig(
             search_limit=naive_config["search_limit"],
             similarity_threshold=float(naive_config["similarity_threshold"]),
         )
-        return collection_id, rag_type_id, rag_search_config
+        embedder_secret_id = (
+            naive_rag.embedder.api_key_secret_id if naive_rag.embedder else None
+        )
+        return collection_id, rag_type_id, rag_search_config, embedder_secret_id
 
     def _resolve_graph_rag(
         self, collection_id: int, knowledge: dict
-    ) -> tuple[int | None, str | None, RagSearchConfig | None]:
+    ) -> tuple[int | None, str | None, RagSearchConfig | None, int | None]:
         graph_rag = RagLookupService.latest_rag(
             GraphRag, collection_id, pk_field="graph_rag_id"
         )
@@ -175,7 +181,7 @@ class RealtimeSurfaceService:
             logger.warning(
                 "No completed GraphRag for collection {}, skipping.", collection_id
             )
-            return None, None, None
+            return None, None, None, None
 
         rag_type_id = f"graph:{graph_rag.graph_rag_id}"
 
@@ -188,4 +194,7 @@ class RealtimeSurfaceService:
             )
 
         rag_search_config = GraphRagSearchConfig(search_params=search_params)
-        return collection_id, rag_type_id, rag_search_config
+        embedder_secret_id = (
+            graph_rag.embedder.api_key_secret_id if graph_rag.embedder else None
+        )
+        return collection_id, rag_type_id, rag_search_config, embedder_secret_id

@@ -71,7 +71,10 @@ class ConversationService(IChatModeController):
 
     async def execute(self):
         try:
-            await self.client_websocket.accept(subprotocol="openai-beta.realtime-v1")
+            subprotocols = self.client_websocket.scope.get("subprotocols", [])
+            await self.client_websocket.accept(
+                subprotocol=subprotocols[0] if subprotocols else None
+            )
 
             rt_agent_client_task = None
             rt_transcription_client_task = None
@@ -127,7 +130,6 @@ class ConversationService(IChatModeController):
                     last_input: list[str] = buffer.get_last_input()
 
                     if last_input != previous_input:
-                        logger.debug(f"Last input was changed: {last_input}")
                         previous_input = last_input
                         if any(trigger in last_input for trigger in wake_words):
                             final_buffer = buffer.get_final_buffer()
@@ -140,14 +142,6 @@ class ConversationService(IChatModeController):
                             buffer.flush()
                             self.current_chat_mode = ChatMode.CONVERSATION
 
-                    buffer_data: list[str] = buffer.get_buffer()
-                    chunks_data: list[str] = buffer.get_chunks()
-                    logger.debug(
-                        f"Current buffer ({len(buffer)} tokens): {buffer_data}"
-                        f"\n"
-                        f"Current chunks ({len(chunks_data)} chunks, {buffer._chunks_tokens_count} tokens): {chunks_data}"
-                    )
-
                     if not buffer.check_free_buffer():
                         logger.debug("Starting summarization of the buffer process...")
                         await summ_buffer_client.summarize_buffer()
@@ -156,7 +150,9 @@ class ConversationService(IChatModeController):
                     client = rt_agent_client
 
                 if rt_agent_client_task is not None and rt_agent_client_task.done():
-                    logger.info(f"RT agent session closed — reconnecting ({self.realtime_agent_chat_data.rt_provider})...")
+                    logger.info(
+                        f"RT agent session closed — reconnecting ({self.realtime_agent_chat_data.rt_provider})..."
+                    )
                     try:
                         rt_agent_client.server_event_handler.reset()
                         await rt_agent_client.connect()
@@ -170,7 +166,8 @@ class ConversationService(IChatModeController):
 
                 try:
                     message: dict = await self.client_websocket.receive_json()
-                    logger.debug(f"Received message: {shorten_dict(message)}")
+                    if message.get("type") != "input_audio_buffer.append":
+                        logger.debug(f"Received message: {shorten_dict(message)}")
 
                     response = await client.process_message(message)
                     if response:

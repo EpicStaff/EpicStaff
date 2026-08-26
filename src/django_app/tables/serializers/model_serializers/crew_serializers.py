@@ -40,7 +40,8 @@ from tables.serializers.knowledge_serializers import (
     RagInputSerializer,
 )
 from tables.serializers.model_serializers.realtime_serializers import (
-    RealtimeAgentSerializer,
+    RealtimeAgentReadSerializer,
+    RealtimeAgentWriteSerializer,
 )
 from tables.serializers.serializers import BaseToolSerializer
 from tables.services.rag_assignment_service import (
@@ -166,7 +167,7 @@ class AgentReadSerializer(serializers.ModelSerializer):
     """
 
     tools = serializers.SerializerMethodField()
-    realtime_agent = RealtimeAgentSerializer(read_only=True)
+    realtime_agent = RealtimeAgentReadSerializer(read_only=True)
     rag = serializers.SerializerMethodField()
     search_configs = serializers.SerializerMethodField()
 
@@ -258,7 +259,7 @@ class AgentWriteSerializer(ToolsConnectionMixin, serializers.ModelSerializer):
         child=serializers.CharField(),
         required=False,
     )
-    realtime_agent = RealtimeAgentSerializer(required=False)
+    realtime_agent = RealtimeAgentWriteSerializer(required=False)
     llm_config = OrgScopedPrimaryKeyRelatedField(
         queryset=LLMConfig.objects.all(), required=False, allow_null=True
     )

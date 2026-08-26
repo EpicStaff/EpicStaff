@@ -2,7 +2,6 @@ from abc import ABC
 import re
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
-from uuid import UUID
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
@@ -113,18 +112,6 @@ class BaseRBACValidator(ABC):
             ]
         return []
 
-    def _validate_uuid_field(self, field: str, value: Any) -> list[FieldError]:
-        required = self._require_nonblank_string(field, value)
-        if required:
-            return required
-        try:
-            UUID(str(value))
-        except (ValueError, AttributeError, TypeError):
-            return [
-                FieldError(field, self._echo(field, value), "Must be a valid UUID.")
-            ]
-        return []
-
     def _validate_positive_int_field(self, field: str, value: Any) -> list[FieldError]:
         if value is None or value == "":
             return [
@@ -141,7 +128,3 @@ class BaseRBACValidator(ABC):
                 )
             ]
         return []
-
-    @staticmethod
-    def _coerce_uuid(value: Any) -> UUID:
-        return UUID(str(value))

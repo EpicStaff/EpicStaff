@@ -18,7 +18,6 @@ export interface ChatAgentVM {
     id: number;
     title: string;
     realtimeConfigId: number | null;
-    transcriptionConfigId: number | null;
     modelName: string | null;
     customName: string | null;
 }
@@ -31,13 +30,13 @@ export function chatAgentTitle(a: ChatAgent): string {
 }
 
 export function chatAgentRealtimeConfigId(a: ChatAgent): number | null {
-    return a.kind === 'staff' ? (a.agent.realtime_agent?.realtime_config ?? null) : a.realtime.realtime_config;
-}
-
-export function chatAgentTranscriptionConfigId(a: ChatAgent): number | null {
-    return a.kind === 'staff'
-        ? (a.agent.realtime_agent?.realtime_transcription_config ?? null)
-        : a.realtime.realtime_transcription_config;
+    if (a.kind === 'staff') {
+        const rt = a.agent.realtime_agent;
+        const slot = rt?.openai_config ?? rt?.elevenlabs_config ?? rt?.gemini_config;
+        if (slot == null) return null;
+        return typeof slot === 'number' ? slot : slot.id;
+    }
+    return a.realtime.openai_config ?? a.realtime.elevenlabs_config ?? a.realtime.gemini_config ?? null;
 }
 
 export function toInitRealtimePayload(a: ChatAgent): InitRealtimePayload {
