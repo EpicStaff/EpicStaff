@@ -170,14 +170,6 @@ export class LeftSidebarComponent implements AfterViewInit {
                 showTooltip: false,
             },
             {
-                id: 'flows',
-                routeLink: 'flows',
-                icon: 'flows',
-                label: 'Flows',
-                isPermitted: this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
-                showTooltip: false,
-            },
-            {
                 id: 'files',
                 routeLink: 'files',
                 icon: 'sources',
@@ -185,6 +177,14 @@ export class LeftSidebarComponent implements AfterViewInit {
                 isPermitted:
                     this.permissionService.can(ResourceCode.KnowledgeSources, ActionCode.Read) ||
                     this.permissionService.can(ResourceCode.Files, ActionCode.Read),
+                showTooltip: false,
+            },
+            {
+                id: 'flows',
+                routeLink: 'flows',
+                icon: 'flows',
+                label: 'Flows',
+                isPermitted: this.permissionService.can(ResourceCode.Flows, ActionCode.Read),
                 showTooltip: false,
             },
             {
