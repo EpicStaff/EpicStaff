@@ -52,6 +52,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     secrets: inherit
 
   publish-release:
@@ -78,12 +79,27 @@ jobs:
         shell: bash
         run: mkdir -p release-archives
 
-      - name: Generate customer docker-compose.yaml
+      - name: Download digest-map artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: digest-map
+          path: .
+
+      - name: Generate customer docker-compose.yaml (strip build blocks)
         shell: bash
         run: |
           set -euo pipefail
           python ./.github/scripts/strip_build_blocks.py \
             src/docker-compose.yaml \
+            release-archives/docker-compose.yaml
+
+      - name: Pin image digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python ./.github/scripts/pin_image_digests.py \
+            digest-map.json \
+            release-archives/docker-compose.yaml \
             release-archives/docker-compose.yaml
 
       - name: Copy .env.example
