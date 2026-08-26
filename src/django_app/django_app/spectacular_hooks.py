@@ -116,6 +116,7 @@ TAG_MAP = [
     # Organizations (non-admin)
     ("api/organizations", "Organizations"),
     # Config / Defaults
+    ("api/tool-labels", "Tool Labels"),
     ("api/labels", "Labels"),
     ("api/secrets", "Secrets"),
     ("api/storage", "Storage"),
@@ -196,6 +197,7 @@ TAGS_ORDER = [
     "Graph Organization Users",
     "Admin: Organizations",
     "Admin: Users",
+    "Tool Labels",
     "Labels",
     "Secrets",
     "Storage",

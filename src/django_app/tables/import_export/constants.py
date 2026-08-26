@@ -7,6 +7,7 @@ NODE_MAPPING_KEY = "node"
 
 # Entities will be imported from top to bottom based on this list
 DEPENDENCY_ORDER = (
+    EntityType.LABEL,
     EntityType.AGENT_TAG,
     EntityType.CREW_TAG,
     EntityType.GRAPH_TAG,

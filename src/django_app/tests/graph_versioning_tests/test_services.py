@@ -345,3 +345,27 @@ def test_create_graph_from_version_copies_labels_from_source(
     new_graph = Graph.objects.get(id=result["graph_id"])
     new_graph_label_ids = set(new_graph.labels.values_list("id", flat=True))
     assert label.id in new_graph_label_ids
+
+
+@pytest.mark.django_db
+def test_create_graph_from_version_does_not_copy_tool_scope_labels(
+    service, graph, default_org
+):
+    from tables.models import Label
+
+    flow_label = Label.objects.create(
+        name="flow-only", scope=Label.Scope.FLOW, org=default_org
+    )
+    tool_label = Label.objects.create(
+        name="tool-only", scope=Label.Scope.TOOL, org=default_org
+    )
+    graph.labels.set([flow_label, tool_label])
+
+    version = service.save_version(graph, name="mixed-scope-snap")
+
+    result = service.create_graph_from_version(version)
+
+    new_graph = Graph.objects.get(id=result["graph_id"])
+    new_graph_label_ids = set(new_graph.labels.values_list("id", flat=True))
+    assert flow_label.id in new_graph_label_ids
+    assert tool_label.id not in new_graph_label_ids

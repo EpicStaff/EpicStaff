@@ -1,0 +1,30 @@
+.tools-list {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.tools-list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(clamp(10vw, 100%, 280px), 1fr));
+    gap: 1.5rem;
+    width: 100%;
+    contain: layout;
+}
+
+.empty-message {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 2rem;
+    color: var(--color-text-secondary);
+    font-size: 1.1rem;
+    background: var(--color-sidenav-background);
+    border-radius: 8px;
+    margin-top: 1rem;
+}
+
+.error {
+    color: var(--color-error);
+    font-size: 1.1rem;
+    margin-top: 2rem;
+}

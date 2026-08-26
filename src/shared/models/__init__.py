@@ -98,8 +98,6 @@ from .sessions import (
     StorageMutationEvent,
 )
 from .tools import (
-    ToolConfigData,
-    ConfiguredToolData,
     McpToolData,
     ArgsSchema,
     PythonCodeData,
@@ -227,8 +225,6 @@ __all__ = [
     "StorageMutation",
     "StorageMutationEvent",
     # tools
-    "ToolConfigData",
-    "ConfiguredToolData",
     "McpToolData",
     "ArgsSchema",
     "PythonCodeData",
