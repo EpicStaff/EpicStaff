@@ -11,7 +11,7 @@ import { GetLlmConfigRequest } from '../../../shared/models/llms/llm-config.mode
 import { NodeType } from '../enums/node-type';
 import { DecisionTableNode } from './decision-table.model';
 import { ViewPort } from './port.model';
-import { WebhookTriggerModel } from './webhook-trigger.model';
+import { WebhookNodeAuthModel, WebhookTriggerWrite } from './webhook-trigger.model';
 
 export interface BaseNodeModel {
     id: string;
@@ -105,7 +105,8 @@ export interface AudioToTextNodeModel extends BaseNodeModel {
 export interface WebhookTriggerNodeModel extends BaseNodeModel {
     type: NodeType.WEBHOOK_TRIGGER;
     data: {
-        webhook_trigger: WebhookTriggerModel | null;
+        webhook_trigger: WebhookTriggerWrite | null;
+        webhook_node_auth: WebhookNodeAuthModel | null;
         python_code: CustomPythonCode;
     };
 }
@@ -114,7 +115,7 @@ export interface TelegramTriggerNodeModel extends BaseNodeModel {
     type: NodeType.TELEGRAM_TRIGGER;
     data: {
         telegram_bot_api_key_secret_id: number | null;
-        webhook_trigger: WebhookTriggerModel | null;
+        webhook_trigger: WebhookTriggerWrite | null;
         fields: TelegramTriggerNodeField[];
     };
 }

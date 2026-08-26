@@ -464,6 +464,7 @@ export function buildBulkSavePayload(
             output_variable_path: n.output_variable_path || null,
             webhook_trigger_path: '',
             webhook_trigger: n.data.webhook_trigger,
+            webhook_node_auth: { enabled: n.data.webhook_node_auth?.enabled ?? false },
             metadata: toNodeMetadata(n),
         })),
         telegram_trigger_node_list: nodeItems(nodeDiff.telegramNodes, (n) => ({

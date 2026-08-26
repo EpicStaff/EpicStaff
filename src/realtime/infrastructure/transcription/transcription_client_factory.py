@@ -30,9 +30,10 @@ class TranscriptionClientFactory(ITranscriptionClientFactory):
             api_key=config.transcript_api_key,
             connection_key=config.connection_key,
             on_server_event=on_server_event,
-            model="whisper-1",
-            temperature=config.temperature,
+            model="gpt-4o-mini-transcribe",
             language=config.language,
             voice_recognition_prompt=config.voice_recognition_prompt,
             buffer=buffer,
+            org_id=config.org_id,
+            user_id=config.user_id,
         )

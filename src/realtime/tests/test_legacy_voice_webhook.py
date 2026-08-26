@@ -1,0 +1,87 @@
+"""Coverage for the DEPRECATED, but still frontend-configurable, legacy
+`POST /voice` TwiML webhook (`VoiceSettings` global singleton). Confirms it
+mints a stream_token bound to the legacy sentinel, distinct from the
+channel-token route's per-channel tokens.
+"""
+
+import re
+from types import SimpleNamespace
+from urllib.parse import parse_qs, urlparse
+
+import pytest
+
+
+def _fake_request() -> SimpleNamespace:
+    return SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"), headers={})
+
+
+@pytest.mark.asyncio
+async def test_legacy_voice_webhook_embeds_stream_token_bound_to_legacy_sentinel(
+    monkeypatch,
+):
+    from api.main import (
+        _LEGACY_STREAM_BOUND_KEY,
+        stream_token_repository,
+        twilio_voice_webhook,
+    )
+
+    async def fake_get_voice_settings():
+        return {
+            "twilio_auth_token": None,
+            "voice_stream_url": "wss://legacy.example.com/voice/stream",
+        }
+
+    monkeypatch.setattr("api.main.get_voice_settings", fake_get_voice_settings)
+
+    response = await twilio_voice_webhook(request=_fake_request())
+    body = response.body.decode()
+
+    stream_url = urlparse(body.split('url="')[1].split('"')[0])
+    assert stream_url.path == "/voice/stream"
+    token = parse_qs(stream_url.query)["stream_token"][0]
+    assert token
+
+    # Bound to the legacy sentinel, not a channel_token, and single-use.
+    assert stream_token_repository.consume(token, bound_key=_LEGACY_STREAM_BOUND_KEY) is True
+    assert stream_token_repository.consume(token, bound_key=_LEGACY_STREAM_BOUND_KEY) is False
+
+
+@pytest.mark.asyncio
+async def test_legacy_voice_webhook_embeds_stream_token_as_twiml_parameter(monkeypatch):
+    """Same fix as the channel-token route: the nested `<Parameter
+    name="stream_token">` element is the mechanism Twilio actually relays to
+    the WS leg (via `start.customParameters`), since the query string on the
+    `<Stream url="...">` is not reliably forwarded."""
+    from api.main import twilio_voice_webhook
+
+    async def fake_get_voice_settings():
+        return {
+            "twilio_auth_token": None,
+            "voice_stream_url": "wss://legacy.example.com/voice/stream",
+        }
+
+    monkeypatch.setattr("api.main.get_voice_settings", fake_get_voice_settings)
+
+    response = await twilio_voice_webhook(request=_fake_request())
+    body = response.body.decode()
+
+    match = re.search(r'<Parameter name="stream_token" value="([^"]+)"', body)
+    assert match, f"expected a <Parameter name=\"stream_token\"> element, got: {body}"
+    assert match.group(1)
+
+
+@pytest.mark.asyncio
+async def test_legacy_voice_webhook_503s_when_no_stream_url_available(monkeypatch):
+    from api.main import twilio_voice_webhook
+    from fastapi import HTTPException
+
+    async def fake_get_voice_settings():
+        return {"twilio_auth_token": None, "voice_stream_url": ""}
+
+    monkeypatch.setattr("api.main.get_voice_settings", fake_get_voice_settings)
+    monkeypatch.setattr("api.main.settings.VOICE_STREAM_URL", "")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await twilio_voice_webhook(request=_fake_request())
+
+    assert exc_info.value.status_code == 503

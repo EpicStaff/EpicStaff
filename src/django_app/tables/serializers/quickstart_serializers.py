@@ -46,10 +46,6 @@ class QuickstartConfigSerializer(serializers.Serializer):
     config_name = serializers.CharField()
     llm_config = LLMConfigSerializer(allow_null=True)
     embedding_config = EmbeddingConfigSerializer(allow_null=True)
-    realtime_config = RealtimeConfigSerializer(allow_null=True)
-    realtime_transcription_config = RealtimeTranscriptionConfigSerializer(
-        allow_null=True
-    )
 
 
 class QuickstartStatusSerializer(serializers.Serializer):

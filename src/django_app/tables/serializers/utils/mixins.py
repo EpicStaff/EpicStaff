@@ -4,8 +4,7 @@ from django.db import transaction
 
 from tables.models.base_models import BaseGlobalNode
 from tables.models.webhook_models import WebhookTrigger
-from tables.models.python_models import PythonCode
-from tables.models import Agent, PythonCodeTool, ToolConfig, McpTool
+from tables.models import Agent, PythonCodeTool, McpTool
 from tables.services.copy_services.helpers import (
     apply_python_code_fields,
     create_python_code,
@@ -55,11 +54,6 @@ class NestedAgentExportMixin:
             "python_tools": list(
                 PythonCodeTool.objects.filter(
                     agentpythoncodetools__agent_id=agent.pk
-                ).values_list("id", flat=True)
-            ),
-            "configured_tools": list(
-                ToolConfig.objects.filter(
-                    agentconfiguredtools__agent_id=agent.pk
                 ).values_list("id", flat=True)
             ),
             "mcp_tools": list(
