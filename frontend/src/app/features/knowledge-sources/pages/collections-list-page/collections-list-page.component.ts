@@ -85,7 +85,12 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
                         return;
                     }
 
-                    const ragConfig = fullCollection.rag_configurations.find((r) => r.rag_id === params.ragId);
+                    // Chunk deep links only ever point at naive RAG documents (see
+                    // ChunkDeepLinkService) — scope the match to 'naive' explicitly, since
+                    // naive and graph rag_id sequences are independent and can collide.
+                    const ragConfig = fullCollection.rag_configurations.find(
+                        (r) => r.rag_id === params.ragId && r.rag_type === 'naive'
+                    );
                     if (!ragConfig) {
                         this.toastService.error('Deep link: RAG configuration not found');
                         this.deepLinkService.consume();
@@ -107,7 +112,7 @@ export class CollectionsListPageComponent implements OnInit, OnDestroy {
         this.dialog.open(NaiveRagConfigurationDialog, {
             width: 'calc(100vw - 2rem)',
             height: 'calc(100vh - 2rem)',
-            data: { ragId, collectionId },
+            data: { ragId, ragType: 'naive', collectionId },
             disableClose: true,
         });
     }

@@ -94,7 +94,14 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
                     this.collectionsStorage.markConfigsAsProcessing(configIds);
                     this.collectionsStorage.markRagAsProcessing(this.data.ragId);
                 },
-                error: () => this.toast.error('Files re-indexing failed'),
+                error: () => {
+                    this.toast.error('Files re-indexing failed');
+                    // If bulkDeletePending() was the stage that failed, its documents are
+                    // still optimistically hidden from the table with nothing left to
+                    // retry the delete. Recover the same way the "Re-include Files"
+                    // button does, rather than leaving them invisible indefinitely.
+                    if (hasPendingDeletes) config.initDocuments();
+                },
             });
     }
 }

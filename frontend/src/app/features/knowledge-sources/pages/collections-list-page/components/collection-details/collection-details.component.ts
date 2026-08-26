@@ -10,6 +10,7 @@ import {
     OnInit,
     signal,
     SimpleChanges,
+    untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -128,7 +129,13 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
                 .uploadingDocuments()
                 .filter((d) => d.source_collection === collectionId);
 
-            this.documents.set([...realDocs, ...uploading]);
+            // Invalid dropped files (wrong type/size) never reach uploadDocuments, so they
+            // only ever exist in this signal's own prior state — carry them forward or this
+            // rebuild (re-triggered by any upload anywhere finishing, not just this collection's)
+            // silently wipes them instead of leaving them visible with their error state.
+            const invalidLocal = untracked(() => this.documents().filter((d) => !d.isValidType || !d.isValidSize));
+
+            this.documents.set([...realDocs, ...uploading, ...invalidLocal]);
         });
     }
 

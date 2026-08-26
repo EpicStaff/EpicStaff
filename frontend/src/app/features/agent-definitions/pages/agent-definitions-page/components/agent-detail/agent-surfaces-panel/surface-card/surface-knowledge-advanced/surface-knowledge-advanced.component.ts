@@ -115,6 +115,11 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
 
     private formSub = new Subscription();
     private lastEmitted: string | null = null;
+    // Tracks the form a debounced emitCurrent() is currently pending for, so a
+    // collection switch or destroy mid-debounce can flush it instead of the
+    // unsubscribe below silently dropping the edit.
+    private pendingCollectionId: number | null = null;
+    private pendingRagTabForm: FormGroup | null = null;
 
     constructor() {
         effect(() => {
@@ -189,15 +194,27 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
     }
 
     ngOnDestroy(): void {
+        this.flushPending();
         this.formSub.unsubscribe();
     }
 
+    /** Emits synchronously whatever emitCurrent() had debounced for the collection
+     * being left, instead of letting the unsubscribe below cancel it silently. */
+    private flushPending(): void {
+        if (this.pendingCollectionId != null && this.pendingRagTabForm) {
+            this.emitCurrent(this.pendingCollectionId, this.pendingRagTabForm);
+        }
+    }
+
     private rebuildForm(collectionId: number | null): void {
+        this.flushPending();
         this.formSub.unsubscribe();
         this.formSub = new Subscription();
         this.lastEmitted = null;
 
         if (collectionId == null) {
+            this.pendingCollectionId = null;
+            this.pendingRagTabForm = null;
             this.form.set(null);
             this.ragTabForm.set(null);
             this.ragTabSearchConfigs.set(null);
@@ -222,6 +239,8 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
         this.ragTabForm.set(ragTabForm);
         this.ragTabSearchConfigs.set(this.buildSearchConfigsInput(item));
         this.currentGraphMethod.set(kind === 'graph' ? this.storedGraphMethod(item) : null);
+        this.pendingCollectionId = collectionId;
+        this.pendingRagTabForm = ragTabForm;
 
         // The visible RAG-kind select (`fg.rag`) drives the adapter form's `rag`
         // control that `<app-rag-tab>` actually reads from.

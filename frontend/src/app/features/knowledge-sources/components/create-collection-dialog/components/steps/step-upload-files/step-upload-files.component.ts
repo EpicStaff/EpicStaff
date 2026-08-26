@@ -11,6 +11,7 @@ import {
     model,
     OnInit,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
@@ -124,7 +125,13 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
                 .uploadingDocuments()
                 .filter((d) => d.source_collection === collectionId);
 
-            this.documents.set([...realDocs, ...uploading]);
+            // Invalid dropped files (wrong type/size) never reach uploadDocuments, so they
+            // only ever exist in this signal's own prior state — carry them forward or this
+            // rebuild (re-triggered by any upload anywhere finishing, not just this collection's)
+            // silently wipes them instead of leaving them visible with their error state.
+            const invalidLocal = untracked(() => this.documents().filter((d) => !d.isValidType || !d.isValidSize));
+
+            this.documents.set([...realDocs, ...uploading, ...invalidLocal]);
         });
     }
 

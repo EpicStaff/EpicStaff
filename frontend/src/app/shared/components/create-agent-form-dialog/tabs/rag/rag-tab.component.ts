@@ -184,6 +184,7 @@ export class RagTabComponent implements OnInit {
     // picker (e.g. the Surface knowledge-advanced panel), hide this tab's own
     // "Select Knowledge Source"/"Select Agent Rags" UI so the two don't duplicate.
     hideSourceSelectors = input<boolean>(false);
+    readOnly = input<boolean>(false);
 
     selectedRagType = signal<'naive' | 'graph' | null>(null);
     activeGraphMethodSignal = signal<GraphSearchMethod | null>(null);
@@ -194,6 +195,8 @@ export class RagTabComponent implements OnInit {
     suggestErrorFor = signal<SuggestKey | null>(null);
     useSuggestedParams = signal<boolean>(false);
     private searchConfigsValueChangesSub: Subscription | null = null;
+    private dynamicCommunityToggleSub: Subscription | null = null;
+    private driftDataMaxTokensCapSub: Subscription | null = null;
     // Baseline the "did the user edit a non-prompt field" diff runs against.
     // Must be resynced after every programmatic patch (applyResponse) — otherwise
     // the very next value-change event, even one caused solely by typing in a
@@ -384,7 +387,13 @@ export class RagTabComponent implements OnInit {
             this.activeGraphMethodSignal.set(null);
         }
 
-        this.form().setControl('search_configs', this.searchConfigsFormGroup);
+        if (this.readOnly()) this.searchConfigsFormGroup?.disable({ emitEvent: false });
+
+        // emitEvent:false — this runs on every mount/rebuild (e.g. switching collection
+        // tabs in surface-knowledge-advanced), not just on a real user edit. Without it,
+        // callers debouncing the parent form's valueChanges (to autosave) fire a save
+        // the instant this control is attached, before the user has touched anything.
+        this.form().setControl('search_configs', this.searchConfigsFormGroup, { emitEvent: false });
 
         // A genuine user edit to a suggested field (or switching search_method)
         // should turn the "use suggested params" toggle back off. Prompt fields
@@ -606,22 +615,30 @@ export class RagTabComponent implements OnInit {
     // calls refreshTokenValidators) — this covers the user typing into Data Max Tokens
     // directly, without ever touching "Use Suggested Params".
     private wireDriftDataMaxTokensCap(): void {
+        // initSearchConfigsFormGroup() rebuilds searchConfigsFormGroup (and this
+        // control) on every rag-kind/search_method switch — unsubscribe the
+        // previous wiring first, or takeUntilDestroyed(this.destroyRef) would keep
+        // it alive (subscribed to an abandoned form) until the component itself
+        // is destroyed, accumulating one leaked subscription per switch.
+        this.driftDataMaxTokensCapSub?.unsubscribe();
         const driftGroup = this.searchConfigsFormGroup?.get('drift') as FormGroup | null;
         const dataMaxTokensControl = driftGroup?.get('data_max_tokens');
         if (!dataMaxTokensControl) return;
-        dataMaxTokensControl.valueChanges
+        this.driftDataMaxTokensCapSub = dataMaxTokensControl.valueChanges
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe(() => this.refreshTokenValidators());
     }
 
     private wireDynamicCommunityToggle(): void {
+        // Same reason as wireDriftDataMaxTokensCap above.
+        this.dynamicCommunityToggleSub?.unsubscribe();
         const globalGroup = this.searchConfigsFormGroup?.get('global') as FormGroup | null;
         if (!globalGroup) return;
         const flag = globalGroup.get('dynamic_community_selection');
         if (!flag) return;
 
         this.syncDynamicCommunityDependents(!!flag.value);
-        flag.valueChanges
+        this.dynamicCommunityToggleSub = flag.valueChanges
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((v) => this.syncDynamicCommunityDependents(!!v));
     }
@@ -875,21 +892,21 @@ export class RagTabComponent implements OnInit {
         for (const field of PROMPT_FIELDS[key]) {
             delete params[field];
         }
-        if (key === 'drift') {
-            // These stay purely user-driven at all times (see DRIFT_ALWAYS_EDITABLE_FIELDS) —
-            // the backend always returns them as null since they're never derived from the
-            // anchor, so patching them here would silently wipe whatever the user typed on
-            // every recompute.
-            for (const field of DRIFT_ALWAYS_EDITABLE_FIELDS) {
+        if (this.isAnchorKey(key)) {
+            const anchorValue = params[ANCHOR_FIELD_NAME[key]];
+            if (typeof anchorValue === 'number') this.lastSuggestedMaxContextTokens.set(key, anchorValue);
+            // The anchor field (and, for drift, its always-editable siblings — see
+            // DRIFT_ALWAYS_EDITABLE_FIELDS) stays live-editable while a suggestion
+            // request is in flight (see the anchor field's template binding, which
+            // is never gated on useSuggestedParams()). Patching it here would
+            // silently overwrite whatever the user typed into it after the request
+            // fired but before this response landed.
+            for (const field of ANCHOR_FIELDS[key] ?? []) {
                 delete params[field];
             }
         }
         target.patchValue(params, { emitEvent: false });
         target.markAsPristine();
-        if (this.isAnchorKey(key)) {
-            const anchorValue = params[ANCHOR_FIELD_NAME[key]];
-            if (typeof anchorValue === 'number') this.lastSuggestedMaxContextTokens.set(key, anchorValue);
-        }
         // safe_token_budget reflects default_budget, which shifts with whatever
         // max_context_tokens anchor was just submitted — refresh it (and the
         // llm-keyed cache) so other fields' warningMax/tokenErrorMsg stay in

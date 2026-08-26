@@ -7,6 +7,7 @@ import { CollectionGraphRag, CreateGraphRagIndexConfigRequest } from '../../../.
 import { CollectionsStorageService } from '../../../../services/collections-storage.service';
 import { GraphRagService } from '../../../../services/graph-rag.service';
 import { GraphRagDocumentsStorageService } from '../../../../services/graph-rag-documents-storage.service';
+import { KnowledgeSourcesPollingService } from '../../../../services/knowledge-sources-polling.service';
 import { RagIndexingService } from '../../../../services/rag-indexing.service';
 import { GraphRagConfigurationComponent } from '../../../graph-rag-configuration/graph-rag-configuration.component';
 import { RagCreationStrategy } from '../interfaces/rag-creation-strategy.interface';
@@ -40,7 +41,8 @@ export class GraphRagStrategy implements RagCreationStrategy {
     constructor(
         private graphRagService: GraphRagService,
         private ragIndexingService: RagIndexingService,
-        private toastService: ToastService
+        private toastService: ToastService,
+        private pollingService: KnowledgeSourcesPollingService
     ) {}
 
     create(collectionId: number, embedderId: number, llmId: number): Observable<boolean> {
@@ -109,7 +111,14 @@ export class GraphRagStrategy implements RagCreationStrategy {
                 document_config_ids: this.indexingConfigIds,
             })
             .pipe(
-                tap(() => this.toastService.success('Indexing stop triggered')),
+                tap(() => {
+                    this.toastService.success('Indexing stop triggered');
+                    // Without this, the next poll sees these ids drop out of "processing"
+                    // (because we stopped them, not because they finished) and
+                    // notifyGraphRagCompletedIndexing fires a false "Indexed: X" toast —
+                    // mirrors NaiveRagStrategy.stopIndexing().
+                    this.pollingService.discardTrackedProcessingIds(this.indexingConfigIds);
+                }),
                 map(() => true)
             );
     }
