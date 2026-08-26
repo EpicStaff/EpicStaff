@@ -89,59 +89,93 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
         edges.push(edge(spineHead[i - 1], 'bottom', spineHead[i], 'top', 'flow'));
     }
 
-    /** Last block before row evaluation — where the rows and the error lane hang off. */
+    /** Last block before row evaluation. */
     const beforeRows = spineHead[spineHead.length - 1];
 
-    // -- tail of the spine, created up front so rows can wire into it --------
-
-    const fallThrough = block(blocks, {
-        ...fallThroughContent(input),
-        id: 'spine:default-continue',
-        kind: 'default-continue',
-    });
+    // -- the exit row, created up front so rows can wire into it -------------
+    //
+    // Post-computation runs on the default exit and on a routed exit, and never on
+    // an error: the engine sets `result_node` first and every error path returns
+    // before that call. So the error column is a terminator on its own.
 
     const postCode = input.postCode?.trim() ?? '';
-    const post = postCode
-        ? block(blocks, {
-              id: 'spine:post-computation',
-              kind: 'post-computation',
-              title: 'Post-computation',
-              subtitle: codePreview(postCode),
-              detail: { heading: 'Post-computation', language: 'python', body: postCode },
-          })
-        : null;
+    const postComputation = (id: string): string | null =>
+        postCode
+            ? block(blocks, {
+                  id,
+                  kind: 'post-computation',
+                  title: 'Post-computation',
+                  subtitle: codePreview(postCode),
+                  detail: { heading: 'Post-computation', language: 'python', body: postCode },
+              })
+            : null;
 
-    const left = block(blocks, {
-        id: 'spine:table-left',
-        kind: 'table-left',
-        title: 'Data leaves the table',
+    const defaultPost = postComputation('exit:default:post');
+    const defaultTerminator = block(blocks, {
+        ...terminatorContent(input.defaultNextNode, input.nodes, CDT_TREE_COPY.endsFlow),
+        id: 'exit:default:terminator',
+        kind: 'exit-terminator',
     });
-
-    /** Every route block converges here, exactly as the mockup draws it. */
-    const exit = post ?? left;
-
-    edges.push(edge(fallThrough, 'bottom', exit, 'top', 'flow'));
-    if (post) {
-        edges.push(edge(post, 'bottom', left, 'top', 'flow'));
+    const defaultEntry = defaultPost ?? defaultTerminator;
+    if (defaultPost) {
+        edges.push(edge(defaultPost, 'bottom', defaultTerminator, 'top', 'flow'));
     }
 
-    // -- error lane ----------------------------------------------------------
-
-    const error = block(blocks, {
-        ...targetContent(input.errorNextNode, input.nodes, CDT_TREE_COPY.errorsEndFlow),
-        id: 'spine:error-continue',
-        kind: 'error-continue',
+    const errorTerminator = block(blocks, {
+        ...terminatorContent(input.errorNextNode, input.nodes, CDT_TREE_COPY.errorsEndFlow),
+        id: 'exit:error:terminator',
+        kind: 'exit-terminator',
     });
-    // Any step of row evaluation can raise, so the branch hangs off the last block
-    // before the rows rather than off a single rule.
-    edges.push(edge(beforeRows, 'left', error, 'top', 'error', 'on error'));
-    edges.push(edge(error, 'bottom', exit, 'left', 'flow'));
+
+    // The route lane is only drawn when some rule actually leaves through it.
+    // Built unconditionally it left a "Related node" — and, with a post-code, a
+    // second copy of the post-computation — standing on the canvas with nothing
+    // leading to them, on every table that routes nowhere.
+    const rowTargets = enabledRows.map((row) => resolveRowTarget(row, input, canvasRowsByRoute));
+    const anyRouted = rowTargets.some((target) => target.state === 'node');
+
+    const routePost = anyRouted ? postComputation('exit:route:post') : null;
+    const routeTerminator = anyRouted
+        ? block(blocks, {
+              id: 'exit:route:terminator',
+              kind: 'exit-terminator',
+              title: CDT_TREE_COPY.relatedNode,
+          })
+        : null;
+    const routeEntry = routePost ?? routeTerminator;
+    if (routePost && routeTerminator) {
+        edges.push(edge(routePost, 'bottom', routeTerminator, 'top', 'flow'));
+    }
+
+    // -- the rules region ----------------------------------------------------
+    //
+    // Created before the rules so it is emitted first and therefore renders behind
+    // them. It exists as a block because the `Error` edge leaves the whole region
+    // and Foblex needs a real element to carry that connector.
+
+    const region = enabledRows.length > 0 ? block(blocks, { id: 'rules:region', kind: 'rules-region' }) : null;
+
+    // With rules, the error edge leaves the region as a whole. With none, the head
+    // is still the pre-computation and the variable binding, and either can throw —
+    // so the error exit has a source either way rather than standing unreachable.
+    // It leaves the head sideways because the head's bottom already carries the
+    // fall-through, and no block may have two edges leaving one side.
+    edges.push(
+        region
+            ? edge(region, 'bottom', errorTerminator, 'top', 'error', 'Error')
+            : edge(beforeRows, 'right', errorTerminator, 'top', 'error', 'Error')
+    );
 
     // -- one branch per enabled row -----------------------------------------
 
     const chains: CdtTreeChainLane[] = [];
 
     enabledRows.forEach((row, index) => {
+        const target = rowTargets[index];
+        const routed = target.state === 'node';
+        const continues = row.continue_flag ?? row.continue ?? false;
+        const isLast = index + 1 >= enabledRows.length;
+
         const decision = block(blocks, {
             id: `row-${index}:decision`,
             kind: 'row-decision',
@@ -149,11 +183,17 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
             subtitle: rowExpressionSubtitle(row),
             detail: rowExpressionDetail(row),
             chip: chipForSharedRoute(row, routeCodeCounts),
+            warning: unsavedTargetWarning(row),
+            target,
         });
 
-        // The `no` branch always falls through to the next diamond, or out.
-        const next = index + 1 < enabledRows.length ? `row-${index + 1}:decision` : fallThrough;
-        edges.push(edge(decision, 'bottom', next, 'top', 'no', 'no'));
+        // `no` falls through to the next rule; after the last one the table default
+        // applies, which is what the mockup labels `Default`.
+        edges.push(
+            isLast
+                ? edge(decision, 'bottom', defaultEntry, 'top', 'default', 'Default')
+                : edge(decision, 'bottom', `row-${index + 1}:decision`, 'top', 'no', 'no')
+        );
 
         // The `yes` branch chains prompt → manipulation → route, in engine order.
         const chain: string[] = [];
@@ -195,67 +235,77 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
             );
         }
 
-        const target = resolveRowTarget(row, input, canvasRowsByRoute);
-        const continues = row.continue_flag ?? row.continue ?? false;
+        // Where the branch leaves, following the engine: an explicit route is
+        // terminal whatever `continue` says; without one, `continue` rejoins the
+        // next rule; anything else leaves `matched_next_node` unset, so the table
+        // default applies.
+        // `routeEntry` is non-null whenever any row is routed, so `routed` alone
+        // decides; the check is what tells the compiler that.
+        const exitTo =
+            routed && routeEntry ? routeEntry : continues && !isLast ? `row-${index + 1}:decision` : defaultEntry;
+        const exitKind: CdtTreeEdgeKind = !routed && continues && !isLast ? 'continue' : 'flow';
 
-        chain.push(
-            continues
-                ? block(blocks, {
-                      ...capturedContent(target),
-                      id: `row-${index}:captured`,
-                      kind: 'row-captured',
-                  })
-                : block(blocks, {
-                      ...routeContent(target),
-                      id: `row-${index}:route`,
-                      kind: 'row-continue',
-                  })
-        );
-
-        edges.push(edge(decision, 'right', chain[0], 'left', 'yes', 'yes'));
-        for (let i = 1; i < chain.length; i++) {
-            edges.push(edge(chain[i - 1], 'right', chain[i], 'left', 'flow'));
+        if (chain.length > 0) {
+            edges.push(edge(decision, 'right', chain[0], 'left', 'yes', 'yes'));
+            for (let i = 1; i < chain.length; i++) {
+                edges.push(edge(chain[i - 1], 'right', chain[i], 'left', 'flow'));
+            }
+            // Sideways, not down: leaving from the bottom sent the edge straight
+            // through the branch below, which read as this rule handing over to
+            // that one. Out to the right it drops through the clear strip past
+            // every chain instead — see the layout's `corridorX`.
+            edges.push(edge(chain[chain.length - 1], 'right', exitTo, 'top', exitKind));
+        } else {
+            // Neither a prompt nor a manipulation: the `yes` edge goes straight to
+            // wherever the branch leaves.
+            edges.push(edge(decision, 'right', exitTo, 'top', 'yes', 'yes'));
         }
-
-        // A matched `continue` row does not exit — it rejoins the next diamond.
-        // It enters on the right, not the top: the top is already taken by that
-        // block's `no` edge, and two edges converging on one point read as one.
-        const tail = chain[chain.length - 1];
-        edges.push(
-            continues
-                ? edge(tail, 'bottom', next, 'right', 'continue', 'continue')
-                : edge(tail, 'right', exit, 'right', 'flow')
-        );
 
         chains.push({ kind: 'chain', anchorId: decision, blockIds: chain });
     });
 
-    // Enter the ladder at the first rule, or drop straight through when there is none.
-    edges.push(
-        enabledRows.length > 0
-            ? edge(beforeRows, 'bottom', 'row-0:decision', 'top', 'flow')
-            : edge(beforeRows, 'bottom', fallThrough, 'top', 'no', 'no row matched')
-    );
+    if (enabledRows.length > 0) {
+        edges.push(edge(beforeRows, 'bottom', 'row-0:decision', 'top', 'flow'));
+    } else {
+        // A table with no enabled rule still runs: nothing matches, so the table
+        // default applies. Drawing nothing left the head and the exits as
+        // disconnected boxes and hid a path the engine really takes.
+        edges.push(edge(beforeRows, 'bottom', defaultEntry, 'top', 'default', CDT_TREE_COPY.noRowMatched));
+    }
+
+    assertUniqueEdgeIds(edges);
 
     return {
         title: input.nodeName,
         blocks,
         edges,
         lanes: [
+            { kind: 'spine', blockIds: [...spineHead, ...chains.map((chainEntry) => chainEntry.anchorId)] },
+            ...chains,
+            ...(region
+                ? [
+                      {
+                          kind: 'region' as const,
+                          blockId: region,
+                          coversIds: chains.flatMap((chainEntry) => [chainEntry.anchorId, ...chainEntry.blockIds]),
+                      },
+                  ]
+                : []),
             {
-                kind: 'spine',
-                blockIds: [
-                    ...spineHead,
-                    ...chains.map((chainEntry) => chainEntry.anchorId),
-                    fallThrough,
-                    ...(post ? [post] : []),
-                    left,
+                kind: 'exits',
+                columns: [
+                    { blockIds: compact([defaultPost, defaultTerminator]), anchor: 'spine' },
+                    { blockIds: [errorTerminator], anchor: 'region' },
+                    ...(routeEntry
+                        ? [
+                              {
+                                  blockIds: compact([routePost, routeTerminator]),
+                                  anchor: 'chain-corridor' as const,
+                              },
+                          ]
+                        : []),
                 ],
             },
-            ...chains,
-            // Any step can raise, so the error branch hangs off the column as a
-            // whole rather than off one rule.
-            { kind: 'aside', side: 'left', anchorId: fallThrough, blockIds: [error] },
         ],
         hiddenRowCount,
         rowCount: enabledRows.length,
@@ -375,41 +425,12 @@ export function resolveNodeLabel(targetId: string, nodes: readonly CdtTreeNodeRe
     return found.node_name?.trim() || `node #${found.nodeNumber ?? found.backendId ?? targetId}`;
 }
 
-function routeContent(target: CdtTreeTarget): Partial<CdtTreeBlock> {
-    switch (target.state) {
-        case 'node':
-            return { target, title: CDT_TREE_COPY.continueTo(target.label) };
-        case 'no-capture':
-            return { target, title: CDT_TREE_COPY.noCapture };
-        case 'unrouted':
-            return { target, title: CDT_TREE_COPY.unrouted, warning: CDT_TREE_COPY.unroutedWarning };
-        case 'end':
-            return { target, title: CDT_TREE_COPY.endsFlow };
-    }
-}
-
-function capturedContent(target: CdtTreeTarget): Partial<CdtTreeBlock> {
-    if (target.state === 'node') {
-        return {
-            target,
-            title: CDT_TREE_COPY.routeCaptured(target.label),
-            subtitle: CDT_TREE_COPY.routeCapturedNote,
-        };
-    }
-
-    return {
-        target,
-        title: CDT_TREE_COPY.continuesWithoutRoute,
-        subtitle: CDT_TREE_COPY.continuesNote,
-        warning: target.state === 'unrouted' ? CDT_TREE_COPY.unroutedWarning : null,
-    };
-}
-
-function fallThroughContent(input: CdtDecisionTreeInput): Partial<CdtTreeBlock> {
-    return targetContent(input.defaultNextNode, input.nodes, CDT_TREE_COPY.endsFlow);
-}
-
-function targetContent(
+/**
+ * A terminator takes the name of the node attached to that output, so the diagram
+ * reads as "and then this node runs". With nothing attached the graph really does
+ * end there, which is what the fallback says.
+ */
+function terminatorContent(
     targetId: string | null,
     nodes: readonly CdtTreeNodeRef[],
     emptyTitle: string
@@ -417,7 +438,21 @@ function targetContent(
     if (!targetId) return { target: { state: 'end' }, title: emptyTitle };
 
     const label = resolveNodeLabel(targetId, nodes);
-    return { target: { state: 'node', label }, title: CDT_TREE_COPY.continueTo(label) };
+    return { target: { state: 'node', label }, title: label };
+}
+
+/**
+ * A rule with a target but no route code loses that target on save — `payload.ts`
+ * only persists one when a route code is present. A rule with neither is an
+ * enrichment step that falls through by design and gets no badge.
+ */
+function unsavedTargetWarning(row: ConditionGroup): string | null {
+    const routed = !!row.route_code?.trim();
+    return !routed && !!row.next_node ? CDT_TREE_COPY.unsavedTargetWarning : null;
+}
+
+function compact(ids: readonly (string | null)[]): string[] {
+    return ids.filter((id): id is string => id !== null);
 }
 
 // ---------------------------------------------------------------------------
@@ -503,6 +538,17 @@ function block(sink: CdtTreeBlock[], partial: Partial<CdtTreeBlock> & { id: stri
     return partial.id;
 }
 
+/**
+ * The id carries `kind` because a pair of blocks can be joined twice.
+ *
+ * A rule with neither a prompt nor a manipulation does nothing, so its `yes`
+ * branch leaves for the same block its fall-through does — two edges, one pair of
+ * endpoints. Keyed on the pair alone they came out with the same id, and since
+ * the connector ids are derived from it (see `outputConnectorId`) so did their
+ * connectors. Foblex's store throws on a duplicate id, which aborts registration
+ * for that edge *and every one declared after it*: the diagram quietly lost its
+ * whole tail, most visibly the edge into the first rule, which is declared last.
+ */
 function edge(
     from: string,
     fromSide: CdtTreePortSide,
@@ -511,5 +557,20 @@ function edge(
     kind: CdtTreeEdgeKind,
     label: string | null = null
 ): CdtTreeEdge {
-    return { id: `${from}→${to}`, from, fromSide, to, toSide, kind, label };
+    return { id: `${kind}:${from}→${to}`, from, fromSide, to, toSide, kind, label };
+}
+
+/**
+ * Fail here, naming the id, rather than three frames away inside Foblex — where
+ * the same mistake costs the tail of the diagram and logs nothing that points
+ * back at this file. `kind` is what keeps ids apart today; this is what catches
+ * the next arrangement for which that is no longer enough.
+ */
+function assertUniqueEdgeIds(edges: readonly CdtTreeEdge[]): void {
+    const seen = new Set<string>();
+
+    for (const entry of edges) {
+        if (seen.has(entry.id)) throw new Error(`cdt-decision-tree: two edges share the id "${entry.id}"`);
+        seen.add(entry.id);
+    }
 }

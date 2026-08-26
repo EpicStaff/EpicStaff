@@ -6,6 +6,12 @@
     --cdt-tree-surface: var(--color-background-body);
     --cdt-tree-raised: var(--color-nodes-background);
 
+    // The rules region is the boundary the `Error` edge leaves, so the design
+    // draws it in the error colour, at 40%. `--color-error` is opaque, and the
+    // design's #f5424266 is exactly that token at that alpha — mixed rather than
+    // written out so it keeps tracking the token.
+    --cdt-tree-region-border: color-mix(in srgb, var(--color-error) 40%, transparent);
+
     display: block;
     width: 100%;
     height: 100%;

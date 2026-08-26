@@ -19,7 +19,7 @@ import { AppSvgIconComponent } from '../../../../../shared/components/app-svg-ic
 import { filterByQuery } from '../cdt-search-filter.util';
 import { OverlayMenuController } from '../classification-decision-table-grid/shared/overlay-menu.util';
 import { buildCdtDecisionTree } from './cdt-decision-tree.builder';
-import { CDT_TREE_FIT_PADDING, CDT_TREE_LEGEND } from './cdt-decision-tree.constants';
+import { CDT_TREE_EDGE_OFFSET, CDT_TREE_FIT_PADDING, CDT_TREE_LEGEND } from './cdt-decision-tree.constants';
 import { layoutCdtDecisionTree } from './cdt-decision-tree.layout';
 import { CdtDecisionTreeInput, CdtTreeDetail, CdtTreeEdge, CdtTreePositionedBlock } from './cdt-decision-tree.model';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-block/cdt-decision-tree-block.component';
@@ -65,6 +65,14 @@ export class CdtDecisionTreeDialogComponent {
 
     protected readonly legend = CDT_TREE_LEGEND;
     protected readonly eMarkerType = EFMarkerType;
+
+    /**
+     * How far an edge runs straight out of a connector before it may turn.
+     *
+     * The layout places the exit columns using the same number, so the drop into
+     * them is one straight line rather than a step.
+     */
+    protected readonly edgeOffset = CDT_TREE_EDGE_OFFSET;
 
     /** `fDraggable` is present only so the canvas can be panned. */
     protected readonly canvasMoveTrigger = (): boolean => true;

@@ -24,6 +24,7 @@ import { CdtTreeShape } from '../cdt-decision-tree.model';
             @if (isRounded()) {
                 <rect
                     class="cdt-shape__outline"
+                    [class.cdt-shape__outline--region]="shape() === 'region'"
                     x="0"
                     y="0"
                     [attr.width]="width()"
@@ -75,6 +76,17 @@ import { CdtTreeShape } from '../cdt-decision-tree.model';
                 fill: var(--cdt-tree-raised, var(--color-nodes-background));
             }
 
+            // The region is a boundary, not a block: an outline with nothing
+            // behind it, so the canvas and the rules inside stay visible. Drawn in
+            // the error colour because it is the boundary the Error edge leaves —
+            // anything inside it that throws goes there.
+            .cdt-shape__outline--region {
+                fill: none;
+                stroke: var(--cdt-tree-region-border, var(--color-error));
+                stroke-width: 1;
+                stroke-dasharray: 6 5;
+            }
+
             .cdt-shape__rule {
                 stroke: var(--color-divider-regular);
                 stroke-width: 1;
@@ -94,12 +106,18 @@ export class CdtDecisionTreeShapeComponent {
     protected readonly viewBox = computed(() => `0 0 ${this.width()} ${this.height()}`);
 
     protected readonly isRounded = computed(
-        () => this.shape() === 'terminator' || this.shape() === 'process' || this.shape() === 'predefined-process'
+        () =>
+            this.shape() === 'terminator' ||
+            this.shape() === 'process' ||
+            this.shape() === 'predefined-process' ||
+            this.shape() === 'region'
     );
 
-    protected readonly cornerRadius = computed(() =>
-        this.shape() === 'terminator' ? this.height() / 2 : Math.min(10, this.height() / 5)
-    );
+    protected readonly cornerRadius = computed(() => {
+        if (this.shape() === 'terminator') return this.height() / 2;
+        if (this.shape() === 'region') return 12;
+        return Math.min(10, this.height() / 5);
+    });
 
     protected readonly bandOffset = computed(() => Math.min(14, this.width() / 8));
 

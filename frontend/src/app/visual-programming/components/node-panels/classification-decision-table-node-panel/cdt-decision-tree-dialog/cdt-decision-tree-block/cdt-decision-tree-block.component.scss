@@ -16,25 +16,26 @@
     pointer-events: none;
     opacity: 0;
 
-    // Position along the side comes from the layout, which fans the connectors
-    // incident on one side so converging edges do not land on the same pixel.
+    // Always the centre of the side — the apex of a diamond, the middle of every
+    // other shape. Two blocks that line up therefore connect on the axis they
+    // share, which is what makes the edge between them a straight line.
     &--top {
         top: 0;
-        left: calc(var(--cdt-tree-connector-offset) * 100%);
+        left: 50%;
     }
 
     &--right {
-        top: calc(var(--cdt-tree-connector-offset) * 100%);
+        top: 50%;
         right: 0;
     }
 
     &--bottom {
         bottom: 0;
-        left: calc(var(--cdt-tree-connector-offset) * 100%);
+        left: 50%;
     }
 
     &--left {
-        top: calc(var(--cdt-tree-connector-offset) * 100%);
+        top: 50%;
         left: 0;
     }
 }

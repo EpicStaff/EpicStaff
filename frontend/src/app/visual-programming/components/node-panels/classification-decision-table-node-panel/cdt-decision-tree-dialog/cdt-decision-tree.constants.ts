@@ -3,19 +3,14 @@ import { CdtTreeBlockKind, CdtTreeShape, CdtTreeSize } from './cdt-decision-tree
 /** Which of the five legend shapes each block kind is drawn as. */
 export const SHAPE_BY_KIND: Readonly<Record<CdtTreeBlockKind, CdtTreeShape>> = {
     'table-entered': 'terminator',
-    'table-left': 'terminator',
+    'exit-terminator': 'terminator',
     'pre-computation': 'predefined-process',
     'post-computation': 'predefined-process',
     'read-variables': 'data',
     'row-prompt': 'data',
     'row-decision': 'decision',
     'row-manipulation': 'process',
-    // Rendered as a process rectangle with a `--marker` modifier so the legend
-    // stays at exactly the five shapes of the mockup.
-    'row-captured': 'process',
-    'row-continue': 'predefined-process',
-    'default-continue': 'predefined-process',
-    'error-continue': 'predefined-process',
+    'rules-region': 'region',
 };
 
 /**
@@ -28,17 +23,14 @@ export const SHAPE_BY_KIND: Readonly<Record<CdtTreeBlockKind, CdtTreeShape>> = {
  */
 export const CLICKABLE_BY_KIND: Readonly<Record<CdtTreeBlockKind, boolean>> = {
     'table-entered': false,
-    'table-left': false,
+    'exit-terminator': false,
     'pre-computation': true,
     'post-computation': true,
     'read-variables': false,
     'row-prompt': true,
     'row-decision': true,
     'row-manipulation': true,
-    'row-captured': false,
-    'row-continue': false,
-    'default-continue': false,
-    'error-continue': false,
+    'rules-region': false,
 };
 
 /**
@@ -61,7 +53,12 @@ export const MIN_SIZE_BY_SHAPE: Readonly<Record<CdtTreeShape, CdtTreeSize>> = {
     data: { width: 268, height: 42 },
     decision: { width: 320, height: 134 },
     process: { width: 268, height: 42 },
+    // The region is sized from what it encloses; the layout overrides this.
+    region: { width: 0, height: 0 },
 };
+
+/** How far the rules region's outline stands off the blocks it encloses. */
+export const CDT_TREE_REGION_PADDING = 28;
 
 export interface CdtTreeIcon {
     /** Sprite id without the `icon-` prefix, as `app-svg-icon` expects it. */
@@ -70,12 +67,13 @@ export interface CdtTreeIcon {
     readonly height: string;
 }
 
-export const ICON_BY_SHAPE: Readonly<Record<CdtTreeShape, CdtTreeIcon>> = {
+export const ICON_BY_SHAPE: Readonly<Partial<Record<CdtTreeShape, CdtTreeIcon>>> = {
     terminator: { name: 'tree-terminator', width: '16px', height: '16px' },
     'predefined-process': { name: 'tree-computation', width: '18px', height: '16px' },
     data: { name: 'tree-vars', width: '16px', height: '16px' },
     decision: { name: 'tree-condition', width: '16px', height: '15px' },
     process: { name: 'tree-processing', width: '16px', height: '16px' },
+    // `region` has none: it is an outline, not a step.
 };
 
 export const CDT_TREE_BLOCK_TITLE_BAND = 42;
@@ -91,6 +89,16 @@ export const CDT_TREE_H_GAP = 72;
 
 /** Gap between the widest point of the spine and an aside lane beside it. */
 export const CDT_TREE_ASIDE_GAP = 96;
+
+/**
+ * How far a connector stands off its block before the edge is allowed to turn.
+ *
+ * Passed to Foblex as `fOffset`, and read by the layout: a chain leaves from its
+ * last block's right side, so this is also the width of the clear strip the exit
+ * edges drop through, and where the route exit column is centred. Both have to
+ * agree or the drop stops being a straight line.
+ */
+export const CDT_TREE_EDGE_OFFSET = 24;
 
 /** Padding passed to `fitToScreen` so blocks never touch the viewport edge. */
 export const CDT_TREE_FIT_PADDING = { x: 80, y: 60 } as const;
@@ -117,16 +125,21 @@ export const CDT_TREE_SUBTITLE_MAX_CHARS = 120;
  * The legend's labels already lived in this file for the same reason.
  */
 export const CDT_TREE_COPY = {
-    continueTo: (label: string): string => `Continue to ${label}`,
-    routeCaptured: (label: string): string => `Route captured → ${label}`,
-    routeCapturedNote: 'evaluation continues; the last capture wins',
-    noCapture: 'No target — table default applies',
-    continuesWithoutRoute: 'Continues without capturing a route',
-    continuesNote: 'evaluation continues to the next rule',
-    unrouted: 'Not routed',
-    unroutedWarning: 'This rule has no route code, so its target is never saved.',
+    /**
+     * The route lane names no specific node on purpose: several rules can route to
+     * several different targets, and the design says only that the flow carries on.
+     */
+    relatedNode: 'Related node',
+    /** The one edge a table with no enabled rule has: straight to its default. */
+    noRowMatched: 'no row matched',
     endsFlow: 'Ends the flow',
     errorsEndFlow: 'Errors end the flow',
+    /**
+     * Only for a rule that has a target but no route code. A rule with neither is
+     * an enrichment step that falls through on purpose — warning about those is
+     * what made this badge noise before.
+     */
+    unsavedTargetWarning: 'This rule has a target but no route code, so the target is never saved.',
     ruleFallback: (oneBased: number): string => `Rule ${oneBased}`,
     promptLabel: (promptId: string): string => `Prompt "${promptId}"`,
     promptMissingWarning: 'Prompt not found in this table.',

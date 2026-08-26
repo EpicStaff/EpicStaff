@@ -8,7 +8,6 @@
     <div
         class="cdt-tree-block__connector"
         [class]="'cdt-tree-block__connector--' + port.side"
-        [style.--cdt-tree-connector-offset]="port.offset"
         fNodeOutput
         fOutputDisabled
         [fOutputId]="port.id"
@@ -20,7 +19,6 @@
     <div
         class="cdt-tree-block__connector"
         [class]="'cdt-tree-block__connector--' + port.side"
-        [style.--cdt-tree-connector-offset]="port.offset"
         fNodeInput
         fInputDisabled
         [fInputId]="port.id"
@@ -28,48 +26,52 @@
     ></div>
 }
 
-<div
-    class="cdt-tree-block__body"
-    [attr.role]="block().clickable ? 'button' : null"
-    [attr.tabindex]="block().clickable ? 0 : null"
-    (click)="onActivate()"
-    (keydown.enter)="onActivate()"
-    (keydown.space)="onActivate()"
->
-    <div class="cdt-tree-block__heading">
-        <app-svg-icon
-            [icon]="icon().name"
-            [width]="icon().width"
-            [height]="icon().height"
-        />
+@if (block().shape !== 'region') {
+    <div
+        class="cdt-tree-block__body"
+        [attr.role]="block().clickable ? 'button' : null"
+        [attr.tabindex]="block().clickable ? 0 : null"
+        (click)="onActivate()"
+        (keydown.enter)="onActivate()"
+        (keydown.space)="onActivate()"
+    >
+        <div class="cdt-tree-block__heading">
+            @if (icon(); as glyph) {
+                <app-svg-icon
+                    [icon]="glyph.name"
+                    [width]="glyph.width"
+                    [height]="glyph.height"
+                />
+            }
 
-        <span class="cdt-tree-block__title">{{ block().title }}</span>
+            <span class="cdt-tree-block__title">{{ block().title }}</span>
 
-        @if (block().chip) {
-            <span class="cdt-tree-block__chip">{{ block().chip }}</span>
+            @if (block().chip) {
+                <span class="cdt-tree-block__chip">{{ block().chip }}</span>
+            }
+
+            @if (block().warning) {
+                <span
+                    class="cdt-tree-block__warning"
+                    [matTooltip]="block().warning!"
+                    matTooltipPosition="above"
+                    aria-label="Warning"
+                    >!</span
+                >
+            }
+        </div>
+
+        @if (block().subtitle) {
+            <span class="cdt-tree-block__subtitle">{{ block().subtitle }}</span>
         }
 
-        @if (block().warning) {
-            <span
-                class="cdt-tree-block__warning"
-                [matTooltip]="block().warning!"
-                matTooltipPosition="above"
-                aria-label="Warning"
-                >!</span
-            >
+        @if (block().clickable) {
+            <app-svg-icon
+                class="cdt-tree-block__expand"
+                icon="zoom-scan"
+                size="0.85rem"
+                ariaLabel="Show full content"
+            />
         }
     </div>
-
-    @if (block().subtitle) {
-        <span class="cdt-tree-block__subtitle">{{ block().subtitle }}</span>
-    }
-
-    @if (block().clickable) {
-        <app-svg-icon
-            class="cdt-tree-block__expand"
-            icon="zoom-scan"
-            size="0.85rem"
-            ariaLabel="Show full content"
-        />
-    }
-</div>
+}

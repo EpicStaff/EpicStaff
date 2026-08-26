@@ -64,26 +64,29 @@ export interface CdtDecisionTreeInput {
 // Tree model
 // ---------------------------------------------------------------------------
 
-/** The five shapes of the mockup's legend. */
-export type CdtTreeShape = 'terminator' | 'predefined-process' | 'data' | 'decision' | 'process';
+/**
+ * The five legend shapes, plus the region outline.
+ *
+ * `region` is not a flowchart symbol and stays out of the legend: it is the
+ * boundary drawn around the rules, and it exists as a block only so that Foblex
+ * has a real element to hang the `Error` connector on.
+ */
+export type CdtTreeShape = 'terminator' | 'predefined-process' | 'data' | 'decision' | 'process' | 'region';
 
 export type CdtTreeBlockKind =
     | 'table-entered'
     | 'pre-computation'
     | 'read-variables'
+    | 'rules-region'
     | 'row-decision'
     | 'row-prompt'
     | 'row-manipulation'
-    | 'row-continue'
-    | 'row-captured'
-    | 'default-continue'
-    | 'error-continue'
     | 'post-computation'
-    | 'table-left';
+    | 'exit-terminator';
 
 export type CdtTreePortSide = 'top' | 'right' | 'bottom' | 'left';
 
-export type CdtTreeEdgeKind = 'flow' | 'yes' | 'no' | 'error' | 'continue';
+export type CdtTreeEdgeKind = 'flow' | 'yes' | 'no' | 'default' | 'error' | 'continue';
 
 /** Full content of a block, shown in the read-only popover. */
 export interface CdtTreeDetail {
@@ -154,7 +157,11 @@ export interface CdtTreeSpineLane {
     readonly blockIds: readonly string[];
 }
 
-/** A row's `yes` branch: blocks running right from the diamond, centred on it. */
+/**
+ * A row's `yes` branch: blocks running right from the diamond, centred on it and
+ * right-aligned with every other chain, so the branches form columns and the
+ * strip past their shared right edge stays free for the exit edges.
+ */
 export interface CdtTreeChainLane {
     readonly kind: 'chain';
     readonly anchorId: string;
@@ -169,6 +176,45 @@ export interface CdtTreeAsideLane {
     readonly blockIds: readonly string[];
 }
 
+/** One column of the exit row: a vertical stack, and how its x is decided. */
+export interface CdtTreeExitColumn {
+    readonly blockIds: readonly string[];
+    /**
+     * Each anchor names the thing the column's edge comes down from, so that edge
+     * is a straight vertical drop: `spine` centres it on the column above,
+     * `region` on the rules region whose bottom the `Error` edge leaves, and
+     * `chain-corridor` on the clear strip every chain exit drops through.
+     *
+     * A column never moves left of the one before it, whatever its anchor says.
+     */
+    readonly anchor: 'spine' | 'region' | 'chain-corridor';
+}
+
+/**
+ * The row of exits: default, error and the shared route lane.
+ *
+ * Placed below everything else on the canvas rather than below a named block —
+ * the rules region reaches lower than the last rule, and the row has to clear it.
+ */
+export interface CdtTreeExitsLane {
+    readonly kind: 'exits';
+    readonly columns: readonly CdtTreeExitColumn[];
+}
+
+/**
+ * The outline drawn around the rules.
+ *
+ * It has no size of its own — the layout gives it the bounds of everything it
+ * covers, plus padding. It is a block rather than decoration because the `Error`
+ * edge leaves the region as a whole, and Foblex needs a real element to attach
+ * that connector to.
+ */
+export interface CdtTreeRegionLane {
+    readonly kind: 'region';
+    readonly blockId: string;
+    readonly coversIds: readonly string[];
+}
+
 /**
  * A lane is the unit the layout places.
  *
@@ -177,7 +223,7 @@ export interface CdtTreeAsideLane {
  * A new arrangement is now a new variant here, and the exhaustive switch makes
  * the layout state what it does with it.
  */
-export type CdtTreeLane = CdtTreeSpineLane | CdtTreeChainLane | CdtTreeAsideLane;
+export type CdtTreeLane = CdtTreeSpineLane | CdtTreeChainLane | CdtTreeAsideLane | CdtTreeExitsLane | CdtTreeRegionLane;
 
 export interface CdtTree {
     readonly title: string;
@@ -208,19 +254,19 @@ export interface CdtTreeSize {
     readonly height: number;
 }
 
-/** One Foblex connector on a block, created for exactly one edge endpoint. */
+/**
+ * One Foblex connector on a block, created for exactly one edge endpoint.
+ *
+ * Every connector sits at the centre of its side — the apex of a diamond, the
+ * middle of every other shape. Fanning them along the side was tried and undone:
+ * it moved an edge's two ends off the axis they share, which bent every drop down
+ * the spine into a dog-leg, and a flowchart's edges have to read as straight.
+ * Several edges arriving at one block therefore meet at a single point, which is
+ * how the mockup draws a convergence anyway.
+ */
 export interface CdtTreeConnector {
     readonly id: string;
     readonly side: CdtTreePortSide;
-    /**
-     * Where along that side the connector sits, 0 to 1.
-     *
-     * Per-edge connectors stop two edges from sharing one, but not from arriving
-     * at the same pixel: every connector used to sit at the side's midpoint, so a
-     * convergence of N edges drew N paths into one point. Foblex measures the
-     * connector element, so spreading them here spreads the arrows.
-     */
-    readonly offset: number;
 }
 
 export interface CdtTreePositionedBlock extends CdtTreeBlock {

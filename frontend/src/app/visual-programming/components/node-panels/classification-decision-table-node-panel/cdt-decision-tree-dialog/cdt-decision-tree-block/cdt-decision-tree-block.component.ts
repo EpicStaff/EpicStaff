@@ -43,7 +43,8 @@ export class CdtDecisionTreeBlockComponent {
     public readonly dimmed = input<boolean>(false);
     public readonly matched = input<boolean>(false);
 
-    protected readonly icon = computed<CdtTreeIcon>(() => ICON_BY_SHAPE[this.block().shape]);
+    /** Undefined for the region outline, which is not a step and carries no glyph. */
+    protected readonly icon = computed<CdtTreeIcon | undefined>(() => ICON_BY_SHAPE[this.block().shape]);
     protected readonly subtitleLines = CDT_TREE_SUBTITLE_CODE_LINES;
 
     /** Emits the anchor element the read-only popover should attach to. */
