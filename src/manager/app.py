@@ -3,7 +3,6 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-import json
 import os
 from fastapi import FastAPI
 from db.config import AsyncSessionLocal
@@ -15,7 +14,6 @@ from repositories.session_repository import SessionRepository
 from services.redis_service import RedisService
 from services.session_timeout_service import SessionTimeoutService
 from services.schedule_service import ScheduleService
-from helpers.yaml_parser import load_env_from_yaml_config
 from helpers.logger import logger
 
 
@@ -83,9 +81,6 @@ async def start_up():
         await session_timeout_service.initial_check_all_sessions_for_timeout()
         logger.info("Start SessionTimeoutService initial timeout check.")
 
-        # TODO: ? remove listen_redis() because it newer use
-        # asyncio.create_task(redis_service.listen_redis())
-
         await schedule_service.start()
         logger.info("ScheduleService started successfully.")
 
@@ -104,7 +99,6 @@ async def shutdown_event():
 
 
 if __name__ == "__main__":
-    load_env_from_yaml_config("./manager_config.yaml")
     # port = 8001 for local launch
     port = int(os.environ.get("MANAGER_PORT", "8001"))
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True, workers=1)
