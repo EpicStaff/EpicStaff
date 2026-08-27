@@ -29,6 +29,7 @@ import {
     Surface,
     SurfaceSaveError,
 } from '../../../../../models/surface.model';
+import { SurfaceTabId } from '../../../../../models/surface-card.model';
 import {
     categoryToPlace,
     placeToCategory,
@@ -89,6 +90,7 @@ export class AgentSurfacesPanelComponent {
     readonly categories = SURFACE_CATEGORIES;
     readonly searchQuery = signal('');
     readonly expandedSurfaceId = signal<number | null>(null);
+    private readonly activeTabBySurfaceId = signal<ReadonlyMap<number, SurfaceTabId>>(new Map());
     readonly dragging = signal<boolean>(false);
     readonly draftCategoryId = signal<SurfaceCategoryId | null>(null);
     readonly draftName = signal<string>('');
@@ -108,8 +110,10 @@ export class AgentSurfacesPanelComponent {
             if (!created) return;
             this.knownSurfaceIdsBeforeCreate.set(null);
             this.draftMaterializing = false;
+            const draftTab = this.draftSurfaceCard()?.activeTab();
             this.cancelDraft();
             this.expandedSurfaceId.set(created.id);
+            if (draftTab) this.onCardActiveTabChange(created, draftTab);
         });
 
         // Error: a create failed → keep the draft mounted and re-enable retry.
@@ -246,6 +250,14 @@ export class AgentSurfacesPanelComponent {
         this.knownSurfaceIdsBeforeCreate.set(null);
         this.draftCategoryId.set(null);
         this.expandedSurfaceId.set(expanded ? surface.id : null);
+    }
+
+    activeTabFor(surface: Surface): SurfaceTabId {
+        return this.activeTabBySurfaceId().get(surface.id) ?? 'tools';
+    }
+
+    onCardActiveTabChange(surface: Surface, tab: SurfaceTabId): void {
+        this.activeTabBySurfaceId.update((map) => new Map(map).set(surface.id, tab));
     }
 
     private readonly draftSurfaceCard = viewChild('draftSurfaceCard', { read: SurfaceCardComponent });

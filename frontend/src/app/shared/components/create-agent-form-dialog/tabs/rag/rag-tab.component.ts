@@ -1,6 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
+    ChangeDetectorRef,
     Component,
     computed,
     DestroyRef,
@@ -172,6 +173,7 @@ export class RagTabComponent implements OnInit {
     private fb = inject(FormBuilder);
     private destroyRef = inject(DestroyRef);
     private agentsService = inject(AgentsService);
+    private cdr = inject(ChangeDetectorRef);
 
     form = input.required<FormGroup>();
     allKnowledgeSources = input.required<GetCollectionRequest[]>();
@@ -219,8 +221,17 @@ export class RagTabComponent implements OnInit {
 
     safeTokenBudget = computed<number | null>(() => this.safeTokenBudgetByKey()[this.activeKey()] ?? null);
 
-    private setSafeTokenBudget(key: SuggestKey, value: number): void {
+    private baselineSafeTokenBudgetByKey = signal<Partial<Record<SuggestKey, number>>>({});
+
+    baselineSafeTokenBudget = computed<number | null>(
+        () => this.baselineSafeTokenBudgetByKey()[this.activeKey()] ?? null
+    );
+
+    private setSafeTokenBudget(key: SuggestKey, value: number, isCustomAnchor = false): void {
         this.safeTokenBudgetByKey.update((map) => ({ ...map, [key]: value }));
+        if (!isCustomAnchor) {
+            this.baselineSafeTokenBudgetByKey.update((map) => ({ ...map, [key]: value }));
+        }
     }
 
     searchParamsReady = computed<boolean>(
@@ -233,6 +244,11 @@ export class RagTabComponent implements OnInit {
 
     tokenWarningMsg = computed<string>(() => {
         const safe = this.safeTokenBudget();
+        return safe != null ? `Above recommended budget (${safe.toLocaleString()} tokens).` : '';
+    });
+
+    baselineTokenWarningMsg = computed<string>(() => {
+        const safe = this.baselineSafeTokenBudget();
         return safe != null ? `Above recommended budget (${safe.toLocaleString()} tokens).` : '';
     });
 
@@ -325,6 +341,7 @@ export class RagTabComponent implements OnInit {
             if (!rag) {
                 this.searchConfigsFormGroup = null;
                 this.selectedRagType.set(null);
+                this.cdr.markForCheck();
                 return;
             }
             this.selectedRagType.set(rag.rag_type);
@@ -356,7 +373,9 @@ export class RagTabComponent implements OnInit {
                     configs?.naive?.similarity_threshold ?? 0.2,
                     [Validators.min(0.0), Validators.max(1.0)],
                 ],
+                is_suggested: [!!configs?.naive?.is_suggested],
             });
+            this.useSuggestedParams.set(!!configs?.naive?.is_suggested);
         }
 
         if (ragType === 'graph') {
@@ -369,6 +388,7 @@ export class RagTabComponent implements OnInit {
                 drift: this.initGraphDriftSearchConfig(configs?.graph?.drift),
             });
             this.activeGraphMethodSignal.set(initialMethod);
+            this.useSuggestedParams.set(!!this.searchConfigsFormGroup.get(initialMethod)?.get('is_suggested')?.value);
             this.searchConfigsFormGroup
                 .get('search_method')
                 ?.valueChanges.pipe(takeUntilDestroyed(this.destroyRef))
@@ -379,6 +399,7 @@ export class RagTabComponent implements OnInit {
                     // silently patch a subgroup the user can no longer see.
                     this.suggestingFor.set(null);
                     this.suggestErrorFor.set(null);
+                    this.useSuggestedParams.set(!!this.searchConfigsFormGroup?.get(m)?.get('is_suggested')?.value);
                 });
 
             this.wireDynamicCommunityToggle();
@@ -412,7 +433,10 @@ export class RagTabComponent implements OnInit {
             if (snapshot === this.lastNonPromptSnapshot) return;
             this.lastNonPromptSnapshot = snapshot;
             this.useSuggestedParams.set(false);
+            this.syncSuggestedFlagToActiveTarget(false);
         });
+
+        this.cdr.markForCheck();
     }
 
     // Call after any programmatic patch, or the next real edit's diff would
@@ -424,6 +448,8 @@ export class RagTabComponent implements OnInit {
 
     private withoutPromptFields(value: unknown): Record<string, unknown> {
         const clone: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+        delete clone['is_suggested'];
+        delete clone['search_method'];
         for (const method of ['basic', 'local', 'global', 'drift'] as const) {
             const sub = clone[method];
             if (!sub || typeof sub !== 'object') continue;
@@ -431,6 +457,7 @@ export class RagTabComponent implements OnInit {
             for (const field of [...PROMPT_FIELDS[method], ...(ANCHOR_FIELDS[method] ?? [])]) {
                 delete subClone[field];
             }
+            delete subClone['is_suggested'];
             clone[method] = subClone;
         }
         return clone;
@@ -444,6 +471,7 @@ export class RagTabComponent implements OnInit {
                 configs?.max_context_tokens ?? GRAPH_BASIC_DEFAULTS.max_context_tokens,
                 [Validators.required, Validators.min(100), Validators.max(100000)],
             ],
+            is_suggested: [!!configs?.is_suggested],
         });
     }
 
@@ -478,6 +506,7 @@ export class RagTabComponent implements OnInit {
                 configs?.top_k_relationships ?? GRAPH_LOCAL_DEFAULTS.top_k_relationships,
                 [Validators.required, Validators.min(1), Validators.max(100)],
             ],
+            is_suggested: [!!configs?.is_suggested],
         });
     }
 
@@ -523,6 +552,7 @@ export class RagTabComponent implements OnInit {
                 configs?.dynamic_search_max_level ?? GRAPH_GLOBAL_DEFAULTS.dynamic_search_max_level,
                 [Validators.required, Validators.min(0), Validators.max(10)],
             ],
+            is_suggested: [!!configs?.is_suggested],
         });
     }
 
@@ -606,6 +636,7 @@ export class RagTabComponent implements OnInit {
                     GRAPH_DRIFT_DEFAULTS.local_search_llm_max_gen_completion_tokens,
                 [Validators.min(1), Validators.max(100000)],
             ],
+            is_suggested: [!!configs?.is_suggested],
         });
     }
 
@@ -796,7 +827,7 @@ export class RagTabComponent implements OnInit {
                     // anchor value. Caching a customized response there would make a later
                     // plain toggle-off/on for this method silently replay this override
                     // instead of fetching the neutral default suggestion.
-                    this.applyResponse(key, response, llmConfigId);
+                    this.applyResponse(key, response, llmConfigId, true);
                 },
                 error: () => {
                     if (token !== this.fetchToken || this.suggestingFor() !== key) return;
@@ -823,6 +854,7 @@ export class RagTabComponent implements OnInit {
             return;
         }
         this.useSuggestedParams.set(checked);
+        this.syncSuggestedFlagToActiveTarget(checked);
         if (checked) {
             this.suggestErrorFor.set(null);
             this.fetchAndApply(this.activeKey());
@@ -876,11 +908,17 @@ export class RagTabComponent implements OnInit {
                 this.suggestErrorFor.set(key);
                 this.suggestingFor.set(null);
                 this.useSuggestedParams.set(false);
+                this.syncSuggestedFlagToActiveTarget(false);
             },
         });
     }
 
-    private applyResponse(key: SuggestKey, response: SuggestResponse, requestLlmConfigId: number | null): void {
+    private applyResponse(
+        key: SuggestKey,
+        response: SuggestResponse,
+        requestLlmConfigId: number | null,
+        isCustomAnchor = false
+    ): void {
         const target =
             key === 'naive' ? this.searchConfigsFormGroup : (this.searchConfigsFormGroup?.get(key) as FormGroup | null);
         if (!target) {
@@ -906,13 +944,14 @@ export class RagTabComponent implements OnInit {
             }
         }
         target.patchValue(params, { emitEvent: false });
+        target.get('is_suggested')?.setValue(true, { emitEvent: false });
         target.markAsPristine();
         // safe_token_budget reflects default_budget, which shifts with whatever
         // max_context_tokens anchor was just submitted — refresh it (and the
         // llm-keyed cache) so other fields' warningMax/tokenErrorMsg stay in
         // sync with the budget this very response was computed against.
         this.effectiveLlmContextWindow.set(response.effective_llm_context_window);
-        this.setSafeTokenBudget(key, response.safe_token_budget);
+        this.setSafeTokenBudget(key, response.safe_token_budget, isCustomAnchor);
         // Cache under the llmConfigId the REQUEST was made for, not whatever
         // this.llmConfigId() reads now — if the user switched LLMs while this
         // request was in flight, those would differ and this response's window
@@ -1076,6 +1115,14 @@ export class RagTabComponent implements OnInit {
         this.suggestErrorFor.set(null);
         this.recommendedSearchMethod.set(null);
         this.useSuggestedParams.set(false);
+        this.syncSuggestedFlagToActiveTarget(false);
         this.lastRecommendationKey = null;
+    }
+
+    private syncSuggestedFlagToActiveTarget(value: boolean): void {
+        const key = this.activeKey();
+        const target =
+            key === 'naive' ? this.searchConfigsFormGroup : (this.searchConfigsFormGroup?.get(key) as FormGroup | null);
+        target?.get('is_suggested')?.setValue(value, { emitEvent: false });
     }
 }

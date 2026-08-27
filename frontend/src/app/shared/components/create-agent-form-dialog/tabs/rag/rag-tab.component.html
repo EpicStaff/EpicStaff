@@ -146,8 +146,8 @@
                                         [alwaysShowSteps]="true"
                                         [min]="100"
                                         [max]="effectiveLlmContextWindow() ?? 100000"
-                                        [warningMax]="safeTokenBudget()"
-                                        [warningMessage]="tokenWarningMsg()"
+                                        [warningMax]="baselineSafeTokenBudget()"
+                                        [warningMessage]="baselineTokenWarningMsg()"
                                         [errorMessage]="tokenErrorMsg()"
                                     />
                                     @if (useSuggestedParams()) {

@@ -146,7 +146,7 @@ export class SurfaceCardComponent {
     readonly deleteSurface = output<void>();
     readonly draftContentChanged = output<void>();
 
-    readonly activeTab = signal<SurfaceTabId>('tools');
+    readonly activeTab = model<SurfaceTabId>('tools');
     readonly instructions = signal<string>('');
     private readonly instructionsFocused = signal<boolean>(false);
     private lastSentInstructions: string | null = null;
@@ -1039,7 +1039,13 @@ export class SurfaceCardComponent {
     }
 
     private hasRag(k: SurfaceKnowledge): boolean {
-        return !!(k.naive_search_config || k.graph_basic_search_config || k.graph_local_search_config);
+        return !!(
+            k.naive_search_config ||
+            k.graph_basic_search_config ||
+            k.graph_local_search_config ||
+            k.graph_global_search_config ||
+            k.graph_drift_search_config
+        );
     }
 
     private revealAdvancedIfRagMissing(): void {

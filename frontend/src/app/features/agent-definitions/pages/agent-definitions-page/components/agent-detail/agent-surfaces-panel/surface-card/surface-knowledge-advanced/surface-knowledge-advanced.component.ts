@@ -105,14 +105,6 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
 
     readonly noRagsAvailable = computed<boolean>(() => !this.ragsLoading() && this.ragItems().length === 0);
 
-    /** Methods that don't yet have backend storage for this (Surface) agent type —
-     * the embedded rag-tab renders full UI for them anyway, but a save silently
-     * drops the data server-side until the corresponding model/serializer exists. */
-    readonly currentMethodNotPersisted = computed<boolean>(() => {
-        const method = this.currentGraphMethod();
-        return method === 'global' || method === 'drift';
-    });
-
     private formSub = new Subscription();
     private lastEmitted: string | null = null;
     // Tracks the form a debounced emitCurrent() is currently pending for, so a
@@ -268,6 +260,7 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
             ? {
                   search_limit: item.naive_search_config.search_limit,
                   similarity_threshold: Number(item.naive_search_config.similarity_threshold),
+                  is_suggested: item.naive_search_config.is_suggested,
               }
             : undefined;
         return {
@@ -304,6 +297,7 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
                 naive_search_config: {
                     search_limit: raw.search_limit,
                     similarity_threshold: Number(Number(raw.similarity_threshold).toFixed(2)),
+                    is_suggested: raw.is_suggested,
                 },
                 graph_basic_search_config: null,
                 graph_local_search_config: null,
@@ -319,9 +313,6 @@ export class SurfaceKnowledgeAdvancedComponent implements OnDestroy {
                     method === 'basic' ? { ...raw.basic, prompt: raw.basic.prompt || null } : null,
                 graph_local_search_config:
                     method === 'local' ? { ...raw.local, prompt: raw.local.prompt || null } : null,
-                // Sent even though the backend doesn't persist these yet for Surfaces
-                // (silently dropped, not rejected — see surface.model.ts) so nothing
-                // further needs to change here once that support lands.
                 graph_global_search_config:
                     method === 'global'
                         ? {

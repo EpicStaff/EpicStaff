@@ -42,13 +42,6 @@
                     </div>
                 }
 
-                @if (currentMethodNotPersisted()) {
-                    <p class="advanced__na">
-                        This search type isn't saved for agents yet — the fields below still work for previewing, but
-                        nothing will persist until backend support for it is added.
-                    </p>
-                }
-
                 @for (rtf of ragTabFormList(); track rtf) {
                     <app-rag-tab
                         [form]="rtf"

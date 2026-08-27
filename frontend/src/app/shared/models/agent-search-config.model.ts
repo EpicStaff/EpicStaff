@@ -6,6 +6,7 @@ export interface AgentSearchConfigs {
 export interface NaiveRagSearchConfig {
     search_limit: number | null;
     similarity_threshold: number | null;
+    is_suggested?: boolean;
 }
 
 export interface GraphRagSearchConfig {
@@ -22,6 +23,7 @@ export interface GraphBasicSearchConfig {
     prompt: string | null;
     k: number;
     max_context_tokens: number;
+    is_suggested?: boolean;
 }
 
 export interface GraphLocalSearchConfig {
@@ -32,6 +34,7 @@ export interface GraphLocalSearchConfig {
     max_context_tokens: number;
     top_k_entities: number;
     top_k_relationships: number;
+    is_suggested?: boolean;
 }
 
 export interface GraphGlobalSearchConfig {
@@ -48,6 +51,7 @@ export interface GraphGlobalSearchConfig {
     dynamic_search_num_repeats: number;
     dynamic_search_use_summary: boolean;
     dynamic_search_max_level: number;
+    is_suggested?: boolean;
 }
 
 export interface GraphDriftSearchConfig {
@@ -71,6 +75,7 @@ export interface GraphDriftSearchConfig {
     local_search_n: number;
     local_search_llm_max_gen_tokens: number | null;
     local_search_llm_max_gen_completion_tokens: number | null;
+    is_suggested?: boolean;
 }
 
 export interface SuggestCollectionMetrics {

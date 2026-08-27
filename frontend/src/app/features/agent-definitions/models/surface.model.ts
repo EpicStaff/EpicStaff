@@ -30,12 +30,14 @@ export interface SurfaceStorageItem {
 export interface SurfaceNaiveSearchConfig {
     search_limit: number;
     similarity_threshold: string | number;
+    is_suggested?: boolean;
 }
 
 export interface SurfaceGraphBasicSearchConfig {
     prompt?: string | null;
     k: number;
     max_context_tokens: number;
+    is_suggested?: boolean;
 }
 
 export interface SurfaceGraphLocalSearchConfig {
@@ -46,6 +48,7 @@ export interface SurfaceGraphLocalSearchConfig {
     top_k_entities: number;
     top_k_relationships: number;
     max_context_tokens: number;
+    is_suggested?: boolean;
 }
 
 export interface SurfaceKnowledge {
@@ -53,10 +56,6 @@ export interface SurfaceKnowledge {
     naive_search_config?: SurfaceNaiveSearchConfig | null;
     graph_basic_search_config?: SurfaceGraphBasicSearchConfig | null;
     graph_local_search_config?: SurfaceGraphLocalSearchConfig | null;
-    // Not yet persisted by the backend (no Surface* model/serializer exists for
-    // these two search methods) — carried here so the frontend plumbing is ready
-    // the moment that support lands. See project_est2124_suggested_params_persistence
-    // memory / the Vasyl backend ask for the missing model/serializer work.
     graph_global_search_config?: GraphGlobalSearchConfig | null;
     graph_drift_search_config?: GraphDriftSearchConfig | null;
 }

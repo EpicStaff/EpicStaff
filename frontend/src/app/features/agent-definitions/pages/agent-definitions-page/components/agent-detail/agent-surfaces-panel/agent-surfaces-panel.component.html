@@ -191,6 +191,8 @@
                                 [saveError]="saveError()"
                                 [expanded]="isExpanded(surface)"
                                 (expandedChange)="onCardExpanded(surface, $event)"
+                                [activeTab]="activeTabFor(surface)"
+                                (activeTabChange)="onCardActiveTabChange(surface, $event)"
                                 (renameSurface)="renameSurface.emit({ id: surface.id, name: $event })"
                                 (surfaceChange)="surfaceChange.emit({ id: surface.id, patch: $event })"
                                 (openSource)="openSource.emit(surface.id)"
