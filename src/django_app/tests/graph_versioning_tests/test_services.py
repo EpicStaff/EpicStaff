@@ -153,49 +153,6 @@ def test_restore_version_with_backup_false_creates_no_backup(service, graph):
 
 
 # ---------------------------------------------------------------------------
-# Group E: warnings ID remap — DB integration test
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_restore_version_warnings_node_ids_are_remapped_to_new_ids(
-    service, graph, llm_config
-):
-    from tables.models import CodeAgentNode
-
-    # Create a CodeAgentNode that references an LLMConfig (NullFK handler).
-    # When llm_config is deleted, restore will emit a fk_nulled warning whose
-    # node_id must reference the *new* DB id assigned during restore, not the
-    # old snapshot id.
-    node = CodeAgentNode.objects.create(
-        graph=graph,
-        node_name="ca",
-        llm_config=llm_config,
-    )
-    old_snapshot_id = node.id
-
-    version = service.save_version(graph, name="snap-with-code-agent")
-
-    # Delete the LLMConfig — node is kept but FK will be nulled on restore
-    llm_config.delete()
-
-    result = service.restore_version(
-        version, backup=False, expected_save_version=graph.save_version
-    )
-
-    fk_nulled_warnings = [w for w in result["warnings"] if w["type"] == "fk_nulled"]
-    assert len(fk_nulled_warnings) > 0
-
-    # After restore the CodeAgentNode is recreated with a brand-new DB id.
-    # change_old_warnings_ids must have updated node_id to point to the new row.
-    new_node = graph.code_agent_node_list.first()
-    assert new_node is not None
-    assert fk_nulled_warnings[0]["node_id"] == new_node.id
-    # Sanity-check: the new id differs from the old snapshot id (it was remapped)
-    assert fk_nulled_warnings[0]["node_id"] != old_snapshot_id
-
-
-# ---------------------------------------------------------------------------
 # Group F: create_graph_from_version — DB tests
 # ---------------------------------------------------------------------------
 
@@ -271,34 +228,6 @@ def test_create_graph_from_version_with_missing_crew_skips_node_and_warns(
     assert new_graph.crew_node_list.count() == 0
     skipped = [w for w in result["warnings"] if w["type"] == "node_skipped"]
     assert len(skipped) > 0
-
-
-@pytest.mark.django_db
-def test_create_graph_from_version_warnings_node_ids_remap_to_new_ids(
-    service, graph, llm_config, default_org
-):
-    from tables.models import CodeAgentNode
-
-    node = CodeAgentNode.objects.create(
-        graph=graph,
-        node_name="ca",
-        llm_config=llm_config,
-    )
-    old_snapshot_id = node.id
-
-    version = service.save_version(graph, name="code-agent-snap")
-    llm_config.delete()
-
-    result = service.create_graph_from_version(version)
-
-    fk_nulled_warnings = [w for w in result["warnings"] if w["type"] == "fk_nulled"]
-    assert len(fk_nulled_warnings) > 0
-
-    new_graph = Graph.objects.get(id=result["graph_id"])
-    new_node = new_graph.code_agent_node_list.first()
-    assert new_node is not None
-    assert fk_nulled_warnings[0]["node_id"] == new_node.id
-    assert fk_nulled_warnings[0]["node_id"] != old_snapshot_id
 
 
 @pytest.mark.django_db

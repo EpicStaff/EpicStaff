@@ -225,11 +225,6 @@ function buildCreatedNodeIdMap(
         responseGraph.decision_table_node_list ?? [],
         existingIdsByType(NodeType.TABLE)
     );
-    mapByNewIds(
-        nodeDiff.codeAgentNodes.toCreate,
-        responseGraph.code_agent_node_list ?? [],
-        existingIdsByType(NodeType.CODE_AGENT)
-    );
     mapByNewIds(nodeDiff.endNodes.toCreate, responseGraph.end_node_list ?? [], existingIdsByType(NodeType.END));
     mapByNewIds(nodeDiff.noteNodes.toCreate, responseGraph.graph_note_list ?? [], existingIdsByType(NodeType.NOTE));
     mapByNewIds(

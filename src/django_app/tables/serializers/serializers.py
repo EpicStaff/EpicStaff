@@ -52,7 +52,9 @@ class RunSessionSerializer(serializers.Serializer):
     # SessionManagerService.create_session_data) rather than a new typed
     # SessionData field. Omitted/None (default) means "no limit" -- inert
     # for every existing caller.
-    token_budget = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    token_budget = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
 
     def validate(self, attrs):
         if not attrs.get("graph_id") and not attrs.get("graph_uuid"):
@@ -187,9 +189,6 @@ class GraphNodesPartialExportSerializer(serializers.Serializer):
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
     graph_note_list = serializers.ListField(
-        child=serializers.IntegerField(min_value=1), required=False, default=list
-    )
-    code_agent_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
     schedule_trigger_node_list = serializers.ListField(
