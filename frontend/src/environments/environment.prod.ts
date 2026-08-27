@@ -1,6 +1,6 @@
 export const environment = {
     production: true,
-    apiUrl: 'http://127.0.0.1:8000/api/',
-    realtimeApiUrl: 'http://127.0.0.1:8050/',
+    apiUrl: 'http://localhost/api/',
+    realtimeApiUrl: 'http://localhost/realtime/',
     isEpicChatEnabled: true,
 };

@@ -24,53 +24,36 @@
                         [errorMessage]="getNodeNameErrorMessage()"
                     ></app-custom-input>
 
-                    <app-custom-input
-                        label="Webhook trigger path"
-                        tooltipText="Only enter the webhook name. The base URL is shown below."
-                        formControlName="webhook_trigger_path"
-                        placeholder="Enter webhook path"
-                        [required]="true"
-                        [activeColor]="activeColor"
-                        [errorMessage]="getWebhookNameErrorMessage()"
-                    ></app-custom-input>
+                    <app-webhook-trigger-select
+                        formControlName="webhook_trigger"
+                        (triggerResolved)="onTriggerResolved($event)"
+                    ></app-webhook-trigger-select>
 
-                    <div>
-                        <app-select
-                            [loading]="ngrokConfigsLoading()"
-                            label="Select Ngrok config"
-                            tooltipText="Select the ngrok config. Full URL is shown below."
-                            formControlName="ngrok_webhook_config"
-                            [items]="ngrokConfigSelectItems()"
-                            (changed)="onNgrokConfigChanged($event)"
-                        />
+                    @if (fullUrl(); as url) {
                         <div class="webhook-url-display">
-                            @if (webhookUrlDisplay(); as url) {
+                            <span
+                                class="webhook-url-text"
+                                [style.color]="activeColor"
+                            >
+                                {{ url }}
+                            </span>
+                            <button
+                                type="button"
+                                class="copy-button"
+                                (click)="copyWebhookUrl()"
+                                [disabled]="!url"
+                                aria-label="Copy webhook URL"
+                            >
                                 <span
-                                    class="webhook-url-text"
-                                    [style.color]="activeColor"
-                                >
-                                    {{ url }}
-                                </span>
-                                <button
-                                    type="button"
-                                    class="copy-button"
-                                    (click)="copyWebhookUrl()"
-                                    [disabled]="!url"
-                                    aria-label="Copy webhook URL"
-                                >
-                                    <span
-                                        class="copy-icon"
-                                        aria-hidden="true"
-                                    ></span>
-                                    <span>Copy</span>
-                                </button>
-                            } @else if (loadingTunnel()) {
-                                <div class="webhook-url-placeholder">Fetching tunnel URL...</div>
-                            } @else {
-                                <div class="webhook-url-error">Ngrok config or path is empty</div>
-                            }
+                                    class="copy-icon"
+                                    aria-hidden="true"
+                                ></span>
+                                <span>{{ copied() ? 'Copied' : 'Copy' }}</span>
+                            </button>
                         </div>
-                    </div>
+                    } @else if (webhookInvalid()) {
+                        <div class="webhook-warning">Webhook is not registered. Check the trigger configuration.</div>
+                    }
 
                     <app-node-secrets-field
                         [activeColor]="activeColor"
@@ -86,6 +69,60 @@
                         placeholder="Enter libraries (e.g., requests, pandas, numpy)"
                         [activeColor]="activeColor"
                     ></app-custom-input>
+
+                    <div class="webhook-auth-field">
+                        <app-toggle-switch
+                            [checked]="webhookAuthEnabled()"
+                            (checkedChange)="onWebhookAuthToggle($event)"
+                            label="Webhook Auth"
+                            tooltipText="Requires a valid HMAC-SHA256 signature on every request: send it in the X-Webhook-Signature header, with the timestamp used to sign it in the X-Webhook-Timestamp header."
+                            ariaLabel="Enable webhook authentication"
+                        ></app-toggle-switch>
+
+                        @if (webhookAuthEnabled()) {
+                            @if (webhookAuthDetails(); as auth) {
+                                <div class="webhook-url-display">
+                                    <span
+                                        class="webhook-url-text"
+                                        [style.color]="activeColor"
+                                    >
+                                        {{ secretDisplayValue() }}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        class="icon-btn"
+                                        (click)="toggleSecretVisibility()"
+                                        [disabled]="!auth.signing_secret"
+                                        [attr.aria-label]="
+                                            secretMasked() ? 'Show signing secret' : 'Hide signing secret'
+                                        "
+                                    >
+                                        <app-svg-icon
+                                            [icon]="secretMasked() ? 'eye' : 'eye-off'"
+                                            size="14px"
+                                        />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="copy-button"
+                                        (click)="copySigningSecret()"
+                                        [disabled]="!auth.signing_secret"
+                                        aria-label="Copy signing secret"
+                                    >
+                                        <span
+                                            class="copy-icon"
+                                            aria-hidden="true"
+                                        ></span>
+                                        <span>{{ secretCopied() ? 'Copied' : 'Copy' }}</span>
+                                    </button>
+                                </div>
+                            } @else {
+                                <p class="webhook-auth-pending">
+                                    The signing secret will be generated the next time this flow is saved.
+                                </p>
+                            }
+                        }
+                    </div>
                 </div>
                 @if (isExpanded()) {
                     @if (!isCodeEditorFullWidth()) {

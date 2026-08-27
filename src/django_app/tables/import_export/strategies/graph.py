@@ -457,7 +457,9 @@ class GraphStrategy(EntityImportExportStrategy):
             id_mapper.get(EntityType.LABEL, old_id) for old_id in label_ids
         ]
         if new_label_ids:
-            graph.labels.add(*Label.objects.filter(id__in=new_label_ids))
+            graph.labels.add(
+                *Label.objects.filter(id__in=new_label_ids, scope=Label.Scope.FLOW)
+            )
 
     def update_metadata(self, metadata: dict, id_mapper: IDMapper) -> dict:
         # TODO: Remove metadata when save functionality reworked

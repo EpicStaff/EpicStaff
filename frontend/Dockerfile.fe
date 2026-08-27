@@ -6,14 +6,14 @@ FROM node:20.17.0 AS deps
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --force || npm install --force && npm cache clean --force
+RUN npm ci && npm cache clean --force
 
 # ─── Stage: development ───────────────────────────────────────────────────────
 FROM deps AS development
 
 EXPOSE 4200
 
-CMD ["sh", "-c", "npm install --force && npm run start -- --host 0.0.0.0 --poll=1000"]
+CMD ["sh", "-c", "npm ci && npm run start -- --host 0.0.0.0 --poll=1000"]
 
 # ─── Stage: build ─────────────────────────────────────────────────────────────
 FROM deps AS build

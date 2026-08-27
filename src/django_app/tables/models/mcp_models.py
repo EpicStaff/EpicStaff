@@ -30,6 +30,7 @@ class McpTool(OrgScopedModel, models.Model):
         default=10,
         help_text="Timeout for session initialization. Optional, default is 10 seconds.",
     )
+    labels = models.ManyToManyField("Label", blank=True, related_name="mcp_tools")
 
     class Meta(OrgScopedModel.Meta):
         verbose_name = "MCP Tool Data"

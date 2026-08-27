@@ -231,6 +231,7 @@ class ToolRegistryBuilder:
             rag_id=entry.rag_id,
             rag_type=entry.rag_type,
             search_config=entry.search_config,
+            embedder_api_key=entry.embedder.config.api_key,
         )
         spec = ToolSpec(
             name=candidate,
@@ -264,6 +265,7 @@ class ToolRegistryBuilder:
                 rag_id=entry.rag_id,
                 rag_type=entry.rag_type,
                 search_config=entry.search_config,
+                embedder_api_key=entry.embedder.config.api_key,
             )
 
         methods = sorted(targets.keys())

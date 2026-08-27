@@ -201,7 +201,15 @@ REST_FRAMEWORK = {
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_HEADERS = (*default_headers, "x-organization-id")
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    "dnt",
+    "origin",
+    "accept-encoding",
+    "x-twilio-account-sid",
+    "x-twilio-auth-token",
+    "x-organization-id",
+)
 
 JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)
 
@@ -446,7 +454,6 @@ WEBHOOK_MESSAGE_CHANNEL = os.environ.get("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
 STORAGE_MUTATION_CHANNEL = os.environ.get(
     "STORAGE_MUTATION_CHANNEL", "storage_mutations"
 )
-TELEGRAM_TRIGGER_PREFIX = "telegram-trigger/"
 SCHEDULE_CHANNEL = os.environ.get("SCHEDULE_CHANNEL", "schedule_channel")
 
 SCHEDULE_MIN_INTERVAL_SECONDS = int(os.environ.get("SCHEDULE_MIN_INTERVAL_SECONDS", 60))
@@ -463,6 +470,7 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "EpicStaff API",
     "VERSION": "v1",
     "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
     "SWAGGER_UI_SETTINGS": {
         "persistAuthorization": True,
     },
