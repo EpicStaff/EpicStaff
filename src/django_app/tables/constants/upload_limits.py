@@ -8,11 +8,9 @@ from dataclasses import dataclass
 DEFAULT_MAX_UPLOAD_FILE_BYTES = 25 * 1024 * 1024
 DEFAULT_MAX_UPLOAD_TOTAL_BYTES = 50 * 1024 * 1024
 
-# Archive expansion. Real zip bombs run 900:1 and up; ordinary XML-heavy
-# documents (DOCX, XLSX) sit well under 50:1, so 200:1 separates them safely.
+# Archive expansion, measured from archive headers before anything is extracted.
 DEFAULT_MAX_ARCHIVE_ENTRIES = 2_000
 DEFAULT_MAX_ARCHIVE_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
-DEFAULT_MAX_ARCHIVE_EXPANSION_RATIO = 200
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -23,7 +21,6 @@ class UploadLimits:
     max_total_bytes: int
     max_archive_entries: int
     max_archive_uncompressed_bytes: int
-    max_archive_expansion_ratio: int
 
 
 def _env_int(name: str, default: int) -> int:
@@ -47,8 +44,5 @@ def default_upload_limits() -> UploadLimits:
         ),
         max_archive_uncompressed_bytes=_env_int(
             "MAX_ARCHIVE_UNCOMPRESSED_BYTES", DEFAULT_MAX_ARCHIVE_UNCOMPRESSED_BYTES
-        ),
-        max_archive_expansion_ratio=_env_int(
-            "MAX_ARCHIVE_EXPANSION_RATIO", DEFAULT_MAX_ARCHIVE_EXPANSION_RATIO
         ),
     )

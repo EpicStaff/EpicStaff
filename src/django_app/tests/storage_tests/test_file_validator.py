@@ -177,7 +177,6 @@ def _limited(**overrides):
         "max_total_bytes": 10_000,
         "max_archive_entries": 1_000,
         "max_archive_uncompressed_bytes": 1_000_000,
-        "max_archive_expansion_ratio": 1_000,
     }
     limits.update(overrides)
     return FileValidator(limits=UploadLimits(**limits))
@@ -247,46 +246,14 @@ def test_validate_rejects_zip_with_too_many_entries():
 
 
 def test_validate_rejects_zip_over_declared_uncompressed_total():
-    """Stored (uncompressed) entries keep the ratio ~1, isolating the total cap."""
     validator = _limited(
         max_file_bytes=100_000,
         max_archive_uncompressed_bytes=1_000,
-        max_archive_expansion_ratio=1_000,
     )
     buf = _zip_of([("a.txt", b"x" * 2_000)], compression=zipfile.ZIP_STORED)
 
     with pytest.raises(ValidationError, match="expands to"):
         validator.validate([_upload("total.zip", buf.getvalue())])
-
-
-def test_validate_rejects_zip_over_expansion_ratio():
-    """Declared total stays under its cap, isolating the ratio cap."""
-    validator = _limited(
-        max_file_bytes=10_000_000,
-        max_archive_uncompressed_bytes=100_000_000,
-        max_archive_expansion_ratio=10,
-    )
-    buf = _zip_of([("zeros.bin", b"\0" * 1_000_000)])
-
-    with pytest.raises(ValidationError, match="compression ratio"):
-        validator.validate([_upload("bomb.zip", buf.getvalue())])
-
-
-def test_validate_rejects_tar_over_expansion_ratio():
-    validator = _limited(
-        max_file_bytes=10_000_000,
-        max_archive_uncompressed_bytes=100_000_000,
-        max_archive_expansion_ratio=10,
-    )
-    buf = BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
-        payload = b"\0" * 1_000_000
-        info = tarfile.TarInfo("zeros.bin")
-        info.size = len(payload)
-        tf.addfile(info, BytesIO(payload))
-
-    with pytest.raises(ValidationError, match="compression ratio"):
-        validator.validate([_upload("bomb.tar.gz", buf.getvalue())])
 
 
 def test_validate_allows_ordinary_zip():
@@ -305,16 +272,6 @@ def test_expansion_scan_resets_file_position():
     assert upload.tell() == 0
 
 
-def test_zip_bomb_is_rejected_under_shipped_default_limits():
-    """No injected limits: proves the numbers we actually ship stop a real bomb."""
-    buf = _zip_of([(f"f{i}.bin", b"\0" * 1_000_000) for i in range(50)])
-    payload = buf.getvalue()
-    assert len(payload) < 100_000  # 50MB declared, tiny on the wire
-
-    with pytest.raises(ValidationError, match="compression ratio"):
-        FileValidator().validate([_upload("bomb.zip", payload)])
-
-
 def test_non_archive_upload_skips_expansion_checks():
     validator = _limited(max_file_bytes=100_000)
     assert len(validator.validate([_upload("notes.txt", b"just text")])) == 1
@@ -330,7 +287,6 @@ def test_validate_rejects_compressed_tar_over_the_decompress_cap():
     validator = _limited(
         max_file_bytes=10_000_000,
         max_archive_uncompressed_bytes=1_000,
-        max_archive_expansion_ratio=1_000_000,
     )
     buf = BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tf:

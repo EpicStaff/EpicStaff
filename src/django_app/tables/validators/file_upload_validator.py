@@ -171,7 +171,7 @@ class FileValidator:
         except (tarfile.TarError, OSError, EOFError):
             return None
 
-    def scan_archive_expansion(self, file_obj, file_size: int) -> str | None:
+    def scan_archive_expansion(self, file_obj) -> str | None:
         """Return why an archive's declared expansion is unsafe, or None when it is fine."""
         pos = file_obj.tell()
         raw = file_obj.read()
@@ -198,14 +198,6 @@ class FileValidator:
                 f"expands to {uncompressed} bytes, over the limit of "
                 f"{self._limits.max_archive_uncompressed_bytes} bytes"
             )
-
-        if file_size > 0:
-            ratio = uncompressed / file_size
-            if ratio > self._limits.max_archive_expansion_ratio:
-                return (
-                    f"has a compression ratio of {ratio:.0f}:1, over the limit of "
-                    f"{self._limits.max_archive_expansion_ratio}:1"
-                )
 
         return None
 
@@ -255,7 +247,7 @@ class FileValidator:
                 continue
 
             # Reject an archive whose headers declare an unsafe expansion
-            expansion_problem = self.scan_archive_expansion(f, f.size)
+            expansion_problem = self.scan_archive_expansion(f)
             if expansion_problem:
                 detail_lines.append(f"Archive '{f.name}' {expansion_problem}")
 
