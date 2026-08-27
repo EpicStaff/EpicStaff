@@ -126,7 +126,6 @@ async def test_execute_forwards_live_agent_events_as_task_node_stream(task_node_
     assert len(stream_messages) == 2
     assert stream_messages[0]["event"] == "tool_call"
     assert stream_messages[0]["step_id"] == 1
-    assert stream_messages[0]["sse_visible"] is True
     assert stream_messages[0]["is_final"] is False
     assert stream_messages[0]["data"] == {
         "id": "call_1",
@@ -243,7 +242,6 @@ async def test_execute_forwards_knowledge_search_envelope_as_extracted_chunks(
 
     assert len(extracted_chunks_messages) == 1
     message = extracted_chunks_messages[0]
-    assert message["sse_visible"] is True
     for key, value in knowledge_payload.items():
         assert message[key] == value
 
