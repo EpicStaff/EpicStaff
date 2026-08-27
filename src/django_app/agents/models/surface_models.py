@@ -58,7 +58,7 @@ class BaseSurfacePythonTool(models.Model):
     python_tool = models.ForeignKey(
         "tables.PythonCodeTool",
         on_delete=models.CASCADE,
-        related_name="+",
+        related_name="%(app_label)s_%(class)s_set",
         help_text="PythonCodeTool being allowed or denied on this surface.",
     )
     mode = models.CharField(
@@ -179,7 +179,7 @@ class BaseSurfaceKnowledge(models.Model):
     collection = models.ForeignKey(
         "tables.SourceCollection",
         on_delete=models.CASCADE,
-        related_name="+",
+        related_name="%(app_label)s_%(class)s_set",
         help_text="SourceCollection available within this surface.",
     )
 

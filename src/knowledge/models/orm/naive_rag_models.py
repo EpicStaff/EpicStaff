@@ -16,9 +16,10 @@ import uuid
 from datetime import datetime
 
 from .base_models import Base
+from .mixins import SoftDeleteColumnsMixin
 
 
-class NaiveRag(Base):
+class NaiveRag(SoftDeleteColumnsMixin, Base):
     """
     Naive RAG implementation configuration.
 
@@ -77,7 +78,7 @@ class NaiveRag(Base):
         return f"NaiveRag {self.naive_rag_id}"
 
 
-class NaiveRagDocumentConfig(Base):
+class NaiveRagDocumentConfig(SoftDeleteColumnsMixin, Base):
     """
     Per-document RAG configuration with chunking parameters.
 
@@ -167,7 +168,7 @@ class NaiveRagDocumentConfig(Base):
         return f"NaiveRagDocumentConfig {self.naive_rag_document_id}"
 
 
-class NaiveRagChunk(Base):
+class NaiveRagChunk(SoftDeleteColumnsMixin, Base):
     """
     Individual text chunk generated from a document using NaiveRag strategy.
 
@@ -234,7 +235,7 @@ class NaiveRagChunk(Base):
         return f"NaiveRagChunk {self.chunk_id} (index: {self.chunk_index})"
 
 
-class NaiveRagEmbedding(Base):
+class NaiveRagEmbedding(SoftDeleteColumnsMixin, Base):
     """
     Vector embedding for a NaiveRag chunk.
 
@@ -284,7 +285,7 @@ class NaiveRagEmbedding(Base):
         return f"NaiveRagEmbedding {self.embedding_id}"
 
 
-class NaiveRagPreviewChunk(Base):
+class NaiveRagPreviewChunk(SoftDeleteColumnsMixin, Base):
     """
     Temporary preview chunks for testing different chunking parameters.
     """

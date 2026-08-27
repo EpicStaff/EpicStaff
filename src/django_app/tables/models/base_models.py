@@ -151,7 +151,9 @@ class SoftDeleteFields(models.Model):
     performs a normal, unconditional Django hard delete.
     """
 
-    is_soft_deleted = models.BooleanField(default=False, db_index=True)
+    is_soft_deleted = models.BooleanField(
+        default=False, db_default=False, db_index=True
+    )
     soft_deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     objects = ActiveManager()
