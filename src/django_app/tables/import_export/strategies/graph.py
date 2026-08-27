@@ -268,9 +268,8 @@ class GraphStrategy(EntityImportExportStrategy):
                 node_type = "GraphNote"
             old_id = node_data.get("id")
 
-            # Archives exported before a node type was removed still contain its
-            # nodes (e.g. CodeAgentNode after EST-3813). Skip them instead of dying
-            # on KeyError; the edge passes below drop anything that pointed at them.
+            # Old archives still contain nodes of types that no longer exist.
+            # The edge passes below drop anything that pointed at them.
             entity_type = NODE_TYPE_TO_ENTITY_TYPE.get(node_type)
             if entity_type is None:
                 logger.warning(

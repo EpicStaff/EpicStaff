@@ -414,11 +414,9 @@ class GraphVersioningManager:
         for node in nodes:
             node_type = node.get("node_type")
 
-            # Snapshots taken before a node type was removed still carry its nodes
-            # (e.g. CodeAgentNode after EST-3813). Skipping them here feeds their ids
-            # into skipped_node_ids, so the decision-table / edge / conditional-edge
-            # cleanup below drops the references too, instead of the restore blowing
-            # up later on KeyError or a dangling edge.
+            # Old snapshots still carry nodes of types that no longer exist.
+            # Skipping feeds their ids into skipped_node_ids, so the cleanup
+            # below drops the references pointing at them.
             if node_type not in NODE_TYPE_TO_ENTITY_TYPE:
                 skipped_node_ids.add(node.get("id"))
                 # No "node_id": the node is never recreated, so change_old_warnings_ids
