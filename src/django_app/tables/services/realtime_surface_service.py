@@ -19,6 +19,8 @@ from tables.services.rag_lookup_service import RagLookupService
 from src.shared.models import (
     BaseToolData,
     GraphRagBasicSearchParams,
+    GraphRagDriftSearchParams,
+    GraphRagGlobalSearchParams,
     GraphRagLocalSearchParams,
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
@@ -135,6 +137,8 @@ class RealtimeSurfaceService:
         if (
             knowledge.get("graph_basic_search_config") is not None
             or knowledge.get("graph_local_search_config") is not None
+            or knowledge.get("graph_global_search_config") is not None
+            or knowledge.get("graph_drift_search_config") is not None
         ):
             return self._resolve_graph_rag(collection_id, knowledge)
 
@@ -186,12 +190,18 @@ class RealtimeSurfaceService:
         rag_type_id = f"graph:{graph_rag.graph_rag_id}"
 
         basic_config = knowledge.get("graph_basic_search_config")
+        local_config = knowledge.get("graph_local_search_config")
+        global_config = knowledge.get("graph_global_search_config")
+        drift_config = knowledge.get("graph_drift_search_config")
+
         if basic_config is not None:
             search_params = GraphRagBasicSearchParams(**basic_config)
+        elif local_config is not None:
+            search_params = GraphRagLocalSearchParams(**local_config)
+        elif global_config is not None:
+            search_params = GraphRagGlobalSearchParams(**global_config)
         else:
-            search_params = GraphRagLocalSearchParams(
-                **knowledge["graph_local_search_config"]
-            )
+            search_params = GraphRagDriftSearchParams(**drift_config)
 
         rag_search_config = GraphRagSearchConfig(search_params=search_params)
         embedder_secret_id = (

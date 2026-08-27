@@ -6,6 +6,8 @@ from agents.exceptions import SurfaceValidationError
 from agents.models.surface_models import (
     AgentInlineSurface,
     AgentInlineSurfaceGraphBasicSearchConfig,
+    AgentInlineSurfaceGraphDriftSearchConfig,
+    AgentInlineSurfaceGraphGlobalSearchConfig,
     AgentInlineSurfaceGraphLocalSearchConfig,
     AgentInlineSurfaceKnowledge,
     AgentInlineSurfaceMcpTool,
@@ -14,6 +16,8 @@ from agents.models.surface_models import (
     AgentInlineSurfaceStorageItem,
     InlineSurface,
     InlineSurfaceGraphBasicSearchConfig,
+    InlineSurfaceGraphDriftSearchConfig,
+    InlineSurfaceGraphGlobalSearchConfig,
     InlineSurfaceGraphLocalSearchConfig,
     InlineSurfaceKnowledge,
     InlineSurfaceMcpTool,
@@ -51,13 +55,13 @@ class InlineSurfaceStorageItemReadSerializer(serializers.ModelSerializer):
 class InlineSurfaceNaiveSearchConfigReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = InlineSurfaceNaiveSearchConfig
-        fields = ["search_limit", "similarity_threshold"]
+        fields = ["search_limit", "similarity_threshold", "is_suggested"]
 
 
 class InlineSurfaceGraphBasicSearchConfigReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = InlineSurfaceGraphBasicSearchConfig
-        fields = ["prompt", "k", "max_context_tokens"]
+        fields = ["prompt", "k", "max_context_tokens", "is_suggested"]
 
 
 class InlineSurfaceGraphLocalSearchConfigReadSerializer(serializers.ModelSerializer):
@@ -71,6 +75,58 @@ class InlineSurfaceGraphLocalSearchConfigReadSerializer(serializers.ModelSeriali
             "top_k_entities",
             "top_k_relationships",
             "max_context_tokens",
+            "is_suggested",
+        ]
+
+
+class InlineSurfaceGraphGlobalSearchConfigReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InlineSurfaceGraphGlobalSearchConfig
+        fields = [
+            "map_prompt",
+            "reduce_prompt",
+            "knowledge_prompt",
+            "max_context_tokens",
+            "data_max_tokens",
+            "map_max_length",
+            "reduce_max_length",
+            "dynamic_community_selection",
+            "dynamic_search_threshold",
+            "dynamic_search_keep_parent",
+            "dynamic_search_num_repeats",
+            "dynamic_search_use_summary",
+            "dynamic_search_max_level",
+            "is_suggested",
+        ]
+
+
+class InlineSurfaceGraphDriftSearchConfigReadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InlineSurfaceGraphDriftSearchConfig
+        fields = [
+            "prompt",
+            "reduce_prompt",
+            "data_max_tokens",
+            "reduce_max_tokens",
+            "reduce_temperature",
+            "reduce_max_completion_tokens",
+            "concurrency",
+            "drift_k_followups",
+            "primer_folds",
+            "primer_llm_max_tokens",
+            "n_depth",
+            "community_level",
+            "local_search_text_unit_prop",
+            "local_search_community_prop",
+            "local_search_top_k_mapped_entities",
+            "local_search_top_k_relationships",
+            "local_search_max_data_tokens",
+            "local_search_temperature",
+            "local_search_top_p",
+            "local_search_n",
+            "local_search_llm_max_gen_tokens",
+            "local_search_llm_max_gen_completion_tokens",
+            "is_suggested",
         ]
 
 
@@ -82,6 +138,12 @@ class InlineSurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
     graph_local_search_config = InlineSurfaceGraphLocalSearchConfigReadSerializer(
         read_only=True
     )
+    graph_global_search_config = InlineSurfaceGraphGlobalSearchConfigReadSerializer(
+        read_only=True
+    )
+    graph_drift_search_config = InlineSurfaceGraphDriftSearchConfigReadSerializer(
+        read_only=True
+    )
 
     class Meta:
         model = InlineSurfaceKnowledge
@@ -90,6 +152,8 @@ class InlineSurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
             "naive_search_config",
             "graph_basic_search_config",
             "graph_local_search_config",
+            "graph_global_search_config",
+            "graph_drift_search_config",
         ]
 
 
@@ -165,7 +229,7 @@ class AgentInlineSurfaceStorageItemReadSerializer(serializers.ModelSerializer):
 class AgentInlineSurfaceNaiveSearchConfigReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = AgentInlineSurfaceNaiveSearchConfig
-        fields = ["search_limit", "similarity_threshold"]
+        fields = ["search_limit", "similarity_threshold", "is_suggested"]
 
 
 class AgentInlineSurfaceGraphBasicSearchConfigReadSerializer(
@@ -173,7 +237,7 @@ class AgentInlineSurfaceGraphBasicSearchConfigReadSerializer(
 ):
     class Meta:
         model = AgentInlineSurfaceGraphBasicSearchConfig
-        fields = ["prompt", "k", "max_context_tokens"]
+        fields = ["prompt", "k", "max_context_tokens", "is_suggested"]
 
 
 class AgentInlineSurfaceGraphLocalSearchConfigReadSerializer(
@@ -189,6 +253,62 @@ class AgentInlineSurfaceGraphLocalSearchConfigReadSerializer(
             "top_k_entities",
             "top_k_relationships",
             "max_context_tokens",
+            "is_suggested",
+        ]
+
+
+class AgentInlineSurfaceGraphGlobalSearchConfigReadSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = AgentInlineSurfaceGraphGlobalSearchConfig
+        fields = [
+            "map_prompt",
+            "reduce_prompt",
+            "knowledge_prompt",
+            "max_context_tokens",
+            "data_max_tokens",
+            "map_max_length",
+            "reduce_max_length",
+            "dynamic_community_selection",
+            "dynamic_search_threshold",
+            "dynamic_search_keep_parent",
+            "dynamic_search_num_repeats",
+            "dynamic_search_use_summary",
+            "dynamic_search_max_level",
+            "is_suggested",
+        ]
+
+
+class AgentInlineSurfaceGraphDriftSearchConfigReadSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = AgentInlineSurfaceGraphDriftSearchConfig
+        fields = [
+            "prompt",
+            "reduce_prompt",
+            "data_max_tokens",
+            "reduce_max_tokens",
+            "reduce_temperature",
+            "reduce_max_completion_tokens",
+            "concurrency",
+            "drift_k_followups",
+            "primer_folds",
+            "primer_llm_max_tokens",
+            "n_depth",
+            "community_level",
+            "local_search_text_unit_prop",
+            "local_search_community_prop",
+            "local_search_top_k_mapped_entities",
+            "local_search_top_k_relationships",
+            "local_search_max_data_tokens",
+            "local_search_temperature",
+            "local_search_top_p",
+            "local_search_n",
+            "local_search_llm_max_gen_tokens",
+            "local_search_llm_max_gen_completion_tokens",
+            "is_suggested",
         ]
 
 
@@ -202,6 +322,12 @@ class AgentInlineSurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
     graph_local_search_config = AgentInlineSurfaceGraphLocalSearchConfigReadSerializer(
         read_only=True
     )
+    graph_global_search_config = (
+        AgentInlineSurfaceGraphGlobalSearchConfigReadSerializer(read_only=True)
+    )
+    graph_drift_search_config = AgentInlineSurfaceGraphDriftSearchConfigReadSerializer(
+        read_only=True
+    )
 
     class Meta:
         model = AgentInlineSurfaceKnowledge
@@ -210,6 +336,8 @@ class AgentInlineSurfaceKnowledgeReadSerializer(serializers.ModelSerializer):
             "naive_search_config",
             "graph_basic_search_config",
             "graph_local_search_config",
+            "graph_global_search_config",
+            "graph_drift_search_config",
         ]
 
 

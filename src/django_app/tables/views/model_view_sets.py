@@ -931,6 +931,8 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
                         "inline_surface__knowledge__naive_search_config",
                         "inline_surface__knowledge__graph_basic_search_config",
                         "inline_surface__knowledge__graph_local_search_config",
+                        "inline_surface__knowledge__graph_global_search_config",
+                        "inline_surface__knowledge__graph_drift_search_config",
                     ),
                 ),
                 Prefetch(
@@ -947,6 +949,8 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
                         "inline_surface__knowledge__naive_search_config",
                         "inline_surface__knowledge__graph_basic_search_config",
                         "inline_surface__knowledge__graph_local_search_config",
+                        "inline_surface__knowledge__graph_global_search_config",
+                        "inline_surface__knowledge__graph_drift_search_config",
                     ),
                 ),
                 Prefetch("end_node", queryset=EndNode.objects.all()),
@@ -1433,6 +1437,8 @@ class TaskNodeViewSet(
         "inline_surface__knowledge__naive_search_config",
         "inline_surface__knowledge__graph_basic_search_config",
         "inline_surface__knowledge__graph_local_search_config",
+        "inline_surface__knowledge__graph_global_search_config",
+        "inline_surface__knowledge__graph_drift_search_config",
     )
     serializer_class = TaskNodeSerializer
 
@@ -1484,6 +1490,8 @@ class AgentNodeViewSet(
         "inline_surface__knowledge__naive_search_config",
         "inline_surface__knowledge__graph_basic_search_config",
         "inline_surface__knowledge__graph_local_search_config",
+        "inline_surface__knowledge__graph_global_search_config",
+        "inline_surface__knowledge__graph_drift_search_config",
     )
     serializer_class = AgentNodeSerializer
 

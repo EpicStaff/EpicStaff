@@ -330,6 +330,10 @@ class GraphRagBasicSearchConfig(models.Model):
         default=12000,
         help_text="The maximum tokens.",
     )
+    is_suggested = models.BooleanField(
+        default=False,
+        help_text="Whether these values came from parameter suggestion.",
+    )
 
     class Meta:
         db_table = "graph_rag_basic_search_config"
@@ -386,6 +390,10 @@ class GraphRagLocalSearchConfig(models.Model):
     max_context_tokens = models.IntegerField(
         default=12000,
         help_text="The maximum tokens.",
+    )
+    is_suggested = models.BooleanField(
+        default=False,
+        help_text="Whether these values came from parameter suggestion.",
     )
 
     class Meta:
@@ -468,6 +476,10 @@ class GraphRagGlobalSearchConfig(models.Model):
     dynamic_search_max_level = models.IntegerField(
         default=2,
         help_text="The maximum community hierarchy level to consider during dynamic selection.",
+    )
+    is_suggested = models.BooleanField(
+        default=False,
+        help_text="Whether these values came from parameter suggestion.",
     )
 
     class Meta:
@@ -594,6 +606,10 @@ class GraphRagDriftSearchConfig(models.Model):
         blank=True,
         default=None,
         help_text="The maximum completion tokens a local-search call may generate (None uses the model default).",
+    )
+    is_suggested = models.BooleanField(
+        default=False,
+        help_text="Whether these values came from parameter suggestion.",
     )
 
     class Meta:

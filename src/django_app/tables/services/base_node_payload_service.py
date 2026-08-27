@@ -18,6 +18,8 @@ from src.shared.models import (
     CombinedSurfaceData,
     CombinedSurfaceKnowledgeData,
     GraphRagBasicSearchParams,
+    GraphRagDriftSearchParams,
+    GraphRagGlobalSearchParams,
     GraphRagLocalSearchParams,
     GraphRagSearchConfig,
     NaiveRagSearchConfig,
@@ -261,6 +263,8 @@ class BaseNodePayloadService:
         if (
             knowledge.graph_basic_search_config is not None
             or knowledge.graph_local_search_config is not None
+            or knowledge.graph_global_search_config is not None
+            or knowledge.graph_drift_search_config is not None
         ):
             entries.extend(
                 self._build_graph_search_config_entries(collection_id, knowledge)
@@ -355,6 +359,36 @@ class BaseNodePayloadService:
                             top_k_entities=local_config.top_k_entities,
                             top_k_relationships=local_config.top_k_relationships,
                             max_context_tokens=local_config.max_context_tokens,
+                        )
+                    ),
+                    embedder=embedder,
+                )
+            )
+
+        global_config = knowledge.graph_global_search_config
+        if global_config is not None:
+            entries.append(
+                SearchConfigEntry(
+                    rag_id=graph_rag.graph_rag_id,
+                    rag_type="graph",
+                    search_config=GraphRagSearchConfig(
+                        search_params=GraphRagGlobalSearchParams(
+                            **global_config.model_dump()
+                        )
+                    ),
+                    embedder=embedder,
+                )
+            )
+
+        drift_config = knowledge.graph_drift_search_config
+        if drift_config is not None:
+            entries.append(
+                SearchConfigEntry(
+                    rag_id=graph_rag.graph_rag_id,
+                    rag_type="graph",
+                    search_config=GraphRagSearchConfig(
+                        search_params=GraphRagDriftSearchParams(
+                            **drift_config.model_dump()
                         )
                     ),
                     embedder=embedder,

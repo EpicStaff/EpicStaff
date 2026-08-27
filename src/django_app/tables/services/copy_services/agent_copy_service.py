@@ -82,6 +82,7 @@ class AgentCopyService(BaseCopyService):
                 agent=new_agent,
                 search_limit=search_config.search_limit,
                 similarity_threshold=search_config.similarity_threshold,
+                is_suggested=search_config.is_suggested,
             )
         except NaiveRagSearchConfig.DoesNotExist:
             pass

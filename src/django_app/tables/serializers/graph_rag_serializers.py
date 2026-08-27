@@ -311,6 +311,10 @@ class GraphBasicSearchConfigInputSerializer(serializers.Serializer):
         max_value=2000000,
         help_text="Maximum context tokens (100-100000)",
     )
+    is_suggested = serializers.BooleanField(
+        required=False,
+        help_text="Whether these values came from parameter suggestion.",
+    )
 
 
 class GraphLocalSearchConfigInputSerializer(serializers.Serializer):
@@ -357,6 +361,10 @@ class GraphLocalSearchConfigInputSerializer(serializers.Serializer):
         min_value=100,
         help_text="Maximum context tokens (upper bound = model context window)",
     )
+    is_suggested = serializers.BooleanField(
+        required=False,
+        help_text="Whether these values came from parameter suggestion.",
+    )
 
 
 class GraphGlobalSearchConfigInputSerializer(serializers.Serializer):
@@ -386,6 +394,10 @@ class GraphGlobalSearchConfigInputSerializer(serializers.Serializer):
     dynamic_search_use_summary = serializers.BooleanField(required=False)
     dynamic_search_max_level = serializers.IntegerField(
         required=False, min_value=0, max_value=10
+    )
+    is_suggested = serializers.BooleanField(
+        required=False,
+        help_text="Whether these values came from parameter suggestion.",
     )
 
 
@@ -443,6 +455,10 @@ class GraphDriftSearchConfigInputSerializer(serializers.Serializer):
     )
     local_search_llm_max_gen_completion_tokens = serializers.IntegerField(
         required=False, allow_null=True, min_value=1
+    )
+    is_suggested = serializers.BooleanField(
+        required=False,
+        help_text="Whether these values came from parameter suggestion.",
     )
 
 

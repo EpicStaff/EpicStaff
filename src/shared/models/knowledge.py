@@ -32,7 +32,6 @@ class GraphRagLocalSearchParams(BaseModel):
     prompt: str | None = None
     text_unit_prop: float = 0.5
     community_prop: float = 0.15
-    community_level: int = 2
     conversation_history_max_turns: int = 5
     top_k_entities: int = 10
     top_k_relationships: int = 10

@@ -425,7 +425,6 @@ def build_graph_local_params(
     custom: dict | None,
 ) -> tuple[GraphRagLocalSearchParams, list[str]]:
     chunks = metrics.total_chunks
-    docs = metrics.total_documents
     top_k = calc_top_k(chunks)
 
     text_unit, community = _resolved_props(
@@ -452,9 +451,6 @@ def build_graph_local_params(
             ),
             top_k_entities=_pick(custom, "top_k_entities", top_k),
             top_k_relationships=_pick(custom, "top_k_relationships", top_k),
-            community_level=_pick(
-                custom, "community_level", calc_community_level(docs)
-            ),
             **token_fields,
         ),
         clamped,

@@ -227,9 +227,8 @@ class RagAssignmentService:
         # Create M2M link
         AgentGraphRag.objects.create(agent=agent, graph_rag=graph_rag)
 
-        # Create both search configs with defaults
-        GraphRagBasicSearchConfig.objects.get_or_create(agent=agent)
-        GraphRagLocalSearchConfig.objects.get_or_create(agent=agent)
+        # Create all graph search configs with defaults (basic/local/global/drift)
+        SearchConfigService.create_default_graph_search_configs(agent)
 
         return graph_rag
 
@@ -294,6 +293,7 @@ class SearchConfigService:
         return {
             "search_limit": config.search_limit,
             "similarity_threshold": round(float(config.similarity_threshold), 2),
+            "is_suggested": config.is_suggested,
         }
 
     @staticmethod
@@ -331,6 +331,7 @@ class SearchConfigService:
                 "prompt": basic.prompt,
                 "k": basic.k,
                 "max_context_tokens": basic.max_context_tokens,
+                "is_suggested": basic.is_suggested,
             }
         else:
             result["basic"] = None
@@ -344,6 +345,7 @@ class SearchConfigService:
                 "top_k_entities": local.top_k_entities,
                 "top_k_relationships": local.top_k_relationships,
                 "max_context_tokens": local.max_context_tokens,
+                "is_suggested": local.is_suggested,
             }
         else:
             result["local"] = None
@@ -363,6 +365,7 @@ class SearchConfigService:
                 "dynamic_search_num_repeats": global_.dynamic_search_num_repeats,
                 "dynamic_search_use_summary": global_.dynamic_search_use_summary,
                 "dynamic_search_max_level": global_.dynamic_search_max_level,
+                "is_suggested": global_.is_suggested,
             }
         else:
             result["global"] = None
@@ -391,6 +394,7 @@ class SearchConfigService:
                 "local_search_n": drift.local_search_n,
                 "local_search_llm_max_gen_tokens": drift.local_search_llm_max_gen_tokens,
                 "local_search_llm_max_gen_completion_tokens": drift.local_search_llm_max_gen_completion_tokens,
+                "is_suggested": drift.is_suggested,
             }
         else:
             result["drift"] = None
@@ -457,7 +461,7 @@ class SearchConfigService:
 
     @staticmethod
     def update_search_config(
-        agent: Agent, search_limit=None, similarity_threshold=None
+        agent: Agent, search_limit=None, similarity_threshold=None, is_suggested=None
     ):
         """
         Update agent's search config. Creates if doesn't exist.
@@ -470,8 +474,14 @@ class SearchConfigService:
             config.search_limit = search_limit
         if similarity_threshold is not None:
             config.similarity_threshold = similarity_threshold
+        if is_suggested is not None:
+            config.is_suggested = is_suggested
 
-        if search_limit is not None or similarity_threshold is not None:
+        if (
+            search_limit is not None
+            or similarity_threshold is not None
+            or is_suggested is not None
+        ):
             config.save()
 
         return config
@@ -510,7 +520,7 @@ class SearchConfigService:
         return SearchConfigService._upsert_search_config(
             GraphRagBasicSearchConfig,
             agent,
-            ("prompt", "k", "max_context_tokens"),
+            ("prompt", "k", "max_context_tokens", "is_suggested"),
             **kwargs,
         )
 
@@ -528,6 +538,7 @@ class SearchConfigService:
                 "top_k_entities",
                 "top_k_relationships",
                 "max_context_tokens",
+                "is_suggested",
             ),
             **kwargs,
         )
@@ -552,6 +563,7 @@ class SearchConfigService:
                 "dynamic_search_num_repeats",
                 "dynamic_search_use_summary",
                 "dynamic_search_max_level",
+                "is_suggested",
             ),
             **kwargs,
         )
@@ -585,6 +597,7 @@ class SearchConfigService:
                 "local_search_n",
                 "local_search_llm_max_gen_tokens",
                 "local_search_llm_max_gen_completion_tokens",
+                "is_suggested",
             ),
             **kwargs,
         )
