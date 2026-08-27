@@ -19,19 +19,19 @@ def extract_text_from_binary(
 
     try:
         if file_type in ("txt", "md", "json"):
-            return extract_text(binary_content, budget=budget)
+            return extract_text(binary_content)
 
         elif file_type == "pdf":
             return extract_text_from_pdf(binary_content, budget=budget)
 
         elif file_type == "csv":
-            return extract_text_from_csv(binary_content, budget=budget)
+            return extract_text_from_csv(binary_content)
 
         elif file_type == "docx":
-            return extract_text_from_docx(binary_content, budget=budget)
+            return extract_text_from_docx(binary_content)
 
         elif file_type == "html":
-            return extract_text_from_html(binary_content, budget=budget)
+            return extract_text_from_html(binary_content)
 
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
@@ -41,18 +41,14 @@ def extract_text_from_binary(
         raise
 
 
-def extract_text(binary_content: bytes, budget: ExtractionBudget | None = None) -> str:
+def extract_text(binary_content: bytes) -> str:
     """Extract text from plain text files."""
 
-    budget = budget or default_budget()
     try:
-        text = binary_content.decode("utf-8")
+        return binary_content.decode("utf-8")
     except UnicodeDecodeError:
         logger.warning("UTF-8 decode failed, trying latin-1")
-        text = binary_content.decode("latin-1")
-
-    budget.add_text(text)
-    return text
+        return binary_content.decode("latin-1")
 
 
 def _is_valid_pdf(binary_content: bytes) -> bool:
@@ -113,7 +109,7 @@ def extract_text_from_pdf(
             "Content has .pdf extension but is not a valid PDF file. "
             "Attempting plain text extraction."
         )
-        return extract_text(binary_content, budget=budget)
+        return extract_text(binary_content)
 
     text_parts = []
     try:
@@ -122,7 +118,6 @@ def extract_text_from_pdf(
                 budget.count_page()
                 page_text = _extract_page_text(page)
                 if page_text:
-                    budget.add_text(page_text)
                     text_parts.append(page_text)
 
         if not text_parts:
@@ -136,12 +131,8 @@ def extract_text_from_pdf(
         raise
 
 
-def extract_text_from_csv(
-    binary_content: bytes, budget: ExtractionBudget | None = None
-) -> str:
+def extract_text_from_csv(binary_content: bytes) -> str:
     """Extract text from CSV files."""
-
-    budget = budget or default_budget()
 
     try:
         text_content = binary_content.decode("utf-8")
@@ -152,11 +143,8 @@ def extract_text_from_csv(
 
         extracted_rows = []
         for row in reader:
-            budget.checkpoint()
             if row and len(row[0].replace(delimiter, "")) != 0:
-                joined_row = ",".join(row)
-                budget.add_text(joined_row)
-                extracted_rows.append(joined_row)
+                extracted_rows.append(",".join(row))
 
         return "\n".join(extracted_rows)
 
@@ -165,24 +153,14 @@ def extract_text_from_csv(
         raise
 
 
-def extract_text_from_docx(
-    binary_content: bytes, budget: ExtractionBudget | None = None
-) -> str:
+def extract_text_from_docx(binary_content: bytes) -> str:
     """Extract text from DOCX files using python-docx."""
-
-    budget = budget or default_budget()
 
     try:
         docx_file = BytesIO(binary_content)
         document = Document(docx_file)
 
-        paragraphs = []
-        for paragraph in document.paragraphs:
-            budget.checkpoint()
-            if not paragraph.text.strip():
-                continue
-            budget.add_text(paragraph.text)
-            paragraphs.append(paragraph.text)
+        paragraphs = [p.text for p in document.paragraphs if p.text.strip()]
 
         if not paragraphs:
             logger.warning("No text extracted from DOCX")
@@ -195,12 +173,8 @@ def extract_text_from_docx(
         raise
 
 
-def extract_text_from_html(
-    binary_content: bytes, budget: ExtractionBudget | None = None
-) -> str:
+def extract_text_from_html(binary_content: bytes) -> str:
     """Extract text from HTML files using BeautifulSoup, dropping scripts, styles and images."""
-
-    budget = budget or default_budget()
 
     try:
         html_content = binary_content.decode("utf-8")
@@ -210,12 +184,8 @@ def extract_text_from_html(
         for tag in soup(["script", "style", "img"]):
             tag.decompose()
 
-        budget.checkpoint()
-
         # Return cleaned HTML
-        cleaned = str(soup)
-        budget.add_text(cleaned)
-        return cleaned
+        return str(soup)
 
     except Exception as e:
         logger.error("HTML text extraction failed: {}", e)

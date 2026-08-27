@@ -1,10 +1,9 @@
-"""Text extraction is bounded in pages, output size, input size and wall-clock.
+"""Text extraction is bounded in input size and page count.
 
 The extractor runs on the knowledge worker's ThreadPoolExecutor behind
 `indexing_semaphore = 3` (main.py), so three files that never finish extracting
-stall ingestion for every tenant. A DOCX or PDF is a container format: a small
-upload can declare thousands of pages or decompress into hundreds of megabytes
-of text, and pdfplumber walks all of it synchronously with no way to interrupt.
+stall ingestion for every tenant. A PDF can declare thousands of pages, and
+pdfplumber walks all of them synchronously with no way to interrupt.
 
 Each cap is asserted through the public extract_* entry points rather than
 against ExtractionBudget alone -- a budget nothing consults would satisfy a
@@ -27,19 +26,6 @@ from utils.file_text_extractor import (
     extract_text_from_docx,
     extract_text_from_pdf,
 )
-
-
-class FakeClock:
-    """Monotonic clock stub that advances by `step` seconds on every reading."""
-
-    def __init__(self, step: float):
-        self._now = 0.0
-        self._step = step
-
-    def __call__(self) -> float:
-        reading = self._now
-        self._now += self._step
-        return reading
 
 
 def build_pdf(page_texts: list[str]) -> bytes:
@@ -101,8 +87,6 @@ def permissive_budget(**overrides) -> ExtractionBudget:
     limits = {
         "max_input_bytes": 10_000_000,
         "max_pages": 10_000,
-        "max_chars": 10_000_000,
-        "max_seconds": 10_000.0,
     }
     limits.update(overrides)
     return ExtractionBudget(**limits)
@@ -138,67 +122,20 @@ def test_pdf_page_cap_trips_before_every_page_is_parsed():
     assert budget.pages_seen == 4
 
 
-# --- output character cap ---
+# --- extraction still works ---
 
 
-def test_pdf_extraction_rejects_output_over_char_cap():
-    pdf_bytes = build_pdf(["A" * 60 for _ in range(10)])
-
-    with pytest.raises(ExtractionLimitExceeded, match="character"):
-        extract_text_from_pdf(pdf_bytes, budget=permissive_budget(max_chars=100))
-
-
-def test_docx_extraction_rejects_output_over_char_cap():
-    docx_bytes = build_docx(["B" * 200 for _ in range(10)])
-
-    with pytest.raises(ExtractionLimitExceeded, match="character"):
-        extract_text_from_docx(docx_bytes, budget=permissive_budget(max_chars=300))
-
-
-def test_docx_extraction_succeeds_under_char_cap():
+def test_docx_extraction_returns_every_paragraph():
+    """The DOCX loop was rewritten when the char cap went; it still reads all text."""
     docx_bytes = build_docx(["first paragraph", "second paragraph"])
 
-    text = extract_text_from_docx(docx_bytes, budget=permissive_budget())
-
-    assert text == "first paragraph\nsecond paragraph"
+    assert extract_text_from_docx(docx_bytes) == "first paragraph\nsecond paragraph"
 
 
-def test_csv_extraction_rejects_output_over_char_cap():
-    csv_bytes = b"\n".join(b"col_a,col_b,col_c" for _ in range(100))
+def test_csv_extraction_returns_every_row():
+    csv_bytes = b"a,b,c\nd,e,f"
 
-    with pytest.raises(ExtractionLimitExceeded, match="character"):
-        extract_text_from_csv(csv_bytes, budget=permissive_budget(max_chars=50))
-
-
-# --- wall-clock cap ---
-
-
-def test_pdf_extraction_rejects_run_over_time_cap():
-    pdf_bytes = build_pdf([f"Page number {i}" for i in range(10)])
-    budget = ExtractionBudget(
-        max_input_bytes=10_000_000,
-        max_pages=10_000,
-        max_chars=10_000_000,
-        max_seconds=5.0,
-        clock=FakeClock(step=10.0),
-    )
-
-    with pytest.raises(ExtractionLimitExceeded, match="seconds"):
-        extract_text_from_pdf(pdf_bytes, budget=budget)
-
-
-def test_docx_extraction_rejects_run_over_time_cap():
-    docx_bytes = build_docx([f"paragraph {i}" for i in range(10)])
-    budget = ExtractionBudget(
-        max_input_bytes=10_000_000,
-        max_pages=10_000,
-        max_chars=10_000_000,
-        max_seconds=5.0,
-        clock=FakeClock(step=10.0),
-    )
-
-    with pytest.raises(ExtractionLimitExceeded, match="seconds"):
-        extract_text_from_docx(docx_bytes, budget=budget)
+    assert extract_text_from_csv(csv_bytes) == "a,b,c\nd,e,f"
 
 
 # --- input byte cap ---
@@ -247,8 +184,6 @@ def test_default_budget_caps_are_finite():
     budget = default_budget()
 
     assert 0 < budget.max_pages < 1_000_000
-    assert 0 < budget.max_chars < 1_000_000_000
-    assert 0 < budget.max_seconds < 3600
     assert 0 < budget.max_input_bytes < 1_000_000_000
 
 
