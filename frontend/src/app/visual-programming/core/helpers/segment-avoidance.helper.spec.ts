@@ -143,6 +143,103 @@ describe('computeSegmentAvoidanceWaypoints', () => {
         expect(pathSelfIntersects(fullPath)).toBe(false);
     });
 
+    it("does not force a large overhead detour when the default midpoint only grazes the source node's collision padding, not its actual body", () => {
+        const source = node('source', 260, -200, 330, 60, [{ id: 'source_out', position: 'right' }]);
+        const target = node('target', 600, -80, 330, 60, [{ id: 'target_in', position: 'left' }]);
+
+        const connection = {
+            id: 'conn-1',
+            sourceNodeId: 'source',
+            targetNodeId: 'target',
+            sourcePortId: 'source_out',
+            targetPortId: 'target_in',
+        } as unknown as ConnectionModel;
+
+        const waypoints = computeSegmentAvoidanceWaypoints(connection, [source, target], undefined);
+
+        expect(waypoints).not.toBeNull();
+        expect(waypoints).toEqual([]);
+    });
+
+    it('hugs the real blocker instead of sweeping past the source/target tops when a gap already clears them', () => {
+        const source = node('source', 140, 620, 330, 60, [{ id: 'source_out', position: 'right' }]);
+        const target = node('target', 480, 1000, 330, 60, [{ id: 'target_in', position: 'left' }]);
+        const blocker = node('blocker', 280, 880, 330, 60, []);
+
+        const connection = {
+            id: 'conn-1',
+            sourceNodeId: 'source',
+            targetNodeId: 'target',
+            sourcePortId: 'source_out',
+            targetPortId: 'target_in',
+        } as unknown as ConnectionModel;
+
+        const waypoints = computeSegmentAvoidanceWaypoints(connection, [source, blocker, target], undefined);
+
+        expect(waypoints).not.toBeNull();
+        expect(waypoints!.length).toBeGreaterThan(0);
+
+        const jogY = waypoints![1].y;
+        expect(jogY).toBeGreaterThan(710);
+        expect(jogY).toBeLessThan(850);
+
+        const sourcePt = pt(470, 650);
+        const targetPt = pt(480, 1030);
+        const fullPath = [sourcePt, ...(waypoints ?? []), targetPt];
+        expect(pathSelfIntersects(fullPath)).toBe(false);
+    });
+
+    it('falls back to full clearance instead of the tight jog when the gap next to source/target is too small', () => {
+        const source = node('source', 100, 100, 330, 60, [{ id: 'source_out', position: 'right' }]);
+        const blocker = node('blocker', 250, 170, 330, 400);
+        const target = node('target', 250, 620, 330, 60, [{ id: 'target_in', position: 'left' }]);
+
+        const connection = {
+            id: 'conn-1',
+            sourceNodeId: 'source',
+            targetNodeId: 'target',
+            sourcePortId: 'source_out',
+            targetPortId: 'target_in',
+        } as unknown as ConnectionModel;
+
+        const waypoints = computeSegmentAvoidanceWaypoints(connection, [source, blocker, target], undefined);
+
+        expect(waypoints).not.toBeNull();
+
+        const sourcePt = pt(430, 130);
+        const targetPt = pt(250, 650);
+        const fullPath = [sourcePt, ...(waypoints ?? []), targetPt];
+        expect(pathSelfIntersects(fullPath)).toBe(false);
+    });
+
+    it('still clears all nodes when a second, unrelated node also occupies the tight gap the jog would otherwise use', () => {
+        const source = node('source', 140, 620, 330, 60, [{ id: 'source_out', position: 'right' }]);
+        const target = node('target', 480, 1000, 330, 60, [{ id: 'target_in', position: 'left' }]);
+        const blocker = node('blocker', 280, 880, 330, 60);
+        const secondBlocker = node('second', 280, 760, 330, 40);
+
+        const connection = {
+            id: 'conn-1',
+            sourceNodeId: 'source',
+            targetNodeId: 'target',
+            sourcePortId: 'source_out',
+            targetPortId: 'target_in',
+        } as unknown as ConnectionModel;
+
+        const waypoints = computeSegmentAvoidanceWaypoints(
+            connection,
+            [source, target, blocker, secondBlocker],
+            undefined
+        );
+
+        expect(waypoints).not.toBeNull();
+
+        const sourcePt = pt(470, 650);
+        const targetPt = pt(480, 1030);
+        const fullPath = [sourcePt, ...(waypoints ?? []), targetPt];
+        expect(pathSelfIntersects(fullPath)).toBe(false);
+    });
+
     it('returns an empty array (not null) when no existing waypoints are given and the default route is already clean', () => {
         const source = node('source', 0, 0, 100, 60, [{ id: 'source_out-right', position: 'right' }]);
         const target = node('target', 300, 200, 100, 60, [{ id: 'target_in-left', position: 'left' }]);

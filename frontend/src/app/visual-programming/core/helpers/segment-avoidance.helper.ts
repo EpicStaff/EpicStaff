@@ -438,7 +438,8 @@ function buildForwardVerticalStackRoute(
         return rect.nLeft < defaultMidX && rect.nRight > defaultMidX && rect.nTop < yb && rect.nBottom > ya;
     });
 
-    const defaultMidXCrossesSource = defaultMidX > sourceRect.nLeft && defaultMidX < sourceRect.nRight;
+    const defaultMidXCrossesSource =
+        defaultMidX > sourceNode.position.x && defaultMidX < sourceNode.position.x + sourceNode.size.width;
 
     if (blockers.length === 0 && !defaultMidXCrossesSource) {
         return null;
@@ -766,8 +767,20 @@ export function computeSegmentAvoidanceWaypoints(
                     if (x2Adj > br.nLeft && x2Adj < br.nRight) x2Adj = br.nLeft - corridorPad;
 
                     if (x1Adj !== x2Adj) {
-                        const routeAboveY = Math.min(br.nTop, sourceRect.nTop, targetRect.nTop) - GAP;
-                        const routeBelowY = Math.max(br.nBottom, sourceRect.nBottom, targetRect.nBottom) + GAP;
+                        const clearsRectY = (y: number, rect: { nTop: number; nBottom: number }): boolean =>
+                            y <= rect.nTop || y >= rect.nBottom;
+
+                        const tightAboveY = br.nTop - GAP;
+                        const routeAboveY =
+                            clearsRectY(tightAboveY, sourceRect) && clearsRectY(tightAboveY, targetRect)
+                                ? tightAboveY
+                                : Math.min(br.nTop, sourceRect.nTop, targetRect.nTop) - GAP;
+
+                        const tightBelowY = br.nBottom + GAP;
+                        const routeBelowY =
+                            clearsRectY(tightBelowY, sourceRect) && clearsRectY(tightBelowY, targetRect)
+                                ? tightBelowY
+                                : Math.max(br.nBottom, sourceRect.nBottom, targetRect.nBottom) + GAP;
 
                         const sixPtCandidates = [
                             simplifyRoute([
