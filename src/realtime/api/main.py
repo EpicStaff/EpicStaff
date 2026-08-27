@@ -81,21 +81,11 @@ stream_token_repository = StreamTokenRepository(
     ttl_seconds=settings.STREAM_TOKEN_TTL_SECONDS
 )
 
-# Sentinel bound_key for the legacy, channel-less `/voice/stream` route so its
-# stream tokens can never be replayed against a channel-token route (or vice
-# versa) even if the random token value were somehow guessed.
-_LEGACY_STREAM_BOUND_KEY = "__legacy_voice_stream__"
-
 # ---------------------------------------------------------------------------
 # Per-channel config cache  (keyed by channel token, TTL=60s)
 # ---------------------------------------------------------------------------
 _channel_cache: dict[str, tuple[dict, float]] = {}
 _CHANNEL_TTL = 60.0
-
-# Legacy global voice settings cache (kept for backward-compat /voice route)
-_voice_settings_cache: dict | None = None
-_voice_settings_cache_time: float = 0.0
-_VOICE_SETTINGS_TTL = 60.0
 
 
 async def get_channel_config(channel_token: str) -> dict:
@@ -141,62 +131,6 @@ async def get_channel_config(channel_token: str) -> dict:
     except Exception as e:
         logger.exception(f"[channel_config] exception fetching config: {e}")
     return {}
-
-
-async def get_voice_settings() -> dict:
-    """DEPRECATED: fetch global VoiceSettings singleton (for legacy /voice route)."""
-    global _voice_settings_cache, _voice_settings_cache_time
-    now = asyncio.get_event_loop().time()
-    if (
-        _voice_settings_cache is None
-        or (now - _voice_settings_cache_time) > _VOICE_SETTINGS_TTL
-    ):
-        try:
-            url = settings.INIT_API_URL.replace("init-realtime", "voice-settings")
-            async with httpx.AsyncClient() as client:
-                r = await client.get(
-                    url,
-                    headers={"Host": "localhost", "X-API-Key": settings.DJANGO_API_KEY},
-                    timeout=5.0,
-                )
-                if r.is_success:
-                    _voice_settings_cache = r.json()
-                    _voice_settings_cache_time = now
-                    logger.info(f"Voice settings loaded: {_voice_settings_cache}")
-                else:
-                    logger.warning(
-                        f"Voice settings request failed: {r.status_code} {r.text}"
-                    )
-        except Exception as e:
-            logger.warning(f"Could not fetch voice settings from Django: {e}")
-    return _voice_settings_cache or {}
-
-
-async def voice_settings_invalidation_listener():
-    """Listen for voice settings changes and invalidate the local cache."""
-    global _voice_settings_cache, _voice_settings_cache_time
-
-    svc = RedisService(
-        host=settings.REDIS_HOST,
-        port=settings.REDIS_PORT,
-        password=settings.REDIS_PASSWORD,
-    )
-    await svc.connect()
-    pubsub = await svc.async_subscribe("voice_settings:invalidate")
-    logger.info("Subscribed to channel 'voice_settings:invalidate'")
-
-    async for message in pubsub.listen():
-        if message["type"] == "message":
-            _voice_settings_cache = None
-            _voice_settings_cache_time = 0.0
-            # Also clear per-channel cache when channel config changes
-            token = message.get("data", "")
-            if token:
-                _channel_cache.pop(token, None)
-                logger.info(f"Channel cache invalidated for token {token}")
-            else:
-                _channel_cache.clear()
-                logger.info("Voice settings cache invalidated (all channels cleared)")
 
 
 async def _run_forever(coro_fn, name: str, restart_delay: float = 2.0):
@@ -256,7 +190,6 @@ async def startup_event():
     await init_db()
 
     asyncio.create_task(_run_forever(redis_listener, "redis_listener"))
-    asyncio.create_task(voice_settings_invalidation_listener())
 
 
 # Store active connections and their handlers
@@ -703,41 +636,4 @@ async def voice_stream_channel(
         agent_definition_id=agent_definition_id,
         stream_token=stream_token,
         stream_bound_key=channel_token,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Legacy Twilio routes  (kept for backward compatibility)
-# ---------------------------------------------------------------------------
-
-
-@app.post("/voice")
-async def twilio_voice_webhook(request: Request):
-    """DEPRECATED: use /voice/{channel_token} instead."""
-    vs = await get_voice_settings()
-    auth_token = vs.get("twilio_auth_token")
-    voice_stream_url = vs.get("voice_stream_url") or settings.VOICE_STREAM_URL
-    stream_token = stream_token_repository.mint(bound_key=_LEGACY_STREAM_BOUND_KEY)
-    return await _twilio_voice_webhook(
-        request, auth_token, voice_stream_url, stream_token
-    )
-
-
-@app.websocket("/voice/stream")
-async def voice_stream(twilio_ws: WebSocket, stream_token: str | None = None):
-    """DEPRECATED: use /voice/{channel_token}/stream instead."""
-    vs = await get_voice_settings()
-    agent_id = vs.get("voice_agent")
-    agent_definition_id = vs.get("voice_agent_definition")
-    if not agent_id and not agent_definition_id:
-        logger.error("No voice agent configured in Voice Settings")
-        await twilio_ws.close(code=1008)
-        return
-    await _voice_stream_handler(
-        twilio_ws,
-        agent_id,
-        auth_token=None,
-        agent_definition_id=agent_definition_id,
-        stream_token=stream_token,
-        stream_bound_key=_LEGACY_STREAM_BOUND_KEY,
     )

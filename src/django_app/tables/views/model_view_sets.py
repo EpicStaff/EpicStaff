@@ -207,7 +207,6 @@ from tables.models.label_models import Label
 from tables.models.vector_models import MemoryDatabase
 from tables.models.webhook_models import (
     LOCAL_ONLY_PROVIDERS,
-    VoiceSettings,
     WebhookTrigger,
     RealtimeChannel,
     TwilioChannel,
@@ -298,8 +297,6 @@ from tables.serializers.model_serializers import (
     TaskNodeSerializer,
     TaskReadSerializer,
     TaskWriteSerializer,
-    VoiceSettingsSerializer,
-    VoiceSettingsInternalSerializer,
     WebhookTriggerNodeSerializer,
     WebhookTriggerNodeReadSerializer,
     ScheduleTriggerNodeSerializer,
@@ -2877,36 +2874,6 @@ class SecretViewSet(
         """Where this secret is referenced, for the deletion-safety dialog."""
         secret = self.get_object()
         return Response(secret_usage_service.summary(secret=secret))
-
-
-class VoiceSettingsView(generics.RetrieveUpdateAPIView):
-    # Global singleton holding the platform Twilio credentials (secret auth
-    # token) — superadmin only, both read and write.
-    permission_classes = [IsAuthenticated, IsSuperadmin]
-    serializer_class = VoiceSettingsSerializer
-
-    def get_serializer_class(self):
-        # SystemServicePrincipal (a `key_type=SYSTEM` ApiKey — see
-        # `IsSystemApiKeyAuthenticated`) already satisfies IsSuperadmin, so
-        # the `realtime` service's legacy `GET /voice-settings/` call (used
-        # to validate `X-Twilio-Signature` on the deprecated `POST /voice`
-        # webhook) reaches this same view. Only that trusted, system-key
-        # caller gets the resolved plaintext Twilio credentials; a regular
-        # superadmin JWT session only ever sees the `*_secret_id` fields.
-        if (
-            isinstance(self.request.auth, ApiKey)
-            and self.request.auth.key_type == ApiKey.KeyType.SYSTEM
-        ):
-            return VoiceSettingsInternalSerializer
-        return VoiceSettingsSerializer
-
-    def get_object(self):
-        return VoiceSettings.load()
-
-    def update(self, request, *args, **kwargs):
-        response = super().update(request, *args, **kwargs)
-        redis_service.redis_client.publish("voice_settings:invalidate", "{}")
-        return response
 
 
 def _twilio_request(

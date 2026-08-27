@@ -53,7 +53,6 @@ from tables.views.model_view_sets import (
     RealtimeVoicesView,
     GraphOrganizationViewSet,
     GraphOrganizationUserViewSet,
-    VoiceSettingsView,
     TwilioConfigureWebhookView,
     WebhookTriggerNodeViewSet,
     WebhookTriggerViewSet,
@@ -429,11 +428,6 @@ urlpatterns = [
         "realtime-voices/",
         RealtimeVoicesView.as_view(),
         name="realtime-voices",
-    ),
-    path(
-        "voice-settings/",
-        VoiceSettingsView.as_view(),
-        name="voice-settings",
     ),
     path(
         "twilio/configure-webhook/",
