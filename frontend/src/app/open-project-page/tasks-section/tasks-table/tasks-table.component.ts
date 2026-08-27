@@ -1211,12 +1211,7 @@ export class TasksTableComponent implements OnChanges {
             const tempRowKey = String(this.selectedRowData.id);
 
             if (localIndex !== -1) {
-                // Remove from local array first, then top up the spare row (so
-                // deleting the last empty row still leaves one to type into),
-                // then push the final state to the grid. Order matters: the
-                // reindex helper below rebuilds this.rowData from the grid, so
-                // the grid MUST include the new spare row first — otherwise
-                // the empty row would be silently dropped.
+                // Remove from local array
                 this.rowData.splice(localIndex, 1);
                 this.localDraftTempKeys.delete(tempRowKey);
                 this.requiredErrorsRows.delete(tempRowKey);
