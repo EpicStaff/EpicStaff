@@ -298,7 +298,7 @@ async def test_voice_stream_channel_route_rejects_missing_token(monkeypatch):
     from api.main import voice_stream_channel
 
     async def fake_resolve(channel_token):
-        return 42, {}
+        return 42, None, {}
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -316,7 +316,7 @@ async def test_voice_stream_channel_route_accepts_matching_token_from_start_even
     from api.main import voice_stream_channel, stream_token_repository
 
     async def fake_resolve(channel_token):
-        return 42, {}
+        return 42, None, {}
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 
@@ -340,7 +340,7 @@ async def test_voice_stream_channel_route_rejects_token_minted_for_other_channel
     from api.main import voice_stream_channel, stream_token_repository
 
     async def fake_resolve(channel_token):
-        return 42, {}
+        return 42, None, {}
 
     monkeypatch.setattr("api.main._resolve_channel_agent", fake_resolve)
 

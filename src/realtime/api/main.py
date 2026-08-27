@@ -129,7 +129,9 @@ async def get_channel_config(channel_token: str) -> dict:
                     data = {}
                 _channel_cache[channel_token] = (data, now)
                 logger.info(
-                    f"[channel_config] loaded: agent_id={data.get('realtime_agent')} twilio={data.get('twilio')}"
+                    f"[channel_config] loaded: agent_id={data.get('realtime_agent')} "
+                    f"agent_definition_id={data.get('realtime_agent_definition')} "
+                    f"twilio={data.get('twilio')}"
                 )
                 return data
             else:
@@ -368,11 +370,14 @@ async def healthcheck_endpoint(websocket: WebSocket):
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_channel_agent(channel_token: str) -> tuple[int | None, dict]:
-    """Fetch channel config and return (agent_id, channel_data)."""
+async def _resolve_channel_agent(
+    channel_token: str,
+) -> tuple[int | None, int | None, dict]:
+    """Fetch channel config and return (agent_id, agent_definition_id, channel_data)."""
     channel = await get_channel_config(channel_token)
     agent_id = channel.get("realtime_agent")
-    return agent_id, channel
+    agent_definition_id = channel.get("realtime_agent_definition")
+    return agent_id, agent_definition_id, channel
 
 
 def _append_stream_token(voice_stream_url: str, stream_token: str) -> str:
@@ -496,7 +501,9 @@ async def _voice_stream_handler(
     fallback source.
     """
     await twilio_ws.accept()
-    logger.info("Twilio MediaStream WebSocket accepted (stream_token not yet validated)")
+    logger.info(
+        "Twilio MediaStream WebSocket accepted (stream_token not yet validated)"
+    )
 
     # Read the first Twilio message(s): `connected` (optional) then `start`,
     # which carries `customParameters` — see docstring above for why this is
@@ -518,10 +525,14 @@ async def _voice_stream_handler(
     param_token = custom_params.get("stream_token")
     effective_stream_token = param_token or stream_token
     token_source = (
-        "start.customParameters" if param_token else ("query_param" if stream_token else "none")
+        "start.customParameters"
+        if param_token
+        else ("query_param" if stream_token else "none")
     )
 
-    if not stream_token_repository.consume(effective_stream_token, bound_key=stream_bound_key):
+    if not stream_token_repository.consume(
+        effective_stream_token, bound_key=stream_bound_key
+    ):
         # `token_present` distinguishes "no token arrived by either channel"
         # from "we had a token but it didn't validate" (expired/reused/wrong
         # bound_key, or the in-memory StreamTokenRepository singleton lost
@@ -628,12 +639,13 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
     """
     logger.info(f"[voice/{channel_token}] POST received from {request.client.host}")
 
-    agent_id, channel = await _resolve_channel_agent(channel_token)
+    agent_id, agent_definition_id, channel = await _resolve_channel_agent(channel_token)
     logger.info(
-        f"[voice/{channel_token}] resolved agent_id={agent_id} channel_keys={list(channel.keys())}"
+        f"[voice/{channel_token}] resolved agent_id={agent_id} "
+        f"agent_definition_id={agent_definition_id} channel_keys={list(channel.keys())}"
     )
 
-    if not agent_id:
+    if not agent_id and not agent_definition_id:
         logger.error(f"[voice/{channel_token}] no agent assigned — returning 404")
         raise HTTPException(
             status_code=404, detail="Channel not found or no agent assigned"
@@ -669,7 +681,9 @@ async def twilio_voice_webhook_channel(channel_token: str, request: Request):
 
     logger.info(f"[voice/{channel_token}] voice_stream_url={voice_stream_url}")
     stream_token = stream_token_repository.mint(bound_key=channel_token)
-    return await _twilio_voice_webhook(request, auth_token, voice_stream_url, stream_token)
+    return await _twilio_voice_webhook(
+        request, auth_token, voice_stream_url, stream_token
+    )
 
 
 @app.websocket("/voice/{channel_token}/stream")
@@ -677,8 +691,8 @@ async def voice_stream_channel(
     channel_token: str, twilio_ws: WebSocket, stream_token: str | None = None
 ):
     """Twilio MediaStream WebSocket (channel-token routing)."""
-    agent_id, channel = await _resolve_channel_agent(channel_token)
-    if not agent_id:
+    agent_id, agent_definition_id, channel = await _resolve_channel_agent(channel_token)
+    if not agent_id and not agent_definition_id:
         logger.error(f"No agent for channel token {channel_token}")
         await twilio_ws.close(code=1008)
         return
@@ -686,6 +700,7 @@ async def voice_stream_channel(
         twilio_ws,
         agent_id,
         auth_token=None,
+        agent_definition_id=agent_definition_id,
         stream_token=stream_token,
         stream_bound_key=channel_token,
     )
@@ -703,7 +718,9 @@ async def twilio_voice_webhook(request: Request):
     auth_token = vs.get("twilio_auth_token")
     voice_stream_url = vs.get("voice_stream_url") or settings.VOICE_STREAM_URL
     stream_token = stream_token_repository.mint(bound_key=_LEGACY_STREAM_BOUND_KEY)
-    return await _twilio_voice_webhook(request, auth_token, voice_stream_url, stream_token)
+    return await _twilio_voice_webhook(
+        request, auth_token, voice_stream_url, stream_token
+    )
 
 
 @app.websocket("/voice/stream")

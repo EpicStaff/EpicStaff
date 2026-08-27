@@ -2,7 +2,7 @@ import uuid
 from typing import Protocol
 
 from django.db import models
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import RegexValidator
 from django.contrib.auth.hashers import check_password
 
@@ -267,7 +267,23 @@ class RealtimeChannel(OrgScopedModel, models.Model):
         blank=True,
         related_name="channels",
     )
+    realtime_agent_definition = models.ForeignKey(
+        "RealtimeAgentDefinition",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="channels",
+    )
     is_active = models.BooleanField(default=True)
+
+    def clean(self):
+        # A channel answers to exactly one destination — either a staff
+        # RealtimeAgent or a RealtimeAgentDefinition — never both.
+        if self.realtime_agent_id is not None and self.realtime_agent_definition_id is not None:
+            raise ValidationError(
+                "A RealtimeChannel may have at most one destination set "
+                "(realtime_agent or realtime_agent_definition)."
+            )
 
     def __str__(self):
         return f"{self.name} ({self.channel_type})"
