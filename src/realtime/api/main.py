@@ -691,7 +691,7 @@ async def voice_stream_channel(
     channel_token: str, twilio_ws: WebSocket, stream_token: str | None = None
 ):
     """Twilio MediaStream WebSocket (channel-token routing)."""
-    agent_id, agent_definition_id, channel = await _resolve_channel_agent(channel_token)
+    agent_id, agent_definition_id, _channel = await _resolve_channel_agent(channel_token)
     if not agent_id and not agent_definition_id:
         logger.error(f"No agent for channel token {channel_token}")
         await twilio_ws.close(code=1008)
