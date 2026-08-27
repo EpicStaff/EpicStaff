@@ -37,7 +37,8 @@ import { CdtDecisionTreeShapeComponent } from '../cdt-decision-tree-shape/cdt-de
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CdtDecisionTreeBlockComponent {
-    private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
+    /** Public so the search can anchor a popover here without a click. Read only. */
+    public readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
 
     public readonly block = input.required<CdtTreePositionedBlock>();
     public readonly dimmed = input<boolean>(false);

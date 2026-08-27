@@ -141,6 +141,14 @@ export const CDT_TREE_COPY = {
      */
     unsavedTargetWarning: 'This rule has a target but no route code, so the target is never saved.',
     ruleFallback: (oneBased: number): string => `Rule ${oneBased}`,
+    /**
+     * Headings of the search dropdown. The number counts drawn rules, not grid
+     * rows — a disabled rule is not evaluated and is not in the diagram, which
+     * the toolbar's hidden-rules chip already says out loud.
+     */
+    entryGroup: 'Entry',
+    exitGroup: 'Exit',
+    rowGroup: (oneBased: number): string => `Row ${oneBased}`,
     promptLabel: (promptId: string): string => `Prompt "${promptId}"`,
     promptMissingWarning: 'Prompt not found in this table.',
     alwaysMatches: 'always matches',

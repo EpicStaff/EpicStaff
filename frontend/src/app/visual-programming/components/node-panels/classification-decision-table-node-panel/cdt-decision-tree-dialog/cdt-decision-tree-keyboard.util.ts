@@ -27,10 +27,11 @@
  * Pure and Angular-free so the policy can be unit-tested without a dialog.
  */
 
-export type CdtTreeKeyAction = 'clear-search' | 'close-popover' | 'close-dialog' | 'none';
+export type CdtTreeKeyAction = 'clear-search' | 'close-popover' | 'close-search' | 'close-dialog' | 'none';
 
 export interface CdtTreeKeyState {
     readonly popoverOpen: boolean;
+    readonly searchOpen: boolean;
     readonly searchHasText: boolean;
     readonly targetIsSearch: boolean;
 }
@@ -100,10 +101,17 @@ export function resolveTreeKeyAction(event: CdtTreeKeyEvent, state: CdtTreeKeySt
 }
 
 function resolveEscapeAction(state: CdtTreeKeyState): CdtTreeKeyAction {
-    // Innermost first: the popover is a separate overlay without a focus trap,
-    // so without this precedence the whole dialog would close underneath it.
+    // Innermost first: each of these is a separate overlay without a focus trap,
+    // so without this precedence the whole dialog would close underneath one.
     if (state.popoverOpen) {
         return 'close-popover';
+    }
+
+    // Before `clear-search`: the caret sits in the search box the whole time the
+    // dropdown is open, so testing the text first would empty the box on an
+    // Escape the user meant for the panel.
+    if (state.searchOpen) {
+        return 'close-search';
     }
 
     if (state.targetIsSearch && state.searchHasText) {

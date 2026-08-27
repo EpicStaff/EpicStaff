@@ -237,7 +237,13 @@
     overflow: auto;
     padding: 0.75rem 0.9rem;
     color: var(--color-text-primary);
-    background: var(--cdt-tree-raised);
+    // The fallback is load-bearing. CDK moves the pane out to
+    // `.cdk-overlay-container` under `<body>`, and custom properties inherit
+    // through the DOM — so `--cdt-tree-raised`, declared on the `:host` above,
+    // does not resolve there. Without it the popover has no background at all.
+    // The encapsulation attribute does travel with the nodes, which is why the
+    // rest of this rule applies; only the variable does not.
+    background: var(--cdt-tree-raised, var(--color-nodes-background));
     border: 1px solid var(--color-divider-regular);
     border-radius: 8px;
     box-shadow: 0 8px 24px rgb(0 0 0 / 45%);

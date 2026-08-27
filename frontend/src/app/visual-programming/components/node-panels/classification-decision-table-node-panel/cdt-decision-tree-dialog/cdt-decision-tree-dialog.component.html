@@ -64,10 +64,15 @@
                 #searchInput
                 class="cdt-tree__search-input"
                 type="text"
-                placeholder="Search blocks"
+                placeholder="Search item..."
                 aria-label="Search blocks"
-                [value]="query()"
+                aria-haspopup="listbox"
+                aria-controls="cdt-tree-search-panel"
+                [attr.aria-expanded]="isSearchOpen()"
+                [value]="draftQuery()"
                 (input)="onQueryInput($event)"
+                (click)="openSearch()"
+                (keydown.enter)="applySearch()"
             />
             @if (hasQuery()) {
                 <span class="cdt-tree__search-count">
@@ -196,6 +201,19 @@
         }
     </footer>
 </div>
+
+<ng-template #searchTpl>
+    <app-cdt-decision-tree-search
+        id="cdt-tree-search-panel"
+        [groups]="layout.groups"
+        [blocks]="layout.blocks"
+        [query]="draftQuery()"
+        (picked)="onSearchPick($event)"
+        (applied)="applySearch()"
+        (cancelled)="cancelSearch()"
+        (cleared)="clearSearch()"
+    />
+</ng-template>
 
 <ng-template #detailTpl>
     @if (detail(); as content) {

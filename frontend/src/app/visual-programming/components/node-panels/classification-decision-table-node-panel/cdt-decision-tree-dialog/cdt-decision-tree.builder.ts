@@ -31,6 +31,7 @@ import {
     CdtTreeDetail,
     CdtTreeEdge,
     CdtTreeEdgeKind,
+    CdtTreeGroup,
     CdtTreeNodeRef,
     CdtTreePortSide,
     CdtTreeTarget,
@@ -275,10 +276,24 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
 
     assertUniqueEdgeIds(edges);
 
+    // Reading order, which no other field carries: `blocks` is construction order
+    // and puts the exits before the rules. Built from the same locals as the
+    // lanes, so the list and the drawing cannot disagree about the rules.
+    const exits = compact([defaultPost, defaultTerminator, errorTerminator, routePost, routeTerminator]);
+    const groups: CdtTreeGroup[] = [
+        { label: CDT_TREE_COPY.entryGroup, blockIds: spineHead },
+        ...chains.map((chainEntry, index) => ({
+            label: CDT_TREE_COPY.rowGroup(index + 1),
+            blockIds: [chainEntry.anchorId, ...chainEntry.blockIds],
+        })),
+        { label: CDT_TREE_COPY.exitGroup, blockIds: exits },
+    ];
+
     return {
         title: input.nodeName,
         blocks,
         edges,
+        groups,
         lanes: [
             { kind: 'spine', blockIds: [...spineHead, ...chains.map((chainEntry) => chainEntry.anchorId)] },
             ...chains,

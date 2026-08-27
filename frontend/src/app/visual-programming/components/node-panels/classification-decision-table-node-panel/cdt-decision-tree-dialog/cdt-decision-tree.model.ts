@@ -225,10 +225,25 @@ export interface CdtTreeRegionLane {
  */
 export type CdtTreeLane = CdtTreeSpineLane | CdtTreeChainLane | CdtTreeAsideLane | CdtTreeExitsLane | CdtTreeRegionLane;
 
+/**
+ * One heading of the search dropdown, and the blocks under it in reading order.
+ *
+ * Built alongside the lanes, from the same locals, because it is the only place
+ * that knows the order a person reads the diagram in: `blocks` is construction
+ * order, which puts the exits before the rules, and the layout throws the lanes
+ * away. Deriving it anywhere else would mean parsing block ids.
+ */
+export interface CdtTreeGroup {
+    readonly label: string;
+    readonly blockIds: readonly string[];
+}
+
 export interface CdtTree {
     readonly title: string;
     readonly blocks: readonly CdtTreeBlock[];
     readonly edges: readonly CdtTreeEdge[];
+    /** Entry, then one per drawn rule, then Exit. The region belongs to none. */
+    readonly groups: readonly CdtTreeGroup[];
     /**
      * Where every block goes: exactly one `spine` lane, one `chain` per drawn row
      * in evaluation order, and an `aside` per branch that leaves the column.
@@ -281,6 +296,8 @@ export interface CdtTreeLayout {
     readonly title: string;
     readonly blocks: readonly CdtTreePositionedBlock[];
     readonly edges: readonly CdtTreeEdge[];
+    /** Passed through untouched — the layout has no say in reading order. */
+    readonly groups: readonly CdtTreeGroup[];
     readonly bounds: CdtTreeSize;
     readonly hiddenRowCount: number;
     readonly rowCount: number;

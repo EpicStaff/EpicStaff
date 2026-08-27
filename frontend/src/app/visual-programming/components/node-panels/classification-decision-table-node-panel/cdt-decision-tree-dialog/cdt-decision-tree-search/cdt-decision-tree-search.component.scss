@@ -1,0 +1,95 @@
+// Sizes are the design's, in px rather than rem: one panel's measurements, not
+// steps on the app's type scale. Inter is named because the body font is Roboto
+// (`styles/_reset.scss`) and Inter is bundled but opted into per component.
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 364px;
+    height: 465px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+    font-family: Inter, Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.3;
+    color: var(--color-text-primary);
+    // The fallback is load-bearing. CDK moves the pane out to
+    // `.cdk-overlay-container` under `<body>`, where `--cdt-tree-raised` —
+    // declared on the dialog's `:host` — no longer resolves, and an invalid
+    // `background` leaves the panel transparent over the canvas.
+    background: var(--cdt-tree-raised, var(--color-nodes-background));
+    border-radius: 10px;
+    // A ring, not a border: with `box-sizing: border-box` a 1px border eats into
+    // the design's 364px and leaves its 324px rows 2px short.
+    box-shadow:
+        0 0 0 1px var(--color-divider-regular),
+        0 4px 10px rgb(0 0 0 / 12%);
+}
+
+// The inline padding is the list's, not the panel's, so the scrollbar rides the
+// panel edge rather than floating 20px inside it.
+.cdt-tree-search__list {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 20px;
+}
+
+// Same size as the entries it heads, per the design — it is a label, not fine
+// print, and only the colour sets it apart.
+.cdt-tree-search__group-label {
+    color: var(--color-text-secondary);
+}
+
+.cdt-tree-search__item {
+    display: flex;
+    flex-shrink: 0;
+    gap: 10px;
+    align-items: center;
+    height: 40px;
+    padding: 0 16px;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 4px;
+
+    &:hover {
+        border-color: var(--accent-color);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: 1px;
+    }
+}
+
+.cdt-tree-search__item-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdt-tree-search__empty {
+    margin: 0;
+    color: var(--color-text-secondary);
+}
+
+.cdt-tree-search__footer {
+    display: flex;
+    flex-shrink: 0;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+}
+
+.cdt-tree-search__footer-actions {
+    display: flex;
+    gap: 8px;
+}

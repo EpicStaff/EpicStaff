@@ -270,6 +270,12 @@ export function layoutCdtDecisionTree(tree: CdtTree): CdtTreeLayout {
     const maxX = Math.max(...placed.map((block) => block.position.x + block.size.width));
     const maxY = Math.max(...placed.map((block) => block.position.y + block.size.height));
 
+    // The layout has no say in reading order, but it is the pass that knows which
+    // ids are real — so a group naming a block nobody drew is caught here.
+    for (const group of tree.groups) {
+        for (const id of group.blockIds) blockById(id);
+    }
+
     return {
         title: tree.title,
         blocks: placed.map((block) => ({
@@ -277,6 +283,7 @@ export function layoutCdtDecisionTree(tree: CdtTree): CdtTreeLayout {
             position: { x: block.position.x - minX, y: block.position.y - minY },
         })),
         edges: tree.edges,
+        groups: tree.groups,
         bounds: { width: maxX - minX, height: maxY - minY },
         hiddenRowCount: tree.hiddenRowCount,
         rowCount: tree.rowCount,
