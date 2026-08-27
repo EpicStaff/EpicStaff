@@ -1196,8 +1196,7 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     // TaskNode/AgentNode stream events don't reliably carry `is_final: true` — the backend
     // contract is one `start`, 0..N stream events, then exactly one `finish` OR `error` message
     // (same `name`). Derive completion from the presence of that finish/error message in the
-    // FULL message list (not the post-filter visible list — a `finish` with `sse_visible: false`
-    // is dropped from rendering but must still count as completion evidence). The backend stamps
+    // FULL message list, not the post-filter visible one. The backend stamps
     // a single execution_order per node run, shared by that run's stream and finish messages, so
     // equality means "same run". The `>=` comparison still keeps a later run's finish/error from
     // being matched against an earlier run's stream messages, since the later run's
@@ -1253,7 +1252,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                 const data = msg?.message_data;
                 const type = data?.message_type;
                 if (!type || !RENDERABLE_MESSAGE_TYPES.has(type)) return false;
-                if (this.isSseHidden(data)) return false;
                 if (!STREAM_MESSAGE_TYPES.has(type)) return true;
                 return streamShowSet.has(context.index);
             })
@@ -1263,13 +1261,6 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
     private isStreamMessageFinal(data: MessageData | undefined): boolean {
         if (!data) return false;
         return (data as TaskNodeStreamMessageData | AgentNodeStreamMessageData).is_final === true;
-    }
-
-    // `sse_visible: false` on a message must hide it from the chat (most relevant on `finish`,
-    // but applies generally). Absent → treated as visible.
-    private isSseHidden(data: MessageData | undefined): boolean {
-        if (!data) return false;
-        return 'sse_visible' in data && data.sse_visible === false;
     }
 
     private updateDrilldownMessages(): void {

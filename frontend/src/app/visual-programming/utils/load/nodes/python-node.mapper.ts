@@ -28,7 +28,6 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
         icon: ui.icon,
         input_map: pn.input_map ?? {},
         output_variable_path: pn.output_variable_path,
-        stream_config: pn.stream_config ?? {},
         size: ui.size,
     };
 }

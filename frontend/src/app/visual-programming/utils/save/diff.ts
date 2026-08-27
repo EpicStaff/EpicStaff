@@ -122,7 +122,6 @@ function toPythonComparable(node: PythonNodeModel): unknown {
         python_code: { ...node.data, secret_ids: [...(node.data.secret_ids || [])].sort() },
         input_map: node.input_map || {},
         output_variable_path: node.output_variable_path || null,
-        stream_config: node.stream_config ?? {},
         test_input: node.test_input ?? {},
         metadata: toNodeMetadata(node),
     };

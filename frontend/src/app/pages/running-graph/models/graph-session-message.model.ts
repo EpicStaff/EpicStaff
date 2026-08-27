@@ -52,7 +52,6 @@ export interface FinishMessageData {
     state: Record<string, Record<string, unknown>>;
     message_type: MessageType.FINISH;
     additional_data?: Record<string, unknown> | null;
-    sse_visible?: boolean;
 }
 
 export interface StartMessageData {
@@ -229,7 +228,6 @@ interface NodeStreamMessageDataBase {
     event: 'task_start' | 'tool_call' | 'tool_result' | 'task_finish';
     step_id: number;
     is_final: boolean;
-    sse_visible?: boolean;
     data: NodeStreamToolCallData | NodeStreamToolResultData | NodeStreamTaskStartData | NodeStreamTaskFinishData;
 }
 
