@@ -521,6 +521,10 @@ export class FlowsListPageComponent implements OnInit, OnDestroy {
         this.router.navigate(['/sessions']);
     }
 
+    public navigateToAudit() {
+        this.router.navigate(['/audit']);
+    }
+
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
 }

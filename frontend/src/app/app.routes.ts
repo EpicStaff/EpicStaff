@@ -267,6 +267,15 @@ export const routes: Routes = [
                         data: { permission: [ResourceCode.Flows, ActionCode.Read] },
                     },
                     {
+                        path: 'audit',
+                        loadComponent: () =>
+                            import('./features/audit/audit-sessions-browser.component').then(
+                                (m) => m.AuditSessionsBrowserComponent
+                            ),
+                        canActivate: [permissionGuard],
+                        data: { permission: [ResourceCode.Audit, ActionCode.Read] },
+                    },
+                    {
                         path: 'workspace',
                         loadComponent: () =>
                             import('./features/role-base-access/pages/overview-page/overview.component').then(
