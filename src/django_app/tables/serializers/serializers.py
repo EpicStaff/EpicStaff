@@ -242,6 +242,10 @@ class ImportRequestSerializer(serializers.Serializer):
         return attrs
 
 
+class InspectImportRequestSerializer(serializers.Serializer):
+    file = serializers.FileField()
+
+
 class RunPythonCodeSerializer(serializers.Serializer):
     python_code_id = serializers.PrimaryKeyRelatedField(
         queryset=PythonCode.objects.all(),
