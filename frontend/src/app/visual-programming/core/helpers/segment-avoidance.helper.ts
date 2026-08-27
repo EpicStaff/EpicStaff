@@ -13,7 +13,6 @@ const ROUTING_PAD = 15;
 const TABLE_TOP_CLEARANCE = 68;
 const TABLE_TARGET_ENTRY_PAD = 10;
 const SOURCE_EXIT_CLEARANCE = 40;
-const NODE_CLEARANCE = 24;
 
 function getNodeRect(node: NodeModel) {
     const b = getCollisionBounds(node);
@@ -174,6 +173,18 @@ function pathIntersectsNode(path: IPoint[], node: NodeModel): boolean {
     return false;
 }
 
+export function pathSelfIntersects(path: IPoint[]): boolean {
+    for (let i = 0; i < path.length - 1; i++) {
+        for (let j = i + 2; j < path.length - 1; j++) {
+            if (segmentsIntersect(path[i], path[i + 1], path[j], path[j + 1])) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 function simplifyRoute(points: IPoint[]): IPoint[] {
     if (points.length <= 2) return points;
 
@@ -206,35 +217,6 @@ function findSegmentBlockers(a: IPoint, b: IPoint, allNodes: NodeModel[], exclud
         const rect = getNodeRect(node);
 
         if (segmentIntersectsRect(a, b, rect)) {
-            result.push(node);
-        }
-    }
-
-    return result;
-}
-
-function findSegmentNearBlockers(
-    a: IPoint,
-    b: IPoint,
-    allNodes: NodeModel[],
-    excludeIds: string[],
-    clearance: number
-): NodeModel[] {
-    const result: NodeModel[] = [];
-
-    for (const node of allNodes) {
-        if (excludeIds.includes(node.id)) continue;
-        if (node.type === NodeType.NOTE) continue;
-
-        const r = getNodeRect(node);
-        const expanded = {
-            nLeft: r.nLeft - clearance,
-            nTop: r.nTop - clearance,
-            nRight: r.nRight + clearance,
-            nBottom: r.nBottom + clearance,
-        };
-
-        if (segmentIntersectsRect(a, b, expanded)) {
             result.push(node);
         }
     }
@@ -456,11 +438,14 @@ function buildForwardVerticalStackRoute(
         return rect.nLeft < defaultMidX && rect.nRight > defaultMidX && rect.nTop < yb && rect.nBottom > ya;
     });
 
-    if (blockers.length === 0) {
+    const defaultMidXCrossesSource = defaultMidX > sourceRect.nLeft && defaultMidX < sourceRect.nRight;
+
+    if (blockers.length === 0 && !defaultMidXCrossesSource) {
         return null;
     }
 
-    const blockerTop = Math.min(...blockers.map((node) => getNodeRect(node).nTop));
+    const blockerTop =
+        blockers.length > 0 ? Math.min(...blockers.map((node) => getNodeRect(node).nTop)) : sourceRect.nTop;
     const exitX = sourceRect.nRight + GAP;
     const entryX = targetRect.nLeft - GAP;
     const routeY = Math.min(sourceRect.nTop, blockerTop) - GAP;
@@ -559,7 +544,7 @@ export function computeSegmentAvoidanceWaypoints(
             if (a.x !== b.x) continue;
             if (a.y === b.y) continue;
 
-            const dropStartsTooCloseToSource = a.x < sourceRect.nRight + SOURCE_EXIT_CLEARANCE;
+            const dropStartsTooCloseToSource = a.x >= sourcePt.x && a.x < sourceRect.nRight + SOURCE_EXIT_CLEARANCE;
 
             const goesBelowOutputLevel = Math.max(a.y, b.y) > sourcePt.y;
 
@@ -568,6 +553,26 @@ export function computeSegmentAvoidanceWaypoints(
             }
 
             return true;
+        }
+
+        return true;
+    };
+
+    const isExitEntryDirectionSafe = (points: IPoint[]): boolean => {
+        if (points.length < 2) return true;
+
+        const first = points[0];
+        const second = points[1];
+        if (first.y === second.y) {
+            if (sourcePort?.position === 'right' && second.x < first.x) return false;
+            if (sourcePort?.position === 'left' && second.x > first.x) return false;
+        }
+
+        const last = points[points.length - 1];
+        const secondLast = points[points.length - 2];
+        if (last.y === secondLast.y) {
+            if (targetPort?.position === 'right' && secondLast.x < last.x) return false;
+            if (targetPort?.position === 'left' && secondLast.x > last.x) return false;
         }
 
         return true;
@@ -662,12 +667,7 @@ export function computeSegmentAvoidanceWaypoints(
 
     const startScore = countPathIntersections(scoreBasePath, allNodes, excludeIds);
 
-    const startHasNearBlockers = scoreBasePath.some((_, idx, arr) => {
-        if (idx === arr.length - 1) return false;
-        return findSegmentNearBlockers(arr[idx], arr[idx + 1], allNodes, excludeIds, NODE_CLEARANCE).length > 0;
-    });
-
-    if (startScore === 0 && !startHasNearBlockers) {
+    if (startScore === 0) {
         if (existingWaypoints && existingWaypoints.length > 0) {
             const defaultPath = simplifyRoute([
                 sourcePt,
@@ -682,7 +682,7 @@ export function computeSegmentAvoidanceWaypoints(
             }
             return null;
         }
-        return null;
+        return [];
     }
 
     let path: IPoint[];
@@ -738,10 +738,14 @@ export function computeSegmentAvoidanceWaypoints(
                     ]);
                     const rebuiltScore = countPathIntersections(rebuilt, allNodes, excludeIds);
 
-                    const minX = Math.min(sourcePt.x, targetPt.x) - corridorPad;
-                    const maxX = Math.max(sourcePt.x, targetPt.x) + corridorPad;
-
-                    if (rebuiltScore === 0 && newMidX >= minX && newMidX <= maxX) {
+                    if (
+                        rebuiltScore === 0 &&
+                        !pathSelfIntersects(rebuilt) &&
+                        isSourceExitSafe(rebuilt) &&
+                        isSourceTableTopSafe(rebuilt) &&
+                        isTableTargetTopSafe(rebuilt) &&
+                        isExitEntryDirectionSafe(rebuilt)
+                    ) {
                         path = rebuilt;
                         changed = true;
                         hadDetour = true;
@@ -762,20 +766,23 @@ export function computeSegmentAvoidanceWaypoints(
                     if (x2Adj > br.nLeft && x2Adj < br.nRight) x2Adj = br.nLeft - corridorPad;
 
                     if (x1Adj !== x2Adj) {
+                        const routeAboveY = Math.min(br.nTop, sourceRect.nTop, targetRect.nTop) - GAP;
+                        const routeBelowY = Math.max(br.nBottom, sourceRect.nBottom, targetRect.nBottom) + GAP;
+
                         const sixPtCandidates = [
                             simplifyRoute([
                                 sourcePt,
                                 { x: x1Adj, y: sourcePt.y },
-                                { x: x1Adj, y: br.nTop - GAP },
-                                { x: x2Adj, y: br.nTop - GAP },
+                                { x: x1Adj, y: routeAboveY },
+                                { x: x2Adj, y: routeAboveY },
                                 { x: x2Adj, y: targetPt.y },
                                 targetPt,
                             ]),
                             simplifyRoute([
                                 sourcePt,
                                 { x: x1Adj, y: sourcePt.y },
-                                { x: x1Adj, y: br.nBottom + GAP },
-                                { x: x2Adj, y: br.nBottom + GAP },
+                                { x: x1Adj, y: routeBelowY },
+                                { x: x2Adj, y: routeBelowY },
                                 { x: x2Adj, y: targetPt.y },
                                 targetPt,
                             ]),
@@ -784,7 +791,11 @@ export function computeSegmentAvoidanceWaypoints(
                         for (const candidate6 of sixPtCandidates) {
                             const rebuiltScore = countPathIntersections(candidate6, allNodes, excludeIds);
 
-                            if (rebuiltScore === 0) {
+                            if (
+                                rebuiltScore === 0 &&
+                                !pathSelfIntersects(candidate6) &&
+                                isExitEntryDirectionSafe(candidate6)
+                            ) {
                                 path = candidate6;
                                 changed = true;
                                 hadDetour = true;
@@ -804,7 +815,7 @@ export function computeSegmentAvoidanceWaypoints(
     }
 
     if (!hadDetour) {
-        return null;
+        return startScore === 0 ? [] : null;
     }
 
     const interiorWaypoints = path.slice(1, -1);
@@ -832,7 +843,14 @@ export function computeSegmentAvoidanceWaypoints(
     const second = interiorWaypoints[0];
     const penultimate = interiorWaypoints[interiorWaypoints.length - 1];
 
-    if (finalScore === 0 && tableTargetTopSafe && sourceExitSafe && sourceTableTopSafe) {
+    if (
+        finalScore === 0 &&
+        tableTargetTopSafe &&
+        sourceExitSafe &&
+        sourceTableTopSafe &&
+        !pathSelfIntersects(fullPath) &&
+        isExitEntryDirectionSafe(fullPath)
+    ) {
         if (interiorWaypoints.length > 0) {
             if (penultimate.y === targetPt.y) {
                 const targetIsLeftPort = targetPort?.position !== 'right';
