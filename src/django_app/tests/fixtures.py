@@ -9,6 +9,7 @@ from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
 )
 from tables.models.python_models import PythonCodeToolConfig
+from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgent
 from tables.models.llm_models import (
     RealtimeConfig,
     RealtimeModel,
@@ -16,7 +17,6 @@ from tables.models.llm_models import (
     RealtimeTranscriptionModel,
 )
 from tables.models.crew_models import (
-    AgentConfiguredTools,
     DefaultAgentConfig,
 )
 from tables.services.redis_service import RedisService
@@ -29,9 +29,6 @@ from tables.models import (
     LLMModel,
     Provider,
     Agent,
-    Tool,
-    ToolConfig,
-    ToolConfigField,
     Session,
     Graph,
     StartNode,
@@ -114,28 +111,9 @@ def new_llm_config(gpt_4o_llm, default_org):
 
 
 @pytest.fixture
-def wikipedia_tool() -> Tool:
-    wikipedia = Tool(
-        name="Wikipedia",
-        name_alias="wikipedia",
-        description="Tool to search in wikipedia",
-    )
-    wikipedia.save()
-    return wikipedia
-
-
-@pytest.fixture
-def wikipedia_tool_config(wikipedia_tool) -> ToolConfig:
-    return ToolConfig.objects.create(
-        name="wikipedia config", tool=wikipedia_tool, configuration={}
-    )
-
-
-@pytest.fixture
 def wikipedia_agent(
     gpt_4o_llm: LLMModel,
     llm_config: LLMConfig,
-    wikipedia_tool_config: ToolConfig,
     default_org: Organization,
 ) -> Agent:
     agent = Agent(
@@ -150,10 +128,6 @@ def wikipedia_agent(
         org=default_org,
     )
     agent.save()
-
-    AgentConfiguredTools.objects.create(
-        agent_id=agent.id, toolconfig_id=wikipedia_tool_config.id
-    )
 
     return agent
 
@@ -245,109 +219,6 @@ def session_factory(db):
 
 
 @pytest.fixture
-def test_tool():
-    return Tool.objects.create(
-        name="Test Tool",
-        name_alias="test_tool",
-        description="test tool description",
-    )
-
-
-@pytest.fixture
-def test_tool_with_fields(test_tool):
-    field1 = ToolConfigField(
-        tool=test_tool,
-        name="llm_config",
-        description="tool llm",
-        data_type=ToolConfigField.FieldType.LLM_CONFIG,
-        required=True,
-    )
-
-    field2 = ToolConfigField(
-        tool=test_tool,
-        name="embedding_config",
-        description="tool embedder",
-        data_type=ToolConfigField.FieldType.EMBEDDING_CONFIG,
-        required=False,
-    )
-
-    field3 = ToolConfigField(
-        tool=test_tool,
-        name="url",
-        description="custom url field",
-        data_type=ToolConfigField.FieldType.STRING,
-        required=True,
-    )
-
-    field1.save()
-    field2.save()
-    field3.save()
-
-    return test_tool
-
-
-@pytest.fixture
-def test_tool_github_search():
-    return Tool.objects.create(
-        id=13,
-        name="Test GitHub Search Tool",
-        name_alias="test_github_search",
-        description="test Tool for searching GitHub repositories",
-    )
-
-
-@pytest.fixture
-def test_tool_github_search_with_fields(test_tool_github_search):
-    llm_config = ToolConfigField(
-        tool=test_tool_github_search,
-        name="llm_config",
-        description="TEST Field for LLM Configuration",
-        data_type=ToolConfigField.FieldType.LLM_CONFIG,
-        required=True,
-    )
-
-    embedding_config = ToolConfigField(
-        tool=test_tool_github_search,
-        name="embedding_config",
-        description="TEST Field for Embedding Configuration",
-        data_type=ToolConfigField.FieldType.EMBEDDING_CONFIG,
-        required=True,
-    )
-
-    github_repo = ToolConfigField(
-        tool=test_tool_github_search,
-        name="github_repo",
-        description="TEST The URL of the GitHub repository",
-        data_type=ToolConfigField.FieldType.STRING,
-        required=True,
-    )
-
-    gh_token = ToolConfigField(
-        tool=test_tool_github_search,
-        name="gh_token",
-        description="TEST Your GitHub Personal Access Token",
-        data_type=ToolConfigField.FieldType.STRING,
-        required=True,
-    )
-
-    content_types = ToolConfigField(
-        tool=test_tool_github_search,
-        name="content_types",
-        description="TEST Specifies the types of content to include in your search.",
-        data_type=ToolConfigField.FieldType.ANY,
-        required=True,
-    )
-
-    llm_config.save()
-    embedding_config.save()
-    github_repo.save()
-    gh_token.save()
-    content_types.save()
-
-    return test_tool_github_search
-
-
-@pytest.fixture
 def openai_realtime_model(openai_provider):
     realtime_model = RealtimeModel.objects.create(
         name="Test Realtime Model", provider=openai_provider
@@ -393,6 +264,40 @@ def realtime_transcription_config(realtime_transcription_model, default_org):
         ),
         org=default_org,
     )
+
+
+@pytest.fixture
+def openai_realtime_provider_config(default_org):
+    api_key_secret = Secret(org=default_org, name="test-openai-realtime-api-key")
+    secret_encryption.encrypt(text="test").write_to(api_key_secret)
+    api_key_secret.save()
+
+    transcription_api_key_secret = Secret(
+        org=default_org, name="test-openai-realtime-transcription-api-key"
+    )
+    secret_encryption.encrypt(text="test").write_to(transcription_api_key_secret)
+    transcription_api_key_secret.save()
+
+    return OpenAIRealtimeConfig.objects.create(
+        custom_name="test_openai_realtime_config",
+        api_key_secret=api_key_secret,
+        model_name="gpt-realtime-1.5",
+        transcription_model_name="whisper-1",
+        transcription_api_key_secret=transcription_api_key_secret,
+        org=default_org,
+    )
+
+
+@pytest.fixture
+def wikipedia_agent_with_configured_realtime(
+    wikipedia_agent, openai_realtime_provider_config
+):
+    RealtimeAgent.objects.create(
+        agent=wikipedia_agent,
+        openai_config=openai_realtime_provider_config,
+    )
+
+    return wikipedia_agent
 
 
 @pytest.fixture
@@ -550,7 +455,6 @@ def python_code_tool(python_code) -> PythonCodeTool:
         description="Test PythonCodeTool",
         variables=[],
         python_code=python_code,
-        favorite=False,
         built_in=False,
     )
 

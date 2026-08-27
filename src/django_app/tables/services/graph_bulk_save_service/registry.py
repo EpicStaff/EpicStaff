@@ -4,7 +4,6 @@ from tables.models.graph_models import (
     AgentNode,
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
-    CodeAgentNode,
     ConditionalEdge,
     DecisionTableNode,
     Edge,
@@ -23,7 +22,6 @@ from tables.serializers.graph_bulk_save_serializers import (
     AgentNodeBulkSerializer,
     AudioTranscriptionNodeBulkSerializer,
     ClassificationDecisionTableNodeBulkSerializer,
-    CodeAgentNodeBulkSerializer,
     DecisionTableNodeBulkSerializer,
     EndNodeBulkSerializer,
     FileExtractorNodeBulkSerializer,
@@ -84,12 +82,6 @@ To add a new node type:
 """
 
 NODE_TYPE_REGISTRY: list[NodeTypeConfig] = [
-    NodeTypeConfig(
-        "code_agent_node_list",
-        "code_agent_node_ids",
-        CodeAgentNode,
-        CodeAgentNodeBulkSerializer,
-    ),
     NodeTypeConfig(
         "python_node_list",
         "python_node_ids",

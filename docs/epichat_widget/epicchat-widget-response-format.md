@@ -266,31 +266,45 @@ During execution, the widget displays streaming messages in a **"Thinking..." ex
 
 | `message_type` | Source | Displayed in Thinking |
 |---|---|---|
-| `code_agent_stream` | Code Agent node | ✅ |
 | `python_stream` | Python node | ✅ |
+| `agent_node_stream` | AgentNode | ✅ |
+| `task_node_stream` | TaskNode | ✅ |
 
-> The `crewai_output` type is gone — the Crew node was removed and no backend
-> service emits it any more. `AgentNode` / `TaskNode` emit `agent_node_stream` /
-> `task_node_stream` instead (see
-> [../agent_and_task_node/Session_Messages.md](../agent_and_task_node/Session_Messages.md));
-> extending the widget's recognized list to those two types is a separate
-> frontend change.
+> `crewai_output` and `code_agent_stream` are both gone — the Crew node and the
+> Code Agent node were removed and no backend service emits either any more.
+> `AgentNode` / `TaskNode` emit `agent_node_stream` / `task_node_stream`
+> instead (see
+> [../agent_and_task_node/Session_Messages.md](../agent_and_task_node/Session_Messages.md)).
 
-Stream messages must have:
+`python_stream` messages carry the text inline:
 ```json
 {
-  "message_type": "code_agent_stream",
+  "message_type": "python_stream",
   "text": "Working on your request...",
-  "is_final": false,
-  "sse_visible": true
+  "is_final": false
 }
 ```
 
-Set `sse_visible: false` (via `stream_config` checkboxes) to hide specific messages from the filtered SSE endpoint.
+Node-stream messages use a different envelope — the payload lives in `data`,
+keyed by `event` (`task_start`, `tool_call`, `tool_result`, `task_finish`),
+with no flat `text` field:
+```json
+{
+  "message_type": "agent_node_stream",
+  "event": "task_finish",
+  "step_id": 3,
+  "is_final": false,
+  "data": { "message": "Done." }
+}
+```
 
-### `final_reply` stream_config option
+### No per-message filtering
 
-When `stream_config.final_reply` is `false`, the finish message is tagged `sse_visible=false` and suppressed on the filtered endpoint — preventing duplicate display when the Thinking expander already showed the response.
+There is no way to hide individual stream messages any more. The `sse_visible`
+field, the per-node `stream_config` checkboxes (including `final_reply`), and
+the filtered SSE endpoint (`run-session/subscribe/<id>/filtered/`) were all
+removed. Every node that streams now streams everything to the single
+`run-session/subscribe/<id>/` endpoint.
 
 ---
 

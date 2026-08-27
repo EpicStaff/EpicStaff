@@ -2,7 +2,7 @@
 
 The two graph node types for agent-powered execution. **TaskNode** runs a
 single task. **AgentNode** runs one agent over an ordered list of sub-tasks.
-Both replace the removed `CrewNode` and the deprecated `CodeAgentNode`.
+Both replace the removed `CrewNode` and `CodeAgentNode`.
 
 ## TaskNode
 

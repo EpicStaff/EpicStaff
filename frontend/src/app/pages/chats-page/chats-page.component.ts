@@ -53,13 +53,17 @@ export class ChatsPageComponent implements OnInit, OnDestroy {
             )
             .subscribe({
                 next: ({ definitions, realtimeDefs }) => {
-                    // Only definitions that can actually connect: a realtime row must
-                    // exist AND carry a realtime_config.
+                    // Only definitions that can actually connect.
                     const realtimeByDef = new Map(realtimeDefs.map((r) => [r.agent_definition, r]));
                     const agents: ChatAgent[] = definitions
                         .map((agent) => {
                             const realtime = realtimeByDef.get(agent.id);
-                            return realtime && realtime.realtime_config != null ? { agent, realtime } : null;
+                            return realtime &&
+                                (realtime.openai_config != null ||
+                                    realtime.elevenlabs_config != null ||
+                                    realtime.gemini_config != null)
+                                ? { agent, realtime }
+                                : null;
                         })
                         .filter((x): x is ChatAgent => x !== null);
 

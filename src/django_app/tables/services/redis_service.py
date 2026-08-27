@@ -132,6 +132,16 @@ class RedisService(metaclass=SingletonMeta):
         resolved = secret_resolver.resolve_payload(
             payload=rt_agent_chat_data, org_id=org_id
         )
+        # Temporary diagnostic checkpoint (visibility only, no behavior
+        # change) for the live org_id-null investigation: confirms whether
+        # `org_id` is still present on the object at the exact instant it's
+        # about to be published, immediately before it crosses into JSON /
+        # Redis. `org_id` alone is safe to log (not a secret).
+        logger.info(
+            "publish_realtime_agent_chat: connection_key={} resolved.org_id={}",
+            resolved.connection_key,
+            resolved.org_id,
+        )
         self.redis_client.publish("realtime_agents:schema", resolved.model_dump_json())
         logger.info("Sent realtime agent chat to: realtime_agents:schema.")
         # Deliberately dumps the UNRESOLVED original: logging `resolved` would

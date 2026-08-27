@@ -9,11 +9,11 @@ from rest_framework.test import APIClient
 from agents.models import AgentDefinition
 from tables.models.python_models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.models.realtime_models import (
+    ConversationRecording,
     RealtimeAgentChat,
     RealtimeAgentDefinition,
     RealtimeSessionItem,
 )
-from tables.models.webhook_models import NgrokWebhookConfig
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import BuiltInRole
 
@@ -132,6 +132,114 @@ def test_realtime_agent_chat_own_org_visible(client_member, org_a):
     assert client_member.get(f"/api/realtime-agent-chats/{chat.id}/").status_code == 200
 
 
+# ---- ConversationRecording: scoped via rt_agent_chat -> rt_agent_definition -> agent_definition -> org ----
+
+
+def _recording(org):
+    chat = _chat(org)
+    return ConversationRecording.objects.create(
+        rt_agent_chat=chat,
+        recording_type=ConversationRecording.RecordingType.INBOUND,
+    )
+
+
+@pytest.mark.django_db
+def test_conversation_recording_cross_org_404(client_member, org_b):
+    recording = _recording(org_b)
+    assert (
+        client_member.get(f"/api/conversation-recordings/{recording.id}/").status_code
+        == 404
+    )
+
+
+@pytest.mark.django_db
+def test_conversation_recording_own_org_visible(client_member, org_a):
+    recording = _recording(org_a)
+    assert (
+        client_member.get(f"/api/conversation-recordings/{recording.id}/").status_code
+        == 200
+    )
+
+
+@pytest.mark.django_db
+def test_conversation_recording_cross_org_list_excludes_other_org(
+    client_member, org_a, org_b
+):
+    own = _recording(org_a)
+    _recording(org_b)
+    resp = client_member.get("/api/conversation-recordings/")
+    assert resp.status_code == 200
+    returned_ids = {row["id"] for row in resp.data["results"]}
+    assert returned_ids == {own.id}
+
+
+def _fake_audio_file():
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    return SimpleUploadedFile("clip.wav", b"fake-audio-bytes", content_type="audio/wav")
+
+
+@pytest.mark.django_db
+def test_conversation_recording_create_rejects_direct_ref_to_other_orgs_chat(
+    client_member, org_b
+):
+    """A caller must not be able to attach a recording to another org's
+    RealtimeAgentChat by supplying its id directly as `rt_agent_chat`."""
+    other_chat = _chat(org_b)
+
+    resp = client_member.post(
+        "/api/conversation-recordings/",
+        {
+            "rt_agent_chat": other_chat.id,
+            "recording_type": ConversationRecording.RecordingType.INBOUND,
+            "file": _fake_audio_file(),
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 404
+    assert not ConversationRecording.objects.filter(rt_agent_chat=other_chat).exists()
+
+
+@pytest.mark.django_db
+def test_conversation_recording_create_rejects_connection_key_of_other_orgs_chat(
+    client_member, org_b
+):
+    """The connection_key resolution path (used by the realtime service)
+    must be subject to the same parent-org check as a direct FK reference."""
+    other_chat = _chat(org_b)
+
+    resp = client_member.post(
+        "/api/conversation-recordings/",
+        {
+            "connection_key": other_chat.connection_key,
+            "recording_type": ConversationRecording.RecordingType.INBOUND,
+            "file": _fake_audio_file(),
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 404
+    assert not ConversationRecording.objects.filter(rt_agent_chat=other_chat).exists()
+
+
+@pytest.mark.django_db
+def test_conversation_recording_create_allowed_for_own_orgs_chat(
+    client_member, org_a
+):
+    own_chat = _chat(org_a)
+
+    resp = client_member.post(
+        "/api/conversation-recordings/",
+        {
+            "rt_agent_chat": own_chat.id,
+            "recording_type": ConversationRecording.RecordingType.INBOUND,
+            "file": _fake_audio_file(),
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.data
+    assert ConversationRecording.objects.filter(rt_agent_chat=own_chat).exists()
+
+
 def _viewer(django_user_model, org, email):
     role = Role.objects.get(name=BuiltInRole.VIEWER, is_built_in=True, org__isnull=True)
     user = django_user_model.objects.create_user(email=email, password="StrongPass123!")
@@ -176,47 +284,17 @@ def test_realtime_session_items_allowed_for_superadmin(client_super):
     assert client_super.get("/api/realtime-session-items/").status_code == 200
 
 
-# ---- ngrok-config: superadmin-only read (holds the ngrok auth token) ----
-
-
-@pytest.mark.django_db
-def test_ngrok_config_read_denied_for_member(client_member):
-    NgrokWebhookConfig.objects.create(name="n", auth_token="secret-token")
-    assert client_member.get("/api/ngrok-config/").status_code == 403
-
-
-@pytest.mark.django_db
-def test_ngrok_config_read_allowed_for_superadmin(client_super):
-    NgrokWebhookConfig.objects.create(name="n", auth_token="secret-token")
-    assert client_super.get("/api/ngrok-config/").status_code == 200
-
-
-# ---- webhook-triggers: ngrok_webhook_config is superadmin-assigned only ----
-
-
-@pytest.mark.django_db
-def test_webhook_trigger_ngrok_not_settable_by_member(client_member):
-    cfg = NgrokWebhookConfig.objects.create(name="n", auth_token="t")
-    resp = client_member.post(
-        "/api/webhook-triggers/",
-        {"path": "memberhook", "ngrok_webhook_config": cfg.id},
-        format="json",
-    )
-    assert resp.status_code == 201, resp.data
-    # the ngrok reference is dropped for non-superadmins (platform infra)
-    assert resp.data["ngrok_webhook_config"] is None
-
-
-@pytest.mark.django_db
-def test_webhook_trigger_ngrok_settable_by_superadmin(client_super):
-    cfg = NgrokWebhookConfig.objects.create(name="n", auth_token="t")
-    resp = client_super.post(
-        "/api/webhook-triggers/",
-        {"path": "superhook", "ngrok_webhook_config": cfg.id},
-        format="json",
-    )
-    assert resp.status_code == 201, resp.data
-    assert resp.data["ngrok_webhook_config"] == cfg.id
+# NOTE (EST-3491): the four tests that used to live here
+# (`test_ngrok_config_read_denied_for_member`, `test_ngrok_config_read_allowed_for_superadmin`,
+# `test_webhook_trigger_ngrok_not_settable_by_member`, `test_webhook_trigger_ngrok_settable_by_superadmin`)
+# exercised a schema that no longer exists: `/api/ngrok-config/` was never a
+# live route (NgrokWebhookConfigViewSet has now been formally deleted), and
+# `WebhookTrigger.ngrok_webhook_config` was removed back in migration 0187
+# (`webhook_trigger_remove_old_fks`) in favor of the related
+# `NgrokWebhookConfig.trigger` OneToOne. Current coverage for ngrok-on-trigger
+# org isolation lives in webhook_trigger_api_test.py
+# (`TestWebhookTriggerOrgIsolation.test_non_superadmin_can_set_ngrok_config_on_own_org_trigger`
+# and `test_auth_token_absent_from_get_response`).
 
 
 # ---- run-python-code: org-visibility scope + TOOLS.UPDATE gate ----

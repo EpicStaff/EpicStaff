@@ -164,49 +164,6 @@ def test_restore_version_with_backup_false_creates_no_backup(service, graph):
 
 
 # ---------------------------------------------------------------------------
-# Group E: warnings ID remap — DB integration test
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_restore_version_warnings_node_ids_are_remapped_to_new_ids(
-    service, graph, llm_config
-):
-    from tables.models import CodeAgentNode
-
-    # Create a CodeAgentNode that references an LLMConfig (NullFK handler).
-    # When llm_config is deleted, restore will emit a fk_nulled warning whose
-    # node_id must reference the *new* DB id assigned during restore, not the
-    # old snapshot id.
-    node = CodeAgentNode.objects.create(
-        graph=graph,
-        node_name="ca",
-        llm_config=llm_config,
-    )
-    old_snapshot_id = node.id
-
-    version = service.save_version(graph, name="snap-with-code-agent")
-
-    # Delete the LLMConfig — node is kept but FK will be nulled on restore
-    llm_config.delete()
-
-    result = service.restore_version(
-        version, backup=False, expected_save_version=graph.save_version
-    )
-
-    fk_nulled_warnings = [w for w in result["warnings"] if w["type"] == "fk_nulled"]
-    assert len(fk_nulled_warnings) > 0
-
-    # After restore the CodeAgentNode is recreated with a brand-new DB id.
-    # change_old_warnings_ids must have updated node_id to point to the new row.
-    new_node = graph.code_agent_node_list.first()
-    assert new_node is not None
-    assert fk_nulled_warnings[0]["node_id"] == new_node.id
-    # Sanity-check: the new id differs from the old snapshot id (it was remapped)
-    assert fk_nulled_warnings[0]["node_id"] != old_snapshot_id
-
-
-# ---------------------------------------------------------------------------
 # Group F: create_graph_from_version — DB tests
 # ---------------------------------------------------------------------------
 
@@ -290,34 +247,6 @@ def test_create_graph_from_version_with_missing_agent_definition_nulls_fk_and_wa
 
 
 @pytest.mark.django_db
-def test_create_graph_from_version_warnings_node_ids_remap_to_new_ids(
-    service, graph, llm_config, default_org
-):
-    from tables.models import CodeAgentNode
-
-    node = CodeAgentNode.objects.create(
-        graph=graph,
-        node_name="ca",
-        llm_config=llm_config,
-    )
-    old_snapshot_id = node.id
-
-    version = service.save_version(graph, name="code-agent-snap")
-    llm_config.delete()
-
-    result = service.create_graph_from_version(version)
-
-    fk_nulled_warnings = [w for w in result["warnings"] if w["type"] == "fk_nulled"]
-    assert len(fk_nulled_warnings) > 0
-
-    new_graph = Graph.objects.get(id=result["graph_id"])
-    new_node = new_graph.code_agent_node_list.first()
-    assert new_node is not None
-    assert fk_nulled_warnings[0]["node_id"] == new_node.id
-    assert fk_nulled_warnings[0]["node_id"] != old_snapshot_id
-
-
-@pytest.mark.django_db
 def test_create_graph_from_version_new_graph_has_no_versions(
     service, graph, default_org
 ):
@@ -363,3 +292,27 @@ def test_create_graph_from_version_copies_labels_from_source(
     new_graph = Graph.objects.get(id=result["graph_id"])
     new_graph_label_ids = set(new_graph.labels.values_list("id", flat=True))
     assert label.id in new_graph_label_ids
+
+
+@pytest.mark.django_db
+def test_create_graph_from_version_does_not_copy_tool_scope_labels(
+    service, graph, default_org
+):
+    from tables.models import Label
+
+    flow_label = Label.objects.create(
+        name="flow-only", scope=Label.Scope.FLOW, org=default_org
+    )
+    tool_label = Label.objects.create(
+        name="tool-only", scope=Label.Scope.TOOL, org=default_org
+    )
+    graph.labels.set([flow_label, tool_label])
+
+    version = service.save_version(graph, name="mixed-scope-snap")
+
+    result = service.create_graph_from_version(version)
+
+    new_graph = Graph.objects.get(id=result["graph_id"])
+    new_graph_label_ids = set(new_graph.labels.values_list("id", flat=True))
+    assert flow_label.id in new_graph_label_ids
+    assert tool_label.id not in new_graph_label_ids

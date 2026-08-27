@@ -48,7 +48,7 @@ This rule is applied uniformly wherever such references appear, including (non-e
 - **Crew** — `manager_llm_config`, `memory_llm_config`, `planning_llm_config`, `embedding_config`, `agents`.
 - **Task** — context tasks must belong to the task's own crew (⇒ same org).
 - **Graph** — `label_ids`.
-- **Every graph-child node's `graph` FK** (crew/python/file-extractor/audio/code-agent/subgraph/edge/
+- **Every graph-child node's `graph` FK** (crew/python/file-extractor/audio/subgraph/edge/
   conditional-edge/start/end/decision-table/webhook-trigger/telegram-trigger/schedule-trigger/note) is
   scoped, so a node cannot be created under, or repointed (on update) to, another org's graph.
 - **Node-id references must live in the same graph** (⇒ same org): `Edge.start_node_id`/`end_node_id`,
@@ -60,7 +60,7 @@ This rule is applied uniformly wherever such references appear, including (non-e
   `LLMConfig.model`, `EmbeddingConfig.model`, `RealtimeConfig.realtime_model`,
   `RealtimeTranscriptionConfig.realtime_transcription_model`.
 - **Tool configs** (hybrid target): `PythonCodeToolConfig.tool`; `PythonCodeToolConfigField.tool`.
-- **Graph nodes**: `CodeAgentNode.llm_config`, `SubGraphNode.subgraph`.
+- **Graph nodes**: `SubGraphNode.subgraph`.
 - **Label** — `parent`.
 - **Bulk save** (`POST /api/graphs/{pk}/save/`) enforces the same on every referenced entity — see
   `bulk_save/BULK_SAVE_API.md`.

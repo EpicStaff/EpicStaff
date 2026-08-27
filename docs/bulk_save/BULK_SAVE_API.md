@@ -155,7 +155,6 @@ Every entity the payload **references by id** is validated against the active or
 | Reference | Must resolve to |
 |---|---|
 | `subgraph_node_list[].subgraph` | a Graph in the active org |
-| `code_agent_node_list[].llm_config` | an LLMConfig in the active org |
 
 A referenced id that belongs to **another** organization is rejected **exactly like a
 non-existent id**: the request fails validation with HTTP 400 and nothing is written.

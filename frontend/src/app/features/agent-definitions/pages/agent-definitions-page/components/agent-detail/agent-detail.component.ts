@@ -28,6 +28,7 @@ import {
     ExtractTextFromStorageDialogResult,
 } from '../../../../components/extract-text-from-storage-dialog/extract-text-from-storage-dialog.component';
 import { AgentDefinition, AgentSurfacePlace } from '../../../../models/agent-definition.model';
+import { RealtimeAgentDefinition } from '../../../../models/realtime-agent-definition.model';
 import {
     CreateSurfaceRequest,
     PartialUpdateSurfaceRequest,
@@ -66,6 +67,13 @@ export interface AgentSavePayload {
 }
 
 export type AgentSectionId = 'basics' | 'surfaces';
+
+interface RealtimeProviderConfig {
+    openai_config: number | null;
+    elevenlabs_config: number | null;
+    gemini_config: number | null;
+    voice: string;
+}
 
 interface AgentFormValue {
     name: string;
@@ -302,13 +310,23 @@ export class AgentDetailComponent implements OnInit {
     openAdditionalSettings(): void {
         const a = this.agent();
         if (!a || this.saving()) return;
-        this.openSettingsDialog(a);
+
+        this.realtimeApi
+            .getByAgentId(a.id)
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (realtime) => this.openSettingsDialog(a, realtime),
+                error: () => this.openSettingsDialog(a, null),
+            });
     }
 
-    private openSettingsDialog(a: AgentDefinition): void {
+    private openSettingsDialog(a: AgentDefinition, realtime: RealtimeAgentDefinition | null): void {
         const data: AgentAdditionalSettingsData = {
             fcm_llm_config: a.fcm_llm_config,
-            realtime_config: a.agent_definition_realtime_config_id,
+            openai_config: realtime?.openai_config ?? null,
+            elevenlabs_config: realtime?.elevenlabs_config ?? null,
+            gemini_config: realtime?.gemini_config ?? null,
+            voice: realtime?.voice ?? null,
             max_iter: a.max_iter,
             max_rpm: a.max_rpm,
             max_execution_time: a.max_execution_time,
@@ -324,7 +342,17 @@ export class AgentDetailComponent implements OnInit {
             .closed.pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (!result) return;
-                this.persistRealtimeConfig(a, result.realtime_config, () => this.emitAgentSave(a, result));
+                this.persistRealtimeConfig(
+                    a,
+                    realtime,
+                    {
+                        openai_config: result.openai_config,
+                        elevenlabs_config: result.elevenlabs_config,
+                        gemini_config: result.gemini_config,
+                        voice: result.voice,
+                    },
+                    () => this.emitAgentSave(a, result)
+                );
             });
     }
 
@@ -352,26 +380,34 @@ export class AgentDetailComponent implements OnInit {
         });
     }
 
-    private persistRealtimeConfig(a: AgentDefinition, realtimeConfig: number | null, onDone: () => void): void {
-        if (realtimeConfig === a.agent_definition_realtime_config_id) {
+    private persistRealtimeConfig(
+        a: AgentDefinition,
+        existing: RealtimeAgentDefinition | null,
+        next: RealtimeProviderConfig,
+        onDone: () => void
+    ): void {
+        const unchanged =
+            existing != null &&
+            (existing.openai_config ?? null) === next.openai_config &&
+            (existing.elevenlabs_config ?? null) === next.elevenlabs_config &&
+            (existing.gemini_config ?? null) === next.gemini_config &&
+            (existing.voice ?? '') === next.voice;
+        if (unchanged) {
             onDone();
             return;
         }
 
-        if (realtimeConfig == null || a.has_realtime_definition) {
-            this.patchRealtimeConfig(a.id, realtimeConfig, onDone);
+        const noneSelected = next.openai_config == null && next.elevenlabs_config == null && next.gemini_config == null;
+        if (existing != null || noneSelected) {
+            this.patchRealtimeConfig(a.id, next, onDone);
         } else {
-            this.createRealtimeConfig(a.id, realtimeConfig, onDone);
+            this.createRealtimeConfig(a.id, next, onDone);
         }
     }
 
-    private createRealtimeConfig(agentId: number, realtimeConfig: number | null, onDone: () => void): void {
-        if (realtimeConfig == null) {
-            onDone();
-            return;
-        }
+    private createRealtimeConfig(agentId: number, next: RealtimeProviderConfig, onDone: () => void): void {
         this.realtimeApi
-            .create({ agent_definition: agentId, realtime_config: realtimeConfig })
+            .create({ agent_definition: agentId, ...next })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => onDone(),
@@ -382,9 +418,9 @@ export class AgentDetailComponent implements OnInit {
             });
     }
 
-    private patchRealtimeConfig(agentId: number, realtimeConfig: number | null, onDone: () => void): void {
+    private patchRealtimeConfig(agentId: number, next: RealtimeProviderConfig, onDone: () => void): void {
         this.realtimeApi
-            .partialUpdate(agentId, { realtime_config: realtimeConfig })
+            .partialUpdate(agentId, next)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
                 next: () => onDone(),

@@ -26,16 +26,28 @@ def seed_builtin_roles_and_permissions() -> None:
     Migration module names start with digits and cannot be imported via
     `from ... import`; use importlib. Delegating to the migrations' own
     seed functions keeps the role/permission definitions in one place.
-    Replay seeds in migration order: 0171 seeds roles + initial permission
-    bitmasks, 0183 overrides them with the authoritative bitmasks (e.g. Org
-    Admin export on agents/projects), 0205 adds the surfaces grants.
-    Re-seeding only earlier migrations would leave tests on stale
-    pre-existing permissions.
+    Replay ALL seeds in migration order: 0171 seeds roles + initial
+    permission bitmasks, 0183 overrides them with the authoritative
+    bitmasks (e.g. Org Admin export on agents/projects), then 0210 adds
+    the `voice` resource_type bitmasks and the EXPORT bit on the `tools`
+    resource (EST-3207), and 0205 adds the surfaces grants. Re-seeding only
+    a subset would leave tests on stale permissions -- e.g. skipping the
+    voice seed would leave `voice` missing entirely, so every non-superadmin
+    request to a VOICE-gated endpoint would 403 in tests even though the
+    migration seeds it correctly in production.
     """
     roles_module = import_module("tables.migrations.0171_seed_builtin_roles")
     roles_module.seed_builtin_roles(django_apps, None)
     perms_module = import_module("tables.migrations.0183_seed_builtin_role_permissions")
     perms_module.seed_role_permissions(django_apps, None)
+    voice_perms_module = import_module(
+        "tables.migrations.0210_seed_voice_role_permissions"
+    )
+    voice_perms_module.seed_voice_permissions(django_apps, None)
+    tools_export_module = import_module(
+        "tables.migrations.0210_seed_tools_export_permission"
+    )
+    tools_export_module.grant_tools_export(django_apps, None)
     surface_perms_module = import_module(
         "tables.migrations.0205_seed_surface_permissions"
     )

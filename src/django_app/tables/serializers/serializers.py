@@ -9,6 +9,30 @@ from tables.import_export.services.partial_export_service import (
 )
 
 
+class ToolUsageSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    projects_count = serializers.IntegerField()
+    staff_count = serializers.IntegerField()
+    is_built_in = serializers.BooleanField()
+
+
+class ToolUsageProjectSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class ToolUsageStaffSerializer(serializers.Serializer):
+    # Agent has no `name` field — `role` is its display identity
+    # (see tables.models.crew_models.Agent.__str__).
+    id = serializers.IntegerField()
+    role = serializers.CharField()
+
+
+class ToolUsageDetailSerializer(serializers.Serializer):
+    projects = ToolUsageProjectSerializer(many=True)
+    staff = ToolUsageStaffSerializer(many=True)
+
+
 class RunSessionSerializer(serializers.Serializer):
     graph_id = serializers.IntegerField(required=False)
     graph_uuid = serializers.UUIDField(required=False)
@@ -142,9 +166,6 @@ class GraphNodesPartialExportSerializer(serializers.Serializer):
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
     graph_note_list = serializers.ListField(
-        child=serializers.IntegerField(min_value=1), required=False, default=list
-    )
-    code_agent_node_list = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, default=list
     )
     schedule_trigger_node_list = serializers.ListField(

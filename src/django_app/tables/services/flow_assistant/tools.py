@@ -25,7 +25,6 @@ from tables.models.graph_models import (
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
     ClassificationConditionGroup,
-    CodeAgentNode,
     ConditionGroup,
     DecisionTableNode,
     Edge,
@@ -52,7 +51,6 @@ _NODE_TABLES: list[tuple[str, type, bool]] = [
     ("file_extractor", FileExtractorNode, True),
     ("audio_transcription", AudioTranscriptionNode, True),
     ("subgraph", SubGraphNode, True),
-    ("code_agent", CodeAgentNode, True),
     ("start", StartNode, False),
     ("end", EndNode, False),
     ("decision_table", DecisionTableNode, True),
@@ -199,7 +197,6 @@ def get_flow_overview(graph_id: int) -> dict:
         "python_node_list",
         "file_extractor_node_list",
         "audio_transcription_node_list",
-        "code_agent_node_list",
         "start_node_list",
         "end_node",
         "decision_table_node_list",
@@ -218,7 +215,6 @@ def get_flow_overview(graph_id: int) -> dict:
         "file_extractor": graph.file_extractor_node_list.count(),
         "audio_transcription": graph.audio_transcription_node_list.count(),
         "subgraph": graph.subgraph_node_list.count(),
-        "code_agent": graph.code_agent_node_list.count(),
         "start": graph.start_node_list.count(),
         "end": graph.end_node.count(),
         "decision_table": graph.decision_table_node_list.count(),
@@ -303,11 +299,6 @@ def get_node(graph_id: int, node_id: str) -> dict:
         result["post_python_code_summary"] = _resolve_python_code_summary(
             getattr(node, "post_python_code_id", None)
         )
-
-    # Phase C: attach LLM config summary for nodes that have an llm_config FK.
-    if node_type == "code_agent":
-        llm_config_id = getattr(node, "llm_config_id", None)
-        result["llm_config_summary"] = _resolve_llm_config_summary(llm_config_id)
 
     # Phase F (Fix 16): attach python_code summary for nodes that wrap user-authored Python.
     if node_type in ("python", "webhook_trigger"):
@@ -830,7 +821,6 @@ def list_node_types(graph_id: int) -> list[str]:
         "file_extractor_node_list",
         "audio_transcription_node_list",
         "subgraph_node_list",
-        "code_agent_node_list",
         "start_node_list",
         "end_node",
         "decision_table_node_list",
@@ -845,7 +835,6 @@ def list_node_types(graph_id: int) -> list[str]:
         ("file_extractor", graph.file_extractor_node_list),
         ("audio_transcription", graph.audio_transcription_node_list),
         ("subgraph", graph.subgraph_node_list),
-        ("code_agent", graph.code_agent_node_list),
         ("start", graph.start_node_list),
         ("end", graph.end_node),
         ("decision_table", graph.decision_table_node_list),
@@ -882,38 +871,6 @@ def load_skill(name: str) -> dict:
 
 
 # ── private enrichment helpers ───────────────────────────────────────────────
-
-
-def _resolve_llm_config_summary(llm_config_id: int | None) -> dict | None:
-    """Return a provider/model/temperature summary for an LLMConfig FK value.
-
-    Returns None when llm_config_id is None (the FK is nullable on CodeAgentNode).
-    Tolerates a missing LLMConfig row (returns None rather than raising).
-    """
-    if llm_config_id is None:
-        return None
-
-    from tables.models.llm_models import LLMConfig
-
-    try:
-        llm_config = LLMConfig.objects.select_related("model__llm_provider").get(
-            pk=llm_config_id
-        )
-    except LLMConfig.DoesNotExist:
-        return None
-
-    provider_name = None
-    model_name = None
-    if llm_config.model:
-        model_name = llm_config.model.name
-        if llm_config.model.llm_provider:
-            provider_name = llm_config.model.llm_provider.name
-
-    return {
-        "provider": provider_name,
-        "model": model_name,
-        "temperature": llm_config.temperature,
-    }
 
 
 def _resolve_knowledge_metadata(knowledge_collection_id: int | None) -> list[dict]:
@@ -1057,7 +1014,7 @@ TOOL_SPECS: list[ToolSpec] = [
             "Sensitive fields (api_key, secret, token) are redacted. "
             "For decision_table and classification_decision_table nodes, the response "
             "includes `decision_rules` with the full branching logic. "
-            "For llm and code_agent nodes, the response includes `llm_config_summary` "
+            "For llm nodes, the response includes `llm_config_summary` "
             "with provider, model, and temperature. "
             "For python and webhook_trigger nodes, the response includes "
             "`python_code_summary` with the actual code body, entrypoint, and library "

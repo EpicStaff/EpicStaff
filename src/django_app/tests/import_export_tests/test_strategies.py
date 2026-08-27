@@ -9,6 +9,7 @@ from tables.models import (
     PythonCodeTool,
     PythonCode,
     Organization,
+    WebhookTrigger,
 )
 from agents.models import (
     AgentDefaultSurface,
@@ -446,3 +447,37 @@ class TestLLMConfigStrategy:
         found = strategy.find_existing(config_data, mapper)
         assert found is not None
         assert found.id == rich_seeded_db["llm_config"].id
+
+
+# ──────────────────────────────────────────
+# WebhookTrigger Strategy
+# ──────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestWebhookTriggerStrategy:
+    def test_create_entity_stamps_org_on_fresh_db(self, default_org):
+        """Regression test: create_entity used to save WebhookTrigger without
+        an org, which 500s on any DB since org_id is NOT NULL (see migration
+        0206_webhook_trigger_org_not_null)."""
+        strategy = _get_strategy(EntityType.WEBHOOK_TRIGGER)
+        data = {"path": "imported-webhook", "provider_type": None}
+
+        trigger_count_before = WebhookTrigger.objects.count()
+        new_trigger = strategy.create_entity(data, IDMapper(), org_id=default_org.id)
+
+        assert WebhookTrigger.objects.count() == trigger_count_before + 1
+        assert new_trigger.org_id == default_org.id
+        assert new_trigger.path == "imported-webhook"
+
+    def test_get_org_scope_q_matches_org_id_column(self, default_org):
+        other_org = Organization.objects.create(name="Other org")
+        own = WebhookTrigger.objects.create(path="own-org-webhook", org=default_org)
+        WebhookTrigger.objects.create(path="other-org-webhook", org=other_org)
+
+        strategy = _get_strategy(EntityType.WEBHOOK_TRIGGER)
+        scoped = WebhookTrigger.objects.filter(
+            strategy.get_org_scope_q(default_org.id)
+        )
+
+        assert list(scoped) == [own]

@@ -24,6 +24,15 @@ class ElevenLabsServerEventHandler:
 
         self._current_output_index = 0
 
+    def reset(self) -> None:
+        """
+        Clear transient response state so the next reconnect starts fresh.
+        """
+        self._current_response_id = None
+        self._current_item_id = None
+        self._current_user_item_id = None
+        self._current_output_index = 0
+
     async def _send_to_client(self, payload: Dict[str, Any]) -> None:
         if "event_id" not in payload:
             payload["event_id"] = f"evt_{uuid.uuid4().hex[:16]}"
@@ -92,7 +101,8 @@ class ElevenLabsServerEventHandler:
 
     async def handle_event(self, data: Dict[str, Any]) -> None:
         event_type = data.get("type", "")
-        logger.debug(f"EL Event Routing: {event_type}")
+        if event_type not in ("audio", "ping"):
+            logger.debug(f"EL Event Routing: {event_type}")
 
         handler = {
             "conversation_initiation_metadata": self._handle_initiation_metadata,
@@ -106,7 +116,10 @@ class ElevenLabsServerEventHandler:
 
         await handler(data)
         await save_realtime_session_item_to_db(
-            data=data, connection_key=self.client.connection_key
+            data=data,
+            connection_key=self.client.connection_key,
+            org_id=self.client.org_id,
+            user_id=self.client.user_id,
         )
 
     async def _handle_initiation_metadata(self, data: Dict[str, Any]) -> None:
@@ -236,6 +249,29 @@ class ElevenLabsServerEventHandler:
         self._current_item_id = None
         self._current_user_item_id = None
         self._current_output_index = 0
+
+    async def emit_user_text_item(self, text: str) -> None:
+        """Echo a frontend-typed message back as the user's chat bubble.
+
+        Unlike spoken input (transcribed server-side and delivered via
+        `_handle_user_transcript`), ElevenLabs never echoes back text we
+        inject via `user_message` -- there is nothing to transcribe. We
+        already know the exact text, so synthesize the same
+        `conversation.item.created` the frontend expects, immediately,
+        instead of leaving the bubble stuck on a null transcript.
+        """
+        self._current_user_item_id = f"msg_user_{uuid.uuid4().hex[:10]}"
+        await self._send_to_client(
+            {
+                "type": "conversation.item.created",
+                "item": {
+                    "id": self._current_user_item_id,
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": text}],
+                },
+            }
+        )
 
     async def _handle_user_transcript(self, data: Dict[str, Any]) -> None:
         user_transcription_event = data.get("user_transcription_event", {})

@@ -1,22 +1,20 @@
 <section class="llm-library">
     @if (configsLoaded()) {
-        <header class="llm-library__header">
-            <div class="llm-library__header-left">
-                <h3 class="llm-library__title">LLM Library</h3>
-                <p class="llm-library__subtitle">
-                    Configure large language models for text generation and AI assistants.
-                </p>
+        <header class="header">
+            <div class="header-left">
+                <h3 class="title">LLM Library</h3>
+                <p class="subtitle">Configure large language models for text generation and AI assistants.</p>
             </div>
 
-            <div class="llm-library__header-right">
-                <div class="llm-library__search">
+            <div class="header-right">
+                <div class="search">
                     <i
-                        class="ti ti-search llm-library__search-icon"
+                        class="ti ti-search search-icon"
                         aria-hidden="true"
                     ></i>
                     <input
                         type="text"
-                        class="llm-library__search-input"
+                        class="search-input"
                         placeholder="Search configurations..."
                         autocomplete="off"
                         [value]="searchQuery()"
@@ -24,7 +22,7 @@
                     />
                 </div>
 
-                <div class="llm-library__filter">
+                <div class="filter">
                     <app-select
                         [items]="capabilities()"
                         placeholder="All Capabilities"
@@ -35,7 +33,7 @@
                 <button
                     *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
                     type="button"
-                    class="llm-library__add-btn"
+                    class="add-btn"
                     (click)="onAddModel()"
                 >
                     <i
@@ -48,21 +46,21 @@
         </header>
 
         @for (section of groupedByType(); track section.type) {
-            <div class="llm-library__section">
-                <h4 class="llm-library__section-title">{{ section.label }} Configs:</h4>
+            <div class="section">
+                <h4 class="section-title">{{ section.label }} Configs:</h4>
 
                 @for (group of section.groups; track group.id) {
-                    <div class="llm-library__provider-group">
-                        <div class="llm-library__provider-header">
+                    <div class="provider-group">
+                        <div class="provider-header">
                             <app-svg-icon
                                 [icon]="group.providerIconPath"
                                 size="22px"
                                 [ariaLabel]="group.providerName"
                             />
-                            <span class="llm-library__provider-name">{{ group.providerName }}</span>
+                            <span class="provider-name">{{ group.providerName }}</span>
                         </div>
 
-                        <div class="llm-library__grid">
+                        <div class="grid">
                             @for (model of group.models; track model.configType + '-' + model.id) {
                                 <app-llm-library-card
                                     [model]="model"
@@ -71,6 +69,52 @@
                                 ></app-llm-library-card>
                             }
                         </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @for (provider of filteredVoiceProviders(); track provider.key) {
+            <div class="section">
+                <div class="section-header">
+                    <h4 class="section-title">{{ provider.label }}:</h4>
+                </div>
+                @if (provider.configs.length === 0) {
+                    <p class="empty-hint">No {{ provider.label }} yet.</p>
+                } @else {
+                    <div class="grid">
+                        @for (c of provider.configs; track c.id) {
+                            <article class="voice-card">
+                                <div class="top">
+                                    <span class="model">{{ c.model_name }}</span>
+                                    <div class="actions">
+                                        <button
+                                            type="button"
+                                            class="action"
+                                            title="Edit"
+                                            (click)="onEditConfig(provider, c)"
+                                        >
+                                            <i
+                                                class="ti ti-pencil"
+                                                aria-hidden="true"
+                                            ></i>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="action delete"
+                                            title="Delete"
+                                            (click)="onDeleteConfig(provider, c)"
+                                        >
+                                            <i
+                                                class="ti ti-x"
+                                                aria-hidden="true"
+                                            ></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="name">{{ c.custom_name }}</div>
+                            </article>
+                        }
                     </div>
                 }
             </div>

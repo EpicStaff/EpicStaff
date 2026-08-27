@@ -107,10 +107,8 @@ Business requirements translate to nodes, not the other way around. The question
 | Validate a payload, shape an error response | `python` |
 | Map a raw API response into domain objects | `python` |
 | Pick one of a small fixed set of targets by rule | `table` (CDT) if 3+ branches; `edge` if 2 |
-| Decide next step using LLM reasoning over free text | `code-agent` |
-| Compose a final narrative from structured data | `code-agent` |
-| Multi-step agent work with multiple roles and task handoff | chained `code-agent` nodes, one per role |
-| Assistant-style interaction with the user (EpicChat) | `code-agent` |
+| Decide next step using LLM reasoning over free text | `classification-decision-table` (CDT) |
+| Compose a narrative, summarize, or converse | not emittable — see below |
 | Parse a user-uploaded document | `file-extractor` |
 | Transcribe an audio message | `audio-to-text-node` |
 | Start on external event | `webhook-trigger` / `telegram-trigger` |
@@ -118,8 +116,8 @@ Business requirements translate to nodes, not the other way around. The question
 
 Heuristics that matter:
 - **If the logic is a pure function of structured inputs, use `python`.** It is cheaper, faster, more reliable than any agent node.
-- **If the logic needs reasoning over fuzzy text, use `code-agent`.**
-- **There is no crew/`project` node.** Multi-role agent work is modelled as a chain of `code-agent` nodes, each with its own system prompt and a `variables` contract between them. Do not emit a `project` node — the backend cannot build one.
+- **There is no agent node you can emit.** `project` (crew) and `code-agent` were both removed, and `AgentNode` / `TaskNode` are not registered with this assistant (see `node_registry.py`). Do not emit `project`, `crew`, `code-agent`, `agent-node`, or `task-node` — the backend cannot build any of them from your output.
+- **The only LLM-backed node available is `classification-decision-table`.** Use it when the decision needs reasoning over fuzzy text. If a requirement genuinely needs open-ended generation, say so in the design and leave that step to be wired manually instead of inventing a node type.
 - **Use CDT when branching is a business rule expressed as predicates over variables.** Use conditional `edge` when branching is a short Python expression that returns a node name.
 - **Use `subgraph` when the sub-workflow is genuinely reusable and has its own lifecycle.** Copy-pasting nodes is worse than a subgraph, but a subgraph you only call once is pure indirection.
 
@@ -134,7 +132,7 @@ Before building, write out the contract for each edge:
 | `Weather Request` (webhook) | `variables.request.city: str` | non-empty string, else 400 | `Fetch Weather` |
 | `Fetch Weather` | `variables.weather.raw` | `{temperature: float, conditions: str, humidity: int, wind_speed: float}` | `Format Report` |
 | `Format Report` | `variables.weather.report_text: str` | multi-line string | `Friendly Reporter` |
-| `Friendly Reporter` (code-agent) | `variables.weather.narration: {message: str, ...}` | `output_schema` required | `__end_node__` |
+| `Friendly Reporter` (project/crew) | `variables.weather.narration: {message: str, ...}` | structured crew output | `__end_node__` |
 
 If you can't fill this table from the spec, the spec is ambiguous — flag it as an open question, don't guess.
 

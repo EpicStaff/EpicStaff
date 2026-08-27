@@ -22,7 +22,6 @@ from tables.models import (
     ClassificationConditionGroup,
 )
 from tables.models.graph_models import (
-    CodeAgentNode,
     GraphNote,
     ScheduleTriggerNode,
     ClassificationDecisionTablePrompt,
@@ -209,12 +208,6 @@ class AudioTranscriptionNodeImportSerializer(BaseNodeImportSerializer):
 class SubgraphNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = SubGraphNode
-        exclude = ["created_at", "updated_at"]
-
-
-class CodeAgentNodeImportSerializer(BaseNodeImportSerializer):
-    class Meta(BaseNodeImportSerializer.Meta):
-        model = CodeAgentNode
         exclude = ["created_at", "updated_at"]
 
 

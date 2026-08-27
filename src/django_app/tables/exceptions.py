@@ -19,12 +19,6 @@ class CustomAPIExeption(APIException):
         super().__init__(detail=detail, code=code)
 
 
-class ToolConfigSerializerError(CustomAPIExeption):
-    status_code = 400
-    default_detail = "Error occured in ToolConfigSerializer"
-    default_code = "tool_config_serializer_error"
-
-
 class GraphEntryPointException(CustomAPIExeption):
     status_code = 400
     default_detail = "No node connected to start node"

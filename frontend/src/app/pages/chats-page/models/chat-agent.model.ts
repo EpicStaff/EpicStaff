@@ -1,9 +1,8 @@
 import { AgentDefinition } from '../../../features/agent-definitions/models/agent-definition.model';
 import { RealtimeAgentDefinition } from '../../../features/agent-definitions/models/realtime-agent-definition.model';
 
-// The selectable entity behind a chat: an agent definition plus its realtime row.
-// The row's presence — and a realtime_config on it — is what makes the definition
-// eligible for the list, since without one it cannot connect.
+// An agent definition plus its realtime row. Without a provider config on that
+// row the definition cannot connect, so it never reaches the list.
 export interface ChatAgent {
     agent: AgentDefinition;
     realtime: RealtimeAgentDefinition;
@@ -15,7 +14,6 @@ export interface ChatAgentVM {
     id: number;
     title: string;
     realtimeConfigId: number | null;
-    transcriptionConfigId: number | null;
     modelName: string | null;
     customName: string | null;
 }
@@ -30,11 +28,7 @@ export function chatAgentTitle(a: ChatAgent): string {
 }
 
 export function chatAgentRealtimeConfigId(a: ChatAgent): number | null {
-    return a.realtime.realtime_config;
-}
-
-export function chatAgentTranscriptionConfigId(a: ChatAgent): number | null {
-    return a.realtime.realtime_transcription_config;
+    return a.realtime.openai_config ?? a.realtime.elevenlabs_config ?? a.realtime.gemini_config ?? null;
 }
 
 export function toInitRealtimePayload(a: ChatAgent): InitRealtimePayload {

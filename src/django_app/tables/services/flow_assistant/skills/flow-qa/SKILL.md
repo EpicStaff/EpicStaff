@@ -54,9 +54,8 @@ PASS | FAIL
 [✓|✗] Every edge respects `allowedConnections` rules for both endpoints
 
 ### Per-Node Correctness
-[✓|✗] python / webhook / code-agent nodes have non-empty `libraries` if code imports non-stdlib
+[✓|✗] python / webhook nodes have non-empty `libraries` if code imports non-stdlib
 [✓|✗] python / webhook nodes define `def main(...)`
-[✓|✗] code-agent nodes have `llm_config_id` and `agent_mode` set
 [✓|✗] CDT condition expressions return booleans (spot-check)
 
 ### Findings
@@ -126,7 +125,7 @@ For each node type, verify the per-type invariants.
 - **end**: `output_map` non-empty; every referenced path is written upstream (or acknowledged as default `"not found"`).
 - **python**: code contains `def main(...)`; every import satisfies one of (a) stdlib, (b) appears in `libraries`; `input_map` keys map to kwargs of `main` or are explicit paths; `output_variable_path` set if output is used downstream.
 - **webhook-trigger**: `python_code.code` contains `def main(trigger_payload=None)`; `libraries` present; `webhook_path` unique; bad-input branches return `{"error": ..., "status": 400}`.
-- **code-agent**: `llm_config_id` set; `agent_mode` is `"build"` or `"plan"`; `system_prompt` not empty (unless intentionally); `libraries` present if `stream_handler_code` imports non-stdlib; `output_schema` either unset or a valid JSON Schema.
+- **agent nodes**: none are emittable. `project` (crew) and `code-agent` were removed, and `AgentNode` / `TaskNode` are not registered with this assistant. Flag any `project`, `crew`, `code-agent`, `agent-node`, or `task-node` in the output as invalid — the backend cannot build it.
 - **edge** (conditional edge): code returns a string (assert in code), and that string is always a live node's name.
 - **table** (CDT): every group has `group_name` unique within the node; `group_type` is `simple` or `complex`; `simple` groups have `conditions[]` entries whose `condition` field is a boolean expression; `complex` groups have non-null `expression`; `next_node` set for every group; `default_next_node` set; `next_error_node` set; manipulation (if present) mutates `variables` via `kwargs["variables"]`.
 - **subgraph**: referenced subgraph exists; circular references absent.

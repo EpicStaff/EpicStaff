@@ -1,14 +1,18 @@
 import base64
 import json
+import logging
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
+
+logger = logging.getLogger(__name__)
 
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpResponse
-from django.db.models import NOT_PROVIDED, IntegerField, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Exists, IntegerField, OuterRef, Prefetch, Q
 from django.db.models.functions import Cast
 from django_filters import rest_framework as filters
 from django_filters.rest_framework import (
@@ -50,7 +54,9 @@ from tables.exceptions import (
     BulkSaveValidationError,
     GraphSaveVersionConflictError,
 )
+from tables.services.rbac.authentication import IsAuthenticatedOrApiKey
 from tables.serializers.graph_bulk_save_serializers import GraphBulkSaveInputSerializer
+from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
 from tables.services.graph_bulk_save_service import GraphBulkSaveService
 from tables.graph_versioning.services import GraphVersioningService
 from tables.graph_versioning.serializers import (
@@ -68,7 +74,6 @@ from tables.models import (
     AgentNode,
     AgentNodeTask,
     AudioTranscriptionNode,
-    CodeAgentNode,
     ConditionalEdge,
     Edge,
     EmbeddingConfig,
@@ -90,8 +95,6 @@ from tables.models import (
     SubGraphNode,
     TaskContext,
     TaskNode,
-    TemplateAgent,
-    ToolConfig,
 )
 from tables.models.llm_models import (
     RealtimeConfig,
@@ -111,6 +114,33 @@ from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
 )
 from tables.swagger_schemas.partial_import_schemas import (
     PARTIAL_IMPORT_SWAGGER as PARTIAL_IMPORT_SWAGGER,
+)
+from tables.swagger_schemas.tools_schemas import (
+    MCP_TOOL_BULK_DELETE_POST,
+    MCP_TOOL_BULK_EXPORT_POST,
+    MCP_TOOL_COPY_POST,
+    MCP_TOOL_EXPORT_GET,
+    MCP_TOOL_FAVORITE_DELETE,
+    MCP_TOOL_FAVORITE_POST,
+    MCP_TOOL_IMPORT_POST,
+    PYTHON_CODE_TOOL_BULK_DELETE_POST,
+    PYTHON_CODE_TOOL_BULK_EXPORT_POST,
+    PYTHON_CODE_TOOL_COPY_POST,
+    PYTHON_CODE_TOOL_EXPORT_GET,
+    PYTHON_CODE_TOOL_FAVORITE_DELETE,
+    PYTHON_CODE_TOOL_FAVORITE_POST,
+    PYTHON_CODE_TOOL_IMPORT_POST,
+    TOOL_ORDERING_PARAMETER,
+)
+from tables.swagger_schemas.tools_usage_schemas import (
+    MCP_TOOL_USAGE_DETAIL_GET,
+    MCP_TOOL_USAGE_POST,
+    PYTHON_CODE_TOOL_USAGE_DETAIL_GET,
+    PYTHON_CODE_TOOL_USAGE_POST,
+)
+from tables.services.tools_usage_service import (
+    get_mcp_tool_usage_detail,
+    get_python_code_tool_usage_detail,
 )
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from rest_framework.exceptions import PermissionDenied, NotFound
@@ -145,25 +175,35 @@ from tables.models.llm_models import (
 )
 from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag
 from tables.models.mcp_models import McpTool
+from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import (
     RealtimeAgentChat,
     RealtimeAgentDefinition,
     RealtimeSessionItem,
+    OpenAIRealtimeConfig,
+    ElevenLabsRealtimeConfig,
+    GeminiRealtimeConfig,
+    ConversationRecording,
 )
 from tables.filters import (
     EmbeddingModelFilter,
     LabelFilterBackend,
     LLMModelFilter,
+    McpToolFilter,
     ProviderFilter,
+    PythonCodeToolFilter,
 )
 from tables.utils.helpers import natural_sort_key
 from tables.models.label_models import Label
 from tables.models.vector_models import MemoryDatabase
 from tables.models.webhook_models import (
-    NgrokWebhookConfig,
+    LOCAL_ONLY_PROVIDERS,
     VoiceSettings,
     WebhookTrigger,
+    RealtimeChannel,
+    TwilioChannel,
+    ProviderType,
 )
 from tables.services.copy_services import (
     GraphCopyService,
@@ -174,20 +214,22 @@ from tables.views.mixins import (
     CopyActionMixin,
     OrgScopedChildViewSetMixin,
     OrgScopedHybridViewSetMixin,
-    OrgScopedQuerysetMixin,
     OrgScopedViewSetMixin,
     SuperadminWriteMixin,
+    ToolUsageActionsMixin,
 )
-from tables.models.rbac_models import Organization
+from tables.models.rbac_models import ApiKey, Organization
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
 from tables.services.rbac.permissions import (
-    DenyApiKeyAuth,
     HasOrgPermission,
     IsSuperadmin,
+    IsSystemApiKeyAuthenticated,
+    DenyApiKeyAuth,
 )
+from tables.serializers.org_scoped_fields import resolve_active_org_id
 from tables.services.rbac.permission_action_map import DEFAULT_ACTION_MAP
 from tables.services.rbac.permission_resolver import PermissionResolver
-from tables.services.secrets import secret_usage_service
+from tables.services.secrets import secret_resolver, secret_usage_service
 from tables.swagger_schemas.secret_schemas import SECRET_USAGE_GET
 from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
     validate_classification_condition_group_names,
@@ -198,7 +240,6 @@ from tables.serializers.model_serializers import (
     AgentNodeTaskSerializer,
     ClassificationDecisionTableNodeSerializer,
     AudioTranscriptionNodeSerializer,
-    CodeAgentNodeSerializer,
     ConditionalEdgeSerializer,
     GraphNoteSerializer,
     ConditionGroupSerializer,
@@ -208,30 +249,43 @@ from tables.serializers.model_serializers import (
     EndNodeSerializer,
     FileExtractorNodeSerializer,
     GraphLightSerializer,
+    GraphOrganizationSerializer,
     GraphOrganizationUserSerializer,
     GraphSerializer,
     GraphSessionMessageSerializer,
     LabelSerializer,
     McpToolSerializer,
     MemorySerializer,
-    NgrokWebhookConfigModelSerializer,
     ProviderSerializer,
     PythonCodeResultSerializer,
     PythonCodeToolConfigSerializer,
     PythonCodeToolSerializer,
     PythonNodeSerializer,
+    ConversationRecordingSerializer,
+    ElevenLabsRealtimeConfigSerializer,
+    GeminiRealtimeConfigSerializer,
+    OpenAIRealtimeConfigSerializer,
     RealtimeAgentChatSerializer,
+    RealtimeChannelInternalSerializer,
+    RealtimeChannelSerializer,
+    RealtimeConfigSerializer,
+    RealtimeModelSerializer,
     RealtimeAgentDefinitionSerializer,
     RealtimeSessionItemSerializer,
+    RealtimeTranscriptionConfigSerializer,
+    RealtimeTranscriptionModelSerializer,
+    TwilioChannelSerializer,
     SecretSerializer,
     StartNodeSerializer,
     SubGraphNodeSerializer,
     TaskNodeSerializer,
     VoiceSettingsSerializer,
+    VoiceSettingsInternalSerializer,
     WebhookTriggerNodeSerializer,
-    WebhookTriggerSerializer,
+    WebhookTriggerNodeReadSerializer,
     ScheduleTriggerNodeSerializer,
     TelegramTriggerNodeSerializer,
+    TelegramTriggerNodeReadSerializer,
 )
 
 from tables.serializers.serializers import (
@@ -257,6 +311,13 @@ from tables.services.redis_service import RedisService
 from tables.swagger_schemas.twilio_schemas import (
     TWILIO_PHONE_NUMBERS_GET,
     TWILIO_CONFIGURE_WEBHOOK_POST,
+    TWILIO_CHANNEL_PHONE_NUMBERS_GET,
+    REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET,
+)
+from tables.swagger_schemas.webhook_schemas import (
+    WEBHOOK_TRIGGER_NODE_CREATE,
+    WEBHOOK_TRIGGER_NODE_UPDATE,
+    WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE,
 )
 from tables.constants.organization_constants import DEFAULT_ORGANIZATION_NAME
 from tables.models.rbac_models.rbac_enums import ResourceType
@@ -425,8 +486,15 @@ class ContentHashPreconditionMixin:
         super().perform_update(serializer)
 
 
+@extend_schema_view(
+    copy=extend_schema(**PYTHON_CODE_TOOL_COPY_POST),
+    list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
+)
 class PythonCodeToolViewSet(
-    OrgScopedHybridViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
+    OrgScopedHybridViewSetMixin,
+    CopyActionMixin,
+    ToolUsageActionsMixin,
+    viewsets.ModelViewSet,
 ):
     """
     A viewset for viewing and editing PythonCodeTool instances.
@@ -436,7 +504,17 @@ class PythonCodeToolViewSet(
 
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "copy": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
+        "usage": Permission.READ,
+        "usage_detail": Permission.READ,
+        "favorite": Permission.READ,
+        "export": Permission.EXPORT,
+        "bulk_export": Permission.EXPORT,
+        "import_entity": Permission.CREATE,
+    }
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
 
@@ -446,13 +524,135 @@ class PythonCodeToolViewSet(
     queryset = PythonCodeTool.objects.all().select_related("python_code")
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["name", "python_code"]
+    filterset_class = PythonCodeToolFilter
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.PYTHON_CODE_TOOL,
+            export_prefix="python_code_tool",
+            filename_attr="name",
+        )
+
+    def get_queryset(self):
+        queryset = (
+            super()
+            .get_queryset()
+            .annotate(
+                is_favorite=Exists(
+                    PythonCodeToolFavorite.objects.filter(
+                        user=self.request.user, tool=OuterRef("pk")
+                    )
+                )
+            )
+        )
+        ordering = ["-id"]
+        if self.request.query_params.get("ordering") == "favorite":
+            ordering = ["-is_favorite", "-id"]
+        return queryset.order_by(*ordering)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.built_in:
             raise BuiltInToolModificationError()
         return super().destroy(request, *args, **kwargs)
+
+    @extend_schema(methods=["POST"], **PYTHON_CODE_TOOL_FAVORITE_POST)
+    @extend_schema(methods=["DELETE"], **PYTHON_CODE_TOOL_FAVORITE_DELETE)
+    @action(detail=True, methods=["post", "delete"], url_path="favorite")
+    def favorite(self, request, pk=None):
+        tool = self.get_object()
+        if request.method == "POST":
+            PythonCodeToolFavorite.objects.get_or_create(user=request.user, tool=tool)
+        else:
+            PythonCodeToolFavorite.objects.filter(user=request.user, tool=tool).delete()
+        return Response(status=status.HTTP_200_OK)
+
+    @extend_schema(**PYTHON_CODE_TOOL_BULK_DELETE_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        ids = request.data.get("ids", [])
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            return Response(
+                {"detail": "ids must be a list of integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # Built-in tools are silently excluded, never rejected — they are
+            # simply not part of the deletable queryset (org_id also filters
+            # them out since built-ins have org_id=None, but built_in=False
+            # is kept explicit for clarity/defense-in-depth).
+            tool_list = PythonCodeTool.objects.filter(
+                id__in=ids,
+                org_id=self.get_active_org_id(),
+                built_in=False,
+            )
+            deleted_count = tool_list.count()
+            for tool in tool_list:
+                tool.delete()
+
+        return Response(
+            {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_USAGE_POST)
+    @action(detail=False, methods=["post"], url_path="usage")
+    def usage(self, request):
+        return self._usage_response(request, PythonCodeTool)
+
+    @extend_schema(**PYTHON_CODE_TOOL_USAGE_DETAIL_GET)
+    @action(detail=True, methods=["get"], url_path="usage-detail")
+    def usage_detail(self, request, pk=None):
+        return self._usage_detail_response(
+            pk, get_python_code_tool_usage_detail, "PythonCodeTool"
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_EXPORT_GET)
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk: int):
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_BULK_EXPORT_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-export")
+    def bulk_export(self, request):
+        serializer = BulkExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity_ids = serializer.validated_data["ids"]
+
+        # Built-in tools (org_id=None) are globally visible and must be
+        # exportable like any org's own tool, mirroring get_org_scope_q()
+        # used by the import/export strategy and the get_queryset() scoping
+        # that export/get_object() already relies on.
+        existing_ids = PythonCodeTool.objects.filter(
+            Q(built_in=True) | Q(org_id=self.get_active_org_id()),
+            id__in=entity_ids,
+        ).values_list("id", flat=True)
+        if len(existing_ids) != len(entity_ids):
+            return Response(
+                {"message": "Some entity IDs do not exist"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_IMPORT_POST)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_entity(self, request):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        vd = file_serializer.validated_data
+        data = self.import_export_service.import_entity(
+            vd["file"],
+            user=request.user,
+            settings=ImportSettings(import_labels=vd["import_labels"]),
+            org_id=self.get_active_org_id(),
+        )
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
@@ -532,10 +732,6 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
                     queryset=SubGraphNode.objects.select_related(
                         "subgraph"
                     ).prefetch_related("subgraph__tags"),
-                ),
-                Prefetch(
-                    "code_agent_node_list",
-                    queryset=CodeAgentNode.objects.select_related("llm_config"),
                 ),
                 Prefetch(
                     "task_node_list",
@@ -639,6 +835,14 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 
+    @extend_schema(
+        request={"multipart/form-data": ImportRequestSerializer},
+        responses={
+            200: OpenApiResponse(
+                description="Import summary with created/skipped entity counts"
+            )
+        },
+    )
     @action(detail=False, methods=["post"], url_path="import")
     def import_entity(self, request):
         file_serializer = ImportRequestSerializer(data=request.data)
@@ -990,22 +1194,6 @@ class AudioTranscriptionNodeViewSet(
     serializer_class = AudioTranscriptionNodeSerializer
 
 
-class CodeAgentNodeViewSet(
-    OrgScopedChildViewSetMixin, IdempotentNodeCreateMixin, viewsets.ModelViewSet
-):
-    """
-    DEPRECATED: CodeAgentNodeViewSet is deprecated. Use AgentNodeViewSet or
-    TaskNodeViewSet instead. Exists only for backward compatibility with
-    existing CodeAgentNode rows.
-    """
-
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
-    org_filter_path = "graph__org_id"
-    queryset = CodeAgentNode.objects.all()
-    serializer_class = CodeAgentNodeSerializer
-
-
 class TaskNodeViewSet(
     OrgScopedChildViewSetMixin,
     IdempotentNodeCreateMixin,
@@ -1303,9 +1491,11 @@ class RealtimeTranscriptionConfigModelViewSet(
 
 
 class RealtimeSessionItemViewSet(viewsets.ReadOnlyModelViewSet):
-    # Realtime session items hold conversation payloads (incl. base64 audio)
-    # keyed by an opaque connection_key with no org FK, so they can leak another
-    # org's data. Restricted to superadmin (read-only).
+    # Realtime session items hold conversation payloads (incl. base64 audio).
+    # `org` is now populated at write time (realtime service resolves it from
+    # RealtimeAgentChatData.org_id), but this stays superadmin-only as
+    # defense-in-depth: raw audio/transcript payloads are sensitive and the
+    # write path is a separate microservice, not a viewset-enforced org scope.
     permission_classes = [IsAuthenticated, IsSuperadmin]
     queryset = RealtimeSessionItem.objects.all()
     serializer_class = RealtimeSessionItemSerializer
@@ -1328,13 +1518,13 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
     not visible — acceptable for chat history.
     """
 
-    permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
     org_filter_path = "rt_agent_definition__agent_definition__organization_id"
     queryset = RealtimeAgentChat.objects.all()
     serializer_class = RealtimeAgentChatSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["rt_agent_definition"]
+    permission_classes = [IsAuthenticatedOrApiKey]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -1342,6 +1532,270 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         return Response(
             {"detail": "Deleted successfully"}, status=status.HTTP_204_NO_CONTENT
         )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="end",
+        permission_classes=[IsSystemApiKeyAuthenticated],
+    )
+    def end(self, request):
+        """Mark a RealtimeAgentChat as ended.
+
+        Called server-to-server by the `realtime`/`voice_app` services
+        (`voice_call_service._patch_agent_chat`) once a call ends. That caller
+        has no logged-in user/org context and identifies the target chat by
+        its opaque `connection_key` alone, so this action cannot be scoped
+        through `self.get_queryset()` (which requires an active org via
+        `OrgContextService`/`X-Organization-Id`) the way `destroy`/`retrieve`
+        are.
+
+        Restricted to `key_type=SYSTEM` API-key callers
+        (`IsSystemApiKeyAuthenticated`)
+        `RealtimeChannelViewSet.lookup_by_token` / `InitRealtimeAPIView`. Do
+        not widen this to `IsAuthenticated` or the class-level
+        `IsAuthenticatedOrApiKey`: either would let a caller who has no
+        relationship to the chat's org (a plain JWT session, or a self-issued
+        `key_type=USER` API key any org member can mint) end/mutate another
+        org's realtime chat by guessing/observing its `connection_key`, since
+        the lookup below performs no org filter of its own.
+        """
+        from django.utils import timezone
+
+        connection_key = request.data.get("connection_key")
+        if not connection_key:
+            return Response(
+                {"detail": "connection_key required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            chat = RealtimeAgentChat.objects.get(connection_key=connection_key)
+        except RealtimeAgentChat.DoesNotExist:
+            return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        chat.ended_at = timezone.now()
+        chat.duration_seconds = request.data.get("duration_seconds")
+        chat.end_reason = request.data.get("end_reason", "completed")
+        chat.save(update_fields=["ended_at", "duration_seconds", "end_reason"])
+        return Response({"detail": "Updated"})
+
+
+class OpenAIRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    queryset = OpenAIRealtimeConfig.objects.all()
+    serializer_class = OpenAIRealtimeConfigSerializer
+
+
+class ElevenLabsRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    queryset = ElevenLabsRealtimeConfig.objects.all()
+    serializer_class = ElevenLabsRealtimeConfigSerializer
+
+
+class GeminiRealtimeConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    queryset = GeminiRealtimeConfig.objects.all()
+    serializer_class = GeminiRealtimeConfigSerializer
+
+
+class RealtimeChannelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+
+    rbac_resource_type = ResourceType.VOICE
+    rbac_action_map = {**DEFAULT_ACTION_MAP}
+
+    queryset = RealtimeChannel.objects.select_related(
+        "twilio__webhook_trigger__ngrok",
+        "twilio__webhook_trigger__localhost",
+    ).all()
+    serializer_class = RealtimeChannelSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["realtime_agent", "channel_type", "is_active", "token"]
+
+    @extend_schema(**REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET)
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="lookup-by-token",
+        permission_classes=[IsSystemApiKeyAuthenticated],
+    )
+    def lookup_by_token(self, request):
+        """Resolve a channel by its unique `token`, unscoped by org.
+
+        Used only by the `realtime`/`voice_app` services to route an inbound
+        Twilio call (POST /voice/{token}) to the right agent — that caller has
+        no logged-in user and cannot supply `X-Organization-Id`. The token
+        itself (an unguessable UUID) is the lookup/authorization key, so the
+        normal `HasOrgPermission` + `OrgScopedViewSetMixin.get_queryset` org
+        filter is deliberately bypassed here.
+        """
+        raw_token = request.query_params.get("token")
+        if not raw_token:
+            return Response(
+                {"error": "token is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            token = uuid.UUID(str(raw_token))
+        except (ValueError, AttributeError, TypeError):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        channel = (
+            RealtimeChannel.objects.select_related(
+                "twilio__webhook_trigger__ngrok",
+                "twilio__webhook_trigger__localhost",
+            )
+            .filter(token=token)
+            .first()
+        )
+        if channel is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(RealtimeChannelInternalSerializer(channel).data)
+
+
+class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    org_filter_path = "channel__org_id"
+    queryset = TwilioChannel.objects.select_related(
+        "webhook_trigger__ngrok", "webhook_trigger__localhost"
+    )
+    rbac_resource_type = ResourceType.VOICE
+    rbac_action_map = {**DEFAULT_ACTION_MAP, "phone_numbers": Permission.READ}
+    serializer_class = TwilioChannelSerializer
+
+    def create(self, request, *args, **kwargs):
+        channel_id = request.data.get("channel")
+        instance = TwilioChannel.objects.filter(channel_id=channel_id).first()
+        if instance:
+            serializer = self.get_serializer(instance, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self._assert_parent_in_active_org(serializer)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(**TWILIO_CHANNEL_PHONE_NUMBERS_GET)
+    @action(detail=False, methods=["get"], url_path="phone-numbers")
+    def phone_numbers(self, request, pk=None):
+        """Return this channel's Twilio incoming phone numbers."""
+        
+        sid = request.query_params.get("sid")
+        auth_token_secret_id = request.query_params.get("auth_token_secret_id")
+
+        # 2. Validate they were provided
+        if not sid or not auth_token_secret_id:
+            return Response(
+                {"error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 3. Resolve the token and fetch numbers
+        auth_token = secret_resolver.resolve(
+            secret_id=auth_token_secret_id,
+            org_id=resolve_active_org_id(request),
+            context="TwilioChannel.auth_token",
+        )
+        
+        return _twilio_phone_numbers_response(sid, auth_token)
+
+
+class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
+    """
+    Scoped through the recording's chat -> realtime agent to its agent's org
+    (mirrors RealtimeAgentChatViewSet's scoping). Recordings whose chat has no
+    rt_agent (orphaned) are not visible — same accepted trade-off as chat history.
+
+    `create` is reachable two ways:
+    - An authenticated org member (JWT) or a self-issued USER API key, sending
+      `X-Organization-Id` as usual — org-scoping is enforced via
+      `_assert_parent_in_active_org` exactly like any other child resource.
+    - The `realtime`/`voice_app` services (`voice_call_service._post_recording`),
+      authenticated with a `key_type=SYSTEM` API key, once a call ends. That
+      caller has no logged-in user/org context and can never supply
+      `X-Organization-Id`, and identifies its target purely by the opaque
+      `connection_key` — same trust model as `RealtimeAgentChatViewSet.end`.
+      For that caller only, `_assert_parent_in_active_org` is skipped (the
+      SYSTEM key itself is the authorization check); a self-issued USER key
+      still goes through the normal org check, so it cannot attach a
+      recording to another org's chat by guessing a `connection_key`.
+    """
+
+    queryset = ConversationRecording.objects.all()
+    serializer_class = ConversationRecordingSerializer
+    parser_classes = [MultiPartParser, FormParser]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["rt_agent_chat", "recording_type"]
+    rbac_resource_type = ResourceType.AGENTS
+    org_filter_path = "rt_agent_chat__rt_agent__agent__org_id"
+    permission_classes = [IsAuthenticatedOrApiKey]
+
+    def _is_system_api_key_request(self) -> bool:
+        return (
+            isinstance(self.request.auth, ApiKey)
+            and self.request.auth.key_type == ApiKey.KeyType.SYSTEM
+        )
+
+    def perform_create(self, serializer):
+        file = self.request.FILES.get("file")
+        file_size = file.size if file else None
+        audio_format = "wav"
+
+        # Allow creating by connection_key (used by the realtime service)
+        connection_key = self.request.data.get("connection_key")
+        rt_agent_chat = None
+        if connection_key:
+            try:
+                rt_agent_chat = RealtimeAgentChat.objects.get(
+                    connection_key=connection_key
+                )
+            except RealtimeAgentChat.DoesNotExist:
+                from rest_framework.exceptions import (
+                    ValidationError as DRFValidationError,
+                )
+
+                raise DRFValidationError(
+                    {"connection_key": "No matching RealtimeAgentChat found"}
+                )
+            serializer.validated_data["rt_agent_chat"] = rt_agent_chat
+
+        # A trusted SYSTEM API key (the realtime/voice_app services) has no
+        # X-Organization-Id to check against — skip the org assertion for it,
+        # same trust boundary as RealtimeAgentChatViewSet.end. Any other
+        # caller (JWT session or a self-issued USER key) still goes through
+        # the normal parent-org check.
+        if not self._is_system_api_key_request():
+            self._assert_parent_in_active_org(serializer)
+
+        serializer.save(
+            file_size=file_size,
+            audio_format=audio_format,
+            **({"rt_agent_chat": rt_agent_chat} if rt_agent_chat is not None else {}),
+        )
+
+
+def _load_realtime_voices() -> dict:
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).parent.parent / "static" / "realtime_voices.json"
+    with path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+_REALTIME_VOICES = _load_realtime_voices()
+
+
+class RealtimeVoicesView(generics.GenericAPIView):
+    """Return static list of available voices per realtime provider."""
+
+    def get(self, request, *args, **kwargs):
+        return Response(_REALTIME_VOICES)
 
 
 class StartNodeModelViewSet(
@@ -1576,19 +2030,78 @@ class ClassificationDecisionTableNodeModelViewSet(
         return response
 
 
-class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):
+@extend_schema_view(
+    copy=extend_schema(**MCP_TOOL_COPY_POST),
+    list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
+)
+class McpToolViewSet(
+    OrgScopedViewSetMixin, CopyActionMixin, ToolUsageActionsMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "copy": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
+        "usage": Permission.READ,
+        "usage_detail": Permission.READ,
+        "favorite": Permission.READ,
+        "export": Permission.EXPORT,
+        "bulk_export": Permission.EXPORT,
+        "import_entity": Permission.CREATE,
+    }
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
 
     queryset = McpTool.objects.select_related("auth_secret").all()
     serializer_class = McpToolSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["name", "tool_name"]
+    filterset_class = McpToolFilter
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.MCP_TOOL,
+            export_prefix="mcp_tool",
+            filename_attr="name",
+        )
+
+    def get_queryset(self):
+        queryset = (
+            super()
+            .get_queryset()
+            .annotate(
+                is_favorite=Exists(
+                    McpToolFavorite.objects.filter(
+                        user=self.request.user, tool=OuterRef("pk")
+                    )
+                )
+            )
+        )
+        ordering = ["-id"]
+        if self.request.query_params.get("ordering") == "favorite":
+            ordering = ["-is_favorite", "-id"]
+        return queryset.order_by(*ordering)
+
+    @extend_schema(methods=["POST"], **MCP_TOOL_FAVORITE_POST)
+    @extend_schema(methods=["DELETE"], **MCP_TOOL_FAVORITE_DELETE)
+    @action(detail=True, methods=["post", "delete"], url_path="favorite")
+    def favorite(self, request, pk=None):
+        tool = self.get_object()
+        if request.method == "POST":
+            McpToolFavorite.objects.get_or_create(user=request.user, tool=tool)
+        else:
+            McpToolFavorite.objects.filter(user=request.user, tool=tool).delete()
+        return Response(status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
+        # PUT is a full-replace: any concrete field missing from the body is
+        # explicitly back-filled with its model default (or None) so a bare
+        # PUT clears unspecified fields instead of silently keeping stale
+        # values. This must NOT run for PATCH — partial_update overrides it
+        # below so a partial body (e.g. {"labels": [...]}) isn't forced
+        # through this full-replace path and doesn't get its other required
+        # fields nulled out.
         instance = self.get_object()
         data = request.data.copy()
         for field in self.serializer_class.Meta.model._meta.get_fields():
@@ -1599,6 +2112,97 @@ class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewS
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    @extend_schema(**MCP_TOOL_BULK_DELETE_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        ids = request.data.get("ids", [])
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            return Response(
+                {"detail": "ids must be a list of integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # McpTool has no built-in concept — every matching id is deletable.
+            tool_list = McpTool.objects.filter(
+                id__in=ids, org_id=self.get_active_org_id()
+            )
+            deleted_count = tool_list.count()
+            for tool in tool_list:
+                tool.delete()
+
+        return Response(
+            {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(**MCP_TOOL_USAGE_POST)
+    @action(detail=False, methods=["post"], url_path="usage")
+    def usage(self, request):
+        return self._usage_response(request, McpTool)
+
+    @extend_schema(**MCP_TOOL_USAGE_DETAIL_GET)
+    @action(detail=True, methods=["get"], url_path="usage-detail")
+    def usage_detail(self, request, pk=None):
+        return self._usage_detail_response(pk, get_mcp_tool_usage_detail, "McpTool")
+
+    @extend_schema(**MCP_TOOL_EXPORT_GET)
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk: int):
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**MCP_TOOL_BULK_EXPORT_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-export")
+    def bulk_export(self, request):
+        serializer = BulkExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity_ids = serializer.validated_data["ids"]
+
+        existing_ids = McpTool.objects.filter(
+            id__in=entity_ids, org_id=self.get_active_org_id()
+        ).values_list("id", flat=True)
+        if len(existing_ids) != len(entity_ids):
+            return Response(
+                {"message": "Some entity IDs do not exist"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**MCP_TOOL_IMPORT_POST)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_entity(self, request):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        vd = file_serializer.validated_data
+        data = self.import_export_service.import_entity(
+            vd["file"],
+            user=request.user,
+            settings=ImportSettings(import_labels=vd["import_labels"]),
+            org_id=self.get_active_org_id(),
+        )
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class GraphOrganizationViewSet(
+    OrgScopedChildViewSetMixin, viewsets.ReadOnlyModelViewSet
+):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    org_filter_path = "graph__org_id"
+    queryset = GraphOrganization.objects.all()
+    serializer_class = GraphOrganizationSerializer
 
 
 # TODO refactor to use user_variable for persistent variables
@@ -1612,6 +2216,11 @@ class GraphOrganizationUserViewSet(
     serializer_class = GraphOrganizationUserSerializer
 
 
+@extend_schema_view(
+    create=extend_schema(**WEBHOOK_TRIGGER_NODE_CREATE),
+    update=extend_schema(**WEBHOOK_TRIGGER_NODE_UPDATE),
+    partial_update=extend_schema(**WEBHOOK_TRIGGER_NODE_PARTIAL_UPDATE),
+)
 class WebhookTriggerNodeViewSet(
     OrgScopedChildViewSetMixin,
     IdempotentNodeCreateMixin,
@@ -1621,10 +2230,17 @@ class WebhookTriggerNodeViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = WebhookTriggerNode.objects.all()
+    queryset = WebhookTriggerNode.objects.select_related(
+        "webhook_trigger__ngrok", "webhook_trigger__localhost"
+    )
     serializer_class = WebhookTriggerNodeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["graph", "node_name", "webhook_trigger__path"]
+
+    def get_serializer_class(self):
+        if self.action in ["list", "retrieve"]:
+            return WebhookTriggerNodeReadSerializer
+        return WebhookTriggerNodeSerializer
 
     def create(self, request, *args, **kwargs):
         logger.info(f"[WebhookTriggerNode] CREATE payload: {request.data}")
@@ -1638,20 +2254,43 @@ class WebhookTriggerNodeViewSet(
             raise
 
 
-# TODO: deprecate view/EP
-class WebhookTriggerViewSet(OrgScopedQuerysetMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, IsSuperadmin]
-    rbac_resource_type = ResourceType.FLOWS
+class WebhookTriggerViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.LLM_CONFIGS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
-    scope_distinct = True  # reverse join via trigger nodes can duplicate rows
-    queryset = WebhookTrigger.objects.all()
-    serializer_class = WebhookTriggerSerializer
+    queryset = WebhookTrigger.objects.select_related("ngrok", "localhost")
+    serializer_class = WebhookTriggerNestedSerializer
     filter_backends = [DjangoFilterBackend]
 
-    def get_org_scope_q(self, org_id: int) -> Q:
-        # A standalone trigger has no org column; it is visible through the
-        # flow(s) whose trigger nodes reference it.
-        return Q(webhook_trigger_nodes__graph__org_id=org_id)
+    def _wait_for_tunnel_url(self, trigger):
+        service = WebhookTriggerService()
+        if trigger.provider_type == ProviderType.NGROK:
+            service.wait_for_tunnel_url(trigger)
+        elif trigger.provider_type == ProviderType.LOCALHOST:
+            service.wait_for_localhost_tunnel_url(trigger)
+
+    def perform_create(self, serializer):
+        trigger = serializer.save()
+        self._wait_for_tunnel_url(trigger)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        new_provider = request.data.get("provider_type", instance.provider_type)
+        if new_provider in LOCAL_ONLY_PROVIDERS and instance.twilio_channels.exists():
+            return Response(
+                {
+                    "provider_type": (
+                        "Cannot switch to a local-only provider while this trigger "
+                        "is linked to a Twilio channel."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().update(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        trigger = serializer.save()
+        self._wait_for_tunnel_url(trigger)
 
 
 class TelegramTriggerNodeViewSet(
@@ -1663,8 +2302,15 @@ class TelegramTriggerNodeViewSet(
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     org_filter_path = "graph__org_id"
-    queryset = TelegramTriggerNode.objects.prefetch_related("fields")
+    queryset = TelegramTriggerNode.objects.select_related(
+        "webhook_trigger__ngrok", "webhook_trigger__localhost"
+    ).prefetch_related("fields")
     serializer_class = TelegramTriggerNodeSerializer
+
+    def get_serializer_class(self):
+        if self.action in ["list", "retrieve"]:
+            return TelegramTriggerNodeReadSerializer
+        return TelegramTriggerNodeSerializer
 
 
 class ScheduleTriggerNodeViewSet(
@@ -1695,37 +2341,27 @@ class GraphNoteViewSet(
     serializer_class = GraphNoteSerializer
 
 
-class NgrokWebhookConfigViewSet(ModelViewSet):
-    # Global infrastructure config holding the ngrok auth token (a secret).
-    # Superadmin-only for both read and write so the token is never exposed to
-    # ordinary org users.
-    permission_classes = [IsAuthenticated, IsSuperadmin]
-    queryset = NgrokWebhookConfig.objects.all()
-    serializer_class = NgrokWebhookConfigModelSerializer
+class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    """Shared behavior for the two independent label trees — Flow labels
+    (`LabelViewSet`) and Tool labels (`ToolLabelViewSet`). Each tree is a
+    disjoint subset of `Label` partitioned by `Label.scope`; concrete
+    subclasses set `label_scope` and a `queryset` pre-filtered to it.
+    """
 
-    def create(self, request, *args, **kwargs):
-        response = super().create(request, *args, **kwargs)
-        instance = NgrokWebhookConfig.objects.get(pk=response.data["id"])
-        WebhookTriggerService().wait_for_tunnel_url(instance)
-        response.data = self.get_serializer(instance).data
-        return response
-
-    def update(self, request, *args, **kwargs):
-        response = super().update(request, *args, **kwargs)
-        instance = NgrokWebhookConfig.objects.get(pk=response.data["id"])
-        WebhookTriggerService().wait_for_tunnel_url(instance)
-        response.data = self.get_serializer(instance).data
-        return response
-
-
-class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {**DEFAULT_ACTION_MAP}
-    queryset = Label.objects.all()
     serializer_class = LabelSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["name", "parent"]
+    label_scope: str = None
+
+    def perform_create(self, serializer):
+        # Never trust client-supplied scope — the URL/viewset is the only
+        # source of truth for which label tree a new row joins.
+        serializer.save(
+            org_id=self.get_active_org_id(),
+            created_by=self.request.user,
+            scope=self.label_scope,
+        )
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -1733,18 +2369,25 @@ class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
         # Build paths in memory (one extra lightweight query) to avoid N+1
         # and to correctly resolve parents that may be filtered out. Scoped to
-        # the active org (the label tree never crosses orgs).
+        # the active org and this tree's scope (the label tree never crosses
+        # orgs or Flow/Tool scopes).
         id_to_row = {
             row["id"]: row
-            for row in Label.objects.filter(org_id=self.get_active_org_id()).values(
-                "id", "parent_id", "name"
-            )
+            for row in Label.objects.filter(
+                org_id=self.get_active_org_id(), scope=self.label_scope
+            ).values("id", "parent_id", "name")
         }
 
         def full_path_key(label):
             parts = []
+            visited = set()
             current_id = label.id
             while current_id is not None:
+                if current_id in visited:
+                    # Stored cycle (self-parent or parent loop) — stop
+                    # walking rather than looping forever.
+                    break
+                visited.add(current_id)
                 row = id_to_row.get(current_id)
                 if row is None:
                     break
@@ -1752,14 +2395,32 @@ class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
                 current_id = row["parent_id"]
             return "/".join(reversed(parts))
 
-        labels.sort(key=lambda label: natural_sort_key(full_path_key(label)))
+        full_paths = {label.id: full_path_key(label) for label in labels}
+        labels.sort(key=lambda label: natural_sort_key(full_paths[label.id]))
+
+        context = self.get_serializer_context()
+        context["full_paths"] = full_paths
 
         page = self.paginate_queryset(labels)
         if page is not None:
-            serializer = self.get_serializer(page, many=True)
+            serializer = self.get_serializer(page, many=True, context=context)
             return self.get_paginated_response(serializer.data)
 
-        return Response(self.get_serializer(labels, many=True).data)
+        return Response(self.get_serializer(labels, many=True, context=context).data)
+
+
+class LabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    label_scope = Label.Scope.FLOW
+    queryset = Label.objects.filter(scope=Label.Scope.FLOW)
+
+
+class ToolLabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.TOOLS
+    label_scope = Label.Scope.TOOL
+    queryset = Label.objects.filter(scope=Label.Scope.TOOL)
 
 
 class SecretViewSet(
@@ -1792,6 +2453,23 @@ class VoiceSettingsView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated, IsSuperadmin]
     serializer_class = VoiceSettingsSerializer
 
+    def get_serializer_class(self):
+        # SystemServicePrincipal (a `key_type=SYSTEM` ApiKey — see
+        # `IsSystemApiKeyAuthenticated`) already satisfies IsSuperadmin, so
+        # the `realtime` service's legacy `GET /voice-settings/` call (used
+        # to validate `X-Twilio-Signature` on the deprecated `POST /voice`
+        # webhook) reaches this same view. Only that trusted, system-key
+        # caller gets the resolved plaintext Twilio credentials; a regular
+        # superadmin JWT session only ever sees the `*_secret_id` fields.
+        # Same trust boundary as `RealtimeChannelViewSet.lookup_by_token`'s
+        # `RealtimeChannelInternalSerializer` (EST-3633).
+        if (
+            isinstance(self.request.auth, ApiKey)
+            and self.request.auth.key_type == ApiKey.KeyType.SYSTEM
+        ):
+            return VoiceSettingsInternalSerializer
+        return VoiceSettingsSerializer
+
     def get_object(self):
         return VoiceSettings.load()
 
@@ -1817,6 +2495,33 @@ def _twilio_request(
         return json.loads(resp.read().decode())
 
 
+def _twilio_phone_numbers_response(account_sid: str, auth_token: str) -> Response:
+    """Call Twilio's IncomingPhoneNumbers API and shape the response.
+
+    Shared by `TwilioPhoneNumbersView` (raw account_sid/auth_token via
+    headers, superadmin-only) and `TwilioChannelViewSet.phone_numbers`
+    (credentials resolved from a stored `Secret`) so both surfaces return
+    the exact same response shape and error handling.
+    """
+    try:
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers.json?PageSize=100"
+        data = _twilio_request(account_sid, auth_token, url)
+        numbers = [
+            {
+                "sid": n["sid"],
+                "phone_number": n["phone_number"],
+                "friendly_name": n["friendly_name"],
+                "voice_url": n.get("voice_url") or "",
+            }
+            for n in data.get("incoming_phone_numbers", [])
+        ]
+        return Response({"results": numbers})
+    except urllib.error.HTTPError as e:
+        return Response({"error": e.read().decode(), "status": e.code}, status=400)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+
 class TwilioPhoneNumbersView(generics.GenericAPIView):
     """Return the list of incoming phone numbers from Twilio."""
 
@@ -1825,82 +2530,143 @@ class TwilioPhoneNumbersView(generics.GenericAPIView):
 
     @extend_schema(**TWILIO_PHONE_NUMBERS_GET)
     def get(self, request):
-        vs = VoiceSettings.load()
-        if not vs.twilio_account_sid or not vs.twilio_auth_token:
+        account_sid = request.headers.get("X-Twilio-Account-Sid", "").strip()
+        auth_token = request.headers.get("X-Twilio-Auth-Token", "").strip()
+        if not account_sid or not auth_token:
             return Response(
-                {"error": "Twilio Account SID and Auth Token are required"},
+                {
+                    "error": "X-Twilio-Account-Sid and X-Twilio-Auth-Token headers are required"
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            url = f"https://api.twilio.com/2010-04-01/Accounts/{vs.twilio_account_sid}/IncomingPhoneNumbers.json?PageSize=100"
-            data = _twilio_request(vs.twilio_account_sid, vs.twilio_auth_token, url)
-            numbers = [
-                {
-                    "sid": n["sid"],
-                    "phone_number": n["phone_number"],
-                    "friendly_name": n["friendly_name"],
-                    "voice_url": n.get("voice_url") or "",
-                }
-                for n in data.get("incoming_phone_numbers", [])
-            ]
-            return Response(numbers)
-        except urllib.error.HTTPError as e:
-            return Response({"error": e.read().decode()}, status=e.code)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        return _twilio_phone_numbers_response(account_sid, auth_token)
 
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):
-    """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL."""
+    """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL.
 
-    # Manages the platform Twilio account (uses the secret token) — superadmin only.
-    permission_classes = [IsAuthenticated, IsSuperadmin]
+    Credentials and the target channel are org-owned (RealtimeChannel is an
+    OrgScopedModel; EST-3491 follow-up) — org isolation is the boundary here,
+    not a superadmin gate: any authenticated member of the channel's own org
+    may configure their own org's Twilio number. A channel belonging to
+    another org (or none at all) is rejected exactly like a missing token,
+    so existence never leaks.
+    """
+
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(**TWILIO_CONFIGURE_WEBHOOK_POST)
     def post(self, request):
         phone_sid = request.data.get("phone_sid")
-        if not phone_sid:
-            return Response(
-                {"error": "phone_sid is required"}, status=status.HTTP_400_BAD_REQUEST
-            )
+        channel_token = request.data.get("channel_token")
+        logger.info(
+            f"configure-webhook: phone_sid={phone_sid} channel_token={channel_token}"
+        )
 
-        vs = VoiceSettings.load()
-        if not vs.twilio_account_sid or not vs.twilio_auth_token:
+        if not phone_sid or not channel_token:
+            logger.warning("configure-webhook: missing phone_sid or channel_token")
             return Response(
-                {"error": "Twilio Account SID and Auth Token are required"},
+                {"error": "phone_sid and channel_token are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from tables.serializers.model_serializers import VoiceSettingsSerializer
-
-        voice_stream_url = VoiceSettingsSerializer(vs).data.get("voice_stream_url")
-        if not voice_stream_url:
+        try:
+            channel = RealtimeChannel.objects.select_related(
+                "twilio__webhook_trigger__ngrok", "twilio__webhook_trigger__localhost"
+            ).get(token=channel_token)
+        except RealtimeChannel.DoesNotExist:
+            logger.warning(
+                f"configure-webhook: channel not found for token={channel_token}"
+            )
             return Response(
-                {
-                    "error": "No voice stream URL configured — set up an ngrok tunnel first"
-                },
+                {"error": "Channel not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        twilio = getattr(channel, "twilio", None)
+        active_org_id = resolve_active_org_id(request)
+        if channel.org_id != active_org_id:
+            logger.warning(
+                f"configure-webhook: channel {channel.id} does not belong to "
+                f"the active org ({active_org_id})"
+            )
+            return Response(
+                {"error": "Channel not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        if not twilio or not twilio.account_sid or twilio.auth_token_secret_id is None:
+            logger.warning(
+                f"configure-webhook: no Twilio credentials for channel {channel.id}"
+            )
+            return Response(
+                {"error": "No Twilio credentials configured for this channel"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Twilio expects the webhook as an HTTP/HTTPS URL not WSS
-        # voice_stream_url is wss://host/voice/stream → https://host/voice
-        webhook_url = (
-            voice_stream_url.replace("wss://", "https://")
-            .replace("/stream", "")
-            .rstrip("/")
+        account_sid = twilio.account_sid
+        auth_token = secret_resolver.resolve(
+            secret_id=twilio.auth_token_secret_id,
+            org_id=channel.org_id,
+            context="TwilioChannel.auth_token",
+        )
+        logger.info(
+            f"configure-webhook: using stored credentials for account_sid={account_sid}"
+        )
+
+        webhook_trigger = twilio.webhook_trigger
+        logger.info(f"configure-webhook: webhook_trigger={webhook_trigger}")
+        if not webhook_trigger or not webhook_trigger.provider_type:
+            logger.warning(
+                f"configure-webhook: no webhook trigger configured for channel {channel.id}"
+            )
+            return Response(
+                {"error": "No webhook trigger configured for this channel"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        provider_error = twilio.validate_provider()
+        if provider_error:
+            logger.warning(
+                f"configure-webhook: provider validation failed for channel {channel.id}: {provider_error}"
+            )
+            return Response(
+                {"error": provider_error},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tunnel_url = WebhookTriggerService().get_tunnel_url_for_trigger(webhook_trigger)
+        if not tunnel_url:
+            active_config = webhook_trigger.get_active_config()
+            if active_config:
+                tunnel_url = active_config.get_webhook_url()
+        logger.info(f"configure-webhook: tunnel_url={tunnel_url}")
+        if not tunnel_url:
+            logger.warning(
+                f"configure-webhook: webhook trigger {webhook_trigger.id} has no live URL and no domain"
+            )
+            return Response(
+                {"error": "Webhook tunnel is not running and has no domain configured"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        webhook_url = f"{tunnel_url.rstrip('/')}/voice/{channel_token}"
+        logger.info(
+            f"configure-webhook: setting VoiceUrl={webhook_url} on phone_sid={phone_sid}"
         )
 
         try:
-            url = f"https://api.twilio.com/2010-04-01/Accounts/{vs.twilio_account_sid}/IncomingPhoneNumbers/{phone_sid}.json"
+            url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers/{phone_sid}.json"
             _twilio_request(
-                vs.twilio_account_sid,
-                vs.twilio_auth_token,
+                account_sid,
+                auth_token,
                 url,
                 method="POST",
                 data={"VoiceUrl": webhook_url, "VoiceMethod": "POST"},
             )
+            logger.info(f"configure-webhook: success webhook_url={webhook_url}")
             return Response({"webhook_url": webhook_url})
         except urllib.error.HTTPError as e:
-            return Response({"error": e.read().decode()}, status=e.code)
+            body = e.read().decode()
+            logger.error(f"configure-webhook: Twilio HTTP error {e.code}: {body}")
+            return Response({"error": body}, status=e.code)
         except Exception as e:
+            logger.exception("configure-webhook: unexpected error")
             return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)

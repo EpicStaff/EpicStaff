@@ -146,7 +146,6 @@ RUN_SESSION_SSE_GET = dict(
                             "session_id": 42,
                             "message_data": {
                                 "message_type": "finish",
-                                "sse_visible": True,
                                 "content": "Task completed successfully.",
                             },
                         },
@@ -244,7 +243,6 @@ SESSION_LIST_GET = dict(
                                     "llm_node_list": [],
                                     "python_node_list": [],
                                     "subgraph_node_list": [],
-                                    "code_agent_node_list": [],
                                     "conditional_edge_list": [],
                                     "decision_table_node_list": [],
                                     "file_extractor_node_list": [],

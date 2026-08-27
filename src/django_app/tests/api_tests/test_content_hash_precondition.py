@@ -9,7 +9,12 @@ from tables.exceptions import ContentHashConflictError
 from tables.models import AgentNode, Graph, StartNode
 from tables.models.graph_models import ConditionalEdge, WebhookTriggerNode
 from tables.models.python_models import PythonCode
-from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
+from tables.services.secrets import secret_service
+from tables.models.webhook_models import (
+    NgrokWebhookConfig,
+    ProviderType,
+    WebhookTrigger,
+)
 from tests.fixtures import *
 
 
@@ -226,11 +231,20 @@ def conditional_edge(graph, python_code):
 
 
 @pytest.fixture
-def ngrok_config():
+def ngrok_config(default_org):
+    trigger = WebhookTrigger.objects.create(
+        path="ngrokConfigFixturePath",
+        provider_type=ProviderType.NGROK,
+        org=default_org,
+    )
+    secret = secret_service.create(
+        text="test_token_123", org=default_org, name="ngrok-config-fixture-secret"
+    )
     return NgrokWebhookConfig.objects.create(
         name="test_ngrok",
-        auth_token="test_token_123",
+        auth_token_secret=secret,
         region="eu",
+        trigger=trigger,
     )
 
 
@@ -307,14 +321,10 @@ class TestWebhookNodeNestedHashValidation:
         webhook_node.refresh_from_db()
         assert webhook_node.content_hash != original_node_hash
 
-    def test_hash_changes_when_ngrok_config_set(
-        self, auth_client, webhook_node, ngrok_config
-    ):
-        """Changing webhook_trigger.ngrok_webhook_config must change the node hash."""
-        # Create initial trigger with no ngrok
-        trigger = WebhookTrigger.objects.create(
-            path="mypath", ngrok_webhook_config=None
-        )
+    def test_hash_changes_when_ngrok_config_set(self, auth_client, webhook_node):
+        """Changing webhook_trigger to include an ngrok config must change the node hash."""
+        # Create initial trigger with no provider
+        trigger = WebhookTrigger.objects.create(path="mypath", provider_type=None)
         webhook_node.webhook_trigger = trigger
         webhook_node.save()
         hash_before = webhook_node.content_hash
@@ -325,7 +335,11 @@ class TestWebhookNodeNestedHashValidation:
             {
                 "webhook_trigger": {
                     "path": "mypath",
-                    "ngrok_webhook_config": ngrok_config.id,
+                    "provider_type": "ngrok",
+                    "ngrok_config": {
+                        "name": "test",
+                        "domain": None,
+                    },
                 },
             },
             format="json",
@@ -333,6 +347,37 @@ class TestWebhookNodeNestedHashValidation:
 
         webhook_node.refresh_from_db()
         assert webhook_node.content_hash != hash_before
+
+    def test_adding_or_removing_webhook_node_auth_does_not_change_content_hash(
+        self, webhook_node, default_org
+    ):
+        """EST-3826: `WebhookNodeAuth` attaches via a reverse OneToOneField,
+        which `_meta.fields` never includes -- `generate_hash()` iterates only
+        `self._meta.fields`, so this row's mere existence must never perturb
+        `WebhookTriggerNode.content_hash` (unlike inline fields, which
+        would)."""
+        from tables.models.webhook_models import WebhookAuthScheme, WebhookNodeAuth
+
+        hash_before = webhook_node.content_hash
+
+        secret = secret_service.create(
+            text="content-hash-lock-secret",
+            org=default_org,
+            name="content-hash-lock-secret",
+        )
+        auth = WebhookNodeAuth.objects.create(
+            enabled=True,
+            scheme=WebhookAuthScheme.HMAC_SHA256,
+            header_name="X-Webhook-Signature",
+            secret=secret,
+            webhook_trigger_node=webhook_node,
+        )
+        webhook_node.refresh_from_db()
+        assert webhook_node.content_hash == hash_before
+
+        auth.delete()
+        webhook_node.refresh_from_db()
+        assert webhook_node.content_hash == hash_before
 
 
 # ---------------------------------------------------------------------------
