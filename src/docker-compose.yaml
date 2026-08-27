@@ -117,8 +117,6 @@ services:
       VOICE_STREAM_URL: ${VOICE_STREAM_URL:-}
       DJANGO_HOST: ${DJANGO_HOST:-django_app}
       DJANGO_PORT: ${DJANGO_PORT:-8000}
-      MANAGER_HOST: ${MANAGER_HOST:-manager}
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
     networks:
       - backend-network
     depends_on:
@@ -144,7 +142,6 @@ services:
       MANAGER_PORT: ${MANAGER_PORT:-8001}
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
-      CREW_SAVEFILES_PATH: ${CREW_SAVEFILES_PATH}
     networks:
       - backend-network
     tty: true
