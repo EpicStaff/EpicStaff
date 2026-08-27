@@ -87,3 +87,21 @@ async def test_request_response_sends_response_create_event(client):
     client.send_server.assert_awaited_once()
     event = client.send_server.await_args[0][0]
     assert event["type"] == "response.create"
+
+
+def test_base_url_defaults_to_hardcoded_openai_endpoint():
+    """EST-3702 regression: no override must reproduce today's exact literal."""
+    c = OpenaiRealtimeAgentClient(
+        api_key="test_key",
+        connection_key="conn_1",
+    )
+    assert c.base_url == "wss://api.openai.com/v1/realtime"
+
+
+def test_base_url_uses_custom_override():
+    c = OpenaiRealtimeAgentClient(
+        api_key="test_key",
+        connection_key="conn_1",
+        base_url="https://my-proxy.internal",
+    )
+    assert c.base_url == "wss://my-proxy.internal/v1/realtime"
