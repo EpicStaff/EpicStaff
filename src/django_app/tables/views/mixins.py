@@ -5,9 +5,15 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
 
+from tables.serializers.serializers import (
+    ToolUsageDetailSerializer,
+    ToolUsageSerializer,
+)
 from tables.services.rbac.org_context_service import OrgContextService
 from tables.services.rbac.permissions import IsSuperadmin
+from tables.services.tools_usage_service import ToolNotFoundError, get_tools_usage
 
 
 class CopyActionMixin:
@@ -109,11 +115,16 @@ class OrgScopedChildViewSetMixin(OrgScopedResolverMixin):
     def _assert_parent_in_active_org(self, serializer):
         if not self.org_filter_path:
             return
-        parent_field = self.org_filter_path.split("__")[0]
+        parent_field, _, org_lookup = self.org_filter_path.partition("__")
         parent = serializer.validated_data.get(parent_field)
-        if parent is not None and getattr(parent, "org_id", None) != (
-            self.get_active_org_id()
-        ):
+        if parent is None:
+            return
+        org_id = parent
+        for attr in org_lookup.split("__"):
+            org_id = getattr(org_id, attr, None)
+            if org_id is None:
+                break
+        if org_id != self.get_active_org_id():
             raise NotFound()
 
 
@@ -210,6 +221,42 @@ class OrgScopedServiceViewSetMixin(OrgScopedResolverMixin):
         if obj is None:
             raise NotFound()
         return obj
+
+
+class ToolUsageActionsMixin:
+    MAX_USAGE_IDS = api_settings.PAGE_SIZE
+
+    def _usage_response(self, request, tool_model):
+        ids = request.data.get("ids")
+        if ids is not None:
+            if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+                return Response(
+                    {"detail": "ids must be a list of integers."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if len(ids) > self.MAX_USAGE_IDS:
+                return Response(
+                    {
+                        "detail": (
+                            f"maximum {self.MAX_USAGE_IDS} allowed, got {len(ids)}"
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            ids = set(ids)
+
+        rows = get_tools_usage(self.get_active_org_id(), tool_model, ids=ids)
+        serializer = ToolUsageSerializer(rows, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def _usage_detail_response(self, pk, service_fn, not_found_name):
+        org_id = self.get_active_org_id()
+        try:
+            detail = service_fn(int(pk), org_id)
+        except (ToolNotFoundError, ValueError):
+            raise NotFound(f"{not_found_name} {pk} not found.")
+        serializer = ToolUsageDetailSerializer(detail)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class SuperadminWriteMixin:

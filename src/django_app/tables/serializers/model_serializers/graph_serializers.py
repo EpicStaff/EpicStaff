@@ -9,6 +9,7 @@ from tables.serializers.model_serializers.node_serializers.flow_control_serializ
     ClassificationDecisionTableNodeSerializer,
 )
 from tables.serializers.model_serializers.node_serializers.basic_node_serializers import (
+    AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
     CodeAgentNodeSerializer,
     CrewNodeSerializer,
@@ -16,6 +17,7 @@ from tables.serializers.model_serializers.node_serializers.basic_node_serializer
     FileExtractorNodeSerializer,
     PythonNodeSerializer,
     SubGraphNodeSerializer,
+    TaskNodeSerializer,
 )
 from tables.serializers.model_serializers.node_serializers.trigger_serializers import (
     TelegramTriggerNodeSerializer,
@@ -26,6 +28,7 @@ from tables.serializers.model_serializers.tag_serializers import GraphTagSeriali
 from tables.models.graph_models import (
     Graph,
     GraphNote,
+    GraphOrganization,
     GraphOrganizationUser,
     GraphSessionMessage,
 )
@@ -114,6 +117,16 @@ class GraphSessionMessageSerializer(serializers.ModelSerializer):
         return data
 
 
+class GraphOrganizationSerializer(serializers.ModelSerializer):
+    # Read-only: org is derived from graph.org and the row is created
+    # alongside its graph (see GraphViewSet.perform_create), so this
+    # serializer only ever needs to expose the current state.
+    class Meta:
+        model = GraphOrganization
+        fields = ["id", "graph", "persistent_variables", "user_variables"]
+        read_only_fields = ["id", "graph", "persistent_variables", "user_variables"]
+
+
 class GraphOrganizationUserSerializer(serializers.ModelSerializer):
     # TODO refactor to use user_variable for persistent variables
     class Meta:
@@ -172,6 +185,8 @@ class GraphSerializer(serializers.ModelSerializer):
     )
     subgraph_node_list = SubGraphNodeSerializer(many=True, read_only=True)
     code_agent_node_list = CodeAgentNodeSerializer(many=True, read_only=True)
+    task_node_list = TaskNodeSerializer(many=True, read_only=True)
+    agent_node_list = AgentNodeSerializer(many=True, read_only=True)
     end_node_list = EndNodeSerializer(many=True, read_only=True, source="end_node")
     telegram_trigger_node_list = TelegramTriggerNodeSerializer(
         many=True, read_only=True
@@ -180,7 +195,10 @@ class GraphSerializer(serializers.ModelSerializer):
         many=True, read_only=True
     )
     label_ids = OrgScopedPrimaryKeyRelatedField(
-        many=True, source="labels", queryset=Label.objects.all(), required=False
+        many=True,
+        source="labels",
+        queryset=Label.objects.filter(scope=Label.Scope.FLOW),
+        required=False,
     )
     graph_note_list = GraphNoteSerializer(many=True, read_only=True)
     save_version = serializers.IntegerField(required=True)
@@ -212,6 +230,8 @@ class GraphSerializer(serializers.ModelSerializer):
             "classification_decision_table_node_list",
             "subgraph_node_list",
             "code_agent_node_list",
+            "task_node_list",
+            "agent_node_list",
             "start_node_list",
             "end_node_list",
             "time_to_live",

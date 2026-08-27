@@ -1,6 +1,7 @@
 # TODO: move out string pathes to constants
 
 import json
+import ntpath
 import os
 from pathlib import Path
 from typing import List, Optional, Dict
@@ -9,8 +10,26 @@ from loguru import logger
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 
 from models.orm import GraphRagDocument
+from rag.graph_rag.exceptions import InvalidDocumentFileNameError
 
 CONFIG_FILE_NAME = "graphrag_config.json"
+
+
+def _is_bare_file_name(file_name: str) -> bool:
+    """
+    True when file_name is a plain file name carrying no path component.
+
+    Documents are written to the input folder under their stored name, so
+    anything that could steer that join elsewhere is not a name we accept:
+    directory separators (both flavours, since this may run on either
+    platform), a Windows drive prefix, and the current/parent directory
+    entries.
+    """
+    if not file_name or file_name in (".", ".."):
+        return False
+    if ntpath.splitdrive(file_name)[0]:
+        return False
+    return "/" not in file_name and "\\" not in file_name
 
 
 class GraphRagFileManager:
@@ -200,6 +219,11 @@ class GraphRagFileManager:
         Returns:
             Dict mapping graph_rag_document_id to file path
 
+        Raises:
+            InvalidDocumentFileNameError: If a document's file_name is a path
+                rather than a plain file name. The name is never silently
+                rewritten — loading fails so the bad record gets fixed.
+
         Note:
             - Only processes documents that have content
             - Attempts UTF-8 decoding for text files
@@ -229,6 +253,12 @@ class GraphRagFileManager:
             file_name = (
                 doc_metadata.file_name or f"document_{doc_metadata.document_id}.txt"
             )
+            if not _is_bare_file_name(file_name):
+                raise InvalidDocumentFileNameError(
+                    f"Document {doc_metadata.document_id} has file_name "
+                    f"{file_name!r}, which is a path and not a plain file name. "
+                    f"Refusing to write outside {input_folder}."
+                )
             file_path = input_folder / file_name
 
             # Get binary content

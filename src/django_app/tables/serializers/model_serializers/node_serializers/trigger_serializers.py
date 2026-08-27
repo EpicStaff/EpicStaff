@@ -1,5 +1,6 @@
-from tables.serializers.utils.secret_fields import SecretCharField
 from rest_framework import serializers
+
+from tables.models.secret_models import Secret
 
 from tables.serializers.model_serializers.python_serializers import PythonCodeSerializer
 from tables.models.graph_models import (
@@ -9,33 +10,74 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
     ScheduleTriggerNode,
 )
+
 from tables.validators.schedule_trigger_validator import (
     ScheduleTriggerInputParser,
     ScheduleTriggerValidator,
 )
-from tables.services.schedule_trigger_service import ScheduleTriggerService
-from tables.models.webhook_models import WebhookTrigger
+from tables.models.webhook_models import (
+    LOCAL_ONLY_PROVIDERS,
+    WebhookTrigger,
+    WebhookNodeAuth,
+)
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
 )
-from tables.serializers.utils.mixins import NestedPythonCodeMixin, WebhookCreationMixin
+from tables.serializers.base_serializers import WebhookTriggerNestedSerializer
+from tables.serializers.utils.mixins import NestedPythonCodeMixin
 from tables.serializers.org_scoped_fields import OrgScopedPrimaryKeyRelatedField
-from tables.serializers.base_serializers import (
-    WebhookTriggerNestedSerializer,
-)
+from tables.services.schedule_trigger_service import ScheduleTriggerService
+# NOTE: WebhookTriggerService is imported lazily inside
+# WebhookTriggerNodeSerializer.create() below, not here at module level.
+# tables.services.webhook_trigger_service -> converter_service ->
+# tables.serializers.model_serializers (this package, via
+# node_serializers/__init__.py -> this module) forms a circular import if
+# WebhookTriggerService is imported at module scope -- Django's app.ready()
+# import chain then fails with "cannot import name 'ConverterService' from
+# partially initialized module" before the app can even boot.
+
+
+class WebhookNodeAuthSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WebhookNodeAuth
+        fields = [
+            "enabled",
+            "scheme",
+            "header_name",
+            "timestamp_header_name",
+            "tolerance_seconds",
+            "signing_secret",
+        ]
+
+
+class WebhookNodeAuthInputSerializer(serializers.Serializer):
+    """Minimal client-writable shape for `webhook_node_auth` on
+    `WebhookTriggerNodeSerializer`. Only `enabled` is client-controllable --
+    `scheme`/`header_name`/`signing_secret`/etc. stay server-generated (see
+    `WebhookTriggerService.ensure_webhook_auth`). Any other sub-fields the
+    client sends alongside `enabled` are ignored, not rejected.
+    """
+
+    enabled = serializers.BooleanField()
 
 
 class WebhookTriggerNodeSerializer(
     BaseGraphEntityMixin,
     NestedPythonCodeMixin,
-    WebhookCreationMixin,
     serializers.ModelSerializer,
 ):
     python_code = PythonCodeSerializer()
-
-    webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
+    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    )
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
+
+    # Declared read_only so ModelSerializer keeps rendering the full object
+    # (enabled/scheme/header_name/.../signing_secret) on GET; the writable
+    # `{"enabled": bool}` shape is carved out and validated separately in
+    # `to_internal_value` below, then applied via `_sync_webhook_node_auth`.
+    webhook_node_auth = WebhookNodeAuthSerializer(read_only=True)
 
     class Meta(BaseGraphEntityMixin.Meta):
         model = WebhookTriggerNode
@@ -45,53 +87,81 @@ class WebhookTriggerNodeSerializer(
             "graph",
             "python_code",
             "webhook_trigger",
+            "webhook_node_auth",
         ] + BaseGraphEntityMixin.Meta.common_fields
 
     def to_internal_value(self, data):
-        # COMMIT_COMMENTS: Accept webhook_trigger as int FK ID (sent by frontend
-        # after loading from backend) in addition to nested dict — prevents
-        # validation error when the frontend round-trips the serialized data.
-        wt = data.get("webhook_trigger")
-        if isinstance(wt, int):
-            self._webhook_trigger_id = wt
-            data = data.copy()
-            data["webhook_trigger"] = None
-        else:
-            self._webhook_trigger_id = None
-        return super().to_internal_value(data)
+        raw_auth = serializers.empty
+        if isinstance(data, dict) and "webhook_node_auth" in data:
+            data = dict(data)
+            raw_auth = data.pop("webhook_node_auth")
+
+        attrs = super().to_internal_value(data)
+
+        if raw_auth is not serializers.empty:
+            if raw_auth is None:
+                raise serializers.ValidationError(
+                    {
+                        "webhook_node_auth": (
+                            "Must be an object with an 'enabled' boolean, "
+                            "e.g. {\"enabled\": false}."
+                        )
+                    }
+                )
+            auth_serializer = WebhookNodeAuthInputSerializer(data=raw_auth)
+            if not auth_serializer.is_valid():
+                raise serializers.ValidationError(
+                    {"webhook_node_auth": auth_serializer.errors}
+                )
+            attrs["webhook_node_auth"] = auth_serializer.validated_data
+
+        return attrs
+
+    def _sync_webhook_node_auth(
+        self, node: WebhookTriggerNode, auth_input: dict | None
+    ) -> None:
+        """Applies the client-controlled `{"enabled": bool}` request onto the
+        node's `WebhookNodeAuth` row via the service layer. `auth_input` is
+        `None` when the client omitted `webhook_node_auth` entirely -- a
+        no-op here (default-enable-on-create is handled by the caller).
+        """
+        if auth_input is None:
+            return
+
+        from tables.services.webhook_trigger_service import WebhookTriggerService
+
+        WebhookTriggerService().sync_webhook_auth(
+            node, enabled=auth_input["enabled"]
+        )
 
     def create(self, validated_data):
-        webhook_trigger_data = validated_data.pop("webhook_trigger", None)
-        wt_id = getattr(self, "_webhook_trigger_id", None)
+        auth_input = validated_data.pop("webhook_node_auth", None)
+        node = super().create(validated_data)
 
-        if wt_id:
-            validated_data["webhook_trigger"] = WebhookTrigger.objects.filter(
-                id=wt_id
-            ).first()
-        elif webhook_trigger_data:
-            validated_data["webhook_trigger"], _ = self._get_or_create_webhook_trigger(
-                webhook_trigger_data
-            )
+        # WebhookTriggerNode's post_save signal (webhook_signals.py) already
+        # guarantees a WebhookNodeAuth row exists here, enabled by default --
+        # covering every creation path (this serializer, version restore,
+        # import/copy, admin), not just this one. Only apply an explicit
+        # client override on top of that default; omitting webhook_node_auth
+        # entirely is a no-op, leaving the signal's enabled=True default in
+        # place (default-safe, preserves existing behavior).
+        self._sync_webhook_node_auth(node, auth_input)
 
-        return self._create_with_python_code(WebhookTriggerNode, validated_data)
+        node.refresh_from_db()
+        return node
 
     def update(self, instance, validated_data):
-        wt_id = getattr(self, "_webhook_trigger_id", None)
-        if wt_id:
-            instance.webhook_trigger = WebhookTrigger.objects.filter(id=wt_id).first()
-            validated_data.pop("webhook_trigger", None)
-        elif "webhook_trigger" in validated_data:
-            webhook_trigger_data = validated_data.pop("webhook_trigger")
+        auth_input = validated_data.pop("webhook_node_auth", None)
+        instance = super().update(instance, validated_data)
 
-            if webhook_trigger_data:
-                webhook_trigger_instance, _ = self._get_or_create_webhook_trigger(
-                    webhook_trigger_data
-                )
-                instance.webhook_trigger = webhook_trigger_instance
-            else:
-                instance.webhook_trigger = None
+        self._sync_webhook_node_auth(instance, auth_input)
 
-        return super().update(instance, validated_data)
+        instance.refresh_from_db()
+        return instance
+
+
+class WebhookTriggerNodeReadSerializer(WebhookTriggerNodeSerializer):
+    webhook_trigger = WebhookTriggerNestedSerializer(read_only=True)
 
 
 class TelegramTriggerNodeFieldSerializer(
@@ -109,10 +179,18 @@ class TelegramTriggerNodeFieldSerializer(
 
 
 class TelegramTriggerNodeSerializer(
-    ContentHashWritableMixin, WebhookCreationMixin, serializers.ModelSerializer
+    ContentHashWritableMixin,
+    serializers.ModelSerializer,
 ):
-    telegram_bot_api_key = SecretCharField()
-    webhook_trigger = WebhookTriggerNestedSerializer(required=False, allow_null=True)
+    telegram_bot_api_key_secret_id = OrgScopedPrimaryKeyRelatedField(
+        queryset=Secret.objects.all(),
+        source="telegram_bot_api_key_secret",
+        required=False,
+        allow_null=True,
+    )
+    webhook_trigger = OrgScopedPrimaryKeyRelatedField(
+        queryset=WebhookTrigger.objects.all(), required=False, allow_null=True
+    )
     fields = TelegramTriggerNodeFieldSerializer(many=True)
     graph = OrgScopedPrimaryKeyRelatedField(queryset=Graph.objects.all())
 
@@ -121,45 +199,37 @@ class TelegramTriggerNodeSerializer(
         fields = [
             "id",
             "node_name",
-            "telegram_bot_api_key",
+            "telegram_bot_api_key_secret_id",
             "graph",
             "fields",
             "webhook_trigger",
         ] + BaseGraphEntityMixin.Meta.common_fields
 
-    def create(self, validated_data):
-        fields_data = validated_data.pop("fields", [])
+    def validate(self, attrs):
+        wt = attrs.get("webhook_trigger")
+        provider_type = wt.provider_type if wt else None
 
-        webhook_trigger_data = validated_data.pop("webhook_trigger", None)
-        webhook_trigger_instance = None
-
-        if webhook_trigger_data:
-            webhook_trigger_instance, _ = self._get_or_create_webhook_trigger(
-                webhook_trigger_data
+        if provider_type and provider_type in LOCAL_ONLY_PROVIDERS:
+            raise serializers.ValidationError(
+                {
+                    "webhook_trigger": (
+                        "Localhost webhook provider is not reachable by Telegram. "
+                        "Use ngrok or a publicly accessible provider."
+                    )
+                }
             )
 
-        node = TelegramTriggerNode.objects.create(
-            webhook_trigger=webhook_trigger_instance, **validated_data
-        )
+        return attrs
+
+    def create(self, validated_data):
+        fields_data = validated_data.pop("fields", [])
+        node = TelegramTriggerNode.objects.create(**validated_data)
         for item in fields_data:
             TelegramTriggerNodeField.objects.create(telegram_trigger_node=node, **item)
-
         return node
 
     def update(self, instance, validated_data):
         fields_data = validated_data.pop("fields", None)
-
-        if "webhook_trigger" in validated_data:
-            webhook_trigger_data = validated_data.pop("webhook_trigger")
-
-            webhook_trigger_instance = None
-            if webhook_trigger_data:
-                webhook_trigger_instance, _ = self._get_or_create_webhook_trigger(
-                    webhook_trigger_data
-                )
-
-            instance.webhook_trigger = webhook_trigger_instance
-
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -172,6 +242,10 @@ class TelegramTriggerNodeSerializer(
                 )
 
         return instance
+
+
+class TelegramTriggerNodeReadSerializer(TelegramTriggerNodeSerializer):
+    webhook_trigger = WebhookTriggerNestedSerializer(read_only=True)
 
 
 class TelegramTriggerNodeDataFieldsSerializer(serializers.Serializer):

@@ -41,9 +41,17 @@ class LiteLLMClient(BaseLLMClient):
     behavior because they also used LiteLLM internally.  Tracked separately.
     """
 
-    def __init__(self, llm_config, output_schema: dict | None = None) -> None:
+    def __init__(
+        self,
+        llm_config,
+        *,
+        api_key: str | None,
+        output_schema: dict | None = None,
+    ) -> None:
         super().__init__(output_schema=output_schema)
         self._llm_config = llm_config
+        # Resolved by the caller; this class must not touch the ORM (see get_llm_client).
+        self._api_key = api_key
         # Validate and cache the model string eagerly so callers receive
         # UnsupportedLLMProviderError at construction time (fail-fast), not
         # lazily during the first stream_completion call.
@@ -65,7 +73,9 @@ class LiteLLMClient(BaseLLMClient):
             raise UnsupportedLLMProviderError("(empty model name)")
 
         provider_name = (
-            (model.llm_provider.name or "").lower().strip() if model.llm_provider else ""
+            (model.llm_provider.name or "").lower().strip()
+            if model.llm_provider
+            else ""
         )
 
         if not provider_name or provider_name == "openai":
@@ -106,8 +116,8 @@ class LiteLLMClient(BaseLLMClient):
             "stream": True,
         }
 
-        if cfg.api_key:
-            kwargs["api_key"] = cfg.api_key
+        if self._api_key:
+            kwargs["api_key"] = self._api_key
         if model and model.base_url:
             kwargs["base_url"] = model.base_url
         if model and getattr(model, "api_version", None):

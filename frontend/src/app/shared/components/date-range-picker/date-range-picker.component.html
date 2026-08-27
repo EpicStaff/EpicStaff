@@ -1,0 +1,291 @@
+<div
+    class="drp"
+    [style.--active-color]="activeColor"
+    (click)="closePickers()"
+>
+    <div class="drp_manual">
+        <div class="drp_field-group">
+            <input
+                #digitInput
+                class="drp_digit drp_digit--dd"
+                placeholder="dd"
+                [value]="startDay()"
+                (input)="onDigitInput('start', 'day', $any($event.target).value, 0)"
+            />
+            <span class="drp_sep">/</span>
+            <input
+                #digitInput
+                class="drp_digit drp_digit--mm"
+                placeholder="mm"
+                [value]="startMonth()"
+                (input)="onDigitInput('start', 'month', $any($event.target).value, 1)"
+            />
+            <span class="drp_sep">/</span>
+            <input
+                #digitInput
+                class="drp_digit drp_digit--yyyy"
+                placeholder="yyyy"
+                [value]="startYear()"
+                (input)="onDigitInput('start', 'year', $any($event.target).value, 2)"
+            />
+        </div>
+
+        <span class="drp_manual-sep"></span>
+
+        <div class="drp_field-group">
+            <input
+                #digitInput
+                class="drp_digit drp_digit--dd"
+                placeholder="dd"
+                [value]="endDay()"
+                (input)="onDigitInput('end', 'day', $any($event.target).value, 3)"
+            />
+            <span class="drp_sep">/</span>
+            <input
+                #digitInput
+                class="drp_digit drp_digit--mm"
+                placeholder="mm"
+                [value]="endMonth()"
+                (input)="onDigitInput('end', 'month', $any($event.target).value, 4)"
+            />
+            <span class="drp_sep">/</span>
+            <input
+                #digitInput
+                class="drp_digit drp_digit--yyyy"
+                placeholder="yyyy"
+                [value]="endYear()"
+                (input)="onDigitInput('end', 'year', $any($event.target).value, 5)"
+            />
+        </div>
+    </div>
+
+    <div class="drp_calendars">
+        <div class="drp_month">
+            <div class="drp_month-header">
+                <button
+                    type="button"
+                    class="drp_nav"
+                    (click)="prevPair()"
+                >
+                    <svg
+                        width="22"
+                        height="22"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                    >
+                        <path
+                            d="M15 18l-6-6 6-6"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        />
+                    </svg>
+                </button>
+                <div class="drp_month-label">
+                    <span
+                        class="drp_month-label-part"
+                        (click)="toggleMonthPicker('left', $event)"
+                        >{{ leftMonthName() }}</span
+                    >
+                    <span
+                        class="drp_month-label-part"
+                        (click)="toggleYearPicker('left', $event)"
+                        >{{ leftYear() }}</span
+                    >
+
+                    @if (activePicker()?.side === 'left' && activePicker()?.type === 'month') {
+                        <div
+                            class="drp_picker"
+                            (click)="$event.stopPropagation()"
+                        >
+                            @for (m of monthNames; track $index) {
+                                <button
+                                    type="button"
+                                    class="drp_picker-option"
+                                    [class.drp_picker-option--active]="$index === leftMonthIndex()"
+                                    (click)="pickMonth('left', $index)"
+                                >
+                                    {{ m }}
+                                </button>
+                            }
+                        </div>
+                    }
+                    @if (activePicker()?.side === 'left' && activePicker()?.type === 'year') {
+                        <div
+                            class="drp_picker drp_picker--years"
+                            (click)="$event.stopPropagation()"
+                        >
+                            @for (y of yearOptions('left'); track y) {
+                                <button
+                                    type="button"
+                                    class="drp_picker-option"
+                                    [class.drp_picker-option--active]="y === leftYear()"
+                                    (click)="pickYear('left', y)"
+                                >
+                                    {{ y }}
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+                <span class="drp_nav-spacer"></span>
+            </div>
+            <div class="drp_weekdays">
+                @for (wd of weekdays; track $index) {
+                    <div class="drp_weekday">{{ wd }}</div>
+                }
+            </div>
+            <div class="drp_days">
+                @for (cell of leftCells(); track $index) {
+                    <div
+                        class="drp_day"
+                        [class.drp_day--empty]="cell.day === null"
+                        [class.drp_day--today]="cell.isToday"
+                        [class.drp_day--edge]="cell.isStart || cell.isEnd"
+                        [class.drp_day--in-range]="cell.inRange"
+                        (click)="selectDay(cell.date)"
+                    >
+                        {{ cell.day }}
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="drp_month">
+            <div class="drp_month-header">
+                <span class="drp_nav-spacer"></span>
+                <div class="drp_month-label">
+                    <span
+                        class="drp_month-label-part"
+                        (click)="toggleMonthPicker('right', $event)"
+                        >{{ rightMonthName() }}</span
+                    >
+                    <span
+                        class="drp_month-label-part"
+                        (click)="toggleYearPicker('right', $event)"
+                        >{{ rightYear() }}</span
+                    >
+
+                    @if (activePicker()?.side === 'right' && activePicker()?.type === 'month') {
+                        <div
+                            class="drp_picker"
+                            (click)="$event.stopPropagation()"
+                        >
+                            @for (m of monthNames; track $index) {
+                                <button
+                                    type="button"
+                                    class="drp_picker-option"
+                                    [class.drp_picker-option--active]="$index === rightMonthIndex()"
+                                    (click)="pickMonth('right', $index)"
+                                >
+                                    {{ m }}
+                                </button>
+                            }
+                        </div>
+                    }
+                    @if (activePicker()?.side === 'right' && activePicker()?.type === 'year') {
+                        <div
+                            class="drp_picker drp_picker--years"
+                            (click)="$event.stopPropagation()"
+                        >
+                            @for (y of yearOptions('right'); track y) {
+                                <button
+                                    type="button"
+                                    class="drp_picker-option"
+                                    [class.drp_picker-option--active]="y === rightYear()"
+                                    (click)="pickYear('right', y)"
+                                >
+                                    {{ y }}
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+                <button
+                    type="button"
+                    class="drp_nav"
+                    (click)="nextPair()"
+                >
+                    <svg
+                        width="22"
+                        height="22"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                    >
+                        <path
+                            d="M9 18l6-6-6-6"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        />
+                    </svg>
+                </button>
+            </div>
+            <div class="drp_weekdays">
+                @for (wd of weekdays; track $index) {
+                    <div class="drp_weekday">{{ wd }}</div>
+                }
+            </div>
+            <div class="drp_days">
+                @for (cell of rightCells(); track $index) {
+                    <div
+                        class="drp_day"
+                        [class.drp_day--empty]="cell.day === null"
+                        [class.drp_day--today]="cell.isToday"
+                        [class.drp_day--edge]="cell.isStart || cell.isEnd"
+                        [class.drp_day--in-range]="cell.inRange"
+                        (click)="selectDay(cell.date)"
+                    >
+                        {{ cell.day }}
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="drp_footer">
+        <div class="drp_presets">
+            <button
+                type="button"
+                class="drp_preset"
+                (click)="applyPreset('today')"
+            >
+                Today
+            </button>
+            <button
+                type="button"
+                class="drp_preset"
+                (click)="applyPreset('last7')"
+            >
+                Last 7 days
+            </button>
+            <button
+                type="button"
+                class="drp_preset"
+                (click)="applyPreset('thisMonth')"
+            >
+                This month
+            </button>
+        </div>
+
+        <div class="drp_actions">
+            <button
+                type="button"
+                class="drp_clear"
+                (click)="onClear()"
+            >
+                Clear
+            </button>
+            <button
+                type="button"
+                class="drp_select"
+                [disabled]="!rangeStart()"
+                (click)="onSelect()"
+            >
+                Select
+            </button>
+        </div>
+    </div>
+</div>

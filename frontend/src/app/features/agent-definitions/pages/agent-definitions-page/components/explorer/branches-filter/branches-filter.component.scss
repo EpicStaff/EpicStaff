@@ -1,0 +1,137 @@
+:host {
+    display: block;
+}
+
+.filter {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    background-color: #212325;
+    border: 1px solid var(--color-divider-subtle);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    box-shadow:
+        0 2px 3px rgba(0, 0, 0, 0.3),
+        0 6px 10px rgba(0, 0, 0, 0.15);
+    box-sizing: border-box;
+}
+
+.filter__body {
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+}
+
+.filter__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.filter__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    flex-shrink: 0;
+    padding: 0 10px;
+    background-color: #2b2d30;
+    border: 1px solid #d9d9de29;
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-align: left;
+    box-sizing: border-box;
+
+    &:hover {
+        border-color: var(--color-text-secondary);
+    }
+
+    &--locked {
+        cursor: default;
+
+        &:hover {
+            border-color: #d9d9de29;
+        }
+    }
+}
+
+.filter__checkbox {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--color-text-secondary);
+    border-radius: 4px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    color: #212325;
+
+    &--checked {
+        background-color: #d9d9de;
+        border-color: transparent;
+    }
+    &--checked#{&}--disabled {
+        background-color: #d9d9de99;
+    }
+}
+
+.filter__label {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.filter__lock {
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+}
+
+.filter__empty {
+    padding: 10px;
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+}
+
+.filter__footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-top: 1px solid #2b2d30;
+    min-width: 0;
+    overflow: hidden;
+
+    &--hide-clear .filter__btn--clear {
+        display: none;
+    }
+
+    &--collapse-save .filter__btn--save .word--secondary {
+        display: none;
+    }
+}
+
+.filter__footer-spacer {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.filter__btn {
+    display: block;
+    flex: 0 0 auto;
+    min-width: 0;
+    &--clear ::ng-deep .btn:disabled {
+        opacity: 1;
+        color: #685fff66;
+        border-color: #685fff66;
+    }
+}
+
+.word {
+    white-space: nowrap;
+}

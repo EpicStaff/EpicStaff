@@ -110,8 +110,9 @@
         </header>
         <nav class="tabs">
             <div class="tabs-left">
-                @for (tab of tabs; track tab.link) {
+                @for (tab of tabs; track tab.link; let last = $last) {
                     <app-tab-button
+                        mod="sm"
                         routerLink="{{ tab.link }}"
                         routerLinkActive="active"
                         #rla="routerLinkActive"
@@ -119,38 +120,19 @@
                     >
                         {{ tab.label }}
                     </app-tab-button>
+                    @if (!last) {
+                        <span class="tab-sep">/</span>
+                    }
                 }
             </div>
             <div class="tabs-right">
-                <div class="search-container">
-                    <app-svg-icon
-                        icon="search"
-                        class="search-icon"
-                        size="1.1rem"
-                    ></app-svg-icon>
-                    <input
-                        type="text"
-                        class="search-input"
-                        placeholder="Search by name or label..."
-                        [(ngModel)]="searchTerm"
-                        (ngModelChange)="onSearchTermChange($event)"
-                    />
-                    @if (searchTerm) {
-                        <button
-                            type="button"
-                            class="clear-btn"
-                            aria-label="Clear"
-                            matTooltip="Clear search"
-                            matTooltipPosition="above"
-                            (click)="clearSearch()"
-                        >
-                            <app-svg-icon
-                                icon="x"
-                                size="1.1rem"
-                            ></app-svg-icon>
-                        </button>
-                    }
-                </div>
+                <app-search
+                    class="search"
+                    mod="small"
+                    placeholder="Search by name or label..."
+                    [(searchTerm)]="searchTerm"
+                    (searchTermChange)="onSearchTermChange($event)"
+                />
                 <button
                     #filterTrigger="cdkOverlayOrigin"
                     cdkOverlayOrigin
@@ -210,7 +192,15 @@
     </div>
     <section class="body">
         @if (showSidebar()) {
-            <app-flows-label-sidebar (closeSidebar)="toggleSidebar()"></app-flows-label-sidebar>
+            <app-label-sidebar
+                [storageKey]="'flows'"
+                [allItemsLabel]="'All Flows'"
+                [resourceCode]="ResourceCode.Flows"
+                [deleteCaution]="deleteCautionForLabel"
+                [deleteMessage]="deleteMessageForLabel"
+                (closeSidebar)="toggleSidebar()"
+                (labelDeleted)="onLabelDeleted()"
+            ></app-label-sidebar>
         }
         <div class="body-content">
             <div class="breadcrumb-bar">

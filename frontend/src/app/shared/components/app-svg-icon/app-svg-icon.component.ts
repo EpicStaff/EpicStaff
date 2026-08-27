@@ -31,7 +31,7 @@ export class AppSvgIconComponent {
     icon = input.required<string>();
     ariaLabel = input<string>('');
     size = input<string>('24px');
-    /** Override `size` on one axis, for icons that are not square. */
+    /** Overrides `size` on one axis, for icons that are not square. Falls back to `size()` when not provided. */
     width = input<string>();
     height = input<string>();
 }

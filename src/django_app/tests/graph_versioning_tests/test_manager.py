@@ -2,6 +2,7 @@
 
 import pytest
 
+from tables.graph_versioning.constants import _GRAPH_RELATION_NAMES
 from tables.graph_versioning.manager import GraphVersioningManager
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
@@ -654,6 +655,31 @@ def test_restore_does_not_raise_integrity_error_for_classification_decision_tabl
 
 
 @pytest.mark.django_db
+def test_restore_does_not_reject_blank_pre_python_code(manager, graph):
+    """
+    Restore must not raise a validation error for a blank pre/post-processing code block.
+
+    Before the fix, PythonCodeImportSerializer required "code" to be non-blank,
+    so a ClassificationDecisionTableNode whose pre_python_code.code was ""
+    (a normal, saveable state in the editor) failed to restore.
+    """
+    from tables.models import ClassificationDecisionTableNode, PythonCode
+
+    pre_python_code = PythonCode.objects.create(code="")
+    ClassificationDecisionTableNode.objects.create(
+        graph=graph,
+        node_name="classifier_node",
+        pre_python_code=pre_python_code,
+    )
+    snapshot = manager.create_snapshot(graph)
+
+    manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
+
+    restored = graph.classification_decision_table_node_list.first()
+    assert restored.pre_python_code.code == ""
+
+
+@pytest.mark.django_db
 def test_restore_does_not_duplicate_schedule_trigger_node(manager, graph):
     """
     Restore must not accumulate duplicate ScheduleTriggerNode rows.
@@ -676,3 +702,567 @@ def test_restore_does_not_duplicate_schedule_trigger_node(manager, graph):
     manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
 
     assert graph.schedule_trigger_node_list.count() == 1
+
+
+@pytest.mark.django_db
+def test_restore_does_not_duplicate_agent_node(manager, graph):
+    """
+    Restore must not accumulate duplicate AgentNode rows.
+
+    Before the fix, _wipe_graph_children() silently skipped
+    agent_node_list, so each restore appended a new snapshot copy
+    on top of the existing node instead of replacing it.
+    """
+    from tables.models import AgentNode
+
+    AgentNode.objects.create(graph=graph, node_name="agent_node")
+    assert graph.agent_node_list.count() == 1
+
+    snapshot = manager.create_snapshot(graph)
+
+    manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
+
+    assert graph.agent_node_list.count() == 1
+
+
+@pytest.mark.django_db
+def test_restore_does_not_duplicate_task_node(manager, graph):
+    """
+    Restore must not accumulate duplicate TaskNode rows.
+
+    Before the fix, _wipe_graph_children() silently skipped
+    task_node_list, so each restore appended a new snapshot copy
+    on top of the existing node instead of replacing it.
+    """
+    from tables.models import TaskNode
+
+    TaskNode.objects.create(graph=graph, node_name="task_node")
+    assert graph.task_node_list.count() == 1
+
+    snapshot = manager.create_snapshot(graph)
+
+    manager.apply_snapshot_to_graph(graph, snapshot, available_deps={})
+
+    assert graph.task_node_list.count() == 1
+
+
+@pytest.mark.django_db
+def test_graph_relation_names_covers_all_node_edge_note_relations(graph):
+    """
+    Guard against regression: every reverse relation on Graph that
+    represents a node, edge, or note list must be wiped on restore.
+
+    Derives the expected relation names directly from Graph's reverse
+    relations instead of hardcoding them, so a newly added node type
+    that is forgotten in _GRAPH_RELATION_NAMES fails this test.
+    """
+    reverse_accessor_names = {
+        field.get_accessor_name()
+        for field in Graph._meta.get_fields()
+        if field.is_relation and field.auto_created and not field.concrete
+    }
+
+    expected_relation_names = {
+        name
+        for name in reverse_accessor_names
+        if name.endswith(("_node_list", "_edge_list", "_note_list"))
+        or name == "end_node"
+    }
+
+    missing_from_wipe_list = expected_relation_names - set(_GRAPH_RELATION_NAMES)
+
+    assert missing_from_wipe_list == set()
+
+
+# ---------------------------------------------------------------------------
+# Group I: regression — AgentNode/TaskNode dependencies dropped on restore
+#
+# validate_dependencies()/_build_identity_id_mapper() only know about
+# CREW, LLM_CONFIG, WEBHOOK_TRIGGER, GRAPH (_DEPENDENCY_ENTITY_TYPES /
+# _DEPENDENCY_MODELS). AgentNode/TaskNode also depend on AGENT_DEFINITION,
+# SURFACE, PYTHON_CODE_TOOL and MCP_TOOL, so those lookups silently return
+# None during restore and the relations are lost.
+# ---------------------------------------------------------------------------
+
+
+def _restore_graph_via_real_pipeline(manager, graph, deps):
+    """Mirror GraphVersioningService.restore_version's pipeline exactly."""
+    snapshot = manager.create_snapshot(graph)
+    deps_validation = manager.validate_dependencies(deps)
+    filtered_snapshot, warnings = manager.filter_snapshot(
+        snapshot, deps_validation["missing"]
+    )
+    manager.apply_snapshot_to_graph(
+        graph, filtered_snapshot, deps_validation["available"]
+    )
+    return warnings
+
+
+@pytest.fixture
+def agent_definition(default_org):
+    from agents.models import AgentDefinition
+
+    return AgentDefinition.objects.create(
+        organization=default_org,
+        name="restore-test-agent",
+    )
+
+
+@pytest.fixture
+def surface(default_org):
+    from agents.models import Surface
+
+    return Surface.objects.create(organization=default_org, name="restore-test-surface")
+
+
+@pytest.fixture
+def mcp_tool(default_org):
+    from tables.models import McpTool
+
+    return McpTool.objects.create(
+        org=default_org,
+        name="restore-test-mcp-tool",
+        transport="https://example.com/mcp",
+        tool_name="do_thing",
+    )
+
+
+@pytest.mark.django_db
+def test_restore_keeps_agent_node_agent_definition(manager, graph, agent_definition):
+    from tables.models import AgentNode
+
+    AgentNode.objects.create(
+        graph=graph, node_name="agent_node", agent_definition=agent_definition
+    )
+    deps = manager.collect_dependencies(graph)
+
+    _restore_graph_via_real_pipeline(manager, graph, deps)
+
+    restored = graph.agent_node_list.first()
+    assert restored is not None
+    assert restored.agent_definition_id == agent_definition.id
+
+
+@pytest.mark.django_db
+def test_restore_keeps_agent_node_surface_list(manager, graph, surface):
+    from tables.models import AgentNode
+
+    agent_node = AgentNode.objects.create(graph=graph, node_name="agent_node")
+    agent_node.surface_list.set([surface])
+    deps = manager.collect_dependencies(graph)
+
+    _restore_graph_via_real_pipeline(manager, graph, deps)
+
+    restored = graph.agent_node_list.first()
+    assert list(restored.surface_list.values_list("id", flat=True)) == [surface.id]
+
+
+@pytest.mark.django_db
+def test_restore_keeps_agent_node_inline_surface_python_tool(
+    manager, graph, python_code_tool
+):
+    from agents.models import AgentInlineSurface, AgentInlineSurfacePythonTool
+    from tables.models import AgentNode
+
+    agent_node = AgentNode.objects.create(graph=graph, node_name="agent_node")
+    inline_surface = AgentInlineSurface.objects.create(agent_node=agent_node)
+    AgentInlineSurfacePythonTool.objects.create(
+        agent_inline_surface=inline_surface,
+        python_tool=python_code_tool,
+        mode="allow",
+    )
+    deps = manager.collect_dependencies(graph)
+
+    _restore_graph_via_real_pipeline(manager, graph, deps)
+
+    restored = graph.agent_node_list.first()
+    restored_python_tool_ids = list(
+        restored.inline_surface.python_tools.values_list("python_tool_id", flat=True)
+    )
+    assert restored_python_tool_ids == [python_code_tool.id]
+
+
+@pytest.mark.django_db
+def test_restore_keeps_agent_node_inline_surface_mcp_tool(manager, graph, mcp_tool):
+    from agents.models import AgentInlineSurface, AgentInlineSurfaceMcpTool
+    from tables.models import AgentNode
+
+    agent_node = AgentNode.objects.create(graph=graph, node_name="agent_node")
+    inline_surface = AgentInlineSurface.objects.create(agent_node=agent_node)
+    AgentInlineSurfaceMcpTool.objects.create(
+        agent_inline_surface=inline_surface,
+        mcp_tool=mcp_tool,
+        mode="allow",
+    )
+    deps = manager.collect_dependencies(graph)
+
+    _restore_graph_via_real_pipeline(manager, graph, deps)
+
+    restored = graph.agent_node_list.first()
+    restored_mcp_tool_ids = list(
+        restored.inline_surface.mcp_tools.values_list("mcp_tool_id", flat=True)
+    )
+    assert restored_mcp_tool_ids == [mcp_tool.id]
+
+
+@pytest.mark.django_db
+def test_restore_keeps_task_node_agent_definition(manager, graph, agent_definition):
+    from tables.models import TaskNode
+
+    TaskNode.objects.create(
+        graph=graph, node_name="task_node", agent_definition=agent_definition
+    )
+    deps = manager.collect_dependencies(graph)
+
+    _restore_graph_via_real_pipeline(manager, graph, deps)
+
+    restored = graph.task_node_list.first()
+    assert restored is not None
+    assert restored.agent_definition_id == agent_definition.id
+
+
+@pytest.mark.django_db
+def test_restore_keeps_task_node_surface_list(manager, graph, surface):
+    from tables.models import TaskNode
+
+    task_node = TaskNode.objects.create(graph=graph, node_name="task_node")
+    task_node.surface_list.set([surface])
+    deps = manager.collect_dependencies(graph)
+
+    _restore_graph_via_real_pipeline(manager, graph, deps)
+
+    restored = graph.task_node_list.first()
+    assert list(restored.surface_list.values_list("id", flat=True)) == [surface.id]
+
+
+@pytest.mark.django_db
+def test_restore_keeps_task_node_inline_surface_python_tool(
+    manager, graph, python_code_tool
+):
+    from agents.models import InlineSurface, InlineSurfacePythonTool
+    from tables.models import TaskNode
+
+    task_node = TaskNode.objects.create(graph=graph, node_name="task_node")
+    inline_surface = InlineSurface.objects.create(task_node=task_node)
+    InlineSurfacePythonTool.objects.create(
+        inline_surface=inline_surface,
+        python_tool=python_code_tool,
+        mode="allow",
+    )
+    deps = manager.collect_dependencies(graph)
+
+    _restore_graph_via_real_pipeline(manager, graph, deps)
+
+    restored = graph.task_node_list.first()
+    restored_python_tool_ids = list(
+        restored.inline_surface.python_tools.values_list("python_tool_id", flat=True)
+    )
+    assert restored_python_tool_ids == [python_code_tool.id]
+
+
+@pytest.mark.django_db
+def test_restore_nulls_agent_node_agent_definition_when_deleted(
+    manager, graph, agent_definition
+):
+    """
+    Deleted AgentDefinition (SET_NULL FK) must not crash restore and must
+    not silently skip the whole AgentNode — only the FK is nulled.
+    """
+    from tables.models import AgentNode
+
+    AgentNode.objects.create(
+        graph=graph, node_name="agent_node", agent_definition=agent_definition
+    )
+    deps = manager.collect_dependencies(graph)
+    agent_definition.delete()
+
+    _restore_graph_via_real_pipeline(manager, graph, deps)
+
+    restored = graph.agent_node_list.first()
+    assert restored is not None
+    assert restored.agent_definition_id is None
+
+
+@pytest.mark.django_db
+def test_create_graph_from_snapshot_keeps_agent_node_agent_definition(
+    manager, graph, agent_definition, default_org
+):
+    """create_graph_from_snapshot (duplicate-into-new-flow) shares
+    _build_identity_id_mapper with restore, so it must benefit from the
+    same fix."""
+    from tables.models import AgentNode
+
+    AgentNode.objects.create(
+        graph=graph, node_name="agent_node", agent_definition=agent_definition
+    )
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    deps_validation = manager.validate_dependencies(deps)
+
+    new_graph, _ = manager.create_graph_from_snapshot(
+        snapshot,
+        deps_validation["available"],
+        graph_name=graph.name,
+        version_name="v1",
+        org_id=default_org.id,
+    )
+
+    new_agent_node = new_graph.agent_node_list.first()
+    assert new_agent_node is not None
+    assert new_agent_node.agent_definition_id == agent_definition.id
+
+
+# ---------------------------------------------------------------------------
+# Group J: restore warnings for deleted AgentNode/TaskNode dependencies
+#
+# Deleting AgentDefinition/Surface/PythonCodeTool/MCPTool referenced by an
+# AgentNode or TaskNode must not silently drop them on restore — a warning
+# carrying node_id/node_name must be surfaced for each dropped reference.
+#
+# The dependency must be deleted *after* the snapshot/deps manifest are
+# captured — this mirrors the real restore scenario (an older GraphVersion
+# was saved while the dependency existed, and it was deleted afterwards).
+# Snapshotting after deletion is meaningless here: Django's SET_NULL/CASCADE
+# already scrubs the stale FK/M2M/link rows from the live graph the moment
+# the dependency is deleted, so a fresh snapshot would never contain the
+# missing reference in the first place.
+# ---------------------------------------------------------------------------
+
+
+def _restore_from_saved_snapshot(manager, graph, snapshot, deps):
+    """Restore `graph` from a snapshot captured earlier, validating `deps`
+    (also captured earlier) against the current DB state."""
+    deps_validation = manager.validate_dependencies(deps)
+    filtered_snapshot, warnings = manager.filter_snapshot(
+        snapshot, deps_validation["missing"]
+    )
+    manager.apply_snapshot_to_graph(
+        graph, filtered_snapshot, deps_validation["available"]
+    )
+    return warnings
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_nulls_agent_node_agent_definition_when_deleted(
+    manager, graph, agent_definition
+):
+    from tables.models import AgentNode
+
+    agent_node = AgentNode.objects.create(
+        graph=graph, node_name="agent_node", agent_definition=agent_definition
+    )
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    agent_definition.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.agent_node_list.first()
+    assert restored.agent_definition_id is None
+
+    fk_nulled_warnings = [w for w in warnings if w["type"] == "fk_nulled"]
+    assert len(fk_nulled_warnings) == 1
+    assert fk_nulled_warnings[0]["node_name"] == "agent_node"
+    assert fk_nulled_warnings[0]["node_id"] == agent_node.id
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_nulls_task_node_agent_definition_when_deleted(
+    manager, graph, agent_definition
+):
+    from tables.models import TaskNode
+
+    task_node = TaskNode.objects.create(
+        graph=graph, node_name="task_node", agent_definition=agent_definition
+    )
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    agent_definition.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.task_node_list.first()
+    assert restored is not None
+    assert restored.agent_definition_id is None
+
+    fk_nulled_warnings = [w for w in warnings if w["type"] == "fk_nulled"]
+    assert len(fk_nulled_warnings) == 1
+    assert fk_nulled_warnings[0]["node_name"] == "task_node"
+    assert fk_nulled_warnings[0]["node_id"] == task_node.id
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_drops_agent_node_surface_when_deleted(
+    manager, graph, surface, default_org
+):
+    from agents.models import Surface
+    from tables.models import AgentNode
+
+    surviving_surface = Surface.objects.create(
+        organization=default_org, name="surviving-surface"
+    )
+    agent_node = AgentNode.objects.create(graph=graph, node_name="agent_node")
+    agent_node.surface_list.set([surface, surviving_surface])
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    deleted_surface_id = surface.id
+    surface.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.agent_node_list.first()
+    assert list(restored.surface_list.values_list("id", flat=True)) == [
+        surviving_surface.id
+    ]
+
+    surface_dropped_warnings = [w for w in warnings if w["type"] == "surface_dropped"]
+    assert len(surface_dropped_warnings) == 1
+    assert surface_dropped_warnings[0]["node_name"] == "agent_node"
+    assert surface_dropped_warnings[0]["node_id"] == agent_node.id
+    assert surface_dropped_warnings[0]["missing_id"] == deleted_surface_id
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_drops_task_node_surface_when_deleted(
+    manager, graph, surface
+):
+    from tables.models import TaskNode
+
+    task_node = TaskNode.objects.create(graph=graph, node_name="task_node")
+    task_node.surface_list.set([surface])
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    surface.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.task_node_list.first()
+    assert list(restored.surface_list.values_list("id", flat=True)) == []
+
+    surface_dropped_warnings = [w for w in warnings if w["type"] == "surface_dropped"]
+    assert len(surface_dropped_warnings) == 1
+    assert surface_dropped_warnings[0]["node_name"] == "task_node"
+    assert surface_dropped_warnings[0]["node_id"] == task_node.id
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_drops_agent_node_inline_python_tool_when_deleted(
+    manager, graph, python_code, python_code_tool
+):
+    from agents.models import AgentInlineSurface, AgentInlineSurfacePythonTool
+    from tables.models import AgentNode, PythonCodeTool
+
+    surviving_tool = PythonCodeTool.objects.create(
+        name="SurvivingTool",
+        description="Surviving PythonCodeTool",
+        variables=[],
+        python_code=python_code,
+        favorite=False,
+        built_in=False,
+    )
+    agent_node = AgentNode.objects.create(graph=graph, node_name="agent_node")
+    inline_surface = AgentInlineSurface.objects.create(agent_node=agent_node)
+    AgentInlineSurfacePythonTool.objects.create(
+        agent_inline_surface=inline_surface,
+        python_tool=python_code_tool,
+        mode="allow",
+    )
+    AgentInlineSurfacePythonTool.objects.create(
+        agent_inline_surface=inline_surface,
+        python_tool=surviving_tool,
+        mode="allow",
+    )
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    deleted_tool_id = python_code_tool.id
+    python_code_tool.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.agent_node_list.first()
+    restored_tool_ids = list(
+        restored.inline_surface.python_tools.values_list("python_tool_id", flat=True)
+    )
+    assert restored_tool_ids == [surviving_tool.id]
+
+    tool_dropped_warnings = [w for w in warnings if w["type"] == "inline_tool_dropped"]
+    assert len(tool_dropped_warnings) == 1
+    assert tool_dropped_warnings[0]["node_name"] == "agent_node"
+    assert tool_dropped_warnings[0]["node_id"] == agent_node.id
+    assert tool_dropped_warnings[0]["missing_id"] == deleted_tool_id
+
+
+@pytest.mark.django_db
+def test_restore_warns_and_drops_task_node_inline_mcp_tool_when_deleted(
+    manager, graph, mcp_tool
+):
+    from agents.models import InlineSurface, InlineSurfaceMcpTool
+    from tables.models import TaskNode
+
+    task_node = TaskNode.objects.create(graph=graph, node_name="task_node")
+    inline_surface = InlineSurface.objects.create(task_node=task_node)
+    InlineSurfaceMcpTool.objects.create(
+        inline_surface=inline_surface,
+        mcp_tool=mcp_tool,
+        mode="allow",
+    )
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+    deleted_mcp_tool_id = mcp_tool.id
+    mcp_tool.delete()
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    restored = graph.task_node_list.first()
+    restored_tool_ids = list(
+        restored.inline_surface.mcp_tools.values_list("mcp_tool_id", flat=True)
+    )
+    assert restored_tool_ids == []
+
+    tool_dropped_warnings = [w for w in warnings if w["type"] == "inline_tool_dropped"]
+    assert len(tool_dropped_warnings) == 1
+    assert tool_dropped_warnings[0]["node_name"] == "task_node"
+    assert tool_dropped_warnings[0]["node_id"] == task_node.id
+    assert tool_dropped_warnings[0]["missing_id"] == deleted_mcp_tool_id
+
+
+@pytest.mark.django_db
+def test_restore_produces_no_warnings_when_agent_task_node_deps_all_present(
+    manager, graph, agent_definition, surface, python_code_tool, mcp_tool
+):
+    from agents.models import (
+        AgentInlineSurface,
+        AgentInlineSurfacePythonTool,
+        AgentInlineSurfaceMcpTool,
+    )
+    from tables.models import AgentNode, TaskNode
+
+    agent_node = AgentNode.objects.create(
+        graph=graph, node_name="agent_node", agent_definition=agent_definition
+    )
+    agent_node.surface_list.set([surface])
+    inline_surface = AgentInlineSurface.objects.create(agent_node=agent_node)
+    AgentInlineSurfacePythonTool.objects.create(
+        agent_inline_surface=inline_surface,
+        python_tool=python_code_tool,
+        mode="allow",
+    )
+    AgentInlineSurfaceMcpTool.objects.create(
+        agent_inline_surface=inline_surface,
+        mcp_tool=mcp_tool,
+        mode="allow",
+    )
+    TaskNode.objects.create(
+        graph=graph, node_name="task_node", agent_definition=agent_definition
+    )
+    snapshot = manager.create_snapshot(graph)
+    deps = manager.collect_dependencies(graph)
+
+    warnings = _restore_from_saved_snapshot(manager, graph, snapshot, deps)
+
+    assert warnings == []
+    restored_agent_node = graph.agent_node_list.first()
+    assert restored_agent_node.agent_definition_id == agent_definition.id
+    assert list(restored_agent_node.surface_list.values_list("id", flat=True)) == [
+        surface.id
+    ]

@@ -263,7 +263,10 @@ class CrewCallbackFactory:
         except (ValueError, TypeError):
             return
 
-        if not isinstance(parsed, dict) or parsed.get(FINDINGS_MARKER_KEY) != "findings":
+        if (
+            not isinstance(parsed, dict)
+            or parsed.get(FINDINGS_MARKER_KEY) != "findings"
+        ):
             return
 
         try:
@@ -323,7 +326,7 @@ class CrewCallbackFactory:
         sse_visible is controlled by stream_config."""
         if not text or self.stream_writer is None:
             return
-        visible = self.stream_config.get(category, True)
+        visible = bool(self.stream_config.get(category, True))
         self._message_writer.add_custom_message(
             session_id=self.session_id,
             node_name=self.node_name,
@@ -347,6 +350,7 @@ class CrewCallbackFactory:
         agent_knowledge_collection_id=None,
         rag_type_id=None,
         rag_search_config=None,
+        rag_embedder_api_key=None,
         stop_event: Optional[StopEvent] = None,
     ) -> Callable[[], str]:
         def inner() -> str:
@@ -434,6 +438,7 @@ class CrewCallbackFactory:
                         rag_type_id=rag_type_id,
                         query=str(user_input),
                         rag_search_config=rag_search_config,
+                        rag_embedder_api_key=rag_embedder_api_key,
                     )
                     user_input_with_knowledges += self._extract_knowledges(
                         agent_knowledges

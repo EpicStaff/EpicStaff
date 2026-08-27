@@ -3,7 +3,12 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 
 import { expandCollapseAnimation } from '../../../../../../shared/animations/animations-expand-collapse';
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
-import { Finding, FindingsMessageData, GraphMessage } from '../../../../models/graph-session-message.model';
+import {
+    Finding,
+    FindingsMessageData,
+    GraphMessage,
+    MessageType,
+} from '../../../../models/graph-session-message.model';
 
 @Component({
     selector: 'app-findings-message',
@@ -20,7 +25,7 @@ export class FindingsMessageComponent {
     isExpanded = true;
 
     get data(): FindingsMessageData | null {
-        if (this.message?.message_data?.message_type === 'findings') {
+        if (this.message?.message_data?.message_type === MessageType.FINDINGS) {
             return this.message.message_data as FindingsMessageData;
         }
         return null;

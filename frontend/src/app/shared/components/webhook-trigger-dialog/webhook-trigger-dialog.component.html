@@ -1,0 +1,40 @@
+<div class="dialog">
+    <div class="dialog__header">
+        {{ isEdit ? 'Edit Webhook Trigger' : 'Add Webhook Trigger' }}
+    </div>
+
+    <form
+        class="dialog__form"
+        [formGroup]="form"
+    >
+        @if (errorMessage()) {
+            <div class="dialog__error-message">
+                <p>{{ errorMessage() }}</p>
+            </div>
+        }
+
+        <app-webhook-trigger-field
+            formControlName="webhook_trigger"
+            [allowPickExisting]="false"
+        ></app-webhook-trigger-field>
+    </form>
+
+    <div class="dialog__actions">
+        <app-button
+            type="outline-primary"
+            (click)="onCancel()"
+            >Cancel</app-button
+        >
+        <app-button
+            type="primary"
+            (click)="onSubmit()"
+            [disabled]="form.invalid || isSubmitting()"
+        >
+            @if (isSubmitting()) {
+                {{ isEdit ? 'Saving…' : 'Creating…' }}
+            } @else {
+                {{ isEdit ? 'Save' : 'Create' }}
+            }
+        </app-button>
+    </div>
+</div>

@@ -36,4 +36,12 @@
     input:checked + .slider:before {
         transform: translateX(28px);
     }
+
+    &--disabled {
+        opacity: 0.45;
+        pointer-events: none;
+        .slider {
+            cursor: not-allowed;
+        }
+    }
 }

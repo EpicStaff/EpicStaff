@@ -89,6 +89,26 @@ def test_graph_label_ids_cross_org_rejected(client_a, org_a, org_b):
     assert "label_ids" in str(resp.data)
 
 
+@pytest.mark.django_db
+def test_graph_label_ids_accepts_flow_scope_label(client_a, org_a):
+    flow_label = Label.objects.create(name="flow-label", org=org_a, scope=Label.Scope.FLOW)
+    resp = client_a.post(
+        "/api/graphs/", {"name": "g1", "label_ids": [flow_label.id]}, format="json"
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data["label_ids"] == [flow_label.id]
+
+
+@pytest.mark.django_db
+def test_graph_label_ids_rejects_tool_scope_label(client_a, org_a):
+    tool_label = Label.objects.create(name="tool-label", org=org_a, scope=Label.Scope.TOOL)
+    resp = client_a.post(
+        "/api/graphs/", {"name": "g1", "label_ids": [tool_label.id]}, format="json"
+    )
+    assert resp.status_code == 400
+    assert "label_ids" in str(resp.data)
+
+
 # ---- B: graph FK repoint on a node (update) ----
 
 
@@ -256,9 +276,12 @@ def test_init_realtime_same_org_agent_allowed(client_a, org_a):
     agent = Agent.objects.create(role="r", goal="g", backstory="b", org=org_a)
     with patch(
         "tables.views.views.realtime_service.init_realtime", return_value="conn-1"
-    ):
+    ) as init:
         resp = client_a.post(
             "/api/init-realtime/", {"agent_id": agent.id}, format="json"
         )
     assert resp.status_code == 201, resp.data
     assert resp.data["connection_key"] == "conn-1"
+    # The active org must reach the service: it is what binds decryption to the
+    # org the caller was authorized for.
+    assert init.call_args.kwargs["org_id"] == org_a.id

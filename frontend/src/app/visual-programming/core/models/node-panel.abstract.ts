@@ -22,7 +22,11 @@ export abstract class BaseSidePanel<T extends NodeModel> {
     public form!: FormGroup;
 
     protected readonly dirtyCheckTick = signal(0);
-    private initialNodeSnapshot = '';
+    /** JSON snapshot of the node at its last-known-clean state. Subclasses may patch a specific
+     *  field in place (parse, mutate, re-stringify) instead of calling resetBaseline(), when only
+     *  that one field needs correcting without treating any other pending edit as already saved
+     *  — see e.g. the secret-declaration restoration effects. */
+    protected initialNodeSnapshot = '';
 
     public readonly isDirty = computed(() => {
         this.dirtyCheckTick();
@@ -58,10 +62,6 @@ export abstract class BaseSidePanel<T extends NodeModel> {
 
     public onSave(): T | null {
         if (this.form && this.form.invalid) {
-            const originalNode = this.node();
-            if (originalNode) {
-                return originalNode;
-            }
             return null;
         }
         const updatedNode = this.createUpdatedNode();
@@ -84,7 +84,33 @@ export abstract class BaseSidePanel<T extends NodeModel> {
         }
     }
 
+    /**
+     * Captures the panel's current node state for a flow-wide save, regardless of whether
+     * the form is currently valid. Unlike `onSaveSilently()` (which returns `null` on an
+     * invalid form and therefore hides in-progress edits from the caller), this always
+     * returns the node built from the current form values, and marks every control touched
+     * so invalid fields render their error state. Used by the global "Save Flow" action so an
+     * open panel's incomplete edits are still visible to flow-wide validation instead of being
+     * silently dropped.
+     */
+    public captureForValidation(): T | null {
+        if (!this.form) return null;
+        this.form.markAllAsTouched();
+        this.notifyExternalChange();
+        try {
+            return this.createUpdatedNode();
+        } catch {
+            return null;
+        }
+    }
+
     protected notifyExternalChange(): void {
+        this.dirtyCheckTick.update((v) => v + 1);
+    }
+
+    protected resetBaseline(): void {
+        if (!this.form) return;
+        this.initialNodeSnapshot = JSON.stringify(this.createUpdatedNode());
         this.dirtyCheckTick.update((v) => v + 1);
     }
 

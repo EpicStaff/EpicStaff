@@ -36,6 +36,7 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 display: flex;
                 align-items: center;
             }
+
             .help-icon-wrapper {
                 cursor: help;
                 display: flex;
@@ -43,16 +44,17 @@ import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
                 justify-content: center;
                 outline: none;
                 color: var(--accent-color, #685fff);
-                transition: color 0.2s ease;
-                width: 18px;
-                height: 18px;
+                transition: opacity 0.2s ease;
+                width: 16px;
+                height: 16px;
+                flex-shrink: 0;
 
                 &:hover {
                     opacity: 0.7;
                 }
 
                 &.class-icon {
-                    font-size: 18px;
+                    font-size: 16px;
                     line-height: 1;
                 }
             }
@@ -65,7 +67,7 @@ export class HelpTooltipComponent {
     @Input() position: 'top' | 'bottom' | 'left' | 'right' = 'right';
     @Input() icon = 'help';
     @Input() iconClass = '';
-    @Input() size = '1rem';
+    @Input() size = '16px';
     @Input() tooltipClass = 'custom-tooltip';
 
     get tooltipPosition(): TooltipPosition {

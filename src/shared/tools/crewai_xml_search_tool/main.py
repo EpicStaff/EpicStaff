@@ -24,7 +24,7 @@ def main(
     try:
         # Load XML from URL or file
         if xml.startswith("http://") or xml.startswith("https://"):
-            response = requests.get(xml)
+            response = requests.get(xml, timeout=10)
             response.raise_for_status()
             content = response.text
         else:

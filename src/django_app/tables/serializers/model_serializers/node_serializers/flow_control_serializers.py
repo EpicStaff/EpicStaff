@@ -15,6 +15,10 @@ from tables.models.graph_models import (
 )
 from tables.models.python_models import PythonCode
 from tables.models.llm_models import LLMConfig
+from tables.services.copy_services.helpers import (
+    apply_python_code_fields,
+    create_python_code,
+)
 from tables.models.graph_models import Graph
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
@@ -271,11 +275,13 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
 
         pre_python_code = None
         if pre_python_code_data is not None:
-            pre_python_code = PythonCode.objects.create(**pre_python_code_data)
+            pre_python_code = create_python_code(python_code_data=pre_python_code_data)
 
         post_python_code = None
         if post_python_code_data is not None:
-            post_python_code = PythonCode.objects.create(**post_python_code_data)
+            post_python_code = create_python_code(
+                python_code_data=post_python_code_data
+            )
 
         node = ClassificationDecisionTableNode.objects.create(
             pre_python_code=pre_python_code,
@@ -305,12 +311,12 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
                 expected_hash = pre_python_code_data.pop("content_hash", None)
                 if expected_hash is not None:
                     python_code._expected_hash = expected_hash
-                for attr, value in pre_python_code_data.items():
-                    setattr(python_code, attr, value)
-                python_code.save()
+                apply_python_code_fields(
+                    python_code=python_code, python_code_data=pre_python_code_data
+                )
             else:
-                instance.pre_python_code = PythonCode.objects.create(
-                    **pre_python_code_data
+                instance.pre_python_code = create_python_code(
+                    python_code_data=pre_python_code_data
                 )
 
         if "post_python_code" in validated_data:
@@ -323,12 +329,12 @@ class ClassificationDecisionTableNodeSerializer(serializers.ModelSerializer):
                 expected_hash = post_python_code_data.pop("content_hash", None)
                 if expected_hash is not None:
                     python_code._expected_hash = expected_hash
-                for attr, value in post_python_code_data.items():
-                    setattr(python_code, attr, value)
-                python_code.save()
+                apply_python_code_fields(
+                    python_code=python_code, python_code_data=post_python_code_data
+                )
             else:
-                instance.post_python_code = PythonCode.objects.create(
-                    **post_python_code_data
+                instance.post_python_code = create_python_code(
+                    python_code_data=post_python_code_data
                 )
 
         for attr, value in validated_data.items():

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from tables.serializers.model_serializers import (
+    AgentNodeSerializer,
     AudioTranscriptionNodeSerializer,
     ClassificationDecisionTableNodeSerializer,
     CodeAgentNodeSerializer,
@@ -15,6 +16,7 @@ from tables.serializers.model_serializers import (
     ScheduleTriggerNodeSerializer,
     StartNodeSerializer,
     SubGraphNodeSerializer,
+    TaskNodeSerializer,
     WebhookTriggerNodeSerializer,
     TelegramTriggerNodeSerializer,
 )
@@ -38,10 +40,22 @@ class BulkSaveEntityMixin:
 
 
 class CodeAgentNodeBulkSerializer(BulkSaveEntityMixin, CodeAgentNodeSerializer):
+    """
+    DEPRECATED: CodeAgentNodeBulkSerializer is deprecated. Use
+    AgentNodeBulkSerializer or TaskNodeBulkSerializer instead. Exists only for
+    backward compatibility with existing CodeAgentNode rows.
+    """
+
     pass
 
 
 class CrewNodeBulkSerializer(BulkSaveEntityMixin, CrewNodeSerializer):
+    """
+    DEPRECATED: CrewNodeBulkSerializer is deprecated. Use
+    AgentNodeBulkSerializer or TaskNodeBulkSerializer instead. Exists only for
+    backward compatibility with existing CrewNode rows.
+    """
+
     pass
 
 
@@ -68,6 +82,14 @@ class EndNodeBulkSerializer(BulkSaveEntityMixin, EndNodeSerializer):
 
 
 class SubGraphNodeBulkSerializer(BulkSaveEntityMixin, SubGraphNodeSerializer):
+    pass
+
+
+class TaskNodeBulkSerializer(BulkSaveEntityMixin, TaskNodeSerializer):
+    pass
+
+
+class AgentNodeBulkSerializer(BulkSaveEntityMixin, AgentNodeSerializer):
     pass
 
 

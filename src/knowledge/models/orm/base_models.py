@@ -74,7 +74,7 @@ class EmbeddingConfig(Base):
     model_id = Column(Integer, ForeignKey("tables_embeddingmodel.id"), nullable=True)
     custom_name = Column(Text, unique=True, nullable=False)
     task_type = Column(String(255), nullable=False, default="retrieval_doc")
-    api_key = Column(Text, nullable=True)
+    api_key_secret_id = Column(Integer, nullable=True)
     is_visible = Column(Boolean, default=True)
 
     # Relationships

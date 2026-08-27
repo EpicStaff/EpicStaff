@@ -64,6 +64,7 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
     loadingDocuments = signal<boolean>(false);
     fullCollection = signal<CreateCollectionDtoResponse | null>(null);
     documents = signal<DisplayedListDocument[]>([]);
+    readonly descriptionSaveFailedTick = signal<number>(0);
     collectionName: FormControl = new FormControl('', [
         Validators.required,
         notWhitespaceValidator(),
@@ -135,6 +136,22 @@ export class CollectionDetailsComponent implements OnInit, OnChanges {
                             return EMPTY;
                         })
                     );
+                })
+            )
+            .subscribe(() => this.toastService.success('Collection Updated'));
+    }
+
+    onDescriptionSave(description: string): void {
+        const collection = this.fullCollection();
+        if (!collection) return;
+        this.collectionsStorageService
+            .updateCollectionById(collection.collection_id, { description })
+            .pipe(
+                takeUntilDestroyed(this.destroyRef),
+                catchError(() => {
+                    this.toastService.error('Collection Update failed');
+                    this.descriptionSaveFailedTick.update((n) => n + 1);
+                    return EMPTY;
                 })
             )
             .subscribe(() => this.toastService.success('Collection Updated'));

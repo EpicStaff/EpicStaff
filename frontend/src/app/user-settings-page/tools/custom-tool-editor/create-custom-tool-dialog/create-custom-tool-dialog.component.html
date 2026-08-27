@@ -107,6 +107,14 @@
                     }
                 </div>
 
+                <div class="form-section">
+                    <app-node-secrets-field
+                        [value]="selectedSecretIds()"
+                        tooltipText="Secrets this tool's code can access at runtime — create and manage secrets under Settings → Secrets. Press Ctrl+Space in the code editor to insert get_secret('name')."
+                        (valueChange)="onSecretsChange($event)"
+                    />
+                </div>
+
                 @if (activeEditor() !== ActiveEditor.Python) {
                     <div
                         class="editor-card"
@@ -167,6 +175,7 @@
                                 <app-code-editor
                                     [pythonCode]="form.controls.pythonCode.value"
                                     [showHeader]="false"
+                                    [secretNames]="secretNames()"
                                     [readOnly]="isBuiltIn()"
                                     (pythonCodeChange)="onPythonCodeChange($event)"
                                     (errorChange)="onPythonErrorChange($event)"
@@ -192,11 +201,20 @@
                         <div class="parameters-mode-switch">
                             <span>Table mode</span>
                             <app-toggle-switch
-                                [checked]="parametersTableMode()"
+                                [checked]="parametersSwitchOn()"
                                 (checkedChange)="setParametersTableMode($event)"
                             ></app-toggle-switch>
                         </div>
                     </div>
+
+                    <div class="storage-mode-switch">
+                        <span>Enable Storage</span>
+                        <app-help-tooltip
+                            text="Allow this tool to read and write files in EpicStaff storage."
+                        ></app-help-tooltip>
+                        <app-toggle-switch formControlName="useStorage"></app-toggle-switch>
+                    </div>
+
                     @if (parametersTableMode()) {
                         <app-parameters-table-view
                             [variables]="tableVariables()"
@@ -372,6 +390,7 @@
                             <app-code-editor
                                 [pythonCode]="form.controls.pythonCode.value"
                                 [showHeader]="false"
+                                [secretNames]="secretNames()"
                                 [readOnly]="isBuiltIn()"
                                 (pythonCodeChange)="onPythonCodeChange($event)"
                                 (errorChange)="onPythonErrorChange($event)"

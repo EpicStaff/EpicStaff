@@ -21,7 +21,22 @@
                     [class.center]="col.align === 'center'"
                     [class.end]="col.align === 'end'"
                 >
-                    @if (col.filterItems?.length && col.filterKind === 'single') {
+                    @if (col.headerIcon) {
+                        <span
+                            class="col-label-group col-label-group--clickable"
+                            [class.col-label-group--active]="col.headerIconActive"
+                            (click)="onHeaderIconClick(col.key, $event)"
+                        >
+                            <span class="col-label">{{ col.label }}</span>
+                            @if (col.headerBadgeCount) {
+                                <span class="col-label-badge">({{ col.headerBadgeCount }})</span>
+                            }
+                            <app-svg-icon
+                                [icon]="col.headerIcon"
+                                size="16px"
+                            />
+                        </span>
+                    } @else if (col.filterItems?.length && col.filterKind === 'single') {
                         <app-select
                             #sel
                             variant="boxed"

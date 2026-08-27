@@ -15,6 +15,8 @@ from .tag_models import *
 from .realtime_models import *
 from .mcp_models import *
 from .label_models import *
+from .favorite_models import *
+from .secret_models import *
 from .rbac_models import (
     User,
     Organization,

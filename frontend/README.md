@@ -11,6 +11,20 @@ npm start -- --port 4300        # run on a custom port → http://localhost:4300
 
 The server automatically reloads the app when source files change.
 
+## Pointing the frontend at a different backend
+
+Backend URLs live in [src/environments/environment.ts](./src/environments/environment.ts), which is tracked by git — editing it directly leaves the file permanently dirty in `git status`. Use a personal override instead:
+
+```powershell
+cp src/environments/environment.local.example.ts src/environments/environment.local.ts
+# edit environment.local.ts — set apiUrl / realtimeApiUrl
+npm run start:local
+```
+
+`environment.local.ts` is listed in [.gitignore](../.gitignore), so it never shows up as a pending change. The example file documents the usual targets: a remote stand (no local backend needed), a local backend behind docker/nginx, or services exposed directly on their ports.
+
+A plain `npm start` keeps using the repository's `environment.ts`. The swap is wired through the `local` configuration in [angular.json](./angular.json) via `fileReplacements` — the same mechanism `test` and `production` builds use.
+
 ## Build
 
 ```powershell
@@ -33,8 +47,8 @@ npm run lint:fix          # check with autofix
 
 **Prettier (`.ts`, `.html`, `.scss`, `.json`):**
 ```powershell
-npm run format                                              # format files in place
 npx prettier --check "src/**/*.{ts,html,scss,json}"         # check only, no writes
+npm run format                                              # format files in place
 ```
 
 **TypeScript type-check:**
