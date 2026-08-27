@@ -189,15 +189,10 @@ REST_FRAMEWORK = {
 
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL").rstrip("/")
 
-_cors_allowed_origins_raw = (os.getenv("CORS_ALLOWED_ORIGINS") or "").strip()
-if not _cors_allowed_origins_raw:
-    raise ImproperlyConfigured(
-        "CORS_ALLOWED_ORIGINS is not set. Set it to your trusted browser "
-        "origin(s), comma-separated (e.g. https://app.example.com), and pass "
-        "it to the django_app container — see docs/setup/cors.md."
-    )
 CORS_ALLOWED_ORIGINS = [
-    origin.strip() for origin in _cors_allowed_origins_raw.split(",") if origin.strip()
+    origin.strip()
+    for origin in (os.getenv("CORS_ALLOWED_ORIGINS") or "").strip().split(",")
+    if origin.strip()
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = (*default_headers, "x-organization-id")

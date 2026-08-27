@@ -17,12 +17,12 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 ```
 
 `src/.env.example` ships this pre-filled with the local-dev value
-(`http://localhost:4200,http://localhost,https://localhost`) and a
-`CHANGE ME` marker — the marker is just a comment, nothing enforces it, so
+(`http://localhost:4200,http://localhost,https://localhost`) so
 **actually replace the value** when you copy `.env.example` to a real `.env`.
 If you don't, django_app/realtime/webhook won't crash (the value is present,
 just wrong) — your real frontend domain will silently get CORS-rejected
-instead.
+instead. If you leave it out of `.env` entirely, `docker compose up` refuses
+to start *anything* — see [If it won't start](#if-it-wont-start) below.
 
 **Never set `CORS_ALLOWED_ORIGINS=*`.** For webhook/realtime (Starlette
 `CORSMiddleware`) that's read as "trust every origin", and combined with
@@ -33,18 +33,15 @@ credentialed requests it reopens the exact vulnerability described below.
 While you're editing `.env` for `CORS_ALLOWED_ORIGINS`, also make sure
 `FRONTEND_BASE_URL` is set. It's unrelated to CORS but declared right next
 to it in `.env.example`/`env.yaml`, and it's required for password-reset
-emails. If it's left unset, Django currently crashes with a raw
-`AttributeError: 'NoneType' object has no attribute 'rstrip'` instead of a
-clean error message — a pre-existing gap outside this CORS fix, flagged here
-only so you don't hit it while you're already editing this file.
+emails. `docker-compose` also requires it.
 
 ## If it won't start
 
 | You see | Cause | Fix |
 | --- | --- | --- |
-| Django: `ImproperlyConfigured: CORS_ALLOWED_ORIGINS is not set` | `.env` is missing `CORS_ALLOWED_ORIGINS` (blank or absent). Most likely an existing deployment upgrading past this change — its `.env` predates the variable. | Add `CORS_ALLOWED_ORIGINS` to `.env` with your trusted origin(s), then restart. |
-| `realtime`/`webhook` never start (stuck waiting, or restart-looping) | They only start once `django_app` is healthy (`depends_on: django_app: condition: service_healthy` in `src/docker-compose.yaml`) — if Django crashed on the missing var above, these two never get a chance to. | Fix `django_app` first (see row above); `realtime`/`webhook` come up once it's healthy. |
-| No crash anywhere, but the frontend gets CORS-rejected in the browser console | `CORS_ALLOWED_ORIGINS` is set but doesn't include the origin the browser is actually loading the frontend from (e.g. still the `CHANGE ME` local-dev placeholder), or `realtime`/`webhook` are running outside docker-compose (bypassing the `django_app` health gate) without `CORS_ALLOWED_ORIGINS` set at all — they don't validate it themselves, see below. | Check the exact origin (scheme + host + port) in your browser's address bar / devtools and add it to the list. |
+| `docker compose up` (or `config`) fails immediately, before any container starts, with `required variable CORS_ALLOWED_ORIGINS is missing a value: CORS_ALLOWED_ORIGINS must be set` | `.env` is missing `CORS_ALLOWED_ORIGINS` (blank or absent). All three services declare it as required in `src/docker-compose.yaml` (`${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}`), so compose won't bring up *any* service — not just the ones that need it — until it's set. Most likely an existing deployment upgrading past this change, whose `.env` predates the variable. | Add `CORS_ALLOWED_ORIGINS` to `.env` with your trusted origin(s), then rerun. |
+| Same, but `FRONTEND_BASE_URL must be set` | `.env` is missing `FRONTEND_BASE_URL`. Only `django_app` requires it, same `${VAR:?...}` mechanism. | Add `FRONTEND_BASE_URL` to `.env`, then rerun. |
+| No crash anywhere, but the frontend gets CORS-rejected in the browser console | Either `CORS_ALLOWED_ORIGINS` is set but doesn't include the origin the browser is actually loading the frontend from, or django_app/realtime/webhook are running **outside docker-compose** (bare `manage.py`, bare `uvicorn`, etc.) with the var unset — the `:?` requirement is enforced by docker-compose/the shell, not by Python, so nothing catches a blank value at that point; you just silently get an empty allow-list. | Check the exact origin (scheme + host + port) in your browser's address bar / devtools and add it to the list; if running outside compose, set `CORS_ALLOWED_ORIGINS` yourself before starting the process. |
 
 ## Why this exists
 
@@ -64,44 +61,53 @@ explicit allow-list instead.
 ### How it's read
 
 `CORS_ALLOWED_ORIGINS` is a single comma-separated env var, read
-independently by all three services. Only Django enforces it at the Python
-level — `realtime`/`webhook` deliberately don't duplicate that check:
+independently by all three services. **None of the three validates it in
+Python anymore** — enforcement lives entirely in `src/docker-compose.yaml`,
+via the shell/compose required-variable syntax `${VAR:?error message}`:
+if the variable is unset or blank when compose interpolates the file, it
+fails with that message before any container is created, for the whole
+stack, not just the service that declared it. `FRONTEND_BASE_URL` gets the
+same treatment, but only in `django_app`'s block (its only consumer).
 
-| Service | Requires `CORS_ALLOWED_ORIGINS` in Python | `allow_credentials` | Consumed in |
-| --- | --- | --- | --- |
-| Django (`django_app`) | Yes — raises `ImproperlyConfigured` if blank | `True` | `src/django_app/django_app/settings.py` |
-| realtime | No — plain `Settings.CORS_ALLOWED_ORIGINS: str = ""`, no validator | `True` | `src/realtime/core/config.py`, consumed in `src/realtime/api/main.py` |
-| webhook | No — same, no validator | `False` | `src/webhook/app/core/settings.py`, consumed in `src/webhook/app/main.py` |
+| Service | Python-level check | Enforced by | `allow_credentials` | Consumed in |
+| --- | --- | --- | --- | --- |
+| Django (`django_app`) | None | `docker-compose`: `${CORS_ALLOWED_ORIGINS:?...}` | `True` | `src/django_app/django_app/settings.py` |
+| realtime | None | `docker-compose`: `${CORS_ALLOWED_ORIGINS:?...}` | `True` | `src/realtime/core/config.py`, consumed in `src/realtime/api/main.py` |
+| webhook | None | `docker-compose`: `${CORS_ALLOWED_ORIGINS:?...}` | `False` | `src/webhook/app/core/settings.py`, consumed in `src/webhook/app/main.py` |
 
-- Django: `src/django_app/django_app/settings.py` — checked inline (same
-  `ImproperlyConfigured`-on-blank pattern as `_require_env`/`SECRET_KEY`,
-  just not routed through that exact function since it's secret-specific).
-- realtime/webhook: no validation at all. This is intentional, not an
-  oversight — both have `depends_on: django_app: condition: service_healthy`
-  in `src/docker-compose.yaml`, so in the normal docker-compose path they
-  never even start unless Django already came up healthy, which means Django
-  already confirmed `CORS_ALLOWED_ORIGINS` is set. Duplicating the check in
-  three places was judged not worth the extra code. The gap this leaves:
-  running `realtime`/`webhook` directly, outside docker-compose (bypassing
-  the `depends_on` gate), with `CORS_ALLOWED_ORIGINS` unset gives an empty
-  `cors_allowed_origins_list` — CORS silently rejects every origin, no error.
-  Unlike Django, webhook also sets `allow_credentials=False` — it has no
-  cookie-based auth at all (no session, nothing to protect with credentialed
-  CORS), so allowing credentials would have protected nothing while widening
-  the attack surface for no benefit.
+`realtime` and `webhook` also wait for `django_app` to report healthy before
+starting (`depends_on: django_app: condition: service_healthy` in
+`src/docker-compose.yaml`) — but that's regular startup ordering, not what
+protects `CORS_ALLOWED_ORIGINS`: the `:?` check already blocks the whole
+stack earlier if the variable is missing, before ordering even comes into
+play. Webhook is the one service with `allow_credentials=False` — it has no
+cookie-based auth (no session), so there's nothing credentialed CORS would
+protect there.
 
-`docker-compose` itself never supplies a fallback either — every service's
-`environment:` block passes `CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}`
-(blank if the shell/`.env` doesn't have it). The only place a real default
-lives is `src/env.yaml` (`http://localhost:4200,http://localhost,
-https://localhost`, used to generate `.dev.env`/`.debug.env`/`.env.example`)
-— for `realtime`/`webhook` that default reaches them purely through the
-generated `.env` file docker-compose reads from, not through any code.
+### Running a service outside docker-compose
 
-`CORS_ALLOWED_ORIGINS` is passed through explicitly in each of the
-`django_app`, `realtime`, and `webhook` services' `environment:` blocks in
-`src/docker-compose.yaml` (it is not in the shared `x-common-env` anchor,
-since other services in the compose file don't need it).
+If you ever start `django_app`, `realtime`, or `webhook` directly — bare
+`manage.py`, bare `uvicorn`, a debugger, a one-off script — the `${VAR:?...}`
+check does not apply; it's evaluated by docker-compose/the shell, not by
+Python. An unset `CORS_ALLOWED_ORIGINS` is simply read as blank, the service
+starts with an empty allow-list, and every cross-origin request gets
+silently rejected with no error printed anywhere.
+
+**Recommendation:** export `CORS_ALLOWED_ORIGINS` (and `FRONTEND_BASE_URL`
+for `django_app`) explicitly in that shell before starting the process, and
+confirm with a real cross-origin request that CORS actually works — don't
+rely on the process simply starting as proof it's configured.
+
+`src/env.yaml` defines the only non-empty default
+(`http://localhost:4200,http://localhost,https://localhost`), used purely to
+generate `.dev.env`/`.debug.env`/`.env.example` for local development. A real
+deployment's hand-created `.env` gets no default — set the variable
+explicitly, or `docker compose up` refuses to start.
+
+`CORS_ALLOWED_ORIGINS` and `FRONTEND_BASE_URL` are passed through explicitly
+in the relevant services' `environment:` blocks in `src/docker-compose.yaml`
+(neither is in the shared `x-common-env` anchor, since other services in the
+compose file don't need them).
 
 ### Do not reintroduce the wildcard
 
