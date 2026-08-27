@@ -1208,15 +1208,22 @@ export class TasksTableComponent implements OnChanges {
         if (isTempRow) {
             // For temporary rows, remove directly without backend call
             const localIndex = this.rowData.findIndex((row) => row === this.selectedRowData);
+            const tempRowKey = String(this.selectedRowData.id);
 
             if (localIndex !== -1) {
-                // Remove from local array
+                // Remove from local array first, then top up the spare row (so
+                // deleting the last empty row still leaves one to type into),
+                // then push the final state to the grid. Order matters: the
+                // reindex helper below rebuilds this.rowData from the grid, so
+                // the grid MUST include the new spare row first — otherwise
+                // the empty row would be silently dropped.
                 this.rowData.splice(localIndex, 1);
+                this.localDraftTempKeys.delete(tempRowKey);
+                this.requiredErrorsRows.delete(tempRowKey);
+                this.setPending(tempRowKey, null);
+                this.ensureSingleSpareEmptyRow();
 
-                // Refresh the grid with the updated data
                 this.gridApi.setGridOption('rowData', [...this.rowData]);
-
-                // Refresh index column
                 this.gridApi.refreshCells({
                     force: true,
                     columns: ['index'],
@@ -1225,13 +1232,11 @@ export class TasksTableComponent implements OnChanges {
                 this.cdr.markForCheck();
             } else {
                 console.warn('Row not found for local deletion.');
+                this.localDraftTempKeys.delete(tempRowKey);
+                this.requiredErrorsRows.delete(tempRowKey);
+                this.setPending(tempRowKey, null);
             }
 
-            const tempRowKey = String(this.selectedRowData.id);
-            this.localDraftTempKeys.delete(tempRowKey);
-            this.requiredErrorsRows.delete(tempRowKey);
-            this.setPending(tempRowKey, null);
-            this.ensureSingleSpareEmptyRow();
             this.reindexAndSyncPendingOrders();
             this.maybeClearReorderPending();
             this.closeContextMenu();
@@ -1250,6 +1255,9 @@ export class TasksTableComponent implements OnChanges {
 
         // Remove optimistically from local array
         this.rowData.splice(index, 1);
+        this.ensureSingleSpareEmptyRow();
+        this.gridApi?.setGridOption('rowData', [...this.rowData]);
+        this.gridApi?.refreshCells({ force: true, columns: ['index'] });
         this.reindexAndSyncPendingOrders();
 
         this.cdr.markForCheck();
