@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "manager"
 version = "0.1.0"
-description = "manager for tools and crew containers"
+description = "background worker: session TTL watchdog and schedule-trigger scheduler"
 authors = ["Ihor Orlenko", "Maksym Yevstratiev"]
 
 [tool.poetry.dependencies]
