@@ -137,7 +137,6 @@ services:
     container_name: manager_container
     environment:
       <<: *common_env
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
     networks:

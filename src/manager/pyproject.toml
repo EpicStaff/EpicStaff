@@ -7,14 +7,15 @@ authors = ["Ihor Orlenko", "Maksym Yevstratiev"]
 [tool.poetry.dependencies]
 python = "^3.12"
 python-dotenv = "1.0.1"
-fastapi = {extras = ["all"], version = "0.115.2"}
-uvicorn = "0.32.0"
 redis = "5.2.0"
 loguru = "0.7.2"
 sqlalchemy = "^2.0.40"
 asyncpg = "^0.30.0"
 pydantic = ">=2.10.5,<3.0.0"
 apscheduler = "^3.10.4"
+
+[tool.poetry.group.dev.dependencies]
+watchfiles = "^0.22.0"
 
 [build-system]
 requires = ["poetry-core"]
