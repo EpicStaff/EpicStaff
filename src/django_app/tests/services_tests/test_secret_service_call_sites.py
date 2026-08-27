@@ -2,8 +2,9 @@
 
 The FK-wiring change renamed the raw credential columns out from under several
 services. Every one of them is now wired: quickstart and Telegram directly, the
-converter via id-carrying payload fields, and litellm_client via
-SecretResolver.resolve. Nothing here is deferred any more.
+converter via id-carrying payload fields, and the FlowAssistant streaming path
+via SecretResolver.resolve called by the caller of LiteLLMClient (never by
+LiteLLMClient itself — see litellm_client.py). Nothing here is deferred any more.
 """
 
 import pytest
@@ -126,14 +127,24 @@ class TestTelegramRegistrationReadsSecret:
     ):
         from types import SimpleNamespace
 
-        from tables.models.webhook_models import NgrokWebhookConfig, WebhookTrigger
+        from tables.models.webhook_models import (
+            NgrokWebhookConfig,
+            ProviderType,
+            WebhookTrigger,
+        )
         from tables.services.secrets import secret_service
 
         graph = Graph.objects.create(name="telegram-with-secret", org=org)
         webhook_trigger = WebhookTrigger.objects.create(
             path="telegram-secret-path",
-            ngrok_webhook_config=NgrokWebhookConfig.objects.create(
-                name="ngrok-telegram-test", auth_token="ngrok-token-test"
+            provider_type=ProviderType.NGROK,
+            org=org,
+        )
+        NgrokWebhookConfig.objects.create(
+            name="ngrok-telegram-test",
+            trigger=webhook_trigger,
+            auth_token_secret=secret_service.create(
+                text="ngrok-token-test", org=org, name="ngrok-telegram-test-secret"
             ),
         )
         node = TelegramTriggerNode.objects.create(
@@ -148,7 +159,11 @@ class TestTelegramRegistrationReadsSecret:
         service = fresh_telegram_service(
             session_manager_service=SimpleNamespace(),
             webhook_trigger_service=SimpleNamespace(
-                get_tunnel_url=lambda ngrok_webhook_config: "https://tunnel.test"
+                wait_for_tunnel_url_for_trigger=lambda trigger: "https://tunnel.test",
+                # EST-3862: register_telegram_trigger now unconditionally
+                # pushes the WebhookNodeAuth credential before calling
+                # Telegram -- needs this on the stub too.
+                register_webhooks=lambda: True,
             ),
         )
 
@@ -194,10 +209,15 @@ class TestPayloadAndInProcessConsumers:
         assert data.config.api_key is None
         assert data.config.api_key_secret_id is None
 
-    def test_litellm_client_builds_kwargs(self, org):
+    def test_secret_resolver_resolves_litellm_config_api_key(self, org):
+        """The resolver turns a LiteLLM config's api_key_secret FK into plaintext.
+
+        LiteLLMClient no longer calls the resolver itself (it is constructed on
+        an async request path — see litellm_client.py docstring); the caller
+        resolves this value. This test covers that resolution in isolation.
+        """
         from tables.models import LLMModel
-        from tables.services.llm_clients.litellm_client import LiteLLMClient
-        from tables.services.secrets import secret_service
+        from tables.services.secrets import secret_resolver, secret_service
 
         provider, _ = Provider.objects.get_or_create(name="openai")
         model = LLMModel.objects.create(name="gpt-4o-lite-test", llm_provider=provider)
@@ -208,11 +228,29 @@ class TestPayloadAndInProcessConsumers:
             custom_name="lite-test", model=model, org=org, api_key_secret=secret
         )
 
-        kwargs = LiteLLMClient(llm_config=config)._build_kwargs(messages=[], tools=[])
+        api_key = secret_resolver.resolve(
+            secret_id=config.api_key_secret_id,
+            org_id=config.org_id,
+            context="LiteLLMClient.api_key",
+        )
+
+        assert api_key == "sk-litellm-resolved"
+
+    def test_litellm_client_build_kwargs_includes_supplied_api_key(self, org):
+        from tables.models import LLMModel
+        from tables.services.llm_clients.litellm_client import LiteLLMClient
+
+        provider, _ = Provider.objects.get_or_create(name="openai")
+        model = LLMModel.objects.create(name="gpt-4o-lite-test", llm_provider=provider)
+        config = LLMConfig.objects.create(custom_name="lite-test", model=model, org=org)
+
+        kwargs = LiteLLMClient(
+            llm_config=config, api_key="sk-litellm-resolved"
+        )._build_kwargs(messages=[], tools=[])
 
         assert kwargs["api_key"] == "sk-litellm-resolved"
 
-    def test_litellm_client_omits_api_key_when_no_secret_attached(self, org):
+    def test_litellm_client_omits_api_key_when_none(self, org):
         from tables.models import LLMModel
         from tables.services.llm_clients.litellm_client import LiteLLMClient
 
@@ -222,6 +260,8 @@ class TestPayloadAndInProcessConsumers:
             custom_name="lite-no-key", model=model, org=org
         )
 
-        kwargs = LiteLLMClient(llm_config=config)._build_kwargs(messages=[], tools=[])
+        kwargs = LiteLLMClient(llm_config=config, api_key=None)._build_kwargs(
+            messages=[], tools=[]
+        )
 
         assert "api_key" not in kwargs

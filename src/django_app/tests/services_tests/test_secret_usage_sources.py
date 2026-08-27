@@ -37,8 +37,16 @@ from tables.models.llm_models import (
     RealtimeTranscriptionModel,
 )
 from tables.models.rbac_models import Organization
+from tables.models.webhook_models import (
+    NgrokWebhookConfig,
+    RealtimeChannel,
+    TwilioChannel,
+    WebhookNodeAuth,
+    WebhookTrigger,
+)
 from tables.services.secrets import secret_service
 from tables.services.secrets.usage_sources import (
+    CATEGORY_CHANNELS,
     CATEGORY_FLOWS,
     CATEGORY_LLM_CONFIGS,
     CATEGORY_TOOLS,
@@ -60,21 +68,24 @@ from tables.services.secrets.python_code_sites import (
 DECLARING_CODE = 'def main(**kwargs):\n    return get_secret("USAGE_KEY")\n'
 
 
-def _source(*, model, secret_path: str | None = None):
+def _source(*, model, secret_path: str | None = None, node_type: str | None = None):
     """The registry's configured source for this model.
 
     secret_path disambiguates ClassificationDecisionTableNode, which contributes two
-    entries (pre and post).
+    entries (pre and post). node_type disambiguates WebhookNodeAuth, whose two
+    entries (telegram-attached / webhook-attached) share the same secret_path.
     """
     matches = [
         source
         for source in USAGE_SOURCES
         if source.model is model
         and (secret_path is None or source.secret_path == secret_path)
+        and (node_type is None or source.node_type == node_type)
     ]
     assert len(matches) == 1, (
         f"expected exactly one registry source for {model.__name__}"
-        f"{f' at {secret_path}' if secret_path else ''}, found {len(matches)}"
+        f"{f' at {secret_path}' if secret_path else ''}"
+        f"{f' node_type={node_type}' if node_type else ''}, found {len(matches)}"
     )
     return matches[0]
 
@@ -247,6 +258,65 @@ class TestFlowForeignKeySource:
 
 
 @pytest.mark.django_db
+class TestChannelForeignKeySources:
+    def test_twilio_channel_reports_its_parent_channel_name(self, org, secret, ids):
+        channel = RealtimeChannel.objects.create(name="Support line", org=org)
+        TwilioChannel.objects.create(
+            channel=channel, account_sid="ACusage", auth_token_secret=secret
+        )
+
+        hits = _hits(source=_source(model=TwilioChannel), org_id=org.id, secret_ids=ids)
+
+        assert [(hit.category, hit.resource_name) for hit in hits] == [
+            (CATEGORY_CHANNELS, "Support line")
+        ]
+
+    def test_a_twilio_channel_in_another_orgs_scope_is_not_reported(
+        self, org, secret, ids
+    ):
+        other = Organization.objects.create(name="Org SecretUsageSources Twilio Other")
+        channel = RealtimeChannel.objects.create(name="Foreign line", org=other)
+        TwilioChannel.objects.create(
+            channel=channel, account_sid="ACforeign", auth_token_secret=secret
+        )
+
+        assert (
+            _hits(source=_source(model=TwilioChannel), org_id=org.id, secret_ids=ids)
+            == []
+        )
+
+    def test_ngrok_webhook_config_reports_its_own_name(self, org, secret, ids):
+        trigger = WebhookTrigger.objects.create(path="usage-hook", org=org)
+        NgrokWebhookConfig.objects.create(
+            name="usage tunnel", trigger=trigger, auth_token_secret=secret
+        )
+
+        hits = _hits(
+            source=_source(model=NgrokWebhookConfig), org_id=org.id, secret_ids=ids
+        )
+
+        assert [(hit.category, hit.resource_name) for hit in hits] == [
+            (CATEGORY_CHANNELS, "usage tunnel")
+        ]
+
+    def test_an_ngrok_config_in_another_orgs_scope_is_not_reported(
+        self, org, secret, ids
+    ):
+        other = Organization.objects.create(name="Org SecretUsageSources Ngrok Other")
+        trigger = WebhookTrigger.objects.create(path="foreign-hook", org=other)
+        NgrokWebhookConfig.objects.create(
+            name="foreign tunnel", trigger=trigger, auth_token_secret=secret
+        )
+
+        assert (
+            _hits(
+                source=_source(model=NgrokWebhookConfig), org_id=org.id, secret_ids=ids
+            )
+            == []
+        )
+
+
+@pytest.mark.django_db
 class TestDeclarationSources:
     def test_python_node_declaring_a_secret_is_reported(self, org, secret, ids):
         graph = Graph.objects.create(name="Python flow", org=org)
@@ -364,6 +434,94 @@ class TestDeclarationSources:
         )
 
         assert _hits(source=pre, org_id=org.id, secret_ids=ids) == []
+
+
+@pytest.mark.django_db
+class TestWebhookNodeAuthSources:
+    """WebhookNodeAuth attaches via one of two nullable OneToOneFields, so it
+    gets two registry entries -- each must only ever report the row it owns,
+    never the other attachment's rows (that's what `extra_filter` buys)."""
+
+    def test_telegram_attached_row_is_reported_under_the_telegram_entry(
+        self, org, secret, ids
+    ):
+        graph = Graph.objects.create(name="Telegram auth flow", org=org)
+        node = TelegramTriggerNode.objects.create(node_name="tg_auth", graph=graph)
+        WebhookNodeAuth.objects.create(
+            enabled=True,
+            scheme="static_header",
+            header_name="X-Telegram-Bot-Api-Secret-Token",
+            secret=secret,
+            telegram_trigger_node=node,
+        )
+
+        telegram_source = _source(
+            model=WebhookNodeAuth, node_type=NODE_TYPE_TELEGRAM_TRIGGER
+        )
+        webhook_source = _source(
+            model=WebhookNodeAuth, node_type=NODE_TYPE_WEBHOOK_TRIGGER
+        )
+
+        telegram_hits = _hits(source=telegram_source, org_id=org.id, secret_ids=ids)
+        webhook_hits = _hits(source=webhook_source, org_id=org.id, secret_ids=ids)
+
+        assert [(hit.node_name, hit.node_type) for hit in telegram_hits] == [
+            ("tg_auth", NODE_TYPE_TELEGRAM_TRIGGER)
+        ]
+        assert webhook_hits == []
+
+    def test_webhook_attached_row_is_reported_under_the_webhook_entry(
+        self, org, secret, ids
+    ):
+        graph = Graph.objects.create(name="Webhook auth flow", org=org)
+        python_code = PythonCode.objects.create(code="def main(): return 1")
+        node = WebhookTriggerNode.objects.create(
+            node_name="wh_auth", graph=graph, python_code=python_code
+        )
+        WebhookNodeAuth.objects.create(
+            enabled=True,
+            scheme="hmac_sha256",
+            header_name="X-Webhook-Signature",
+            secret=secret,
+            webhook_trigger_node=node,
+        )
+
+        telegram_source = _source(
+            model=WebhookNodeAuth, node_type=NODE_TYPE_TELEGRAM_TRIGGER
+        )
+        webhook_source = _source(
+            model=WebhookNodeAuth, node_type=NODE_TYPE_WEBHOOK_TRIGGER
+        )
+
+        telegram_hits = _hits(source=telegram_source, org_id=org.id, secret_ids=ids)
+        webhook_hits = _hits(source=webhook_source, org_id=org.id, secret_ids=ids)
+
+        assert telegram_hits == []
+        assert [(hit.node_name, hit.node_type) for hit in webhook_hits] == [
+            ("wh_auth", NODE_TYPE_WEBHOOK_TRIGGER)
+        ]
+
+    def test_a_node_in_another_orgs_graph_is_not_reported(self, org, secret, ids):
+        other = Organization.objects.create(name="Org WebhookNodeAuth Other")
+        graph = Graph.objects.create(name="Foreign auth flow", org=other)
+        node = TelegramTriggerNode.objects.create(
+            node_name="foreign_tg_auth", graph=graph
+        )
+        WebhookNodeAuth.objects.create(
+            enabled=True,
+            scheme="static_header",
+            header_name="X-Telegram-Bot-Api-Secret-Token",
+            secret=secret,
+            telegram_trigger_node=node,
+        )
+
+        telegram_source = _source(
+            model=WebhookNodeAuth, node_type=NODE_TYPE_TELEGRAM_TRIGGER
+        )
+
+        assert (
+            _hits(source=telegram_source, org_id=org.id, secret_ids=ids) == []
+        )
 
 
 @pytest.mark.django_db
@@ -579,9 +737,11 @@ class TestDetailShapes:
         shapes = [source.detail_shape for source in USAGE_SOURCES]
 
         assert set(shapes) == {SHAPE_NAMED, SHAPE_NODE, SHAPE_EDGE}
-        # 4 configs + McpTool + PythonCodeTool / 5 named flow nodes / ConditionalEdge.
-        assert shapes.count(SHAPE_NAMED) == 6
-        assert shapes.count(SHAPE_NODE) == 5
+        # 4 configs + McpTool + PythonCodeTool + TwilioChannel + NgrokWebhookConfig /
+        # 5 named flow nodes + 2 WebhookNodeAuth entries (telegram-/webhook-attached) /
+        # ConditionalEdge.
+        assert shapes.count(SHAPE_NAMED) == 8
+        assert shapes.count(SHAPE_NODE) == 7
         assert shapes.count(SHAPE_EDGE) == 1
         assert set(HITS_ASSEMBLERS) == set(SHAPE_PROJECTIONS) == set(shapes)
 
@@ -647,12 +807,13 @@ class TestDetailShapes:
 
 @pytest.mark.django_db
 def test_registry_covers_every_declared_source():
-    """Twelve sources: six FK-declared written out, six derived from
-    PYTHON_CODE_SITES. A source added to the module but forgotten in the registry is
-    invisible to both endpoints, which is a silent under-report."""
+    """Sixteen sources: ten FK-declared written out (eight original + two
+    WebhookNodeAuth entries), six derived from PYTHON_CODE_SITES. A source added
+    to the module but forgotten in the registry is invisible to both endpoints,
+    which is a silent under-report."""
     from tables.services.secrets.python_code_sites import PYTHON_CODE_SITES
 
-    assert len(USAGE_SOURCES) == 12
+    assert len(USAGE_SOURCES) == 16
     # The derived half tracks PYTHON_CODE_SITES automatically; assert the link rather
     # than the number, so adding a Python-carrying model cannot break this test while
     # leaving the dialog under-reporting.

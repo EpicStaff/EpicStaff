@@ -35,7 +35,16 @@ Base URL in examples: `http://localhost:8000`.
 | DELETE | `/api/api-keys/{id}/` | Bearer JWT + SECRETS:DELETE | Hard-delete a member's API key |
 | POST | `/api/api-keys/{id}/revoke/` | Bearer JWT + SECRETS:UPDATE | Revoke a member's API key |
 
-**Login/Swagger-token throttle:** `LOGIN_THROTTLE_RATE` env (default `5/min`), bucketed per `<ip>|<email>`. 6th attempt inside the window returns `429` with `Retry-After`.
+**Throttles.** Every anonymous credential-adjacent endpoint is rate limited; exceeding a bucket returns `429` with `Retry-After`.
+
+| Endpoint | Bucket | Env var | Default |
+|---|---|---|---|
+| `/api/auth/login/`, `/api/auth/swagger-token/` | `<ip>\|<email>` | `LOGIN_THROTTLE_RATE` | `5/min` |
+| `/api/auth/password-reset/request/` | `<ip>\|<email>` | `PASSWORD_RESET_REQUEST_THROTTLE_RATE` | `5/hour` |
+| `/api/auth/password-reset/confirm/` | `<ip>` | `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` |
+| `/api/auth/refresh/` | `<ip>` | `TOKEN_REFRESH_THROTTLE_RATE` | `30/min` |
+
+The last two key on IP alone: neither request carries an identifier to compose with — the refresh token arrives in an HttpOnly cookie, and on confirm the only caller-supplied value is the token being guessed, so bucketing by it would give an attacker a fresh allowance per attempt.
 
 **Refresh tokens rotate on every use** (`ROTATE_REFRESH_TOKENS=True`). The old refresh is blacklisted — replaying it returns `401`.
 
@@ -130,6 +139,8 @@ create_superadmin` workflow).
 |---|---|---|
 | `FIRST_SETUP_MODE` | `cli_only` | `cli_only` refuses `POST /api/auth/first-setup/` with `403 first_setup_disabled`; only `manage.py create_superadmin` can create the first superadmin. `open` allows the HTTP endpoint too. Local development (`.dev.env`) ships `open`. |
 | `LOGIN_THROTTLE_RATE` | `5/min` | Rate for `POST /api/auth/login/` and `/api/auth/swagger-token/`, bucketed per `<ip>\|<email>`. |
+| `PASSWORD_RESET_CONFIRM_THROTTLE_RATE` | `10/hour` | Rate for `POST /api/auth/password-reset/confirm/`, bucketed per IP. |
+| `TOKEN_REFRESH_THROTTLE_RATE` | `30/min` | Rate for `POST /api/auth/refresh/`, bucketed per IP. |
 
 ### GET `/api/auth/first-setup/`
 

@@ -12,7 +12,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from tables.services.rbac.authentication import ApiKeyAuthentication, JwtAuthentication
 from tables.services.rbac.first_setup_mode import FirstSetupMode
 from tables.services.rbac.permissions import IsSuperadmin
-from tables.models.rbac_models import ApiKey
+from tables.models.rbac_models import ApiKey, OrganizationUser
+from django.contrib.auth import get_user_model
 from tables.serializers.rbac_serializers import (
     AdminPasswordResetSerializer,
     LoginSerializer,
@@ -50,7 +51,12 @@ from tables.swagger_schemas.auth_schema import (
     TOKEN_INTROSPECT_POST,
     WS_TICKET_POST,
 )
-from tables.throttles import LoginThrottle, PasswordResetRequestThrottle
+from tables.throttles import (
+    LoginThrottle,
+    PasswordResetConfirmThrottle,
+    PasswordResetRequestThrottle,
+    TokenRefreshThrottle,
+)
 
 
 class LoginView(TokenObtainPairView):
@@ -216,12 +222,24 @@ class TokenIntrospectView(APIView):
         except TokenError:
             return Response({"active": False}, status=status.HTTP_200_OK)
 
+        user_id = access.get("user_id")
+        org_ids = list(
+            OrganizationUser.objects.filter(user_id=user_id).values_list(
+                "org_id", flat=True
+            )
+        )
+        is_superadmin = (
+            get_user_model().objects.filter(pk=user_id, is_superadmin=True).exists()
+        )
+
         return Response(
             {
                 "active": True,
-                "user_id": access.get("user_id"),
+                "user_id": user_id,
                 "email": access.get("email"),
                 "scopes": access.get("scopes", []),
+                "org_ids": org_ids,
+                "is_superadmin": is_superadmin,
             },
             status=status.HTTP_200_OK,
         )
@@ -313,6 +331,7 @@ class PasswordResetConfirmView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [PasswordResetConfirmThrottle]
 
     _validator = AuthValidationService()
     _service = PasswordRecoveryService()
@@ -378,6 +397,7 @@ class CookieTokenRefreshView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [TokenRefreshThrottle]
 
     @extend_schema(**REFRESH_POST)
     def post(self, request):

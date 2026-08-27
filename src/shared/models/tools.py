@@ -112,7 +112,7 @@ class PythonCodeToolData(BaseModel):
 
 class BaseToolData(BaseModel):
     unique_name: str
-    data: PythonCodeToolData | ConfiguredToolData | McpToolData
+    data: PythonCodeToolData | McpToolData
 
     # validator exist only in crew and realtime
     @model_validator(mode="before")
@@ -138,12 +138,6 @@ class BaseToolData(BaseModel):
                 if isinstance(data, PythonCodeToolData)
                 else PythonCodeToolData(**data)
             )
-        elif prefix == "configured-tool":
-            values["data"] = (
-                data
-                if isinstance(data, ConfiguredToolData)
-                else ConfiguredToolData(**data)
-            )
         elif prefix == "mcp-tool":
             values["data"] = (
                 data if isinstance(data, McpToolData) else McpToolData(**data)
@@ -152,18 +146,6 @@ class BaseToolData(BaseModel):
             raise ValueError(f"Unknown tool prefix: {prefix}")
 
         return values
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class RunToolParamsModel(BaseModel):
-    tool_config: ToolConfigData | None = None
-    run_args: list[str]
-    run_kwargs: dict[str, Any]
-
-
-class ToolInitConfigurationModel(BaseModel):
-    tool_init_configuration: dict[str, Any] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

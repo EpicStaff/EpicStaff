@@ -16,20 +16,15 @@ from tests.fixtures import *  # noqa: F401,F403
 
 
 @pytest.fixture
-def rt_agent(
-    wikipedia_agent, openai_realtime_model_config, realtime_transcription_config
-):
+def rt_agent(wikipedia_agent, openai_realtime_provider_config):
     return RealtimeAgent.objects.create(
         agent=wikipedia_agent,
-        realtime_config=openai_realtime_model_config,
-        realtime_transcription_config=realtime_transcription_config,
+        openai_config=openai_realtime_provider_config,
     )
 
 
 @pytest.fixture
-def rt_agent_definition(
-    default_org, llm_config, openai_realtime_model_config, realtime_transcription_config
-):
+def rt_agent_definition(default_org, llm_config, openai_realtime_provider_config):
     agent_definition = AgentDefinition.objects.create(
         organization=default_org,
         name="voice-agent-definition",
@@ -39,8 +34,7 @@ def rt_agent_definition(
     )
     return RealtimeAgentDefinition.objects.create(
         agent_definition=agent_definition,
-        realtime_config=openai_realtime_model_config,
-        realtime_transcription_config=realtime_transcription_config,
+        openai_config=openai_realtime_provider_config,
     )
 
 

@@ -96,12 +96,6 @@
                             [project]="entry.project"
                         ></app-finish-message>
                     }
-                    @case (MessageType.CODE_AGENT_STREAM) {
-                        <app-code-agent-stream-message
-                            [message]="entry.message"
-                            [allMessages]="messages"
-                        ></app-code-agent-stream-message>
-                    }
                     @case (MessageType.TASK_NODE_STREAM) {
                         <app-node-stream-message
                             [message]="entry.message"
@@ -308,12 +302,6 @@
                                                         [message]="nestedEntry.message"
                                                         [project]="nestedEntry.project"
                                                     ></app-finish-message>
-                                                }
-                                                @case (MessageType.CODE_AGENT_STREAM) {
-                                                    <app-code-agent-stream-message
-                                                        [message]="nestedEntry.message"
-                                                        [allMessages]="messages"
-                                                    ></app-code-agent-stream-message>
                                                 }
                                                 @case (MessageType.TASK_NODE_STREAM) {
                                                     <app-node-stream-message

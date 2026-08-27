@@ -350,16 +350,6 @@ def create_llm_config(llm_id: int) -> int:
     return llm_config["id"]
 
 
-def get_tool(tool_alias: str) -> int:
-    response_tools = requests.get(f"{DJANGO_URL}/tools/", headers=get_headers())
-    validate_response(response_tools)
-    tool_list = response_tools.json()["results"]
-
-    tool = list(filter(lambda tool: tool["name_alias"] == tool_alias, tool_list))
-
-    return tool[0]["id"]
-
-
 def create_graph(graph_name: str, entry_point: str | None = None) -> int:
     graph_data = {
         "name": f"{graph_name}_{uuid.uuid4()}",
