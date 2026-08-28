@@ -1,15 +1,12 @@
 [tool.poetry]
 name = "manager"
 version = "0.1.0"
-description = "manager for tools and crew containers"
+description = "background worker: session TTL watchdog and schedule-trigger scheduler"
 authors = ["Ihor Orlenko", "Maksym Yevstratiev"]
 
 [tool.poetry.dependencies]
 python = "^3.12"
 python-dotenv = "1.0.1"
-fastapi = {extras = ["all"], version = "0.115.2"}
-uvicorn = "0.32.0"
-docker = "7.1.0"
 redis = "5.2.0"
 loguru = "0.7.2"
 sqlalchemy = "^2.0.40"
@@ -18,9 +15,7 @@ pydantic = ">=2.10.5,<3.0.0"
 apscheduler = "^3.10.4"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "8.3.3"
-pytest-asyncio = "0.24.0"
-pytest-mock = "3.14.0"
+watchfiles = "^0.22.0"
 
 [build-system]
 requires = ["poetry-core"]
