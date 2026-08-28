@@ -88,7 +88,7 @@ export type CdtTreePortSide = 'top' | 'right' | 'bottom' | 'left';
 
 export type CdtTreeEdgeKind = 'flow' | 'yes' | 'no' | 'default' | 'error' | 'continue';
 
-/** Full content of a block, shown in the read-only popover. */
+/** Full content of a block, shown in the read-only detail window. */
 export interface CdtTreeDetail {
     readonly heading: string;
     readonly language: 'python' | 'text';
@@ -118,13 +118,13 @@ export interface CdtTreeBlock {
     readonly title: string;
     readonly subtitle: string | null;
     /**
-     * Full content, shown in the read-only popover and matched by the search.
+     * Full content, shown in the read-only detail window and matched by the search.
      *
      * Deliberately not the clickability flag: a block can carry content worth
      * finding without being one the design lets you open.
      */
     readonly detail: CdtTreeDetail | null;
-    /** Whether clicking opens the popover — see `CLICKABLE_BY_KIND`. */
+    /** Whether clicking opens the detail window — see `CLICKABLE_BY_KIND`. */
     readonly clickable: boolean;
     /** Set on the blocks that name a routing target; null on every other block. */
     readonly target: CdtTreeTarget | null;

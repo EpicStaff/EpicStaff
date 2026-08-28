@@ -1,3 +1,4 @@
+import { animate, style, transition, trigger } from '@angular/animations';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import {
@@ -10,7 +11,6 @@ import {
     signal,
     TemplateRef,
     viewChild,
-    viewChildren,
     ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -27,8 +27,9 @@ import {
     ICON_BY_SHAPE,
 } from './cdt-decision-tree.constants';
 import { layoutCdtDecisionTree } from './cdt-decision-tree.layout';
-import { CdtDecisionTreeInput, CdtTreeDetail, CdtTreeEdge, CdtTreePositionedBlock } from './cdt-decision-tree.model';
+import { CdtDecisionTreeInput, CdtTreeEdge, CdtTreePositionedBlock } from './cdt-decision-tree.model';
 import { CdtDecisionTreeBlockComponent } from './cdt-decision-tree-block/cdt-decision-tree-block.component';
+import { CdtDecisionTreeDetailComponent } from './cdt-decision-tree-detail/cdt-decision-tree-detail.component';
 import { resolveTreeKeyAction } from './cdt-decision-tree-keyboard.util';
 import { CdtDecisionTreeSearchComponent } from './cdt-decision-tree-search/cdt-decision-tree-search.component';
 import { CdtDecisionTreeShapeComponent } from './cdt-decision-tree-shape/cdt-decision-tree-shape.component';
@@ -52,40 +53,44 @@ import { CdtDecisionTreeShapeComponent } from './cdt-decision-tree-shape/cdt-dec
         CdtDecisionTreeBlockComponent,
         CdtDecisionTreeShapeComponent,
         CdtDecisionTreeSearchComponent,
+        CdtDecisionTreeDetailComponent,
     ],
     templateUrl: './cdt-decision-tree-dialog.component.html',
     styleUrls: ['./cdt-decision-tree-dialog.component.scss'],
+    animations: [
+        /**
+         * The detail window's slide-in. `width`, not `transform: translateX` — the
+         * window is a flex sibling, so translating would collapse the canvas in one
+         * frame and only then slide the window into the gap.
+         *
+         * Declared here rather than on the window's host because this component
+         * owns the `@if` and needs the `done` callback — see `onDetailSettled`.
+         */
+        trigger('panelSlide', [
+            transition(':enter', [style({ width: '0' }), animate('200ms ease-out', style({ width: '*' }))]),
+            transition(':leave', [animate('160ms ease-in', style({ width: '0' }))]),
+        ]),
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CdtDecisionTreeDialogComponent {
     private readonly dialogRef = inject<DialogRef<void>>(DialogRef);
     private readonly data = inject<CdtDecisionTreeInput>(DIALOG_DATA);
-    private readonly detailCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
 
-    // Its own controller, not `detailCtrl`: that one no-ops on `open` while
-    // already open and disposes on `close`, so sharing it would make the two
-    // panels fight over one overlay.
+    /**
+     * The search panel's overlay — the only one left; the detail window is docked.
+     *
+     * Opened with `hasBackdrop: false`, because the two can now be open at once
+     * and CDK's transparent backdrop would swallow the first click on the window.
+     * See `openSearch`.
+     */
     private readonly searchCtrl = new OverlayMenuController(inject(Overlay), inject(ViewContainerRef));
     private readonly destroyRef = inject(DestroyRef);
 
     private readonly fCanvas = viewChild(FCanvasComponent);
     private readonly fZoom = viewChild(FZoomDirective);
     private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
-    private readonly detailTpl = viewChild.required<TemplateRef<unknown>>('detailTpl');
     private readonly searchTpl = viewChild.required<TemplateRef<unknown>>('searchTpl');
-
-    /** The rendered blocks, so a dropdown entry can find the element to anchor to. */
-    private readonly blockViews = viewChildren(CdtDecisionTreeBlockComponent);
-
-    /**
-     * A block waiting for the canvas to finish centring on it — see `revealBlock`.
-     *
-     * Foblex defers the centring by a render and debounces the change event by a
-     * macrotask, so another canvas move could emit first and consume the flag.
-     * Every move the dialog itself starts therefore drops it, leaving only a pan
-     * begun inside that one frame.
-     */
-    private pendingReveal: string | null = null;
 
     /** Built once: the dialog holds a snapshot and never re-layouts. */
     protected readonly layout = layoutCdtDecisionTree(buildCdtDecisionTree(this.data));
@@ -140,8 +145,19 @@ export class CdtDecisionTreeDialogComponent {
     protected readonly draftQuery = signal('');
 
     protected readonly zoomPercent = signal(100);
-    protected readonly detail = signal<CdtTreeDetail | null>(null);
     protected readonly activeMatch = signal(0);
+
+    /**
+     * Which block the detail window is showing, or null when closed. An id rather
+     * than the block, so a second pick re-renders the window instead of destroying
+     * it and replaying the slide-in.
+     */
+    private readonly selectedBlockId = signal<string | null>(null);
+
+    protected readonly selectedBlock = computed<CdtTreePositionedBlock | null>(() => {
+        const id = this.selectedBlockId();
+        return id ? (this.layout.blocks.find((block) => block.id === id) ?? null) : null;
+    });
 
     /**
      * Every block the search can offer, in reading order.
@@ -179,12 +195,10 @@ export class CdtDecisionTreeDialogComponent {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((event) => this.onKeydown(event));
 
-        // The popover lives in its own overlay, outside this component's view, so
-        // it has to be torn down explicitly.
-        this.destroyRef.onDestroy(() => {
-            this.detailCtrl.dispose();
-            this.searchCtrl.dispose();
-        });
+        // The search panel lives in its own overlay, outside this component's view,
+        // so it has to be torn down explicitly. The detail window does not — it is
+        // in this template and goes with it.
+        this.destroyRef.onDestroy(() => this.searchCtrl.dispose());
     }
 
     // -- canvas --------------------------------------------------------------
@@ -207,63 +221,43 @@ export class CdtDecisionTreeDialogComponent {
         }, 0);
     }
 
+    /**
+     * Nothing but the zoom readout. This used to dismiss the anchored popover on
+     * every transform, because CDK measured its anchor once at attach; a docked
+     * window has no anchor to drift.
+     */
     protected onCanvasChange(event: FCanvasChangeEvent): void {
         this.zoomPercent.set(Math.round(event.scale * 100));
+    }
 
-        // Centring emits a change event, and this handler is what would close the
-        // popover the jump means to open. So the jump only leaves the id here,
-        // and this handler opens it — on the event that says the block has
-        // arrived, rather than on a guessed delay.
-        const pending = this.pendingReveal;
-        this.pendingReveal = null;
-
-        // The default `close()` scroll strategy never fires for a canvas
-        // transform, so the popover would drift away from its anchor.
-        this.closeDetail();
-
-        if (pending) this.openDetailFor(pending);
+    /** Centre a block, and open its window if it is one the design lets you open. */
+    private revealBlock(blockId: string): void {
+        this.fCanvas()?.centerGroupOrNode(blockId, false);
+        this.openDetailFor(blockId);
     }
 
     /**
-     * Centre a block, and open its popover once it has arrived.
+     * Point the window at a block, or shut it if that block is not openable.
      *
-     * Unanimated on purpose: CDK measures the anchor once, at attach, so
-     * anchoring mid-animation pins the popover where the block no longer is.
+     * Shutting matters for the search, which offers every block including the
+     * terminators: leaving the window alone would centre on the picked block while
+     * still describing the previous one.
      */
-    private revealBlock(blockId: string): void {
-        const canvas = this.fCanvas();
-        if (!canvas) return;
-
-        // `centerGroupOrNode` returns early for an unknown id and emits nothing,
-        // which would leave the flag armed for the user's next pan.
-        const known = this.layout.blocks.some((block) => block.id === blockId);
-        this.pendingReveal = known ? blockId : null;
-
-        canvas.centerGroupOrNode(blockId, false);
-    }
-
-    /** Opens a block's popover, if that block is one the design lets you open. */
     private openDetailFor(blockId: string): void {
         const block = this.layout.blocks.find((entry) => entry.id === blockId);
         // `clickable` already folds in "has something to show" — see the builder.
-        if (!block?.clickable) return;
-
-        const host = this.blockViews().find((view) => view.block().id === blockId);
-        if (host) this.openDetail(host.hostElement.nativeElement, block);
+        this.selectedBlockId.set(block?.clickable ? blockId : null);
     }
 
     protected zoomIn(): void {
-        this.pendingReveal = null;
         this.fZoom()?.zoomIn();
     }
 
     protected zoomOut(): void {
-        this.pendingReveal = null;
         this.fZoom()?.zoomOut();
     }
 
     protected resetZoom(): void {
-        this.pendingReveal = null;
         this.fCanvas()?.setScale(1);
         this.zoomPercent.set(100);
     }
@@ -291,10 +285,15 @@ export class CdtDecisionTreeDialogComponent {
         const anchor = this.searchInput()?.nativeElement;
         if (!anchor) return;
 
-        // The panel's backdrop would leave an open popover visible but inert, and
-        // Escape resolves the popover first — two presses to dismiss one panel.
-        this.closeDetail();
-        this.searchCtrl.open(anchor, this.searchTpl(), { panelClass: 'cdt-tree-search', offsetY: 8 });
+        // The detail window is left open — docked, it is part of the dialog like
+        // the toolbar is, and searching is no reason to throw away the block being
+        // read. `hasBackdrop: false` is what makes that safe: with a backdrop the
+        // first click on the open window would only dismiss this panel.
+        this.searchCtrl.open(anchor, this.searchTpl(), {
+            panelClass: 'cdt-tree-search',
+            offsetY: 8,
+            hasBackdrop: false,
+        });
     }
 
     protected isSearchOpen(): boolean {
@@ -345,24 +344,31 @@ export class CdtDecisionTreeDialogComponent {
     }
 
     private revealActiveMatch(): void {
-        this.pendingReveal = null;
         const id = this.matchIds()[this.activeMatch()];
         if (id) this.fCanvas()?.centerGroupOrNode(id, true);
     }
 
-    // -- popover -------------------------------------------------------------
+    // -- detail window -------------------------------------------------------
 
-    protected openDetail(anchor: HTMLElement, block: CdtTreePositionedBlock): void {
+    /** Clicking a second block swaps the open window's contents rather than reopening it. */
+    protected openDetail(block: CdtTreePositionedBlock): void {
         if (!block.clickable || !block.detail) return;
-        this.detailCtrl.close();
-        this.detail.set(block.detail);
-        this.detailCtrl.open(anchor, this.detailTpl(), { panelClass: 'cdt-tree-detail', offsetY: 8 });
+        this.selectedBlockId.set(block.id);
     }
 
     protected closeDetail(): void {
-        if (!this.detailCtrl.isOpen()) return;
-        this.detailCtrl.close();
-        this.detail.set(null);
+        this.selectedBlockId.set(null);
+    }
+
+    /**
+     * Re-centre the selected block once the window has finished sliding: opening it
+     * narrows the canvas and can push the just-clicked block out of view. Fitting
+     * the whole diagram would work too, but would throw away the zoom the user
+     * arrived with. On close there is no selection and the viewport only grows.
+     */
+    protected onDetailSettled(): void {
+        const id = this.selectedBlockId();
+        if (id) this.fCanvas()?.centerGroupOrNode(id, true);
     }
 
     // -- keyboard ------------------------------------------------------------
@@ -373,7 +379,7 @@ export class CdtDecisionTreeDialogComponent {
      */
     private onKeydown(event: KeyboardEvent): void {
         const result = resolveTreeKeyAction(event, {
-            popoverOpen: this.detailCtrl.isOpen(),
+            detailOpen: this.selectedBlockId() !== null,
             searchOpen: this.searchCtrl.isOpen(),
             // The box holds the draft, so that is what `clear-search` empties and
             // therefore what decides whether there is anything to clear. Reading
@@ -387,7 +393,7 @@ export class CdtDecisionTreeDialogComponent {
         if (result.preventDefault) event.preventDefault();
 
         switch (result.action) {
-            case 'close-popover':
+            case 'close-detail':
                 this.closeDetail();
                 break;
             case 'close-search':

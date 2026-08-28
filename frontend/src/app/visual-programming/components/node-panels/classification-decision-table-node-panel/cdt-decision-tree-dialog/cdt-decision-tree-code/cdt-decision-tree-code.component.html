@@ -1,0 +1,33 @@
+@if (language() === 'python') {
+    <!--
+        `tabindex="0"` because the block scrolls sideways and never wraps: without a
+        tab stop a keyboard user cannot reach past the right edge of a long line.
+    -->
+    <div
+        class="cdt-tree-code"
+        role="group"
+        aria-label="Source, read-only"
+        tabindex="0"
+    >
+        @for (row of rows(); track row.number) {
+            <div class="cdt-tree-code__row">
+                <span
+                    class="cdt-tree-code__gutter"
+                    aria-hidden="true"
+                    >{{ row.number }}</span
+                >
+
+                @if (row.html !== null) {
+                    <code
+                        class="cdt-tree-code__line"
+                        [innerHTML]="row.html"
+                    ></code>
+                } @else {
+                    <code class="cdt-tree-code__line">{{ row.text }}</code>
+                }
+            </div>
+        }
+    </div>
+} @else {
+    <pre class="cdt-tree-code cdt-tree-code--prose">{{ body() }}</pre>
+}

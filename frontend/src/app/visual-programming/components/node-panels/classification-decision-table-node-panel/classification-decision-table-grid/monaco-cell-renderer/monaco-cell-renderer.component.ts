@@ -13,50 +13,7 @@ import {
 import { ICellRendererParams } from 'ag-grid-community';
 
 import { BaseCellRenderer } from '../shared/base-cell-renderer';
-
-interface MonacoWindow extends Window {
-    monaco?: {
-        editor?: {
-            colorize?: (text: string, lang: string, opts: Record<string, unknown>) => Promise<string>;
-            setTheme?: (theme: string) => void;
-        };
-    };
-    require?: { config?: (opts: Record<string, unknown>) => void } & ((deps: string[], cb: () => void) => void);
-}
-
-// Shared singleton Monaco loader — ensures Monaco is loaded exactly once
-let monacoLoadPromise: Promise<void> | null = null;
-
-function ensureMonacoLoaded(): Promise<void> {
-    if ((window as unknown as MonacoWindow).monaco?.editor?.colorize) {
-        return Promise.resolve();
-    }
-    if (monacoLoadPromise) {
-        return monacoLoadPromise;
-    }
-    monacoLoadPromise = new Promise<void>((resolve) => {
-        const win = window as unknown as MonacoWindow;
-        // If the AMD loader is already present (ngx-monaco-editor loaded it)
-        if (win.require?.config) {
-            win.require.config({ paths: { vs: 'assets/monaco/min/vs' } });
-            win.require(['vs/editor/editor.main'], () => resolve());
-            return;
-        }
-        // Otherwise, load the AMD loader script first
-        const script = document.createElement('script');
-        script.src = 'assets/monaco/min/vs/loader.js';
-        script.onload = () => {
-            win.require!.config!({ paths: { vs: 'assets/monaco/min/vs' } });
-            win.require!(['vs/editor/editor.main'], () => resolve());
-        };
-        script.onerror = () => {
-            monacoLoadPromise = null; // allow retry
-            resolve(); // resolve anyway so cells fall back to plain text
-        };
-        document.head.appendChild(script);
-    });
-    return monacoLoadPromise;
-}
+import { ensureMonacoLoaded, monacoEditorApi } from '../shared/monaco-loader.util';
 
 @Component({
     selector: 'app-monaco-cell-renderer',
@@ -173,22 +130,27 @@ export class MonacoCellRendererComponent
         ensureMonacoLoaded().then(() => {
             if (this.destroyed || this.colorized || !this.value) return;
 
-            const monaco = (window as unknown as MonacoWindow).monaco;
-            if (!monaco?.editor?.colorize) return;
+            const editor = monacoEditorApi();
+            if (!editor?.colorize) return;
 
             // Ensure vs-dark theme is active (matches the Monaco editors elsewhere)
-            monaco.editor?.setTheme?.('vs-dark');
+            editor.setTheme?.('vs-dark');
 
             const firstLine = this.value.split('\n')[0].trim();
             const suffix = this.value.includes('\n') ? '<span style="color:rgba(255,255,255,0.3)"> …</span>' : '';
 
-            monaco.editor.colorize(firstLine, 'python', { tabSize: 4 }).then((html: string) => {
-                if (!this.destroyed && this.codeContainer?.nativeElement) {
-                    this.codeContainer.nativeElement.innerHTML = `<span class="colorized-code">${html}${suffix}</span>`;
-                    this.colorized = true;
-                    this.cdr.markForCheck();
-                }
-            });
+            editor
+                .colorize(firstLine, 'python', { tabSize: 4 })
+                .then((html: string) => {
+                    if (!this.destroyed && this.codeContainer?.nativeElement) {
+                        this.codeContainer.nativeElement.innerHTML = `<span class="colorized-code">${html}${suffix}</span>`;
+                        this.colorized = true;
+                        this.cdr.markForCheck();
+                    }
+                })
+                // `colorize` rejects when tokenization fails; the cell keeps its
+                // plain text, which is what it is already showing.
+                .catch(() => undefined);
         });
     }
 }

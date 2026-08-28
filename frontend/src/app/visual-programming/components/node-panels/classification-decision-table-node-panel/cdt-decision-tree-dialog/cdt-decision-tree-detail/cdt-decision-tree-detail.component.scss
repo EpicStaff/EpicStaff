@@ -1,0 +1,216 @@
+:host {
+    // 600px per the design, and the target the slide-in animates `width: 0 → *` to.
+    --cdt-detail-width: 37.5rem;
+
+    // Fallbacks so this component renders standalone; inside the dialog they
+    // resolve to the aliases on its `:host`.
+    --cdt-detail-surface: var(--cdt-tree-surface, var(--color-background-body));
+    --cdt-detail-raised: var(--cdt-tree-raised, var(--color-nodes-background));
+
+    display: block;
+    width: var(--cdt-detail-width);
+    // Load-bearing for the slide-in: the host narrows, and without this the
+    // content spills over the canvas instead of being revealed by it.
+    overflow: hidden;
+    background: var(--cdt-detail-surface);
+    border-left: 1px solid var(--color-divider-subtle);
+}
+
+.cdt-tree-detail {
+    display: flex;
+    flex-direction: column;
+    // Fixed, not 100%: a percentage would track the host mid-animation and rewrap
+    // every line on the way. Minus the divider, because `box-sizing: border-box` is
+    // global and the host's border comes out of its own width.
+    width: calc(var(--cdt-detail-width) - 1px);
+    height: 100%;
+    color: var(--color-text-primary);
+}
+
+// ---------------------------------------------------------------------------
+// Header
+// ---------------------------------------------------------------------------
+
+.cdt-tree-detail__header {
+    display: flex;
+    flex-shrink: 0;
+    gap: 0.6rem;
+    align-items: center;
+    padding: 0.65rem 0.75rem 0.65rem 1rem;
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.cdt-tree-detail__title {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    // 14px / 400 / 130%. Lighter than the modal's own title on purpose — this
+    // names a block, not the window.
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdt-tree-detail__explain {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.4rem 0.6rem;
+    font-family: inherit;
+    // 12px / 500 / 100%
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    background: var(--cdt-detail-raised);
+    border: 1px solid var(--color-divider-regular);
+    border-radius: 6px;
+
+    &:hover {
+        // `--color-divider-strong` does not exist in this project — it fell back to
+        // `--color-divider-regular`, which is the resting border, so this hover did
+        // nothing at all. Mixed from a real token instead; the divider tokens are
+        // low-alpha hairlines with no stronger sibling to reach for.
+        border-color: color-mix(in srgb, var(--color-text-secondary) 40%, transparent);
+    }
+}
+
+.cdt-tree-detail__explain-divider {
+    align-self: stretch;
+    width: 1px;
+    margin-left: 0.1rem;
+    background: var(--color-divider-regular);
+}
+
+.cdt-tree-detail__close {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    background: none;
+    border: none;
+    border-radius: 4px;
+
+    &:hover {
+        color: var(--color-text-primary);
+        background: var(--cdt-detail-raised);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Body
+//
+// One scroll container for the whole panel, not one per section: the collapse
+// animates `height: 0 → *`, so each section has to be its own content's height. A
+// section stretched to fill the column already has one, leaving nothing to
+// interpolate.
+// ---------------------------------------------------------------------------
+
+.cdt-tree-detail__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+// One block of the window: 24/60/24/30 padding and 16px gap per the design, here
+// rather than on the header and body — `height: 0` does not collapse padding, so a
+// padded body would leave a band behind when shut.
+//
+// The design gives every block a top *and* bottom rule, so adjacent blocks would
+// draw a 2px seam; each one after the first is pulled up a pixel to overlap.
+.cdt-tree-detail__section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.5rem 3.75rem 1.5rem 1.875rem;
+    border-top: 1px solid var(--color-divider-subtle);
+    border-bottom: 1px solid var(--color-divider-subtle);
+
+    & + & {
+        margin-top: -1px;
+    }
+}
+
+.cdt-tree-detail__section-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+// A real heading, so a screen reader can navigate into the two sections. It
+// carries no type of its own — the button inside it does.
+.cdt-tree-detail__section-heading {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font: inherit;
+}
+
+.cdt-tree-detail__section-header {
+    display: flex;
+    flex: 1 1 auto;
+    width: 100%;
+    gap: 0.5rem;
+    align-items: center;
+    min-width: 0;
+    padding: 0;
+    font-family: inherit;
+    color: var(--color-text-primary);
+    text-align: left;
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+.cdt-tree-detail__section-title {
+    overflow: hidden;
+    // 18px / 500 / 130%
+    font-size: 1.125rem;
+    font-weight: 500;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cdt-tree-detail__caret {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+    // Turned rather than swapped for a second icon, so it moves with the section
+    // it controls instead of jumping when the section is halfway open.
+    transition: transform 180ms ease-in-out;
+
+    &--collapsed {
+        transform: rotate(-90deg);
+    }
+}
+
+.cdt-tree-detail__section-body {
+    // The collapse interpolates this element's height, so it has to clip. It also
+    // carries no padding of its own — see the section rule above.
+    overflow: hidden;
+}
+
+.cdt-tree-detail__explanation {
+    margin: 0;
+    // 14px / 400 / 130%
+    font-size: 0.875rem;
+    font-weight: 400;
+    line-height: 1.3;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.cdt-tree-detail__generated {
+    margin: 1rem 0 0;
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+}

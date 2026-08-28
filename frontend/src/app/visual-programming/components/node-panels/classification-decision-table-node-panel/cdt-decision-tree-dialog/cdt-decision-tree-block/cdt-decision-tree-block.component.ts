@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { FFlowModule } from '@foblex/flow';
 
@@ -37,9 +37,6 @@ import { CdtDecisionTreeShapeComponent } from '../cdt-decision-tree-shape/cdt-de
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CdtDecisionTreeBlockComponent {
-    /** Public so the search can anchor a popover here without a click. Read only. */
-    public readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
-
     public readonly block = input.required<CdtTreePositionedBlock>();
     public readonly dimmed = input<boolean>(false);
     public readonly matched = input<boolean>(false);
@@ -48,12 +45,18 @@ export class CdtDecisionTreeBlockComponent {
     protected readonly icon = computed<CdtTreeIcon | undefined>(() => ICON_BY_SHAPE[this.block().shape]);
     protected readonly subtitleLines = CDT_TREE_SUBTITLE_CODE_LINES;
 
-    /** Emits the anchor element the read-only popover should attach to. */
-    public readonly detailRequested = output<HTMLElement>();
+    /**
+     * Asks for this block's detail window.
+     *
+     * Carries nothing: the window is docked beside the canvas, so it needs no
+     * anchor element, and the dialog already knows which block this is from the
+     * `@for` it was rendered in.
+     */
+    public readonly detailRequested = output<void>();
 
     protected onActivate(): void {
         if (this.block().clickable) {
-            this.detailRequested.emit(this.hostElement.nativeElement);
+            this.detailRequested.emit();
         }
     }
 }

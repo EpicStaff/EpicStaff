@@ -35,12 +35,24 @@ export interface OverlayMenuConfig {
      * original components.
      */
     scrollStrategy?: () => ScrollStrategy;
+    /**
+     * Whether the panel gets CDK's transparent backdrop. Defaults to true, which is
+     * what a menu over inert content wants.
+     *
+     * Set to false when the panel opens over content that stays interactive: the
+     * transparent backdrop is invisible but still swallows pointer events across
+     * the whole overlay container, so the first click on anything behind it only
+     * closes the panel. Without one the controller closes on an outside pointer
+     * event instead, and that click reaches its target.
+     */
+    hasBackdrop?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<Omit<OverlayMenuConfig, 'panelClass' | 'scrollStrategy'>> = {
     offsetY: 4,
     withFlipFallback: true,
     withPush: true,
+    hasBackdrop: true,
 };
 
 /**
@@ -125,16 +137,27 @@ export class OverlayMenuController {
         }
 
         const scrollStrategy = cfg?.scrollStrategy ? cfg.scrollStrategy() : this.overlay.scrollStrategies.close();
+        const hasBackdrop = cfg?.hasBackdrop ?? DEFAULT_CONFIG.hasBackdrop;
 
         this.overlayRef = this.overlay.create({
             positionStrategy: posBuilder,
-            hasBackdrop: true,
-            backdropClass: 'cdk-overlay-transparent-backdrop',
+            hasBackdrop,
+            ...(hasBackdrop ? { backdropClass: 'cdk-overlay-transparent-backdrop' } : {}),
             scrollStrategy,
             ...(cfg?.panelClass ? { panelClass: cfg.panelClass } : {}),
         });
 
-        this.backdropSub = this.overlayRef.backdropClick().subscribe(() => this.close());
+        this.backdropSub = hasBackdrop
+            ? this.overlayRef.backdropClick().subscribe(() => this.close())
+            : this.overlayRef.outsidePointerEvents().subscribe((event) => {
+                  // The anchor is excluded because callers open the panel from a
+                  // click on it: closing here would fight the reopen and leave
+                  // the panel flickering on every click of its own trigger.
+                  const target = event.target as Node | null;
+                  if (target && anchor.contains(target)) return;
+                  this.close();
+              });
+
         this.overlayRef.attach(new TemplatePortal(template, this.vcr));
     }
 

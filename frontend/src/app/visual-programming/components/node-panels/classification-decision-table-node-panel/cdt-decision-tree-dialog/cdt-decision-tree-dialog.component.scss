@@ -1,8 +1,9 @@
 :host {
-    // Modal chrome and canvas share the page surface; blocks, toolbar controls and
-    // the popover sit one step above it, on the same token the real canvas nodes
-    // use (`flow-base-node.component.scss`). Aliased locally so each role is named
-    // once — both sides flip with the theme, which the text colours do too.
+    // Modal chrome and canvas share the page surface; blocks and controls sit one
+    // step above it, on the token the real canvas nodes use
+    // (`flow-base-node.component.scss`). Aliased locally so each role is named
+    // once. The detail window inherits both, which works because it is in this
+    // template rather than in an overlay.
     --cdt-tree-surface: var(--color-background-body);
     --cdt-tree-raised: var(--color-nodes-background);
 
@@ -36,14 +37,20 @@
     flex-shrink: 0;
     gap: 0.75rem;
     align-items: center;
-    padding: 0.9rem 1.25rem;
+    // 32px / 40px per the design. The header spans the whole modal — only the
+    // toolbar, canvas and legend below it give way to the detail window.
+    padding: 2rem 2.5rem;
     border-bottom: 1px solid var(--color-divider-subtle);
 }
 
 .cdt-tree__title {
     margin: 0;
-    font-size: 1.1rem;
+    // 20px / 500 / 100%. `--color-text-primary` is exactly the design's #D9D9DE in
+    // the dark theme, and flips with the light one — a literal would not.
+    font-size: 1.25rem;
     font-weight: 500;
+    line-height: 1;
+    color: var(--color-text-primary);
 }
 
 .cdt-tree__node-name {
@@ -52,14 +59,6 @@
     color: var(--color-text-secondary);
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.cdt-tree__badge {
-    padding: 0.1rem 0.5rem;
-    font-size: 0.7rem;
-    color: var(--color-text-secondary);
-    border: 1px solid var(--color-divider-regular);
-    border-radius: 999px;
 }
 
 .cdt-tree__close {
@@ -174,11 +173,38 @@
 // Canvas
 // ---------------------------------------------------------------------------
 
-.cdt-tree__canvas {
-    position: relative;
+// Everything below the header shares one row with the detail window, so opening
+// the window narrows the diagram instead of covering it — and the toolbar and
+// legend move with the canvas rather than staying full width around it.
+.cdt-tree__main {
+    display: flex;
     flex: 1;
     min-height: 0;
+}
+
+// Toolbar, canvas and legend, stacked. This is the part the window pushes.
+// `min-width: 0` on both this and the canvas: without it they refuse to shrink
+// below their content and push the window off the right edge of the modal.
+.cdt-tree__stage {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.cdt-tree__canvas {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
     background: var(--cdt-tree-surface);
+}
+
+.cdt-tree__detail {
+    // `flex-basis: auto` on purpose: the slide-in animates `width`, and a flex
+    // basis of its own would win over the animated value and skip the transition.
+    flex: 0 0 auto;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,53 +245,6 @@
     // so passing one size for both axes would squash half of them.
     app-svg-icon {
         transform: scale(0.62);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Read-only popover
-//
-// The panel is declared in this component's template, so it carries this
-// component's encapsulation attribute even though the CDK renders it in the
-// overlay container — no global rule needed. It also lives outside `<f-flow>`,
-// whose host sets `user-select: none`, so its text stays selectable.
-// ---------------------------------------------------------------------------
-
-.cdt-tree-detail__panel {
-    max-width: 640px;
-    max-height: 50vh;
-    overflow: auto;
-    padding: 0.75rem 0.9rem;
-    color: var(--color-text-primary);
-    // The fallback is load-bearing. CDK moves the pane out to
-    // `.cdk-overlay-container` under `<body>`, and custom properties inherit
-    // through the DOM — so `--cdt-tree-raised`, declared on the `:host` above,
-    // does not resolve there. Without it the popover has no background at all.
-    // The encapsulation attribute does travel with the nodes, which is why the
-    // rest of this rule applies; only the variable does not.
-    background: var(--cdt-tree-raised, var(--color-nodes-background));
-    border: 1px solid var(--color-divider-regular);
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
-}
-
-.cdt-tree-detail__heading {
-    margin-bottom: 0.5rem;
-    font-size: 0.75rem;
-    color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.cdt-tree-detail__body {
-    margin: 0;
-    font-size: 0.8rem;
-    line-height: 1.45;
-    white-space: pre-wrap;
-    word-break: break-word;
-
-    &--code {
-        font-family: 'Roboto Mono', 'Courier New', monospace;
     }
 }
 

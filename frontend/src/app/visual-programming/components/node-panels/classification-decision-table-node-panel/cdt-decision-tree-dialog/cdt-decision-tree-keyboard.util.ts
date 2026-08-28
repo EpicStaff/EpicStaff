@@ -27,10 +27,11 @@
  * Pure and Angular-free so the policy can be unit-tested without a dialog.
  */
 
-export type CdtTreeKeyAction = 'clear-search' | 'close-popover' | 'close-search' | 'close-dialog' | 'none';
+export type CdtTreeKeyAction = 'clear-search' | 'close-detail' | 'close-search' | 'close-dialog' | 'none';
 
 export interface CdtTreeKeyState {
-    readonly popoverOpen: boolean;
+    /** Whether the docked detail window is showing a block. */
+    readonly detailOpen: boolean;
     readonly searchOpen: boolean;
     readonly searchHasText: boolean;
     readonly targetIsSearch: boolean;
@@ -100,22 +101,29 @@ export function resolveTreeKeyAction(event: CdtTreeKeyEvent, state: CdtTreeKeySt
     };
 }
 
+/**
+ * Topmost first, then the focused control, then the docked window, then the
+ * dialog — otherwise the whole dialog closes underneath whatever the user meant to
+ * dismiss.
+ *
+ * The search dropdown leads because it is the only real overlay left. The detail
+ * window used to lead, back when it was an anchored popover that could not coexist
+ * with the search panel; docked, it outranks only the dialog.
+ */
 function resolveEscapeAction(state: CdtTreeKeyState): CdtTreeKeyAction {
-    // Innermost first: each of these is a separate overlay without a focus trap,
-    // so without this precedence the whole dialog would close underneath one.
-    if (state.popoverOpen) {
-        return 'close-popover';
-    }
-
-    // Before `clear-search`: the caret sits in the search box the whole time the
-    // dropdown is open, so testing the text first would empty the box on an
-    // Escape the user meant for the panel.
     if (state.searchOpen) {
         return 'close-search';
     }
 
+    // Ahead of the detail window because the caret is in the box, behind
+    // `close-search` because the caret stays there while the dropdown is open —
+    // testing the text first would empty it on an Escape meant for the dropdown.
     if (state.targetIsSearch && state.searchHasText) {
         return 'clear-search';
+    }
+
+    if (state.detailOpen) {
+        return 'close-detail';
     }
 
     return 'close-dialog';

@@ -621,8 +621,8 @@ export class ClassificationDecisionTableNodePanelComponent extends BaseSidePanel
             width: '92vw',
             height: '90vh',
             maxWidth: '1680px',
-            // ESC and the backdrop are handled by the dialog itself so the popover,
-            // the search box and the dialog can close in the right order.
+            // ESC and the backdrop are handled by the dialog itself so the search
+            // panel, the detail window and the dialog close in the right order.
             disableClose: true,
             ariaLabel: 'Decision tree',
         });

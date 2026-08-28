@@ -64,7 +64,7 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
                 kind: 'pre-computation',
                 title: 'Pre-computation',
                 subtitle: codePreview(preCode),
-                detail: { heading: 'Pre-computation', language: 'python', body: preCode },
+                detail: { heading: CDT_TREE_COPY.detailPythonCode, language: 'python', body: preCode },
             })
         );
     }
@@ -107,7 +107,7 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
                   kind: 'post-computation',
                   title: 'Post-computation',
                   subtitle: codePreview(postCode),
-                  detail: { heading: 'Post-computation', language: 'python', body: postCode },
+                  detail: { heading: CDT_TREE_COPY.detailPythonCode, language: 'python', body: postCode },
               })
             : null;
 
@@ -209,7 +209,7 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
                     subtitle: prompt ? clamp(prompt.prompt_text) : null,
                     detail: prompt
                         ? {
-                              heading: CDT_TREE_COPY.promptLabel(row.prompt_id),
+                              heading: CDT_TREE_COPY.detailPrompt,
                               language: 'text',
                               body: promptDetailBody(prompt.prompt_text, prompt.result_variable),
                           }
@@ -228,7 +228,7 @@ export function buildCdtDecisionTree(input: CdtDecisionTreeInput): CdtTree {
                     title: 'Set variables',
                     subtitle: clamp(toDisplayExpression(manipulation)),
                     detail: {
-                        heading: 'Manipulation',
+                        heading: CDT_TREE_COPY.detailManipulation,
                         language: 'python',
                         body: toDisplayExpression(manipulation),
                     },
@@ -386,7 +386,7 @@ function rowExpressionSubtitle(row: ConditionGroup): string {
 function rowExpressionDetail(row: ConditionGroup): CdtTreeDetail | null {
     const combined = combinedExpression(row);
     if (!combined) return null;
-    return { heading: 'Condition', language: 'python', body: toDisplayExpression(combined) };
+    return { heading: CDT_TREE_COPY.detailExpression, language: 'python', body: toDisplayExpression(combined) };
 }
 
 function promptDetailBody(promptText: string, resultVariable: string): string {
@@ -538,7 +538,7 @@ function block(sink: CdtTreeBlock[], partial: Partial<CdtTreeBlock> & { id: stri
         title,
         subtitle,
         detail,
-        // A clickable kind with nothing to show would open an empty popover, so
+        // A clickable kind with nothing to show would open an empty window, so
         // both have to hold — but only the kind decides the affordance.
         clickable: CLICKABLE_BY_KIND[partial.kind] && detail !== null,
         target: partial.target ?? null,
