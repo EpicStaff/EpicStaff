@@ -118,16 +118,12 @@ services:
       VOICE_STREAM_URL: ${VOICE_STREAM_URL:-}
       DJANGO_HOST: ${DJANGO_HOST:-django_app}
       DJANGO_PORT: ${DJANGO_PORT:-8000}
-      MANAGER_HOST: ${MANAGER_HOST:-manager}
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
     networks:
       - backend-network
     depends_on:
       crewdb:
         condition: service_healthy
-      manager:
-        condition: service_started
       redis:
         condition: service_healthy
       knowledge:
@@ -143,10 +139,8 @@ services:
     container_name: manager_container
     environment:
       <<: *common_env
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
-      CREW_SAVEFILES_PATH: ${CREW_SAVEFILES_PATH}
     networks:
       - backend-network
     tty: true

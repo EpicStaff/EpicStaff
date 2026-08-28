@@ -28,10 +28,6 @@ class Settings(BaseSettings):
     STREAM_TOKEN_TTL_SECONDS: int = 120
     MAX_CALL_DURATION_SECONDS: int = 1800
 
-    # --- Manager Service ---
-    MANAGER_HOST: str
-    MANAGER_PORT: int
-
     # --- Django Auth ---
     DJANGO_AUTH_URL: str
     DJANGO_API_KEY: str
