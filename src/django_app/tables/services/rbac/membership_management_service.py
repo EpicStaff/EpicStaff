@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from loguru import logger
+from rest_framework.exceptions import PermissionDenied
 
 from tables.models.rbac_models import Organization, OrganizationUser, Role
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
@@ -20,8 +21,8 @@ from tables.services.rbac.user_management_guards import UserManagementGuards
 
 class MembershipManagementService(CrossOrgResourceService):
     """Cross-org membership management (add / change-role / remove), gated by
-    the USERS permission per org. Extends the cross-org skeleton: the coarse
-    door gate runs in the view; the precise per-org checks run here.
+    the MEMBERSHIPS permission per org. Extends the cross-org skeleton: the
+    coarse door gate runs in the view; the precise per-org checks run here.
 
     Account creation is NOT here — it stays a superadmin-only operation on
     /api/admin/users/. `add_member` only LINKS an existing account.
@@ -34,8 +35,16 @@ class MembershipManagementService(CrossOrgResourceService):
       - No last-org-admin guard — superadmin is the rescue backstop.
     """
 
-    rbac_resource_type = ResourceType.USERS
+    rbac_resource_type = ResourceType.MEMBERSHIPS
     not_found_exception = MembershipNotFoundError
+
+    def assert_can(self, effective, action) -> None:
+        """Verb-gate override with a membership-specific message (the base
+        raises a generic one)."""
+        if not effective.can(self.rbac_resource_type.value, action):
+            raise PermissionDenied(
+                "You do not have permission to manage memberships in this organization."
+            )
 
     # ---- read ----
 
@@ -106,7 +115,7 @@ class MembershipManagementService(CrossOrgResourceService):
     def change_role(self, actor, membership_id, role_id):
         """Change a member's role. Cross-org membership → 404 (no-leak);
         own membership → 403 (self-mutation blocked); member lacking the
-        USERS.UPDATE bit → 403."""
+        MEMBERSHIPS.UPDATE bit → 403."""
         membership = self._get_membership_locked(membership_id)
         effective = self.resolve_for_write(actor, membership.org_id)  # no-leak 404
         self._assert_not_self(actor, membership)
@@ -132,7 +141,7 @@ class MembershipManagementService(CrossOrgResourceService):
     @transaction.atomic
     def remove_member(self, actor, membership_id):
         """Remove a membership. Cross-org → 404; own → 403; lacking
-        USERS.DELETE → 403. No last-org-admin guard by design."""
+        MEMBERSHIPS.DELETE → 403. No last-org-admin guard by design."""
         membership = self._get_membership_locked(membership_id)
         effective = self.resolve_for_write(actor, membership.org_id)  # no-leak 404
         self._assert_not_self(actor, membership)

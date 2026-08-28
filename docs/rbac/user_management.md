@@ -4,7 +4,7 @@ Two surfaces manage people:
 
 - **Memberships** — `/api/admin/memberships/` — permission-driven, cross-org.
   Manage who belongs to an organization and what role they hold, in every org
-  where you hold the `USERS` permission. A custom role carrying `USERS`
+  where you hold the `MEMBERSHIPS` permission. A custom role carrying `MEMBERSHIPS`
   permission opens this surface, not only the built-in Org Admin role.
 - **User accounts** — `/api/admin/users/` — **superadmin only**. The global
   account entity: create accounts, grant/revoke superadmin, deactivate/reactivate.
@@ -22,12 +22,12 @@ list is cross-org.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/api/admin/memberships/` | `USERS.READ` in ≥1 org | Cross-org member list |
-| POST | `/api/admin/memberships/` | `USERS.CREATE` in the target org | Add an existing user to an org |
-| PATCH | `/api/admin/memberships/{id}/` | `USERS.UPDATE` in the row's org | Change a member's role |
-| DELETE | `/api/admin/memberships/{id}/` | `USERS.DELETE` in the row's org | Remove a member |
+| GET | `/api/admin/memberships/` | `MEMBERSHIPS.READ` in ≥1 org | Cross-org member list |
+| POST | `/api/admin/memberships/` | `MEMBERSHIPS.CREATE` in the target org | Add an existing user to an org |
+| PATCH | `/api/admin/memberships/{id}/` | `MEMBERSHIPS.UPDATE` in the row's org | Change a member's role |
+| DELETE | `/api/admin/memberships/{id}/` | `MEMBERSHIPS.DELETE` in the row's org | Remove a member |
 
-The door gate (`HasResourcePermissionAnywhere(USERS)`) is coarse — it passes if
+The door gate (`HasResourcePermissionAnywhere(MEMBERSHIPS)`) is coarse — it passes if
 you hold the action in at least one org. The precise per-org check runs in the
 service; a membership in an org you can't access is **404** (indistinguishable
 from missing — no existence leak).
@@ -79,7 +79,7 @@ Provide **exactly one** of `email` or `user_id`, plus `org_id` and `role_id`.
 ### PATCH `/api/admin/memberships/{id}/`
 
 `{"role_id": 2}`. Assigns any existing assignable role. There is **no assignment
-ceiling** — holding `USERS.UPDATE` lets you assign any existing role to others,
+ceiling** — holding `MEMBERSHIPS.UPDATE` lets you assign any existing role to others,
 including promoting to Org Admin. A non-superadmin **cannot change their own
 membership** → **403 `cannot_modify_self_membership`**. **200** → the row.
 
@@ -134,7 +134,7 @@ Idempotent, empty body, return `UserResponse`. `revoke-superadmin` and
 | Behavior | Note |
 |---|---|
 | Adding a member | Reference an existing account by exact email (or user_id). If the email has no account, the caller gets a 404 — a superadmin must create the account first on `/api/admin/users/`. |
-| Assigning roles | Populating the role picker needs `ROLES.read` in the org (to list options) plus `USERS.update` to assign. A `USERS`-only admin without `ROLES.read` can still add/remove members and default them to Member. |
+| Assigning roles | Populating the role picker needs `ROLES.read` in the org (to list options) plus `MEMBERSHIPS.update` to assign. A `MEMBERSHIPS`-only admin without `ROLES.read` can still add/remove members and default them to Member. |
 | Self-management | You cannot change or remove your own membership; another admin or a superadmin does it. |
 | Deactivated orgs | Drop out of a delegated admin's scope; only a superadmin manages members in an inactive org. |
 | Superadmin memberships | Ordinary rows; the superadmin bypass is unaffected by them. A superadmin with no membership row simply isn't listed as a member of that org. |

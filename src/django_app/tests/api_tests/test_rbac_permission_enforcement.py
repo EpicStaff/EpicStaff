@@ -125,10 +125,12 @@ def test_org_admin_seed_has_flows_export(role_org_admin):
 
 
 @pytest.mark.django_db
-def test_member_seed_has_no_users_or_roles(role_member):
-    row_users = RolePermission.objects.get(role=role_member, resource_type="users")
+def test_member_seed_has_no_memberships_or_roles(role_member):
+    row_members = RolePermission.objects.get(
+        role=role_member, resource_type="memberships"
+    )
     row_roles = RolePermission.objects.get(role=role_member, resource_type="roles")
-    assert row_users.permissions == 0
+    assert row_members.permissions == 0
     assert row_roles.permissions == 0
 
 
