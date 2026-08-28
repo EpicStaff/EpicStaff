@@ -32,7 +32,15 @@
                     />
                 </button>
 
-                <span class="slider-stepper__value">{{ displayValue() }}</span>
+                <input
+                    type="text"
+                    inputmode="decimal"
+                    class="slider-stepper__value slider-stepper__value-input"
+                    [value]="displayValue()"
+                    [disabled]="isDisabled()"
+                    (keydown.enter)="onValueInputKeydown($event)"
+                    (blur)="onValueInputChange($event)"
+                />
 
                 <button
                     type="button"

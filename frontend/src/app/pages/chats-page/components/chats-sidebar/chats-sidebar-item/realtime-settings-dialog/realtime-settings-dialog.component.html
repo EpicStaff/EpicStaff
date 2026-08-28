@@ -166,6 +166,7 @@
                         [min]="0"
                         [max]="1"
                         [step]="0.01"
+                        [decimals]="2"
                         label="Threshold"
                         tooltipText="Sets the similarity threshold for knowledge retrieval."
                     />
@@ -177,7 +178,7 @@
                         formControlName="searchLimit"
                         [min]="1"
                         [max]="1000"
-                        [step]="1"
+                        [step]="50"
                         label="Search Limit"
                         tooltipText="The maximum number of items to retrieve when searching for relevant information."
                     />

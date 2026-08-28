@@ -111,6 +111,7 @@
                     formControlName="presence_penalty"
                     label="Presence Penalty"
                     tooltipText="Penalises tokens that have already appeared, encouraging the model to introduce new topics."
+                    [step]="5"
                 />
                 <app-validation-errors [control]="form.get('presence_penalty')!" />
             </div>
@@ -119,6 +120,7 @@
                     formControlName="frequency_penalty"
                     label="Frequency Penalty"
                     tooltipText="Penalises tokens proportionally to how often they appear, reducing repetition."
+                    [step]="5"
                 />
                 <app-validation-errors [control]="form.get('frequency_penalty')!" />
             </div>
@@ -131,6 +133,7 @@
                     formControlName="max_tokens"
                     [min]="500"
                     [max]="2147483647"
+                    [stepSize]="100"
                     label="Max Tokens"
                     tooltipText="Maximum number of tokens the model may generate in a single response"
                     [alwaysShowSteps]="true"
@@ -142,6 +145,7 @@
                     formControlName="timeout"
                     [min]="1"
                     [max]="600"
+                    [stepSize]="50"
                     label="Timeout (seconds)"
                     tooltipText="How long to wait for the model to respond before the request is cancelled"
                     [alwaysShowSteps]="true"
