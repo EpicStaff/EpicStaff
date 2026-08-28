@@ -36,7 +36,7 @@ def _make_secret(org, text):
 def _make_realtime_channel(db, org, **kwargs):
     """Create a minimal RealtimeChannel (no RealtimeAgent required).
 
-    RealtimeChannel is org-scoped (EST-3491 follow-up) — every direct ORM
+    RealtimeChannel is org-scoped — every direct ORM
     .create() must pass `org`, same as the API path stamps it via the
     active org (OrgScopedViewSetMixin.perform_create).
     """
@@ -46,7 +46,7 @@ def _make_realtime_channel(db, org, **kwargs):
 def _make_twilio_channel(realtime_channel, org=None, **kwargs):
     """Create a TwilioChannel attached to `realtime_channel`.
 
-    TwilioChannel itself has no `org` column (EST-3491 follow-up) — org
+    TwilioChannel itself has no `org` column — org
     lives on the parent RealtimeChannel. `org` is accepted only for
     call-site compatibility; it is also used to scope the Secret created for
     `auth_token_secret` when the caller doesn't supply its own.
@@ -69,7 +69,7 @@ def _make_twilio_channel(realtime_channel, org=None, **kwargs):
 
 
 def _make_webhook_trigger_with_ngrok(org, path="test-voice", domain=None):
-    # WebhookTrigger is now org-owned (EST-3491) — every direct ORM .create()
+    # WebhookTrigger is now org-owned — every direct ORM .create()
     # must pass `org`, same as the API path stamps it via the active org.
     trigger = WebhookTrigger.objects.create(
         path=path, provider_type=ProviderType.NGROK, org=org
@@ -263,7 +263,7 @@ class TestTwilioChannelWebhookTrigger:
 
 @pytest.mark.django_db
 class TestTwilioChannelCrossOrgCreateGuard:
-    """EST-1869: create() looks up an existing TwilioChannel row via a raw,
+    """create() looks up an existing TwilioChannel row via a raw,
     unfiltered `TwilioChannel.objects.filter(channel_id=...)` (channel_id is
     the global PK, not scoped by get_queryset()) before it ever checks org.
     Without an explicit guard, an org A caller could POST an org B channel_id
@@ -310,7 +310,7 @@ class TestTwilioChannelCrossOrgCreateGuard:
 
 @pytest.mark.django_db
 class TestTwilioChannelAuthTokenNotLeaked:
-    """EST-3633: auth_token must never appear in a twilio-channels response
+    """auth_token must never appear in a twilio-channels response
     body (list/retrieve/create/update), though it must remain writable.
     Regression guard: the realtime-channels nested read path
     (_TwilioChannelReadSerializer) must also keep omitting it."""
@@ -420,7 +420,7 @@ class TestTwilioChannelAuthTokenNotLeaked:
 
 @pytest.mark.django_db
 class TestRealtimeChannelLookupByToken:
-    """EST-3631 (2nd STR): inbound Twilio calls have no logged-in user and no
+    """inbound Twilio calls have no logged-in user and no
     X-Organization-Id header. `realtime`'s get_channel_config() resolves the
     answering agent via GET /api/realtime-channels/lookup-by-token/?token=...,
     which must succeed for a valid token without any org context, while
@@ -498,7 +498,7 @@ class TestRealtimeChannelLookupByToken:
     def test_lookup_by_token_rejects_user_scoped_api_key(
         self, api_client, db, default_org, user_api_key
     ):
-        """EST-3633 regression: a self-issued `key_type=USER` API key (any org
+        """regression: a self-issued `key_type=USER` API key (any org
         member can mint one via POST /api/profile/api-keys/) must NOT be able
         to use this org-bypass path, even for their own org's channel.
         IsSystemApiKeyAuthenticated requires key_type=SYSTEM specifically —
@@ -515,7 +515,7 @@ class TestRealtimeChannelLookupByToken:
     def test_lookup_by_token_user_scoped_api_key_cannot_leak_other_org_twilio_secret(
         self, api_client, db, user_api_key
     ):
-        """EST-3633 regression: a USER-scoped API key must not be able to read
+        """a USER-scoped API key must not be able to read
         another org's TwilioChannel.auth_token by guessing/observing a
         RealtimeChannel token — it is rejected before any lookup happens."""
         raw_key, _key = user_api_key
@@ -556,7 +556,7 @@ class TestRealtimeChannelLookupByToken:
     def test_lookup_by_token_includes_twilio_auth_token_for_api_key_caller(
         self, api_client, db, default_org, env_api_key
     ):
-        """EST-3633 follow-up: lookup-by-token is the ONE legitimate internal
+        """lookup-by-token is the ONE legitimate internal
         consumer that must still receive twilio.auth_token — `realtime`'s
         get_channel_config()/_twilio_voice_webhook() needs it to validate the
         inbound X-Twilio-Signature header. This is gated by
@@ -597,7 +597,7 @@ class TestRealtimeChannelLookupByToken:
 
 @pytest.mark.django_db
 class TestTwilioChannelPhoneNumbersAction:
-    """EST-1869: GET /twilio-channels/{id}/phone-numbers/ resolves account_sid
+    """GET /twilio-channels/{id}/phone-numbers/ resolves account_sid
     and the auth token server-side from the channel's stored Secret — unlike
     TwilioPhoneNumbersView (header-based, superadmin-only), the frontend
     supplies no raw credentials at all here, and the caller only needs normal
@@ -623,7 +623,7 @@ class TestTwilioChannelPhoneNumbersAction:
 
         url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
         with mock.patch(
-            "tables.views.model_view_sets._twilio_request",
+            "tables.services.twilio_service._twilio_request",
             side_effect=self._fake_twilio_response,
         ) as mocked:
             response = auth_client.get(url)
@@ -652,7 +652,7 @@ class TestTwilioChannelPhoneNumbersAction:
 
         url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
         with mock.patch(
-            "tables.views.model_view_sets._twilio_request"
+            "tables.services.twilio_service._twilio_request"
         ) as mocked:
             response = auth_client.get(url)
 
@@ -668,7 +668,7 @@ class TestTwilioChannelPhoneNumbersAction:
         tc = _make_twilio_channel(rc, other_org)
 
         url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
-        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
             response = auth_client.get(url)
 
         assert response.status_code == 404
@@ -680,7 +680,7 @@ class TestTwilioChannelPhoneNumbersAction:
 
         url = reverse("twiliochannel-phone-numbers", args=[tc.channel_id])
         with mock.patch(
-            "tables.views.model_view_sets._twilio_request",
+            "tables.services.twilio_service._twilio_request",
             side_effect=self._fake_twilio_response,
         ):
             response = auth_client.get(url)
@@ -691,7 +691,7 @@ class TestTwilioChannelPhoneNumbersAction:
 
 @pytest.mark.django_db
 class TestTwilioChannelPhoneNumbersSidValidation:
-    """EST-3871: `TwilioChannelViewSet.phone_numbers` reads `sid` straight
+    """`TwilioChannelViewSet.phone_numbers` reads `sid` straight
     from a query param and passes it into `_twilio_phone_numbers_response`
     (the same shared helper `TwilioPhoneNumbersView.get` calls) without any
     format check — it needs the identical `_TWILIO_ACCOUNT_SID_RE` guard.
@@ -710,7 +710,7 @@ class TestTwilioChannelPhoneNumbersSidValidation:
 
     def test_rejects_invalid_sid_query_param(self, auth_client, db, default_org):
         url = reverse("twiliochannel-phone-numbers")
-        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
             response = auth_client.get(
                 url, {"sid": "not-a-valid-sid", "auth_token_secret_id": "1"}
             )
@@ -722,7 +722,7 @@ class TestTwilioChannelPhoneNumbersSidValidation:
 
 @pytest.mark.django_db
 class TestTwilioConfigureWebhookInputValidation:
-    """EST-3871: TwilioConfigureWebhookView must reject malformed SIDs before
+    """TwilioConfigureWebhookView must reject malformed SIDs before
     ever interpolating them into a Twilio REST URL, and must never reflect a
     raw upstream Twilio error body back to the caller."""
 
@@ -737,7 +737,7 @@ class TestTwilioConfigureWebhookInputValidation:
         )
 
         url = reverse("twilio-configure-webhook")
-        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
             response = auth_client.post(
                 url,
                 {"phone_sid": "PN_not_a_valid_sid", "channel_token": str(rc.token)},
@@ -763,7 +763,7 @@ class TestTwilioConfigureWebhookInputValidation:
         )
 
         url = reverse("twilio-configure-webhook")
-        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
             response = auth_client.post(
                 url,
                 {"phone_sid": "PN" + "0" * 32, "channel_token": str(rc.token)},
@@ -783,7 +783,7 @@ class TestTwilioConfigureWebhookInputValidation:
         evaluate DoesNotExist — that exception type must be normalized to
         the same 404 as a genuinely missing token."""
         url = reverse("twilio-configure-webhook")
-        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
             response = auth_client.post(
                 url,
                 {"phone_sid": "PN" + "0" * 32, "channel_token": "qwe"},
@@ -828,7 +828,7 @@ class TestTwilioConfigureWebhookInputValidation:
 
         url = reverse("twilio-configure-webhook")
         with mock.patch(
-            "tables.views.model_view_sets._twilio_request", side_effect=http_error
+            "tables.services.twilio_service._twilio_request", side_effect=http_error
         ):
             response = auth_client.post(
                 url,
@@ -845,14 +845,14 @@ class TestTwilioConfigureWebhookInputValidation:
 
 @pytest.mark.django_db
 class TestTwilioPhoneNumbersHeaderValidation:
-    """EST-3871: superadmin-only endpoint, but the raw `X-Twilio-Account-Sid`
+    """superadmin-only endpoint, but the raw `X-Twilio-Account-Sid`
     header still flows into the Twilio REST URL, so it must be validated too."""
 
     def test_rejects_invalid_account_sid_header_format(
         self, superadmin_client, db
     ):
         url = reverse("twilio-phone-numbers")
-        with mock.patch("tables.views.model_view_sets._twilio_request") as mocked:
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
             response = superadmin_client.get(
                 url,
                 HTTP_X_TWILIO_ACCOUNT_SID="not-a-valid-sid",

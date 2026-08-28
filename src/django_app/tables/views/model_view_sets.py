@@ -1,10 +1,5 @@
-import base64
 import json
 import logging
-import re
-import urllib.error
-import urllib.parse
-import urllib.request
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -333,6 +328,7 @@ from tables.import_export.services.partial_export_service import (
 from tables.import_export.services.partial_import_service import PartialImportService
 from tables.utils.helpers import generate_file_name
 from tables.services.webhook_trigger_service import WebhookTriggerService
+from tables.services.twilio_service import TwilioService, TwilioServiceError
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.classification_decision_table_node_service import (
     ClassificationDecisionTableNodeService,
@@ -2126,30 +2122,30 @@ class TwilioChannelViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="phone-numbers")
     def phone_numbers(self, request, pk=None):
         """Return this channel's Twilio incoming phone numbers."""
-        
+
         sid = request.query_params.get("sid")
         auth_token_secret_id = request.query_params.get("auth_token_secret_id")
 
-        # 2. Validate they were provided
         if not sid or not auth_token_secret_id:
             return Response(
-                {"error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"},
+                {
+                    "error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if not _TWILIO_ACCOUNT_SID_RE.fullmatch(sid):
-            return Response(
-                {"error": "Invalid account_sid"}, status=status.HTTP_400_BAD_REQUEST
+        try:
+            TwilioService().validate_account_sid(sid)
+            auth_token = secret_resolver.resolve(
+                secret_id=auth_token_secret_id,
+                org_id=resolve_active_org_id(request),
+                context="TwilioChannel.auth_token",
             )
+            numbers = TwilioService().get_phone_numbers(sid, auth_token)
+        except TwilioServiceError as e:
+            return Response({"error": e.message}, status=e.status_code)
 
-        # 3. Resolve the token and fetch numbers
-        auth_token = secret_resolver.resolve(
-            secret_id=auth_token_secret_id,
-            org_id=resolve_active_org_id(request),
-            context="TwilioChannel.auth_token",
-        )
-        
-        return _twilio_phone_numbers_response(sid, auth_token)
+        return Response({"results": numbers})
 
 
 class ConversationRecordingViewSet(OrgScopedChildViewSetMixin, viewsets.ModelViewSet):
@@ -2909,7 +2905,7 @@ class VoiceSettingsView(generics.RetrieveUpdateAPIView):
         # caller gets the resolved plaintext Twilio credentials; a regular
         # superadmin JWT session only ever sees the `*_secret_id` fields.
         # Same trust boundary as `RealtimeChannelViewSet.lookup_by_token`'s
-        # `RealtimeChannelInternalSerializer` (EST-3633).
+        # `RealtimeChannelInternalSerializer`.
         if (
             isinstance(self.request.auth, ApiKey)
             and self.request.auth.key_type == ApiKey.KeyType.SYSTEM
@@ -2924,57 +2920,6 @@ class VoiceSettingsView(generics.RetrieveUpdateAPIView):
         response = super().update(request, *args, **kwargs)
         redis_service.redis_client.publish("voice_settings:invalidate", "{}")
         return response
-
-
-def _twilio_request(
-    account_sid: str, auth_token: str, url: str, method: str = "GET", data: dict = None
-):
-    """Make an authenticated request to the Twilio REST API."""
-    credentials = base64.b64encode(f"{account_sid}:{auth_token}".encode()).decode()
-    headers = {"Authorization": f"Basic {credentials}", "Accept": "application/json"}
-    body = None
-    if data:
-        encoded = urllib.parse.urlencode(data).encode()
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
-        body = encoded
-    req = urllib.request.Request(url, data=body, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        return json.loads(resp.read().decode())
-
-
-_TWILIO_PHONE_SID_RE = re.compile(r"^PN[0-9a-fA-F]{32}$")
-_TWILIO_ACCOUNT_SID_RE = re.compile(r"^AC[0-9a-fA-F]{32}$")
-
-
-def _twilio_phone_numbers_response(account_sid: str, auth_token: str) -> Response:
-    """Call Twilio's IncomingPhoneNumbers API and shape the response.
-
-    Shared by `TwilioPhoneNumbersView` (raw account_sid/auth_token via
-    headers, superadmin-only) and `TwilioChannelViewSet.phone_numbers`
-    (credentials resolved from a stored `Secret`) so both surfaces return
-    the exact same response shape and error handling.
-    """
-    try:
-        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers.json?PageSize=100"
-        data = _twilio_request(account_sid, auth_token, url)
-        numbers = [
-            {
-                "sid": n["sid"],
-                "phone_number": n["phone_number"],
-                "friendly_name": n["friendly_name"],
-                "voice_url": n.get("voice_url") or "",
-            }
-            for n in data.get("incoming_phone_numbers", [])
-        ]
-        return Response({"results": numbers})
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        logger.error(f"twilio phone-numbers: Twilio HTTP error {e.code}: {body}")
-        return Response(
-            {"error": "Failed to retrieve phone numbers from Twilio"}, status=400
-        )
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
 
 class TwilioPhoneNumbersView(generics.GenericAPIView):
@@ -2994,18 +2939,18 @@ class TwilioPhoneNumbersView(generics.GenericAPIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if not _TWILIO_ACCOUNT_SID_RE.fullmatch(account_sid):
-            return Response(
-                {"error": "Invalid account_sid"}, status=status.HTTP_400_BAD_REQUEST
-            )
-        return _twilio_phone_numbers_response(account_sid, auth_token)
+        try:
+            numbers = TwilioService().get_phone_numbers(account_sid, auth_token)
+        except TwilioServiceError as e:
+            return Response({"error": e.message}, status=e.status_code)
+        return Response({"results": numbers})
 
 
 class TwilioConfigureWebhookView(generics.GenericAPIView):
     """Set the VoiceUrl on a Twilio phone number to the configured voice stream URL.
 
     Credentials and the target channel are org-owned (RealtimeChannel is an
-    OrgScopedModel; EST-3491 follow-up) — org isolation is the boundary here,
+    OrgScopedModel) — org isolation is the boundary here,
     not a superadmin gate: any authenticated member of the channel's own org
     may configure their own org's Twilio number. A channel belonging to
     another org (or none at all) is rejected exactly like a missing token,
@@ -3018,139 +2963,14 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
     def post(self, request):
         phone_sid = request.data.get("phone_sid")
         channel_token = request.data.get("channel_token")
-        logger.info(
-            f"configure-webhook: phone_sid={phone_sid} channel_token={channel_token}"
-        )
-
-        if not phone_sid or not channel_token:
-            logger.warning("configure-webhook: missing phone_sid or channel_token")
-            return Response(
-                {"error": "phone_sid and channel_token are required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not _TWILIO_PHONE_SID_RE.fullmatch(phone_sid):
-            logger.warning(f"configure-webhook: invalid phone_sid={phone_sid}")
-            return Response(
-                {"error": "Invalid phone_sid"}, status=status.HTTP_400_BAD_REQUEST
-            )
 
         try:
-            token = uuid.UUID(str(channel_token))
-        except (ValueError, AttributeError, TypeError):
-            logger.warning(
-                f"configure-webhook: malformed channel_token={channel_token}"
+            webhook_url = TwilioService().configure_webhook(
+                phone_sid=phone_sid,
+                channel_token=channel_token,
+                org_id=resolve_active_org_id(request),
             )
-            return Response(
-                {"error": "Channel not found"}, status=status.HTTP_404_NOT_FOUND
-            )
+        except TwilioServiceError as e:
+            return Response({"error": e.message}, status=e.status_code)
 
-        try:
-            channel = RealtimeChannel.objects.select_related(
-                "twilio__webhook_trigger__ngrok", "twilio__webhook_trigger__localhost"
-            ).get(token=token)
-        except RealtimeChannel.DoesNotExist:
-            logger.warning(
-                f"configure-webhook: channel not found for token={channel_token}"
-            )
-            return Response(
-                {"error": "Channel not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        twilio = getattr(channel, "twilio", None)
-        active_org_id = resolve_active_org_id(request)
-        if channel.org_id != active_org_id:
-            logger.warning(
-                f"configure-webhook: channel {channel.id} does not belong to "
-                f"the active org ({active_org_id})"
-            )
-            return Response(
-                {"error": "Channel not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-        if not twilio or not twilio.account_sid or twilio.auth_token_secret_id is None:
-            logger.warning(
-                f"configure-webhook: no Twilio credentials for channel {channel.id}"
-            )
-            return Response(
-                {"error": "No Twilio credentials configured for this channel"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        account_sid = twilio.account_sid
-        if not _TWILIO_ACCOUNT_SID_RE.fullmatch(account_sid):
-            logger.warning(
-                f"configure-webhook: invalid account_sid for channel {channel.id}"
-            )
-            return Response(
-                {"error": "Invalid account_sid"}, status=status.HTTP_400_BAD_REQUEST
-            )
-        auth_token = secret_resolver.resolve(
-            secret_id=twilio.auth_token_secret_id,
-            org_id=channel.org_id,
-            context="TwilioChannel.auth_token",
-        )
-        logger.info(
-            f"configure-webhook: using stored credentials for account_sid={account_sid}"
-        )
-
-        webhook_trigger = twilio.webhook_trigger
-        logger.info(f"configure-webhook: webhook_trigger={webhook_trigger}")
-        if not webhook_trigger or not webhook_trigger.provider_type:
-            logger.warning(
-                f"configure-webhook: no webhook trigger configured for channel {channel.id}"
-            )
-            return Response(
-                {"error": "No webhook trigger configured for this channel"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        provider_error = twilio.validate_provider()
-        if provider_error:
-            logger.warning(
-                f"configure-webhook: provider validation failed for channel {channel.id}: {provider_error}"
-            )
-            return Response(
-                {"error": provider_error},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        tunnel_url = WebhookTriggerService().get_tunnel_url_for_trigger(webhook_trigger)
-        if not tunnel_url:
-            active_config = webhook_trigger.get_active_config()
-            if active_config:
-                tunnel_url = active_config.get_webhook_url()
-        logger.info(f"configure-webhook: tunnel_url={tunnel_url}")
-        if not tunnel_url:
-            logger.warning(
-                f"configure-webhook: webhook trigger {webhook_trigger.id} has no live URL and no domain"
-            )
-            return Response(
-                {"error": "Webhook tunnel is not running and has no domain configured"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        webhook_url = f"{tunnel_url.rstrip('/')}/voice/{channel_token}"
-        logger.info(
-            f"configure-webhook: setting VoiceUrl={webhook_url} on phone_sid={phone_sid}"
-        )
-
-        try:
-            url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/IncomingPhoneNumbers/{phone_sid}.json"
-            _twilio_request(
-                account_sid,
-                auth_token,
-                url,
-                method="POST",
-                data={"VoiceUrl": webhook_url, "VoiceMethod": "POST"},
-            )
-            logger.info(f"configure-webhook: success webhook_url={webhook_url}")
-            return Response({"webhook_url": webhook_url})
-        except urllib.error.HTTPError as e:
-            body = e.read().decode()
-            logger.error(f"configure-webhook: Twilio HTTP error {e.code}: {body}")
-            return Response(
-                {"error": "Failed to configure Twilio webhook"}, status=e.code
-            )
-        except Exception as e:
-            logger.exception("configure-webhook: unexpected error")
-            return Response({"error": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({"webhook_url": webhook_url})
