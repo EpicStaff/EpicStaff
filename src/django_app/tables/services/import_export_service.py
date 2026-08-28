@@ -24,8 +24,10 @@ class ViewSetImportExportService:
             "json": JsonExportFormatStrategy()
         }
 
-    def export_entity(self, instance, fmt: str = "json"):
-        data = self.export_service.export_entities(self.entity_type, [instance.pk])
+    def export_entity(self, instance, fmt: str = "json", org_id: int | None = None):
+        data = self.export_service.export_entities(
+            self.entity_type, [instance.pk], org_id=org_id
+        )
         if fmt not in self.format_strategies:
             raise ValidationError(
                 f"Unsupported export format: '{fmt}'. Supported: {list(self.format_strategies)}"
@@ -34,8 +36,10 @@ class ViewSetImportExportService:
         base_name = str(getattr(instance, self.filename_attr, "object"))
         return strategy.render(data, self.entity_type, self.export_prefix, base_name)
 
-    def bulk_export(self, entity_ids, fmt: str = "json"):
-        data = self.export_service.export_entities(self.entity_type, entity_ids)
+    def bulk_export(self, entity_ids, fmt: str = "json", org_id: int | None = None):
+        data = self.export_service.export_entities(
+            self.entity_type, entity_ids, org_id=org_id
+        )
         if fmt not in self.format_strategies:
             raise ValidationError(
                 f"Unsupported export format: '{fmt}'. Supported: {list(self.format_strategies)}"

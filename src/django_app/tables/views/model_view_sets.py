@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpResponse
-from django.db.models import NOT_PROVIDED, IntegerField, Prefetch, Q
+from django.db.models import NOT_PROVIDED, Exists, IntegerField, OuterRef, Prefetch, Q
 from django.db.models.functions import Cast
 from django_filters import rest_framework as filters
 from django_filters.rest_framework import (
@@ -33,8 +33,6 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
-
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 
 from tables.serializers.model_serializers.embedding_serializers import (
     EmbeddingConfigSerializer,
@@ -78,7 +76,6 @@ from tables.models import (
     AgentNode,
     AgentNodeTask,
     AudioTranscriptionNode,
-    CodeAgentNode,
     ConditionalEdge,
     Crew,
     CrewNode,
@@ -103,8 +100,6 @@ from tables.models import (
     Task,
     TaskContext,
     TaskNode,
-    TemplateAgent,
-    ToolConfig,
 )
 from tables.models.crew_models import (
     AgentMcpTools,
@@ -136,6 +131,33 @@ from tables.swagger_schemas.knowledge_schemas.graph_bulk_save_schemas import (
 )
 from tables.swagger_schemas.partial_import_schemas import (
     PARTIAL_IMPORT_SWAGGER as PARTIAL_IMPORT_SWAGGER,
+)
+from tables.swagger_schemas.tools_schemas import (
+    MCP_TOOL_BULK_DELETE_POST,
+    MCP_TOOL_BULK_EXPORT_POST,
+    MCP_TOOL_COPY_POST,
+    MCP_TOOL_EXPORT_GET,
+    MCP_TOOL_FAVORITE_DELETE,
+    MCP_TOOL_FAVORITE_POST,
+    MCP_TOOL_IMPORT_POST,
+    PYTHON_CODE_TOOL_BULK_DELETE_POST,
+    PYTHON_CODE_TOOL_BULK_EXPORT_POST,
+    PYTHON_CODE_TOOL_COPY_POST,
+    PYTHON_CODE_TOOL_EXPORT_GET,
+    PYTHON_CODE_TOOL_FAVORITE_DELETE,
+    PYTHON_CODE_TOOL_FAVORITE_POST,
+    PYTHON_CODE_TOOL_IMPORT_POST,
+    TOOL_ORDERING_PARAMETER,
+)
+from tables.swagger_schemas.tools_usage_schemas import (
+    MCP_TOOL_USAGE_DETAIL_GET,
+    MCP_TOOL_USAGE_POST,
+    PYTHON_CODE_TOOL_USAGE_DETAIL_GET,
+    PYTHON_CODE_TOOL_USAGE_POST,
+)
+from tables.services.tools_usage_service import (
+    get_mcp_tool_usage_detail,
+    get_python_code_tool_usage_detail,
 )
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from rest_framework.exceptions import PermissionDenied, NotFound
@@ -170,6 +192,7 @@ from tables.models.llm_models import (
 )
 from tables.models.knowledge_models.naive_rag_models import AgentNaiveRag
 from tables.models.mcp_models import McpTool
+from tables.models.favorite_models import McpToolFavorite, PythonCodeToolFavorite
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import (
     RealtimeAgent,
@@ -185,7 +208,9 @@ from tables.filters import (
     EmbeddingModelFilter,
     LabelFilterBackend,
     LLMModelFilter,
+    McpToolFilter,
     ProviderFilter,
+    PythonCodeToolFilter,
 )
 from tables.utils.helpers import natural_sort_key
 from tables.models.label_models import Label
@@ -211,6 +236,7 @@ from tables.views.mixins import (
     OrgScopedHybridViewSetMixin,
     OrgScopedViewSetMixin,
     SuperadminWriteMixin,
+    ToolUsageActionsMixin,
 )
 from tables.models.rbac_models import ApiKey, Organization
 from tables.models.rbac_models.rbac_enums import Permission, ResourceType
@@ -241,7 +267,6 @@ from tables.serializers.model_serializers import (
     ClassificationDecisionTableNodeSerializer,
     AgentWriteSerializer,
     AudioTranscriptionNodeSerializer,
-    CodeAgentNodeSerializer,
     ConditionalEdgeSerializer,
     GraphNoteSerializer,
     ConditionGroupSerializer,
@@ -806,8 +831,15 @@ class ContentHashPreconditionMixin:
         super().perform_update(serializer)
 
 
+@extend_schema_view(
+    copy=extend_schema(**PYTHON_CODE_TOOL_COPY_POST),
+    list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
+)
 class PythonCodeToolViewSet(
-    OrgScopedHybridViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
+    OrgScopedHybridViewSetMixin,
+    CopyActionMixin,
+    ToolUsageActionsMixin,
+    viewsets.ModelViewSet,
 ):
     """
     A viewset for viewing and editing PythonCodeTool instances.
@@ -817,7 +849,17 @@ class PythonCodeToolViewSet(
 
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "copy": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
+        "usage": Permission.READ,
+        "usage_detail": Permission.READ,
+        "favorite": Permission.READ,
+        "export": Permission.EXPORT,
+        "bulk_export": Permission.EXPORT,
+        "import_entity": Permission.CREATE,
+    }
     global_visibility_q = Q(built_in=True)
     custom_create_values = {"built_in": False}
 
@@ -827,13 +869,135 @@ class PythonCodeToolViewSet(
     queryset = PythonCodeTool.objects.all().select_related("python_code")
     serializer_class = PythonCodeToolSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["name", "python_code"]
+    filterset_class = PythonCodeToolFilter
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.PYTHON_CODE_TOOL,
+            export_prefix="python_code_tool",
+            filename_attr="name",
+        )
+
+    def get_queryset(self):
+        queryset = (
+            super()
+            .get_queryset()
+            .annotate(
+                is_favorite=Exists(
+                    PythonCodeToolFavorite.objects.filter(
+                        user=self.request.user, tool=OuterRef("pk")
+                    )
+                )
+            )
+        )
+        ordering = ["-id"]
+        if self.request.query_params.get("ordering") == "favorite":
+            ordering = ["-is_favorite", "-id"]
+        return queryset.order_by(*ordering)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.built_in:
             raise BuiltInToolModificationError()
         return super().destroy(request, *args, **kwargs)
+
+    @extend_schema(methods=["POST"], **PYTHON_CODE_TOOL_FAVORITE_POST)
+    @extend_schema(methods=["DELETE"], **PYTHON_CODE_TOOL_FAVORITE_DELETE)
+    @action(detail=True, methods=["post", "delete"], url_path="favorite")
+    def favorite(self, request, pk=None):
+        tool = self.get_object()
+        if request.method == "POST":
+            PythonCodeToolFavorite.objects.get_or_create(user=request.user, tool=tool)
+        else:
+            PythonCodeToolFavorite.objects.filter(user=request.user, tool=tool).delete()
+        return Response(status=status.HTTP_200_OK)
+
+    @extend_schema(**PYTHON_CODE_TOOL_BULK_DELETE_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        ids = request.data.get("ids", [])
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            return Response(
+                {"detail": "ids must be a list of integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # Built-in tools are silently excluded, never rejected — they are
+            # simply not part of the deletable queryset (org_id also filters
+            # them out since built-ins have org_id=None, but built_in=False
+            # is kept explicit for clarity/defense-in-depth).
+            tool_list = PythonCodeTool.objects.filter(
+                id__in=ids,
+                org_id=self.get_active_org_id(),
+                built_in=False,
+            )
+            deleted_count = tool_list.count()
+            for tool in tool_list:
+                tool.delete()
+
+        return Response(
+            {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_USAGE_POST)
+    @action(detail=False, methods=["post"], url_path="usage")
+    def usage(self, request):
+        return self._usage_response(request, PythonCodeTool)
+
+    @extend_schema(**PYTHON_CODE_TOOL_USAGE_DETAIL_GET)
+    @action(detail=True, methods=["get"], url_path="usage-detail")
+    def usage_detail(self, request, pk=None):
+        return self._usage_detail_response(
+            pk, get_python_code_tool_usage_detail, "PythonCodeTool"
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_EXPORT_GET)
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk: int):
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_BULK_EXPORT_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-export")
+    def bulk_export(self, request):
+        serializer = BulkExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity_ids = serializer.validated_data["ids"]
+
+        # Built-in tools (org_id=None) are globally visible and must be
+        # exportable like any org's own tool, mirroring get_org_scope_q()
+        # used by the import/export strategy and the get_queryset() scoping
+        # that export/get_object() already relies on.
+        existing_ids = PythonCodeTool.objects.filter(
+            Q(built_in=True) | Q(org_id=self.get_active_org_id()),
+            id__in=entity_ids,
+        ).values_list("id", flat=True)
+        if len(existing_ids) != len(entity_ids):
+            return Response(
+                {"message": "Some entity IDs do not exist"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**PYTHON_CODE_TOOL_IMPORT_POST)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_entity(self, request):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        vd = file_serializer.validated_data
+        data = self.import_export_service.import_entity(
+            vd["file"],
+            user=request.user,
+            settings=ImportSettings(import_labels=vd["import_labels"]),
+            org_id=self.get_active_org_id(),
+        )
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class PythonCodeToolConfigViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
@@ -919,10 +1083,6 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
                     queryset=SubGraphNode.objects.select_related(
                         "subgraph"
                     ).prefetch_related("subgraph__tags"),
-                ),
-                Prefetch(
-                    "code_agent_node_list",
-                    queryset=CodeAgentNode.objects.select_related("llm_config"),
                 ),
                 Prefetch(
                     "task_node_list",
@@ -1402,22 +1562,6 @@ class AudioTranscriptionNodeViewSet(
     org_filter_path = "graph__org_id"
     queryset = AudioTranscriptionNode.objects.all()
     serializer_class = AudioTranscriptionNodeSerializer
-
-
-class CodeAgentNodeViewSet(
-    OrgScopedChildViewSetMixin, IdempotentNodeCreateMixin, viewsets.ModelViewSet
-):
-    """
-    DEPRECATED: CodeAgentNodeViewSet is deprecated. Use AgentNodeViewSet or
-    TaskNodeViewSet instead. Exists only for backward compatibility with
-    existing CodeAgentNode rows.
-    """
-
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
-    org_filter_path = "graph__org_id"
-    queryset = CodeAgentNode.objects.all()
-    serializer_class = CodeAgentNodeSerializer
 
 
 class TaskNodeViewSet(
@@ -2343,19 +2487,78 @@ class ClassificationDecisionTableNodeModelViewSet(
         )
 
 
-class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet):
+@extend_schema_view(
+    copy=extend_schema(**MCP_TOOL_COPY_POST),
+    list=extend_schema(parameters=[TOOL_ORDERING_PARAMETER]),
+)
+class McpToolViewSet(
+    OrgScopedViewSetMixin, CopyActionMixin, ToolUsageActionsMixin, viewsets.ModelViewSet
+):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.TOOLS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        "copy": Permission.CREATE,
+        "bulk_delete": Permission.DELETE,
+        "usage": Permission.READ,
+        "usage_detail": Permission.READ,
+        "favorite": Permission.READ,
+        "export": Permission.EXPORT,
+        "bulk_export": Permission.EXPORT,
+        "import_entity": Permission.CREATE,
+    }
     copy_service_class = McpToolCopyService
     copy_serializer_class = McpToolSerializer
 
     queryset = McpTool.objects.select_related("auth_secret").all()
     serializer_class = McpToolSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["name", "tool_name"]
+    filterset_class = McpToolFilter
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.import_export_service = ViewSetImportExportService(
+            entity_type=EntityType.MCP_TOOL,
+            export_prefix="mcp_tool",
+            filename_attr="name",
+        )
+
+    def get_queryset(self):
+        queryset = (
+            super()
+            .get_queryset()
+            .annotate(
+                is_favorite=Exists(
+                    McpToolFavorite.objects.filter(
+                        user=self.request.user, tool=OuterRef("pk")
+                    )
+                )
+            )
+        )
+        ordering = ["-id"]
+        if self.request.query_params.get("ordering") == "favorite":
+            ordering = ["-is_favorite", "-id"]
+        return queryset.order_by(*ordering)
+
+    @extend_schema(methods=["POST"], **MCP_TOOL_FAVORITE_POST)
+    @extend_schema(methods=["DELETE"], **MCP_TOOL_FAVORITE_DELETE)
+    @action(detail=True, methods=["post", "delete"], url_path="favorite")
+    def favorite(self, request, pk=None):
+        tool = self.get_object()
+        if request.method == "POST":
+            McpToolFavorite.objects.get_or_create(user=request.user, tool=tool)
+        else:
+            McpToolFavorite.objects.filter(user=request.user, tool=tool).delete()
+        return Response(status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
+        # PUT is a full-replace: any concrete field missing from the body is
+        # explicitly back-filled with its model default (or None) so a bare
+        # PUT clears unspecified fields instead of silently keeping stale
+        # values. This must NOT run for PATCH — partial_update overrides it
+        # below so a partial body (e.g. {"labels": [...]}) isn't forced
+        # through this full-replace path and doesn't get its other required
+        # fields nulled out.
         instance = self.get_object()
         data = request.data.copy()
         for field in self.serializer_class.Meta.model._meta.get_fields():
@@ -2367,10 +2570,88 @@ class McpToolViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewS
         self.perform_update(serializer)
         return Response(serializer.data)
 
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
-# Read-only: the row is created alongside its graph (see
-# GraphViewSet.perform_create) and org is derived from graph.org, so there
-# is no client-facing create/update path.
+    @extend_schema(**MCP_TOOL_BULK_DELETE_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        ids = request.data.get("ids", [])
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            return Response(
+                {"detail": "ids must be a list of integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # McpTool has no built-in concept — every matching id is deletable.
+            tool_list = McpTool.objects.filter(
+                id__in=ids, org_id=self.get_active_org_id()
+            )
+            deleted_count = tool_list.count()
+            for tool in tool_list:
+                tool.delete()
+
+        return Response(
+            {"deleted": deleted_count, "ids": ids}, status=status.HTTP_200_OK
+        )
+
+    @extend_schema(**MCP_TOOL_USAGE_POST)
+    @action(detail=False, methods=["post"], url_path="usage")
+    def usage(self, request):
+        return self._usage_response(request, McpTool)
+
+    @extend_schema(**MCP_TOOL_USAGE_DETAIL_GET)
+    @action(detail=True, methods=["get"], url_path="usage-detail")
+    def usage_detail(self, request, pk=None):
+        return self._usage_detail_response(pk, get_mcp_tool_usage_detail, "McpTool")
+
+    @extend_schema(**MCP_TOOL_EXPORT_GET)
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk: int):
+        return self.import_export_service.export_entity(
+            self.get_object(), org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**MCP_TOOL_BULK_EXPORT_POST)
+    @action(detail=False, methods=["post"], url_path="bulk-export")
+    def bulk_export(self, request):
+        serializer = BulkExportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity_ids = serializer.validated_data["ids"]
+
+        existing_ids = McpTool.objects.filter(
+            id__in=entity_ids, org_id=self.get_active_org_id()
+        ).values_list("id", flat=True)
+        if len(existing_ids) != len(entity_ids):
+            return Response(
+                {"message": "Some entity IDs do not exist"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return self.import_export_service.bulk_export(
+            entity_ids, org_id=self.get_active_org_id()
+        )
+
+    @extend_schema(**MCP_TOOL_IMPORT_POST)
+    @action(detail=False, methods=["post"], url_path="import")
+    def import_entity(self, request):
+        file_serializer = ImportRequestSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        vd = file_serializer.validated_data
+        data = self.import_export_service.import_entity(
+            vd["file"],
+            user=request.user,
+            settings=ImportSettings(import_labels=vd["import_labels"]),
+            org_id=self.get_active_org_id(),
+        )
+        return Response(data, status=status.HTTP_200_OK)
+
+
 class GraphOrganizationViewSet(
     OrgScopedChildViewSetMixin, viewsets.ReadOnlyModelViewSet
 ):
@@ -2517,14 +2798,27 @@ class GraphNoteViewSet(
     serializer_class = GraphNoteSerializer
 
 
-class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
+class BaseLabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
+    """Shared behavior for the two independent label trees — Flow labels
+    (`LabelViewSet`) and Tool labels (`ToolLabelViewSet`). Each tree is a
+    disjoint subset of `Label` partitioned by `Label.scope`; concrete
+    subclasses set `label_scope` and a `queryset` pre-filtered to it.
+    """
+
     rbac_action_map = {**DEFAULT_ACTION_MAP}
-    queryset = Label.objects.all()
     serializer_class = LabelSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["name", "parent"]
+    label_scope: str = None
+
+    def perform_create(self, serializer):
+        # Never trust client-supplied scope — the URL/viewset is the only
+        # source of truth for which label tree a new row joins.
+        serializer.save(
+            org_id=self.get_active_org_id(),
+            created_by=self.request.user,
+            scope=self.label_scope,
+        )
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -2532,18 +2826,25 @@ class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
 
         # Build paths in memory (one extra lightweight query) to avoid N+1
         # and to correctly resolve parents that may be filtered out. Scoped to
-        # the active org (the label tree never crosses orgs).
+        # the active org and this tree's scope (the label tree never crosses
+        # orgs or Flow/Tool scopes).
         id_to_row = {
             row["id"]: row
-            for row in Label.objects.filter(org_id=self.get_active_org_id()).values(
-                "id", "parent_id", "name"
-            )
+            for row in Label.objects.filter(
+                org_id=self.get_active_org_id(), scope=self.label_scope
+            ).values("id", "parent_id", "name")
         }
 
         def full_path_key(label):
             parts = []
+            visited = set()
             current_id = label.id
             while current_id is not None:
+                if current_id in visited:
+                    # Stored cycle (self-parent or parent loop) — stop
+                    # walking rather than looping forever.
+                    break
+                visited.add(current_id)
                 row = id_to_row.get(current_id)
                 if row is None:
                     break
@@ -2551,14 +2852,32 @@ class LabelViewSet(OrgScopedViewSetMixin, viewsets.ModelViewSet):
                 current_id = row["parent_id"]
             return "/".join(reversed(parts))
 
-        labels.sort(key=lambda label: natural_sort_key(full_path_key(label)))
+        full_paths = {label.id: full_path_key(label) for label in labels}
+        labels.sort(key=lambda label: natural_sort_key(full_paths[label.id]))
+
+        context = self.get_serializer_context()
+        context["full_paths"] = full_paths
 
         page = self.paginate_queryset(labels)
         if page is not None:
-            serializer = self.get_serializer(page, many=True)
+            serializer = self.get_serializer(page, many=True, context=context)
             return self.get_paginated_response(serializer.data)
 
-        return Response(self.get_serializer(labels, many=True).data)
+        return Response(self.get_serializer(labels, many=True, context=context).data)
+
+
+class LabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.FLOWS
+    label_scope = Label.Scope.FLOW
+    queryset = Label.objects.filter(scope=Label.Scope.FLOW)
+
+
+class ToolLabelViewSet(BaseLabelViewSet):
+    permission_classes = [IsAuthenticated, HasOrgPermission]
+    rbac_resource_type = ResourceType.TOOLS
+    label_scope = Label.Scope.TOOL
+    queryset = Label.objects.filter(scope=Label.Scope.TOOL)
 
 
 class SecretViewSet(

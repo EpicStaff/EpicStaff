@@ -117,15 +117,11 @@ services:
       VOICE_STREAM_URL: ${VOICE_STREAM_URL:-}
       DJANGO_HOST: ${DJANGO_HOST:-django_app}
       DJANGO_PORT: ${DJANGO_PORT:-8000}
-      MANAGER_HOST: ${MANAGER_HOST:-manager}
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
     networks:
       - backend-network
     depends_on:
       crewdb:
         condition: service_healthy
-      manager:
-        condition: service_started
       redis:
         condition: service_healthy
       knowledge:
@@ -141,10 +137,8 @@ services:
     container_name: manager_container
     environment:
       <<: *common_env
-      MANAGER_PORT: ${MANAGER_PORT:-8001}
       DB_MANAGER_USER: ${DB_MANAGER_USER}
       DB_MANAGER_PASSWORD: ${DB_MANAGER_PASSWORD}
-      CREW_SAVEFILES_PATH: ${CREW_SAVEFILES_PATH}
     networks:
       - backend-network
     tty: true
@@ -224,7 +218,6 @@ services:
     container_name: crew
     environment:
       <<: *common_env
-      CODE_CONTAINER_URL: http://code:${CODE_MANAGER_PORT:-4080}
       HAYSTACK_TELEMETRY_ENABLED: ${HAYSTACK_TELEMETRY_ENABLED:-False}
       ANONYMIZED_TELEMETRY: ${ANONYMIZED_TELEMETRY:-False}
       EC_TELEMETRY: ${EC_TELEMETRY:-False}
@@ -296,37 +289,6 @@ services:
       - CHOWN  # chown per-exec output and home dirs to sandboxuser.
       - DAC_OVERRIDE  # read/write/cleanup across the root<->sandboxuser ownership boundary.
       - FOWNER  # rmtree of sandboxuser-owned files during per-exec cleanup.
-    depends_on:
-      redis:
-        condition: service_healthy
-
-  code:
-    image: ghcr.io/epicstaff/code:${IMAGE_TAG:-latest}
-    build:
-      context: .
-      dockerfile: ./code/Dockerfile.code
-    container_name: code
-    init: true
-    environment:
-      - DJANGO_API_URL=http://django_app:${DJANGO_PORT:-8000}/api
-      - CODE_MANAGER_PORT=${CODE_MANAGER_PORT}
-      - CODE_BASE_PORT=${CODE_BASE_PORT}
-      - CODE_MAX_INSTANCES=${CODE_MAX_INSTANCES}
-      - CODE_IDLE_TIMEOUT=${CODE_IDLE_TIMEOUT}
-      - CODE_REAP_INTERVAL=${CODE_REAP_INTERVAL}
-      - CODE_INSTANCES_DIR=${CODE_INSTANCES_DIR}
-      - CONTAINER_SAVEFILES_PATH=${CONTAINER_SAVEFILES_PATH}
-    ports:
-      - "${CODE_MANAGER_PORT:-4080}:${CODE_MANAGER_PORT:-4080}"
-    volumes:
-      - ${CREW_SAVEFILES_PATH}:${CONTAINER_SAVEFILES_PATH}
-      - code_instances:${CODE_INSTANCES_DIR}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - backend-network
-    tty: true
-    stdin_open: true
     depends_on:
       redis:
         condition: service_healthy
@@ -417,7 +379,6 @@ services:
       <<: *common_env
       USE_TUNNEL: ${USE_TUNNEL}
       WEBHOOK_TUNNEL: ${WEBHOOK_TUNNEL}
-      WEBHOOK_AUTH: ${WEBHOOK_AUTH}
       NGROK_DOMAIN: ${NGROK_DOMAIN}
       WEBHOOK_EMPTY_JSON_PATHS: ${WEBHOOK_EMPTY_JSON_PATHS}
       WEBHOOK_PORT: ${WEBHOOK_PORT:-8051}
@@ -507,7 +468,6 @@ volumes:
   media_data:
     external: true
   redis_data: {}
-  code_instances: {}
   minio_data: {}
 
   graph_data:

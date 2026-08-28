@@ -8,6 +8,9 @@ import { guestGuard } from './core/guards/guest.guard';
 import { onboardingGuard, resourceGuard, unassignedGuard } from './core/guards/resource.guard';
 import { UnsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 import { permissionGuard, superAdminGuard, workspaceGuard } from './core/guards/workspace.guard';
+import { CustomToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/custom-tools.port';
+import { McpToolsPort } from './features/tools/pages/tools-list-page/components/tools-list/mcp-tools.port';
+import { TOOLS_LIST_PORT } from './features/tools/pages/tools-list-page/components/tools-list/tools-list-port';
 import { MainLayoutComponent } from './layouts/main-layout/main-layout.component';
 import { RoutedAuthShellComponent } from './layouts/routed-auth-shell/routed-auth-shell.component';
 import { PermissionsService } from './services/auth/permissions.service';
@@ -151,16 +154,18 @@ export const routes: Routes = [
                             {
                                 path: 'custom',
                                 loadComponent: () =>
-                                    import('./features/tools/pages/tools-list-page/components/custom-tools/custom-tools.component').then(
-                                        (m) => m.CustomToolsComponent
+                                    import('./features/tools/pages/tools-list-page/components/tools-list/tools-list.component').then(
+                                        (m) => m.ToolsListComponent
                                     ),
+                                providers: [{ provide: TOOLS_LIST_PORT, useClass: CustomToolsPort }],
                             },
                             {
                                 path: 'mcp',
                                 loadComponent: () =>
-                                    import('./features/tools/pages/tools-list-page/components/mcp-tools/mcp-tools.component').then(
-                                        (m) => m.McpToolsComponent
+                                    import('./features/tools/pages/tools-list-page/components/tools-list/tools-list.component').then(
+                                        (m) => m.ToolsListComponent
                                     ),
+                                providers: [{ provide: TOOLS_LIST_PORT, useClass: McpToolsPort }],
                             },
                         ],
                     },
