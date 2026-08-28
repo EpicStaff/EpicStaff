@@ -136,6 +136,12 @@ export class LeftSidebarComponent implements AfterViewInit {
     @ViewChild('epicChat', { static: false })
     private epicChat?: ElementRef<HTMLElement>;
 
+    /** Gates the EpicChat widget's own flow-list request. Read as a method (not a field) so the
+     *  binding re-evaluates when active-org permissions reload after an org switch. */
+    public canReadFlows(): boolean {
+        return this.permissionService.can(ResourceCode.Flows, ActionCode.Read);
+    }
+
     constructor(
         public epicChatService: EpicChatService,
         public activeOrgService: ActiveOrgService,
