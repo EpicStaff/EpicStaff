@@ -1,0 +1,75 @@
+name: Dependency scan
+
+on:
+  pull_request:
+    branches: [main]
+  # Weekly, so a CVE published against an unchanged dependency still surfaces on
+  # a repository that has had no pull requests. Without this, a quiet week is
+  # indistinguishable from a clean one.
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: dependency-scan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Known-vulnerable dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Scan lockfiles with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          # remove later when deleted? 
+          skip-dirs: 'src/crew/libraries/crewAI,src/crew/libraries/mem0,**/node_modules'
+          format: table
+          output: trivy-report.txt
+          exit-code: '0'
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
+
+      - name: Publish report to the run summary
+        if: always()
+        run: |
+          {
+            echo '## Dependency scan'
+            echo
+            if [ ! -s trivy-report.txt ]; then
+              echo 'No HIGH or CRITICAL vulnerabilities with an available fix.'
+            else
+              echo '<details><summary>Findings</summary>'
+              echo
+              echo '```'
+              cat trivy-report.txt
+              echo '```'
+              echo
+              echo '</details>'
+            fi
+            echo
+            echo '_Report-only: this job does not fail the pull request. See'
+            echo '`.github/workflows/dependency-scan.yml`._'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-scan-report
+          path: trivy-report.txt
+          if-no-files-found: ignore
+          retention-days: 30
+
