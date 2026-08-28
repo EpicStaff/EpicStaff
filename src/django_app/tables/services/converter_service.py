@@ -409,16 +409,6 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
     ) -> list[BaseToolData]:
-        configured_tools = [
-            entry.tool for entry in task.task_configured_tool_list.all()
-        ]
-        if configured_tools:
-            logger.warning(
-                "Task {} has {} configured tool(s) attached, but the "
-                "configured-tool mechanism was removed; skipping them.",
-                task.pk,
-                len(configured_tools),
-            )
         tools = (
             [entry.tool for entry in task.task_python_code_tool_list.all()]
             + [entry.tool for entry in task.task_python_code_tool_config_list.all()]
