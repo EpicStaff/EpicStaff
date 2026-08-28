@@ -1,0 +1,38 @@
+.audit-session-browser {
+    padding: 16px;
+    overflow-x: auto;
+
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        min-width: 1200px;
+        font-size: 13px;
+    }
+
+    th,
+    td {
+        border: 1px solid var(--color-divider-regular);
+        padding: 8px 12px;
+        text-align: left;
+        vertical-align: top;
+        max-width: 320px;
+        overflow-wrap: break-word;
+    }
+
+    th {
+        background-color: var(--color-nodes-background);
+        color: var(--color-text-secondary);
+        font-weight: 600;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+    }
+
+    tbody tr:nth-child(even) {
+        background-color: var(--color-nodes-background);
+    }
+
+    tbody tr:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+}

@@ -1,7 +1,8 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { catchError, finalize, map, Observable, of, shareReplay, switchMap, tap, throwError } from 'rxjs';
 
+import { SKIP_FORBIDDEN_RELOAD } from '../../../core/interceptors/skip-forbidden-reload.context';
 import { AuthService } from '../../../services/auth/auth.service';
 import { ConfigService } from '../../../services/config';
 
@@ -62,10 +63,13 @@ export class AuditTokenService {
     }
 
     private mintToken(accessToken: string): Observable<AuditTokenResponse> {
+        // A 403 here means "this org has no AUDIT permission for you" - a permanent per-role
+        // restriction, not stale cached permissions worth reloading the app over.
+        const context = new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true);
         return this.http.post<AuditTokenResponse>(
             this.tokenUrl,
             {},
-            { headers: { Authorization: `Bearer ${accessToken}` } }
+            { headers: { Authorization: `Bearer ${accessToken}` }, context }
         );
     }
 }

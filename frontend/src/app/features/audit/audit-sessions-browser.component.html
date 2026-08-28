@@ -1,1 +1,42 @@
-<div>TEST!!!!!</div>
+<div class="audit-session-browser">
+    @if (isLoading()) {
+        <p>Loading...</p>
+    } @else if (sessions().length === 0) {
+        <p>No sessions found</p>
+    } @else {
+        <table>
+            <thead>
+                <tr>
+                    <th>Kind</th>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Flow</th>
+                    <th>Node Type</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Input</th>
+                    <th>Output</th>
+                    <th>Error</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (session of sessions(); track session.id) {
+                    <tr>
+                        <td>{{ session.kind }}</td>
+                        <td>{{ session.session_id }}</td>
+                        <td>{{ session.name }}</td>
+                        <td>{{ session.flow_name }}</td>
+                        <td>{{ session.node_type }}</td>
+                        <td>{{ session.status }}</td>
+                        <td>{{ session.event_time }}</td>
+                        <td>{{ session.input | json }}</td>
+                        <td>{{ session.output | json }}</td>
+                        <td>{{ session.error }}</td>
+                        <td>{{ session.details | json }}</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
