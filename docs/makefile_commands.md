@@ -14,7 +14,6 @@ All commands must be run from the **project root directory** (where `Makefile` l
 - [Utilities](#utilities)
 - [Local Django Development](#local-django-development)
 - [Local Crew Development](#local-crew-development)
-- [Integration Tests](#integration-tests)
 - [Typical Workflows](#typical-workflows)
 
 ---
@@ -385,28 +384,6 @@ Run the crew service test suite with `pytest`, using the crew venv
 make crew-tests
 make crew-tests ARGS="-k my_test"
 ```
-
----
-
-## Integration Tests
-
-### `make integration-test`
-
-Install integration test deps and run the suite in `integration_tests/` against a
-running stack (`DJANGO_URL` defaults to `http://127.0.0.1:8000/api`).
-
-| Parameter | Description |
-|-----------|-------------|
-| `f` | Run a specific test file (default: all) |
-| `k` | Filter tests by keyword (`-k`) |
-| `ARGS` | Extra pytest flags (e.g. `ARGS="-s --tb=short"`) |
-
-```bash
-make integration-test
-make integration-test f=tests/test_flows.py k=create
-```
-
----
 
 ---
 
