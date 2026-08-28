@@ -57,7 +57,6 @@ class DefaultLLMConfig(DefaultBaseModel):
     top_logprobs = models.IntegerField(null=True, blank=True)
     base_url = models.TextField(null=True, blank=True)
     api_version = models.TextField(null=True, blank=True)
-    api_key = models.TextField(null=True, blank=True)
     headers = models.JSONField(default=dict, blank=True)
     extra_headers = models.JSONField(default=dict, blank=True)
     timeout = models.FloatField(null=True, blank=True)
@@ -89,7 +88,13 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
     top_logprobs = models.IntegerField(null=True, blank=True)
     base_url = models.TextField(null=True, blank=True)
     api_version = models.TextField(null=True, blank=True)
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="llm_configs",
+    )
     headers = models.JSONField(default=dict, blank=True)
     extra_headers = models.JSONField(default=dict, blank=True)
     timeout = models.FloatField(default=120.0, null=True, blank=True)
@@ -107,20 +112,18 @@ class LLMConfig(OrgScopedModel, AbstractDefaultFillableModel):
     def get_default_model(self):
         return DefaultLLMConfig.load()
 
-    def delete(self, *args, **kwargs):
-        from tables.models import set_field_value_null_in_tool_configs
-        from tables.models import ToolConfigField
 
-        llm_config_id = self.pk
-        result = super().delete(*args, **kwargs)
-
-        set_field_value_null_in_tool_configs(
-            field_type=ToolConfigField.FieldType.LLM_CONFIG, value=llm_config_id
-        )
-        return result
-
+# ---------------------------------------------------------------------------
+# DEPRECATED: generic realtime model registry
+# These tables are kept for backward compatibility with quickstart,
+# import/export, and management commands, but are no longer used by the
+# realtime agent flow. New agents use OpenAIRealtimeConfig,
+# ElevenLabsRealtimeConfig, or GeminiRealtimeConfig from realtime_models.py.
+# ---------------------------------------------------------------------------
 
 class RealtimeModel(OrgScopedModel, models.Model):
+    """DEPRECATED: use provider-specific config models in realtime_models.py."""
+
     name = models.CharField(
         max_length=250, default="gpt-4o-mini-realtime-preview-2024-12-17"
     )
@@ -131,15 +134,25 @@ class RealtimeModel(OrgScopedModel, models.Model):
 
 
 class RealtimeConfig(OrgScopedModel, models.Model):
+    """DEPRECATED: use OpenAIRealtimeConfig / ElevenLabsRealtimeConfig / GeminiRealtimeConfig."""
+
     custom_name = models.CharField(max_length=250)
     realtime_model = models.ForeignKey("RealtimeModel", on_delete=models.CASCADE)
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="realtime_configs",
+    )
     tags = models.ManyToManyField(
         RealtimeConfigTag, blank=True, related_name="realtime_configs"
     )
 
 
 class RealtimeTranscriptionModel(OrgScopedModel, models.Model):
+    """DEPRECATED: transcription model is now a field inside OpenAIRealtimeConfig."""
+
     name = models.CharField(max_length=250, default="whisper-1")
     provider = models.ForeignKey(
         "Provider", on_delete=models.CASCADE, null=True, default=None
@@ -148,11 +161,19 @@ class RealtimeTranscriptionModel(OrgScopedModel, models.Model):
 
 
 class RealtimeTranscriptionConfig(OrgScopedModel, models.Model):
+    """DEPRECATED: transcription config is now embedded in OpenAIRealtimeConfig."""
+
     custom_name = models.CharField(max_length=250)
     realtime_transcription_model = models.ForeignKey(
         "RealtimeTranscriptionModel", on_delete=models.CASCADE
     )
-    api_key = models.TextField(null=True, blank=True)
+    api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="realtime_transcription_configs",
+    )
     tags = models.ManyToManyField(
         RealtimeTranscriptionConfigTag,
         blank=True,

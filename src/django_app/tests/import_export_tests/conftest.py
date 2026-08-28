@@ -15,8 +15,6 @@ from tables.models import (
     PythonCodeTool,
     RealtimeAgent,
     AgentPythonCodeTools,
-    AgentConfiguredTools,
-    ToolConfig,
 )
 from tables.models.realtime_models import RealtimeAgent as RealtimeAgentModel
 from tables.import_export.services.export_service import ExportService
@@ -57,7 +55,6 @@ def import_service(default_org):
 
 @pytest.fixture
 def rich_seeded_db(
-    wikipedia_tool,
     llm_config,
     embedding_config,
     openai_realtime_model_config,
@@ -69,8 +66,6 @@ def rich_seeded_db(
     tasks with context, and graph structure — everything needed for import/export testing.
     """
     # --- Tools ---
-    tool1 = ToolConfig.objects.create(name="tool1", tool=wikipedia_tool)
-
     code = PythonCode.objects.create(
         code="def main(arg1, arg2): return None",
         entrypoint="main",
@@ -109,7 +104,6 @@ def rich_seeded_db(
     RealtimeAgent.objects.create(agent=agent2)
 
     # Tool assignments
-    AgentConfiguredTools.objects.create(agent=agent1, toolconfig=tool1)
     AgentPythonCodeTools.objects.create(agent=agent1, pythoncodetool=custom_tool)
 
     # --- Crew with tasks ---
@@ -169,7 +163,6 @@ def rich_seeded_db(
         "realtime_transcription_config": realtime_transcription_config,
         "python_code_tool": custom_tool,
         "python_code": code,
-        "tool_config": tool1,
         "start_node": start_node,
         "crew_node": crew_node,
     }

@@ -16,6 +16,8 @@ class ResourceType(models.TextChoices):
     USERS = "users", "Users"
     ROLES = "roles", "Roles"
     AUDIT = "audit", "Audit"
+    VOICE = "voice", "Voice"
+    SURFACES = "surfaces", "Surfaces"
 
 
 class Permission(IntFlag):

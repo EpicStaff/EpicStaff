@@ -20,9 +20,10 @@ import {
     LoadingSpinnerComponent,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, DateRangeFilter, ResourceCode } from '@shared/models';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
+import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { GraphDto } from '../../models/graph.model';
 import {
     DurationFilter,
@@ -32,6 +33,7 @@ import {
     SessionTrigger,
     TriggerType,
 } from '../../services/flows-sessions.service';
+import { DatePickerDropdownComponent } from './date-picker-dropdown.component';
 import { DurationFilterDropdownComponent } from './duration-filter-dropdown.component';
 import { FlowNameFilterDropdownComponent } from './flow-name-filter-dropdown.component';
 import { FlowSessionStatusBadgeComponent } from './flow-session-status-badge.component';
@@ -54,10 +56,14 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
         DurationFilterDropdownComponent,
         HasPermissionDirective,
         MatTooltipModule,
+        DatePickerDropdownComponent,
         TriggerFilterDropdownComponent,
     ],
     template: `
-        <div class="sessions-table-wrapper">
+        <div
+            class="sessions-table-wrapper"
+            [class.has-flow-name]="showFlowName"
+        >
             <table>
                 <thead>
                     <tr>
@@ -96,17 +102,16 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                 (valueChange)="triggerFilterChange.emit($event)"
                             ></app-trigger-filter-dropdown>
                         </th>
-                        <th
-                            class="col-created"
-                            [class.sortable]="sortable"
-                            (click)="sortable && toggleSort()"
-                        >
-                            Created At
-                            @if (showFlowName) {
-                                <app-svg-icon
-                                    icon="menu"
-                                    size="16px"
-                                ></app-svg-icon>
+                        <th class="col-created">
+                            @if (showDateFilter) {
+                                <app-created-at-filter-dropdown
+                                    [value]="dateFilter"
+                                    (valueChange)="dateFilterChange.emit($event)"
+                                >
+                                    Created At
+                                </app-created-at-filter-dropdown>
+                            } @else {
+                                Created At
                             }
                         </th>
                         <th class="col-duration">
@@ -126,7 +131,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                     @if (isLoading) {
                         <tr>
                             <td
-                                [attr.colspan]="showFlowName ? 8 : 7"
+                                [attr.colspan]="colspan"
                                 style="text-align: center; padding: 40px;"
                             >
                                 <app-loading-spinner
@@ -138,7 +143,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                     } @else if (showEmptyState) {
                         <tr>
                             <td
-                                [attr.colspan]="showFlowName ? 8 : 7"
+                                [attr.colspan]="colspan"
                                 style="text-align: center; padding: 40px;"
                             >
                                 <div class="no-sessions-message">
@@ -174,7 +179,12 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                         class="flow-link"
                                         (click)="navigateToFlow(session.graph_id)"
                                     >
-                                        {{ session.graph_name }}
+                                        <app-svg-icon
+                                            icon="flow"
+                                            size="14px"
+                                            class="flow-link-icon"
+                                        ></app-svg-icon>
+                                        <span class="flow-link-name">{{ session.graph_name }}</span>
                                     </a>
                                 </td>
                                 <td class="col-trigger">
@@ -251,7 +261,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                 class="preview-row"
                             >
                                 <td
-                                    [attr.colspan]="showFlowName ? 8 : 7"
+                                    [attr.colspan]="colspan"
                                     class="preview-cell"
                                 >
                                     <div class="preview-content">
@@ -291,6 +301,8 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     @Input() externalPreview: boolean = false;
     @Input() activePreviewId: number | null = null;
+    @Input() showDateFilter: boolean = false;
+    @Input() dateFilter: DateRangeFilter | null = null;
 
     @Output() deleteSelected = new EventEmitter<number[]>();
     @Output() viewSession = new EventEmitter<number>();
@@ -302,6 +314,7 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
     @Output() durationFilterChange = new EventEmitter<DurationFilter | null>();
     @Output() selectedIdsChange = new EventEmitter<Set<number>>();
     @Output() previewSession = new EventEmitter<number | null>();
+    @Output() dateFilterChange = new EventEmitter<DateRangeFilter | null>();
 
     public expandedSessionId = signal<number | null>(null);
 
@@ -311,8 +324,14 @@ export class FlowSessionsTableComponent implements OnChanges, OnDestroy {
 
     constructor(
         private readonly cdr: ChangeDetectorRef,
-        private router: Router
+        private router: Router,
+        private perms: PermissionsService
     ) {}
+
+    public get colspan(): number {
+        const canSelect = this.perms.canAny(ResourceCode.Flows, [ActionCode.Export, ActionCode.Delete]);
+        return 6 + (this.showFlowName ? 1 : 0) + (canSelect ? 1 : 0);
+    }
 
     public ngOnChanges(changes: SimpleChanges): void {
         if (changes['sessions'] || changes['showDuration']) {

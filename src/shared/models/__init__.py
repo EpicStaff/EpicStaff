@@ -1,3 +1,16 @@
+from .agent_service import (
+    RunType,
+    SearchConfigEntry,
+    CollectionSpec,
+    AgentSpec,
+    AgentTaskSpec,
+    S3FileSpec,
+    AgentRequest,
+    ToolResult,
+    ContextAttachment,
+    LoopResult,
+    TaskRunSummary,
+)
 from .agents import (
     AgentData,
     RealtimeAgentChatData,
@@ -14,7 +27,9 @@ from .ai_providers import (
     LLMData,
     EmbedderData,
     BaseTunnelConfigData,
+    WebhookNodeAuthData,
     NgrokConfigData,
+    LocalhostConfigData,
     WebhookConfigData,
 )
 from .graph_nodes import (
@@ -39,10 +54,25 @@ from .graph_nodes import (
     SubGraphNodeData,
     GraphData,
     SubGraphData,
-    CodeAgentNodeData,
     PromptConfigData,
     ClassificationConditionGroupData,
     ClassificationDecisionTableNodeData,
+    AgentDefinitionData,
+    TaskNodeData,
+    AgentNodeTaskData,
+    AgentNodeData,
+)
+from .surfaces import (
+    ToolModeLiteral,
+    StorageAccessLiteral,
+    CombinedSurfacePythonToolData,
+    CombinedSurfaceMcpToolData,
+    CombinedSurfaceStorageItemData,
+    SurfaceNaiveSearchConfigData,
+    SurfaceGraphBasicSearchConfigData,
+    SurfaceGraphLocalSearchConfigData,
+    CombinedSurfaceKnowledgeData,
+    CombinedSurfaceData,
 )
 from .knowledge import (
     BaseRagSearchConfig,
@@ -63,20 +93,18 @@ from .sessions import (
     SessionData,
     GraphSessionMessageData,
     StopSessionMessage,
+    UNAUTHENTICATED_FALLBACK_PRINCIPAL,
     WebhookEventData,
     ScheduleEventData,
     StorageMutation,
     StorageMutationEvent,
 )
 from .tools import (
-    ToolConfigData,
-    ConfiguredToolData,
     McpToolData,
+    ArgsSchema,
     PythonCodeData,
     PythonCodeToolData,
     BaseToolData,
-    RunToolParamsModel,
-    ToolInitConfigurationModel,
     CodeResultData,
     CodeTaskData,
 )
@@ -100,10 +128,24 @@ from .variables import (
 from .variable_conversion import (
     args_schema_to_variables,
     json_schema_node_to_nested_variable,
+    nested_variable_to_json_schema_node,
+    variables_to_args_schema,
     _normalize_type,
 )
 
 __all__ = [
+    # agent_service
+    "RunType",
+    "SearchConfigEntry",
+    "CollectionSpec",
+    "AgentSpec",
+    "AgentTaskSpec",
+    "S3FileSpec",
+    "AgentRequest",
+    "ToolResult",
+    "ContextAttachment",
+    "LoopResult",
+    "TaskRunSummary",
     # agents
     "AgentData",
     "RealtimeAgentChatData",
@@ -118,7 +160,9 @@ __all__ = [
     "LLMData",
     "EmbedderData",
     "BaseTunnelConfigData",
+    "WebhookNodeAuthData",
     "NgrokConfigData",
+    "LocalhostConfigData",
     "WebhookConfigData",
     # graph_nodes
     "CrewNodeData",
@@ -142,10 +186,24 @@ __all__ = [
     "SubGraphNodeData",
     "GraphData",
     "SubGraphData",
-    "CodeAgentNodeData",
     "PromptConfigData",
     "ClassificationConditionGroupData",
     "ClassificationDecisionTableNodeData",
+    "AgentDefinitionData",
+    "TaskNodeData",
+    "AgentNodeTaskData",
+    "AgentNodeData",
+    # surfaces
+    "ToolModeLiteral",
+    "StorageAccessLiteral",
+    "CombinedSurfacePythonToolData",
+    "CombinedSurfaceMcpToolData",
+    "CombinedSurfaceStorageItemData",
+    "SurfaceNaiveSearchConfigData",
+    "SurfaceGraphBasicSearchConfigData",
+    "SurfaceGraphLocalSearchConfigData",
+    "CombinedSurfaceKnowledgeData",
+    "CombinedSurfaceData",
     # knowledge
     "BaseRagSearchConfig",
     "NaiveRagSearchConfig",
@@ -164,19 +222,17 @@ __all__ = [
     "SessionData",
     "GraphSessionMessageData",
     "StopSessionMessage",
+    "UNAUTHENTICATED_FALLBACK_PRINCIPAL",
     "WebhookEventData",
     "ScheduleEventData",
     "StorageMutation",
     "StorageMutationEvent",
     # tools
-    "ToolConfigData",
-    "ConfiguredToolData",
     "McpToolData",
+    "ArgsSchema",
     "PythonCodeData",
     "PythonCodeToolData",
     "BaseToolData",
-    "RunToolParamsModel",
-    "ToolInitConfigurationModel",
     "CodeResultData",
     "CodeTaskData",
     # variables
@@ -198,5 +254,7 @@ __all__ = [
     # variable_conversion
     "args_schema_to_variables",
     "json_schema_node_to_nested_variable",
+    "nested_variable_to_json_schema_node",
+    "variables_to_args_schema",
     "_normalize_type",
 ]

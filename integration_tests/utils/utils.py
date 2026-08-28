@@ -82,6 +82,11 @@ logger.remove()
 logger.add(sink=sys.stdout, level="DEBUG")
 
 
+# SECURITY-EXCEPTION(FOR TESTING PURPOSES ONLY): this helper and the module-level
+# `client` below connect to the host Docker daemon so the integration test suite can
+# read container status and logs for test diagnostics (read-only usage). Consumers
+# `is_container_running`, `check_containers`, and `log_container` inherit this
+# exception and are intentionally NOT annotated individually.
 def _get_docker_host_from_context() -> str | None:
     """Fetch Docker host from the current context."""
     try:
@@ -362,16 +367,6 @@ def create_llm_config(llm_id: int) -> int:
         llm_config = llm_config_response.json()
 
     return llm_config["id"]
-
-
-def get_tool(tool_alias: str) -> int:
-    response_tools = requests.get(f"{DJANGO_URL}/tools/", headers=get_headers())
-    validate_response(response_tools)
-    tool_list = response_tools.json()["results"]
-
-    tool = list(filter(lambda tool: tool["name_alias"] == tool_alias, tool_list))
-
-    return tool[0]["id"]
 
 
 def create_graph(graph_name: str, entry_point: str | None = None) -> int:

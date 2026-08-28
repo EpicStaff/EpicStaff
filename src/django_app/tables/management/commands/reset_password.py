@@ -46,18 +46,14 @@ class Command(BaseCommand):
         service = PasswordRecoveryService()
 
         try:
-            validator.validate_password_change(
-                {"current_password": "__cli_bypass__", "new_password": new_password}
-            )
+            validator.validate_new_password({"new_password": new_password})
         except FormValidationError as exc:
-            # We only care about new_password errors here; current_password
-            # is never checked in the CLI path.
-            real_errors = [e for e in exc.errors if e["field"] != "current_password"]
-            if real_errors:
-                raise CommandError(
-                    "Password validation failed:\n  "
-                    + "\n  ".join(f"{e['field']}: {e['reason']}" for e in real_errors)
+            raise CommandError(
+                "Password validation failed:\n  "
+                + "\n  ".join(
+                    f"{item['field']}: {item['reason']}" for item in exc.errors
                 )
+            ) from exc
 
         try:
             service.cli_reset(email=email, new_password=new_password)

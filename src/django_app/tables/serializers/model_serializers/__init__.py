@@ -13,5 +13,6 @@ from .vector_serializers import *
 from .label_serializers import *
 from .audit_filter_preset_serializers import *
 from .rbac_serializers import *
+from .secret_serializers import *
 
 from .node_serializers import *

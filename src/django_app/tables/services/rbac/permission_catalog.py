@@ -64,6 +64,13 @@ RESOURCE_TYPE_METADATA = [
         "label": "Tools",
         "group": "workspace",
         "description": "Tool definitions and configurations",
+        "applicable_actions": ["create", "read", "update", "delete", "export"],
+    },
+    {
+        "code": ResourceType.SURFACES.value,
+        "label": "Surfaces",
+        "group": "workspace",
+        "description": "Agent tool/storage/knowledge access surfaces",
         "applicable_actions": ["create", "read", "update", "delete"],
     },
     {
@@ -108,6 +115,13 @@ RESOURCE_TYPE_METADATA = [
         "description": "Org-wide session execution trace: browse and export",
         "applicable_actions": ["read", "export"],
     },
+    {
+        "code": ResourceType.VOICE.value,
+        "label": "Voice",
+        "group": "config",
+        "description": "Voice model configurations and settings",
+        "applicable_actions": ["create", "read", "update", "delete"],
+    }
 ]
 
 

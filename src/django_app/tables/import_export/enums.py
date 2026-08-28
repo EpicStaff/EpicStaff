@@ -10,6 +10,9 @@ class EntityType(str, Enum):
     REALTIME_CONFIG = "RealtimeConfig"
     REALTIME_TRANSCRIPTION_MODEL = "RealtimeTranscriptionModel"
     REALTIME_TRANSCRIPTION_CONFIG = "RealtimeTranscriptionConfig"
+    OPENAI_REALTIME_CONFIG = "OpenAIRealtimeConfig"
+    ELEVENLABS_REALTIME_CONFIG = "ElevenLabsRealtimeConfig"
+    GEMINI_REALTIME_CONFIG = "GeminiRealtimeConfig"
     PYTHON_CODE_TOOL = "PythonCodeTool"
     MCP_TOOL = "MCPTool"
     WEBHOOK_TRIGGER = "WebhookTrigger"
@@ -20,6 +23,8 @@ class EntityType(str, Enum):
     SESSION = "Session"
     LABEL = "Label"
     AUDIT_FILTER_PRESET = "AuditFilterPreset"
+    AGENT_DEFINITION = "AgentDefinition"
+    SURFACE = "Surface"
 
     AGENT_TAG = "AgentTag"
     CREW_TAG = "CrewTag"
@@ -40,8 +45,9 @@ class EntityType(str, Enum):
     SUBGRAPH_NODE = "SubgraphNode"
     END_NODE = "EndNode"
     NOTE_NODE = "GraphNote"
-    CODE_AGENT_NODE = "CodeAgentNode"
     SCHEDULE_TRIGGER_NODE = "ScheduleTriggerNode"
+    AGENT_NODE = "AgentNode"
+    TASK_NODE = "TaskNode"
 
 
 class NodeType(str, Enum):
@@ -57,5 +63,6 @@ class NodeType(str, Enum):
     SUBGRAPH_NODE = "SubgraphNode"
     END_NODE = "EndNode"
     NOTE_NODE = "GraphNote"
-    CODE_AGENT_NODE = "CodeAgentNode"
     SCHEDULE_TRIGGER_NODE = "ScheduleTriggerNode"
+    AGENT_NODE = "AgentNode"
+    TASK_NODE = "TaskNode"

@@ -5,9 +5,9 @@ import { NodeModel } from '../../core/models/node.model';
 import { mapClassificationDecisionTableToConnections } from './connections/classification-decision-table-connections.mapper';
 import { mapDecisionTableToConnections } from './connections/decision-table-connections.mapper';
 import { mapEdgesToConnections } from './connections/plain-edge.mapper';
+import { mapAgentNodeToModel } from './nodes/agent-node.mapper';
 import { mapAudioToTextNodeToModel } from './nodes/audio-to-text-node.mapper';
 import { mapClassificationDecisionTableNodeToModel } from './nodes/classification-decision-table-node.mapper';
-import { mapCodeAgentNodeToModel } from './nodes/code-agent-node.mapper';
 import { mapCrewNodeToModel } from './nodes/crew-node.mapper';
 import { mapDecisionTableNodeToModel } from './nodes/decision-table-node.mapper';
 import { mapEndNodeToModel } from './nodes/end-node.mapper';
@@ -18,6 +18,7 @@ import { mapPythonNodeToModel } from './nodes/python-node.mapper';
 import { mapScheduleTriggerNodeToModel } from './nodes/schedule-trigger-node.mapper';
 import { mapStartNodeToModel } from './nodes/start-node.mapper';
 import { mapSubGraphNodeToModel } from './nodes/subgraph-node.mapper';
+import { mapTaskNodeToModel } from './nodes/task-node.mapper';
 import { mapTelegramTriggerNodeToModel } from './nodes/telegram-trigger-node.mapper';
 import { mapWebhookTriggerNodeToModel } from './nodes/webhook-trigger-node.mapper';
 import { resolveClassificationDecisionTableNodeRefs } from './ref-resolvers/classification-decision-table-refs';
@@ -47,6 +48,8 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     const startNodes = (graph.start_node_list ?? []).map((n) => mapStartNodeToModel(n));
     const crewNodes = (graph.crew_node_list ?? []).map((n) => mapCrewNodeToModel(n));
     const pythonNodes = (graph.python_node_list ?? []).map((n) => mapPythonNodeToModel(n));
+    const taskNodes = (graph.task_node_list ?? []).map((n) => mapTaskNodeToModel(n));
+    const agentNodes = (graph.agent_node_list ?? []).map((n) => mapAgentNodeToModel(n));
     const llmNodes = (graph.llm_node_list ?? []).map((n) => mapLLMNodeToModel(n));
     const fileExtractorNodes = (graph.file_extractor_node_list ?? []).map((n) => mapFileExtractorNodeToModel(n));
     const audioToTextNodes = (graph.audio_transcription_node_list ?? []).map((n) => mapAudioToTextNodeToModel(n));
@@ -56,7 +59,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
     const telegramTriggerNodes = (graph.telegram_trigger_node_list ?? []).map((n) => mapTelegramTriggerNodeToModel(n));
     const scheduleTriggerNodes = (graph.schedule_trigger_node_list ?? []).map((n) => mapScheduleTriggerNodeToModel(n));
     const endNodes = (graph.end_node_list ?? []).map((n) => mapEndNodeToModel(n));
-    const codeAgentNodes = (graph.code_agent_node_list ?? []).map((n) => mapCodeAgentNodeToModel(n));
     const decisionTableNodes = (graph.decision_table_node_list ?? []).map((n) => mapDecisionTableNodeToModel(n));
     const classificationDecisionTableNodes = (graph.classification_decision_table_node_list ?? []).map((n) =>
         mapClassificationDecisionTableNodeToModel(n)
@@ -67,6 +69,8 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         ...startNodes,
         ...crewNodes,
         ...pythonNodes,
+        ...taskNodes,
+        ...agentNodes,
         ...llmNodes,
         ...fileExtractorNodes,
         ...audioToTextNodes,
@@ -76,7 +80,6 @@ export function mapGraphDtoToFlowModel(graph: GraphDto): FlowModel {
         ...telegramTriggerNodes,
         ...scheduleTriggerNodes,
         ...endNodes,
-        ...codeAgentNodes,
         ...decisionTableNodes,
         ...classificationDecisionTableNodes,
     ];

@@ -1,4 +1,3 @@
-from typing import Any
 from django.db import models
 from django.db.models import CheckConstraint
 from tables.models import DefaultBaseModel, AbstractDefaultFillableModel, Process
@@ -69,6 +68,12 @@ class DefaultAgentConfig(DefaultBaseModel):
 
 
 class Agent(OrgScopedModel, AbstractDefaultFillableModel):
+    """
+    DEPRECATED: Agent is deprecated. Use agents.AgentDefinition + AgentNode instead.
+    New flows must not create Agent rows; this model exists only for backward
+    compatibility with existing crews.
+    """
+
     tags = models.ManyToManyField(to="AgentTag", blank=True, default=[])
     role = models.TextField()
     goal = models.TextField()
@@ -151,22 +156,39 @@ class Agent(OrgScopedModel, AbstractDefaultFillableModel):
 
         return None
 
+    def get_rag_embedder_secret_id(self) -> int | None:
+        """Get the assigned RAG embedder's Secret id, or None if there is none."""
+        agent_naive_rag = self.agent_naive_rags.select_related(
+            "naive_rag__embedder"
+        ).first()
+        if agent_naive_rag:
+            return self._embedder_secret_id(rag=agent_naive_rag.naive_rag)
+
+        agent_graph_rag = self.agent_graph_rags.select_related(
+            "graph_rag__embedder"
+        ).first()
+        if agent_graph_rag:
+            return self._embedder_secret_id(rag=agent_graph_rag.graph_rag)
+
+        return None
+
+    @staticmethod
+    def _embedder_secret_id(*, rag) -> int | None:
+        """Get the RAG embedder's Secret id, tolerating both nullable hops."""
+        embedder = rag.embedder
+        return embedder.api_key_secret_id if embedder else None
+
     def __str__(self):
         return self.role
 
 
-class AgentConfiguredTools(models.Model):
-    agent = models.ForeignKey(
-        "Agent", on_delete=models.CASCADE, related_name="configured_tools"
-    )
-    toolconfig = models.ForeignKey("ToolConfig", on_delete=models.CASCADE)
-
-    class Meta:
-        db_table = "tables_agent_configured_tools_m2m"
-        unique_together = ("agent_id", "toolconfig_id")
-
-
 class AgentPythonCodeTools(models.Model):
+    """
+    DEPRECATED: AgentPythonCodeTools is deprecated. Use agents.AgentDefinition +
+    AgentNode instead. Exists only for backward compatibility with existing
+    Agent rows.
+    """
+
     agent = models.ForeignKey(
         "Agent",
         on_delete=models.CASCADE,
@@ -180,6 +202,12 @@ class AgentPythonCodeTools(models.Model):
 
 
 class AgentPythonCodeToolConfigs(models.Model):
+    """
+    DEPRECATED: AgentPythonCodeToolConfigs is deprecated. Use
+    agents.AgentDefinition + AgentNode instead. Exists only for backward
+    compatibility with existing Agent rows.
+    """
+
     agent = models.ForeignKey(
         "Agent", on_delete=models.CASCADE, related_name="python_code_tool_configs"
     )
@@ -195,6 +223,12 @@ class AgentPythonCodeToolConfigs(models.Model):
 
 
 class AgentMcpTools(models.Model):
+    """
+    DEPRECATED: AgentMcpTools is deprecated. Use agents.AgentDefinition +
+    AgentNode instead. Exists only for backward compatibility with existing
+    Agent rows.
+    """
+
     agent = models.ForeignKey(
         "Agent", on_delete=models.CASCADE, related_name="mcp_tools"
     )
@@ -206,6 +240,12 @@ class AgentMcpTools(models.Model):
 
 
 class Crew(OrgScopedModel, AbstractDefaultFillableModel):
+    """
+    DEPRECATED: Crew is deprecated. Use the new Agent/Task graph nodes
+    (AgentNode, TaskNode) instead. New flows must not create Crew rows; this
+    model exists only for backward compatibility with existing flows.
+    """
+
     metadata = models.JSONField(default=dict)
     tags = models.ManyToManyField(to="CrewTag", blank=True, default=[])
     description = models.TextField(null=True, blank=True)
@@ -287,99 +327,16 @@ class Crew(OrgScopedModel, AbstractDefaultFillableModel):
         return self.name
 
 
-class ToolConfigField(models.Model):
-    class FieldType(models.TextChoices):
-        LLM_CONFIG = "llm_config"
-        EMBEDDING_CONFIG = "embedding_config"
-        STRING = "string"
-        BOOLEAN = "boolean"
-        ANY = "any"
-        INTEGER = "integer"
-        FLOAT = "float"
-
-    tool = models.ForeignKey(
-        "Tool", on_delete=models.CASCADE, null=True, related_name="tool_fields"
-    )
-
-    title = models.CharField(blank=True, null=False, max_length=255, default="")
-
-    name = models.CharField(blank=False, null=False, max_length=255)
-    description = models.TextField(blank=True)
-    data_type = models.CharField(
-        choices=FieldType.choices,
-        max_length=255,
-        blank=False,
-        null=False,
-        default=FieldType.STRING,
-    )
-    required = models.BooleanField(default=True)
-
-    class Meta:
-        unique_together = (
-            "tool",
-            "name",
-        )
-
-
-class Tool(models.Model):
-    name = models.TextField()
-    name_alias = models.TextField()
-    description = models.TextField()
-    enabled = models.BooleanField(default=False)
-    favorite = models.BooleanField(default=False)
-
-    def __str__(self):
-        return self.description
-
-    def get_tool_config_fields(self) -> dict[str, "ToolConfigField"]:
-        if hasattr(self, "prefetched_config_fields"):
-            return {field.name: field for field in self.prefetched_config_fields}
-
-        return {
-            field.name: field for field in ToolConfigField.objects.filter(tool=self)
-        }
-
-
-class ToolConfig(models.Model):
-    name = models.CharField(blank=False, null=False, max_length=255)
-    tool = models.ForeignKey("Tool", on_delete=models.CASCADE)
-    configuration = models.JSONField(default=dict)
-
-    def get_tool_config_field(self, name: str) -> ToolConfigField:
-        if hasattr(self.tool, "prefetched_config_fields"):
-            for field in self.tool.prefetched_config_fields:
-                if field.name == name:
-                    return field
-            return None
-
-        return ToolConfigField.objects.filter(tool=self.tool, name=name).first()
-
-
-class DefaultToolConfig(DefaultBaseModel):
-    llm_config = models.ForeignKey(
-        "LLMConfig",
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="default_tool_llm_config",
-        default=None,
-    )
-    embedding_config = models.ForeignKey(
-        "EmbeddingConfig",
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="default_tool_embedding_config",
-        default=None,
-    )
-
-    def __str__(self):
-        return "Default Tool Config"
-
-
 class TemplateAgent(models.Model):
+    """
+    DEPRECATED: TemplateAgent is deprecated. Use agents.AgentDefinition +
+    AgentNode instead. Exists only for backward compatibility with existing
+    templates.
+    """
+
     role = models.TextField()
     goal = models.TextField()
     backstory = models.TextField()
-    configured_tools = models.ManyToManyField(ToolConfig, blank=True, default=[])
     allow_delegation = models.BooleanField(default=False)
     memory = models.BooleanField(default=False)
     max_iter = models.IntegerField(default=25)
@@ -404,6 +361,12 @@ class TemplateAgent(models.Model):
 
 
 class Task(models.Model):
+    """
+    DEPRECATED: Task is deprecated. Use TaskNode/AgentNodeTask instead. New
+    flows must not create Task rows; this model exists only for backward
+    compatibility with existing crews.
+    """
+
     crew = models.ForeignKey("Crew", on_delete=models.SET_NULL, null=True, default=None)
     name = models.TextField()
     agent = models.ForeignKey(
@@ -422,17 +385,12 @@ class Task(models.Model):
         return self.name
 
 
-class TaskConfiguredTools(models.Model):
-    task = models.ForeignKey(
-        "Task", on_delete=models.CASCADE, related_name="task_configured_tool_list"
-    )
-    tool = models.ForeignKey(ToolConfig, on_delete=models.CASCADE)
-
-    class Meta:
-        unique_together = ("task", "tool")
-
-
 class TaskPythonCodeTools(models.Model):
+    """
+    DEPRECATED: TaskPythonCodeTools is deprecated. Use TaskNode/AgentNodeTask
+    instead. Exists only for backward compatibility with existing Task rows.
+    """
+
     task = models.ForeignKey(
         "Task", on_delete=models.CASCADE, related_name="task_python_code_tool_list"
     )
@@ -443,6 +401,11 @@ class TaskPythonCodeTools(models.Model):
 
 
 class TaskPythonCodeToolConfigs(models.Model):
+    """
+    DEPRECATED: TaskPythonCodeToolConfigs is deprecated. Use TaskNode/AgentNodeTask
+    instead. Exists only for backward compatibility with existing Task rows.
+    """
+
     task = models.ForeignKey(
         "Task",
         on_delete=models.CASCADE,
@@ -455,6 +418,11 @@ class TaskPythonCodeToolConfigs(models.Model):
 
 
 class TaskMcpTools(models.Model):
+    """
+    DEPRECATED: TaskMcpTools is deprecated. Use TaskNode/AgentNodeTask instead.
+    Exists only for backward compatibility with existing Task rows.
+    """
+
     task = models.ForeignKey(
         "Task", on_delete=models.CASCADE, related_name="task_mcp_tool_list"
     )
@@ -466,6 +434,11 @@ class TaskMcpTools(models.Model):
 
 
 class TaskContext(models.Model):
+    """
+    DEPRECATED: TaskContext is deprecated. Use AgentNodeTask.context_tasks
+    instead. Exists only for backward compatibility with existing Task rows.
+    """
+
     task = models.ForeignKey(
         "Task", on_delete=models.CASCADE, related_name="task_context_list"
     )
@@ -491,22 +464,3 @@ class TaskContext(models.Model):
 
         if self.task_id == self.context_id:
             raise ValidationError("A task cannot be assigned as its own context.")
-
-
-def set_field_value_null_in_tool_configs(field_type: str, value: Any):
-    # Get all fields with type `field_type`
-    field_set = ToolConfigField.objects.filter(data_type=field_type)
-    for field in field_set:
-        # Get this field's tool
-        tool = field.tool
-        # Get all tool configs for this tool
-        tool_config_set = ToolConfig.objects.filter(tool=tool)
-        for tool_config in tool_config_set:
-            # Set configuration key to None if current value match
-            if not tool_config.configuration.get(field.name):
-                # if config not set then skip setting None
-                continue
-
-            if tool_config.configuration[field.name] == value:
-                tool_config.configuration[field.name] = None
-                tool_config.save()

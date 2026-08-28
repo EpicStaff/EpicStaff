@@ -16,17 +16,14 @@ from datetime import timedelta
 from pathlib import Path
 
 from corsheaders.defaults import default_headers
-from django.core.management.utils import get_random_secret_key
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import find_dotenv, load_dotenv
 from loguru import logger
 
+from tables.services.rbac.first_setup_mode import FirstSetupMode
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-if os.getenv("LOAD_DEBUG_ENV", "True").lower() in ("true", "1", "yes", "on"):
-    logger.info("LOAD_DEBUG_ENV=True")
-    load_dotenv(find_dotenv(BASE_DIR.parent / "debug.env"))
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -34,11 +31,23 @@ if os.getenv("LOAD_DEBUG_ENV", "True").lower() in ("true", "1", "yes", "on"):
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # SECURITY WARNING: keep the secret key used in production secret!
-DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes", "on")
+DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes", "on")
 
-SECRET_KEY = os.getenv("SECRET_KEY") or (
-    "321567143216717121" if DEBUG else get_random_secret_key()
-)
+
+def _require_env(name: str) -> str:
+    """Return the environment variable's stripped value, refusing to start when it is missing or blank."""
+    value = (os.getenv(name) or "").strip()
+    if not value:
+        raise ImproperlyConfigured(
+            f"{name} is not set. EpicStaff ships no default signing key: generate a "
+            f"random value (e.g. `openssl rand -base64 48`) and pass it to the "
+            f"django_app container. Rotating SECRET_KEY makes every stored Secret "
+            f"undecryptable, so generate it once and keep it."
+        )
+    return value
+
+
+SECRET_KEY = _require_env("SECRET_KEY")
 
 ALLOWED_HOSTS = [
     "*",  # host.strip() for host in os.getenv("ALLOWED_HOSTS", "0.0.0.0, 127.0.0.1").split(",")
@@ -46,6 +55,21 @@ ALLOWED_HOSTS = [
 
 
 # Logging
+
+_VALID_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"}
+
+
+def _resolve_log_level() -> str:
+    """Resolve the stdlib root log level from DJANGO_LOG_LEVEL, falling back to WARNING on an invalid/missing value."""
+    raw_level = os.getenv("DJANGO_LOG_LEVEL", "WARNING").strip().upper()
+    if raw_level not in _VALID_LOG_LEVELS:
+        logger.warning(
+            "Ignoring invalid DJANGO_LOG_LEVEL={!r}; falling back to WARNING.",
+            raw_level,
+        )
+        return "WARNING"
+    return raw_level
+
 
 LOGGING = {
     "version": 1,
@@ -58,7 +82,7 @@ LOGGING = {
     },
     "root": {
         "handlers": ["loguru"],
-        "level": "DEBUG",
+        "level": _resolve_log_level(),
     },
     "loggers": {
         "litellm": {
@@ -115,6 +139,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "tables",
+    "agents",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -142,7 +167,7 @@ MIDDLEWARE = [
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
-    "PAGE_SIZE": 500000,
+    "PAGE_SIZE": 50,
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "EXCEPTION_HANDLER": "utils.exception_handler.custom_exception_handler",
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
@@ -153,18 +178,35 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # One reverse proxy (nginx) sits in front of Django. Without this, DRF
+    # keys throttles on the whole X-Forwarded-For chain, whose left-hand side
+    # the client controls - so any throttle could be bypassed by varying the
+    # header. With 1, only the entry nginx itself appended is used.
+    "NUM_PROXIES": 1,
     "DEFAULT_THROTTLE_RATES": {
         "login": os.getenv("LOGIN_THROTTLE_RATE", "5/min"),
         "password_reset_request": os.getenv(
             "PASSWORD_RESET_REQUEST_THROTTLE_RATE", "5/hour"
         ),
+        "password_reset_confirm": os.getenv(
+            "PASSWORD_RESET_CONFIRM_THROTTLE_RATE", "10/hour"
+        ),
+        "token_refresh": os.getenv("TOKEN_REFRESH_THROTTLE_RATE", "30/min"),
         "notify_email": os.getenv("NOTIFY_EMAIL_THROTTLE_RATE", "10/hour"),
     },
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_HEADERS = (*default_headers, "x-organization-id")
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    "dnt",
+    "origin",
+    "accept-encoding",
+    "x-twilio-account-sid",
+    "x-twilio-auth-token",
+    "x-organization-id",
+)
 
 JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)
 
@@ -350,9 +392,14 @@ FRONTEND_PASSWORD_RESET_PATH = os.getenv(
 
 SSE_TICKET_TTL_SECONDS = 30
 
-DEFAULT_ORGANIZATION_NAME = os.getenv("DEFAULT_ORGANIZATION_NAME", "Organization")
+DEFAULT_ORGANIZATION_NAME = os.getenv("DEFAULT_ORGANIZATION_NAME") or "Organization"
 
-# Story 6 — User profile
+# Which superadmin-creation path is live. See FirstSetupMode. Defaults to
+# cli_only so an internet-exposed deployment fails closed.
+FIRST_SETUP_MODE = FirstSetupMode.validate(
+    (os.getenv("FIRST_SETUP_MODE") or FirstSetupMode.CLI_ONLY).strip().lower()
+)
+
 PASSWORD_CHANGE_TICKET_TTL_SECONDS = int(
     os.getenv("PASSWORD_CHANGE_TICKET_TTL_SECONDS", "300")
 )
@@ -367,12 +414,10 @@ AVATAR_ALLOWED_FORMATS = [
 ]
 
 # Object storage
-STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "s3")
 STORAGE_ENDPOINT = os.getenv("STORAGE_ENDPOINT", "")
 STORAGE_ACCESS_KEY = os.getenv("STORAGE_ACCESS_KEY", "")
 STORAGE_SECRET_KEY = os.getenv("STORAGE_SECRET_KEY", "")
 STORAGE_BUCKET_NAME = os.getenv("STORAGE_BUCKET_NAME", "epicstaff")
-STORAGE_LOCAL_ROOT = os.getenv("STORAGE_LOCAL_ROOT", "/app/storage")
 
 MAX_TOTAL_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
@@ -413,17 +458,23 @@ WEBHOOK_MESSAGE_CHANNEL = os.environ.get("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
 STORAGE_MUTATION_CHANNEL = os.environ.get(
     "STORAGE_MUTATION_CHANNEL", "storage_mutations"
 )
-TELEGRAM_TRIGGER_PREFIX = "telegram-trigger/"
 SCHEDULE_CHANNEL = os.environ.get("SCHEDULE_CHANNEL", "schedule_channel")
+
+SCHEDULE_MIN_INTERVAL_SECONDS = int(os.environ.get("SCHEDULE_MIN_INTERVAL_SECONDS", 60))
+
+SCHEDULE_MAX_CONCURRENT_SESSIONS_PER_ORG = int(
+    os.environ.get("SCHEDULE_MAX_CONCURRENT_SESSIONS_PER_ORG", 20)
+)
 
 
 WEBHOOK_HOST_NAME = os.getenv("WEBHOOK_HOST_NAME", "localhost")
 WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", 8009))
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "CrewAI SheetsUI API",
+    "TITLE": "EpicStaff API",
     "VERSION": "v1",
     "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
     "SWAGGER_UI_SETTINGS": {
         "persistAuthorization": True,
     },

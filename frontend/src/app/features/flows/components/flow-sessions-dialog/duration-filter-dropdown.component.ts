@@ -27,6 +27,10 @@ export class DurationFilterDropdownComponent implements OnChanges {
     @Input() value: DurationFilter | null = null;
     @Output() valueChange = new EventEmitter<DurationFilter | null>();
 
+    public get hasValue(): boolean {
+        return this.value !== null;
+    }
+
     public selectedOperator: DurationOperator = 'lessThan';
     public selectedUnit: 's' | 'min' | 'h' = 'min';
     public open = false;

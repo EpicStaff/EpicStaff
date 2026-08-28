@@ -182,7 +182,7 @@ export class SearchNodeItemComponent {
             case NodeType.START:
                 return 'Start';
             case NodeType.AGENT:
-                return (this.node as AgentNodeModel).data?.role || this.node.node_name;
+                return (this.node as AgentNodeModel).data?.name || this.node.node_name;
             case NodeType.PROJECT:
                 return (this.node as ProjectNodeModel).data?.name || this.node.node_name;
             case NodeType.TASK:

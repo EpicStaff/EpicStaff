@@ -10,9 +10,9 @@
     </div>
 
     <button
-        [disabled]="!hasNextSession"
-        (click)="goToNextSession()"
-        matTooltip="Next session"
+        [disabled]="!hasPreviousSession"
+        (click)="goToPreviousSession()"
+        matTooltip="Previous session"
         class="btn-switch-session"
     >
         <div class="icon-arrow">
@@ -70,9 +70,9 @@
     </div>
 
     <button
-        [disabled]="!hasPreviousSession"
-        (click)="goToPreviousSession()"
-        matTooltip="Previous session"
+        [disabled]="!hasNextSession"
+        (click)="goToNextSession()"
+        matTooltip="Next session"
         class="btn-switch-session"
     >
         <div class="icon-arrow">

@@ -143,6 +143,7 @@ urlpatterns = [
         name="permissions_me",
     ),
     path("api/", include("tables.urls")),
+    path("api/", include("agents.urls")),
     path("ht/", include("health_check.urls")),
 ]
 

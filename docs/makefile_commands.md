@@ -13,6 +13,8 @@ All commands must be run from the **project root directory** (where `Makefile` l
 - [Env File Generation](#env-file-generation)
 - [Utilities](#utilities)
 - [Local Django Development](#local-django-development)
+- [Local Crew Development](#local-crew-development)
+- [Integration Tests](#integration-tests)
 - [Typical Workflows](#typical-workflows)
 
 ---
@@ -229,7 +231,7 @@ then regenerate. Never hand-edit the generated files — `--check` will catch dr
 
 ### `make gen-env`
 
-Regenerate `src/.dev.env`, `src/debug.env`, and `src/.env.example` from `src/env.yaml`.
+Regenerate `src/.dev.env`, `src/.debug.env`, and `src/.env.example` from `src/env.yaml`.
 
 ```bash
 make gen-env
@@ -343,6 +345,65 @@ make django-manage CMD=help
 
 # Collect static files
 make django-manage CMD="collectstatic --noinput"
+```
+
+### `make django-tests`
+
+Run the Django test suite with `pytest`. Uses the django service venv
+(`src/django_app/venv`) and sets `PYTHONPATH` to the repo root automatically — so it
+works regardless of which venv is active. **Always** use this instead of running
+`pytest` directly (bare `pytest` picks the wrong interpreter and fails on imports).
+
+Requires Postgres to be running (the dev stack DB — see `make dev`).
+
+| Parameter | Description |
+|-----------|-------------|
+| `ARGS` | Optional pytest args — a test path, `-k <keyword>`, `-q`, `-x`, etc. |
+
+```bash
+# Full suite
+make django-tests
+
+# A single file
+make django-tests ARGS="tests/model_tests/surface_test.py -q"
+
+# Filter by keyword
+make django-tests ARGS="-k surface"
+```
+
+---
+
+## Local Crew Development
+
+### `make crew-tests`
+
+Run the crew service test suite with `pytest`, using the crew venv
+(`src/crew/venv`) and repo-root `PYTHONPATH`. Same `ARGS` convention as
+`make django-tests`.
+
+```bash
+make crew-tests
+make crew-tests ARGS="-k my_test"
+```
+
+---
+
+## Integration Tests
+
+### `make integration-test`
+
+Install integration test deps and run the suite in `integration_tests/` against a
+running stack (`DJANGO_URL` defaults to `http://127.0.0.1:8000/api`).
+
+| Parameter | Description |
+|-----------|-------------|
+| `f` | Run a specific test file (default: all) |
+| `k` | Filter tests by keyword (`-k`) |
+| `ARGS` | Extra pytest flags (e.g. `ARGS="-s --tb=short"`) |
+
+```bash
+make integration-test
+make integration-test f=tests/test_flows.py k=create
 ```
 
 ---

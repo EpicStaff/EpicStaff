@@ -4,11 +4,43 @@ import asyncio
 import hashlib
 import json
 import os
+import pwd
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
+from secret_scrubber import masking_enabled, scrub
 from src.shared.models import CodeResultData
+from services.storage_credential_manager import StorageCredentialManager
+from utils.environment import build_base_env
 from utils.logger import logger
+
+try:
+    _SANDBOX_PW = pwd.getpwnam("sandboxuser")
+    SANDBOX_UID: int = _SANDBOX_PW.pw_uid
+    SANDBOX_GID: int = _SANDBOX_PW.pw_gid
+except KeyError:
+    SANDBOX_UID = 1000
+    SANDBOX_GID = 1000
+
+
+def _can_drop_privileges() -> bool:
+    """Return True only when the current process is root."""
+    return os.geteuid() == 0
+
+
+if not _can_drop_privileges():
+    logger.warning(
+        "Sandbox is running as non-root (uid={}); subprocess privilege drop is DISABLED. "
+        "This is expected in local dev/CI but a security risk in production.",
+        os.geteuid(),
+    )
+
+
+def _privilege_drop_kwargs() -> dict[str, object]:
+    """Subprocess kwargs to run a child as sandboxuser, or empty when non-root."""
+    if not _can_drop_privileges():
+        return {}
+    return {"user": SANDBOX_UID, "group": SANDBOX_GID, "extra_groups": []}
 
 
 class Handler(ABC):
@@ -63,7 +95,8 @@ class CreateVenvHandler(AbstractHandler):
         context["libraries"] = set(context["libraries"])
         # Install libraries
         predefined_libraries = {
-            "/app/src/shared/dotdict"
+            "/app/src/shared/dotdict",
+            "/app/src/shared/epicstaff_secrets",
         }  # TODO: deal with hard coded path
         if context.get("use_storage"):
             predefined_libraries.add("/app/src/shared/epicstaff_storage")
@@ -130,12 +163,15 @@ class InstallLibrariesHandler(AbstractHandler):
         if hash_changed:
             logger.info("Installing libraries...")
 
+            env = build_base_env(python_executable)
+
             # Upgrade pip
-            process = await asyncio.create_subprocess_shell(
-                f"{python_executable} -m pip install --upgrade pip",
+            process = await asyncio.create_subprocess_exec(
+                str(python_executable), "-m", "pip", "install", "--upgrade", "pip",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-            )
+                env=env,
+            )  # fmt: off
             stdout, stderr = await process.communicate()
             stderr = stderr.decode("utf-8", errors="replace")
             stdout = stdout.decode("utf-8", errors="replace")
@@ -151,11 +187,12 @@ class InstallLibrariesHandler(AbstractHandler):
 
             # Uninstall all libraries
             logger.info("Uninstalling all libraries...")
-            process = await asyncio.create_subprocess_shell(
-                f"{python_executable} -m pip freeze",
+            process = await asyncio.create_subprocess_exec(
+                str(python_executable), "-m", "pip", "freeze",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-            )
+                env=env,
+            )  # fmt: off
             stdout, stderr = await process.communicate()
             returncode = process.returncode
 
@@ -174,14 +211,16 @@ class InstallLibrariesHandler(AbstractHandler):
             for package in installed_packages:
                 package_name = package.split("==")[0]
                 logger.info(f"Uninstalling {package_name}...")
-                await asyncio.create_subprocess_shell(
-                    f"{python_executable} -m pip uninstall -y {package_name}",
+                process = await asyncio.create_subprocess_exec(
+                    str(python_executable), "-m", "pip", "uninstall", "-y", package_name,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                )
+                    env=env,
+                )  # fmt: off
                 stdout, stderr = await process.communicate()
                 stderr = stderr.decode("utf-8", errors="replace")
                 stdout = stdout.decode("utf-8", errors="replace")
+                returncode = process.returncode
                 if returncode != 0:
                     return CodeResultData(
                         execution_id=context["execution_id"],
@@ -193,11 +232,12 @@ class InstallLibrariesHandler(AbstractHandler):
             # Install libraries
             for library in context["libraries"]:
                 logger.info(f"Installing {library}...")
-                process = await asyncio.create_subprocess_shell(
-                    f"{python_executable} -m pip install {library}",
+                process = await asyncio.create_subprocess_exec(
+                    str(python_executable), "-m", "pip", "install", "--", library,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                )
+                    env=env,
+                )  # fmt: off
                 stdout, stderr = await process.communicate()
                 stderr = stderr.decode("utf-8", errors="replace")
                 stdout = stdout.decode("utf-8", errors="replace")
@@ -240,6 +280,7 @@ import json
 
 try:
     from dotdict import DotDict, DotObject, DotList
+    from epicstaff_secrets import get_secret
     for k, v in {global_kwargs}.items():
         globals()[k] = v
 
@@ -298,30 +339,43 @@ except Exception:
             f.write(wrapped_code)
 
         # Execute the code asynchronously
-        logger.info(f"Executing code using {python_executable}...")
-        storage_allowed_paths = context.get("storage_allowed_paths")
-        storage_org_prefix = context.get("storage_org_prefix")
+        logger.info("Executing code using {}...", python_executable)
+        env = build_base_env(context["python_executable"])
+        env["HOME"] = context["home_path"]
+        if context.get("use_storage"):
+            env["STORAGE_ENDPOINT"] = os.environ["STORAGE_ENDPOINT"]
+            env["STORAGE_BUCKET_NAME"] = os.environ["STORAGE_BUCKET_NAME"]
+            env["STORAGE_ACCESS_KEY"] = context["temp_storage_access_key"]
+            env["STORAGE_SECRET_KEY"] = context["temp_storage_secret_key"]
+        if (storage_allowed_paths := context.get("storage_allowed_paths")) is not None:
+            env["STORAGE_ALLOWED_PATHS"] = json.dumps(storage_allowed_paths)
+        if (storage_org_prefix := context.get("storage_org_prefix")) is not None:
+            env["STORAGE_ORG_PREFIX"] = storage_org_prefix
+        if (secrets := context.get("secrets")) is not None:
+            env["EPICSTAFF_SECRETS"] = json.dumps(secrets)
 
-        env = None
-        if storage_allowed_paths is not None or storage_org_prefix is not None:
-            env = os.environ.copy()
-            if storage_allowed_paths is not None:
-                env["STORAGE_ALLOWED_PATHS"] = json.dumps(storage_allowed_paths)
-            if storage_org_prefix is not None:
-                env["STORAGE_ORG_PREFIX"] = storage_org_prefix
-
-        process = await asyncio.create_subprocess_shell(
-            f"{python_executable} {temp_code_path}",
+        drop_kwargs = _privilege_drop_kwargs()
+        process = await asyncio.create_subprocess_exec(
+            str(python_executable),
+            str(temp_code_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            **drop_kwargs,
         )
         stdout, stderr = await process.communicate()
         stderr = stderr.decode("utf-8", errors="replace")
         stdout = stdout.decode("utf-8", errors="replace")
         returncode = process.returncode
+
+        secrets = context.get("secrets") or {}
+        mask_secrets = masking_enabled()
+        if mask_secrets:
+            stderr = scrub(text=stderr, secrets=secrets)
+            stdout = scrub(text=stdout, secrets=secrets)
+
         if stderr:
-            logger.info(f"Error: {stderr}")
+            logger.info("Error: {}", stderr)
 
         result_file_path: Path | str = context["result_file_path"]
         if isinstance(result_file_path, Path):
@@ -332,12 +386,17 @@ except Exception:
         if returncode == 0:
             try:
                 with open(result_file_path, "r", encoding="utf-8") as file:
-                    result_data = file.read()
+                    raw_result = file.read()
+                result_data = (
+                    scrub(text=raw_result, secrets=secrets)
+                    if mask_secrets
+                    else raw_result
+                )
             except Exception:
                 logger.exception("Exception reading result file")
 
         if self._next_handler:
-            return super().handle(context)
+            return await super().handle(context)
 
         return CodeResultData(
             execution_id=context["execution_id"],
@@ -353,9 +412,11 @@ class DynamicVenvExecutorChain:
         self,
         output_path: str | Path,
         base_venv_path: str | Path,
+        storage_credential_manager: StorageCredentialManager,
     ):
         self.output_path = output_path
         self.base_venv_path = base_venv_path
+        self.storage_credential_manager = storage_credential_manager
 
         # Build the chain of responsibility
         create_venv_handler = CreateVenvHandler()
@@ -364,9 +425,12 @@ class DynamicVenvExecutorChain:
 
         self.chain: Handler = DummyHandler()
 
-        self.chain.set_next(create_venv_handler).set_next(
-            install_libraries_handler
-        ).set_next(execute_code_handler)
+        (
+            self.chain
+            .set_next(create_venv_handler)
+            .set_next(install_libraries_handler)
+            .set_next(execute_code_handler)
+        )  # fmt: off
 
     async def run(
         self,
@@ -380,6 +444,7 @@ class DynamicVenvExecutorChain:
         use_storage: bool = False,
         storage_allowed_paths: list[str] | None = None,
         storage_org_prefix: str | None = None,
+        secrets: dict[str, str] | None = None,
     ) -> CodeResultData:
         """Run the complete workflow asynchronously."""
         if func_kwargs is None:
@@ -388,6 +453,27 @@ class DynamicVenvExecutorChain:
         output_path = Path(self.output_path) / execution_id
         os.makedirs(output_path, exist_ok=True)
         os.makedirs(self.base_venv_path, exist_ok=True)
+        home_path = output_path / "home"
+        os.makedirs(home_path, exist_ok=True)
+
+        if _can_drop_privileges():
+            """Allow sandboxuser write access to the pre-execution dirs it writes output.txt and 
+            HOME state into.
+            """
+            try:
+                os.chown(output_path, SANDBOX_UID, SANDBOX_GID)
+                os.chown(home_path, SANDBOX_UID, SANDBOX_GID)
+            except OSError as chown_error:
+                logger.error(
+                    "Failed to chown execution dirs (EPERM?): {}",
+                    chown_error,
+                )
+                return CodeResultData(
+                    execution_id=execution_id,
+                    stderr=f"Security setup failed: could not chown execution dirs: {chown_error}",
+                    stdout="",
+                    returncode=1,
+                )
 
         context = {
             "base_venv_path": self.base_venv_path,
@@ -399,11 +485,48 @@ class DynamicVenvExecutorChain:
             "func_kwargs": func_kwargs,
             "execution_id": execution_id,
             "global_kwargs": global_kwargs,
+            "home_path": str(home_path),
             "use_storage": use_storage,
             "storage_allowed_paths": storage_allowed_paths,
             "storage_org_prefix": storage_org_prefix,
+            "secrets": secrets,
         }
+        temp_access_key: str | None = None
+        if use_storage:
+            try:
+                policy = self.storage_credential_manager.build_policy(
+                    allowed_bucket=os.environ["STORAGE_BUCKET_NAME"],
+                    allowed_folders=self._scoped_folders(
+                        storage_org_prefix, storage_allowed_paths
+                    ),
+                )
+                temp_access_key, temp_secret_key = (
+                    await self.storage_credential_manager.create(policy)
+                )
+            except Exception as e:
+                logger.error("Failed to provision scoped storage credentials: {}", e)
+                return CodeResultData(
+                    execution_id=execution_id,
+                    stderr=f"Failed to provision scoped storage credentials: {e}",
+                    stdout="",
+                    returncode=1,
+                )
+            context["temp_storage_access_key"] = temp_access_key
+            context["temp_storage_secret_key"] = temp_secret_key
 
-        result = await self.chain.handle(context)
+        try:
+            result = await self.chain.handle(context)
+        finally:
+            if temp_access_key is not None:
+                await self.storage_credential_manager.revoke(temp_access_key)
+
         logger.info(result)
         return result
+
+    @staticmethod
+    def _scoped_folders(org_prefix: str | None, allowed_paths: list[str] | None) -> set[str]:
+        if not org_prefix:
+            raise ValueError("storage_org_prefix is required when use_storage is set")
+        if not allowed_paths:
+            return {f"{org_prefix}/"}  # whole org (folder)
+        return {f"{org_prefix}/{path.lstrip('/')}" for path in allowed_paths}

@@ -155,7 +155,9 @@ export class FullAgentService {
                         // Use the helper functions, ensuring they don't receive `null`
                         const fullLlmConfig = findEnhancedLlmConfig(agent.llm_config);
                         const fullFcmLlmConfig = findEnhancedLlmConfig(agent.fcm_llm_config);
-                        const fullRealtimeConfig = findEnhancedRealtimeConfig(agent.realtime_agent?.realtime_config);
+                        const fullRealtimeConfig = findEnhancedRealtimeConfig(
+                            null /* realtime_config removed — per-provider FKs are on realtime_agent directly */
+                        );
 
                         // Parse tools from the unified tools array
                         const pythonToolIds: number[] = [];
@@ -319,7 +321,9 @@ export class FullAgentService {
                         // Use the helper functions
                         const fullLlmConfig = findEnhancedLlmConfig(agent.llm_config);
                         const fullFcmLlmConfig = findEnhancedLlmConfig(agent.fcm_llm_config);
-                        const fullRealtimeConfig = findEnhancedRealtimeConfig(agent.realtime_agent?.realtime_config);
+                        const fullRealtimeConfig = findEnhancedRealtimeConfig(
+                            null /* realtime_config removed — per-provider FKs are on realtime_agent directly */
+                        );
 
                         // Parse tools from the unified tools array
                         const pythonToolIds: number[] = [];
@@ -480,7 +484,9 @@ export class FullAgentService {
                     // Use the helper functions
                     const fullLlmConfig = findEnhancedLlmConfig(agent.llm_config);
                     const fullFcmLlmConfig = findEnhancedLlmConfig(agent.fcm_llm_config);
-                    const fullRealtimeConfig = findEnhancedRealtimeConfig(agent.realtime_agent?.realtime_config);
+                    const fullRealtimeConfig = findEnhancedRealtimeConfig(
+                        null /* realtime_config removed — per-provider FKs are on realtime_agent directly */
+                    );
 
                     // Parse tools from the unified tools array
                     const pythonToolIds: number[] = [];

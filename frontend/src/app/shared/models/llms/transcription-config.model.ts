@@ -3,20 +3,20 @@
 export interface GetTranscriptionConfigRequest {
     id: number;
     custom_name: string;
-    api_key: string;
+    api_key_secret_id: number | null;
     realtime_transcription_model: number;
 }
 
 export interface CreateTranscriptionConfigRequest {
     custom_name: string;
-    api_key: string;
+    api_key_secret_id: number | null;
     realtime_transcription_model: number;
 }
 
 export interface UpdateTranscriptionConfigRequest {
     id: number;
     custom_name?: string;
-    api_key?: string;
+    api_key_secret_id?: number | null;
     realtime_transcription_model?: number;
 }
 

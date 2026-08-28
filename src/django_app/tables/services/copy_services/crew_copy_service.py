@@ -2,7 +2,6 @@ from tables.import_export.utils import ensure_unique_identifier
 from tables.models.crew_models import (
     Crew,
     Task,
-    TaskConfiguredTools,
     TaskContext,
     TaskMcpTools,
     TaskPythonCodeToolConfigs,
@@ -68,8 +67,6 @@ class CrewCopyService(BaseCopyService):
             )
             task_id_map[old_task.id] = new_task
 
-            for row in old_task.task_configured_tool_list.all():
-                TaskConfiguredTools.objects.create(task=new_task, tool=row.tool)
             for row in old_task.task_python_code_tool_list.all():
                 TaskPythonCodeTools.objects.create(task=new_task, tool=row.tool)
             for row in old_task.task_python_code_tool_config_list.all():

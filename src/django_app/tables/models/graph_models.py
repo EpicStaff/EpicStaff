@@ -115,11 +115,16 @@ class BaseNode(BaseGraphEntity, BaseGlobalNode):
 
 
 class CrewNode(BaseNode):
+    """
+    DEPRECATED: CrewNode is deprecated. Use AgentNode or TaskNode instead.
+    New flows must not create CrewNodes; this model exists only for backward
+    compatibility with existing graphs.
+    """
+
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="crew_node_list"
     )
     crew = models.ForeignKey("Crew", on_delete=models.CASCADE)
-    stream_config = models.JSONField(default=dict, blank=True)
 
 
 class PythonNode(BaseNode):
@@ -127,7 +132,6 @@ class PythonNode(BaseNode):
         "Graph", on_delete=models.CASCADE, related_name="python_node_list"
     )
     python_code = models.ForeignKey("PythonCode", on_delete=models.CASCADE)
-    stream_config = models.JSONField(default=dict, blank=True)
     test_input = models.JSONField(default=dict, blank=True)
     use_storage = models.BooleanField(default=False)
 
@@ -210,29 +214,6 @@ class SubGraphNode(BaseNode):
         related_name="as_subgraph",
         null=True,
     )
-
-
-class CodeAgentNode(BaseNode):
-    graph = models.ForeignKey(
-        "Graph", on_delete=models.CASCADE, related_name="code_agent_node_list"
-    )
-    llm_config = models.ForeignKey(
-        "LLMConfig", on_delete=models.SET_NULL, null=True, blank=True
-    )
-    agent_mode = models.CharField(max_length=10, default="build")
-    session_id = models.CharField(max_length=255, blank=True, default="")
-    system_prompt = models.TextField(blank=True, default="")
-    stream_handler_code = models.TextField(blank=True, default="")
-    libraries = models.JSONField(default=list, blank=True)
-    polling_interval_ms = models.IntegerField(default=1000)
-    silence_indicator_s = models.IntegerField(default=3)
-    indicator_repeat_s = models.IntegerField(default=5)
-    chunk_timeout_s = models.IntegerField(default=30)
-    inactivity_timeout_s = models.IntegerField(default=120)
-    max_wait_s = models.IntegerField(default=300)
-    stream_config = models.JSONField(default=dict, blank=True)
-    output_schema = models.JSONField(default=dict, blank=True)
-    use_storage = models.BooleanField(default=False)
 
 
 class Edge(BaseGraphEntity, models.Model):
@@ -558,8 +539,12 @@ class WebhookTriggerNode(BaseGraphEntity, BaseGlobalNode):
 
 class TelegramTriggerNode(BaseGraphEntity, BaseGlobalNode):
     node_name = models.CharField(max_length=255, blank=False)
-    telegram_bot_api_key = models.CharField(
-        max_length=255, blank=True, null=True, default=None
+    telegram_bot_api_key_secret = models.ForeignKey(
+        "Secret",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="telegram_trigger_nodes",
     )
     graph = models.ForeignKey(
         "Graph", on_delete=models.CASCADE, related_name="telegram_trigger_node_list"
@@ -847,17 +832,54 @@ class GraphVersion(SoftDeleteMixin, models.Model):
 
 
 class StorageFile(models.Model):
+    ITEM_TYPE_CHOICES = [("file", "file"), ("folder", "folder")]
+
     org = models.ForeignKey(
-        "Organization", on_delete=models.CASCADE, related_name="storage_files"
+        "Organization",
+        on_delete=models.CASCADE,
+        related_name="storage_files",
+        help_text="Organization that owns this storage entry.",
     )
     path = models.CharField(
-        max_length=1000, help_text="Org-relative path, never starts with '/'"
+        max_length=1000,
+        help_text="Org-relative path, never starts with '/'. Folders end with '/'.",
     )
     name = models.CharField(
-        max_length=255, help_text="Last path segment, denormalized for search"
+        max_length=255, help_text="Last path segment, denormalized for search."
     )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    item_type = models.CharField(
+        max_length=6,
+        choices=ITEM_TYPE_CHOICES,
+        default="file",
+        help_text="Whether this row represents a file or a folder.",
+    )
+    size = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="File size in bytes. NULL for folders or when size is unknown.",
+    )
+    s3_modified = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="LastModified timestamp from the storage backend. NULL when unknown.",
+    )
+    is_system = models.BooleanField(
+        default=False,
+        help_text="True for files written by the platform itself (e.g. session outputs). Not filtered yet.",
+    )
+    parent_path = models.CharField(
+        max_length=1000,
+        default="",
+        help_text="Immediate parent directory path ending in '/', or '' for root entries. Enables single-level listing.",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Timestamp when this DB row was first created.",
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text="Timestamp of the last update to this row.",
+    )
 
     class Meta:
         constraints = [
@@ -865,7 +887,10 @@ class StorageFile(models.Model):
                 fields=["org", "path"], name="unique_storage_file_per_org"
             )
         ]
-        indexes = [models.Index(fields=["org", "path"])]
+        indexes = [
+            models.Index(fields=["org", "path"]),
+            models.Index(fields=["org", "parent_path"]),
+        ]
 
 
 class GraphStorageFile(models.Model):
@@ -901,3 +926,135 @@ class SessionStorageFile(models.Model):
                 name="unique_session_storage_file",
             )
         ]
+
+
+class TaskNode(BaseNode):
+    graph = models.ForeignKey(
+        "Graph",
+        on_delete=models.CASCADE,
+        related_name="task_node_list",
+        help_text="Graph this task node belongs to.",
+    )
+    agent_definition = models.ForeignKey(
+        "agents.AgentDefinition",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="task_nodes",
+        help_text="AgentDefinition that executes this task. Null allowed — runtime surfaces a missing-agent error.",
+    )
+    instructions = models.TextField(
+        blank=True,
+        default="",
+        help_text="Prompt text passed to the agent for this task. Empty means no task-level instructions.",
+    )
+    output_schema = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="JSON schema the task output must conform to. Empty dict means no schema enforcement.",
+    )
+    remember_output = models.BooleanField(
+        default=False,
+        help_text="If True, this task's output is remembered for the current run and injected as context into subsequently executed task nodes in the same session.",
+    )
+    surface_list = models.ManyToManyField(
+        "agents.Surface",
+        blank=True,
+        related_name="task_nodes",
+        help_text="Surfaces attached to this task node.",
+    )
+
+
+class AgentNode(BaseNode):
+    """Node representing an agent that executes an ordered list of sub-tasks (AgentNodeTask) with shared surfaces."""
+
+    graph = models.ForeignKey(
+        "Graph",
+        on_delete=models.CASCADE,
+        related_name="agent_node_list",
+        help_text="Graph this agent node belongs to.",
+    )
+    agent_definition = models.ForeignKey(
+        "agents.AgentDefinition",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="agent_nodes",
+        help_text="AgentDefinition that executes this node's tasks. Null allowed — runtime surfaces a missing-agent error.",
+    )
+    surface_list = models.ManyToManyField(
+        "agents.Surface",
+        blank=True,
+        related_name="agent_nodes",
+        help_text="Surfaces attached to this agent node.",
+    )
+
+
+class AgentNodeTask(TimestampMixin):
+    """Child sub-task of an AgentNode; not a graph node — executes sequentially within the parent node."""
+
+    agent_node = models.ForeignKey(
+        AgentNode,
+        on_delete=models.CASCADE,
+        related_name="tasks",
+        help_text="Parent AgentNode this task belongs to.",
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="Name of this sub-task, unique within the parent agent node.",
+    )
+    order = models.PositiveIntegerField(
+        help_text="Zero-based position within the parent agent node. Tasks execute in ascending order.",
+    )
+    instructions = models.TextField(
+        blank=True,
+        default="",
+        help_text="Prompt text passed to the agent for this sub-task. Empty means no task-level instructions.",
+    )
+    output_schema = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Optional JSON schema the task output must conform to. Empty dict = no enforcement.",
+    )
+    context_tasks = models.ManyToManyField(
+        "self",
+        symmetrical=False,
+        blank=True,
+        related_name="dependent_tasks",
+        help_text="Earlier sibling tasks whose outputs are injected as context for this task.",
+    )
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["agent_node", "order"],
+                name="uniq_agentnodetask_node_order",
+                deferrable=models.Deferrable.DEFERRED,
+            ),
+            models.UniqueConstraint(
+                fields=["agent_node", "name"],
+                name="uniq_agentnodetask_node_name",
+                deferrable=models.Deferrable.DEFERRED,
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+
+        if self.pk:
+            invalid = self.context_tasks.exclude(agent_node=self.agent_node)
+
+            if invalid.exists():
+                raise ValidationError(
+                    "context_tasks must belong to the same agent_node."
+                )
+
+            forward = self.context_tasks.filter(order__gte=self.order)
+
+            if forward.exists():
+                raise ValidationError(
+                    "context_tasks must reference tasks with a strictly lower order."
+                )

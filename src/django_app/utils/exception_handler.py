@@ -34,11 +34,13 @@ def custom_exception_handler(exc, context):
         return response
 
     if not DEBUG:
-        response = {
-            "status_code": 500,
-            "code": exc.__class__.__name__,
-            "message": f"{exc.__class__.__name__}: Unpredictable error",
-        }
-        return JsonResponse(response)
+        return JsonResponse(
+            {
+                "status_code": 500,
+                "code": exc.__class__.__name__,
+                "message": f"{exc.__class__.__name__}: Unpredictable error",
+            },
+            status=500,
+        )
 
     return response

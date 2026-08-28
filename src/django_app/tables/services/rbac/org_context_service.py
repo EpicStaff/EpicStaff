@@ -1,7 +1,8 @@
 from typing import Optional
 
-from tables.models.rbac_models import OrganizationUser
+from tables.models.rbac_models import Organization, OrganizationUser
 from tables.services.rbac.rbac_exceptions import (
+    OrganizationNotFoundError,
     OrgContextRequiredError,
     OrgMembershipRequiredError,
 )
@@ -21,6 +22,7 @@ class OrgContextService:
     - Missing or malformed source: OrgContextRequiredError (400).
     - Caller not a member and not superadmin: OrgMembershipRequiredError (403).
     - Caller is non-superadmin and the org is inactive: OrgMembershipRequiredError.
+    - Caller is superadmin and the org id does not exist: OrganizationNotFoundError (404).
     """
 
     def resolve(self, request, view_kwargs: Optional[dict] = None) -> int:
@@ -49,6 +51,8 @@ class OrgContextService:
 
     def _assert_membership(self, user, org_id: int) -> None:
         if getattr(user, "is_superadmin", False):
+            if not Organization.objects.filter(id=org_id).exists():
+                raise OrganizationNotFoundError()
             return
         exists = OrganizationUser.objects.filter(
             user=user, org_id=org_id, org__is_active=True

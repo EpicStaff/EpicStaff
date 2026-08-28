@@ -17,7 +17,8 @@ endif
         prod-setup prod-init prod prod-build prod-up start-prod prod-down prod-logs prod-voice prod-ngrok \
         clean docker-generate-certs \
         integration-test \
-        gen-env check-env
+        gen-env check-env \
+        django-makemigrations django-migrate django-manage django-tests crew-tests
 
 # --- Help ---
 
@@ -99,6 +100,9 @@ dev-logs:
 dev-restart:
 	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env restart $(s)
 
+dev-s:
+	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.env --env-file ../dev/dev.env restart $(s)
+
 dev-logs-s:
 	@cd src && docker compose -f docker-compose.yaml -f docker-compose.dev.yaml --env-file ./.dev.env logs -f $(s)
 
@@ -169,7 +173,7 @@ prod-ngrok:
 # ==========================================
 
 gen-env:
-	@echo "--- Regenerating src/.dev.env, src/debug.env, src/.env.example from src/env.yaml ---"
+	@echo "--- Regenerating src/.dev.env, src/.debug.env, src/.env.example from src/env.yaml ---"
 	@python scripts/generate_env.py
 
 check-env:
@@ -230,19 +234,27 @@ endif
 # LOCAL DJANGO DEVELOPMENT
 # ==========================================
 
+# Use each service's OWN venv interpreter explicitly so these targets work
+# regardless of which venv (if any) is currently activated on PATH.
+ifeq ($(OS),Windows_NT)
+VENV_PY := venv\Scripts\python.exe
+else
+VENV_PY := venv/bin/python
+endif
+
 django-makemigrations django-migrate django-manage django-tests: export PYTHONPATH = $(CURDIR)
 
 django-makemigrations:
-	@cd src/django_app && python manage.py makemigrations $(ARGS)
+	@cd src/django_app && $(VENV_PY) manage.py makemigrations $(ARGS)
 
 django-migrate:
-	@cd src/django_app && python manage.py migrate $(ARGS)
+	@cd src/django_app && $(VENV_PY) manage.py migrate $(ARGS)
 
 django-manage:
-	@cd src/django_app && python manage.py $(CMD)
+	@cd src/django_app && $(VENV_PY) manage.py $(CMD)
 
 django-tests:
-	@cd src/django_app && python -m pytest $(ARGS)
+	@cd src/django_app && $(VENV_PY) -m pytest $(ARGS)
 
 # ==========================================
 # LOCAL CREW DEVELOPMENT
@@ -251,4 +263,9 @@ django-tests:
 crew-tests: export PYTHONPATH = $(CURDIR)
 
 crew-tests:
-	@cd src/crew && python -m pytest $(ARGS)
+	@cd src/crew && $(VENV_PY) -m pytest $(ARGS)
+
+agent-tests: export PYTHONPATH = $(CURDIR)
+
+agent-tests:
+	@cd src/agent && $(VENV_PY) -m pytest $(ARGS)

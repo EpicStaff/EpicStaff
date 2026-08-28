@@ -42,6 +42,73 @@
         color: var(--color-ks-text);
     }
 
+    &__guidance {
+        display: flex;
+        flex-direction: column;
+        row-gap: 0.5rem;
+    }
+
+    &__guidance-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    &__guidance-actions {
+        display: flex;
+        align-items: center;
+        column-gap: 0.5rem;
+    }
+
+    &__guidance-edit {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        padding: 0;
+        background: transparent;
+        border: none;
+        border-radius: 4px;
+        color: var(--accent-color);
+        cursor: pointer;
+
+        &:hover {
+            background-color: var(--color-ghost-btn-hover);
+        }
+    }
+
+    &__guidance-text {
+        font-size: 0.75rem;
+        line-height: 1.4;
+        color: var(--color-ks-transparent-text-80);
+        overflow-wrap: anywhere;
+    }
+
+    &__guidance-empty {
+        font-size: 0.75rem;
+        font-style: italic;
+        color: var(--color-ks-transparent-text-80);
+    }
+
+    &__guidance-input {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+        border: 1px solid var(--color-input-border);
+        background-color: var(--color-input-background);
+        color: var(--color-text-primary);
+        font-size: 0.75rem;
+        font-family: inherit;
+        line-height: 1.4;
+        resize: none;
+
+        &:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+    }
+
     // issues
     &__issues {
     }

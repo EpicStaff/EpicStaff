@@ -1,7 +1,6 @@
 from tables.graph_versioning.handlers import (
     CrewNodeHandler,
     SubgraphNodeHandler,
-    CodeAgentNodeHandler,
     WebhookTriggerNodeHandler,
     TelegramTriggerNodeHandler,
     _MissingSets,
@@ -129,75 +128,6 @@ def test_subgraph_handler_warning_fields(subgraph_node_dict):
     assert warning["field"] == "subgraph"
     assert warning["missing_id"] == missing_id
     assert "Subflow" in warning["reason"]
-
-
-# ---------------------------------------------------------------------------
-# CodeAgentNodeHandler
-# ---------------------------------------------------------------------------
-
-
-def test_code_agent_handler_finds_missing_id(code_agent_node_dict, full_missing_sets):
-    # Arrange
-    handler = CodeAgentNodeHandler()
-
-    # Act
-    missing_id = handler.find_missing_id(code_agent_node_dict, full_missing_sets)
-
-    # Assert
-    assert missing_id == code_agent_node_dict["llm_config"]
-
-
-def test_code_agent_handler_returns_none_when_dep_available(
-    code_agent_node_dict, empty_missing_sets
-):
-    # Arrange
-    handler = CodeAgentNodeHandler()
-
-    # Act
-    missing_id = handler.find_missing_id(code_agent_node_dict, empty_missing_sets)
-
-    # Assert
-    assert missing_id is None
-
-
-def test_code_agent_handler_handle_returns_should_skip_false(code_agent_node_dict):
-    # Arrange
-    handler = CodeAgentNodeHandler()
-
-    # Act
-    should_skip, _ = handler.handle(
-        code_agent_node_dict, missing_id=code_agent_node_dict["llm_config"]
-    )
-
-    # Assert
-    assert should_skip is False
-
-
-def test_code_agent_handler_nulls_fk_in_node(code_agent_node_dict):
-    # Arrange
-    handler = CodeAgentNodeHandler()
-
-    # Act
-    handler.handle(code_agent_node_dict, missing_id=code_agent_node_dict["llm_config"])
-
-    # Assert
-    assert code_agent_node_dict["llm_config"] is None
-
-
-def test_code_agent_handler_warning_fields(code_agent_node_dict):
-    # Arrange
-    handler = CodeAgentNodeHandler()
-    missing_id = code_agent_node_dict["llm_config"]
-
-    # Act
-    _, warning = handler.handle(code_agent_node_dict, missing_id=missing_id)
-
-    # Assert
-    assert warning["type"] == "fk_nulled"
-    assert warning["node_id"] == code_agent_node_dict["id"]
-    assert warning["field"] == "llm_config"
-    assert warning["missing_id"] == missing_id
-    assert "LLMConfig" in warning["reason"]
 
 
 # ---------------------------------------------------------------------------
@@ -359,13 +289,14 @@ def test_telegram_trigger_handler_warning_fields(telegram_trigger_node_dict):
 # ---------------------------------------------------------------------------
 
 
-def test_handler_registry_contains_all_five_node_types():
+def test_handler_registry_contains_all_seven_node_types():
     expected_types = {
         NodeType.CREW_NODE,
         NodeType.SUBGRAPH_NODE,
-        NodeType.CODE_AGENT_NODE,
         NodeType.WEBHOOK_TRIGGER_NODE,
         NodeType.TELEGRAM_TRIGGER_NODE,
+        NodeType.AGENT_NODE,
+        NodeType.TASK_NODE,
     }
 
     assert set(HANDLER_REGISTRY.keys()) == expected_types
@@ -377,10 +308,6 @@ def test_handler_registry_crew_node_maps_to_crew_handler():
 
 def test_handler_registry_subgraph_node_maps_to_subgraph_handler():
     assert isinstance(HANDLER_REGISTRY[NodeType.SUBGRAPH_NODE], SubgraphNodeHandler)
-
-
-def test_handler_registry_code_agent_node_maps_to_code_agent_handler():
-    assert isinstance(HANDLER_REGISTRY[NodeType.CODE_AGENT_NODE], CodeAgentNodeHandler)
 
 
 def test_handler_registry_webhook_trigger_node_maps_to_webhook_handler():
