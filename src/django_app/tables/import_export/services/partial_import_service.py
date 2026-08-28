@@ -25,7 +25,6 @@ _NODE_ENTITY_TYPES = {
     EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
     EntityType.SUBGRAPH_NODE,
     EntityType.NOTE_NODE,
-    EntityType.CODE_AGENT_NODE,
     EntityType.SCHEDULE_TRIGGER_NODE,
     EntityType.AGENT_NODE,
     EntityType.TASK_NODE,

@@ -76,7 +76,6 @@ from tables.models import (
     AgentNode,
     AgentNodeTask,
     AudioTranscriptionNode,
-    CodeAgentNode,
     ConditionalEdge,
     Crew,
     CrewNode,
@@ -251,7 +250,6 @@ from tables.serializers.model_serializers import (
     ClassificationDecisionTableNodeSerializer,
     AgentWriteSerializer,
     AudioTranscriptionNodeSerializer,
-    CodeAgentNodeSerializer,
     ConditionalEdgeSerializer,
     GraphNoteSerializer,
     ConditionGroupSerializer,
@@ -1065,10 +1063,6 @@ class GraphViewSet(OrgScopedViewSetMixin, CopyActionMixin, viewsets.ModelViewSet
                     ).prefetch_related("subgraph__tags"),
                 ),
                 Prefetch(
-                    "code_agent_node_list",
-                    queryset=CodeAgentNode.objects.select_related("llm_config"),
-                ),
-                Prefetch(
                     "task_node_list",
                     queryset=TaskNode.objects.select_related(
                         "inline_surface"
@@ -1546,22 +1540,6 @@ class AudioTranscriptionNodeViewSet(
     org_filter_path = "graph__org_id"
     queryset = AudioTranscriptionNode.objects.all()
     serializer_class = AudioTranscriptionNodeSerializer
-
-
-class CodeAgentNodeViewSet(
-    OrgScopedChildViewSetMixin, IdempotentNodeCreateMixin, viewsets.ModelViewSet
-):
-    """
-    DEPRECATED: CodeAgentNodeViewSet is deprecated. Use AgentNodeViewSet or
-    TaskNodeViewSet instead. Exists only for backward compatibility with
-    existing CodeAgentNode rows.
-    """
-
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.FLOWS
-    org_filter_path = "graph__org_id"
-    queryset = CodeAgentNode.objects.all()
-    serializer_class = CodeAgentNodeSerializer
 
 
 class TaskNodeViewSet(

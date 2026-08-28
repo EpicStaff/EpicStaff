@@ -304,41 +304,6 @@ def test_bulk_save_allows_same_org_subgraph(client_admin_a, org_a):
     assert SubGraphNode.objects.filter(graph=graph, subgraph=a_subgraph).count() == 1
 
 
-# ---- #3 CodeAgentNode.llm_config (strict, via bulk-save) ----
-
-
-@pytest.mark.django_db
-def test_bulk_save_rejects_cross_org_code_agent_llm_config(
-    client_admin_a, org_a, org_b
-):
-    graph = Graph.objects.create(name="a-graph", org=org_a)
-    b_cfg = _llm_config(org_b, name="b-cfg")
-    resp = client_admin_a.post(
-        _save_url(graph.id),
-        {
-            "save_version": graph.save_version,
-            "code_agent_node_list": [{"graph": graph.id, "llm_config": b_cfg.id}],
-        },
-        format="json",
-    )
-    assert _rejected(resp), resp.data
-
-
-@pytest.mark.django_db
-def test_bulk_save_allows_same_org_code_agent_llm_config(client_admin_a, org_a):
-    graph = Graph.objects.create(name="a-graph", org=org_a)
-    a_cfg = _llm_config(org_a, name="a-cfg")
-    resp = client_admin_a.post(
-        _save_url(graph.id),
-        {
-            "save_version": graph.save_version,
-            "code_agent_node_list": [{"graph": graph.id, "llm_config": a_cfg.id}],
-        },
-        format="json",
-    )
-    assert resp.status_code == 200, resp.data
-
-
 # ---- #5 RealtimeAgent configs (strict, nested in AgentWrite) ----
 
 
