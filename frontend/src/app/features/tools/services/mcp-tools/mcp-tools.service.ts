@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { forkJoin, Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
@@ -130,9 +130,27 @@ export class McpToolsService {
     }
 
     getBulkUsageDetailById(toolIds: number[]): Observable<GetBulkToolUsageItem[]> {
-        const body = { ids: toolIds };
-        return this.http.post<GetBulkToolUsageItem[]>(`${this.baseUrl}usage/`, body, {
-            headers: this.httpHeaders,
-        });
+        // Backend caps a single request at 50 ids, so split larger lists into
+        // parallel chunks and merge the responses.
+        const MAX_COUNT = 50;
+        if (toolIds.length === 0) {
+            return of([]);
+        }
+        if (toolIds.length <= MAX_COUNT) {
+            return this.http.post<GetBulkToolUsageItem[]>(
+                `${this.baseUrl}usage/`,
+                { ids: toolIds },
+                { headers: this.httpHeaders }
+            );
+        }
+
+        const chunks: Observable<GetBulkToolUsageItem[]>[] = [];
+        for (let i = 0; i < toolIds.length; i += MAX_COUNT) {
+            const ids = toolIds.slice(i, i + MAX_COUNT);
+            chunks.push(
+                this.http.post<GetBulkToolUsageItem[]>(`${this.baseUrl}usage/`, { ids }, { headers: this.httpHeaders })
+            );
+        }
+        return forkJoin(chunks).pipe(map((responses) => responses.flat()));
     }
 }
